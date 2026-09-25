@@ -73,3 +73,24 @@ service, selects the first-party Agent plugin in a minimal test WebView, verifie
 startup, authenticated requests and shutdown, then removes its APKs. Reports and
 complete runtime logs go to `test-results/android-native-agent/`. This lane does
 not claim model inference, the full renderer flow, or physical-device coverage.
+
+Add `--embedding` to run the production framed inference host and JNI encoder
+against the BGE model packaged in the APK. This builds CPU libraries for ARM64
+and x86_64, requires the pinned llama.cpp submodule and Android NDK, and rejects
+`ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1`. It checks complete Unicode input, typed
+oversize/artifact rejection, release/reload, and 30 warm requests; the report
+exports complete 384-dimensional vectors and timing evidence. It also exercises
+the registered Capacitor BGE bridge from a real WebView, including tokenization,
+embedding, admission rejection, and context release.
+
+Use `--speech-model-dir <directory>` instead of `--embedding` for CPU Kokoro
+transport and PCM diagnostics through the framed host. Supply `kokoro-82m-v1_0.gguf` and `af_sam.bin`
+from the pinned assets in `plugins/plugin-native-inference/src/aosp-voice-download.ts`.
+The test verifies their hashes inside the installed APK, checks speed, input
+rejection and release/reload, and exports full PCM plus a playable WAV. A passing
+diagnostic does not qualify speech intelligibility: the report explicitly marks
+it `unqualified`. Optimized and scalar output failed independent recognition of
+the expected phrase while the recognizer control passed; the model/forward-path
+defect remains unresolved (issue #30679). Diagnosis needs a matched canonical
+reference and the first divergent tensor. Microphone capture, phonemization and
+physical speaker playback are outside this IPA-input diagnostic.

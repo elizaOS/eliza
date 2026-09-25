@@ -474,6 +474,183 @@
           mismatchedOperations.length === 0,
           `batch operations preserve individual rendering: ${mismatchedOperations.map(({ name }) => name).join(", ")}`,
         );
+        const imageFailures = [];
+        window.nativeCanvasEvidence.imageFailures = imageFailures;
+        const imageOutcome = async (method, options) =>
+          call(method, options).then(
+            () => ({ rejected: false, code: null, commandIndex: null }),
+            (error) => ({
+              rejected: true,
+              code: error.code ?? null,
+              commandIndex: error.data?.commandIndex ?? null,
+            }),
+          );
+        for (const [name, image] of [
+          ["missing", null],
+          ["empty-object", {}],
+          ["bad-base64", { base64: "%%%" }],
+          ["non-image-bytes", { base64: btoa("not an image") }],
+          ["invalid-data-url", "data:image/png;base64,%%%"],
+          ["unsupported-url", "https://example.invalid/canvas.png"],
+        ]) {
+          const args = {
+            image,
+            destRect: { x: 0, y: 0, width: 4, height: 4 },
+            drawOptions: {
+              opacity: 0.5,
+              transform: { translateX: 5, translateY: 5 },
+            },
+          };
+          for (const method of ["drawImage", "drawBatch"]) {
+            const before = await call("getPixelData", { canvasId });
+            const outcome = await imageOutcome(
+              method,
+              method === "drawImage"
+                ? { canvasId, ...args }
+                : { canvasId, commands: [{ type: "image", args }] },
+            );
+            const after = await call("getPixelData", { canvasId });
+            imageFailures.push({
+              name,
+              method,
+              ...outcome,
+              unchanged: before.data === after.data,
+            });
+          }
+        }
+        assert(
+          imageFailures.every(
+            ({ rejected, code, commandIndex, method, unchanged }) =>
+              rejected &&
+              code === "INVALID_IMAGE" &&
+              unchanged &&
+              (method !== "drawBatch" || commandIndex === 0),
+          ),
+          "invalid canvas images reject with typed errors and preserve pixels",
+        );
+        await call("clear", { canvasId });
+        const prefix = {
+          type: "rect",
+          args: {
+            rect: { x: 0, y: 0, width: 2, height: 2 },
+            fill: { color: "#ff0000" },
+          },
+        };
+        const partial = await imageOutcome("drawBatch", {
+          canvasId,
+          commands: [
+            prefix,
+            {
+              type: "image",
+              args: {
+                image: { base64: "%%%" },
+                destRect: { x: 0, y: 0, width: 4, height: 4 },
+              },
+            },
+            {
+              type: "rect",
+              args: {
+                rect: { x: 8, y: 8, width: 2, height: 2 },
+                fill: { color: "#00ff00" },
+              },
+            },
+          ],
+        });
+        const partialPixels = await call("getPixelData", { canvasId });
+        window.nativeCanvasEvidence.imageBatchFailure = {
+          ...partial,
+          png: await call("toImage", { canvasId, format: "png" }),
+        };
+        assert(
+          partial.rejected &&
+            partial.code === "INVALID_IMAGE" &&
+            partial.commandIndex === 1,
+          "batch image failure identifies its command index",
+        );
+        assert(
+          atob(partialPixels.data).slice(0, 4) ===
+            String.fromCharCode(255, 0, 0, 255),
+          "batch failure preserves its applied prefix and restores drawing state",
+        );
+        assert(
+          atob(partialPixels.data).slice(
+            (8 * 16 + 8) * 4,
+            (8 * 16 + 8) * 4 + 4,
+          ) === String.fromCharCode(0, 0, 0, 0),
+          "batch failure does not execute subsequent commands",
+        );
+        const malformedCommands = [
+          ["unknown type", { type: "unsupported", args: {} }],
+          ["missing arguments", { type: "rect" }],
+          ["null command", null],
+          ["string command", "rect"],
+          ["array command", []],
+          ["non-object arguments", { type: "rect", args: 7 }],
+          ["missing rectangle", { type: "rect", args: {} }],
+          ["missing ellipse center", { type: "ellipse", args: {} }],
+          ["missing line endpoints", { type: "line", args: {} }],
+          ["missing path commands", { type: "path", args: { path: {} } }],
+          [
+            "missing text style",
+            { type: "text", args: { text: "hello", position: { x: 0, y: 0 } } },
+          ],
+          [
+            "missing image destination",
+            { type: "image", args: { image: dataUrl } },
+          ],
+        ];
+        window.nativeCanvasEvidence.malformedCommands = [];
+        for (const [name, command] of malformedCommands) {
+          await call("clear", { canvasId });
+          const outcome = await imageOutcome("drawBatch", {
+            canvasId,
+            commands: [
+              prefix,
+              command,
+              {
+                type: "rect",
+                args: {
+                  rect: { x: 8, y: 8, width: 2, height: 2 },
+                  fill: { color: "#00ff00" },
+                },
+              },
+            ],
+          });
+          const pixels = atob((await call("getPixelData", { canvasId })).data);
+          const prefixPreserved =
+            pixels.slice(0, 4) === String.fromCharCode(255, 0, 0, 255);
+          const suffixStopped =
+            pixels.slice((8 * 16 + 8) * 4, (8 * 16 + 8) * 4 + 4) ===
+            String.fromCharCode(0, 0, 0, 0);
+          window.nativeCanvasEvidence.malformedCommands.push({
+            name,
+            ...outcome,
+            prefixPreserved,
+            suffixStopped,
+          });
+          assert(
+            outcome.rejected &&
+              outcome.code === "INVALID_COMMAND" &&
+              outcome.commandIndex === 1,
+            `malformed batch command rejects with index: ${name}`,
+          );
+          assert(
+            prefixPreserved && suffixStopped,
+            `malformed batch preserves only applied prefix: ${name}`,
+          );
+        }
+        await call("drawImage", {
+          canvasId,
+          image: dataUrl,
+          srcRect: { x: 2, y: 0, width: 2, height: 2 },
+          destRect: { x: 0, y: 0, width: 4, height: 4 },
+        });
+        const recoveredImage = await call("getPixelData", { canvasId });
+        assert(
+          atob(recoveredImage.data).slice(0, 4) ===
+            String.fromCharCode(0, 0, 255, 255),
+          "valid image drawing recovers after rejected inputs",
+        );
       } finally {
         await call("destroy", { canvasId });
       }

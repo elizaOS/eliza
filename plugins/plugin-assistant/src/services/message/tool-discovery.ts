@@ -419,12 +419,12 @@ export function appendDiscoveredPlannerTools(
   requestedNames?: readonly string[],
 ): void {
   const names = new Set(current.map((tool) => tool.name));
-  // A discovery load that named its operations expands as canonical families
-  // (develop's umbrella contract: an alias rides on its umbrella's pinned
-  // discriminator, so no per-alias schema copies); a legacy load without names
-  // keeps the flat expansion.
+  // Explicit child selections retain their native constraints. Named families
+  // still consolidate unselected siblings through the complete umbrella;
+  // legacy callers without names retain the flat expansion.
   for (const tool of collectPlannerTools(context, discovered, {
     canonicalFamilies: requestedNames !== undefined,
+    directActionNames: new Set(requestedNames),
   })) {
     if (!names.has(tool.name)) {
       current.push(tool);

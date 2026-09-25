@@ -170,7 +170,9 @@ def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "osworld":
         return ALL_HARNESSES if _has_osworld_docker_backend() else ()
     if benchmark_id == "gauntlet":
-        return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
+        # These bridges classify text and emit placeholder transaction bytes.
+        # Surfpool availability cannot make them native transaction agents.
+        return ()
     if benchmark_id in {
         "hermes_tblite",
         "hermes_terminalbench_2",
