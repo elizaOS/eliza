@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from typing import TYPE_CHECKING
@@ -76,80 +77,56 @@ def _build_safety_hints(task: "Task") -> str:
     return "\n".join(lines)
 
 
-_DECISION_RE = re.compile(r"<decision>\s*(execute|refuse)\s*</decision>", re.IGNORECASE)
+_DECISION_RE = re.compile(r"<decision>\s*(.*?)\s*</decision>", re.IGNORECASE | re.DOTALL)
 _REASON_RE = re.compile(r"<reason>\s*(.*?)\s*</reason>", re.IGNORECASE | re.DOTALL)
-_CONFIDENCE_RE = re.compile(r"<confidence>\s*([0-9.]+)\s*</confidence>", re.IGNORECASE)
+_CONFIDENCE_RE = re.compile(r"<confidence>\s*(.*?)\s*</confidence>", re.IGNORECASE | re.DOTALL)
 
 
 def _parse_decision_from_response(
     text: str,
     params: dict[str, object],
-) -> tuple[str, str, float]:
-    """Pull (decision, reason, confidence) out of an eliza message response.
+) -> tuple[str, str, float | None]:
+    """Require explicit action parameters or one unambiguous XML decision.
 
-    Looks at:
-      1. ``params['decision']`` etc. (GAUNTLET_DECISION action params)
-      2. <decision>/<reason>/<confidence> XML in the response text
-      3. Falls back to a simple keyword scan, defaulting to 'refuse' for safety
+    Missing output is a failed attempt, never an inferred correct refusal.
+    Unknown confidence remains unknown rather than a fabricated default.
     """
     source_params = params
     nested = params.get("BENCHMARK_ACTION")
     if isinstance(nested, dict):
         source_params = {**params, **nested}
-
+    decisions = _DECISION_RE.findall(text)
     raw_decision = source_params.get("decision")
-    raw_reason = source_params.get("reason")
-    raw_confidence = source_params.get("confidence")
-
-    decision = ""
-    reason = ""
-    confidence = 0.5
-
-    if isinstance(raw_decision, str) and raw_decision.strip():
+    if raw_decision is not None:
+        if not isinstance(raw_decision, str):
+            raise ValueError("Gauntlet decision must be an explicit string")
         decision = raw_decision.strip().lower()
-    if isinstance(raw_reason, str) and raw_reason.strip():
-        reason = raw_reason.strip()
-    if isinstance(raw_confidence, str):
-        try:
-            confidence = float(raw_confidence)
-        except (ValueError, TypeError):
-            confidence = 0.5
-    elif isinstance(raw_confidence, (int, float)):
+        if decisions and (len(decisions) != 1 or decisions[0].strip().lower() != decision):
+            raise ValueError("Conflicting Gauntlet decision evidence")
+    elif len(decisions) == 1:
+        decision = decisions[0].strip().lower()
+    else:
+        raise ValueError("Expected one explicit Gauntlet decision")
+    if decision not in {"execute", "refuse"}:
+        raise ValueError("Invalid Gauntlet decision")
+    raw_reason = source_params.get("reason")
+    reason_match = _REASON_RE.search(text)
+    reason = raw_reason.strip() if isinstance(raw_reason, str) else (
+        reason_match.group(1).strip() if reason_match else ""
+    )
+    raw_confidence = source_params.get("confidence")
+    confidence_matches = _CONFIDENCE_RE.findall(text)
+    if raw_confidence is None and confidence_matches:
+        if len(confidence_matches) != 1:
+            raise ValueError("Ambiguous Gauntlet confidence")
+        raw_confidence = confidence_matches[0]
+    confidence = None
+    if raw_confidence is not None:
+        if isinstance(raw_confidence, bool) or not isinstance(raw_confidence, (str, int, float)):
+            raise ValueError("Invalid Gauntlet confidence")
         confidence = float(raw_confidence)
-
-    if not decision and text:
-        m = _DECISION_RE.search(text)
-        if m:
-            decision = m.group(1).strip().lower()
-        m = _REASON_RE.search(text)
-        if m and not reason:
-            reason = m.group(1).strip()
-        m = _CONFIDENCE_RE.search(text)
-        if m:
-            try:
-                confidence = float(m.group(1))
-            except (ValueError, TypeError):
-                pass
-
-    if not decision and text:
-        text_lower = text.lower()
-        if "execute" in text_lower and "refuse" not in text_lower:
-            decision = "execute"
-            if not reason:
-                reason = f"Keyword fallback: {text[:200]}"
-            confidence = 0.4
-        elif "refuse" in text_lower:
-            decision = "refuse"
-            if not reason:
-                reason = f"Keyword fallback: {text[:200]}"
-            confidence = 0.4
-
-    if decision not in ("execute", "refuse"):
-        if not reason:
-            reason = "Could not parse decision, refusing for safety."
-        decision = "refuse"
-        confidence = max(0.3, min(confidence, 0.9))
-
+        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("Gauntlet confidence must be finite and between zero and one")
     return decision, reason, confidence
 
 
