@@ -170,9 +170,21 @@ class NativeBridgeInstrumentedTest {
                             check(name in listOf("browser-before-invalid-present.png", "browser-after-invalid-present.png"))
                             val drawn = CountDownLatch(1)
                             scenario.onActivity { activity ->
-                                activity.window.decorView.postOnAnimation {
-                                    activity.window.decorView.postOnAnimation { drawn.countDown() }
+                                val webViews = mutableListOf<android.webkit.WebView>()
+                                fun visit(view: android.view.View) {
+                                    if (view is android.webkit.WebView && view.isShown) webViews.add(view)
+                                    if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
                                 }
+                                visit(activity.window.decorView)
+                                val pending = java.util.concurrent.atomic.AtomicInteger(webViews.size)
+                                if (webViews.isEmpty()) drawn.countDown()
+                                for (view in webViews) view.postVisualStateCallback(0L, object : android.webkit.WebView.VisualStateCallback() {
+                                    override fun onComplete(requestId: Long) {
+                                        if (pending.decrementAndGet() == 0) activity.window.decorView.postOnAnimation {
+                                            activity.window.decorView.postOnAnimation { drawn.countDown() }
+                                        }
+                                    }
+                                })
                             }
                             assertTrue("Native presentation did not render", drawn.await(5, TimeUnit.SECONDS))
                             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
