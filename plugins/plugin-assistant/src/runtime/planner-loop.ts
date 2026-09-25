@@ -3956,18 +3956,18 @@ async function dispatchPlannerModelCall(params: {
     const original = params.trajectory.modelBaseContext ?? params.context;
     const previous = selectCompletionContext(original);
     const newReview = renderedInput.actionSourceSelectionSchema !== undefined;
-    const submitted = parsed.toolCalls.some(
+    const submitted = domainCalls.some(
       (call) => call.completionContext !== undefined,
     );
     const selection = newReview
-      ? parsed.toolCalls[0]?.completionContext
+      ? domainCalls[0]?.completionContext
       : previous.selection;
     const unanimous =
       original.metadata?.plannerQueryTokensRestored !== true &&
       selection?.mode === "selected" &&
       selection.complete &&
       ((!newReview && !submitted) ||
-        parsed.toolCalls.every(
+        domainCalls.every(
           (call) =>
             JSON.stringify(call.completionContext) ===
             JSON.stringify(selection),

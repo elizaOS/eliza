@@ -398,3 +398,97 @@ it.each(["history", "full"] as const)(
     expect(context).toEqual(original);
   },
 );
+
+it.each([true, false])(
+  "mixed discovery batch preserves domain consensus (discovery first=%s)",
+  async (discoveryFirst) => {
+    const context: ContextObject = {
+      id: "mixed",
+      metadata: { roomId: "room", messageId: "message" },
+      events: [0, 1].map((i) => ({
+        id: `history:mixed-${i}`,
+        type: "segment",
+        source: "prior-dialogue",
+        createdAt: i,
+        segment: {
+          id: `history:mixed-${i}`,
+          label: "prior_message:user",
+          content: `Original ${i}`,
+          stable: false,
+        },
+      })),
+    };
+    const selection = {
+      mode: "selected",
+      complete: true,
+      sourceSetId: completionContextSources(context).sourceSetId,
+      relevantSourceIds: ["h1"],
+      constraintSourceIds: [],
+      referentSourceIds: [],
+      pendingIntentSourceIds: [],
+    };
+    const discovery = {
+      id: "discover",
+      name: "DISCOVER_ACTIONS",
+      arguments: { query: "read notes", eliza_turn_scope: "final" },
+    };
+    const domains = ["READ_ONE", "READ_TWO"].map((name) => ({
+      id: name,
+      name,
+      arguments: { eliza_turn_scope: "final", [ACTION_CONTEXT_ARG]: selection },
+    }));
+    const calls = discoveryFirst
+      ? [discovery, ...domains]
+      : [...domains, discovery];
+    const seen: PlannerToolCall[] = [];
+    let rounds = 0;
+    const result = await runPlannerLoop({
+      context,
+      tools: calls.map((c) => ({
+        name: c.name,
+        description: "Read",
+        parameters: { type: "object", properties: {} },
+      })),
+      runtime: {
+        useModel: async () => {
+          if (++rounds > 2)
+            throw new Error(
+              "Unexpected extra model round; executed=" +
+                seen.map((c) => c.name).join(","),
+            );
+          return { text: "", toolCalls: calls };
+        },
+      },
+      executeToolCall: async (call) => {
+        seen.push(call);
+        return {
+          success: true,
+          data: { readOnlyOperation: true },
+          ...(call.name !== "DISCOVER_ACTIONS"
+            ? { continueChain: false, text: "Done." }
+            : {}),
+        };
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        messageToUser: "Done.",
+        raw: {},
+      }),
+    });
+    expect(result.terminalFailure).toBeUndefined();
+    expect(seen.some((c) => c.name === "READ_ONE")).toBe(true);
+    for (const call of seen.filter((c) => c.name !== "DISCOVER_ACTIONS"))
+      expect(call.completionContext).toEqual(selection);
+    const base =
+      result.trajectory.modelBaseContext ?? result.trajectory.context;
+    expect(base.events.filter((e) => e.source === "prior-dialogue")).toEqual(
+      context.events,
+    );
+    expect(
+      selectCompletionContext(base).context.events.filter(
+        (e) => e.source === "prior-dialogue",
+      ),
+    ).toEqual([context.events[0]]);
+  },
+);
