@@ -17,6 +17,8 @@
  * @module process-guards
  */
 
+import process from "node:process";
+
 import { shouldIgnoreUnhandledRejection } from "./error-classification.js";
 import { RESTART_EXIT_CODE } from "./restart.js";
 /**
@@ -67,16 +69,13 @@ export function resetProcessCrashGuardsForTest(): void {
  *
  * Idempotent across the whole process: the first call wins and subsequent calls
  * (from a deeper entry layer that imports the same `@elizaos/core`) are no-ops.
- * Returns `true` when the guards were installed, `false` when skipped (already
- * installed, or no `process` object — e.g. a browser bundle).
+ * Returns `true` when the guards were installed, `false` when already installed.
+ * This helper requires the host Node/Bun process API.
  */
 export function installProcessCrashGuards(
 	options: ProcessCrashGuardOptions = {},
 ): boolean {
 	if (guardsInstalled) return false;
-	if (typeof process === "undefined" || typeof process.on !== "function") {
-		return false;
-	}
 	guardsInstalled = true;
 	const prefix = options.logPrefix ?? "[eliza]";
 	const log = options.log ?? ((m: string) => console.error(`${prefix} ${m}`));

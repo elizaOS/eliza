@@ -75,6 +75,11 @@ final class ElizaBionicInferenceServer {
     /** Cadence of the idle/pressure policy tick (#11760). */
     private static final long MEMORY_POLICY_TICK_MS = 30_000L;
 
+    interface NetworkStateProbe {
+        JSONObject read() throws org.json.JSONException;
+    }
+
+    private final NetworkStateProbe networkStateProbe;
     private final String socketName;
     private final String defaultBundleDir;
     private final InferenceMemoryPolicy.RamClass ramClass;
@@ -118,12 +123,14 @@ final class ElizaBionicInferenceServer {
             String defaultBundleDir,
             InferenceMemoryPolicy.RamClass ramClass,
             long idleUnloadMs,
-            MemoryPressureProbe pressureProbe) {
+            MemoryPressureProbe pressureProbe,
+            NetworkStateProbe networkStateProbe) {
         this.socketName = socketName;
         this.defaultBundleDir = defaultBundleDir;
         this.ramClass = ramClass;
         this.idleUnloadMs = idleUnloadMs;
         this.pressureProbe = pressureProbe;
+        this.networkStateProbe = networkStateProbe;
     }
 
     /** Bind the abstract-namespace socket and start accepting. Idempotent. */
@@ -387,7 +394,9 @@ final class ElizaBionicInferenceServer {
                 out.flush();
                 // Every op (generate/embed/tts/asr/image) touches the shared
                 // resident context — refresh the idle clock on completion (#11760).
-                lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
+                if (!"networkPolicy".equals(opOf(requestJson))) {
+                    lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
+                }
             }
         } catch (IOException e) {
             Log.w(TAG, "connection error", e);
@@ -400,6 +409,11 @@ final class ElizaBionicInferenceServer {
         try {
             JSONObject req = new JSONObject(requestJson);
             String op = req.optString("op", "generate");
+            if ("networkPolicy".equals(op)) {
+                if (networkStateProbe == null) return errorJson("network policy probe unavailable");
+                return new JSONObject().put("ok", true)
+                    .put("state", networkStateProbe.read()).toString();
+            }
             String bundleDir = req.optString("bundleDir", "");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;

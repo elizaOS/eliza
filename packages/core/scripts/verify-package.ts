@@ -1,6 +1,6 @@
 /** Verify the real tarball in a temporary consumer with no workspace aliases. */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
@@ -189,6 +189,11 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  assert.equal(publicApi.channelPluginMap, publicApi.CONNECTOR_PLUGINS);
+  assert.equal(publicApi.providerPluginMap.OPENAI_API_KEY, '@elizaos/plugin-openai');
+  assert.equal(publicApi.shortIdPluginMap['agent-wallet'], '@elizaos/plugin-wallet');
+  assert.equal(publicApi.getMacPermissionDeepLink('camera'), 'x-apple.systempreferences:com.apple.preference.security?Privacy_Camera');
+  assert.equal(publicApi.sanitizeForSettingsDebug({ apiKey: 'private' }).apiKey, '[redacted:short]');
   const eventProtocol = await import('@elizaos/core/events');
   for (const dispatcher of ['createNavigateViewEvent', 'dispatchNavigateViewEvent', 'dispatchAppEvent', 'dispatchWindowEvent', 'dispatchAppEmoteEvent', 'dispatchElizaCloudStatusUpdated']) {
     assert.equal(dispatcher in eventProtocol, false, dispatcher + ' belongs to the UI host');
@@ -346,6 +351,36 @@ void text;
 		consumer,
 	);
 	process.stdout.write(run(process.execPath, ["verify.ts"], consumer));
+	writeFileSync(
+		path.join(consumer, "verify-process-guards.mjs"),
+		`
+import assert from 'node:assert/strict';
+const before = process.listenerCount('uncaughtException');
+const { installProcessCrashGuards } = await import('@elizaos/core');
+assert.equal(process.listenerCount('uncaughtException'), before, 'importing core must not install guards');
+assert.equal(installProcessCrashGuards(), true);
+assert.equal(installProcessCrashGuards(), false, 'installation is idempotent');
+assert.equal(process.listenerCount('uncaughtException'), before + 1);
+setTimeout(() => { throw new Error('packed-host-crash-fixture'); }, 0);
+`,
+	);
+	const guarded = spawnSync(process.execPath, ["verify-process-guards.mjs"], {
+		cwd: consumer,
+		env,
+		encoding: "utf8",
+		timeout: 30_000,
+	});
+	assert.ifError(guarded.error);
+	assert.equal(guarded.signal, null);
+	const restartCode = JSON.parse(
+		readFileSync(path.join(core, "src/restart-exit-code.json"), "utf8"),
+	).restartExitCode;
+	assert.equal(guarded.status, restartCode, guarded.stderr);
+	assert.match(guarded.stderr, /packed-host-crash-fixture/);
+	assert.match(guarded.stderr, /Requesting supervised restart/);
+	console.log(
+		"Packed core process guards remain explicit, idempotent, and exit for supervised restart",
+	);
 } finally {
 	rmSync(temporary, { recursive: true, force: true });
 }

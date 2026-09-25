@@ -44,7 +44,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
@@ -86,10 +86,14 @@ import {
 } from "./aosp-llama-streaming.js";
 import {
   assertAospModelDownloadSize,
-  bundleSlugFromModelName,
   fetchRecommendedAospModel,
   resolveRecommendedAospModel,
 } from "./aosp-model-paths.js";
+import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
+import {
+  AOSP_KOKORO_ASSETS,
+  downloadAospVoiceAsset,
+} from "./aosp-voice-download.js";
 import {
   classifyInferenceRamClass,
   InferenceIdleUnloader,
@@ -101,10 +105,6 @@ import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,
 } from "./model-catalog/bge-input.js";
-import {
-  FIRST_RUN_DEFAULT_MODEL_ID,
-  tierBundleSlug,
-} from "./model-catalog/catalog.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
@@ -325,11 +325,10 @@ export async function activateAospLocalInferenceModel(args: {
     });
     // Eagerly stage the on-device Kokoro voice when a local chat model is
     // selected/activated, so the first spoken reply already uses the neural
-    // voice instead of the platform "android voice". Background + idempotent
+    // voice. Background staging requires a permitted OS network and is idempotent
     // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
     ensureKokoroTtsAssetsInBackground(
       resolveBundleRootFromModelPath(args.modelPath),
-      bundleSlugFromModelName(path.basename(args.modelPath)),
     );
     return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
   } catch (err) {
@@ -1321,6 +1320,10 @@ async function downloadRecommendedAospModel(
     } catch {
       // error-policy:J6 best-effort teardown — unlink stale staging file before download.
     }
+    const checkAdmission = createAospNetworkAdmissionCheck(
+      model.expectedSizeBytes ?? 0,
+    );
+    await checkAdmission(true);
     const { response, candidate } = await fetchRecommendedAospModel(model);
     logger.info(
       `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${candidate.label ?? candidate.base}`,
@@ -1330,14 +1333,24 @@ async function downloadRecommendedAospModel(
         `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${candidate.url}`,
       );
     }
-    await pipeline(
-      Readable.fromWeb(response.body as never),
-      createWriteStream(stagingPath),
-    );
-    const stagedSize = statSync(stagingPath).size;
+    let stagedSize: number;
     try {
+      await pipeline(
+        Readable.fromWeb(response.body as never),
+        new Transform({
+          transform(chunk, _encoding, callback) {
+            void checkAdmission().then(
+              () => callback(null, chunk),
+              (error: Error) => callback(error),
+            );
+          },
+        }),
+        createWriteStream(stagingPath),
+      );
+      stagedSize = statSync(stagingPath).size;
       assertAospModelDownloadSize(model, stagedSize);
       if (role === "embedding") verifyAospEmbeddingArtifact(stagingPath);
+      await checkAdmission(true);
     } catch (error) {
       try {
         unlinkSync(stagingPath);
@@ -1370,38 +1383,12 @@ function resolveBundledModelsDir(): string {
 // (without it the app speaks with the platform TextToSpeech — the "android
 // voice"), so unlike the general recommended-model auto-download it fetches by
 // default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
-// `af_sam.bin` lives under voice/kokoro/voices/, not the per-tier bundle.
-// The published eliza-1 bundle ships the F16 GGUF under this name (no
-// separate Q4 is published; llama-quantize does not support the kokoro arch).
-// The engine discovery also accepts this name — keep them in sync.
-const KOKORO_GGUF_FILE = "kokoro-82m-v1_0.gguf";
-const KOKORO_VOICE_FILE = "af_sam.bin";
-// Kokoro style-embedding dimension (matches the shared voice/ffi-bindings loader
-// and the .bin voice-preset layout). Passed to eliza_inference_kokoro_load.
+// Voice artifacts are pinned independently of the selected text tier.
+const KOKORO_GGUF_FILE = AOSP_KOKORO_ASSETS[0].name;
+const KOKORO_VOICE_FILE = AOSP_KOKORO_ASSETS[1].name;
 const KOKORO_STYLE_DIM = 256;
 let kokoroTtsDownloadInflight: Promise<void> | null = null;
-// Tier slug of the currently-assigned chat bundle, for the Kokoro voice URL.
-function resolveAssignedChatTierSlug(): string {
-  try {
-    const modelsDir = resolveBundledModelsDir();
-    const assigned = readAssignedBundledModels(modelsDir);
-    const manifest = readBundledModelManifest(modelsDir);
-    const fallback = fallbackFindBundledModels(modelsDir);
-    const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
-    return chatModel
-      ? bundleSlugFromModelName(path.basename(chatModel))
-      : tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
-  } catch {
-    // error-policy:J4 explicit degrade — tier slug only picks the Kokoro voice
-    // URL; if discovery throws we use the catalog's first-run voice tier rather
-    // than failing chat load. Cosmetic fallback, not a model source.
-    return tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
-  }
-}
-function ensureKokoroTtsAssetsInBackground(
-  bundleRoot: string,
-  tier: string,
-): void {
+function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
   if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
   if (kokoroTtsDownloadInflight) return;
   const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
@@ -1410,33 +1397,8 @@ function ensureKokoroTtsAssetsInBackground(
   kokoroTtsDownloadInflight = (async () => {
     removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     mkdirSync(stagingDir, { recursive: true });
-    const downloads: Array<{
-      url: string;
-      name: string;
-    }> = [
-      {
-        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/kokoro/${KOKORO_GGUF_FILE}`,
-        name: KOKORO_GGUF_FILE,
-      },
-      {
-        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/voice/kokoro/voices/${KOKORO_VOICE_FILE}`,
-        name: KOKORO_VOICE_FILE,
-      },
-    ];
-    for (const { url, name } of downloads) {
-      logger.info(
-        `[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`,
-      );
-      const response = await fetch(url, { redirect: "follow" });
-      if (!response.ok || !response.body) {
-        throw new Error(
-          `Kokoro voice download failed (${name}): HTTP ${response.status} ${response.statusText}`,
-        );
-      }
-      await pipeline(
-        Readable.fromWeb(response.body as never),
-        createWriteStream(path.join(stagingDir, name)),
-      );
+    for (const asset of AOSP_KOKORO_ASSETS) {
+      await downloadAospVoiceAsset(asset, path.join(stagingDir, asset.name));
     }
     // Atomic publish: tts/kokoro/ appears only when both files are complete.
     renameSync(stagingDir, kokoroDir);
@@ -2480,7 +2442,7 @@ function resolveAospFusedKokoroConfig(): AospFusedKokoroConfig | null {
   // TTS backend). Without tts/kokoro/, on-device TTS has nothing to synthesize
   // and the app falls back to the platform "android voice". This fetches in the
   // background; the platform TTS covers replies until it lands.
-  ensureKokoroTtsAssetsInBackground(bundleRoot, resolveAssignedChatTierSlug());
+  ensureKokoroTtsAssetsInBackground(bundleRoot);
   const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
   const kokoroGgufPath = path.join(kokoroDir, KOKORO_GGUF_FILE);
   const kokoroVoicePath = path.join(kokoroDir, KOKORO_VOICE_FILE);

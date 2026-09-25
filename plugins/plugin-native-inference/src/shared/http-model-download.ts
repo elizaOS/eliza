@@ -3,6 +3,7 @@
  * bounding both inactivity and pathological total transfer duration.
  */
 
+import { createHash } from "node:crypto";
 import { createWriteStream, renameSync, rmSync, statSync } from "node:fs";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -18,6 +19,10 @@ interface HttpModelDownloadOptions {
   finalPath: string;
   label: string;
   expectedSizeBytes?: number;
+  expectedSha256?: string;
+  /** Fresh admission before fetch/publication; progress calls may be throttled by the owner. */
+  checkAdmission?: (force?: boolean) => Promise<void>;
+  fetchImpl?: typeof fetch;
   idleTimeoutMs?: number;
   totalTimeoutMs?: number;
 }
@@ -29,6 +34,9 @@ export async function downloadHttpModel({
   finalPath,
   label,
   expectedSizeBytes,
+  expectedSha256,
+  checkAdmission,
+  fetchImpl = fetch,
   idleTimeoutMs = MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
   totalTimeoutMs = MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
 }: HttpModelDownloadOptions): Promise<number> {
@@ -40,7 +48,8 @@ export async function downloadHttpModel({
   });
 
   try {
-    const response = await fetch(url, {
+    await checkAdmission?.(true);
+    const response = await fetchImpl(url, {
       redirect: "follow",
       signal: deadline.signal,
     });
@@ -56,10 +65,26 @@ export async function downloadHttpModel({
       );
     }
 
+    const hash = expectedSha256 ? createHash("sha256") : null;
+    let receivedSize = 0;
     const progress = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
-        deadline.noteProgress();
-        callback(null, chunk);
+        const consume = async () => {
+          await checkAdmission?.();
+          receivedSize += chunk.length;
+          if (
+            expectedSizeBytes !== undefined &&
+            receivedSize > expectedSizeBytes
+          ) {
+            throw new Error(
+              `${label} exceeds expected size ${expectedSizeBytes}`,
+            );
+          }
+          hash?.update(chunk);
+          deadline.noteProgress();
+          callback(null, chunk);
+        };
+        void consume().catch((error: Error) => callback(error));
       },
     });
     await pipeline(
@@ -70,10 +95,14 @@ export async function downloadHttpModel({
     );
 
     const stagedSize = statSync(stagingPath).size;
-    if (expectedSizeBytes && stagedSize !== expectedSizeBytes) {
+    await checkAdmission?.(true);
+    if (expectedSizeBytes !== undefined && stagedSize !== expectedSizeBytes) {
       throw new Error(
         `${label} size ${stagedSize} != expected ${expectedSizeBytes}`,
       );
+    }
+    if (hash && hash.digest("hex") !== expectedSha256) {
+      throw new Error(`${label} SHA256 does not match its pinned release`);
     }
     renameSync(stagingPath, finalPath);
     return stagedSize;

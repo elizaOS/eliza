@@ -113,8 +113,211 @@
             bytes.charCodeAt(3) === 255,
           "native drawing must produce opaque red pixels",
         );
+        for (const rect of [
+          { x: -1, y: 0, width: 1, height: 1 },
+          { x: 0, y: -1, width: 1, height: 1 },
+          { x: 8, y: 0, width: 1, height: 1 },
+          { x: 0, y: 8, width: 1, height: 1 },
+          { x: 0, y: 0, width: 0, height: 1 },
+          { x: 0, y: 0, width: 1, height: -1 },
+        ]) {
+          await rejects("getPixelData", { canvasId, rect });
+        }
+        const clipped = await call("getPixelData", {
+          canvasId,
+          rect: { x: 7, y: 7, width: 2147483647, height: 2147483647 },
+        });
+        assert(
+          clipped.width === 1 &&
+            clipped.height === 1 &&
+            atob(clipped.data) === String.fromCharCode(255, 0, 0, 255),
+          "oversized pixel region clips without overflow and preserves drawing",
+        );
         const png = await call("toImage", { canvasId, format: "png" });
         assert(png.base64.startsWith("iVBOR"), "native PNG encoding");
+        window.nativeCanvasEvidence = {
+          original: pixels,
+          clipped,
+          rejectedRegions: 6,
+          png: png.base64,
+        };
+        const canvasStages = [];
+        async function nativeImagePixels(stage) {
+          const nativeImage = await call("toImage", {
+            canvasId,
+            format: "png",
+          });
+          const image = new Image();
+          image.src = `data:image/png;base64,${nativeImage.base64}`;
+          await image.decode();
+          assert(
+            image.naturalWidth === nativeImage.width &&
+              image.naturalHeight === nativeImage.height,
+            "native PNG dimensions agree with receipt",
+          );
+          const decoder = document.createElement("canvas");
+          decoder.width = nativeImage.width;
+          decoder.height = nativeImage.height;
+          const context = decoder.getContext("2d");
+          context.drawImage(image, 0, 0);
+          const rgba = context.getImageData(
+            0,
+            0,
+            decoder.width,
+            decoder.height,
+          ).data;
+          canvasStages.push({ stage, ...nativeImage });
+          return (x, y) =>
+            Array.from(
+              rgba.slice(
+                (y * decoder.width + x) * 4,
+                (y * decoder.width + x) * 4 + 4,
+              ),
+            );
+        }
+        function pixelEquals(actual, expected, message, tolerance = 0) {
+          assert(
+            actual.length === 4 &&
+              actual.every(
+                (value, index) =>
+                  Math.abs(value - expected[index]) <= tolerance,
+              ),
+            `${message}: ${actual}`,
+          );
+        }
+        const { layerId } = await call("createLayer", {
+          canvasId,
+          layer: { name: "blue-overlay", visible: true, opacity: 1, zIndex: 1 },
+        });
+        await call("drawRect", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 8, height: 8 },
+          fill: { color: { r: 0, g: 0, b: 255, a: 1 } },
+          drawOptions: { layerId },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-visible"))(3, 3),
+          [0, 0, 255, 255],
+          "visible layer covers base",
+        );
+        await call("updateLayer", {
+          canvasId,
+          layerId,
+          layer: { visible: false },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-hidden"))(3, 3),
+          [255, 0, 0, 255],
+          "hidden layer exposes base",
+        );
+        await call("updateLayer", {
+          canvasId,
+          layerId,
+          layer: { visible: true, opacity: 0.5, name: "half-blue" },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-opacity"))(3, 3),
+          [128, 0, 127, 255],
+          "native layer alpha blends with base",
+          1,
+        );
+        const layers = await call("getLayers", { canvasId });
+        const layer = layers.layers.find((value) => value.id === layerId);
+        assert(
+          layer?.name === "half-blue" &&
+            layer.visible &&
+            Math.abs(layer.opacity - 0.5) < 0.001,
+          "layer metadata matches updates",
+        );
+        await call("deleteLayer", { canvasId, layerId });
+        assert(
+          !(await call("getLayers", { canvasId })).layers.some(
+            (value) => value.id === layerId,
+          ),
+          "deleted layer disappears",
+        );
+        await rejects("updateLayer", {
+          canvasId,
+          layerId,
+          layer: { visible: true },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-deleted"))(3, 3),
+          [255, 0, 0, 255],
+          "deleted layer no longer composites",
+        );
+        await call("clear", { canvasId });
+        pixelEquals(
+          (await nativeImagePixels("cleared"))(3, 3),
+          [0, 0, 0, 0],
+          "clear removes base pixels",
+        );
+        await call("setTransform", {
+          canvasId,
+          transform: { translateX: 4, translateY: 0 },
+        });
+        await call("drawRect", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 2, height: 2 },
+          fill: { color: { r: 255, g: 0, b: 0, a: 1 } },
+        });
+        let sample = await nativeImagePixels("translated");
+        pixelEquals(
+          sample(0, 0),
+          [0, 0, 0, 0],
+          "transform leaves original coordinates empty",
+        );
+        pixelEquals(
+          sample(4, 0),
+          [255, 0, 0, 255],
+          "transform moves native drawing",
+        );
+        await call("resetTransform", { canvasId });
+        await call("drawRect", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 2, height: 2 },
+          fill: { color: { r: 0, g: 255, b: 0, a: 1 } },
+        });
+        pixelEquals(
+          (await nativeImagePixels("transform-reset"))(0, 0),
+          [0, 255, 0, 255],
+          "reset restores drawing coordinates",
+        );
+        await call("resize", { canvasId, size: { width: 12, height: 10 } });
+        const resized = await call("getPixelData", { canvasId });
+        assert(
+          resized.width === 12 &&
+            resized.height === 10 &&
+            atob(resized.data).length === 480,
+          "native resize reports exact dimensions and byte length",
+        );
+        sample = await nativeImagePixels("resized");
+        pixelEquals(
+          sample(0, 0),
+          [0, 255, 0, 255],
+          "resize preserves existing pixels",
+        );
+        pixelEquals(
+          sample(11, 9),
+          [0, 0, 0, 0],
+          "resize initializes added area transparent",
+        );
+        await call("clear", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 2, height: 2 },
+        });
+        sample = await nativeImagePixels("region-cleared");
+        pixelEquals(
+          sample(0, 0),
+          [0, 0, 0, 0],
+          "region clear removes selected pixels",
+        );
+        pixelEquals(
+          sample(4, 0),
+          [255, 0, 0, 255],
+          "region clear preserves other pixels",
+        );
+        window.nativeCanvasEvidence.stages = canvasStages;
       } finally {
         await call("destroy", { canvasId });
       }
