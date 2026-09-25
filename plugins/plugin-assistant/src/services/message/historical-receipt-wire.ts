@@ -12,7 +12,9 @@ function receiptTableEntry(segment: ContextObjectPromptSegment) {
       ? "navigation"
       : segment.label === "runtime:historical_effects"
         ? "outcomes"
-        : undefined;
+        : segment.label === "runtime:historical_observations"
+          ? "observations"
+          : undefined;
   if (!field || segment.stable) return undefined;
   let record: unknown;
   try {
@@ -33,7 +35,7 @@ function receiptTableEntry(segment: ContextObjectPromptSegment) {
       : ["requestSourceEventId", "scope", field];
   if (JSON.stringify(Object.keys(record)) !== JSON.stringify(allowed))
     return undefined;
-  if (field === "outcomes" && typeof record.scope !== "string")
+  if (field !== "navigation" && typeof record.scope !== "string")
     return undefined;
   const receipts = record[field];
   if (!Array.isArray(receipts) || receipts.length === 0) return undefined;

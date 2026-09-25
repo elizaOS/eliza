@@ -84,3 +84,9 @@ retain full-context fallback. Canonical events and historical effect outcomes
 are unchanged. Explicit history
 reads and restoration recover complete originals before dependent work. Plain
 replies do not acquire a source-classification field or an extra review call.
+
+Historical observations qualify only through exact operation declarations on the
+registered action and canonical successful, non-replayed noop receipts. They
+follow their original request through source-bound history selection and full
+restoration. Mutation outcomes, undeclared operations and ambiguous bindings
+remain inline; stored receipts are unchanged.

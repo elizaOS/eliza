@@ -1610,6 +1610,8 @@ export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
+  historicalObservationOperations:
+    googleCalendarAction.historicalObservationOperations,
   // Keep optional operation-specific details optional in provider tool schemas.
   toolSchemaStrict: false,
   similes: [

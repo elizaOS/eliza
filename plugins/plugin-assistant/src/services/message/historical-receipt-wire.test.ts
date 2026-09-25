@@ -405,3 +405,48 @@ it("leaves unknown outer order and stable receipt-like content unchanged and nev
       .map((segment) => JSON.parse(segment.content)),
   );
 });
+
+it("packs historical observations losslessly without confusing their field or scope with mutation outcomes", () => {
+  const input = Array.from({ length: 24 }, (_, index) => {
+    const source = effects(index);
+    const { outcomes, ...record } = JSON.parse(source.content);
+    return {
+      ...source,
+      id: `observation:${index}`,
+      label: "runtime:historical_observations",
+      content: JSON.stringify({ ...record, observations: outcomes }),
+    };
+  });
+  const packed = compactHistoricalReceiptSegments(input);
+  expect(packed).toHaveLength(1);
+  expect(packed[0].label).toBe("runtime:historical_observations_table");
+  expect(JSON.parse(packed[0].content).columns).toEqual([
+    "requestSourceEventId",
+    "observations",
+  ]);
+  expect(expand(packed)).toEqual(
+    input.map((segment) => JSON.parse(segment.content)),
+  );
+  const interleaved = input.flatMap((segment) => [
+    segment,
+    {
+      id: `${segment.id}:dialogue`,
+      label: "prior_message:user",
+      content: "{}",
+      stable: false,
+    },
+  ]);
+  const positioned = compactHistoricalReceiptSegments(interleaved);
+  expect(
+    positioned.filter(
+      (segment) => segment.label === "runtime:historical_receipt_encoding",
+    ),
+  ).toHaveLength(1);
+  expect(
+    expand(
+      positioned.filter((segment) =>
+        segment.label?.startsWith("runtime:historical_"),
+      ),
+    ),
+  ).toEqual(input.map((segment) => JSON.parse(segment.content)));
+});

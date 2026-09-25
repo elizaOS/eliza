@@ -5106,6 +5106,12 @@ export function createCalendarActionRunner(
 
 const calendarAction: CalendarHandlerAction = {
   name: "CALENDAR",
+  // These owner-authored producers only observe snapshots; current results
+  // remain complete, while bound historical observations may follow review.
+  historicalObservationOperations: [
+    "calendar.event.next.read",
+    "calendar.feed.read",
+  ],
   // This operation union needs absent optional detail fields to stay absent on the wire.
   toolSchemaStrict: false,
   similes: [

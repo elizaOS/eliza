@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import {
   historicalActionResults,
-  historicalEffectReceipts,
+  historicalReceiptGroups,
 } from "./navigation-history";
 import { renderMessageHandlerModelInput } from "./stage1-input";
 
@@ -85,9 +85,9 @@ describe("historical navigation input", () => {
     ];
     marker.outcomeJson = JSON.stringify(outcome);
     expect(
-      historicalEffectReceipts(
+      historicalReceiptGroups(
         historicalActionResults(original, current, "agent"),
-      ),
+      ).effects,
     ).toEqual([{ actionName: "NOTES_DELETE", success: true, receipt }]);
     for (const changed of [
       { entityId: "other" },
@@ -126,9 +126,9 @@ describe("historical navigation input", () => {
     outcome.actionResults[0].effectReceipts[0].commit = null;
     marker.outcomeJson = JSON.stringify(outcome);
     expect(
-      historicalEffectReceipts(
+      historicalReceiptGroups(
         historicalActionResults(original, current, "agent"),
-      ),
+      ).effects,
     ).toEqual([]);
   });
   it("shares one evidence rule without dropping or rewriting any authorized outcome", () => {
