@@ -8,6 +8,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/benchmarks/suites/eliza-1 typecheck  # static validation
+bun run --cwd packages/benchmarks/suites/eliza-1 test       # HTTP-to-report regression tests
 ```
 
 No standalone build script is defined; this package is consumed or executed from source.
