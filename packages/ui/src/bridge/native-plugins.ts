@@ -953,6 +953,15 @@ export interface ElizaPlayVoicePluginLike extends NativePlugin {
  * for segmented turn PCM + embedding, raw int8 for the labels) — see the JNI
  * host.
  */
+/** Labels are local to each independent model window, including its padding. */
+export interface ElizaDiarizationWindow {
+  startSample: number;
+  samples: number;
+  modelSamples: number;
+  labelOffset: number;
+  labelCount: number;
+}
+
 export interface ElizaVoiceTurn {
   turnId: string;
   samples: number;
@@ -960,6 +969,8 @@ export interface ElizaVoiceTurn {
   hasEmbedding: boolean;
   embNorm: number;
   diarizFrames: number;
+  /** Absent on older hosts that only analyze the first five seconds. */
+  diarizWindows?: ElizaDiarizationWindow[];
   diarizDistinctClasses: number;
   /** base64 LE-fp32 256-d speaker embedding ("" when none). */
   embedding: string;
