@@ -57,6 +57,8 @@ export type RuntimeWithScenarioModelFixtures = {
 
 export type StrictActionRouteFixture = {
   actionName: string;
+  /** Concrete promoted tool exposed by the planner for this action. */
+  plannerToolName?: string;
   /** Explicitly load a complete family before invoking its umbrella route. */
   discoverBeforeExecution?: boolean;
   args: JsonRecord;
@@ -326,6 +328,7 @@ export function strictActionRouteFixtures(
 ): DeterministicModelFixture[] {
   const slug = actionSlug(spec.actionName);
   const replyText = spec.messageToUser ?? "On it.";
+  const plannerToolName = spec.plannerToolName ?? spec.actionName;
 
   return [
     stage1ResponseHandlerFixture(spec),
@@ -382,7 +385,7 @@ export function strictActionRouteFixtures(
             return (
               call.modelType === ModelType.ACTION_PLANNER &&
               discoveryCalls.length === 1 &&
-              call.toolNames.includes(spec.actionName) &&
+              call.toolNames.includes(plannerToolName) &&
               current.length === 1 &&
               typeof current[0].content === "string" &&
               matchesScenarioInput(spec.input)(current[0].content)
@@ -391,7 +394,7 @@ export function strictActionRouteFixtures(
         : {
             modelType: ModelType.ACTION_PLANNER,
             input: matchesScenarioInput(spec.input),
-            toolName: spec.actionName,
+            toolName: plannerToolName,
           },
       response: {
         text: "",
@@ -402,7 +405,7 @@ export function strictActionRouteFixtures(
         toolCalls: [
           {
             id: `call-${slug}`,
-            name: spec.actionName,
+            name: plannerToolName,
             type: "function",
             arguments: spec.discoverBeforeExecution
               ? { ...spec.args, eliza_turn_scope: "final" }

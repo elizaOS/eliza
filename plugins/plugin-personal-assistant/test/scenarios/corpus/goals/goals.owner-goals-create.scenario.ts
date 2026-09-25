@@ -32,7 +32,7 @@ import { evaluatorSourceRevision } from "../../../../../plugin-assistant/src/ser
 // phrase. This single-turn smoke scenario predates the gate, so the message
 // carries "save it" and the tool-call args set `confirmed:true`.
 const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
-const OWNER_GOALS = "OWNER_GOALS";
+const OWNER_GOALS = "OWNER_GOALS_CREATE";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
@@ -43,7 +43,8 @@ type RuntimeWithScenarioModelFixtures = AgentRuntime & {
 function goalsRouteFixtures(): DeterministicModelFixture[] {
   return [
     ...strictActionRouteFixtures({
-      actionName: OWNER_GOALS,
+      actionName: "OWNER_GOALS",
+      plannerToolName: OWNER_GOALS,
       args: { action: "create", title: "Run a marathon", confirmed: true },
       input: GOAL_INPUT,
       messageToUser: "Added your goal.",

@@ -27,11 +27,13 @@ function canonical(value: unknown): string | undefined {
 
 export function postToolEvaluatorFixture(spec: {
   actionName: string;
+  plannerToolName?: string;
   discoverBeforeExecution?: boolean;
   args: Record<string, JsonValue>;
   input: string;
   messageToUser?: string;
 }): DeterministicModelFixture {
+  const plannerToolName = spec.plannerToolName ?? spec.actionName;
   const modelArgs = projectCompleteToolArgsForModel(
     spec.args,
     composeToolDiagnosticRedactor(),
@@ -82,7 +84,7 @@ export function postToolEvaluatorFixture(spec: {
       if (!toolCall) return false;
       if (
         toolCall.type !== "tool-call" ||
-        toolCall.toolName !== spec.actionName ||
+        toolCall.toolName !== plannerToolName ||
         typeof toolCall.toolCallId !== "string" ||
         canonical(toolCall.input) !== canonical(modelArgs)
       )
@@ -126,7 +128,7 @@ export function postToolEvaluatorFixture(spec: {
       if (
         result.type !== "tool-result" ||
         result.toolCallId !== toolCall.toolCallId ||
-        result.toolName !== spec.actionName ||
+        result.toolName !== plannerToolName ||
         !record(result.output) ||
         result.output.type !== "text" ||
         typeof result.output.value !== "string"
@@ -148,7 +150,7 @@ export function postToolEvaluatorFixture(spec: {
         )
         .find(
           (part) =>
-            part.type === "tool-result" && part.toolName === spec.actionName,
+            part.type === "tool-result" && part.toolName === plannerToolName,
         );
       if (
         resultPart?.type !== "tool-result" ||
