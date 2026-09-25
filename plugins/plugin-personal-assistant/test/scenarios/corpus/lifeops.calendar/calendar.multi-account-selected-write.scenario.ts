@@ -6,7 +6,10 @@ import { AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
 import { scenario } from "@elizaos/testing";
 import { z } from "zod";
 import { CalendarRepository } from "../../../../../plugin-calendar/src/service/CalendarRepository.ts";
-import clarification from "./calendar.multi-account-selection.scenario.ts";
+import { createApprovalQueue } from "../../../../src/lifeops/approval-queue.ts";
+import clarification, {
+  calendarRequestsSinceSeed,
+} from "./calendar.multi-account-selection.scenario.ts";
 
 const unchanged = clarification.finalChecks?.find(
   (check) =>
@@ -21,6 +24,22 @@ const assertUnchanged = unchanged.predicate;
 const title = "Cedar focus block";
 const startAt = "2027-02-05T15:00:00.000Z";
 const endAt = "2027-02-05T15:30:00.000Z";
+
+async function eventProposals(runtime: AgentRuntime) {
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  return (
+    await queue.list({
+      subjectUserId: null,
+      state: null,
+      action: "schedule_event",
+      limit: null,
+    })
+  ).filter(
+    (request) =>
+      request.payload.action === "schedule_event" &&
+      request.payload.title === title,
+  );
+}
 
 export default scenario({
   ...clarification,
@@ -51,6 +70,10 @@ export default scenario({
           throw new Error(
             `Calendar changed before account selection: ${JSON.stringify(result)}`,
           );
+        if (!(ctx.runtime instanceof AgentRuntime))
+          throw new Error("Real runtime required");
+        if ((await eventProposals(ctx.runtime)).length !== 0)
+          throw new Error("Calendar proposal queued before account selection");
         return true;
       },
     },
@@ -94,6 +117,23 @@ export default scenario({
           await getConnectorAccountManager(runtime).listAccounts("google")
         ).find((candidate) => candidate.externalId === "work@company.test");
         if (!account) return "Selected Google account is missing";
+        const proposals = await eventProposals(runtime);
+        if (proposals.length !== 1 || proposals[0].state !== "done")
+          return "Expected exactly one completed Calendar proposal";
+        const payload = proposals[0].payload;
+        if (
+          payload.action !== "schedule_event" ||
+          payload.grantId !== `connector-account:${account.id}` ||
+          payload.calendarId !== "primary"
+        )
+          return "Completed proposal was not bound to the selected account/calendar";
+        const writes = (await calendarRequestsSinceSeed(runtime)).filter(
+          (request) =>
+            request.method !== "GET" &&
+            /\/calendars\/[^/]+\/events(?:\/|$)/.test(request.path),
+        );
+        if (writes.length !== 1 || writes[0].method !== "POST")
+          return `Expected one provider event creation, observed ${writes.length} mutations`;
         const repo = new CalendarRepository(runtime);
         const rows = (
           await repo.listCalendarEvents(runtime.agentId, "google")
