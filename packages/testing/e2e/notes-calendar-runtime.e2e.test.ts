@@ -666,7 +666,7 @@ test("NOTE-14 runtime: content-bound note becomes one event and stale source can
   const revisedNotes = await s.notes();
   expect(
     revisedNotes.parsed.notes.find((entry) => entry.id === note.id)?.body,
-  ).toBe(replacement);
+  ).toBe(`\n${replacement}`);
   expect(revisedNotes.hash).not.toBe(before.hash);
   const revisedNote = revisedNotes.parsed.notes.find(
     (entry) => entry.id === note.id,

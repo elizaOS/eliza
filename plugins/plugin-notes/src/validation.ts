@@ -301,13 +301,19 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
       },
     };
   }
-  if (hasOwn(record, "content"))
-    Object.assign(patch, parseContentInput(record));
+  if (hasOwn(record, "content")) {
+    const parts = parseContentInput(record);
+    patch.content = parts.title + parts.body;
+  }
   if (hasOwn(record, "title")) {
     patch.title = parseRequiredTitle(record.title, "note.title");
   }
   if (hasOwn(record, "body")) {
-    patch.body = parseText(record.body, "note.body");
+    patch.body = parseText(
+      record.body,
+      "note.body",
+      MAX_STRUCTURED_BODY_LENGTH,
+    );
   }
   if (hasOwn(record, "color")) {
     patch.color = parseStickyColor(record.color, "note.color");

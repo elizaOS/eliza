@@ -287,6 +287,32 @@ describe("NotesStore", () => {
     await second.stop();
   });
 
+  it.each([
+    [{ title: "Renamed" }, "Renamed\nBody"],
+    [{ body: "New" }, "Title\nNew"],
+    [{ title: "Renamed", body: "New" }, "Renamed\nNew"],
+    [{ body: "" }, "Title"],
+    [{ body: "\nNew" }, "Title\n\nNew"],
+  ])(
+    "preserves structured update layout and restart for %j",
+    async (patch, expected) => {
+      const filePath = await temporaryStateFile();
+      const first = await serviceFor(filePath);
+      const note = await first.createNote({ title: "Title", body: "Body" });
+      const saved = await first.updateNote(
+        note.id,
+        patch,
+        first.snapshot().revision,
+      );
+      expect(saved.title + saved.body).toBe(expected);
+      await first.stop();
+      const second = await serviceFor(filePath);
+      const restored = second.getNote(note.id);
+      expect(restored.title + restored.body).toBe(expected);
+      await second.stop();
+    },
+  );
+
   it("atomically edits canonical whitespace prefixes and rejects blank results across restart", async () => {
     const filePath = await temporaryStateFile();
     const first = await serviceFor(filePath);
@@ -967,7 +993,7 @@ describe("Notes capabilities", () => {
     expect(remaining).toHaveLength(1);
     expect(remaining[0]).toMatchObject({
       title: "Keep",
-      body: "edited in the race window",
+      body: "\nedited in the race window",
     });
   });
 

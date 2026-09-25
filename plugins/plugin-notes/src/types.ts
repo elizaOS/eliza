@@ -54,6 +54,7 @@ export interface CreateNoteInput {
 }
 
 export interface UpdateNoteInput {
+  content?: string;
   title?: string;
   body?: string;
   color?: StickyColor;

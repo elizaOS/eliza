@@ -147,7 +147,7 @@ describe("read-bound note replacement", () => {
       "fulfilled",
       "rejected",
     ]);
-    expect(first.getNote(note.id).body).toBe("orange");
+    expect(first.getNote(note.id).body).toBe("\norange");
     const readRevision = first.snapshot().revision;
     await second.createNote({ title: "Other", body: "Other mutation" });
     await expect(
@@ -156,7 +156,7 @@ describe("read-bound note replacement", () => {
     await first.updateNote(note.id, {
       textEdit: { field: "body", oldText: "orange", newText: "amber" },
     });
-    expect(first.getNote(note.id).body).toBe("amber");
+    expect(first.getNote(note.id).body).toBe("\namber");
     await expect(
       first.updateNote(
         note.id,

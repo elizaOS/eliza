@@ -21,7 +21,7 @@ import notesPlugin, {
 const title = "Workflow launch checklist";
 const originalBody = "\nConfirm the native run output.\nKeep  two spaces.";
 const updatedBody =
-  "\nConfirm the native run and widget output.\nKeep  two spaces.";
+  "Confirm the native run and widget output.\nKeep  two spaces.";
 let notesFilePath: string;
 let notesAgentId: string;
 let createdNote: StickyNote | undefined;
@@ -214,7 +214,7 @@ export default scenario({
       options: {
         parameters: replacementParameters,
       },
-      assertTurn: expectNotesResult("update", updatedBody),
+      assertTurn: expectNotesResult("update", `\n${updatedBody}`),
     },
     {
       kind: "action",
@@ -224,7 +224,7 @@ export default scenario({
       options: {
         parameters: { action: "list", content: "Workflow launch" },
       },
-      assertTurn: expectNotesResult("list", updatedBody),
+      assertTurn: expectNotesResult("list", `\n${updatedBody}`),
     },
     {
       kind: "action",
@@ -234,7 +234,7 @@ export default scenario({
       options: {
         parameters: { action: "delete", content: "Workflow launch checklist" },
       },
-      assertTurn: expectNotesResult("delete", updatedBody),
+      assertTurn: expectNotesResult("delete", `\n${updatedBody}`),
     },
   ],
   finalChecks: [

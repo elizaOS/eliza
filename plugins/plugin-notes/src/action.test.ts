@@ -1682,7 +1682,7 @@ describe("literal Notes edits", () => {
     });
     expect(useModel).toHaveBeenCalledTimes(2);
     expect(result.finalMessage).toBe("The quotation marks are removed.");
-    expect(service.getNote(note.id).body).toBe("Keep this.");
+    expect(service.getNote(note.id).body).toBe("\nKeep this.");
   });
 
   it("does not label an unexpected update failure as prewrite coaching", async () => {
@@ -1834,7 +1834,7 @@ describe("structured Notes field patches", () => {
     expect(service.getNote(original.id)).toMatchObject({
       title: original.title,
       color: original.color,
-      body: "Mira’s notebook is violet.\nSecond line.",
+      body: "\nMira’s notebook is violet.\nSecond line.",
     });
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({ outcome: "applied" }),
@@ -1863,7 +1863,7 @@ describe("structured Notes field patches", () => {
     expect(result.success, JSON.stringify(result)).toBe(true);
     expect(service.getNote(note.id)).toMatchObject({
       title: "New title",
-      body: "Exact’s body",
+      body: "\nExact’s body",
       color: "yellow",
     });
   });
@@ -2032,7 +2032,7 @@ describe("structured Notes field patches", () => {
         text,
       );
       expect(result.success).toBe(true);
-      expect(service.getNote(first.id).body).toBe("Amber");
+      expect(service.getNote(first.id).body).toBe("\nAmber");
       expect(service.getNote(other.id)).toEqual(other);
     },
   );

@@ -19,6 +19,7 @@ import type {
 import {
   parseCreateNoteInput,
   parseEntityId,
+  parseNoteContent,
   parseNoteEditRevision,
   parseStickyNote,
   parseUpdateNoteInput,
@@ -236,8 +237,14 @@ function applyNotePatch(
     updated[field] = replacement;
     return updated;
   }
-  if (patch.title !== undefined) updated.title = patch.title;
-  if (patch.body !== undefined) updated.body = patch.body;
+  if (patch.content !== undefined) {
+    Object.assign(updated, parseNoteContent(patch.content));
+  } else {
+    if (patch.title !== undefined) updated.title = patch.title;
+    // Public structured bodies exclude the separator; stored remainders include it.
+    if (patch.body !== undefined)
+      updated.body = patch.body ? `\n${patch.body}` : "";
+  }
   if (patch.color !== undefined) updated.color = patch.color;
   return updated;
 }
