@@ -6,16 +6,17 @@
  * when the graph service is unavailable; empty-state when there are no contacts.
  * Gated to ADMIN (enforced by applyPluginRoleGating).
  */
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  Service,
-  State,
+import {
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type Service,
+  type State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
+
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,

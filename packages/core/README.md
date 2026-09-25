@@ -18,6 +18,13 @@ Host configuration is exported from the root as well. `AppMemoryConfig` and
 names configuration UI patches. `getAppBootConfigEnvAliases` and
 `resolveAppAliasedEnvValue` retain the host store's initialization behavior.
 
+HTTP contracts and explicit host helpers are available from the root. Hosts still
+install their route lifecycle explicitly. `AgentStreamEventType` and `AgentLogEntry`
+name HTTP DTOs; `StreamEventType` and `LogEntry` keep their runtime meanings.
+
+Environment resolution, host execution settings, canonical JSON, transcript and
+audio-redaction utilities are also available from the root.
+
 `asRecord` accepts plain objects. `asObjectRecord` also accepts class and built-in
 object instances; both reject arrays and null.
 

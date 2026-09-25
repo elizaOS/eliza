@@ -40,9 +40,10 @@ import {
   type NotificationPriority,
   NotificationService,
   type NotificationServiceLifecycleRuntime,
+  type RouteHelpers,
   ServiceType,
 } from "@elizaos/core";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
+
 export interface NotificationRouteState {
   runtime: NotificationServiceLifecycleRuntime | null;
 }

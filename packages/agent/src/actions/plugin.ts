@@ -5,19 +5,19 @@
  * toggle/list/disconnect hit the local /api/plugins compat routes because their
  * orchestration lives in @elizaos/app, which this layer cannot import.
  */
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { requestRestart } from "@elizaos/core/restart";
 import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
   createSelfApiRequestHeaders,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
   resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/core";
+
+import { requestRestart } from "@elizaos/core/restart";
+
 import {
   isPluginManagerLike,
   type PluginManagerLike,

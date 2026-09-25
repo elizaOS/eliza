@@ -21,7 +21,7 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/core/api/http-helpers";
+} from "@elizaos/core";
 export interface CloudConfigLike {
   apiKey?: string | null;
   baseUrl?: string | null;
@@ -95,7 +95,14 @@ export {
   type IPermissionsRegistry,
   isCloudExecutionMode,
   type LocalExecutionMode,
+  type ParseClampedIntegerOptions,
+  type ParseClampedNumberOptions,
+  type ParsePositiveNumberOptions,
   type Prober,
+  parseClampedFloat,
+  parseClampedInteger,
+  parsePositiveFloat,
+  parsePositiveInteger,
   type RegistryAppInfo,
   type RuntimeExecutionMode,
   type RuntimeExecutionModeSource,
@@ -117,15 +124,6 @@ export {
   requestRestart,
   setRestartHandler,
 } from "@elizaos/core/restart";
-export {
-  type ParseClampedIntegerOptions,
-  type ParseClampedNumberOptions,
-  type ParsePositiveNumberOptions,
-  parseClampedFloat,
-  parseClampedInteger,
-  parsePositiveFloat,
-  parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

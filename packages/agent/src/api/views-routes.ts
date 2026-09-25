@@ -25,26 +25,26 @@ import {
   EventType,
   type IAgentRuntime,
   logger,
+  parseClampedInteger,
   type RoleGateRole,
+  type RouteHelpers,
+  type RouteRequestMeta,
+  readJsonBody,
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
-import { readJsonBody } from "@elizaos/core/api/http-helpers";
-import {
-  type RouteHelpers,
-  type RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
+
 import {
   createShellNavigateViewWsFrame,
   normalizeCompletedActionHandoffId,
   type ShellNavigateViewPayload,
 } from "@elizaos/core/events";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,
 } from "@elizaos/core/views/view-interact-protocol";
-import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
@@ -57,7 +57,7 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
-import { type ViewInteractResult } from "./pending-request-map.ts";
+import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
@@ -69,7 +69,7 @@ import {
   type RendererViewInteractResult,
   viewInteractionHost,
 } from "./view-interaction-host.ts";
-import { type ViewRegistryEntry } from "./view-registry-types.ts";
+import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
   generateViewHeroSvg,

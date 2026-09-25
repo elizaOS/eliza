@@ -9,9 +9,12 @@
  * the complete available context.
  */
 
+import {
+  type CharacterLanguage,
+  getValidationKeywordTerms,
+} from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
-import { type CharacterLanguage } from "@elizaos/core/contracts/first-run-options";
-import { getValidationKeywordTerms } from "@elizaos/core/i18n/keyword-matching";
+
 export type ContextSignalKey =
   | "affirmative"
   | "calendar"

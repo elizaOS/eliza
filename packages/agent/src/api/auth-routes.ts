@@ -11,12 +11,13 @@
  * compat route that mints a real machine session.
  */
 import crypto from "node:crypto";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import {
   PostAuthPairRequestSchema,
   type PostAuthPairResponse,
-} from "@elizaos/core/contracts/auth-routes";
-import { resolveApiToken } from "@elizaos/core/runtime-env";
+  type RouteRequestContext,
+  resolveApiToken,
+} from "@elizaos/core";
+
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import {
   isAuthorized,

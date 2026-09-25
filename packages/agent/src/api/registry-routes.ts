@@ -8,14 +8,15 @@
  */
 
 import {
+  parseClampedInteger,
   type RouteHelpers,
   type RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
+} from "@elizaos/core";
 import { isValidRegistryPackageName } from "@elizaos/core/catalog/runtime-kernel";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
-import {
-  type RegistryPluginInfo,
-  type RegistrySearchResult,
+
+import type {
+  RegistryPluginInfo,
+  RegistrySearchResult,
 } from "../services/plugin-manager-types.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 

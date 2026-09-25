@@ -15,12 +15,13 @@
  * failed boot answers 500 with the reported state flipped to "error".
  */
 
-import { type AgentRuntime } from "@elizaos/core";
 import {
+  type AgentRuntime,
+  PostAgentAutonomyRequestSchema,
   type RouteHelpers,
   type RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
-import { PostAgentAutonomyRequestSchema } from "@elizaos/core/contracts/agent-routes";
+} from "@elizaos/core";
+
 import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { detectRuntimeModel } from "./agent-model.ts";
 

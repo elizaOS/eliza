@@ -10,8 +10,9 @@
 import {
   type AppPackageRouteContext,
   type AppPackageRouteDispatchContext,
-} from "@elizaos/core/api/route-helpers";
-import { isValidAppRouteSlug } from "@elizaos/core/contracts/apps";
+  isValidAppRouteSlug,
+} from "@elizaos/core";
+
 import {
   type AppRouteModule,
   importAppRouteModule,

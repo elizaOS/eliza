@@ -4,11 +4,11 @@
  * loading can derive public keys without importing the wallet HTTP service.
  */
 import crypto from "node:crypto";
-import {
-  type WalletChain,
-  type WalletGenerateResult,
-  type WalletKeys,
-} from "@elizaos/core/contracts/wallet-types";
+import type {
+  WalletChain,
+  WalletGenerateResult,
+  WalletKeys,
+} from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import {

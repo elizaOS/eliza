@@ -18,10 +18,11 @@
 import {
   getActiveProject,
   logger,
+  type RouteRequestContext,
   readProjectRegistry,
   setActiveProject,
 } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+
 /** DTO for the switcher: only the fields the UI renders + switches on. Internal
  * bookkeeping (bookmark, createdAt) is intentionally not surfaced. */
 export interface ProjectSummaryDTO {
