@@ -2,6 +2,9 @@ import { afterEach, expect, it } from "bun:test";
 import net from "node:net";
 import { probeBionicNetworkPolicy } from "../src/bionic-network-policy.js";
 
+// Android uses Linux abstract Unix sockets; macOS cannot bind this transport.
+const linuxAbstractSocketIt = process.platform === "linux" ? it : it.skip;
+
 const servers: net.Server[] = [];
 afterEach(async () => {
   await Promise.all(
@@ -37,38 +40,52 @@ async function host(responses: unknown[]) {
   });
   return name;
 }
-it("reads each transition rather than caching an unmetered result", async () => {
-  const states = [
-    { connectionType: "wifi", metered: false },
-    { connectionType: "wifi", metered: true },
-    { connectionType: "none", metered: null },
-  ];
-  const name = await host(
-    states.map((state) => ({
-      ok: true,
-      state: { ...state, source: "android-os" },
-    })),
-  );
-  for (const state of states)
-    expect(await probeBionicNetworkPolicy(name)).toEqual(state);
-});
-it("rejects unavailable and malformed host responses", async () => {
-  for (const response of [
-    null,
-    { ok: false },
-    {
-      ok: true,
-      state: { connectionType: ["wifi"], metered: false, source: "android-os" },
-    },
-    {
-      ok: true,
-      state: { connectionType: "wifi", metered: "false", source: "android-os" },
-    },
-  ]) {
-    const name = await host([response]);
-    await expect(probeBionicNetworkPolicy(name)).rejects.toThrow();
-  }
-});
+linuxAbstractSocketIt(
+  "reads each transition rather than caching an unmetered result",
+  async () => {
+    const states = [
+      { connectionType: "wifi", metered: false },
+      { connectionType: "wifi", metered: true },
+      { connectionType: "none", metered: null },
+    ];
+    const name = await host(
+      states.map((state) => ({
+        ok: true,
+        state: { ...state, source: "android-os" },
+      })),
+    );
+    for (const state of states)
+      expect(await probeBionicNetworkPolicy(name)).toEqual(state);
+  },
+);
+linuxAbstractSocketIt(
+  "rejects unavailable and malformed host responses",
+  async () => {
+    for (const response of [
+      null,
+      { ok: false },
+      {
+        ok: true,
+        state: {
+          connectionType: ["wifi"],
+          metered: false,
+          source: "android-os",
+        },
+      },
+      {
+        ok: true,
+        state: {
+          connectionType: "wifi",
+          metered: "false",
+          source: "android-os",
+        },
+      },
+    ]) {
+      const name = await host([response]);
+      await expect(probeBionicNetworkPolicy(name)).rejects.toThrow();
+    }
+  },
+);
 it("rejects a missing host instead of returning unmetered", async () => {
   await expect(
     probeBionicNetworkPolicy(`eliza-missing-${crypto.randomUUID()}`),
