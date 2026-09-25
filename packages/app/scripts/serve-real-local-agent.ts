@@ -25,6 +25,7 @@ import { backgroundUploadImageRoute } from "../../agent/src/api/background-route
 import { registerPluginViews } from "../../agent/src/api/views-registry.ts";
 import { registerTriggerTaskWorker } from "../../agent/src/triggers/runtime.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { installAgentHostBridge } from "../src/runtime/install-agent-host-bridge.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
 import { resolveDeviceE2eModelCall } from "./lib/device-e2e-model-resolver.ts";
@@ -455,6 +456,9 @@ function resolvePositiveIntegerEnv(name: string, fallback: string): number {
 }
 
 async function main(): Promise<void> {
+  // Match the app host: upstream routes must recognize the revocable sessions
+  // issued by the pairing API, including Android remote-connect onboarding.
+  installAgentHostBridge();
   const t0 = Date.now();
   const restoreRegistryFetch = await installGeneratedRegistryFixture();
   const port = resolvePort();

@@ -161,6 +161,7 @@ export async function buildWeb(platform) {
       // this lane — it falls through to a fresh rebuild instead (#11030).
       expectedRuntimeMode: laneExpected.runtimeMode,
       expectedIosApnsEnabled: laneExpected.iosApnsEnabled,
+      expectedCommit: process.env.ELIZA_MOBILE_REQUIRED_RENDERER_COMMIT,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -186,6 +187,7 @@ export async function buildWeb(platform) {
       expectedTarget: laneExpected.capacitorTarget,
       expectedRuntimeMode: laneExpected.runtimeMode,
       expectedIosApnsEnabled: laneExpected.iosApnsEnabled,
+      expectedCommit: process.env.ELIZA_MOBILE_REQUIRED_RENDERER_COMMIT,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(

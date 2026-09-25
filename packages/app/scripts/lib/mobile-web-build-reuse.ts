@@ -31,6 +31,7 @@ export function mobileWebDistReuseStatus({
   expectedTarget,
   expectedRuntimeMode,
   expectedIosApnsEnabled,
+  expectedCommit,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -55,6 +56,11 @@ export function mobileWebDistReuseStatus({
       `no ${path.join("dist", RENDERER_BUILD_MANIFEST_FILENAME)} (renderer not built with the build-manifest plugin)`,
     );
   } else {
+    if (expectedCommit && manifest.commit !== expectedCommit) {
+      problems.push(
+        `dist commit=${manifest.commit ?? "missing"} but required commit=${expectedCommit}`,
+      );
+    }
     if (typeof manifest.buildId !== "string" || manifest.buildId.length === 0) {
       problems.push("dist manifest is missing buildId");
     }

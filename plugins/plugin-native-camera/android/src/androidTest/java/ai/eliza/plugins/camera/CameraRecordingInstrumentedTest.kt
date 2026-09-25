@@ -43,6 +43,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 class CameraTestActivity : BridgeActivity() {
+    // Failure injection is confined to this test activity. CameraX and the
+    // registered production plugin are unchanged; normal tests use MediaStore.
+    @Volatile var galleryFaultResolver: android.content.ContentResolver? = null
+    override fun getContentResolver(): android.content.ContentResolver = galleryFaultResolver ?: super.getContentResolver()
     override fun onCreate(state: Bundle?) {
         registerPlugin(CameraPlugin::class.java)
         super.onCreate(state)

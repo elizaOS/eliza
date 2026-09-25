@@ -98,8 +98,10 @@ class SystemPlugin : Plugin() {
 
     @PluginMethod
     fun openSettings(call: PluginCall) {
+        // Clear screens above an existing settings target instead of merely
+        // resuming whichever page was last visible in its Android task.
         val intent = Intent(Settings.ACTION_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         context.startActivity(intent)
         call.resolve()
     }
@@ -107,7 +109,7 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun openNetworkSettings(call: PluginCall) {
         val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         context.startActivity(intent)
         call.resolve()
     }
@@ -119,7 +121,7 @@ class SystemPlugin : Plugin() {
         } else {
             Intent(Settings.ACTION_SETTINGS)
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         context.startActivity(intent)
         call.resolve()
     }
@@ -127,7 +129,7 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun openDisplaySettings(call: PluginCall) {
         val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         context.startActivity(intent)
         call.resolve()
     }
@@ -135,7 +137,7 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun openSoundSettings(call: PluginCall) {
         val intent = Intent(Settings.ACTION_SOUND_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         context.startActivity(intent)
         call.resolve()
     }
@@ -202,6 +204,12 @@ class SystemPlugin : Plugin() {
 
     @PluginMethod
     fun setFlashlight(call: PluginCall) {
+        // Validate the wire value before triggering an Android permission prompt.
+        // JSONObject's boolean getter also accepts strings; this API requires a boolean.
+        if (call.data.opt("enabled") !is Boolean) {
+            call.reject("enabled must be a boolean")
+            return
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             call.reject("Flashlight control requires Android 6 or newer")
             return

@@ -65,9 +65,20 @@ class ContactsPermissionInstrumentedTest {
 
     private fun granted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    private fun choosePermission(button: String) {
+    private fun choosePermission(scenario: ActivityScenario<ContactsTestActivity>, button: String) {
         val device = UiDevice.getInstance(instrumentation)
         val target = device.wait(Until.findObject(By.res("com.android.permissioncontroller", button)), 10000)
+        if (target == null) {
+            // Preserve the actual bridge response even if Android settled without
+            // displaying a dialog. A missing button alone hides that distinction.
+            val pending = evaluate(scenario, "window.permissionResult")
+            val window = java.io.ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }
+            records.put(JSONObject().put("stage", "permission-dialog-missing")
+                .put("button", button).put("bridgeResponse", if (pending == "null") JSONObject.NULL else JSONObject(JSONTokener(pending).nextValue() as String))
+                .put("readGranted", granted(Manifest.permission.READ_CONTACTS))
+                .put("writeGranted", granted(Manifest.permission.WRITE_CONTACTS))
+                .put("windowHierarchy", window.toString("UTF-8")))
+        }
         assertNotNull("Android contacts permission button missing: $button", target)
         requireNotNull(target).click()
     }
@@ -95,7 +106,7 @@ class ContactsPermissionInstrumentedTest {
                     begin(scenario, "checkPermissions")
                     assertNotEquals("granted", result(scenario, "initial").getJSONObject("value").getString("contacts"))
                     begin(scenario, "requestPermissions")
-                    choosePermission("permission_deny_button")
+                    choosePermission(scenario, "permission_deny_button")
                     assertNotEquals("granted", result(scenario, "user-denied").getJSONObject("value").getString("contacts"))
                     assertFalse(granted(Manifest.permission.READ_CONTACTS))
                     assertFalse(granted(Manifest.permission.WRITE_CONTACTS))
@@ -110,7 +121,7 @@ class ContactsPermissionInstrumentedTest {
                         assertTrue("Permission rejection missing: $denied", denied.getString("error").contains("CONTACTS permission is required"))
                     }
                     begin(scenario, "requestPermissions")
-                    choosePermission("permission_allow_button")
+                    choosePermission(scenario, "permission_allow_button")
                     assertEquals("granted", result(scenario, "user-granted").getJSONObject("value").getString("contacts"))
                 }
                 assertTrue(granted(Manifest.permission.READ_CONTACTS))

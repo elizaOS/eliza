@@ -75,6 +75,7 @@ const STEP_PHASES = new Map([
   ["stage Android voice models", "voice-model-stage"],
   ["local chat smoke", "local-chat"],
   ["Android route coverage", "route-capture"],
+  ["Android native system intents", "route-capture"],
   ["Android launcher loop", "launcher-loop"],
   ["cloud provisioning", "cloud-provisioning"],
 ]);
@@ -163,6 +164,7 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
     "onboarding-to-home.android.spec.ts",
     "route-coverage.android.spec.ts",
     "native-plugin-view-smoke.android.spec.ts",
+    "native-system-intents.android.spec.ts",
   ];
   const statuses = new Map([
     ["passed", "PLAYWRIGHT_PASSED"],
