@@ -168,6 +168,14 @@ class NativeBridgeInstrumentedTest {
                         if (!capture.getBoolean("done")) {
                             val name = capture.getString("name")
                             check(name in listOf("browser-before-invalid-present.png", "browser-after-invalid-present.png"))
+                            val drawn = CountDownLatch(1)
+                            scenario.onActivity { activity ->
+                                activity.window.decorView.postOnAnimation {
+                                    activity.window.decorView.postOnAnimation { drawn.countDown() }
+                                }
+                            }
+                            assertTrue("Native presentation did not render", drawn.await(5, TimeUnit.SECONDS))
+                            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                             val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
                             val bytes = java.io.ByteArrayOutputStream()
                             try { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)) }
