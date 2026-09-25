@@ -359,6 +359,7 @@ const strictGithubRoutes = [
   },
   {
     actionName: "GITHUB",
+    discoverBeforeExecution: true,
     args: githubActionParameters("pr_list", {
       state: "open",
     }),

@@ -27,6 +27,7 @@ function canonical(value: unknown): string | undefined {
 
 export function postToolEvaluatorFixture(spec: {
   actionName: string;
+  discoverBeforeExecution?: boolean;
   args: Record<string, JsonValue>;
   input: string;
   messageToUser?: string;
@@ -73,9 +74,12 @@ export function postToolEvaluatorFixture(spec: {
           Array.isArray(message.content) ? message.content : [],
         )
         .filter((part) => record(part) && part.type === "tool-call");
-      // One declared route owns one effect; unexpected extra calls need their own fixture.
-      if (calls.length !== 1) return false;
-      const toolCall = calls[0];
+      // A declared discovery is read-only, but must still have its exact request
+      // and correlated successful receipt. All other extra calls are rejected.
+      const expectedCount = spec.discoverBeforeExecution ? 2 : 1;
+      if (calls.length !== expectedCount) return false;
+      const toolCall = calls.at(-1);
+      if (!toolCall) return false;
       if (
         toolCall.type !== "tool-call" ||
         toolCall.toolName !== spec.actionName ||
@@ -89,8 +93,33 @@ export function postToolEvaluatorFixture(spec: {
           Array.isArray(message.content) ? message.content : [],
         )
         .filter((part) => record(part) && part.type === "tool-result");
-      if (results.length !== 1) return false;
-      const result = results[0];
+      if (results.length !== expectedCount) return false;
+      if (spec.discoverBeforeExecution) {
+        const discovery = calls[0];
+        const receipt = results[0];
+        if (
+          discovery.toolName !== "DISCOVER_ACTIONS" ||
+          canonical(discovery.input) !==
+            canonical({
+              names: [spec.actionName],
+            }) ||
+          receipt.toolName !== "DISCOVER_ACTIONS" ||
+          receipt.toolCallId !== discovery.toolCallId ||
+          !record(receipt.output) ||
+          receipt.output.type !== "text" ||
+          typeof receipt.output.value !== "string"
+        )
+          return false;
+        try {
+          const value: unknown = JSON.parse(receipt.output.value);
+          if (!record(value) || value.success !== true) return false;
+        } catch {
+          // error-policy:J3 A malformed discovery receipt cannot authorize completion.
+          return false;
+        }
+      }
+      const result = results.at(-1);
+      if (!result) return false;
       if (
         result.type !== "tool-result" ||
         result.toolCallId !== toolCall.toolCallId ||
@@ -114,7 +143,10 @@ export function postToolEvaluatorFixture(spec: {
         .flatMap((message) =>
           Array.isArray(message.content) ? message.content : [],
         )
-        .find((part) => part.type === "tool-result");
+        .find(
+          (part) =>
+            part.type === "tool-result" && part.toolName === spec.actionName,
+        );
       if (
         resultPart?.type !== "tool-result" ||
         !record(resultPart.output) ||

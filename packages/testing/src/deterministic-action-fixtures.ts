@@ -57,6 +57,8 @@ export type RuntimeWithScenarioModelFixtures = {
 
 export type StrictActionRouteFixture = {
   actionName: string;
+  /** Explicitly load a complete family before invoking its umbrella route. */
+  discoverBeforeExecution?: boolean;
   args: JsonRecord;
   contextIds?: readonly string[];
   input: string;
@@ -307,7 +309,9 @@ export function stage1ResponseHandlerFixture(
       intents: [spec.input.toLowerCase()],
       replyText: spec.messageToUser ?? "On it.",
       threadOps: [],
-      candidateActionNames: [spec.actionName],
+      candidateActionNames: [
+        spec.discoverBeforeExecution ? "DISCOVER_ACTIONS" : spec.actionName,
+      ],
     },
     times: 1,
   };
@@ -325,13 +329,70 @@ export function strictActionRouteFixtures(
 
   return [
     stage1ResponseHandlerFixture(spec),
+    ...(spec.discoverBeforeExecution
+      ? [
+          {
+            name: `route-${slug}-discovery-${spec.input}`,
+            match: {
+              modelType: ModelType.ACTION_PLANNER,
+              input: matchesScenarioInput(spec.input),
+              toolName: "DISCOVER_ACTIONS",
+            },
+            response: {
+              text: "",
+              toolCalls: [
+                {
+                  id: `discover-${slug}`,
+                  name: "DISCOVER_ACTIONS",
+                  type: "function",
+                  arguments: {
+                    names: [spec.actionName],
+                    eliza_turn_scope: "more_work_pending",
+                  },
+                },
+              ],
+            },
+            times: 1,
+          } satisfies DeterministicModelFixture,
+        ]
+      : []),
     {
       name: `route-${slug}-planner-${spec.input}`,
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: matchesScenarioInput(spec.input),
-        toolName: spec.actionName,
-      },
+      match: spec.discoverBeforeExecution
+        ? (call) => {
+            const discoveryCalls = (call.params.messages ?? [])
+              .flatMap((message) =>
+                message.role === "assistant" && Array.isArray(message.content)
+                  ? message.content
+                  : [],
+              )
+              .filter(
+                (part) =>
+                  part.type === "tool-call" &&
+                  part.toolName === "DISCOVER_ACTIONS",
+              );
+            const current = (call.params.messages ?? []).filter(
+              (message) =>
+                message.role === "user" &&
+                typeof message.content === "string" &&
+                /(?:^|\n\n)(?:message:user:\n|# Current message\n)/.test(
+                  message.content,
+                ),
+            );
+            return (
+              call.modelType === ModelType.ACTION_PLANNER &&
+              discoveryCalls.length === 1 &&
+              call.toolNames.includes(spec.actionName) &&
+              current.length === 1 &&
+              typeof current[0].content === "string" &&
+              matchesScenarioInput(spec.input)(current[0].content)
+            );
+          }
+        : {
+            modelType: ModelType.ACTION_PLANNER,
+            input: matchesScenarioInput(spec.input),
+            toolName: spec.actionName,
+          },
       response: {
         text: "",
         thought: `Call ${spec.actionName} for ${spec.input}.`,
@@ -343,7 +404,9 @@ export function strictActionRouteFixtures(
             id: `call-${slug}`,
             name: spec.actionName,
             type: "function",
-            arguments: spec.args,
+            arguments: spec.discoverBeforeExecution
+              ? { ...spec.args, eliza_turn_scope: "final" }
+              : spec.args,
           },
         ],
       },
