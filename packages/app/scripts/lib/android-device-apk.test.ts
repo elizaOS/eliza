@@ -4,7 +4,12 @@
  */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { androidDistNeedsBuild, resolveApk } from "./android-device.ts";
+import {
+  androidApkNeedsBuild,
+  androidDistNeedsBuild,
+  androidInstallDecision,
+  resolveApk,
+} from "./android-device.ts";
 
 describe("resolveApk", () => {
   it("selects the first existing canonical build artifact", () => {
@@ -51,6 +56,29 @@ describe("Android renderer revision admission", () => {
         headCommit,
       });
       expect(result.build).toBe(commit !== headCommit);
+    },
+  );
+});
+
+describe("Android packaged and installed renderer revision admission", () => {
+  it.each([null, "a".repeat(40), "b".repeat(40)])(
+    "rejects matching content with a stale or absent APK revision: %s",
+    (commit) => {
+      const freshStamp = { buildId: "same-content", commit: "b".repeat(40) };
+      const apkStamp = { buildId: "same-content", commit };
+      expect(androidApkNeedsBuild({ freshStamp, apkStamp }).build).toBe(
+        commit !== freshStamp.commit,
+      );
+    },
+  );
+  it.each([null, "a".repeat(40), "b".repeat(40)])(
+    "reinstalls matching content with a stale or absent installed revision: %s",
+    (commit) => {
+      const freshStamp = { buildId: "same-content", commit: "b".repeat(40) };
+      const installedStamp = { buildId: "same-content", commit };
+      expect(
+        androidInstallDecision({ freshStamp, installedStamp }).install,
+      ).toBe(commit !== freshStamp.commit);
     },
   );
 });

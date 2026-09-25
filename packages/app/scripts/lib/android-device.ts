@@ -555,6 +555,12 @@ export function androidInstallDecision({ freshStamp, installedStamp } = {}) {
       reason: `installed app has no readable ${RENDERER_BUILD_MANIFEST_FILENAME}`,
     };
   }
+  if (freshStamp.commit && installedStamp.commit !== freshStamp.commit) {
+    return {
+      install: true,
+      reason: `installed commit=${installedStamp.commit ?? "missing"} != fresh ${freshStamp.commit}`,
+    };
+  }
   if (installedStamp.buildId !== freshStamp.buildId) {
     return {
       install: true,
@@ -577,6 +583,12 @@ export function androidApkNeedsBuild({ freshStamp, apkStamp } = {}) {
     return {
       build: true,
       reason: `APK has no readable ${RENDERER_BUILD_MANIFEST_FILENAME}`,
+    };
+  }
+  if (freshStamp.commit && apkStamp.commit !== freshStamp.commit) {
+    return {
+      build: true,
+      reason: `APK commit=${apkStamp.commit ?? "missing"} != fresh ${freshStamp.commit}`,
     };
   }
   if (apkStamp.buildId !== freshStamp.buildId) {
