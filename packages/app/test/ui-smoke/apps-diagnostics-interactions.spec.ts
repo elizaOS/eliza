@@ -28,7 +28,7 @@ test("logs page search really filters entries and clear restores them", async ({
   const entries = page.getByTestId("log-entry");
   await expect(entries).toHaveCount(1);
 
-  const search = page.getByRole("combobox", { name: "message", exact: true });
+  const search = page.getByRole("textbox", { name: "message", exact: true });
   await search.fill("zzqq-no-such-log-line");
   await expect(entries).toHaveCount(0);
 
