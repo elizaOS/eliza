@@ -204,6 +204,12 @@ class SystemPlugin : Plugin() {
 
     @PluginMethod
     fun setFlashlight(call: PluginCall) {
+        // Validate the wire value before triggering an Android permission prompt.
+        // JSONObject's boolean getter also accepts strings; this API requires a boolean.
+        if (call.data.opt("enabled") !is Boolean) {
+            call.reject("enabled must be a boolean")
+            return
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             call.reject("Flashlight control requires Android 6 or newer")
             return

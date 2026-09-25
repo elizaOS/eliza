@@ -337,6 +337,9 @@ async function main() {
             applicationId,
             "android.permission.CAMERA",
           );
+        } else if (plugin.directory === "plugin-native-system") {
+          // Flashlight contracts exercise the actual camera permission dialog.
+          adb("install", "-r", "-t", apk);
         } else {
           adb("install", "-r", "-t", "-g", apk);
         }
