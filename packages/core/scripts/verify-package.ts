@@ -189,6 +189,14 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  const eventProtocol = await import('@elizaos/core/events');
+  for (const dispatcher of ['createNavigateViewEvent', 'dispatchNavigateViewEvent', 'dispatchAppEvent', 'dispatchWindowEvent', 'dispatchAppEmoteEvent', 'dispatchElizaCloudStatusUpdated']) {
+    assert.equal(dispatcher in eventProtocol, false, dispatcher + ' belongs to the UI host');
+  }
+  const navigation = publicApi.normalizeShellNavigateViewPayload({ viewId: 'settings', viewType: 'gui', source: 'agent', completedActionHandoffId: 'handoff-fixture' });
+  assert.equal(navigation.completedActionHandoffId, 'handoff-fixture');
+  assert.equal(publicApi.normalizeCompletedActionHandoffId('../invalid'), undefined);
+  assert.equal(publicApi.createShellNavigateViewWsFrame(navigation).type, publicApi.SHELL_NAVIGATE_VIEW_WS_EVENT);
   const host = {};
   publicApi.registerHttpPluginRoutes(host, { name: 'fixture', description: 'HTTP fixture', routes: [{ type: 'GET', path: '/health' }] });
   assert.equal(publicApi.getPluginHttpRoutes(host, 'fixture')[0].path, '/fixture/health');
