@@ -137,7 +137,7 @@ public class NativeAgentLifecycleInstrumentedTest {
         for (int pid : pids) if (pid != android.os.Process.myPid()) childPid = pid;
         if (childPid <= 0) return;
         final long deadline = SystemClock.elapsedRealtime() + 9000;
-        ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
+        ExecutorService worker = Executors.newFixedThreadPool(3, task -> {
             Thread thread = new Thread(task, "startup-native-diagnostics");
             thread.setDaemon(true);
             return thread;
@@ -146,18 +146,23 @@ public class NativeAgentLifecycleInstrumentedTest {
             evidence.put("probedChildPid", childPid);
             JSONArray samples = new JSONArray();
             evidence.put("threadSamples", samples);
-            String sampleCommand = "timeout 2 sh -c 'n=0; for d in /proc/" + childPid
-                + "/task/[0-9]*; do [ -d \"$d\" ] || continue; n=$((n+1)); [ $n -le 32 ] || break; "
-                + "echo TID:${d##*/}; cat \"$d/stat\"; echo WCHAN; cat \"$d/wchan\"; echo; done'";
             for (int sample = 0; sample < 2; sample++) {
                 if (sample > 0) Thread.sleep(200);
-                String raw = boundedShell(worker, sampleCommand, deadline);
+                final int targetPid = childPid;
+                Future<String> pendingSample = worker.submit(() -> readOwnedThreads(targetPid));
+                String raw;
+                try {
+                    raw = pendingSample.get(Math.max(1, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS);
+                } finally {
+                    pendingSample.cancel(true);
+                }
                 JSONObject observation = new JSONObject();
                 observation.put("elapsedRealtimeMs", SystemClock.elapsedRealtime());
                 JSONArray threads = new JSONArray();
                 JSONObject thread = null;
                 boolean nextWchan = false;
                 for (String line : raw.split("\\n")) {
+                    if (line.equals("UNAVAILABLE")) errors.put("threadFile: unavailable or denied");
                     if (line.matches("TID:[0-9]+")) {
                         thread = new JSONObject();
                         thread.put("tid", line.substring(4));
@@ -183,7 +188,14 @@ public class NativeAgentLifecycleInstrumentedTest {
                 observation.put("threads", threads);
                 samples.put(observation);
             }
-            String trace = boundedShell(worker, "timeout 3 debuggerd -b " + childPid + " 2>&1", deadline);
+            String[] traceOutput = boundedDebuggerd(worker, childPid, deadline);
+            String trace = traceOutput[0];
+            String stderr = traceOutput[1].toLowerCase(java.util.Locale.ROOT);
+            if (stderr.contains("permission denied") || stderr.contains("operation not permitted"))
+                errors.put("nativeBacktrace: permission denied");
+            else if (stderr.contains("no such process")) errors.put("nativeBacktrace: process exited");
+            else if (stderr.contains("timed out") || stderr.contains("timeout")) errors.put("nativeBacktrace: command timeout");
+            else if (!stderr.isBlank()) errors.put("nativeBacktrace: diagnostic stderr present");
             JSONArray frames = new JSONArray();
             boolean owned = false;
             for (String line : trace.split("\\n")) {
@@ -202,19 +214,56 @@ public class NativeAgentLifecycleInstrumentedTest {
         }
     }
 
-    private String boundedShell(ExecutorService worker, String command, long deadline) throws Exception {
-        long remaining = deadline - SystemClock.elapsedRealtime();
-        if (remaining <= 0) throw new java.util.concurrent.TimeoutException("startup probe deadline");
-        Future<String> pending = worker.submit(() -> {
-            try (InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(
-                    InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))) {
-                return new String(input.readNBytes(65536), StandardCharsets.UTF_8);
+    /** Read as the instrumentation/target app UID, not UiAutomation's shell UID. */
+    private String readOwnedThreads(int pid) throws Exception {
+        File[] tasks = new File("/proc/" + pid + "/task").listFiles();
+        if (tasks == null) throw new java.io.IOException("task directory unavailable");
+        StringBuilder result = new StringBuilder();
+        int remainingBytes = 65536;
+        int count = 0;
+        for (File task : tasks) {
+            if (!task.getName().matches("[0-9]+")) continue;
+            if (++count > 32 || remainingBytes <= 0 || Thread.currentThread().isInterrupted()) break;
+            result.append("TID:").append(task.getName()).append('\n');
+            for (String leaf : new String[]{"stat", "wchan"}) {
+                if (leaf.equals("wchan")) result.append("WCHAN\n");
+                try (InputStream input = Files.newInputStream(new File(task, leaf).toPath())) {
+                    byte[] bytes = input.readNBytes(Math.min(remainingBytes, 2048));
+                    remainingBytes -= bytes.length;
+                    result.append(new String(bytes, StandardCharsets.UTF_8).trim()).append('\n');
+                } catch (java.io.IOException unavailable) {
+                    result.append("UNAVAILABLE\n");
+                }
             }
-        });
+        }
+        return result.toString();
+    }
+
+    private String[] boundedDebuggerd(ExecutorService worker, int pid, long deadline) throws Exception {
+        // UiAutomation uses Runtime.exec(String): it does not parse shell quoting or redirections.
+        Future<ParcelFileDescriptor[]> launch = worker.submit(() -> InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation().executeShellCommandRwe("timeout 3 debuggerd -b " + pid));
+        ParcelFileDescriptor[] streams;
         try {
-            return pending.get(remaining, TimeUnit.MILLISECONDS);
+            streams = launch.get(Math.max(1, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS);
         } finally {
-            pending.cancel(true);
+            launch.cancel(true);
+        }
+        // Rwe order is stdout, stdin, stderr. Close stdin; drain both outputs concurrently.
+        streams[1].close();
+        try (InputStream stdout = new ParcelFileDescriptor.AutoCloseInputStream(streams[0]);
+             InputStream stderr = new ParcelFileDescriptor.AutoCloseInputStream(streams[2])) {
+            Future<String> out = worker.submit(() -> new String(stdout.readNBytes(32768), StandardCharsets.UTF_8));
+            Future<String> err = worker.submit(() -> new String(stderr.readNBytes(32768), StandardCharsets.UTF_8));
+            try {
+                return new String[]{
+                    out.get(Math.max(1, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS),
+                    err.get(Math.max(1, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS)
+                };
+            } finally {
+                out.cancel(true);
+                err.cancel(true);
+            }
         }
     }
 
