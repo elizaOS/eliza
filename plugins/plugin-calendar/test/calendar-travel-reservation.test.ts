@@ -5,7 +5,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -19,6 +19,7 @@ const CREATED_EVENT: LifeOpsCalendarEvent = {
   externalId: "event-1",
   agentId: "agent-1",
   provider: "google",
+  grantId: "connector-account:acct-a",
   side: "owner",
   calendarId: "primary",
   title: "Soccer practice",
@@ -79,7 +80,7 @@ async function runCreate(
       events: [],
       source: "synced" as const,
       state: "complete" as const,
-      sources: freshCalendarSources(),
+      sources: freshCalendarSources([CREATED_EVENT]),
       timeMin: "2026-07-26T00:00:00.000Z",
       timeMax: "2026-08-09T00:00:00.000Z",
       syncedAt: "2026-07-26T00:00:00.000Z",
@@ -115,6 +116,8 @@ async function runCreate(
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: "connector-account:acct-a",
+              calendarId: "primary",
               startAt: CREATED_EVENT.startAt,
               endAt: CREATED_EVENT.endAt,
               timeZone: "UTC",

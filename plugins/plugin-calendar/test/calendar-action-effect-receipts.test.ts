@@ -12,9 +12,9 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
 } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -73,7 +73,7 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
     events,
     source: "synced",
     state: "complete",
-    sources: freshCalendarSources(events),
+    sources: freshCalendarSources([...events, EVENT, ELIZA_EVENT]),
     timeMin: "2026-07-27T00:00:00.000Z",
     timeMax: "2026-08-03T00:00:00.000Z",
     syncedAt: FEED_SYNCED_AT,
@@ -114,7 +114,10 @@ function message(
   } as Memory;
 }
 
-function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
+function deps(
+  overrides: Partial<CalendarActionDeps> = {},
+  destination = EVENT,
+): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async ({ actionType }) =>
@@ -122,6 +125,8 @@ function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: destination.grantId,
+              calendarId: destination.calendarId,
               startAt: EVENT.startAt,
               endAt: EVENT.endAt,
               timeZone: "UTC",
@@ -591,7 +596,10 @@ describe("CALENDAR effect receipt settlement", () => {
     );
     expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ calendarId: undefined }),
+      expect.objectContaining({
+        grantId: EVENT.grantId,
+        calendarId: EVENT.calendarId,
+      }),
     );
     expect(result.effectReceipts, JSON.stringify(result)).toEqual([
       expect.objectContaining({
@@ -637,13 +645,16 @@ describe("CALENDAR effect receipt settlement", () => {
       createCalendarEvent,
     };
     const action = createCalendarActionRunner(
-      deps({
-        mutationGateway: {
-          schedule,
-          modify: vi.fn(),
-          cancel: vi.fn(),
+      deps(
+        {
+          mutationGateway: {
+            schedule,
+            modify: vi.fn(),
+            cancel: vi.fn(),
+          },
         },
-      }),
+        ELIZA_EVENT,
+      ),
     );
     const delivered: Content[] = [];
 
@@ -699,12 +710,16 @@ describe("CALENDAR effect receipt settlement", () => {
         }
         return {
           rawResponse: JSON.stringify({
+            grantId: ELIZA_EVENT.grantId,
+            calendarId: ELIZA_EVENT.calendarId,
             title: "Full QA Event",
             startAt: "2026-09-05T16:00:00-04:00",
             durationMinutes: 30,
             timeZone: "America/New_York",
           }),
           parsed: {
+            grantId: ELIZA_EVENT.grantId,
+            calendarId: ELIZA_EVENT.calendarId,
             title: "Full QA Event",
             startAt: "2026-09-05T16:00:00-04:00",
             durationMinutes: 30,
@@ -1064,12 +1079,16 @@ describe("CALENDAR effect receipt settlement", () => {
         }
         return {
           rawResponse: JSON.stringify({
+            grantId: EVENT.grantId,
+            calendarId: EVENT.calendarId,
             title: "Demo",
             startAt: "2026-08-05T09:00:00",
             endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           }),
           parsed: {
+            grantId: EVENT.grantId,
+            calendarId: EVENT.calendarId,
             title: "Demo",
             startAt: "2026-08-05T09:00:00",
             endAt: "2026-08-05T10:00:00",

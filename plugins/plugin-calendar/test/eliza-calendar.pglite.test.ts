@@ -1148,7 +1148,16 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   it("rejects an unverified proposed guest before creating an event", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
-      runJsonModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => ({
+        rawResponse: "{}",
+        parsed: {
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          startAt: "2026-09-18T15:00:00",
+          endAt: "2026-09-18T16:00:00",
+          timeZone: "America/New_York",
+        },
+      })),
       recentConversationTexts: vi.fn(async () => []),
     });
     const result = await action.handler(

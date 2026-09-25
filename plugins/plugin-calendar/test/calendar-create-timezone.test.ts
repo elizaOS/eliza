@@ -9,9 +9,9 @@
  * resolves to 2026-09-08. The extractor model is a fixture; no database.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarEvent,
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
 } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -120,8 +120,16 @@ function makeDeps(extracted = GROUNDED_EXTRACTION as Record<string, unknown>) {
       return null;
     }
     return {
-      rawResponse: JSON.stringify(extracted),
-      parsed: extracted,
+      rawResponse: JSON.stringify({
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        ...extracted,
+      }),
+      parsed: {
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        ...extracted,
+      },
     };
   });
   const deps: CalendarActionDeps = {

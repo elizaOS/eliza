@@ -18,7 +18,7 @@
  */
 
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -97,7 +97,9 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: freshCalendarSources(feedEvents),
+      sources: freshCalendarSources(
+        feedEvents.length ? feedEvents : [HAIRCUT_FRIDAY],
+      ),
       timeMin: "2025-08-12T00:00:00.000Z",
       timeMax: "2031-08-12T00:00:00.000Z",
       syncedAt: null,
@@ -153,6 +155,8 @@ function fakeDeps(service: StubService): CalendarActionDeps {
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: "connector-account:acct-a",
+              calendarId: "primary",
               startAt: "2026-08-16T10:00:00Z",
               endAt: "2026-08-16T11:00:00Z",
               timeZone: "UTC",

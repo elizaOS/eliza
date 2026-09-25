@@ -10,7 +10,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -120,6 +120,8 @@ function fakeDeps(service: StubService): CalendarActionDeps {
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: "eliza-calendar",
+              calendarId: "primary",
               startAt: "2026-09-18T15:00:00-04:00",
               endAt: "2026-09-18T16:00:00-04:00",
               timeZone: OWNER_TIME_ZONE,
