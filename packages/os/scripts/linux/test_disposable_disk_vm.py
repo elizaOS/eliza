@@ -45,7 +45,7 @@ class DeadlineTests(unittest.TestCase):
             node.write_bytes(b"fixture node")
             args = disk_vm.argument_parser("fixture").parse_args([
                 "--base-image", str(base), "--node", str(node), "--output-dir", str(output),
-                "--timeout-seconds", "7",
+                "--timeout-seconds", "7", "--accelerator", "tcg",
             ])
             with patch.object(disk_vm.restore_vm, "file_hash", return_value=disk_vm.restore_vm.IMAGE_SHA512), \
                  patch.object(disk_vm.subprocess, "run"), \
@@ -60,6 +60,9 @@ class DeadlineTests(unittest.TestCase):
             self.assertEqual(receipt["timeoutSeconds"], 7)
             self.assertEqual(json.loads((output / "inputs.json").read_text())["timeoutSeconds"], 7)
             self.assertFalse((output / "evidence/result.json").exists())
+            command = json.loads((output / "inputs.json").read_text())["command"]
+            self.assertIn("pc,accel=tcg", command)
+            self.assertEqual(command[command.index("-cpu") + 1], "max")
 
 
 if __name__ == "__main__":

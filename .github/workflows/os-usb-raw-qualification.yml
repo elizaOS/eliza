@@ -14,7 +14,7 @@ defaults:
 jobs:
   qualify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +39,6 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage
-          test -r /dev/kvm && test -w /dev/kvm
       - name: Resolve output and bundle the actual signed-image pipeline
         env:
           SECTOR_BYTES: ${{ matrix.sector-size }}
@@ -57,7 +56,10 @@ jobs:
         env:
           SECTOR_BYTES: ${{ matrix.sector-size }}
         run: |
+          accelerator=tcg
+          if [[ -r /dev/kvm && -w /dev/kvm ]]; then accelerator=kvm; fi
           python3 usb-installer/native/qualify-raw-writer-vm.py \
+            --accelerator "$accelerator" --timeout-seconds 1800 \
             --base-image "$RUNNER_TEMP/raw-writer-base.qcow2" \
             --node "$(command -v node)" \
             --pipeline-bundle "$RUNNER_TEMP/qualify-raw-pipeline.mjs" \

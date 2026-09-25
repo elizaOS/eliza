@@ -28,6 +28,7 @@ def argument_parser(description):
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--container-tools-image")
+    parser.add_argument("--accelerator", choices=("kvm", "tcg"), default="kvm")
     parser.add_argument("--sector-size", choices=(512, 4096), type=int, default=512)
     parser.add_argument("--timeout-seconds", type=positive_timeout, default=600)
     return parser
@@ -81,7 +82,7 @@ def run(args, sources, script, required_evidence, serial, extra_inputs=None, ext
     shutil.copyfile(node, inputs / "node")
     for name, source in extra_inputs.items():
         shutil.copyfile(source.resolve(strict=True), inputs / name)
-    command = ["qemu-system-x86_64", "-machine", "pc,accel=kvm", "-cpu", "host", "-m", "2048", "-smp", "2",
+    command = ["qemu-system-x86_64", "-machine", f"pc,accel={args.accelerator}", "-cpu", "host" if args.accelerator == "kvm" else "max", "-m", "2048", "-smp", "2",
                "-display", "none", "-monitor", "none", "-qmp", f"unix:{output}/qmp.sock,server=on,wait=off", "-serial", f"file:{output}/guest.log", "-no-reboot",
                "-drive", f"file={output}/guest.qcow2,format=qcow2,if=none,id=os",
                "-device", "virtio-blk-pci,drive=os,serial=ELIZAOS-VM-ROOT,bootindex=1",
