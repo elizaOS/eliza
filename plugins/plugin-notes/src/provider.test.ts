@@ -85,7 +85,7 @@ async function serviceWithNotes(contents: string[]): Promise<NotesService> {
   });
   await service.initialize();
   for (const content of contents) {
-    await service.createNote(parseNoteContent(content));
+    await service.createNote({ content });
   }
   return service;
 }

@@ -21,8 +21,10 @@ import {
 
 const ENTITY_ID_PATTERN = /^[a-z][a-z0-9-]{2,127}$/;
 const MAX_TITLE_LENGTH = 240;
-const MAX_BODY_LENGTH = 20_000;
-const MAX_NOTE_CONTENT_LENGTH = 20_000;
+// A migrated legacy body includes its former implicit separator.
+const MAX_STRUCTURED_BODY_LENGTH = 20_000;
+const MAX_BODY_LENGTH = MAX_STRUCTURED_BODY_LENGTH + 1;
+const MAX_NOTE_CONTENT_LENGTH = MAX_TITLE_LENGTH + MAX_BODY_LENGTH;
 
 function validationError(message: string, field: string): ElizaError {
   return new ElizaError(message, {
@@ -121,7 +123,7 @@ export function parseNoteContent(
   const firstLine = newline < 0 ? content : content.slice(0, newline);
   const title = truncateWellFormed(firstLine, MAX_TITLE_LENGTH);
   return {
-    title: parseRequiredTitle(title, `${field}.firstLine`),
+    title,
     body: parseText(content.slice(title.length), `${field}.remainder`),
   };
 }
@@ -224,12 +226,30 @@ function parseRevision(value: unknown): number {
   return value;
 }
 
+function parseContentInput(record: Record<string, unknown>) {
+  if (hasOwn(record, "title") || hasOwn(record, "body")) {
+    throw validationError(
+      "Pass content or structured title/body, not both.",
+      "content",
+    );
+  }
+  return parseNoteContent(record.content);
+}
+
 export function parseCreateNoteInput(value: unknown): CreateNoteInput {
   const record = requireRecord(value, "note");
-  assertOnlyKeys(record, ["title", "body", "color"], "note");
+  assertOnlyKeys(record, ["content", "title", "body", "color"], "note");
+  const parts = hasOwn(record, "content")
+    ? parseContentInput(record)
+    : {
+        title: parseRequiredTitle(record.title, "note.title"),
+        body: hasOwn(record, "body")
+          ? parseText(record.body, "note.body", MAX_STRUCTURED_BODY_LENGTH)
+          : "",
+      };
+  if (!hasOwn(record, "content") && parts.body) parts.body = `\n${parts.body}`;
   return {
-    title: parseRequiredTitle(record.title, "note.title"),
-    body: hasOwn(record, "body") ? parseText(record.body, "note.body") : "",
+    ...parts,
     color: hasOwn(record, "color")
       ? parseStickyColor(record.color, "note.color")
       : "yellow",
@@ -238,7 +258,11 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
 
 export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
   const record = requireRecord(value, "note patch");
-  assertOnlyKeys(record, ["title", "body", "color", "textEdit"], "note patch");
+  assertOnlyKeys(
+    record,
+    ["content", "title", "body", "color", "textEdit"],
+    "note patch",
+  );
   const patch: UpdateNoteInput = {};
   if (hasOwn(record, "textEdit")) {
     if (Object.keys(record).length !== 1) {
@@ -277,6 +301,8 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
       },
     };
   }
+  if (hasOwn(record, "content"))
+    Object.assign(patch, parseContentInput(record));
   if (hasOwn(record, "title")) {
     patch.title = parseRequiredTitle(record.title, "note.title");
   }
@@ -309,11 +335,11 @@ function parseStickyNote(
   );
   return {
     id: parseEntityId(record.id, `${field}.id`),
-    title: parseRequiredTitle(record.title, `${field}.title`),
+    title: parseText(record.title, `${field}.title`, MAX_TITLE_LENGTH),
     body: parseText(
       record.body,
       `${field}.body`,
-      schemaVersion === 1 ? MAX_BODY_LENGTH : MAX_BODY_LENGTH + 1,
+      schemaVersion === 1 ? MAX_STRUCTURED_BODY_LENGTH : MAX_BODY_LENGTH,
     ),
     color: parseStickyColor(record.color, `${field}.color`),
     createdAt: parseTimestamp(record.createdAt, `${field}.createdAt`),
@@ -342,6 +368,12 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   }
   const notes = record.notes.map((value, index) => {
     const note = parseStickyNote(value, index, record.schemaVersion as number);
+    if (!(note.title + note.body).trim()) {
+      throw validationError(
+        "Stored note content must not be empty.",
+        `notes[${index}]`,
+      );
+    }
     // Schema 1 readers inserted this separator. Upgrade exactly once.
     if (record.schemaVersion === 1 && note.body) note.body = `\n${note.body}`;
     return note;

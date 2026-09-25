@@ -31,7 +31,6 @@ import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
 import { NotesStore, notesStateFilePath } from "../store.js";
 import type { StickyNote } from "../types.js";
-import { parseNoteContent } from "../validation.js";
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
@@ -208,7 +207,7 @@ describe("NotesStore", () => {
     async (content) => {
       const filePath = await temporaryStateFile();
       const first = await serviceFor(filePath);
-      const note = await first.createNote(parseNoteContent(content));
+      const note = await first.createNote({ content });
       await first.stop();
       const second = await serviceFor(filePath);
       const restored = second.getNote(note.id);
@@ -250,6 +249,89 @@ describe("NotesStore", () => {
     expect(JSON.parse(await fs.readFile(filePath, "utf8")).schemaVersion).toBe(
       2,
     );
+    await second.stop();
+  });
+
+  it("keeps structured create separate from exact content create", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const structured = await service.createNote({
+      title: "Title",
+      body: "Body",
+    });
+    expect(structured.title + structured.body).toBe("Title\nBody");
+    for (const mixed of [
+      { content: "Whole", title: "Other" },
+      { content: "Whole", body: "Other" },
+    ]) {
+      const before = service.snapshot();
+      await expect(service.createNote(mixed)).rejects.toThrow("not both");
+      await expect(
+        service.updateNote(structured.id, mixed, before.revision),
+      ).rejects.toThrow("not both");
+      expect(service.snapshot()).toEqual(before);
+    }
+    const complete = await service.createNote({ content: "Whole\n\nBody\n" });
+    expect(complete.title + complete.body).toBe("Whole\n\nBody\n");
+    await service.stop();
+  });
+
+  it("preserves a long whitespace prefix through complete-content create and restart", async () => {
+    const path = await temporaryStateFile();
+    const first = await serviceFor(path);
+    const content = " ".repeat(300) + "\nValid text\nTail";
+    const note = await first.createNote({ content });
+    await first.stop();
+    const second = await serviceFor(path);
+    const saved = second.getNote(note.id);
+    expect(saved.title + saved.body).toBe(content);
+    await second.stop();
+  });
+
+  it("edits and replaces migrated maximum content without losing its separator", async () => {
+    const filePath = await temporaryStateFile();
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        persistedAt: timestamp,
+        notes: [
+          {
+            id: "note-legacy",
+            title: "L".repeat(240),
+            body: "y" + "x".repeat(19999),
+            color: "yellow",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const first = await serviceFor(filePath);
+    await first.updateNote("note-legacy", {
+      textEdit: { field: "body", oldText: "y", newText: "z" },
+    });
+    const edited = first.getNote("note-legacy");
+    const beforeStale = await fs.readFile(filePath, "utf8");
+    await expect(
+      first.updateNote(
+        "note-legacy",
+        { content: edited.title + edited.body },
+        3,
+      ),
+    ).rejects.toMatchObject({ code: "NOTES_EDIT_CONFLICT" });
+    expect(await fs.readFile(filePath, "utf8")).toBe(beforeStale);
+    expect(edited.body).toBe("\nz" + "x".repeat(19999));
+    await first.updateNote(
+      "note-legacy",
+      { content: edited.title + edited.body },
+      first.snapshot().revision,
+    );
+    await first.stop();
+    const second = await serviceFor(filePath);
+    expect(second.getNote("note-legacy").body).toBe(edited.body);
     await second.stop();
   });
 

@@ -36,7 +36,6 @@ import {
   NotesService,
 } from "./service.js";
 import { NotesStore } from "./store.js";
-import { parseNoteContent } from "./validation.js";
 
 const tmpDirs: string[] = [];
 
@@ -186,7 +185,7 @@ describe("promoted Notes execution", () => {
       (await execute(runtime, { name: action.name, params })).success,
     ).toBe(true);
     expect(service.getNote(original.id).body).toBe(
-      "Bring lens. Bring spare cable.",
+      "\nBring lens. Bring spare cable.",
     );
   });
 
@@ -556,7 +555,7 @@ describe("promoted Notes execution", () => {
       expect(result.data?.note).toMatchObject({
         id: original.id,
         title: original.title,
-        body: `${kind === "replacement" ? "\n" : ""}Keep  both spaces and Mira’s green backpack.`,
+        body: "\nKeep  both spaces and Mira’s green backpack.",
       });
       expect(result.effectReceipts?.[0]).toMatchObject({
         outcome: "applied",
@@ -571,7 +570,7 @@ describe("promoted Notes execution", () => {
       });
       await reopened.initialize();
       expect(reopened.getNote(original.id).body).toBe(
-        `${kind === "replacement" ? "\n" : ""}Keep  both spaces and Mira’s green backpack.`,
+        "\nKeep  both spaces and Mira’s green backpack.",
       );
       await reopened.stop();
     },
@@ -1356,7 +1355,7 @@ describe("identical-duplicate notes", () => {
   ): Promise<NotesService> {
     const service = runtime.getService<NotesService>(NOTES_SERVICE_TYPE);
     if (!service) throw new Error("NotesService missing from harness");
-    const original = await service.createNote(parseNoteContent(content));
+    const original = await service.createNote({ content });
     await service.store.transact((draft) => {
       for (let index = 1; index < copies; index += 1) {
         draft.notes.push({ ...original, id: `legacy-copy-${index}` });
@@ -1512,7 +1511,7 @@ describe("literal Notes edits", () => {
     const updated = service.getNote(original.id);
     expect(updated).toEqual({
       ...original,
-      body: "Bring a orange folder and a charger.",
+      body: "\nBring a orange folder and a charger.",
       updatedAt: updated.updatedAt,
     });
     expect(service.getNote(other.id)).toEqual(other);
@@ -1565,7 +1564,7 @@ describe("literal Notes edits", () => {
       },
     });
     expect(result.success).toBe(true);
-    expect(service.getNote(note.id).body).toBe(" orange ");
+    expect(service.getNote(note.id).body).toBe("\n orange ");
   });
 
   it("preserves all authored whitespace through action create and replacement", async () => {
@@ -1708,7 +1707,7 @@ describe("literal Notes edits", () => {
     expect(result.success).toBe(false);
     expect(result.data?.coachingFailure).not.toBe(true);
     expect(result.effectReceipts).toBeUndefined();
-    expect(service.getNote(note.id).body).toBe("Keep this.");
+    expect(service.getNote(note.id).body).toBe("\nKeep this.");
   });
 
   it("checks the old text inside the write barrier when two edits race", async () => {
@@ -1727,7 +1726,7 @@ describe("literal Notes edits", () => {
       ),
     );
     expect(results.map((r) => r.status)).toEqual(["fulfilled", "rejected"]);
-    expect(service.getNote(note.id).body).toBe("orange");
+    expect(service.getNote(note.id).body).toBe("\norange");
     expect(service.snapshot().revision).toBe(before.revision + 1);
   });
 
@@ -1962,8 +1961,8 @@ describe("structured Notes field patches", () => {
       awaitingUserInput: true,
       requiresInput: true,
       candidates: expect.arrayContaining([
-        expect.objectContaining({ body: "Silver folder" }),
-        expect.objectContaining({ body: "Bring it tomorrow" }),
+        expect.objectContaining({ body: "\nSilver folder" }),
+        expect.objectContaining({ body: "\nBring it tomorrow" }),
       ]),
     });
     expect(result.effectReceipts).toBeUndefined();
@@ -2059,7 +2058,7 @@ describe("field patch literal alternative", () => {
     ).toBe(true);
     expect(service.getNote(note.id)).toMatchObject({
       title: note.title,
-      body: "Mira’s notebook is orange.",
+      body: "\nMira’s notebook is orange.",
       color: "rose",
     });
     const before = service.getNote(note.id);

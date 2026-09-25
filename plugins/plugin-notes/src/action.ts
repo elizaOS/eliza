@@ -26,11 +26,7 @@ import {
 } from "@elizaos/core";
 import { getNotesService, type NotesService } from "./service.js";
 import { reconstructNoteContent } from "./types.js";
-import {
-  parseNoteContent,
-  parseNoteDateRange,
-  parseNoteFieldPatch,
-} from "./validation.js";
+import { parseNoteDateRange, parseNoteFieldPatch } from "./validation.js";
 
 const NOTES_OPS = [
   "create",
@@ -491,9 +487,9 @@ export const notesAction: Action = {
     if (op === "create") {
       const body = typeof params.body === "string" ? params.body : undefined;
       const separateBody = body !== undefined && !target.includes("\n");
-      const noteContent = parseNoteContent(
-        separateBody ? `${target}\n${body}` : target,
-      );
+      const noteContent = {
+        content: separateBody ? `${target}\n${body}` : target,
+      };
       if (
         body &&
         !separateBody &&
@@ -554,7 +550,7 @@ export const notesAction: Action = {
     }
     const patch = hasTextEdit
       ? { textEdit: params.textEdit }
-      : parseNoteContent(replacement);
+      : { content: replacement };
     return updateNoteResult(
       () =>
         noteId
