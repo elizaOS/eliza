@@ -22,8 +22,8 @@ import {
   androidDistNeedsBuild,
   androidInstallDecision,
   ensureEmulatorBooted,
-  ensureEmulatorPermissive,
   listDevices,
+  prepareAndroidE2eDevice,
   readFreshAndroidRendererStamp,
   readInstalledRendererStamp,
   readRendererStampFromApk,
@@ -541,7 +541,7 @@ async function main() {
     {
       const step = startBundleStep(bundle, "prepare Android device");
       try {
-        await ensureEmulatorPermissive(adb, serial, {
+        await prepareAndroidE2eDevice(adb, serial, backend, {
           log: evidenceBoundary.callback("device-prepare"),
         });
         finishBundleStep(bundle, step, "passed");

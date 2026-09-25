@@ -655,6 +655,13 @@ export async function ensureEmulatorPermissive(
   await delay(2_000);
   adbTry(adbBin, ["-s", serial, "wait-for-device"]);
   adbTry(adbBin, ["-s", serial, "shell", "setenforce", "0"]);
+  acknowledgeEmulatorImmersiveMode(adbBin, serial);
+  const mode = adbTry(adbBin, ["-s", serial, "shell", "getenforce"]).trim();
+  log(`SELinux mode on ${serial}: ${mode || "unknown"}`);
+  return /permissive/i.test(mode);
+}
+
+function acknowledgeEmulatorImmersiveMode(adbBin, serial) {
   adb(adbBin, [
     "-s",
     serial,
@@ -679,9 +686,32 @@ export async function ensureEmulatorPermissive(
       `failed to acknowledge Android immersive-mode confirmation on ${serial}`,
     );
   }
-  const mode = adbTry(adbBin, ["-s", serial, "shell", "getenforce"]).trim();
-  log(`SELinux mode on ${serial}: ${mode || "unknown"}`);
-  return /permissive/i.test(mode);
+}
+
+/** Hosted tests must exercise the app under Android's enforced security policy. */
+export async function prepareAndroidE2eDevice(
+  adbBin,
+  serial,
+  backend,
+  { log = () => {} } = {},
+) {
+  if (backend === "local") {
+    return ensureEmulatorPermissive(adbBin, serial, { log });
+  }
+  if (backend !== "host") {
+    throw new Error(`Unknown Android E2E backend: ${backend}`);
+  }
+  const mode = adb(adbBin, ["-s", serial, "shell", "getenforce"]).trim();
+  if (mode !== "Enforcing") {
+    throw new Error(
+      `Hosted Android E2E requires SELinux Enforcing on ${serial}; observed ${mode || "unknown"}. Restore the device policy before running.`,
+    );
+  }
+  log(`SELinux mode on ${serial}: ${mode}`);
+  if (serial.startsWith("emulator-")) {
+    acknowledgeEmulatorImmersiveMode(adbBin, serial);
+  }
+  return false;
 }
 
 export function adbForward(adbBin, serial, localPort, remoteSpec) {
