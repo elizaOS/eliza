@@ -85,6 +85,36 @@ class NativeBridgeInstrumentedTest {
             descriptor.put("smsLoopback", arguments.getString("smsLoopback") == "true")
             descriptor.put("smsBody", requireNotNull(arguments.getString("smsBody")))
         }
+        if (arguments.getString("systemControlsRestore") == "1") {
+            check(descriptor.getString("directory") == "plugin-native-system")
+            SystemControlsFixture.restore(context)
+            return
+        }
+        if (arguments.getString("systemControlsPrepareRecovery") == "1") {
+            check(descriptor.getString("directory") == "plugin-native-system")
+            val fixture = SystemControlsFixture(context)
+            try {
+                fixture.run(leaveForRecovery = true) { name, expected ->
+                    descriptor.put("systemStage", name).put("systemExpected", expected)
+                    runContract(descriptor, script)
+                }
+            } catch (error: Throwable) {
+                try { fixture.close() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+                throw error
+            }
+            // Deliberately do not close: the next instrumentation process owns recovery.
+            return
+        }
+        if (arguments.getString("systemControls") == "1") {
+            check(descriptor.getString("directory") == "plugin-native-system")
+            SystemControlsFixture(context).use { fixture ->
+                fixture.run { name, expected ->
+                    descriptor.put("systemStage", name).put("systemExpected", expected)
+                    runContract(descriptor, script)
+                }
+            }
+            return
+        }
         if (InstrumentationRegistry.getArguments().getString("networkTransitions") == "1") {
             check(descriptor.getString("directory") == "plugin-native-network-policy")
             NetworkTransitionFixture(context).use { fixture ->
@@ -131,6 +161,14 @@ class NativeBridgeInstrumentedTest {
                         result.put("sms", JSONObject(JSONTokener(evidence).nextValue() as String))
                         InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
                             putString("nativeArtifactName", "sms-${descriptor.getString("smsRole")}.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
+                    if (descriptor.has("systemStage")) {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeSystemEvidence)")
+                        result.put("system", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "system-controls-${descriptor.getString("systemStage")}-bridge.json")
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
                         })
                     }
