@@ -122,6 +122,7 @@ import {
   plannerSchema,
   plannerTemplate,
 } from "../prompts/planner.ts";
+import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import {
   labelHistorySources,
   referenceRepeatedHistory,
@@ -2956,10 +2957,11 @@ function renderPlannerModelInput(params: {
   if (routingHintsBlock) {
     extraSegments.push({ content: routingHintsBlock, stable: false });
   }
-  const contextSegments =
+  const contextSegments = compactHistoricalReceiptSegments(
     extraSegments.length > 0
       ? [...renderedContext.promptSegments, ...extraSegments]
-      : renderedContext.promptSegments;
+      : renderedContext.promptSegments,
+  );
   // The planner stage instructions are template-derived (`plannerTemplate`)
   // and use stable authored variants for the exposed tools, so they belong in
   // the cached prefix. Marking the segment `stable: true` lets the

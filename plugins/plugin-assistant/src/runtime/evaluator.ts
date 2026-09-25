@@ -59,6 +59,7 @@ import {
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
+import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
@@ -1014,6 +1015,9 @@ function renderEvaluatorModelInput(params: {
   // Mirrors planner-loop: the evaluator stage instructions are template-derived
   // (`evaluatorTemplate`) and structurally identical across calls. Marking
   // the segment `stable: true` makes them cacheable on Anthropic's wire path.
+  renderedContext.promptSegments = compactHistoricalReceiptSegments(
+    renderedContext.promptSegments,
+  );
   const stableContextSegments = renderedContext.promptSegments.filter(
     (segment) => segment.stable,
   );
