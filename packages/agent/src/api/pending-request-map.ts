@@ -5,10 +5,9 @@
  * frontend response cannot outrun the waiter. Each request id owns one slot;
  * registering it again rejects the displaced waiter before replacing it.
  */
-import { ElizaError } from "@elizaos/core";
-import { type ViewInteractResult } from "@elizaos/core/views/view-interact-protocol";
+import { ElizaError, type ViewInteractResult } from "@elizaos/core";
 
-export { type ViewInteractResult } from "@elizaos/core/views/view-interact-protocol";
+export type { ViewInteractResult } from "@elizaos/core";
 export class PendingRequestMap {
   private readonly map = new Map<
     string,

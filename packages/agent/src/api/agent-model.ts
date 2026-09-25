@@ -11,13 +11,14 @@
  * resolveProviderFromModel maps a model string to a provider display name.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import {
+  type AgentRuntime,
+  ModelType,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 
 /**

@@ -26,12 +26,13 @@
 import { appendFileSync, mkdirSync, statSync, truncateSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
 import {
   type DistributionProfile,
+  logger,
+  type RuntimeExecutionMode,
   resolveDistributionProfile,
-} from "@elizaos/core/config/distribution-profile";
-import { type RuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
+} from "@elizaos/core";
+
 import { resolveStateDir } from "../config/paths.ts";
 
 export type CapabilityKind =

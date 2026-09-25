@@ -23,7 +23,7 @@
  * @module crash-injection
  */
 import process from "node:process";
-import { RESTART_EXIT_CODE } from "@elizaos/core/restart";
+import { RESTART_EXIT_CODE } from "@elizaos/core";
 
 export { RESTART_EXIT_CODE };
 /** Lifecycle points an injected fault can target. Keep in sync with the matrix. */

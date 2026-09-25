@@ -6,30 +6,27 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type {
-  Action,
-  ActionExample,
-  EffectReceipt,
-  HandlerOptions,
-  IAgentRuntime,
-  JsonValue,
-  Media,
-  Memory,
-} from "@elizaos/core";
 import {
+  type Action,
+  type ActionExample,
   buildReadView,
+  buildStoreVariantBlockedMessage,
   ContentType,
+  type EffectReceipt,
   ElizaError,
+  type HandlerOptions,
+  type IAgentRuntime,
+  isLocalCodeExecutionAllowed,
+  type JsonValue,
   logger,
+  type Media,
+  type Memory,
+  readAliasedEnv,
   redactSensitiveText,
+  resolveServerOnlyPort,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  buildStoreVariantBlockedMessage,
-  isLocalCodeExecutionAllowed,
-} from "@elizaos/core/platform/sandbox-policy";
-import { resolveServerOnlyPort } from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+
 import { capturedTerminalOutputIsSafe } from "../api/terminal-output-contract.ts";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";

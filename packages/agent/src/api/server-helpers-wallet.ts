@@ -5,10 +5,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
+  readAliasedEnv,
   type WalletExportRejection,
   type WalletExportRequestBody,
-} from "@elizaos/core/contracts/wallet-types";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+} from "@elizaos/core";
 
 export type { WalletExportRejection };
 

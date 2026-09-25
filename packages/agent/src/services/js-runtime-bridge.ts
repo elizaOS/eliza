@@ -22,7 +22,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Context as VmContext, Script as VmScript } from "node:vm";
-import { resolveDistributionProfile } from "@elizaos/core/config/distribution-profile";
+import { resolveDistributionProfile } from "@elizaos/core";
 
 /** Identifier for which concrete bridge implementation is running. */
 export type JsRuntimeKind =

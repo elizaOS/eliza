@@ -14,20 +14,19 @@
 
 import {
   type AgentContext,
+  collectKeywordTermMatches,
   recentConversationTexts as collectRecentConversationTexts,
   getActiveRoutingContextsForTurn,
-  type Memory,
-  recentConversationTextsFromState,
-  type State,
-} from "@elizaos/core";
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
-import {
-  collectKeywordTermMatches,
   hasPreparedKeywordTermMatch,
+  type Memory,
+  normalizeCharacterLanguage,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
+  recentConversationTextsFromState,
+  type State,
   textIncludesKeywordTerm,
-} from "@elizaos/core/i18n/keyword-matching";
+} from "@elizaos/core";
+
 import {
   type ContextSignalKey,
   resolveContextSignalSpec,

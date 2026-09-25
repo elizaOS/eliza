@@ -17,11 +17,11 @@ import {
   type Content,
   type createMessageMemory,
   type Memory,
+  normalizeCharacterLanguage,
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
 
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 import {
   aliasRecallQuery,
   type DocumentsServiceLike,

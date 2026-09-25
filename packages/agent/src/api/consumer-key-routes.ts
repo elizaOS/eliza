@@ -14,7 +14,7 @@
  * hostless (standalone) agent the facade is absent and every route answers
  * 501 rather than pretending an empty store exists.
  */
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/core";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import { resolveBoundaryRole } from "./server-helpers-auth.ts";
 

@@ -12,6 +12,7 @@ import {
   bindSourceReplyContent,
   createSourceReplySnapshot,
   getSourceReplyBinding,
+  resolveLiteralSourceReply,
   resolveSourceReply,
   type SourceReplyRendering,
   sourceReplyAssertionText,
@@ -92,6 +93,64 @@ function fixture() {
   };
   return { memory, context, projection, snapshot, raw };
 }
+describe("literal source replies without model-facing source IDs", () => {
+  it("validates exact original bytes without selecting planner history", () => {
+    const f = fixture();
+    const raw = {
+      replyText: [{ kind: "source", value: f.memory.content.text }],
+    };
+    let rendering: SourceReplyRendering | undefined;
+    const resolved = resolveLiteralSourceReply(
+      f.context,
+      f.snapshot,
+      raw,
+      (value) => {
+        rendering = value;
+      },
+    );
+    expect(resolved).toEqual({ replyText: f.memory.content.text });
+    expect(rendering?.references?.sources[0].eventId).toBe("history:source");
+    expect(raw.replyText[0].value).toBe(f.memory.content.text);
+  });
+  it("never exempts ordinary strings or text parts from assertion checks", () => {
+    const f = fixture();
+    const raw = { replyText: f.memory.content.text };
+    let rendering: SourceReplyRendering | undefined;
+    expect(
+      resolveLiteralSourceReply(f.context, f.snapshot, raw, (value) => {
+        rendering = value;
+      }),
+    ).toBe(raw);
+    expect(rendering).toBeUndefined();
+    resolveLiteralSourceReply(
+      f.context,
+      f.snapshot,
+      { replyText: [{ kind: "text", value: "Saved it." }] },
+      (value) => {
+        rendering = value;
+      },
+    );
+    expect(rendering).toBeUndefined();
+  });
+  it("rejects invented or altered originals before reply processing", () => {
+    const f = fixture();
+    expect(() =>
+      resolveLiteralSourceReply(f.context, f.snapshot, {
+        replyText: [{ kind: "source", value: f.memory.content.text?.trim() }],
+      }),
+    ).toThrow("Quoted text does not match a supplied original");
+  });
+  it("does not reuse a snapshot after the context changes", () => {
+    const f = fixture();
+    f.context.events = [];
+    expect(
+      resolveLiteralSourceReply(f.context, f.snapshot, {
+        replyText: [{ kind: "source", value: f.memory.content.text }],
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe("source-backed native replies", () => {
   it("separates typed source blocks without weakening mixed-claim checks", () => {
     const f = fixture();

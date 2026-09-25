@@ -7,11 +7,12 @@
  */
 
 import type { Vault } from "@elizaos/auth/vault";
-import { ElizaError } from "@elizaos/core";
 import {
+  ElizaError,
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/core";
+
 import { vaultKeyForProviderApiKey } from "./operations/vault-bridge.ts";
 
 type ProviderCredentialVault = Pick<Vault, "has" | "reveal">;

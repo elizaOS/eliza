@@ -34,8 +34,8 @@ import {
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/auth/vault";
-import { type ElizaConfig, logger } from "@elizaos/core";
-import { loadRegistry } from "@elizaos/core/catalog";
+import { type ElizaConfig, loadRegistry, logger } from "@elizaos/core";
+
 import {
   CONNECTOR_SECRET_FIELDS,
   connectorVaultKey,

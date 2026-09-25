@@ -12,8 +12,13 @@ import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { type AgentRuntime, ElizaError, type Plugin } from "@elizaos/core";
-import { getViewModalities } from "@elizaos/core/views/view-declarations";
+import {
+  type AgentRuntime,
+  ElizaError,
+  getViewModalities,
+  type Plugin,
+} from "@elizaos/core";
+
 import { bindPluginPackageDirectory, getView } from "../api/views-registry.ts";
 import { extractPlugin } from "./load-plugin-from-vfs.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";

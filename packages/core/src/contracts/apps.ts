@@ -2,10 +2,10 @@
  * Shared app manager contracts.
  */
 
-import curatedAppDefinitions from "@elizaos/core/catalog/curated-app-definitions.json" with {
+import z from "zod";
+import curatedAppDefinitions from "../catalog/curated-app-definitions.json" with {
 	type: "json",
 };
-import z from "zod";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { ViewKind } from "../types/view-kind.js";
 

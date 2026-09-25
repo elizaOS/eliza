@@ -19,7 +19,7 @@
 import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/core";
 import * as zod from "zod";
 import {
   type EffectiveElizaConfigSnapshot,

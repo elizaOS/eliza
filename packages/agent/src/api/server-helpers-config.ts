@@ -3,18 +3,18 @@
  */
 import type http from "node:http";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core/api/http-helpers";
 import {
-  getDefaultStylePreset,
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/core/character-presets";
-import {
+  ElizaError,
   FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
   FIRST_RUN_PROVIDER_CATALOG,
-} from "@elizaos/core/contracts/first-run-options";
-import { type ElizaConfig } from "../config/config.ts";
+  getDefaultStylePreset,
+  getStylePresets,
+  logger,
+  normalizeCharacterLanguage,
+  sendJsonError,
+} from "@elizaos/core";
+
+import type { ElizaConfig } from "../config/config.ts";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 

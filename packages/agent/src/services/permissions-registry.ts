@@ -13,20 +13,18 @@ import * as fs from "node:fs";
 import path from "node:path";
 import {
   type IAgentRuntime,
-  logger,
-  resolveStateDir as resolveCoreStateDir,
-  Service,
-} from "@elizaos/core";
-import {
   type IPermissionsRegistry,
+  logger,
   type PermissionId,
   type PermissionState,
   type Prober,
-} from "@elizaos/core/contracts/permissions";
+  resolveStateDir as resolveCoreStateDir,
+  Service,
+} from "@elizaos/core";
 
-export {
-  type IPermissionsRegistry,
-  type Prober,
+export type {
+  IPermissionsRegistry,
+  Prober,
 } from "@elizaos/core/contracts/permissions";
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

@@ -20,18 +20,19 @@ import {
   type OAuthCredentials,
   type SubscriptionProvider,
 } from "@elizaos/auth/auth/types";
-import { type ElizaConfig, logger, resolveStateDir } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
-import type {
-  LinkedAccountConfig,
-  LinkedAccountHealth,
-  LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
 import {
+  type ElizaConfig,
+  type LinkedAccountConfig,
+  type LinkedAccountHealth,
+  type LinkedAccountUsage,
+  logger,
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
-} from "@elizaos/core/contracts/subscription-routes";
+  type RouteRequestContext,
+  resolveStateDir,
+} from "@elizaos/core";
+
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 type AuthModule = typeof import("@elizaos/auth/auth");

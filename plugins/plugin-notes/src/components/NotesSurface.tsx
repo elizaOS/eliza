@@ -10,7 +10,7 @@ import { isApiError } from "@elizaos/ui/api";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useEffect } from "react";
 import type { NotesSnapshot, StickyNote as StickyNoteModel } from "../types.js";
 import {
   AgentAction,
@@ -57,7 +57,15 @@ function noteContent(note: StickyNoteModel): string {
   return body ? `${note.title}\n${body}` : note.title;
 }
 
-function NoteRow({ note }: { note: StickyNoteModel }) {
+function NoteRow({
+  note,
+  selected,
+  sequence,
+}: {
+  note: StickyNoteModel;
+  selected: boolean;
+  sequence: number;
+}) {
   const content = noteContent(note);
   const card = useAgentElement<HTMLLIElement>({
     id: note.id,
@@ -67,6 +75,11 @@ function NoteRow({ note }: { note: StickyNoteModel }) {
     description: content,
     status: note.color,
   });
+  useEffect(() => {
+    if (!selected || sequence < 1) return;
+    card.ref.current?.scrollIntoView({ block: "center" });
+    card.ref.current?.focus({ preventScroll: true });
+  }, [selected, sequence, card.ref]);
   const material = COLOR_MATERIALS[note.color];
   const body = note.body.trim();
 
@@ -75,10 +88,18 @@ function NoteRow({ note }: { note: StickyNoteModel }) {
       ref={card.ref}
       {...card.agentProps}
       data-note-color={note.color}
+      tabIndex={selected ? -1 : undefined}
+      aria-current={selected ? "true" : undefined}
+      data-source-note={selected ? "true" : undefined}
       style={{
         ...PANEL_STYLE,
         ...NOTE_ROW_BASE_STYLE,
         margin: 0,
+        ...(selected
+          ? {
+              borderLeft: "4px solid var(--brand-orange, #ff6a1f)",
+            }
+          : {}),
         background: `linear-gradient(${material}, ${material}), var(--card, #121212)`,
       }}
     >
@@ -424,6 +445,7 @@ function viewLabel({
 }
 
 export interface NotesSurfaceProps {
+  sourceNoteTarget?: { id: string; sequence: number } | null;
   snapshot: NotesSnapshot | null;
   loading: boolean;
   error: Error | null;
@@ -438,6 +460,7 @@ export function NotesSurface({
   error,
   refresh,
   standalone,
+  sourceNoteTarget,
 }: NotesSurfaceProps) {
   const notes = snapshot?.notes ?? [];
   const issue = notesIssue(error);
@@ -476,6 +499,15 @@ export function NotesSurface({
             )
           ) : (
             <section aria-label="Notes" style={COLLECTION_STYLE}>
+              {!loading &&
+              !error &&
+              sourceNoteTarget &&
+              !notes.some((note) => note.id === sourceNoteTarget.id) ? (
+                <p role="status" className="px-4 py-3 text-sm text-muted">
+                  The source note is no longer available. The calendar event is
+                  unchanged.
+                </p>
+              ) : null}
               {issue && notes.length > 0 ? (
                 <>
                   <NotesCollectionHeader count={notes.length} issue={issue} />
@@ -506,7 +538,12 @@ export function NotesSurface({
                     style={NOTE_LIST_STYLE}
                   >
                     {notes.map((note) => (
-                      <NoteRow key={note.id} note={note} />
+                      <NoteRow
+                        key={note.id}
+                        note={note}
+                        selected={note.id === sourceNoteTarget?.id}
+                        sequence={sourceNoteTarget?.sequence ?? 0}
+                      />
                     ))}
                   </ul>
                 </>

@@ -24,12 +24,13 @@ import type {
   ServerResponse as HttpServerResponse,
 } from "node:http";
 import type { Vault } from "@elizaos/auth/vault";
-import type { AgentRuntime, RoleGateRole } from "@elizaos/core";
 import {
   type AccountPoolBrokerSnapshot,
+  type AgentRuntime,
   emptyAccountPoolBrokerSnapshot,
+  type RoleGateRole,
+  type resolveServiceRoutingInConfig,
 } from "@elizaos/core";
-import { type resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
 
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;

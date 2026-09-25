@@ -1,10 +1,10 @@
-import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
+import type { RouteHandlerResult } from "@elizaos/core";
 import {
   buildLegacyShim,
   capturedToResult,
   type DispatchRouteArgs,
 } from "./dispatch-route.ts";
-import { type RouteKernel } from "./route-kernel.ts";
+import type { RouteKernel } from "./route-kernel.ts";
 
 const kernels = new WeakMap<object, RouteKernel>();
 /** Register the already-created server kernel for a local runtime. */

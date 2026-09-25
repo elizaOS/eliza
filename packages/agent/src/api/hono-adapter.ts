@@ -1,12 +1,14 @@
-import { type AccessContext, type IAgentRuntime } from "@elizaos/core";
 import {
+  type AccessContext,
+  getHttpRuntime,
+  type IAgentRuntime,
   type Route,
   type RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+} from "@elizaos/core";
+
 import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
-import { type ContentfulStatusCode } from "hono/utils/http-status";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { dispatchRoute } from "./dispatch-route.ts";
 /**
  * Hono adapter for plugin routes.

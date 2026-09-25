@@ -1,7 +1,10 @@
 // Configures the USB installer build, server, and tests.
-import { defineConfig } from "vite";
+import { defaultClientConditions, defineConfig } from "vite";
 
 export default defineConfig({
+  resolve: {
+    conditions: ["eliza-source", ...defaultClientConditions],
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

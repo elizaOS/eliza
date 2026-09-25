@@ -23,19 +23,16 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
+  PatchMemoryRequestSchema,
+  PostMemoryRememberRequestSchema,
+  parseCanonicalInteger,
+  parsePositiveInteger,
   projectCompleteToolValueForModel,
+  type RouteRequestContext,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
-import {
-  PatchMemoryRequestSchema,
-  PostMemoryRememberRequestSchema,
-} from "@elizaos/core/contracts/memory-routes";
-import {
-  parseCanonicalInteger,
-  parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
+
 import {
   type DocumentsServiceResult,
   getDocumentsService,

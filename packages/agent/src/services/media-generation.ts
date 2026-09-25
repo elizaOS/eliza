@@ -13,13 +13,14 @@ import {
   type IAgentRuntime,
   IMediaGenerationService,
   type ImageConfig,
+  isElizaCloudServiceSelectedInConfig,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   ModelType,
   ServiceType,
   type VideoConfig,
 } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
+
 import { loadEffectiveElizaConfig } from "../config/config.ts";
 import {
   createAudioProvider,

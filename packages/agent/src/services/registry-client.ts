@@ -10,8 +10,12 @@ import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger, type RegistryEndpoint } from "@elizaos/core";
-import { isRegistryCacheFresh } from "@elizaos/core/catalog/runtime-kernel";
+import {
+  isRegistryCacheFresh,
+  logger,
+  type RegistryEndpoint,
+} from "@elizaos/core";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {

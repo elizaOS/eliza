@@ -4,25 +4,22 @@
  * this bridge those handlers never run.
  */
 
-import { type IncomingMessage, type ServerResponse } from "node:http";
-import { type AgentRuntime } from "@elizaos/core";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  isJsonObjectBody,
-  readRequestBodyBuffer,
-  writeJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
+  type AgentRuntime,
   assertPublicRouteIntent,
+  getHttpRuntime,
+  isJsonObjectBody,
   type PaymentEnabledRoute,
   type Route,
-} from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
-import {
   type RuntimeRouteHostContext,
+  readRequestBodyBuffer,
   setRuntimeRouteHostContext,
-} from "@elizaos/core/api/runtime-route-context";
+  writeJsonError,
+} from "@elizaos/core";
+
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
-import { type X402PluginModule } from "./x402-contract.ts";
+import type { X402PluginModule } from "./x402-contract.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 type ExpressLikeResponse = ServerResponse & {

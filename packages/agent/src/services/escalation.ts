@@ -10,6 +10,7 @@
  * escalation order in eliza.json.
  */
 import {
+  createSerialise,
   ElizaError,
   type EscalationConfig,
   type IAgentRuntime,
@@ -21,7 +22,7 @@ import {
   resolveOwnerEntityId,
   type UUID,
 } from "@elizaos/core";
-import { createSerialise } from "@elizaos/core/utils/serialise";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,

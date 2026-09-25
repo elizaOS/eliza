@@ -13,6 +13,7 @@ import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentRuntime as AgentRuntimeCtor,
   createCharacter,
+  ElizaError,
   logger,
   ModelType,
   NotificationService,
@@ -1101,6 +1102,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
+  const skipEmbeddingPlugin =
+    executionProfile === "simulated" &&
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   const character = createCharacter(
     options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
   );
@@ -1167,9 +1171,6 @@ export async function createScenarioRuntime(
   // semantic retrieval. AgentRuntime treats an absent embedding provider as an
   // explicit disabled capability, avoiding both model downloads and fabricated
   // vectors. Provider-qualified runs retain the production local provider.
-  const skipEmbeddingPlugin =
-    executionProfile === "simulated" &&
-    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     logger.info(
       "[scenario-runner] Embedding generation is disabled for the simulated profile; " +
@@ -1374,6 +1375,23 @@ export async function createScenarioRuntime(
 
   try {
     await runtime.initialize();
+    if (!skipEmbeddingPlugin) {
+      const { ensureLocalInferenceHandler } = await import(
+        "@elizaos/plugin-local-inference/runtime"
+      );
+      runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, true, false);
+      await ensureLocalInferenceHandler(runtime);
+      if (!runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+        throw new ElizaError(
+          "Scenario embedding boot did not register a model handler",
+          {
+            code: "SCENARIO_EMBEDDING_UNAVAILABLE",
+            context: { executionProfile },
+          },
+        );
+      }
+      await runtime.ensureEmbeddingDimension();
+    }
     if (syntheticPolicy) {
       const serviceTypes = runtime.getRegisteredServiceTypes();
       let timeout: ReturnType<typeof setTimeout> | undefined;

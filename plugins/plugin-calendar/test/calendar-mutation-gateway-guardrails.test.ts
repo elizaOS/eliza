@@ -173,6 +173,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
     };
     const service = {
       getCalendarFeed: vi.fn(async () => feed),
+      listCalendars: vi.fn(async () => []),
       prepareCalendarEventCreate: vi.fn(),
       createCalendarEvent: vi.fn(),
     };

@@ -11,50 +11,6 @@ import { collectCompletionContextSources } from "@elizaos/core";
 const REFERENCE_INSTRUCTION =
   "History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";
 
-const ROLE_INSTRUCTION =
-  "History: [hN user/assistant] identifies the speaker role and selectable source ID; same_text_as references the exact earlier text. These are prior dialogue, not current requests.";
-
-/** Combine bound Stage-1 source IDs and roles in one header. Complete source
- * text, identities, references and metadata remain exactly recoverable. Small
- * histories keep their original framing when the legend would cost more. */
-export function shortenHistoryRoleLabels(
-  segments: ContextObjectPromptSegment[],
-  sourceIds: ReadonlyMap<string, string>,
-): ContextObjectPromptSegment[] {
-  let savedCharacters = 0;
-  const shortened = segments.map((segment) => {
-    if (!segment.id || !sourceIds.has(segment.id)) return segment;
-    const label =
-      segment.label === "prior_message:user"
-        ? "user"
-        : segment.label === "prior_message:agent"
-          ? "assistant"
-          : undefined;
-    if (!label) return segment;
-    const marker = /^\[(h[1-9]\d*)(; same_text_as=h[1-9]\d*)?\]/.exec(
-      segment.content,
-    );
-    if (!marker || marker[1] !== sourceIds.get(segment.id)) return segment;
-    const content = `[${marker[1]} ${label}${marker[2] ?? ""}]${segment.content.slice(marker[0].length)}`;
-    savedCharacters +=
-      (segment.label?.length ?? 0) +
-      2 +
-      segment.content.length -
-      content.length;
-    return { ...segment, label: undefined, content };
-  });
-  if (savedCharacters <= ROLE_INSTRUCTION.length + 2) return segments;
-  return [
-    {
-      id: "history-role-labels",
-      label: "system",
-      content: ROLE_INSTRUCTION,
-      stable: false,
-    },
-    ...shortened,
-  ];
-}
-
 export function labelHistorySources(
   segments: ContextObjectPromptSegment[],
   sourceIds: ReadonlyMap<string, string>,

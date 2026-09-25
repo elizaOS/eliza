@@ -18,7 +18,7 @@
     "./progressive-content-target": "./src/progressive-content-target.ts"
   },
   "scripts": {
-    "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",
+    "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world && bun run test:gepa",
     "typecheck": "bun run typecheck:fixtures && bun run typecheck:scenarios && bun run typecheck:evidence && bun run typecheck:runner && bun run typecheck:synthetic-world",
     "test:fixtures": "node ../scripts/run-vitest.ts run",
     "test:scenarios": "bun run scenarios:validate",
@@ -64,7 +64,9 @@
     "test:runner": "bun run test:unit",
     "typecheck:runner": "tsc --noEmit -p scenario-runner/tsconfig.json",
     "test:synthetic-world": "bun --conditions=eliza-source test synthetic-world/test",
-    "typecheck:synthetic-world": "tsc --noEmit -p synthetic-world/tsconfig.json && tsc --noEmit -p synthetic-world/tsconfig.cloud-integration.json"
+    "typecheck:synthetic-world": "tsc --noEmit -p synthetic-world/tsconfig.json && tsc --noEmit -p synthetic-world/tsconfig.cloud-integration.json",
+    "gepa:setup": "bun scenario-runner/src/gepa-setup.ts",
+    "test:gepa": "node ../scripts/run-vitest.ts run --config scenario-runner/vitest.gepa.config.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

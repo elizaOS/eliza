@@ -219,9 +219,217 @@ export {
 } from "./actions/to-tool.ts";
 export { validateToolArgs } from "./actions/validate-tool-args.ts";
 export {
+	MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+	resolveRetainableAgentBackupBytes,
+	SnapshotPayloadTooLargeError,
+} from "./agent-backup-limits.js";
+export type {
+	AgentAutomationMode,
+	AgentStartupDiagnostics,
+	ChatImageAttachment,
+	ColumnInfo,
+	ConnectionTestResult,
+	CreateTriggerRequest,
+	DatabaseStatus,
+	LogEntry as AgentLogEntry,
+	PluginParamDef,
+	QueryResult,
+	RuntimeOrderItem,
+	RuntimeServiceOrderItem,
+	SkillEntry,
+	StreamEventEnvelope,
+	StreamEventType as AgentStreamEventType,
+	TableInfo,
+	TriggerHealthSnapshot,
+	TriggerSummary,
+	TriggerTaskMetadata,
+	UpdateTriggerRequest,
+} from "./api/agent-api-types.js";
+export { drainAppRoutePluginLoaders } from "./api/drain-app-route-plugins.js";
+export {
+	DEFAULT_MAX_BODY_BYTES,
+	isJsonObjectBody,
+	readJsonBody,
+	readRequestBody,
+	readRequestBodyBuffer,
+	sendJson,
+	sendJsonError,
+	writeJsonError,
+	writeJsonErrorSafe,
+	writeJsonResponse,
+	writeJsonResponseSafe,
+} from "./api/http-helpers.js";
+export {
+	assertPublicRouteIntent,
+	type HttpMethod,
+	type HttpPlugin,
+	type LegacyRouteHandler,
+	type PaymentEnabledRoute,
+	type Route,
+	type RouteBodyValue,
+	type RouteHandler,
+	type RouteHandlerContext,
+	type RouteHandlerResult,
+	type RouteManifest,
+	type RouteRequest,
+	type RouteResponse,
+	type RouteRuntimeMode,
+	type X402RequestValidator,
+} from "./api/http-plugin.js";
+export {
+	getHttpRuntime,
+	getPluginHttpRoutes,
+	type HttpRuntimeState,
+	installHttpPluginLifecycle,
+	registerHttpPluginRoutes,
+} from "./api/http-plugin-runtime.js";
+export type {
+	AppPackageRouteContext,
+	AppPackageRouteDispatchContext,
+	ReadJsonBodyOptions,
+	ReadTextBodyOptions,
+	RequestBodyOptions,
+	RouteHelpers,
+	RouteRequestContext,
+	RouteRequestMeta,
+} from "./api/route-helpers.js";
+export {
+	getRuntimeRouteHostContext,
+	type RuntimeRouteHostContext,
+	type RuntimeRouteTelemetryMeta,
+	type RuntimeRouteTelemetrySpan,
+	setRuntimeRouteHostContext,
+} from "./api/runtime-route-context.js";
+export {
+	type AudioRedactionSpan,
+	type AudioRedactionSpanPlan,
+	assertCompleteAudioRedactionPlan,
+	type BuildRedactionSpanOptions,
+	buildAudioRedactionSpans,
+	DEFAULT_REDACTION_PAD_MS,
+	type MergeRedactionSpanOptions,
+	matchPiiSpansToWords,
+	mergeRedactionSpans,
+	normalizeSpokenText,
+	type PiiSpanMatchResult,
+	type PiiTextSpan,
+	RedactionSpanError,
+} from "./audio-redaction.js";
+export {
+	AudioRedactionVerifyUnavailableError,
+	findMissingSentinels,
+	findResidualPii,
+	judgeRedactedTranscript,
+	type RedactionTranscribeInput,
+	type RedactionTranscriber,
+	type RedactionTranscript,
+	type RedactionVerifierFinding,
+	type RedactionVerifyExpectation,
+	type RedactionVerifyResult,
+	verifyAudioRedaction,
+} from "./audio-redaction-verify.js";
+export {
 	AwarenessRegistry,
 	normalizeSummaryLine,
 } from "./awareness/registry.js";
+export {
+	AGENT_BACKUP_CANONICAL_JSON,
+	CANONICAL_JSON_UNBOUNDED,
+	type CanonicalJsonOptions,
+	type CanonicalJsonUnbounded,
+	canonicalJsonString,
+	failCanonicalJsonUnbounded,
+	isCanonicalJsonArray,
+	readCanonicalArrayLength,
+	stableJsonString,
+} from "./canonical-json.js";
+export {
+	type AccountAuthKind,
+	type AccountConfig,
+	type AppEntry,
+	type AppLaunch,
+	accountConfigSchema,
+	appEntrySchema,
+	appLaunchSchema,
+	type ConfigField,
+	type ConnectorEntry,
+	clearRegistryCacheForTests,
+	configFieldSchema,
+	connectorEntrySchema,
+	getApps,
+	getConnectors,
+	getEntry,
+	getEntryByNpmName,
+	getPlugins,
+	indexEntries,
+	type LoadedRegistry,
+	loadRegistry,
+	mergeWithRuntime,
+	normalizeConnectorAuth,
+	type PluginEntry,
+	pluginEntrySchema,
+	type RegistryEntry,
+	type RegistryKind,
+	type RegistryRuntimeOverlay,
+	type RegistryValidationError,
+	type RegistryView,
+	type RenderHints,
+	type Resources,
+	registerRegistryEntry,
+	registryEntrySchema,
+	registryRuntimeOverlaySchema,
+	renderSchema,
+	resourcesSchema,
+	type SecondarySurface,
+} from "./catalog/index.js";
+export {
+	AGENT_REGISTRY_SEARCH_POLICY,
+	CORE_REGISTRY_SEARCH_POLICY,
+	type DecodeRuntimeRegistryOptions,
+	decodeRuntimeRegistry,
+	isRegistryCacheFresh,
+	isValidRegistryPackageName,
+	type NormalizedRegistryEntry,
+	type RegistrySearchable,
+	type RegistrySearchPolicy,
+	type RuntimeRegistryWireEntry,
+	runtimeRegistryEntrySchema,
+	searchRegistryEntries,
+} from "./catalog/runtime-kernel.js";
+export {
+	buildElizaCharacterCatalog,
+	CHARACTER_PRESET_META,
+	CHARACTER_PRESETS,
+	getDefaultAgentName,
+	getDefaultStylePreset,
+	getPresetNameMap,
+	getStylePresets,
+	normalizeCharacterLanguage,
+	resolveStylePresetByAvatarIndex,
+	resolveStylePresetById,
+	resolveStylePresetByName,
+	SHARED_STYLE_RULES,
+	STYLE_PRESETS,
+	setDefaultAgentName,
+} from "./character-presets.js";
+export {
+	CHAT_IMAGE_MIME_TYPE_SET,
+	CHAT_IMAGE_MIME_TYPES,
+	CHAT_UPLOAD_MIME_TYPE_SET,
+	CHAT_UPLOAD_MIME_TYPES,
+	type ChatUploadMimeType,
+	MAX_CHAT_ATTACHMENT_NAME_LENGTH,
+	MAX_CHAT_IMAGE_BASE64_BYTES,
+	MAX_CHAT_IMAGE_RAW_BYTES,
+	MAX_CHAT_MEDIA_BASE64_BYTES,
+	MAX_CHAT_MEDIA_RAW_BYTES,
+	MAX_CHAT_UPLOAD_ATTACHMENTS,
+	maxRawBytesForBase64,
+} from "./chat-upload-limits.js";
+export {
+	type DurationMsParseOptions,
+	parseDurationMs,
+} from "./cli/parse-duration.js";
 export {
 	type AllowedHostPattern,
 	parseAllowedHostEnv,
@@ -303,6 +511,12 @@ export {
 	type ValidationFunction,
 	visibility,
 } from "./config/config-catalog.js";
+export {
+	DISTRIBUTION_PROFILES,
+	type DistributionProfile,
+	isDistributionProfile,
+	resolveDistributionProfile,
+} from "./config/distribution-profile.js";
 export { CONNECTOR_PLUGINS } from "./config/plugin-auto-enable-engine.js";
 export {
 	buildPluginConfigUiSpec,
@@ -329,6 +543,11 @@ export {
 	runtimeExecutionModeForDeploymentTarget,
 	shouldUseSandboxExecution,
 } from "./config/runtime-mode.js";
+export {
+	CONNECTOR_IDS,
+	type ConnectorId,
+	ELIZA_LOCAL_CONNECTOR_IDS,
+} from "./config/schema.js";
 export type {
 	AgentDefaultsConfig,
 	AgentModelEntryConfig,
@@ -513,6 +732,81 @@ export type {
 	UiSpecVisibilityCondition,
 	VisibilityOperator,
 } from "./config/ui-spec.js";
+export {
+	AudioElevenlabsSfxConfigSchema,
+	AudioGenConfigSchema,
+	AudioGenProviderSchema,
+	AudioSunoConfigSchema,
+	BedrockDiscoverySchema,
+	BlockStreamingChunkSchema,
+	BlockStreamingCoalesceSchema,
+	ChannelHeartbeatVisibilitySchema,
+	CliBackendSchema,
+	CloudMediaConfigSchema,
+	DebounceMsBySurfaceSchema,
+	DmConfigSchema,
+	DmPolicySchema,
+	ExecutableTokenSchema,
+	GroupChatSchema,
+	GroupPolicySchema,
+	HexColorSchema,
+	HumanDelaySchema,
+	IdentitySchema,
+	ImageConfigSchema,
+	ImageFalConfigSchema,
+	ImageGoogleConfigSchema,
+	ImageOpenaiConfigSchema,
+	ImageProviderSchema,
+	ImageXaiConfigSchema,
+	InboundDebounceSchema,
+	LinkModelSchema,
+	MarkdownConfigSchema,
+	MarkdownTableModeSchema,
+	MediaConfigSchema,
+	MediaModeSchema,
+	MediaUnderstandingAttachmentsSchema,
+	MediaUnderstandingCapabilitiesSchema,
+	MediaUnderstandingModelSchema,
+	MediaUnderstandingScopeSchema,
+	MessagePolicySchema,
+	ModelApiSchema,
+	ModelCompatSchema,
+	ModelDefinitionInputSchema,
+	ModelDefinitionSchema,
+	ModelProviderSchema,
+	ModelsConfigSchema,
+	MSTeamsReplyStyleSchema,
+	NativeCommandsSettingSchema,
+	normalizeAllowFrom,
+	ProviderCommandsSchema,
+	QueueDropSchema,
+	QueueModeBySurfaceSchema,
+	QueueModeSchema,
+	QueueSchema,
+	ReplyToModeSchema,
+	RetryConfigSchema,
+	requireOpenAllowFrom,
+	ToolsLinksSchema,
+	ToolsMediaSchema,
+	ToolsMediaUnderstandingSchema,
+	TranscribeAudioSchema,
+	TtsAutoSchema,
+	TtsConfigSchema,
+	TtsModeSchema,
+	TtsProviderSchema,
+	VideoConfigSchema,
+	VideoFalConfigSchema,
+	VideoGoogleConfigSchema,
+	VideoOpenaiConfigSchema,
+	VideoProviderSchema,
+	VisionAnthropicConfigSchema,
+	VisionConfigSchema,
+	VisionGoogleConfigSchema,
+	VisionOllamaConfigSchema,
+	VisionOpenaiConfigSchema,
+	VisionProviderSchema,
+	VisionXaiConfigSchema,
+} from "./config/zod-schema.core.js";
 export {
 	AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
 	AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
@@ -1259,6 +1553,12 @@ export {
 	type LifeOpsConnectorDegradation,
 	type LifeOpsConnectorDegradationAxis,
 } from "./contracts/lifeops-connector-degradation.js";
+export type {
+	ProviderEnableState,
+	ProviderId,
+	ProviderMeta,
+	ProviderStatus,
+} from "./contracts/local-inference-providers.js";
 export {
 	type PatchMemoryRequest,
 	PatchMemoryRequestSchema,
@@ -2135,8 +2435,28 @@ export {
 	PutWorkbenchVfsFileRequestSchema,
 	type WorkbenchTodoPriority,
 } from "./contracts/workbench-routes.js";
+export {
+	conversationClientUserMemoryId,
+	type DurableConversationChatMarker,
+	normalizeChatIdempotencyKey,
+	readDurableConversationChatMarker,
+} from "./conversation-chat-marker.js";
 export * from "./database/document-source-segments";
 export * from "./embedding-vector-space";
+export {
+	applyHostExecutionBaseline,
+	applyHostToolchainExecutionBaseline,
+	captureHostExecutionBaseline,
+	createHostExecutionBaseline,
+	getHostExecutionBaseline,
+	HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
+	type HostExecutionBaseline,
+	isHostExecutionBaselineMirrorKey,
+	isHostExecutionToolchainEnvKey,
+	resolveHostExecutable,
+	validateHostExecutionDirectory,
+	validateHostExecutionPath,
+} from "./host-execution-env.js";
 export {
 	getValidationKeywordLocaleTerms,
 	getValidationKeywordTerms,
@@ -2153,6 +2473,10 @@ export {
 	textIncludesKeywordTerm,
 } from "./i18n/keyword-matching-core.js";
 export { VALIDATION_KEYWORD_DOCS } from "./i18n/keywords.js";
+export {
+	selectUserAuthorizedRecurrence,
+	textStatesExplicitRecurrence,
+} from "./i18n/recurrence-markers.js";
 export * from "./inference-trace.js";
 export {
 	type CreateIntegrationSpanOptions,
@@ -2366,6 +2690,17 @@ export {
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
+export {
+	buildStoreVariantBlockedMessage,
+	isLocalCodeExecutionAllowed,
+} from "./platform/sandbox-policy.js";
+export {
+	RESTART_EXIT_CODE,
+	type RestartHandler,
+	requestRestart,
+	requireRestartHandler,
+	setRestartHandler,
+} from "./restart.js";
 export * from "./retrieval/rerank.js";
 export * from "./retrieval/search.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
@@ -2499,6 +2834,52 @@ export {
 	rerollBudgetCeilingFromSetting,
 	SchemaValidationFailedError,
 } from "./runtime/validated-model-call";
+export {
+	API_EXPOSE_PORT_KEYS,
+	createSelfApiRequestHeaders,
+	DEFAULT_DESKTOP_API_PORT,
+	DEFAULT_DESKTOP_UI_PORT,
+	DEFAULT_SERVER_ONLY_PORT,
+	ELIZA_RUNTIME_ENV_KEYS,
+	type ElizaRuntimeEnv,
+	firstWinningEnvString,
+	isAndroidMobile,
+	isDevApiWatchEnabled,
+	isIosMobile,
+	isLoopbackBindHost,
+	isMobilePlatform,
+	isNullOriginAllowed,
+	isWildcardBindHost,
+	type PortPreferenceResolution,
+	type ResolvedApiSecurityConfig,
+	type ResolvedRuntimePorts,
+	type RuntimeEnvRecord,
+	resolveAllowedHosts,
+	resolveAllowedOrigins,
+	resolveAllowNullOrigin,
+	resolveApiAllowedHosts,
+	resolveApiAllowedOrigins,
+	resolveApiBindHost,
+	resolveApiExposePort,
+	resolveApiSecurityConfig,
+	resolveApiToken,
+	resolveConfiguredApiToken,
+	resolveDesktopApiPort,
+	resolveDesktopApiPortPreference,
+	resolveDesktopUiPort,
+	resolveDesktopUiPortPreference,
+	resolveDisableAutoApiToken,
+	resolveElizaRuntimeEnv,
+	resolvePlatform,
+	resolveRuntimePorts,
+	resolveSelfApiCredential,
+	resolveServerOnlyPort,
+	resolveSingleProcessPort,
+	resolveUiPort,
+	setApiToken,
+	stripOptionalHostPort,
+	syncResolvedApiPort,
+} from "./runtime-env.js";
 export { flattenRuntimeSettings } from "./runtime-settings.ts";
 // Export character schemas
 export * from "./schemas/character";
@@ -2562,6 +2943,13 @@ export {
 	URGENCY_KEYWORDS,
 } from "./security/injection-primitives.ts";
 export * from "./security/log-redaction.js";
+export {
+	isLoopbackRemoteAddress,
+	isRemoteAddressInCidrList,
+	isTrustedLocalRequest,
+	type LocalRequestTrustPolicy,
+	proxyClientHeaderBlocksLocalTrust,
+} from "./security/loopback-trust.js";
 export { validateMcpServerConfig } from "./security/mcp-server-config.ts";
 export {
 	buildFailureReplyPrompt,
@@ -2738,6 +3126,13 @@ export {
 	type EnsureAgentVoiceOptions,
 	ensureAgentVoice,
 } from "./security/voice-gate.ts";
+export {
+	DEV_MODE_ENV,
+	getSelfEditDeniedSuffixes,
+	isSelfEditEnabled,
+	isSelfEditPathDenied,
+	SELF_EDIT_ENABLE_ENV,
+} from "./self-edit.js";
 export * from "./sensitive-request-policy";
 export {
 	createSensitiveRequestDispatchRegistry,
@@ -2905,9 +3300,76 @@ export {
 	type TargetSourceRegistry,
 	TargetSourceRegistryService,
 } from "./target-sources/registry";
+export {
+	createSharedTodoCutoverSnapshot,
+	MAX_SHARED_TODO_CUTOVER_BYTES,
+	MAX_SHARED_TODO_CUTOVER_COUNT,
+	MAX_SHARED_TODO_CUTOVER_MUTATION_COUNT,
+	parseSharedTodoCutoverSnapshot,
+	SHARED_TODO_CUTOVER_VERSION,
+	SHARED_TODO_MUTATION_OPERATIONS,
+	SHARED_TODO_MUTATION_WIRE_VERSION,
+	SHARED_TODO_STATUSES,
+	type SharedTodoCutoverRecord,
+	type SharedTodoCutoverSnapshot,
+	type SharedTodoMutationCutoverRecord,
+	type SharedTodoMutationOperation,
+	type SharedTodoStatus,
+	TODO_CUTOVER_PROVENANCE_KEY,
+	TodoCutoverContractError,
+	type TodoCutoverJsonValue,
+} from "./todo-cutover.js";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export {
+	activeWordIndex,
+	type FlatTranscriptWord,
+	flattenTranscriptWords,
+	normalizeTranscriptScope,
+	summarizeTranscript,
+	TRANSCRIPT_CAPTURE_MODES,
+	TRANSCRIPT_CONSENT_STATES,
+	TRANSCRIPT_FRAGMENT_MAX_CHARS,
+	TRANSCRIPT_PERMISSION_STATES,
+	TRANSCRIPT_POLICY_STATES,
+	TRANSCRIPT_PREVIEW_CHARS,
+	TRANSCRIPT_RETENTION_STATES,
+	TRANSCRIPT_SHARING_STATES,
+	type Transcript,
+	type TranscriptCaptureMode,
+	type TranscriptCapturePrivacyState,
+	type TranscriptCaptureSharingState,
+	type TranscriptConsentState,
+	type TranscriptKnowledgeFragment,
+	type TranscriptPermissionState,
+	type TranscriptPolicyState,
+	type TranscriptRetentionState,
+	type TranscriptScope,
+	type TranscriptSegment,
+	type TranscriptSharingState,
+	type TranscriptSource,
+	type TranscriptStatus,
+	type TranscriptSummary,
+	type TranscriptSummaryMeetingMeta,
+	type TranscriptWord,
+	transcriptCapturePrivacyState,
+	transcriptDurationMs,
+	transcriptKnowledgeFragments,
+	transcriptPlainText,
+	transcriptPreview,
+	transcriptSpeakerCount,
+	validateAsrWordTimings,
+	type WordTimingValidation,
+	type WordTimingViolation,
+} from "./transcripts.js";
 export * from "./tunnel-service";
+export {
+	asNonEmptyString,
+	asObjectArray,
+	asRecordOrUndefined as asObjectRecordOrUndefined,
+	isPlainObject as hasPlainObjectTag,
+	type UnknownRecord,
+} from "./type-guards.js";
 export { asRecord as asObjectRecord } from "./type-guards.ts";
 // Export everything from types
 export * from "./types/access-context.js";
@@ -3043,6 +3505,10 @@ export {
 } from "./utils/action-results.ts";
 export { hasActionContext } from "./utils/action-validation.ts";
 export {
+	extractAssistantReplyText,
+	stripAssistantStageDirections,
+} from "./utils/assistant-text.js";
+export {
 	readJsonFile,
 	writeJsonAtomic,
 	writeJsonAtomicSync,
@@ -3110,10 +3576,24 @@ export {
 	setElizaApiBase,
 	setElizaApiToken,
 } from "./utils/eliza-globals.js";
+export {
+	resolveElizaPackageRoot,
+	resolveElizaPackageRootSync,
+} from "./utils/eliza-root.js";
+export {
+	DEFAULT_APP_ROUTE_PLUGIN_MODULES,
+	isEnvDisabled,
+	normalizeEnvValue,
+	normalizeEnvValueOrNull,
+	readAliasedEnv,
+	type SyncElizaEnvAliasOptions,
+	syncElizaEnvAliases,
+} from "./utils/env.js";
 export * from "./utils/env-alias.js";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export * from "./utils/example-names.js";
+export { isSafeExecutableValue } from "./utils/exec-safety.js";
 export {
 	isExpectedLocalEmbeddingUnavailability,
 	modelProviderFailureDetails,
@@ -3144,6 +3624,23 @@ export {
 	providerRetryAfterMs,
 } from "./utils/model-retry";
 export { providerRateLimitRetryAt } from "./utils/model-retry.ts";
+export {
+	type CanonicalIntegerResult,
+	type ParseCanonicalIntegerOptions,
+	type ParseClampedIntegerOptions,
+	type ParseClampedNumberOptions,
+	type ParsePositiveNumberOptions,
+	parseCanonicalInteger,
+	parseClampedFloat,
+	parseClampedInteger,
+	parseNonNegativeInteger,
+	parsePositiveFloat,
+	parsePositiveInteger,
+} from "./utils/number-parsing.js";
+export {
+	decodeUrlPathComponent,
+	type PathComponentDecodeResult,
+} from "./utils/path-component.js";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 export * from "./utils/project-registry";
@@ -3157,6 +3654,7 @@ export {
 export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
+export { createSerialise } from "./utils/serialise.js";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
 // Export streaming utilities
@@ -3185,3 +3683,39 @@ export * from "./utils/workspace-folder-config";
 // Export validation utilities
 export * from "./validation/keywords";
 export * from "./validation/secrets";
+export {
+	collapseViewDeclarations,
+	getViewModalities,
+} from "./views/view-declarations.js";
+export {
+	AGENT_SURFACE_CAPABILITY_IDS,
+	parseViewInteractionClientId,
+	readViewInteractionClientId,
+	STANDARD_CAPABILITIES,
+	type StandardCapability,
+	type ViewInteractRequest,
+	type ViewInteractResult,
+} from "./views/view-interact-protocol.js";
+export {
+	dedupeModalities,
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./views/view-kind.js";
+export {
+	ASR_PROVIDERS,
+	EDGE_BACKUP_VOICES,
+	hasConfiguredApiKey,
+	LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+	LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+	PREMADE_VOICES,
+	parseVoiceUiContext,
+	REALTIME_VOICE_CLIENT_TRANSPORT,
+	sanitizeApiKey,
+	VOICE_PROVIDERS,
+	type VoicePreset,
+	type VoiceUiContext,
+} from "./voice.js";

@@ -22,11 +22,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ElizaError,
   formatError,
+  isMobilePlatform,
   logger,
   type Plugin,
   type PluginInstallRecord,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,

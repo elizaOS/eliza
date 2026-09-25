@@ -5,7 +5,7 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -20,7 +20,7 @@ app.use("*", moneyRateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const user = await requireCurrentBillingManagerSession(c);
     const result = await autoTopUpService.executeAutoTopUpForOrganization(
       user.organization_id,
       { source: "manual" },

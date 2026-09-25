@@ -17,16 +17,16 @@
  * @module first-time-setup
  */
 
-import { type AgentConfig, formatError } from "@elizaos/core";
-import { getStylePresets } from "@elizaos/core/character-presets";
 import {
-  migrateLegacyRuntimeConfig,
-  type StylePreset,
-} from "@elizaos/core/contracts/first-run-options";
-import {
+  type AgentConfig,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-} from "@elizaos/core/contracts/service-routing";
+  formatError,
+  getStylePresets,
+  migrateLegacyRuntimeConfig,
+  type StylePreset,
+} from "@elizaos/core";
+
 import { persistConfigEnv } from "../api/config-env.ts";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,

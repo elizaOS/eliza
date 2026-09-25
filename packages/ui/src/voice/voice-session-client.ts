@@ -50,6 +50,10 @@ import {
   VoiceMicCaptureError,
 } from "./voice-session-mic-capture";
 import {
+  claimVoiceSession,
+  type VoiceSessionLease,
+} from "./voice-session-ownership";
+import {
   createVoiceSessionPlayback,
   type PlaybackAudioContextLike,
   type VoiceSessionPlayback,
@@ -318,6 +322,7 @@ export function createVoiceSessionClient(
   // Epoch expiry of the CURRENT minted token; rotation never fires past it
   // (the server has already severed — the reactive recovery path owns it).
   let rotationDeadlineMs: number | null = null;
+  let ownership: VoiceSessionLease | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
   let lifecycleAbort: AbortController | null = null;
@@ -993,6 +998,8 @@ export function createVoiceSessionClient(
     intentionalClose = true;
     microphoneMuted = false;
     playbackEnd = null;
+    const stoppedOwnership = ownership;
+    ownership = null;
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
@@ -1034,6 +1041,7 @@ export function createVoiceSessionClient(
     const micTeardown = teardownMic();
     // error-policy:J6 playback sink release is best effort once detached; stop() must always complete.
     await Promise.all([micTeardown, stoppedPlayback?.stop().catch(() => {})]);
+    await stoppedOwnership?.release();
     if (lifecycleGeneration === stoppedGeneration) {
       connPhase = "closed";
       setState({ ...INITIAL_VOICE_SESSION_STATE });
@@ -1047,7 +1055,7 @@ export function createVoiceSessionClient(
       return playback?.needsUnlock ?? false;
     },
     async start() {
-      if (connPhase !== "idle" && connPhase !== "closed") return;
+      if (ownership || (connPhase !== "idle" && connPhase !== "closed")) return;
       const generation = ++lifecycleGeneration;
       lifecycleAbort?.abort();
       const lifecycleController = new AbortController();
@@ -1063,7 +1071,10 @@ export function createVoiceSessionClient(
       // Create playback up front so an early user-gesture unlock is possible and
       // downlink frames after `ready` have a sink.
       try {
-        const createdPlayback = await createVoiceSessionPlayback({
+        const lease = claimVoiceSession(lifecycleController.signal);
+        ownership = lease;
+        // Start unlock synchronously in the gesture before awaiting cross-tab admission.
+        const playbackPromise = createVoiceSessionPlayback({
           createAudioContext: options.createPlaybackAudioContext,
           signal: lifecycleController.signal,
           // createVoiceSessionPlayback invokes resume synchronously before its
@@ -1096,6 +1107,14 @@ export function createVoiceSessionClient(
           now,
           onStats: options.onPlaybackStats,
         });
+        const [createdPlayback] = await Promise.all([
+          playbackPromise,
+          lease.ready.catch((error) => {
+            // error-policy:J1 Surface admission denial without waiting for browser audio setup or close.
+            lifecycleController.abort();
+            throw error;
+          }),
+        ]);
         if (!isLifecycleCurrent(generation)) {
           // error-policy:J6 best-effort release of a playback sink whose lifecycle was superseded mid-create.
           await createdPlayback.stop().catch(() => {});
@@ -1106,7 +1125,7 @@ export function createVoiceSessionClient(
       } catch (err) {
         if (!isLifecycleCurrent(generation)) return;
         emitError(err instanceof Error ? err : new Error(String(err)));
-        setState({ ...INITIAL_VOICE_SESSION_STATE });
+        await stop();
         return;
       }
       try {

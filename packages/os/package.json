@@ -35,6 +35,9 @@
     "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
     "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh"
   },
+  "dependencies": {
+    "@elizaos/ui": "workspace:*"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/bun": "1.4.2",

@@ -2,6 +2,8 @@ package ai.eliza.plugins.websiteblocker
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
 import android.net.NetworkCapabilities
 import java.net.DatagramSocket
 import java.net.DatagramPacket
@@ -99,12 +101,36 @@ class WebsiteBlockerBridgeInstrumentedTest {
     private fun waitVpn(active: Boolean, timeoutSeconds: Long = 10) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
         val manager = instrumentation.targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        fun ready() = if (active) {
-            manager.getNetworkCapabilities(manager.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-        } else !hasVpn()
-        while (!ready()) {
-            assertTrue("VPN did not become active=$active", System.nanoTime() < deadline)
-            Thread.sleep(50)
+        if (active) {
+            val ready = CountDownLatch(1)
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                private var vpn: Network? = null
+
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    vpn = if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) network else null
+                }
+
+                override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                    // activeNetwork can expose the VPN before netd installs its DNS route.
+                    // Android delivers link properties after applying those routes; do not
+                    // send the single acceptance packet from a synchronous capability poll.
+                    val dns = InetAddress.getByName("10.77.0.2")
+                    if (network == vpn && properties.dnsServers.contains(dns) &&
+                        properties.routes.any { it.destination.address == dns && it.destination.prefixLength == 32 }
+                    ) ready.countDown()
+                }
+            }
+            manager.registerDefaultNetworkCallback(callback)
+            try {
+                assertTrue("VPN DNS route did not become ready", ready.await(timeoutSeconds, TimeUnit.SECONDS))
+            } finally {
+                manager.unregisterNetworkCallback(callback)
+            }
+        } else {
+            while (hasVpn()) {
+                assertTrue("VPN did not become inactive", System.nanoTime() < deadline)
+                Thread.sleep(50)
+            }
         }
     }
 

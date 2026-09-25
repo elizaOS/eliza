@@ -9,7 +9,7 @@ import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 
 function trimEnvString(value: unknown): string | undefined {

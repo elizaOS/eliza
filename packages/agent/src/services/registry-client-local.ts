@@ -13,8 +13,12 @@ export { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger, readJsonFile } from "@elizaos/core";
-import { packageNameToAppDisplayName } from "@elizaos/core/contracts/apps";
+import {
+  logger,
+  packageNameToAppDisplayName,
+  readJsonFile,
+} from "@elizaos/core";
+
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {

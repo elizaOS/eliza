@@ -14,8 +14,19 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  getFirstRunProviderOption,
+  hasExplicitCanonicalRuntimeConfig,
+  isAndroidMobile,
   isGoogleChatConfigured,
+  isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
+  type ResolvedElizaCloudTopology,
+  readAliasedEnv,
+  resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
+  resolveServiceRoutingInConfig,
 } from "@elizaos/core";
 import channelPluginMap from "@elizaos/core/catalog/channel-plugin-map.json" with {
   type: "json",
@@ -26,20 +37,7 @@ import providerPluginMap from "@elizaos/core/catalog/provider-plugin-map.json" w
 import shortIdPluginMap from "@elizaos/core/catalog/short-id-plugin-map.json" with {
   type: "json",
 };
-import {
-  type ResolvedElizaCloudTopology,
-  resolveElizaCloudTopology,
-} from "@elizaos/core/contracts/cloud-topology";
-import {
-  getFirstRunProviderOption,
-  hasExplicitCanonicalRuntimeConfig,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunProviderId,
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
-import { isAndroidMobile, isMobilePlatform } from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyDevCloudConfigAuthority,

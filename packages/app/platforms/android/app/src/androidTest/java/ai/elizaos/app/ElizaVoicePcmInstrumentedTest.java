@@ -26,6 +26,14 @@ public class ElizaVoicePcmInstrumentedTest {
     }
 
     @Test
+    public void directDiarizationRejectsOversizedAudioBeforeProcessing() {
+        assertTrue(ElizaVoiceNative.ensureLoaded());
+        RuntimeException error = assertThrows(RuntimeException.class,
+            () -> ElizaVoiceNative.nativeDiarizSegment(0, new float[80001]));
+        assertTrue(error.getMessage().contains("at most 80000 samples"));
+    }
+
+    @Test
     public void nativeBatchesRejectPartialFramesBeforeProcessing() {
         assertTrue(ElizaVoiceNative.ensureLoaded());
         for (int size : new int[] {1, 511, 513, 1025}) {
@@ -39,4 +47,17 @@ public class ElizaVoicePcmInstrumentedTest {
             assertTrue(error.getMessage().contains("complete 1280-sample frames"));
         }
     }
+    @Test
+    public void wakewordDiagnosticsRejectEmptyOrIncompleteClipsBeforeLoadingModels() {
+        assertTrue(ElizaVoiceNative.ensureLoaded());
+        for (int size : new int[] {0, 1, 1279, 1281, 2561}) {
+            RuntimeException positive = assertThrows(RuntimeException.class,
+                () -> ElizaVoiceNative.nativeWakewordSelfTest("", new float[size], new float[1280]));
+            assertTrue(positive.getMessage().contains("nonempty complete 1280-sample frames"));
+            RuntimeException negative = assertThrows(RuntimeException.class,
+                () -> ElizaVoiceNative.nativeWakewordSelfTest("", new float[1280], new float[size]));
+            assertTrue(negative.getMessage().contains("nonempty complete 1280-sample frames"));
+        }
+    }
+
 }

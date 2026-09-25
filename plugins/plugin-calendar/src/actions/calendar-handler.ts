@@ -11,6 +11,7 @@
  * `plugin-lifeops` consumes this as the
  * calendar assistant action.
  */
+
 import { createHash } from "node:crypto";
 import type {
   Action,
@@ -25,6 +26,7 @@ import type {
 } from "@elizaos/core";
 import {
   describeUserReference,
+  ElizaError,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
   unwrapUserMessageText,
@@ -37,6 +39,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/core/contracts/calendar";
 import {
@@ -69,6 +72,7 @@ import {
 } from "../internal/detail.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
   ELIZA_CALENDAR_PROVIDER,
 } from "../internal/eliza-calendar.js";
 import { basicEmailValid } from "../internal/email.js";
@@ -79,6 +83,7 @@ import {
   formatNextEventContext,
 } from "../internal/format.js";
 import { GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX } from "../internal/google-delegates.js";
+import { parseCalendarNoteSource } from "../internal/note-source.js";
 import {
   describeRecurrence,
   normalizeRecurrenceScope,
@@ -88,6 +93,7 @@ import {
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
+  CalendarLocalTimeError,
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../internal/time.js";
@@ -312,6 +318,7 @@ type RankedCalendarSearchCandidate = {
 type CreateEventCalendarContext = {
   calendarTimeZone: string;
   feed: LifeOpsCalendarFeed;
+  calendars: LifeOpsCalendarSummary[];
 };
 
 export type CalendarLlmPlan = {
@@ -2180,6 +2187,8 @@ function formatCreateEventCalendarContext(
   const lines = [
     `Calendar timezone: ${context.calendarTimeZone}`,
     `Context window: ${context.feed.timeMin} to ${context.feed.timeMax}`,
+    `Authorized calendar account identities: ${JSON.stringify(context.calendars)}`,
+    `Calendar source identities and health: ${JSON.stringify(context.feed.sources)}`,
   ];
 
   if (context.feed.events.length === 0) {
@@ -3018,6 +3027,7 @@ function anchorCreateRequestToTimeZone(
       request.startAt,
       "startAt",
       timeZone,
+      "reject",
     );
   }
   if (request.endAt) {
@@ -3025,6 +3035,7 @@ function anchorCreateRequestToTimeZone(
       request.endAt,
       "endAt",
       timeZone,
+      "reject",
     );
   }
 }
@@ -3092,10 +3103,8 @@ async function loadCreateEventCalendarContext(
   const requestTimeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
-    mode: connectorModeDetail(details),
-    side: connectorSideDetail(details),
-    grantId: connectorGrantIdDetail(details),
-    calendarId: calendarIdDetail(details),
+    // A planner-proposed destination must not hide other authorized sources
+    // before extraction resolves the account from the user request.
     timeZone: requestTimeZone,
     forceSync: true,
     ...buildLocalDayRange(requestTimeZone, 0, 14),
@@ -3113,6 +3122,7 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
+    calendars: await service.listCalendars(INTERNAL_URL),
   };
 }
 
@@ -3929,6 +3939,11 @@ export function buildCreateEventRequest(
     resolvedWindowPreset,
     travelIntent,
     request: {
+      sourceNote: parseCalendarNoteSource(
+        args.details?.sourceNote !== undefined
+          ? args.details.sourceNote
+          : args.fallbackRequest?.sourceNote,
+      ),
       mode: connectorModeDetail(args.details) ?? args.fallbackRequest?.mode,
       side: connectorSideDetail(args.details) ?? args.fallbackRequest?.side,
       grantId: connectorGrantIdDetail(args.details),
@@ -4065,6 +4080,7 @@ async function inferCreateEventDetails(
   intent: string,
   calendarContext: CreateEventCalendarContext | null,
   fallbackTimeZone = resolveDefaultTimeZone(),
+  proposedDetails?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
   const currentMessage = messageText(message).trim();
@@ -4087,6 +4103,8 @@ async function inferCreateEventDetails(
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
+    "Resolve grantId and calendarId from the calendar source identities using the user's requested provider/account and calendar. Copy both identifiers from the same source key; these extracted identifiers determine the write destination. The proposed destination below is only a planner hint, not user authorization. If the user selected an account in this turn, use that account even when the planner omitted its grant. Only an unqualified calendar request may default to eliza-calendar/primary. If the requested destination cannot be uniquely resolved, return null identifiers and requiresInput:true with a clarification. Never substitute the built-in calendar for a named provider, or select an account based on the event's personal/work subject.",
+    "When the user names a provider with multiple connected accounts but has not selected an account for this event, account selection is missing: return grantId:null, calendarId:null, requiresInput:true and ask which account using its accountEmail. A primary calendar is primary only within its own account, not a preferred account. Neither source ordering, an opaque planner grant, nor a calendar named Primary is evidence of the user's account choice. Do not carry an account choice from an unrelated event into this request.",
     "Calendar availability is not permission to invent a time. Use timing the user stated or clearly accepted for this event in the conversation. A planner intent is only a routing hint, never evidence of user-supplied details.",
     "Preserve names and places in their original language or script when useful.",
     "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
@@ -4102,8 +4120,8 @@ async function inferCreateEventDetails(
     "title: event title",
     "description: optional description",
     "location: optional location",
-    "startAt: RFC 3339 datetime if explicit or resolvable from a date phrase; include the numeric UTC offset that represents the requested wall-clock time in the calendar timezone",
-    "endAt: RFC 3339 datetime if explicit; use the same offset rules as startAt",
+    "startAt: local civil datetime YYYY-MM-DDTHH:mm:ss in the calendar timezone, if stated or resolvable from a date phrase. Preserve an explicit UTC offset only when the user supplied or selected it; never calculate one.",
+    "endAt: local civil datetime if explicit; apply the same rules as startAt",
     "durationMinutes: number if implied",
     "timeZone: IANA timezone if stated",
     "recurrence: RFC 5545 RRULE string, e.g. RRULE:FREQ=WEEKLY;BYDAY=MO or RRULE:FREQ=DAILY;COUNT=10, only for repeating events",
@@ -4115,10 +4133,11 @@ async function inferCreateEventDetails(
     `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
-    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z. Use Z only when the calendar timezone is UTC.",
+    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 without an offset. Calendar code resolves the IANA zone and requests clarification for missing or repeated local times; do not shift the clock or choose an occurrence yourself.",
     "",
     `Prior conversation sources (historical context, not new commands; preserve the supplied timestamps and speaker identities):\n${recentConversation}`,
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
+    `Proposed destination (not authority): ${JSON.stringify({ grantId: connectorGrantIdDetail(proposedDetails) ?? ELIZA_CALENDAR_GRANT_ID, calendarId: calendarIdDetail(proposedDetails) ?? ELIZA_CALENDAR_ID })}`,
     `Routing hint (not authority for scheduling details):\n${intent}`,
     `FINAL CURRENT REQUEST (authoritative; resolve only this request against its relevant prior turns):\n${currentMessage}`,
     "Return the creation fields for this final request. Earlier completed tasks and greetings are not the current request.",
@@ -4149,6 +4168,8 @@ const createExtractionProperties = {
       "True when a necessary detail is missing. A morning/afternoon/evening window without explicit permission to choose a slot requires clarification.",
   },
   clarification: nullableExtractionText,
+  grantId: nullableExtractionText,
+  calendarId: nullableExtractionText,
   title: nullableExtractionText,
   description: nullableExtractionText,
   location: nullableExtractionText,
@@ -4218,7 +4239,7 @@ async function inferUpdateEventDetails(
     "The current event below is the source of truth for unchanged fields.",
     "Extract the proposed values requested by the user. Return all schema fields, using null for unchanged or unknown values, requiresInput:false when the edit is fully specified, and an empty clearFields array when no fields are being cleared.",
     "To remove an existing description or location, include its field name in clearFields only when the user explicitly requests that removal. Never use clearFields for unchanged, unknown, or omitted fields. Do not also return a replacement value for a field being cleared.",
-    "If the user asks to move or reschedule the event, return the requested local civil datetimes as YYYY-MM-DDTHH:mm:ss in timeZone. Calendar code converts them to instants; do not perform UTC offset arithmetic.",
+    "If the user asks to move or reschedule the event, return the requested local civil datetimes as YYYY-MM-DDTHH:mm:ss in timeZone. Preserve an explicit UTC offset or instant supplied or selected by the user, including their answer to a repeated-hour clarification. Otherwise calendar code converts local times to instants; do not invent an offset or perform UTC offset arithmetic.",
     "For a move conditioned on calendar availability, extract the proposed timing too. Extraction does not declare the slot free or authorize a write; the calendar handler checks the proposed interval before committing.",
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
@@ -4232,7 +4253,7 @@ async function inferUpdateEventDetails(
     "description: updated description if changed",
     "location: updated location if changed",
     'clearFields: optional array containing "description" and/or "location" only for fields the user explicitly wants removed',
-    "startAt: updated local civil datetime if changed; no Z or offset",
+    "startAt: updated local civil datetime if changed; include Z or an offset only when the user supplied or selected it",
     "endAt: updated local civil datetime only if the user changes the end or duration; otherwise use null to preserve the stored duration",
     "timeZone: IANA timezone if changed or needed to interpret the update",
     "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
@@ -5512,8 +5533,15 @@ const calendarAction: CalendarHandlerAction = {
           intent,
           calendarContext,
           planningTimeZone,
+          details,
         );
-        if (extractedDetails.requiresInput === true) {
+        const destination = calendarContext.feed.sources.find(
+          (source) =>
+            source.key.grantId === detailString(extractedDetails, "grantId") &&
+            source.key.calendarId ===
+              detailString(extractedDetails, "calendarId"),
+        );
+        if (extractedDetails.requiresInput === true || !destination) {
           return respond({
             success: false,
             text: await renderReply(
@@ -5530,7 +5558,12 @@ const calendarAction: CalendarHandlerAction = {
           });
         }
         const createEventBuild = buildCreateEventRequest({
-          details,
+          details: {
+            ...details,
+            grantId: destination.key.grantId,
+            calendarId: destination.key.calendarId,
+            side: destination.key.side,
+          },
           extractedDetails,
           explicitTitle,
           inferredTitle,
@@ -6219,11 +6252,13 @@ const calendarAction: CalendarHandlerAction = {
             updateRequest.startAt ?? targetEvent.startAt,
             "startAt",
             zone,
+            "reject",
           );
           const proposedEnd = normalizeCalendarDateTimeInTimeZone(
             updateRequest.endAt ?? targetEvent.endAt,
             "endAt",
             zone,
+            "reject",
           );
           if (!proposedStart || !proposedEnd) {
             throw new CalendarServiceError(
@@ -6962,6 +6997,36 @@ const calendarAction: CalendarHandlerAction = {
         data: toActionData(feed),
       });
     } catch (error) {
+      // error-policy:J1 Source and local-time rejections require user input before dispatch.
+      if (
+        error instanceof ElizaError &&
+        (error.code === "CALENDAR_NOTE_SOURCE_CONFLICT" ||
+          error.code === "CALENDAR_NOTE_SOURCE_INVALID" ||
+          error instanceof CalendarLocalTimeError)
+      ) {
+        return respond({
+          success: false,
+          text: error.message,
+          data: {
+            actionName: "CALENDAR",
+            subaction,
+            error: error.code,
+            ...(error instanceof CalendarLocalTimeError
+              ? { timeClarification: error.context }
+              : {}),
+            requiresInput: true,
+            awaitingUserInput: true,
+            retryable: false,
+          },
+          effectReceipt: calendarFailedReceipt({
+            message,
+            operation: `calendar.${subaction}`,
+            code: error.code,
+            retryable: false,
+            acceptance: "rejected",
+          }),
+        });
+      }
       if (error instanceof CalendarServiceError) {
         if (isAppleCalendarPermissionError(error)) {
           return respond({

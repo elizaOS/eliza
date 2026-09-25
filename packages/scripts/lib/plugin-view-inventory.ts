@@ -584,24 +584,42 @@ function literalObject(object, name, context) {
   return { object: resolved.value, context: resolved.context };
 }
 
-function capabilityIds(object, context) {
-  const property = objectProperty(object, "capabilities", context);
+function declaredOperationIds(object, context, field, identity) {
+  const property = objectProperty(object, field, context);
   if (!property) return [];
-  const resolved = resolvedArray(property.initializer, context, "capabilities");
+  const resolved = resolvedArray(property.initializer, context, field);
   const ids = [];
   for (const element of resolved.value.elements) {
     if (ts.isSpreadElement(element)) {
       throw new Error(
-        `[plugin-view-inventory] ${resolved.context.source}:${sourceLine(resolved.context.sourceFile, element)} capabilities may not use a spread`,
+        `[plugin-view-inventory] ${resolved.context.source}:${sourceLine(resolved.context.sourceFile, element)} ${field} may not use a spread`,
       );
     }
     const item = resolveStaticExpression(element, resolved.context);
     if (!ts.isObjectLiteralExpression(item.value)) {
       throw new Error(
-        `[plugin-view-inventory] ${item.context.source}:${sourceLine(item.context.sourceFile, item.value)} capability must resolve to an object literal`,
+        `[plugin-view-inventory] ${item.context.source}:${sourceLine(item.context.sourceFile, item.value)} ${field} entry must resolve to an object literal`,
       );
     }
-    ids.push(literalString(item.value, "id", item.context, { required: true }));
+    ids.push(
+      literalString(item.value, identity, item.context, { required: true }),
+    );
+  }
+  return ids;
+}
+
+function viewOperationIds(object, context) {
+  const ids = [
+    ...declaredOperationIds(object, context, "capabilities", "id"),
+    ...declaredOperationIds(object, context, "scopedActions", "name"),
+  ];
+  const seen = new Set();
+  for (const id of ids) {
+    if (seen.has(id))
+      throw new Error(
+        `[plugin-view-inventory] ${context.source} repeats operation ${id}`,
+      );
+    seen.add(id);
   }
   return ids;
 }
@@ -927,7 +945,7 @@ function parseView(object, context, owner, builtin) {
     bundlePath,
     framePath,
     relatedActions: literalStringArray(object, "relatedActions", context) ?? [],
-    operationIds: capabilityIds(object, context),
+    operationIds: viewOperationIds(object, context),
     minRole: roleGate
       ? literalString(roleGate.object, "minRole", roleGate.context)
       : null,
