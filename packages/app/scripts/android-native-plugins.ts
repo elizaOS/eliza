@@ -382,6 +382,22 @@ async function main() {
               applicationId,
               `android.permission.${permission}`,
             );
+          const permissionState = (stage) => ({
+            stage,
+            flags: adb("shell", "dumpsys", "package", applicationId)
+              .split("\n")
+              .filter((line) =>
+                /android\.permission\.(READ|WRITE)_CONTACTS:/.test(line),
+              )
+              .map((line) => line.trim()),
+          });
+          const permissionStates = [permissionState("before-preflight")];
+          entry.artifacts = [
+            saveArtifact({
+              name: "contacts-permission-flags.json",
+              bytes: Buffer.from(JSON.stringify(permissionStates, null, 2)),
+            }),
+          ];
           const preflight = adb(
             "shell",
             "am",
@@ -401,9 +417,16 @@ async function main() {
             preflight,
           );
           entry.permissionPreflight = parseInstrumentation(preflight, 1);
-          entry.artifacts = parseNativeArtifacts(preflight).map((artifact) =>
-            saveArtifact(artifact),
-          );
+          permissionStates.push(permissionState("after-preflight"));
+          entry.artifacts = [
+            saveArtifact({
+              name: "contacts-permission-flags.json",
+              bytes: Buffer.from(JSON.stringify(permissionStates, null, 2)),
+            }),
+            ...parseNativeArtifacts(preflight).map((artifact) =>
+              saveArtifact(artifact),
+            ),
+          ];
           if (
             !entry.permissionPreflight.pass ||
             !entry.artifacts.some((artifact) =>
