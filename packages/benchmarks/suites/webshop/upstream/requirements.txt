@@ -18,7 +18,7 @@ scikit_learn==1.7.2
 selenium==4.2.0
 spacy==3.3.0
 thefuzz==0.19.0
-torch==2.13.0
+torch==2.14.0
 tqdm==4.67.3
 train==0.0.5
-transformers==5.8.1
+transformers==5.10.1
