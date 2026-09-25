@@ -78,3 +78,14 @@ source size. Impossible bitmap byte counts reject explicitly. Requested EXIF
 contains source-capture metadata, so its orientation/dimensions can precede
 output transforms. Device tests decode JPEG, PNG and WebP, verify manual ISO and
 shutter in source EXIF, and check dimensions and malformed-option rejection.
+
+Gallery photos return the saved URI only after the encoded bytes are written.
+Android 10+ keeps entries pending until publication and removes incomplete
+entries on failure. Save failures reject with GALLERY_WRITE_FAILED; failed
+cleanup retains the affected URI and diagnostic details. Older Android versions
+request storage permission before capture and return a file URI. Device tests
+read actual MediaStore images and compare exact bytes; a separate private provider
+fixture checks write/publication/cleanup failures. Injected failures also run
+through the real camera and WebView promise using the test activity's resolver;
+these are not real MediaStore outages. Legacy storage behavior still needs
+device qualification.

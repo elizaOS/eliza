@@ -88,7 +88,7 @@ class CameraControlsInstrumentedTest {
             window.controlResult = null;
             window.Capacitor.nativePromise('ElizaCamera', '$method', $options).then(
               value => window.controlResult = {ok:true, value},
-              error => window.controlResult = {ok:false, error:String(error.message ?? error), code:error.code});
+              error => window.controlResult = {ok:false, error:String(error.message ?? error), code:error.code, details:error.data});
         """.trimIndent())
         awaitState("$method did not settle") { evaluate(scenario, "window.controlResult !== null") == "true" }
         return JSONObject(JSONTokener(evaluate(scenario, "JSON.stringify(window.controlResult)")).nextValue() as String)
@@ -925,6 +925,94 @@ class CameraControlsInstrumentedTest {
                 assertEquals(original.getInt("width"), heightOnly.getInt("width"))
                 assertEquals("A height-only request must be applied", 120, heightOnly.getInt("height"))
             } finally { call(scenario, "stopPreview"); emit("camera-photo-dimensions.json", receipts) }
+        }
+    }
+
+    @Test fun galleryPhotosPersistExactEncodedBytesAndCanBeReadBack() {
+        assertTrue("This acceptance target requires scoped MediaStore", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val resolver = context.contentResolver
+        val collection = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        fun ownImages(): Set<Long> {
+            return requireNotNull(resolver.query(collection, arrayOf(android.provider.MediaStore.Images.Media._ID),
+                "${android.provider.MediaStore.Images.Media.OWNER_PACKAGE_NAME} = ?", arrayOf(context.packageName), null)).use { cursor ->
+                buildSet { while (cursor.moveToNext()) add(cursor.getLong(0)) }
+            }
+        }
+        val original = ownImages()
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                for (format in listOf("jpeg", "png", "webp")) {
+                    val before = ownImages()
+                    val result = call(scenario, "capturePhoto", "{format:'$format',width:320,height:240,saveToGallery:true}")
+                    assertTrue("Gallery capture failed: ${result.optString("error")}", result.getBoolean("ok"))
+                    val photo = result.getJSONObject("value")
+                    val created = ownImages() - before
+                    assertEquals("Exactly one gallery image must be persisted per capture", 1, created.size)
+                    val uri = android.net.Uri.parse(photo.getString("path"))
+                    assertEquals("content", uri.scheme); assertEquals("media", uri.authority)
+                    assertEquals("Returned URI must identify the newly saved image", created.single().toLong(), android.content.ContentUris.parseId(uri))
+                    val bytes = requireNotNull(resolver.openInputStream(uri)).use { it.readBytes() }
+                    val returned = Base64.decode(photo.getString("base64"), Base64.DEFAULT)
+                    assertArrayEquals("Persisted image must be the exact returned encoding", returned, bytes)
+                    val bitmap = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+                    try { assertEquals(320, bitmap.width); assertEquals(240, bitmap.height) } finally { bitmap.recycle() }
+                    requireNotNull(resolver.query(uri, arrayOf(android.provider.MediaStore.Images.Media.MIME_TYPE,
+                        android.provider.MediaStore.Images.Media.IS_PENDING, android.provider.MediaStore.Images.Media.DISPLAY_NAME), null, null, null)).use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        assertEquals("image/$format", cursor.getString(0)); assertEquals(0, cursor.getInt(1))
+                        receipts.put(JSONObject().put("format", format).put("uri", uri.toString()).put("bytes", bytes.size)
+                            .put("mime", cursor.getString(0)).put("pending", cursor.getInt(1)).put("displayName", cursor.getString(2))
+                            .put("returnedPath", photo.opt("path") ?: JSONObject.NULL).put("exactBytesMatch", true))
+                    }
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                for (id in ownImages() - original) {
+                    val uri = android.content.ContentUris.withAppendedId(collection, id)
+                    assertEquals("Delete only this test's newly created gallery row", 1, resolver.delete(uri, null, null))
+                }
+                assertEquals(original, ownImages())
+                emit("camera-photo-gallery.json", receipts)
+            }
+        }
+    }
+
+    @Test fun galleryProviderFailuresRejectThroughTheRealPhotoBridge() {
+        assertTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+        val receipts = JSONArray()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                for (mode in listOf("null-stream", "cleanup-error")) {
+                    GalleryFailureProvider.mode = mode
+                    GalleryFailureProvider.events.clear()
+                    GalleryFailureProvider.deleted = 0
+                    val provider = GalleryFailureProvider()
+                    provider.attachInfo(context, android.content.pm.ProviderInfo().apply { authority = "media"; exported = false })
+                    scenario.onActivity { it.galleryFaultResolver = android.content.ContentResolver.wrap(provider) }
+                    val result = call(scenario, "capturePhoto", "{format:'jpeg',width:320,height:240,saveToGallery:true}")
+                    receipts.put(JSONObject().put("fixtureMode", mode).put("result", result)
+                        .put("deleteCalls", GalleryFailureProvider.deleted).put("events", JSONArray(GalleryFailureProvider.events))
+                        .put("scope", "Real camera and WebView; test activity substitutes a private failure provider for this save"))
+                    assertFalse("Gallery failure cannot resolve a successful photo", result.getBoolean("ok"))
+                    assertEquals("GALLERY_WRITE_FAILED", result.getString("code"))
+                    assertEquals(mode == "cleanup-error", result.getJSONObject("details").getBoolean("cleanupFailed"))
+                    assertTrue(result.getJSONObject("details").getString("path").startsWith("content://media/"))
+                    assertEquals(1, GalleryFailureProvider.deleted)
+                    scenario.onActivity { it.galleryFaultResolver = null }
+                    java.io.File(context.cacheDir, "gallery-provider-fixture.bin").delete()
+                }
+            } finally {
+                scenario.onActivity { it.galleryFaultResolver = null }
+                GalleryFailureProvider.mode = "success"
+                java.io.File(context.cacheDir, "gallery-provider-fixture.bin").delete()
+                call(scenario, "stopPreview")
+                emit("camera-gallery-bridge-failures.json", receipts)
+            }
         }
     }
 

@@ -52,7 +52,6 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -488,6 +487,12 @@ class CameraPlugin : Plugin() {
         val targetHeight = call.getInt("height")
         val includeExif = call.getBoolean("exifOrientation") ?: false
 
+        if (saveToGallery && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            getPermissionState("storage") != com.getcapacitor.PermissionState.GRANTED) {
+            activity.runOnUiThread { requestPermissionForAlias("storage", call, "handlePhotoStoragePermission") }
+            return
+        }
+
         // Apply flash mode for this capture.
         val flashSetting = currentSettings["flash"] as? String ?: "off"
         imgCapture.flashMode = flashModeFromSetting(flashSetting)
@@ -501,6 +506,7 @@ class CameraPlugin : Plugin() {
             cameraExecutor ?: Executors.newSingleThreadExecutor(),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                    var bitmap: Bitmap? = null
                     try {
                         // Extract EXIF orientation before decoding.
                         val exif = ExifInterface(tempFile.absolutePath)
@@ -510,7 +516,7 @@ class CameraPlugin : Plugin() {
                         )
 
                         val bytes = tempFile.readBytes()
-                        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                             ?: throw IllegalStateException("Failed to decode captured image")
 
                         // Rotate based on EXIF orientation (like classic implementation).
@@ -547,16 +553,13 @@ class CameraPlugin : Plugin() {
                         val outputBytes = outputStream.toByteArray()
                         val base64 = Base64.encodeToString(outputBytes, Base64.NO_WRAP)
 
-                        if (saveToGallery) {
-                            saveImageToGallery(outputBytes, format)
-                        }
-
                         // Build EXIF metadata if requested.
                         val exifData = if (includeExif) extractExifData(exif) else null
 
                         val finalWidth = bitmap.width
                         val finalHeight = bitmap.height
-                        bitmap.recycle()
+                        // Finish fallible metadata work before publishing the external effect.
+                        val galleryPath = if (saveToGallery) saveImageToGallery(outputBytes, format) else null
 
                         activity.runOnUiThread {
                             call.resolve(JSObject().apply {
@@ -564,13 +567,20 @@ class CameraPlugin : Plugin() {
                                 put("format", format)
                                 put("width", finalWidth)
                                 put("height", finalHeight)
+                                galleryPath?.let { put("path", it) }
                                 exifData?.let { put("exif", it) }
                             })
                         }
+                    } catch (e: GalleryImageWriteException) {
+                        call.reject(e.message, "GALLERY_WRITE_FAILED", e, JSObject().apply {
+                            e.uri?.let { put("path", it.toString()) }
+                            put("cleanupFailed", e.cleanupFailed)
+                        })
                     } catch (e: Exception) {
                         // error-policy:J1 capture/encoding failures reject the bridge call.
                         call.reject("Photo processing failed: ${e.message}", "PHOTO_PROCESSING_FAILED", e)
                     } finally {
+                        bitmap?.recycle()
                         tempFile.delete()
                     }
                 }
@@ -656,33 +666,30 @@ class CameraPlugin : Plugin() {
         }
     }
 
-    private fun saveImageToGallery(bytes: ByteArray, format: String) {
-        val fileName =
-            "IMG_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.$format"
+    @PermissionCallback
+    private fun handlePhotoStoragePermission(call: PluginCall) {
+        if (getPermissionState("storage") != com.getcapacitor.PermissionState.GRANTED) {
+            call.reject("Storage permission is required for gallery photos on this Android version", "PERMISSION_DENIED")
+        } else capturePhoto(call)
+    }
 
+    private fun saveImageToGallery(bytes: ByteArray, format: String): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/$format")
-                put(
-                    MediaStore.Images.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_PICTURES
-                )
-            }
-            val uri = context.contentResolver.insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues
-            )
-            uri?.let {
-                context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                    outputStream.write(bytes)
-                }
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            val picturesDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            val file = File(picturesDir, fileName)
+            return GalleryImageWriter(context.contentResolver).save(bytes, format).toString()
+        }
+        @Suppress("DEPRECATION")
+        val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        val file = File(picturesDir, "IMG_${UUID.randomUUID()}.$format")
+        try {
+            if (!picturesDir.isDirectory && !picturesDir.mkdirs()) throw java.io.IOException("Cannot create the pictures directory")
             file.writeBytes(bytes)
+            return Uri.fromFile(file).toString()
+        } catch (error: Exception) {
+            val cleanupFailed = try { file.exists() && !file.delete() } catch (cleanupError: Exception) {
+                error.addSuppressed(cleanupError)
+                true
+            }
+            throw GalleryImageWriteException("Gallery image save failed: ${error.message}", error, Uri.fromFile(file), cleanupFailed)
         }
     }
 
