@@ -55,6 +55,7 @@ export function renderNativeCapacitorTsconfig(profile = "strict-es2022") {
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
+    "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
