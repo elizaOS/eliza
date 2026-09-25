@@ -488,7 +488,16 @@ export async function finalizePlannerReply(
     actionResults,
   );
   const terminalFailure = plannerResult.terminalFailure;
-  const requestFulfilled = plannerResult.evaluator?.success;
+  // A tool can terminate the planner before evaluation (for example a failed
+  // asynchronous handoff). Preserve that settled failure as an unfulfilled
+  // request, while leaving successful handoffs unassessed until completion.
+  const terminalToolResult = plannerResult.trajectory.steps.at(-1)?.result;
+  const requestFulfilled =
+    plannerResult.evaluator?.success ??
+    (terminalToolResult?.continueChain === false &&
+    terminalToolResult.success === false
+      ? false
+      : undefined);
 
   return {
     kind: "planned_reply",

@@ -24,3 +24,8 @@ ContactsBridgeInstrumentedTest exercises create/read/search and numeric limits
 against actual ContactsProvider; null/empty child-query failures inject only the
 provider response into the production reader. Cleanup owns exact synthetic raw
 contact IDs. Inspect terminal instrumentation results, not just shell exit status.
+
+The Android WebView contract also verifies multi-card vCard import, folded Unicode
+names, escaped backslashes and name separators, all phone/email values, and native
+provider readback. Cleanup removes only the run’s synthetic raw-contact IDs and
+exports a zero-remaining receipt.

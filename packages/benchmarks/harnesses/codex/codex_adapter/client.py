@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -92,12 +93,19 @@ class CodexClient:
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         reasoning_effort: str | None = None,
         cwd: Path | None = None,
+        receipt_dir: Path | None = None,
+        sandbox: str | None = None,
     ) -> None:
+        if sandbox not in (None, "read-only", "workspace-write"):
+            raise ValueError("Codex benchmark sandbox must be read-only or workspace-write")
+        self.sandbox = sandbox
         self._codex_bin_explicit = codex_bin
         self.model = model
         self.timeout_s = float(timeout_s)
         self.reasoning_effort = reasoning_effort or os.environ.get("ELIZA_CODEX_REASONING_EFFORT")
         self.cwd = cwd.resolve() if cwd is not None else None
+        self.receipt_dir = receipt_dir.resolve() if receipt_dir is not None else None
+        self._attempt: dict[str, object] | None = None
         self._history: list[dict[str, object]] = []
         # Account selection is resolved eagerly so a bad --accounts value fails
         # at construction, not mid-run. When `accounts` is passed directly
@@ -153,7 +161,7 @@ class CodexClient:
             "--json",
             "--skip-git-repo-check",
             "--sandbox",
-            "workspace-write" if self.cwd is not None else "read-only",
+            self.sandbox or ("workspace-write" if self.cwd is not None else "read-only"),
             "--model",
             self.model,
         ]
@@ -169,6 +177,50 @@ class CodexClient:
         return env
 
     def send_message(self, text: str, context: Mapping[str, object] | None = None) -> MessageResponse:
+        """Optionally retain a complete attempt receipt, including failed turns.
+
+        Receipt creation fails before execution if the configured directory is
+        unwritable. No credential environment or authentication file is copied.
+        """
+        if self.receipt_dir is None:
+            return self._send_message(text, context)
+        attempt_dir = self.receipt_dir / str(uuid.uuid4())
+        attempt_dir.mkdir(parents=True, exist_ok=False)
+        receipt: dict[str, object] = {
+            "status": "started", "benchmark": self._benchmark,
+            "task_id": self._task_id, "model": self.model,
+            "turn_index": self._turn_index, "started_at": time.time(),
+            "history": self._history.copy(), "text": text,
+            "context": dict(context) if context is not None else None,
+        }
+        target = attempt_dir / "attempt.json"
+
+        def persist() -> None:
+            temporary = attempt_dir / "attempt.json.tmp"
+            temporary.write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(target)
+
+        persist()
+        self._attempt = receipt
+        try:
+            response = self._send_message(text, context)
+            receipt["status"] = "succeeded"
+            receipt["response"] = {"text": response.text, "thought": response.thought,
+                                   "actions": response.actions, "params": response.params}
+            return response
+        except BaseException as error:
+            receipt["status"] = "failed"
+            receipt["error"] = {"type": type(error).__name__, "message": str(error)}
+            if isinstance(error, subprocess.TimeoutExpired):
+                receipt["stdout"] = error.stdout
+                receipt["stderr"] = error.stderr
+            raise
+        finally:
+            self._attempt = None
+            receipt["finished_at"] = time.time()
+            persist()
+
+    def _send_message(self, text: str, context: Mapping[str, object] | None = None) -> MessageResponse:
         """Run one Codex turn as the round-robin-selected account.
 
         Raises on binary/account/subprocess failure — never returns a fabricated
@@ -193,6 +245,8 @@ class CodexClient:
             )
         cmd = self.build_command()
         env = self.build_env(account)
+        if self._attempt is not None:
+            self._attempt.update({"account_id": account.account_id, "command": cmd, "prompt": prompt})
         started = time.monotonic()
         result = _run_codex_process(
             cmd,
@@ -201,6 +255,8 @@ class CodexClient:
             cwd=self.cwd,
             timeout=self.timeout_s,
         )
+        if self._attempt is not None:
+            self._attempt.update({"returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
         latency_ms = (time.monotonic() - started) * 1000.0
         self._turn_index += 1
         if result.returncode != 0:

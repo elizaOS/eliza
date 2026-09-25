@@ -399,22 +399,25 @@ describe("umbrella children consolidation on the planner wire", () => {
     expect(
       aliasContracts(tools[0]?.description).map((contract) => contract.name),
     ).toEqual(["TASKS_CREATE", "TASKS_SPAWN_AGENT"]);
-    // A requirement the umbrella keeps optional is expressible: the alias
-    // contract carries it explicitly and the family consolidates.
-    const expressible = tasksFamily({
+    // Stricter child requirements stay machine-readable, not prose-only.
+    const stricter = tasksFamily({
       task: { requiredForSubactions: ["create", "spawn_agent"] },
     });
-    expect(collectCanonicalPlannerActions(expressible.actions)).toEqual([
-      expressible.actions[0],
-    ]);
-    const contracts = aliasContracts(
-      collectPlannerTools(expressible.context, undefined, {
-        canonicalFamilies: true,
-      })[0]?.description,
-    );
-    expect(contracts[0]?.parameters?.required).toEqual(["task"]);
-    // A required list equal to the umbrella's is an omitted default.
-    expect(contracts[2]?.parameters?.required ?? []).toEqual([]);
+    expect(
+      collectCanonicalPlannerActions(stricter.actions).map((a) => a.name),
+    ).toEqual(["TASKS", "TASKS_CREATE", "TASKS_SPAWN_AGENT"]);
+    const strictTools = collectPlannerTools(stricter.context, undefined, {
+      canonicalFamilies: true,
+    });
+    for (const name of ["TASKS_CREATE", "TASKS_SPAWN_AGENT"]) {
+      expect(
+        strictTools.find((tool) => tool.name === name)?.parameters?.required,
+      ).toContain("task");
+    }
+    expect(
+      strictTools.find((tool) => tool.name === "TASKS")?.parameters?.required ??
+        [],
+    ).not.toContain("task");
   });
 
   it("dispatches an operation through the umbrella and through a retained alias to the same handler", async () => {

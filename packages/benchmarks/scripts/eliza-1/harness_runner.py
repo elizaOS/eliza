@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,7 @@ BENCH_DIR = ROOT / "suites" / "eliza-1"
 sys.path.insert(0, str(ROOT / "harnesses" / "eliza"))
 sys.path.insert(0, str(ROOT / "harnesses" / "hermes"))
 sys.path.insert(0, str(ROOT / "harnesses" / "openclaw"))
+sys.path.insert(0, str(ROOT / "harnesses" / "codex"))
 
 
 SYSTEM_PROMPT = "\n".join(
@@ -40,7 +43,7 @@ SYSTEM_PROMPT = "\n".join(
 
 def _load_fixture_bundle(
     limit: int | None,
-    fixture_set: str = "derived",
+    fixture_set: str = "manual",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     fixture_names = {
         "derived": "should-respond.derived.json",
@@ -89,6 +92,14 @@ def _load_fixture_bundle(
         "source_count": source_count,
         "full_case_count": len(cases),
     }
+    label_counts = {label: sum(case.get("expected") == label for case in cases)
+                    for label in ("RESPOND", "IGNORE", "STOP")}
+    provenance["label_counts"] = label_counts
+    provenance["majority_label_baseline"] = max(label_counts.values()) / len(cases)
+    provenance["decision_class_coverage"] = sum(count > 0 for count in label_counts.values())
+    provenance["evaluation_scope"] = (
+        "three-class decision" if all(label_counts.values()) else "single-class regression"
+    )
     if limit is not None and limit > 0:
         cases = cases[:limit]
     return cases, provenance
@@ -96,7 +107,7 @@ def _load_fixture_bundle(
 
 def _load_fixtures(
     limit: int | None,
-    fixture_set: str = "derived",
+    fixture_set: str = "manual",
 ) -> list[dict[str, Any]]:
     cases, _provenance = _load_fixture_bundle(limit, fixture_set)
     return cases
@@ -108,24 +119,55 @@ def _build_user_prompt(case: dict[str, Any]) -> str:
     return f"channel_type: {channel}\nincoming_message: {incoming}"
 
 
+def _build_codex_client(model: str, args: argparse.Namespace):
+    from codex_adapter.accounts import CodexAccount
+    from codex_adapter.client import CodexClient
+
+    if os.environ.get("BENCHMARK_MODEL_PROVIDER") != "codex-native":
+        raise ValueError("Codex requires provider codex-native: its configured CLI provider is not an API-provider comparison")
+    output = Path(args.out).resolve().parent / "codex"
+    workspace_root = output / "workspaces"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+
+    class DecisionClient(CodexClient):
+        def reset(self, task_id: str, benchmark: str, **kwargs: object):
+            self.cwd = Path(tempfile.mkdtemp(prefix="task-", dir=workspace_root))
+            return super().reset(task_id, benchmark, **kwargs)
+
+    accounts = [CodexAccount("explicit-cli-home", Path(args.codex_home).expanduser().resolve())] if args.codex_home else None
+    client = DecisionClient(model=model, accounts=accounts,
+                            accounts_spec=args.accounts, timeout_s=args.timeout_s,
+                            reasoning_effort=args.reasoning_effort,
+                            receipt_dir=output / "attempts", sandbox="read-only")
+    if not client.is_ready():
+        raise RuntimeError(f"Codex is unavailable: {client.health()}")
+    return client, None
+
+
+def _ready_native_client(client: Any):
+    health = client.health()
+    if health.get("status") != "ready" or health.get("publishable_native") is not True:
+        raise RuntimeError(f"Native decision harness unavailable: {health}")
+    return client, None
+
+
 def _build_client(harness: str, model: str):
     provider = (os.environ.get("BENCHMARK_MODEL_PROVIDER") or "cerebras").strip().lower()
     timeout_s = float(os.environ.get("ELIZA_1_HARNESS_TIMEOUT_S", "120"))
     if harness == "hermes":
         from hermes_adapter.client import HermesClient
 
-        return HermesClient(provider=provider, model=model, timeout_s=timeout_s), None
+        return _ready_native_client(HermesClient(provider=provider, model=model, timeout_s=timeout_s))
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient
 
-        return (
+        return _ready_native_client(
             OpenClawClient(
                 provider=provider,
                 model=model,
                 timeout_s=timeout_s,
                 reasoning_effort=os.environ.get("ELIZA_1_OPENCLAW_THINKING", "low"),
             ),
-            None,
         )
     if harness == "eliza":
         from eliza_adapter import ElizaClient, ElizaServerManager
@@ -150,7 +192,8 @@ def _send(
     model: str,
     case: dict[str, Any],
     task_id: str,
-) -> tuple[str, float, int]:
+    receipts: list[dict[str, Any]] | None = None,
+) -> tuple[str, float, int | None]:
     user_prompt = _build_user_prompt(case)
     started = time.perf_counter()
     context = {
@@ -177,10 +220,33 @@ def _send(
         },
         "model": model,
     }
-    attempts = max(1, int(os.environ.get("ELIZA_1_EMPTY_RESPONSE_ATTEMPTS", "2")))
+    attempts = max(1, int(os.environ.get("ELIZA_1_EMPTY_RESPONSE_ATTEMPTS", "1")))
     response = None
+    total_tokens = 0
+    all_usage_observed = True
     for attempt in range(attempts):
-        response = client.send_message(user_prompt, context=context)
+        receipt: dict[str, Any] = {"task_id": task_id, "context": context, "message": user_prompt}
+        if receipts is not None:
+            receipts.append(receipt)
+        try:
+            response = client.send_message(user_prompt, context=context)
+        except Exception as exc:
+            # error-policy:J1 retain the failed attempt before the case boundary handles it.
+            receipt["error"] = f"{type(exc).__name__}: {exc}"
+            raise
+        receipt["response"] = {"text": response.text, "actions": response.actions, "params": response.params}
+        usage = response.params.get("usage") if isinstance(response.params, dict) else {}
+        observed_tokens = None
+        if isinstance(usage, dict):
+            for key in ("completion_tokens", "completionTokens", "output_tokens"):
+                raw = usage.get(key)
+                if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+                    observed_tokens = raw
+                    break
+        if observed_tokens is None:
+            all_usage_observed = False
+        else:
+            total_tokens += observed_tokens
         if _canonical_output(response).strip():
             break
         params = getattr(response, "params", {})
@@ -197,14 +263,10 @@ def _send(
     if response is None:  # pragma: no cover - attempts is clamped above.
         raise RuntimeError("no response generated")
     elapsed_ms = (time.perf_counter() - started) * 1000.0
-    usage = response.params.get("usage") if isinstance(response.params, dict) else {}
-    tokens = 0
-    if isinstance(usage, dict):
-        raw = usage.get("completion_tokens") or usage.get("completionTokens") or usage.get("output_tokens")
-        if isinstance(raw, (int, float)):
-            tokens = int(raw)
+    tokens = total_tokens if all_usage_observed else None
     text = _canonical_output(response)
-    return text, elapsed_ms, tokens or max(1, len(text) // 4)
+    return text, elapsed_ms, tokens
+
 
 
 def _json_from_decision(value: object) -> str | None:
@@ -224,7 +286,7 @@ def _decision_from_payload(payload: object) -> str | None:
 
     direct = _json_from_decision(payload.get("shouldRespond"))
     if direct is not None:
-        return direct
+        return json.dumps(payload)
 
     args = payload.get("arguments")
     if isinstance(args, str):
@@ -275,21 +337,12 @@ def _canonical_output(response: Any) -> str:
 
 def _extract_json(text: str) -> dict[str, Any] | None:
     stripped = text.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        if len(lines) >= 3:
-            stripped = "\n".join(lines[1:-1]).strip()
-    decoder = json.JSONDecoder()
-    for index, char in enumerate(stripped):
-        if char != "{":
-            continue
-        try:
-            value, _end = decoder.raw_decode(stripped[index:])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            return value
-    return None
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
 
 
 def _case_metric(
@@ -299,13 +352,15 @@ def _case_metric(
     index: int,
     raw_output: str,
     latency_ms: float,
-    tokens: int,
+    tokens: int | None,
     error: str | None = None,
 ) -> dict[str, Any]:
     parsed = _extract_json(raw_output) if error is None else None
     parse_success = parsed is not None
     schema_valid = (
         isinstance(parsed, dict)
+        and set(parsed) == {"shouldRespond"}
+        and isinstance(parsed.get("shouldRespond"), str)
         and parsed.get("shouldRespond") in {"RESPOND", "IGNORE", "STOP"}
     )
     label_match = (
@@ -317,13 +372,15 @@ def _case_metric(
         "taskId": "should_respond",
         "modeId": harness,
         "caseId": f"{case.get('id', 'case')}#{index}",
+        "expected_label": case.get("expected"),
         "parse_success": parse_success,
         "schema_valid": schema_valid,
         "label_match": label_match,
         "first_token_latency_ms": None,
         "total_latency_ms": latency_ms,
         "tokens_generated": tokens,
-        "tokens_per_second": (tokens / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0,
+        "tokens_per_second": (tokens / (latency_ms / 1000.0))
+        if tokens is not None and latency_ms > 0 else None,
         "raw_output": raw_output,
         **({"error": error} if error else {}),
     }
@@ -342,7 +399,8 @@ def _summarize(harness: str, cases: list[dict[str, Any]]) -> dict[str, Any]:
         index = min(len(latencies) - 1, int(round((len(latencies) - 1) * p)))
         return latencies[index]
 
-    token_rates = [float(case.get("tokens_per_second") or 0.0) for case in cases]
+    token_rates = [float(case["tokens_per_second"]) for case in cases
+                   if case.get("tokens_per_second") is not None]
     return {
         "taskId": "should_respond",
         "modeId": harness,
@@ -354,26 +412,37 @@ def _summarize(harness: str, cases: list[dict[str, Any]]) -> dict[str, Any]:
         "first_token_latency_p95_ms": None,
         "total_latency_p50_ms": percentile(0.5),
         "total_latency_p95_ms": percentile(0.95),
-        "mean_tokens_per_second": sum(token_rates) / len(token_rates) if token_rates else 0.0,
+        "mean_tokens_per_second": sum(token_rates) / len(token_rates) if token_rates else None,
+        "token_usage_observed_cases": sum(case.get("tokens_generated") is not None for case in cases),
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--harness", choices=["eliza", "hermes", "openclaw"], required=True)
+    parser.add_argument("--harness", choices=["eliza", "hermes", "openclaw", "codex"], required=True)
     parser.add_argument("--model", default=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"))
     parser.add_argument("--out", required=True)
+    parser.add_argument("--codex-home", help="Explicit authenticated CLI home; otherwise use materialized Eliza accounts")
+    parser.add_argument("--accounts")
+    parser.add_argument("--reasoning-effort", default=os.environ.get("BENCHMARK_REASONING_EFFORT"))
+    parser.add_argument("--timeout-s", type=float, default=180)
+
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument(
         "--fixture-set",
         choices=["derived", "manual"],
-        default="derived",
-        help="Fixture corpus (default: canonical dataset-derived regression split)",
+        default="manual",
+        help="Fixture corpus (default: manual decision set covering RESPOND, IGNORE and STOP; derived is RESPOND-only regression)",
     )
     args = parser.parse_args(argv)
 
-    client, manager = _build_client(args.harness, args.model)
+    if args.codex_home and args.accounts:
+        parser.error("--codex-home and --accounts are mutually exclusive")
+    if not math.isfinite(args.timeout_s) or args.timeout_s <= 0:
+        parser.error("--timeout-s must be positive")
+    client, manager = (_build_codex_client(args.model, args) if args.harness == "codex"
+                       else _build_client(args.harness, args.model))
     fixtures, corpus = _load_fixture_bundle(
         args.limit if args.limit > 0 else None,
         args.fixture_set,
@@ -384,6 +453,7 @@ def main(argv: list[str] | None = None) -> int:
             for index in range(max(1, args.n)):
                 case_id = str(fixture.get("id") or "case")
                 task_id = f"eliza-1-should-respond-{case_id}-{index}"
+                case_attempts: list[dict[str, Any]] = []
                 try:
                     if hasattr(client, "reset"):
                         client.reset(task_id, "eliza_1")
@@ -393,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.model,
                         fixture,
                         task_id,
+                        receipts=case_attempts,
                     )
                     cases.append(
                         _case_metric(
@@ -414,22 +485,30 @@ def main(argv: list[str] | None = None) -> int:
                             index=index,
                             raw_output="",
                             latency_ms=0.0,
-                            tokens=0,
+                            tokens=None,
                             error=f"{type(exc).__name__}: {exc}",
                         )
                     )
+                if args.harness in {"hermes", "openclaw"}:
+                    cases[-1]["native_attempts"] = case_attempts
     finally:
         if manager is not None:
             manager.stop()
 
     report = {
         "schemaVersion": "eliza-1-bench-v1",
+        "execution": {"harness": args.harness, "model_requested": args.model,
+                      "provider_label": os.environ.get("BENCHMARK_MODEL_PROVIDER"),
+                      "provider_observed": None,
+                      "max_attempts_per_case": max(1, int(os.environ.get("ELIZA_1_EMPTY_RESPONSE_ATTEMPTS", "1"))),
+                      "native_receipts": "codex/attempts" if args.harness == "codex" else None},
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "tasks": ["should_respond"],
         "modes": [args.harness],
         "corpus": {
             **corpus,
             "selected_case_count": len(fixtures),
+            "selected_case_ids": [str(case["id"]) for case in fixtures],
             "repetitions": max(1, args.n),
             "expected_result_count": len(fixtures) * max(1, args.n),
         },

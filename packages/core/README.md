@@ -22,7 +22,8 @@ names configuration UI patches. `getAppBootConfigEnvAliases` and
 Settings debug sanitizers, macOS permission links, and generated channel, provider,
 and short-ID plugin maps are available through the root. Process crash guards also
 use the root API and require the Node/Bun process host; importing core does not
-install them.
+install them. Settings debugging uses the host `ELIZA_SETTINGS_DEBUG` flag and
+boot aliases; Vite debug flags are interpreted by the UI host.
 
 Event names, payload contracts, and navigation-frame normalization are exported
 from the root. DOM event creation and dispatch belong to the UI host.
