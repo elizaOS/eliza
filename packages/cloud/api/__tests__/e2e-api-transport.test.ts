@@ -29,19 +29,19 @@ test("local mutations use fresh connections without replaying server failures", 
       throw new Error("Missing test server address");
     process.env.TEST_API_BASE_URL = `http://127.0.0.1:${address.port}`;
 
-    expect(await (await api.post("/first", { value: 1 })).json()).toEqual({
-      received: 1,
-    });
+    expect(await (await api.post("/first", { value: 1 })).text()).toBe(
+      '{"received":1}',
+    );
     expect(
       await (
         await api.post("/second", "raw", {
           headers: { "content-type": "text/plain" },
         })
-      ).json(),
-    ).toEqual({ received: 2 });
+      ).text(),
+    ).toBe('{"received":2}');
     const failed = await api.post("/fail", { value: 3 });
     expect(failed.status).toBe(500);
-    expect(await failed.json()).toEqual({ received: 3 });
+    expect(await failed.text()).toBe('{"received":3}');
     expect(requests).toHaveLength(3);
     expect(new Set(requests.map(({ port }) => port)).size).toBe(3);
     expect(
