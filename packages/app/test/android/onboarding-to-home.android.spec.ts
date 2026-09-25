@@ -23,7 +23,10 @@
 
 import path from "node:path";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.ts";
+import {
+  captureAndroidScreenshot,
+  startAndroidScreenRecord,
+} from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   adbDevice,
@@ -97,6 +100,10 @@ test.describe
                     expect(dialog.message()).toContain(
                       new URL(HOST_AGENT_BASE).host,
                     );
+                    // Keep the listener to prevent CDP auto-dismissal, but
+                    // accept through Android itself: CDP acceptance can leave
+                    // WebChromeClient's native AlertDialog covering the app.
+                    await device.tap({ text: "OK" });
                     await dialog.accept();
                     resolve();
                   } catch (error) {
@@ -119,6 +126,13 @@ test.describe
         ]);
 
         await confirmation;
+        // Inspect Android's active accessibility window, not just DOM behind
+        // a native modal. Native field placeholders are not accessibility text.
+        await expect(async () => {
+          const label = await device.info({ text: "Get a one-time code" });
+          expect(label.pkg).toBe(APP_ID);
+          expect(label.bounds.width).toBeGreaterThan(0);
+        }).toPass({ timeout: 15_000 });
 
         // OS deep links deliberately never carry bearer credentials. Complete
         // the production remote-device pairing flow against the real host,
@@ -235,6 +249,15 @@ test.describe
         await page.screenshot({ path: replyScreenshot, fullPage: true });
         await testInfo.attach("connected chat screenshot", {
           path: replyScreenshot,
+          contentType: "image/png",
+        });
+        const nativeScreenshot = captureAndroidScreenshot({
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "connected-chat-native.png",
+        });
+        await testInfo.attach("connected chat native display", {
+          path: nativeScreenshot,
           contentType: "image/png",
         });
       } finally {
