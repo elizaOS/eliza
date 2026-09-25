@@ -1,4 +1,4 @@
-/** Real APK-packaged Kokoro synthesis through the production framed host and JNI. */
+/** Real Kokoro transport/PCM diagnostics. Passing does not qualify intelligible speech. */
 package ai.elizaos.app;
 
 import static org.junit.Assert.*;
@@ -26,7 +26,7 @@ public class BionicSpeechInstrumentedTest {
     private static final String MODEL_HASH = "165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c";
     private static final String VOICE_HASH = "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b";
 
-    @Test public void packagedKokoroSynthesizesAndRecoversThroughFramedHost() throws Exception {
+    @Test public void packagedKokoroProducesDiagnosticPcmAndRecoversThroughFramedHost() throws Exception {
         var app = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue("Fused JNI library must load", ElizaVoiceNative.ensureLoaded());
         Path root = Files.createTempDirectory(app.getCacheDir().toPath(), "speech-proof-");
@@ -71,6 +71,7 @@ public class BionicSpeechInstrumentedTest {
             JSONObject recovered = request(name, root, IPA, "en-US", 1.0);
             assertTrue("Synthesis must recover after invalid calls and release", samples(recovered).length >= 2400);
             JSONObject proof = new JSONObject().put("modelSha256", MODEL_HASH).put("voiceSha256", VOICE_HASH)
+                .put("scope", "native transport and PCM diagnostics").put("intelligibility", "unqualified")
                 .put("ipa", IPA).put("first", first).put("fastSamples", fast.getInt("samples"))
                 .put("rms", rms).put("peak", peak).put("empty", empty).put("language", language)
                 .put("speed", speed).put("oversize", oversize).put("recoveredSamples", recovered.getInt("samples"));

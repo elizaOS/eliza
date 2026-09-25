@@ -26,7 +26,7 @@ const nativeInference = embedding || speech;
 const scenario = embedding
   ? "native embedding"
   : speech
-    ? "native speech"
+    ? "native speech transport and PCM diagnostics"
     : "native agent lifecycle";
 const serial = process.argv[process.argv.indexOf("--serial") + 1];
 if (!process.argv.includes("--serial") || !serial)
@@ -73,6 +73,15 @@ const report = {
   startedAt: new Date().toISOString(),
   builtFromCheckout: true,
   scenario,
+  ...(speech
+    ? {
+        speechQualification: {
+          scope: "transport, finite PCM, input rejection and resident reload",
+          intelligibility: "unqualified",
+          unresolvedIssue: "https://github.com/elizaOS/eliza/issues/30679",
+        },
+      }
+    : {}),
   fixture: nativeInference
     ? "Production native inference host and APK-packaged model artifacts"
     : "Minimal WebView page; production MainActivity, Agent library and ElizaAgentService",

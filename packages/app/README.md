@@ -83,9 +83,14 @@ exports complete 384-dimensional vectors and timing evidence. It also exercises
 the registered Capacitor BGE bridge from a real WebView, including tokenization,
 embedding, admission rejection, and context release.
 
-Use `--speech-model-dir <directory>` instead of `--embedding` for real CPU Kokoro
-synthesis through the framed host. Supply `kokoro-82m-v1_0.gguf` and `af_sam.bin`
+Use `--speech-model-dir <directory>` instead of `--embedding` for CPU Kokoro
+transport and PCM diagnostics through the framed host. Supply `kokoro-82m-v1_0.gguf` and `af_sam.bin`
 from the pinned assets in `plugins/plugin-native-inference/src/aosp-voice-download.ts`.
 The test verifies their hashes inside the installed APK, checks speed, input
-rejection and release/reload, and exports full PCM plus a playable WAV. This
-verifies synthesis from IPA; it does not cover microphone capture or recognition.
+rejection and release/reload, and exports full PCM plus a playable WAV. A passing
+diagnostic does not qualify speech intelligibility: the report explicitly marks
+it `unqualified`. Optimized and scalar output failed independent recognition of
+the expected phrase while the recognizer control passed; the model/forward-path
+defect remains unresolved (issue #30679). Diagnosis needs a matched canonical
+reference and the first divergent tensor. Microphone capture, phonemization and
+physical speaker playback are outside this IPA-input diagnostic.
