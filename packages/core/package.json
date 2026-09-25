@@ -145,12 +145,6 @@
 			"eliza-source": "./src/catalog/generated.json",
 			"default": "./dist/catalog/generated.json"
 		},
-		"./catalog": {
-			"eliza-source": "./src/catalog/index.ts",
-			"types": "./dist/catalog/index.d.ts",
-			"import": "./dist/catalog/index.js",
-			"default": "./dist/catalog/index.js"
-		},
 		"./catalog/loader": {
 			"eliza-source": "./src/catalog/loader.ts",
 			"types": "./dist/catalog/loader.d.ts",
