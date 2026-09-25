@@ -845,6 +845,12 @@ async function recordEvaluationStage(args: {
         replyEffectStatus: args.output.replyEffectStatus,
         copyToClipboard: args.output.copyToClipboard,
         recommendedToolCallId: args.output.recommendedToolCallId,
+        ...(typeof args.output.raw?.contextRequest === "string" &&
+        ["history", "providers", "full"].includes(
+          args.output.raw.contextRequest,
+        )
+          ? { contextRequest: args.output.raw.contextRequest }
+          : {}),
         protocolFailure: args.output.protocolFailure,
         parseError: args.output.parseError,
       },
@@ -975,14 +981,14 @@ function renderEvaluatorModelInput(params: {
       id: "completion-provider-discovery",
       label: "completion_context",
       stable: false,
-      content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
+      content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their advertised complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. A provider reference does not promise fields it explicitly excludes: use a current record tool for those fields rather than expanding history. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
     });
   if (completion.applied) {
     renderedContext.promptSegments.push({
       id: "completion-context-selection",
       label: "completion_context",
       stable: false,
-      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
   const template =
