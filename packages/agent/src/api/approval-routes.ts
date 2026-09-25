@@ -12,11 +12,12 @@ import {
   PENDING_USER_ACTION_WEIGHT,
   type PendingUserAction,
   type PendingUserActionOption,
+  type RouteHelpers,
   ServiceType,
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
+
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,

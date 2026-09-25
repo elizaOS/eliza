@@ -22,11 +22,12 @@ import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
+  sendJsonError,
   toWellFormedUnicode,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core/api/http-helpers";
+
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
@@ -175,7 +176,7 @@ export function initializeOGCodeInState(): void {
 // Types
 // ---------------------------------------------------------------------------
 // AgentStartupDiagnostics is canonical in @elizaos/core.
-export type { AgentStartupDiagnostics } from "@elizaos/core/api/agent-api-types";
+export type { AgentStartupDiagnostics } from "@elizaos/core";
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;

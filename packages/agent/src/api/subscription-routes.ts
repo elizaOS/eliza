@@ -29,9 +29,9 @@ import {
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
+  type RouteRequestContext,
   resolveStateDir,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

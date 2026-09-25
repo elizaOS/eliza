@@ -7,11 +7,12 @@
  * name, and calls it with a `readJsonBody` pre-bound to the current request.
  */
 
-import { isValidAppRouteSlug } from "@elizaos/core";
-import type {
-  AppPackageRouteContext,
-  AppPackageRouteDispatchContext,
-} from "@elizaos/core/api/route-helpers";
+import {
+  type AppPackageRouteContext,
+  type AppPackageRouteDispatchContext,
+  isValidAppRouteSlug,
+} from "@elizaos/core";
+
 import {
   type AppRouteModule,
   importAppRouteModule,

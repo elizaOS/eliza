@@ -8,9 +8,9 @@ import {
   PostRegistryRegisterRequestSchema,
   PostRegistrySyncRequestSchema,
   PostRegistryUpdateUriRequestSchema,
+  type ReadJsonBodyOptions,
   type TradePermissionMode,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 
 import type { ElizaConfig } from "../config/config.ts";
 import type { LocalTradeExecutionOptions } from "./trade-safety.ts";

@@ -36,12 +36,10 @@ import {
   ElizaError,
   logger,
   ModelType,
+  type RouteHelpers,
+  type RouteRequestMeta,
   resolveServiceRoutingInConfig,
 } from "@elizaos/core";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
 
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { isCerebrasMode, resolveOpenAIBaseURL } from "@elizaos/plugin-openai";

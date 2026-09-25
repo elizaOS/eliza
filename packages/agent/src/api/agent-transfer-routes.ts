@@ -10,9 +10,12 @@
  * live runtime and the server's owner-auth boundary.
  */
 import type http from "node:http";
-import { type AgentRuntime, PostAgentExportRequestSchema } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/core/api/http-helpers";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import {
+  type AgentRuntime,
+  PostAgentExportRequestSchema,
+  type RouteRequestContext,
+  readRequestBodyBuffer,
+} from "@elizaos/core";
 
 const MAX_IMPORT_BYTES = 512 * 1_048_576;
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;

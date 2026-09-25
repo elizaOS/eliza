@@ -21,11 +21,10 @@ import {
   isPrivateIpAddress,
   type JsonObject,
   normalizeHostLike,
-} from "@elizaos/core";
-import {
   type RouteHelpers,
   type RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
+} from "@elizaos/core";
+
 import { decodeUrlPathComponent } from "@elizaos/core/utils/path-component";
 import {
   type ConnectCloudCapabilitySandboxOptions,
@@ -41,16 +40,16 @@ import {
   type RemoteCapabilityEndpointProvider,
   type RemoteCapabilityEndpointTrustPolicyOptions,
 } from "../services/remote-capability-endpoint-provider.ts";
-import { type RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
+import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
   desktopCompanionCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
 } from "../services/remote-capability-url-endpoint-providers.ts";
-import {
-  type RemotePluginSyncResult,
-  type RemotePluginTrustPolicy,
+import type {
+  RemotePluginSyncResult,
+  RemotePluginTrustPolicy,
 } from "../services/remote-plugin-adapter.ts";
 import {
   detectClientPlatform,

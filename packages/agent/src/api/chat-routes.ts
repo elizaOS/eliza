@@ -37,6 +37,7 @@ import {
   isRateLimitError,
   isTextGenerationModelType,
   type LinkedAccountProviderId,
+  type AgentLogEntry as LogEntry,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type MessageReplyRecoveryContext,
@@ -46,8 +47,10 @@ import {
   normalizeEffectReceipts,
   parseChatFailureKind,
   parseChatTerminalFailure,
+  type ReadJsonBodyOptions,
   type RolesWorldMetadata,
   type RoomHandlerLease,
+  type RouteRequestContext,
   readActionReplyFailure,
   recordOwnerGrant,
   recordRoleGrant,
@@ -67,11 +70,7 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-import type { LogEntry } from "@elizaos/core/api/agent-api-types";
-import type {
-  ReadJsonBodyOptions,
-  RouteRequestContext,
-} from "@elizaos/core/api/route-helpers";
+
 import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 
 import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";

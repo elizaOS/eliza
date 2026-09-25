@@ -24,6 +24,7 @@ import {
   type Component,
   createMessageMemory,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  drainAppRoutePluginLoaders,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
@@ -47,7 +48,6 @@ import {
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-import { drainAppRoutePluginLoaders } from "@elizaos/core/api/drain-app-route-plugins";
 
 import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 import {

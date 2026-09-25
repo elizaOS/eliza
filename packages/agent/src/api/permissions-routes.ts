@@ -27,8 +27,8 @@ import {
   PutPermissionsShellRequestSchema,
   PutPermissionsStateRequestSchema,
   projectNativePersonalDataCapabilities,
+  type RouteRequestContext,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 import { getMacPermissionDeepLink } from "@elizaos/core/utils/permission-deep-links";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";

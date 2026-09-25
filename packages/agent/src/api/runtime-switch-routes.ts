@@ -35,8 +35,12 @@
 
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL, logger } from "@elizaos/core";
-import { readJsonBody } from "@elizaos/core/api/http-helpers";
+import {
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  logger,
+  readJsonBody,
+} from "@elizaos/core";
+
 import type { ProviderId } from "@elizaos/core/contracts/local-inference-providers";
 
 import {

@@ -11,8 +11,8 @@ import {
   type ConnectorConfig,
   type IAgentRuntime,
   PostConnectorRequestSchema,
+  type ReadJsonBodyOptions,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";

@@ -29,11 +29,11 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   PostFirstRunRequestSchema,
+  type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";

@@ -18,8 +18,8 @@ import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+  type ReadJsonBodyOptions,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 
 import {
   isElizaSettingsDebugEnabled,

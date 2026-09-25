@@ -61,6 +61,7 @@ import {
   RoomHandlerQueueClosedError,
   RoomHandlerQueueGlobalSaturatedError,
   RoomHandlerQueueSaturatedError,
+  type RouteRequestContext,
   recordOwnerGrant,
   recordRoleGrant,
   resolveAppliedUserFacingEffectReceipts,
@@ -72,7 +73,6 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 import {
   conversationClientUserMemoryId,

@@ -9,19 +9,17 @@
  */
 import type http from "node:http";
 import type {
-  AgentRuntime,
-  ConversationMetadata,
-  Media,
-  UUID,
-} from "@elizaos/core";
-import type {
   AgentAutomationMode,
+  AgentRuntime,
   AgentStartupDiagnostics,
-  LogEntry,
+  ConversationMetadata,
+  AgentLogEntry as LogEntry,
+  Media,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
-} from "@elizaos/core/api/agent-api-types";
+  UUID,
+} from "@elizaos/core";
 
 import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
 import type { ElizaConfig } from "../config/config.ts";
@@ -41,14 +39,14 @@ export interface TelegramAccountAuthSessionLike {
 
 export type {
   AgentAutomationMode,
+  AgentLogEntry as LogEntry,
   AgentStartupDiagnostics,
+  AgentStreamEventType as StreamEventType,
   ChatImageAttachment,
-  LogEntry,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
-  StreamEventType,
-} from "@elizaos/core/api/agent-api-types";
+} from "@elizaos/core";
 export type {
   ConversationAutomationType,
   ConversationMetadata,

@@ -77,13 +77,13 @@ import {
   logger,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
+  type RouteRequestContext,
   resolveServiceRoutingInConfig,
   resolveStateDir,
   type ServiceRouteAccountStrategy,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 import * as zod from "zod";
 import {

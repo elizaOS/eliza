@@ -12,11 +12,10 @@ import {
   type AgentRuntime,
   ModelType,
   PostCharacterGenerateRequestSchema,
+  type RouteRequestContext,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 import {
   buildCharacterHistorySnapshot,

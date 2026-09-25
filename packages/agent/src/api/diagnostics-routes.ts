@@ -11,12 +11,13 @@
  * it is used.
  */
 import type http from "node:http";
-import { PostLogExportRequestSchema } from "@elizaos/core";
-import type {
-  ReadJsonBodyOptions,
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
+import {
+  PostLogExportRequestSchema,
+  type ReadJsonBodyOptions,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core";
+
 import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
 
 interface LogEntryLike {

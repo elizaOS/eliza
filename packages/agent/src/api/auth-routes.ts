@@ -14,8 +14,9 @@ import crypto from "node:crypto";
 import {
   PostAuthPairRequestSchema,
   type PostAuthPairResponse,
+  type RouteRequestContext,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
+
 import { resolveApiToken } from "@elizaos/core/runtime-env";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import {

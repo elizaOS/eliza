@@ -13,8 +13,8 @@ import {
   logger,
   normalizeFirstRunProviderId,
   PostProviderSwitchRequestSchema,
+  type ReadJsonBodyOptions,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 
 import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import type { ElizaConfig } from "../config/config.ts";

@@ -24,10 +24,10 @@ import {
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
   parseBooleanValue,
+  type ReadJsonBodyOptions,
+  type StreamEventEnvelope,
   validateUuid,
 } from "@elizaos/core";
-import type { StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 
 import {
   buildStoreVariantBlockedMessage,

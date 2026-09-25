@@ -11,11 +11,11 @@ import os from "node:os";
 import {
   logger,
   PostBugReportRequestSchema,
+  type RouteRequestContext,
   redactSensitiveText,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";

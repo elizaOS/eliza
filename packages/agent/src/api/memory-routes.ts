@@ -26,10 +26,10 @@ import {
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
   projectCompleteToolValueForModel,
+  type RouteRequestContext,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
 
 import {
   parseCanonicalInteger,

@@ -218,6 +218,83 @@ export {
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
 export { validateToolArgs } from "./actions/validate-tool-args.ts";
+export type {
+	AgentAutomationMode,
+	AgentStartupDiagnostics,
+	ChatImageAttachment,
+	ColumnInfo,
+	ConnectionTestResult,
+	CreateTriggerRequest,
+	DatabaseStatus,
+	LogEntry as AgentLogEntry,
+	PluginParamDef,
+	QueryResult,
+	RuntimeOrderItem,
+	RuntimeServiceOrderItem,
+	SkillEntry,
+	StreamEventEnvelope,
+	StreamEventType as AgentStreamEventType,
+	TableInfo,
+	TriggerHealthSnapshot,
+	TriggerSummary,
+	TriggerTaskMetadata,
+	UpdateTriggerRequest,
+} from "./api/agent-api-types.js";
+export { drainAppRoutePluginLoaders } from "./api/drain-app-route-plugins.js";
+export {
+	DEFAULT_MAX_BODY_BYTES,
+	isJsonObjectBody,
+	readJsonBody,
+	readRequestBody,
+	readRequestBodyBuffer,
+	sendJson,
+	sendJsonError,
+	writeJsonError,
+	writeJsonErrorSafe,
+	writeJsonResponse,
+	writeJsonResponseSafe,
+} from "./api/http-helpers.js";
+export {
+	assertPublicRouteIntent,
+	type HttpMethod,
+	type HttpPlugin,
+	type LegacyRouteHandler,
+	type PaymentEnabledRoute,
+	type Route,
+	type RouteBodyValue,
+	type RouteHandler,
+	type RouteHandlerContext,
+	type RouteHandlerResult,
+	type RouteManifest,
+	type RouteRequest,
+	type RouteResponse,
+	type RouteRuntimeMode,
+	type X402RequestValidator,
+} from "./api/http-plugin.js";
+export {
+	getHttpRuntime,
+	getPluginHttpRoutes,
+	type HttpRuntimeState,
+	installHttpPluginLifecycle,
+	registerHttpPluginRoutes,
+} from "./api/http-plugin-runtime.js";
+export type {
+	AppPackageRouteContext,
+	AppPackageRouteDispatchContext,
+	ReadJsonBodyOptions,
+	ReadTextBodyOptions,
+	RequestBodyOptions,
+	RouteHelpers,
+	RouteRequestContext,
+	RouteRequestMeta,
+} from "./api/route-helpers.js";
+export {
+	getRuntimeRouteHostContext,
+	type RuntimeRouteHostContext,
+	type RuntimeRouteTelemetryMeta,
+	type RuntimeRouteTelemetrySpan,
+	setRuntimeRouteHostContext,
+} from "./api/runtime-route-context.js";
 export {
 	AwarenessRegistry,
 	normalizeSummaryLine,

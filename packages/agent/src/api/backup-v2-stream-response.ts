@@ -12,8 +12,8 @@ import {
   type AgentBackupCaptureV2Request,
   logger,
   parseAgentBackupCaptureV2Request,
+  readRequestBody,
 } from "@elizaos/core";
-import { readRequestBody } from "@elizaos/core/api/http-helpers";
 
 import type { ElizaConfig } from "../config/config.ts";
 import {

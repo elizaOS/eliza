@@ -8,8 +8,11 @@
  * server's auth layer.
  */
 import type http from "node:http";
-import { PutUpdateChannelRequestSchema } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import {
+  PutUpdateChannelRequestSchema,
+  type ReadJsonBodyOptions,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 // ---------------------------------------------------------------------------
 // Types

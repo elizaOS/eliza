@@ -8,8 +8,9 @@ import {
   FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
   FIRST_RUN_PROVIDER_CATALOG,
   logger,
+  sendJsonError,
 } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core/api/http-helpers";
+
 import {
   getDefaultStylePreset,
   getStylePresets,
