@@ -12,6 +12,8 @@ import {
 import { describe, expect, it } from "vitest";
 import { describeLive } from "../../../../../../packages/app/test/helpers/live-agent-test.ts";
 
+import { channelTopicsProvider } from "./channelTopics.ts";
+
 const requiredProviderEnv = process.env.OPENAI_API_KEY?.trim()
   ? "OPENAI_API_KEY"
   : "CEREBRAS_API_KEY";
@@ -29,6 +31,12 @@ if (!liveOptIn) {
     ({ harness }) => {
       it("injects persisted room topics into a real model request", async () => {
         const { runtime, agentId } = harness();
+        await runtime.registerPlugin({
+          name: "live-channel-topics",
+          description: "Real channel topic service and provider",
+          services: [ChannelTopicsService],
+          providers: [channelTopicsProvider],
+        });
         const worldId = randomUUID() as UUID;
         const roomId = randomUUID() as UUID;
         const entityId = randomUUID() as UUID;
@@ -41,7 +49,7 @@ if (!liveOptIn) {
           id: roomId,
           name: "channel-topics-live-room",
           source: "live-test",
-          type: ChannelType.API,
+          type: ChannelType.GROUP,
           worldId,
         });
         await runtime.createEntity({
@@ -69,6 +77,7 @@ if (!liveOptIn) {
           content: {
             text: "Name the two current channel topics.",
             source: "live-test",
+            channelType: ChannelType.GROUP,
           },
         };
         const state = await runtime.composeState(

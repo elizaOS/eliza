@@ -5,7 +5,7 @@
  */
 import { randomUUID as uuidv4 } from "node:crypto";
 import type { HandlerCallback, Media, Memory, UUID } from "@elizaos/core";
-import { ContentType, EventType, ModelType } from "@elizaos/core";
+import { ChannelType, ContentType, EventType, ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { describeLive } from "../../../../../packages/app/test/helpers/live-agent-test.ts";
 import { readAttachmentAction } from "./readAttachmentAction.ts";
@@ -57,6 +57,27 @@ if (process.env.ELIZA_LIVE_TEST !== "1") {
             attachments: [attachment],
           },
         };
+
+        const worldId = uuidv4() as UUID;
+        await runtime.createWorld({
+          id: worldId,
+          name: "attachment-live-world",
+          agentId,
+        });
+        await runtime.createEntity({
+          id: message.entityId,
+          names: ["AttachmentLiveUser"],
+          agentId,
+        });
+        await runtime.ensureRoomExists({
+          id: message.roomId,
+          name: "attachment-live-room",
+          worldId,
+          source: "live-test",
+          type: ChannelType.DM,
+        });
+        await runtime.ensureParticipantInRoom(message.entityId, message.roomId);
+        await runtime.createMemory(message, "messages");
 
         let callbackText = "";
         const callback: HandlerCallback = async (content) => {
