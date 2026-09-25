@@ -26,6 +26,7 @@ import {
   isGoogleCalendarWebhookEnabled,
 } from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
+import { CalendarLocalTimeError } from "../internal/time.js";
 import {
   type CalendarRouteRateLimitKey,
   type CalendarRouteService,
@@ -525,9 +526,21 @@ async function runCalendarRoute(
     await fn(service);
     return true;
   } catch (error) {
-    // error-policy:J1 boundary translation — typed CalendarServiceError maps to
-    // its carried status; any other error is logged and rethrown to the outer
-    // server handler as a 5xx rather than being masked as a route success.
+    // error-policy:J1 Typed calendar failures retain actionable status and clarification;
+    // unexpected errors are reported and rethrown to the outer server boundary.
+    if (error instanceof CalendarLocalTimeError) {
+      sendJson(
+        res,
+        {
+          error: error.message,
+          code: error.code,
+          requiresInput: true,
+          timeClarification: error.context,
+        },
+        error.status,
+      );
+      return true;
+    }
     if (error instanceof CalendarServiceError) {
       const logFn =
         error.status === 401

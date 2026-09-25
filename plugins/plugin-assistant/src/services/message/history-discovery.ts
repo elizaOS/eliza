@@ -713,18 +713,16 @@ export function loadHistoryReferences(
   return { projection: restoreAll ? undefined : evidence, evidence };
 }
 
-export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
-Supplied originals include retained constraints/unfinished work, unreviewed sources and the complete current exchange. Other originals remain readable through the complete index. Prior selection is model judgment, not proof that every dependency is supplied; originals are never deleted, rewritten or summarized.
-Read missing dependencies before answering or claiming ignorance. Use advertised history:hN only for known IDs, never guessed IDs; locate sources with history:search:<literal>, history:search-user:<literal> or history:search-assistant:<literal>. Searches are case-insensitive literal substrings, not semantic/regex; batched queries return the union of complete matches. Speaker filters do not identify a particular person. Search the stable subject/title, not only its current value, to find corrections and earlier versions.
-Matches prove occurrences, not first versions or exhaustive coverage. Zero matches prove only literal absence; report that for exact-wording questions, but read history:all before asserting a topic/fact was never discussed. Locate original subject sources or read all before claiming originally/always/only ever. Use history:all for uncertain interpretation, unresolved lookup or exhaustive coverage; further no-progress reads restore full history. A ban on app/storage tools does not bar reading these same conversation originals. Never infer omitted content or permission, or reread loaded IDs unnecessarily.
-Read through READ_CONTEXT when offered, otherwise contextRequests with empty replyText/action candidates. Reads execute no draft, extraction or effects. Once resolved, select applicable supplied originals: facts, standing constraints/corrections, referents and referenced unfinished work. Their union remains complete without a cap. Use relevant_prior_dialogue, complete=true for resolved dependencies, not review of unseen originals; copy completion_source_set exactly. Request missing originals through reads, not another selection mode. Incomplete selection restores every original before delivery/effects. Current request, system/provider constraints and receipts remain complete; this decision cannot rewrite the retention checkpoint.`;
+export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `History selection: use the separate source map to identify original dialogue. Select facts, applicable constraints/corrections, referents and explicitly continued unfinished work; a complete selection retains their exact union, never a summary. Prior selection can miss dependencies.
+Read missing originals through READ_CONTEXT or contextRequests (empty reply/action fields): history:hN for known IDs; history:search:<literal>, history:search-user:<literal> or history:search-assistant:<literal> for case-insensitive substring search. Search subjects as well as current values to find corrections. Speaker filters mean roles, not people. Matches establish occurrences, not earliest versions; zero matches establish literal absence only. Use history:all for unresolved interpretation or exhaustive coverage, and before claiming something was never discussed. These are conversation reads, not external app actions; do not reread supplied originals or infer omitted permission.
+Once dependencies are resolved, use relevant_prior_dialogue with complete=true and the sourceSetId required by the response schema. Incomplete selection restores all originals. Original speaker attribution, current request, system/provider constraints, receipts and retention checkpoints remain intact. Navigation receipts follow their original request.`;
 
 export function historyReferenceNotice(
   context: ContextObject,
   projection?: HistoryDiscovery,
 ): string {
   if (!projection) return "";
-  return `\nHistorical navigation receipts are restored with their original request; read that request before judging its navigation outcome. Complete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
+  return `\nHistory index: h1–h${collectCompletionContextSources(context).length} in chronological order. Read known IDs with history:hN, literal matches with history:search:<text>, or all originals with history:all. Supplied/loaded originals need no reread.`;
 }
 
 /** Carry completed conversation lookups into planning only while their sources remain identical. */
@@ -751,6 +749,23 @@ export function withHistoryReadEvidence(
       },
     ],
   };
+}
+
+/** Complete loaded originals for the plain Stage-1 transcript; receipts remain separate. */
+export function loadedPlainHistorySources(
+  context: ContextObject,
+  projection?: HistoryDiscovery,
+  renderedHistoryIds: ReadonlySet<string> = new Set(),
+): ContextObjectPromptSegment[] {
+  if (!projection || projection.loadedSourceIds.size === 0) return [];
+  const bound = completionContextSources(context);
+  if (projection.sourceSetId !== bound.sourceSetId) return [];
+  return bound.sources
+    .filter(
+      ({ id, event }) =>
+        projection.loadedSourceIds.has(id) && !renderedHistoryIds.has(event.id),
+    )
+    .map(({ event }) => event.segment);
 }
 
 export function loadedHistorySegments(

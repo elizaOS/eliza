@@ -3,15 +3,15 @@
  * service. Read-only source and event-version checks happen before the ledger
  * claims an external side effect; CRUD remains owned by CalendarService.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  ListLifeOpsCalendarsRequest,
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  type CreateLifeOpsCalendarEventRequest,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsCalendarSummary,
+  type ListLifeOpsCalendarsRequest,
 } from "@elizaos/core/contracts/calendar";
 import {
   APPLE_CALENDAR_GRANT_ID,
@@ -1005,6 +1005,15 @@ function receiptFromEvent(args: {
 
 function translateDefinitiveProviderRejection(error: unknown): never {
   if (
+    error instanceof ElizaError &&
+    (error.code === "CALENDAR_NOTE_SOURCE_CONFLICT" ||
+      error.code === "CALENDAR_NOTE_SOURCE_INVALID")
+  ) {
+    throw new CalendarMutationPreflightError(error.code, error.message, {
+      cause: error,
+    });
+  }
+  if (
     error instanceof CalendarServiceError &&
     error.code === "PROVIDER_NOT_ACCEPTED"
   ) {
@@ -1103,6 +1112,9 @@ export function createLifeOpsCalendarMutationPort(
       try {
         if (payload.action === "schedule_event") {
           const createRequest: CreateLifeOpsCalendarEventRequest = {
+            ...(payload.sourceNote !== undefined
+              ? { sourceNote: payload.sourceNote }
+              : {}),
             side: payload.side ?? "owner",
             grantId: preflight.sourceId,
             calendarId: preflight.calendarId,

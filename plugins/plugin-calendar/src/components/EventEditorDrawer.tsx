@@ -28,6 +28,11 @@ import {
   TagEditor,
   Textarea,
 } from "@elizaos/ui/components";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
+import {
+  getActiveAgentAuthority,
+  useActiveAgentAuthority,
+} from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   Check,
@@ -536,6 +541,13 @@ export function EventEditorDrawer({
   onChat,
 }: EventEditorDrawerProps) {
   installCalendarClient();
+  const sourceAuthority = useActiveAgentAuthority();
+  const eventAuthority = useRef<{ id: string; authority: string } | null>(null);
+  if (!event) {
+    eventAuthority.current = null;
+  } else if (eventAuthority.current?.id !== event.id) {
+    eventAuthority.current = { id: event.id, authority: sourceAuthority };
+  }
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
   const [form, setForm] = useState<FormState>(() =>
@@ -950,6 +962,27 @@ export function EventEditorDrawer({
     ? t("eventEditor.creating", { defaultValue: "Creating event" })
     : t("common.saving", { defaultValue: "Saving event" });
 
+  const candidateSource = event?.metadata.sourceNote;
+  const sourceNote =
+    eventAuthority.current?.authority === sourceAuthority &&
+    event &&
+    candidateSource &&
+    typeof candidateSource === "object" &&
+    "agentId" in candidateSource &&
+    candidateSource.agentId === event.agentId &&
+    "noteId" in candidateSource &&
+    typeof candidateSource.noteId === "string" &&
+    candidateSource.noteId.length > 0 &&
+    "contentHash" in candidateSource &&
+    typeof candidateSource.contentHash === "string" &&
+    /^[a-f0-9]{64}$/.test(candidateSource.contentHash)
+      ? {
+          agentId: event.agentId,
+          noteId: candidateSource.noteId,
+          contentHash: candidateSource.contentHash,
+        }
+      : null;
+
   const deduplication = event?.metadata.deduplication;
   const pendingUpdate =
     event?.provider === "eliza" &&
@@ -1030,6 +1063,30 @@ export function EventEditorDrawer({
                     "Saved in Eliza. Google calendar update pending.",
                 })}
               </p>
+            ) : null}
+
+            {sourceNote ? (
+              <EventEditorActionButton
+                agentId="event-source-note"
+                label="Open source note"
+                className="min-h-11"
+                description="Open the original note used to create this event"
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const authority = getActiveAgentAuthority();
+                  if (authority !== eventAuthority.current?.authority) return;
+                  onClose();
+                  dispatchNavigateViewEvent({
+                    viewId: "notes",
+                    viewPath: "/notes",
+                    source: "user",
+                    payload: { sourceNote, authority },
+                  });
+                }}
+              >
+                Open source note
+              </EventEditorActionButton>
             ) : null}
 
             {readOnlyReason ? (

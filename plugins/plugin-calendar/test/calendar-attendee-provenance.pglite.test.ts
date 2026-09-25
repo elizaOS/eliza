@@ -59,6 +59,8 @@ const action = createCalendarActionRunner({
   runJsonModel: async () => ({
     rawResponse: "{}",
     parsed: {
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: "primary",
       startAt: "2050-08-04T15:00:00Z",
       endAt: "2050-08-04T16:00:00Z",
       timeZone: "UTC",
@@ -319,7 +321,10 @@ describe("Calendar attendee original-source contract", {
           messageToUser: "Created the event.",
         }),
       });
-      expect(calls).toHaveLength(2);
+      expect(
+        calls,
+        JSON.stringify({ calls, result, executions: executeCall.mock.results }),
+      ).toHaveLength(2);
       expect(calls[0]).not.toContain("Invite sam.taylor@acme.com to lunch.");
       expect(calls[1]).toContain("Invite sam.taylor@acme.com to lunch.");
       expect(executeCall).toHaveBeenCalledOnce();
