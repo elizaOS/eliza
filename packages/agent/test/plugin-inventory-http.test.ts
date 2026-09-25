@@ -1,11 +1,15 @@
 /** Real authenticated HTTP inventory, disk config reload, and runtime registration. */
+
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { discoverPluginsFromManifest } from "../src/api/plugin-discovery-helpers.ts";
+import { handlePluginInventoryRoutes } from "../src/api/plugin-inventory-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 import type { PluginEntry } from "../src/api/server-types.ts";
 
@@ -167,3 +171,69 @@ it("lists the complete catalog and loaded registrations with fresh redacted conf
     loaded: false,
   });
 }, 120_000);
+
+it("preserves failed registration diagnostics across catalog refresh without leaking raw errors", async () => {
+  const catalog = discoverPluginsFromManifest();
+  const failed = catalog.find((entry) => entry.id === "pdf");
+  expect(failed).toBeDefined();
+  if (!failed) throw new Error("PDF must be present in the catalog");
+  const state = {
+    config: {},
+    runtime: fixture.runtime,
+    plugins: [{ ...failed, loadError: `Load rejected credential ${secret}` }],
+  };
+  const listener = createServer((req, res) => {
+    if (
+      !handlePluginInventoryRoutes({
+        method: req.method ?? "",
+        pathname: req.url ?? "",
+        res,
+        state,
+        json: (response, data) => {
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify(data));
+        },
+      })
+    ) {
+      res.statusCode = 404;
+      res.end();
+    }
+  });
+  listener.listen(0, "127.0.0.1");
+  await once(listener, "listening");
+  try {
+    const address = listener.address();
+    if (!address || typeof address === "string")
+      throw new Error("HTTP address unavailable");
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/plugins`,
+    );
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(secret);
+    const result = JSON.parse(text) as { plugins: PluginEntry[] };
+    expect(
+      result.plugins.find((entry) => entry.id === failed.id),
+    ).toMatchObject({
+      isActive: false,
+      loadError: "Plugin failed to load; inspect host diagnostics",
+    });
+    await fixture.runtime.registerPlugin({
+      name: failed.id,
+      description: "Synthetic successful retry",
+    });
+    const retried = (await (
+      await fetch(`http://127.0.0.1:${address.port}/api/plugins`)
+    ).json()) as { plugins: PluginEntry[] };
+    expect(
+      retried.plugins.find((entry) => entry.id === failed.id)?.isActive,
+    ).toBe(true);
+    expect(
+      retried.plugins.find((entry) => entry.id === failed.id)?.loadError,
+    ).toBeUndefined();
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      listener.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});

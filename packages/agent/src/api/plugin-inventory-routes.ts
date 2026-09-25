@@ -25,6 +25,9 @@ const sensitiveKey = (key: string): boolean =>
 
 /** Rebuild values on every read; configured/enabled never stand in for registration. */
 export function getPluginInventory(state: InventoryState): PluginEntry[] {
+  const failures = new Set(
+    state.plugins.filter((entry) => entry.loadError).map((entry) => entry.id),
+  );
   const bundled = discoverPluginsFromManifest();
   const catalog = new Map(state.plugins.map((entry) => [entry.id, entry]));
   for (const entry of bundled) catalog.set(entry.id, entry);
@@ -145,6 +148,9 @@ export function getPluginInventory(state: InventoryState): PluginEntry[] {
         ...(hints ? { configUiHints: hints } : {}),
         enabled,
         isActive,
+        ...(!isActive && failures.has(entry.id)
+          ? { loadError: "Plugin failed to load; inspect host diagnostics" }
+          : {}),
         configured: validation.valid,
         configKeys,
         parameters,
