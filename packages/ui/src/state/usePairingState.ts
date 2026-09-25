@@ -8,6 +8,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { client } from "../api";
+import { resumeRemoteFirstRunAfterPairing } from "../first-run/adopt-remote-first-run";
 import { persistActiveServerCredential } from "./active-server-credential";
 
 export type PairingFailureCode =
@@ -49,18 +50,21 @@ export function pairingFailureMessage(error: unknown): string {
   }
 }
 
-export function usePairingState() {
+export function usePairingState(onPaired: () => void) {
   const [pairingEnabled, setPairingEnabled] = useState(false);
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
   const [pairingCodeInput, setPairingCodeInput] = useState("");
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [pairingBusy, setPairingBusy] = useState(false);
   const pairingBusyRef = useRef(false);
+  const pairedApiBaseRef = useRef<string | null>(null);
 
   const handlePairingSubmit = useCallback(async () => {
     if (pairingBusyRef.current || pairingBusy) return;
+    const apiBase = client.getBaseUrl();
+    if (pairedApiBaseRef.current !== apiBase) pairedApiBaseRef.current = null;
     const code = pairingCodeInput.trim();
-    if (!code) {
+    if (!code && !pairedApiBaseRef.current) {
       setPairingError("Enter the pairing code from your server.");
       return;
     }
@@ -68,17 +72,27 @@ export function usePairingState() {
     pairingBusyRef.current = true;
     setPairingBusy(true);
     try {
-      const { token } = await client.pair(code);
-      await persistActiveServerCredential(token, client.getBaseUrl());
-      client.setToken(token);
-      window.location.reload();
+      if (!pairedApiBaseRef.current) {
+        const { token } = await client.pair(code);
+        await persistActiveServerCredential(token, apiBase);
+        client.setToken(token);
+        pairedApiBaseRef.current = apiBase;
+      }
+      await resumeRemoteFirstRunAfterPairing(client, apiBase);
+      // Re-evaluate the authenticated session without replaying Capacitor's
+      // launch URL in a new document (which would clear the paired credential).
+      onPaired();
     } catch (err) {
-      setPairingError(pairingFailureMessage(err));
+      setPairingError(
+        pairedApiBaseRef.current
+          ? `Paired, but remote setup failed: ${err instanceof Error ? err.message : String(err)}`
+          : pairingFailureMessage(err),
+      );
     } finally {
       pairingBusyRef.current = false;
       setPairingBusy(false);
     }
-  }, [pairingBusy, pairingCodeInput]);
+  }, [pairingBusy, pairingCodeInput, onPaired]);
 
   return {
     state: {

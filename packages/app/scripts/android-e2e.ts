@@ -82,7 +82,6 @@ function defaultAndroidEvidenceOutputDir() {
 // the embedded agent and its WebView contract, while voice remains a separate
 // hardware-qualified lane with its own model prerequisites.
 const HOST_EMULATOR_PROBES = [
-  "test/android/onboarding-to-home.android.spec.ts",
   "test/android/route-coverage.android.spec.ts",
   "test/android/native-plugin-view-smoke.android.spec.ts",
 ];
@@ -565,7 +564,20 @@ async function main() {
             "--host-agent-port",
             process.env.ELIZA_ANDROID_HOST_AGENT_PORT,
           ),
-          env: { ...process.env, ELIZA_API_TOKEN: hostAgentToken },
+          env: {
+            ...process.env,
+            ELIZA_API_TOKEN: hostAgentToken,
+            ...(hostEmulatorProbes
+              ? {
+                  ELIZA_ALLOWED_HOSTS: [
+                    process.env.ELIZA_ALLOWED_HOSTS,
+                    "10.0.2.2",
+                  ]
+                    .filter(Boolean)
+                    .join(","),
+                }
+              : {}),
+          },
           pairingDisabled: false,
           log: evidenceBoundary.callback("host-agent-start"),
         });
@@ -601,6 +613,52 @@ async function main() {
     }
 
     if (!has("--skip-route-coverage")) {
+      if (hostEmulatorProbes) {
+        // Fresh onboarding must run in its own worker before the route probes:
+        // their seeded session would otherwise bypass the pairing contract.
+        const onboardingReport = path.join(
+          bundle.reportsDir,
+          "android-onboarding-playwright.json",
+        );
+        try {
+          run(
+            bundle,
+            "Android fresh remote onboarding",
+            "node",
+            [
+              "scripts/run-ui-playwright.ts",
+              "--config",
+              "playwright.android.config.ts",
+              "test/android/onboarding-to-home.android.spec.ts",
+            ],
+            {
+              ANDROID_SERIAL: serial,
+              ELIZA_ANDROID_ALLOW_FIRST_RUN: "1",
+              ELIZA_ANDROID_CLEAR_APP_DATA: "1",
+              ELIZA_ANDROID_ARTIFACT_DIR: path.join(
+                bundle.root,
+                "test-results",
+                "android",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR: path.join(
+                bundle.rawDir,
+                "android-onboarding-playwright",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_JSON: onboardingReport,
+              ELIZA_ANDROID_PLAYWRIGHT_JUNIT: path.join(
+                bundle.reportsDir,
+                "android-onboarding-playwright.junit.xml",
+              ),
+              PLAYWRIGHT_HTML_REPORT: path.join(
+                bundle.reportsDir,
+                "android-onboarding-playwright-html",
+              ),
+            },
+          );
+        } finally {
+          reportAndroidPlaywrightResults(onboardingReport, evidenceBoundary);
+        }
+      }
       // Only the legacy full-directory lane includes on-device voice. Explicit
       // host/local probe sets keep that hardware-and-model contract separate.
       if (!hostEmulatorProbes && !arm64LocalProbes) {
@@ -640,6 +698,12 @@ async function main() {
           ],
           {
             ANDROID_SERIAL: serial,
+            ...(hostEmulatorProbes
+              ? {
+                  ELIZA_ANDROID_ALLOW_FIRST_RUN: "0",
+                  ELIZA_ANDROID_CLEAR_APP_DATA: "1",
+                }
+              : {}),
             ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(
               bundle.root,
               "test-results",

@@ -26,6 +26,7 @@ import {
   resolveAdb,
   resolveSerial,
 } from "../../scripts/lib/android-device.ts";
+import { parsePort } from "../../scripts/lib/host-agent.ts";
 
 export const ORIGIN = "https://localhost";
 
@@ -36,7 +37,7 @@ export const ORIGIN = "https://localhost";
  */
 // Which backend the WebView talks to. `local` = the embedded on-device agent
 // over the Capacitor Agent IPC (needs the agent running on-device). `host` =
-// a real agent on the dev host, reached via `adb reverse tcp:31337` — used for
+// a real agent on the dev host, reached through the emulator host address — used for
 // route coverage on an emulator where the embedded agent can't run. Cloud/remote
 // modes seed their own active-server out of band.
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
@@ -46,13 +47,18 @@ const ALLOW_FIRST_RUN =
 
 function activeServerSeed(): string {
   if (BACKEND === "host") {
-    const accessToken = process.env.ELIZA_ANDROID_HOST_AGENT_TOKEN?.trim();
     return JSON.stringify({
       id: "remote:host",
       kind: "remote",
       label: "Host agent",
-      apiBase: "http://127.0.0.1:31337",
-      ...(accessToken ? { accessToken } : {}),
+      // Loopback:31337 identifies the bundled native agent, even when adb
+      // reverse forwards that port. Use a genuine remote identity instead.
+      apiBase:
+        process.env.ELIZA_ANDROID_ONBOARDING_API_BASE ??
+        `http://10.0.2.2:${parsePort(
+          process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
+          "ELIZA_ANDROID_HOST_AGENT_PORT",
+        )}`,
     });
   }
   // The renderer reads runtime mode from localStorage (a SEPARATE store from the
@@ -70,8 +76,9 @@ export const SEED_STORAGE: Record<string, string> = {
   "eliza:onboarding-complete": "1",
   "eliza:first-run-complete": "1",
   "eliza:ui-shell-mode": "native",
-  "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote" : "local",
+  "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote-mac" : "local",
   "eliza:developerMode": "1",
+  "eliza:previewMode": "1",
   "elizaos:active-server": activeServerSeed(),
 };
 
@@ -321,7 +328,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           waitUntil: "domcontentloaded",
           timeout: 20_000,
         });
+        if (BACKEND === "host") {
+          await pairHostedAgent(page, { allowExistingSession: true });
+        }
         await waitForShellReady(page);
+        const skipPriming = page.getByTestId("priming-skip-all");
+        if (await skipPriming.isVisible()) await skipPriming.click();
         await page
           .evaluate(() => {
             (
@@ -358,6 +370,38 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 });
 
 export { android, expect };
+
+/** Authenticate through the product UI, including its native secure storage. */
+export async function pairHostedAgent(
+  page: Page,
+  { allowExistingSession = false } = {},
+): Promise<void> {
+  const input = page.getByPlaceholder("Enter pairing code");
+  if (allowExistingSession) {
+    // Playwright restarts workers after a failed test without clearing the app's
+    // secure store. Reuse that real authenticated session when it restored.
+    await expect(
+      input.or(page.getByTestId("chat-composer-textarea")),
+    ).toBeVisible({ timeout: 60_000 });
+    if (!(await input.isVisible())) return;
+  }
+  await expect(input).toBeVisible({ timeout: 60_000 });
+  const port = parsePort(
+    process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
+    "ELIZA_ANDROID_HOST_AGENT_PORT",
+  );
+  const response = await fetch(`http://127.0.0.1:${port}/api/auth/pair-code`);
+  if (!response.ok) {
+    throw new Error(`Host pairing-code request failed (${response.status}).`);
+  }
+  const body = (await response.json()) as { code?: unknown };
+  if (typeof body.code !== "string" || !body.code.trim()) {
+    throw new Error("Host pairing-code response did not contain a code.");
+  }
+  await input.fill(body.code);
+  await page.getByRole("button", { name: "Submit" }).click();
+  await expect(input).toBeHidden({ timeout: 60_000 });
+}
 
 /** One-shot check: is the React shell rendered past the connecting splash? */
 export async function isShellReady(page: Page): Promise<boolean> {
