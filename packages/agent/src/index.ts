@@ -67,6 +67,7 @@ export type {
   CustomActionHandler,
   DatabaseProviderType,
   ElizaConfig,
+  ReleaseChannel,
   RolesConfig,
 } from "@elizaos/core";
 // Config contract types are exported from core above; the host config module
@@ -76,6 +77,7 @@ export {
   type AwarenessContributor,
   type AwarenessInvalidationEvent,
   AwarenessRegistry,
+  CONNECTOR_PLUGINS,
   type CreateIntegrationSpanOptions,
   collectKeywordTermMatches,
   createIntegrationTelemetrySpan,
@@ -120,8 +122,6 @@ export {
   shouldUseSandboxExecution,
   textIncludesKeywordTerm,
 } from "@elizaos/core";
-export { CONNECTOR_PLUGINS } from "@elizaos/core/config/plugin-auto-enable-engine";
-export type { ReleaseChannel } from "@elizaos/core/contracts/config";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
