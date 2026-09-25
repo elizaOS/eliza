@@ -10,3 +10,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-knowledge build  # build
 bun run --cwd plugins/plugin-knowledge test   # tests
 ```
+
+The app renderer uses `src/browser.ts` for document views and registration;
+runtime routes and document-service loading stay on the runtime entry.

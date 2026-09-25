@@ -68,6 +68,7 @@ describe("workspace package resolution", () => {
     ["relationships", "RelationshipsPage"],
     ["calendar", "CalendarPage"],
     ["notes", "NotesView"],
+    ["knowledge", "KnowledgeView"],
   ])(
     "%s dev modules stay inside the renderer boundary",
     async (plugin, view) => {
