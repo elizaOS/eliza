@@ -73,3 +73,10 @@ service, selects the first-party Agent plugin in a minimal test WebView, verifie
 startup, authenticated requests and shutdown, then removes its APKs. Reports and
 complete runtime logs go to `test-results/android-native-agent/`. This lane does
 not claim model inference, the full renderer flow, or physical-device coverage.
+
+Add `--embedding` to run the production framed inference host and JNI encoder
+against the BGE model packaged in the APK. This builds CPU libraries for ARM64
+and x86_64, requires the pinned llama.cpp submodule and Android NDK, and rejects
+`ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1`. It checks complete Unicode input, typed
+oversize/artifact rejection, release/reload, and 30 warm requests; the report
+exports the complete 384-dimensional vector and timing evidence.
