@@ -21,6 +21,7 @@
 
 import { seedTestUser } from "../src/fixtures/seed";
 import {
+  approveAppForMonetizationTest,
   authedClient,
   cerebrasConfigured,
   REAL_LLM_BILLING_SOURCE,
@@ -76,6 +77,17 @@ test.describe("creator-monetization journey (real LLM)", () => {
     const appId = created.json.app?.id;
     expect(appId, "apps.create returns an app id").toBeTruthy();
     if (!appId) throw new Error("apps.create did not return an app id");
+
+    const draftMonetize = await creator(
+      "PUT",
+      `/api/v1/apps/${appId}/monetization`,
+      { monetizationEnabled: true },
+    );
+    expect(
+      draftMonetize.status,
+      "draft app cannot enable monetization before compliance approval",
+    ).toBe(403);
+    await approveAppForMonetizationTest(appId, creator);
 
     const monetize = await creator(
       "PUT",
