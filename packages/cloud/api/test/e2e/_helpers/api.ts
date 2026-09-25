@@ -194,14 +194,21 @@ async function request(
   opts: FetchOptions = {},
 ): Promise<Response> {
   const makeInit = (): RequestInit => {
+    const headers = new Headers(opts.headers);
+    // Wrangler's local proxy can reuse a connection the Worker just closed,
+    // returning "Network connection lost" before the route responds. Close
+    // each local connection instead of replaying potentially applied mutations.
+    // https://github.com/cloudflare/workers-sdk/issues/14641
+    if (isLocalTarget()) headers.set("Connection", "close");
     const init: RequestInit = {
       method,
       signal: timeoutSignal(),
-      headers: { ...(opts.headers ?? {}) },
+      headers,
     };
     if (opts.body !== undefined) {
-      (init.headers as Record<string, string>)["Content-Type"] ??=
-        "application/json";
+      if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
       init.body =
         typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
     }
