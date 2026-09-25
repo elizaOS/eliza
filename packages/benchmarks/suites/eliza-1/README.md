@@ -8,6 +8,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/benchmarks/suites/eliza-1 typecheck  # static validation
+bun run --cwd packages/benchmarks/suites/eliza-1 test       # HTTP-to-report regression tests
 ```
 
 No standalone build script is defined; this package is consumed or executed from source.
@@ -21,8 +22,7 @@ arguments against the exact decision schema. Missing token usage stays null;
 summary coverage identifies how many cases have observed usage. These tests do
 not establish live framework quality. Typechecking is not a substitute for runtime tests.
 
-Run the TypeScript HTTP-to-report checks with
-`node --test packages/benchmarks/suites/eliza-1/__tests__/metrics.test.ts`
+The TypeScript HTTP-to-report checks run in the required server test lane
 using Node 24.15.0. Reported token counts use observed provider usage; local
 decode modes without token receipts show n/a. Accuracy includes parse failures.
 
