@@ -20,9 +20,9 @@
  */
 
 import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
-import { dispatchNavigateViewEvent } from "@elizaos/core/events";
 import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
 import { useEffect, useMemo, useRef } from "react";
+import { dispatchNavigateViewEvent } from "../../events";
 import { logger } from "../../logger.ts";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { Card } from "../ui/card";

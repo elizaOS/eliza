@@ -34,8 +34,30 @@ import {
   isLocalInferenceAsrReady,
   transcribeLocalInferenceWav,
 } from "../local-asr-transcribe";
+import { toSpeakableText } from "../voice-chat-playback";
 import type { VoicePlaybackEvidenceEvent } from "../voice-playback-evidence";
 import { now, sleep } from "./timing";
+
+/** Cancellation must settle the workbench even if a transport ignores its signal. */
+async function awaitVoiceTransport<T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return operation;
+  let abort: () => void = () => {};
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    abort = () =>
+      reject(new DOMException("Voice workbench cancelled", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+  });
+  try {
+    return await Promise.race([operation, cancelled]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
+
 export type TurnStatus = "pass" | "fail" | "skipped";
 /** Structural mirror of `VoiceScenarioParticipant` (@elizaos/plugin-local-inference). */
 export interface WorkbenchParticipant {
@@ -67,6 +89,16 @@ export interface WorkbenchScenario {
   agents?: string[];
 }
 export type VoiceWorkbenchPlatform = "web" | "android" | "desktop";
+/** Complete text delivery observations on the same monotonic clock as playback. */
+export type VoiceWorkbenchTextEvent =
+  | {
+      kind: "stream";
+      atMs: number;
+      token: string;
+      accumulatedText?: string;
+      provisional: boolean;
+    }
+  | { kind: "final"; atMs: number; text: string; completed: boolean };
 /** A single scored turn of the scenario. */
 export interface VoiceWorkbenchTurnReport {
   index: number;
@@ -87,6 +119,7 @@ export interface VoiceWorkbenchTurnReport {
   durationMs: number;
   /** Present only when the caller explicitly exercised the buffered playback hook. */
   playbackEvidence?: VoicePlaybackEvidenceEvent[];
+  textEvidence?: VoiceWorkbenchTextEvent[];
   detail: Record<string, string | number | boolean>;
   error?: string;
 }
@@ -116,7 +149,14 @@ export interface VoiceWorkbenchReport {
     reason?: string;
   };
 }
+export interface VoiceWorkbenchStreamingReply {
+  update(text: string): void;
+  finish(text: string): Promise<VoicePlaybackEvidenceEvent[]>;
+  cancel(): Promise<VoicePlaybackEvidenceEvent[]>;
+}
 export interface VoiceWorkbenchOptions {
+  /** Opt-in actual streaming queue; provisional action text remains held. */
+  beginStreamingReply?: (messageId: string) => VoiceWorkbenchStreamingReply;
   /** Opt-in real playback consumer; the default TTS gate only fetches and decodes. */
   playReply?: (
     reply: string,
@@ -339,21 +379,58 @@ async function runTurn(
   let completed = false;
   let agentName = "";
   let noResponseReason: string | undefined;
+  const textEvidence: VoiceWorkbenchTextEvent[] = [];
+  const messageId = `workbench:${opts.scenario.id}:${index}:${crypto.randomUUID()}`;
+  let streaming: VoiceWorkbenchStreamingReply | undefined;
+  let accumulated = "";
+  const cancelStreaming = () => {
+    void streaming?.cancel();
+  };
   try {
-    const send = await opts.client.sendConversationMessageStream(
-      conversationId,
-      transcript,
-      () => {},
-      "VOICE_DM",
+    streaming = opts.beginStreamingReply?.(messageId);
+    if (opts.signal?.aborted) cancelStreaming();
+    else
+      opts.signal?.addEventListener("abort", cancelStreaming, { once: true });
+    opts.signal?.throwIfAborted();
+    const send = await awaitVoiceTransport(
+      opts.client.sendConversationMessageStream(
+        conversationId,
+        transcript,
+        (token, accumulatedText, provisional) => {
+          if (opts.signal?.aborted) return;
+          textEvidence.push({
+            kind: "stream",
+            atMs: now(),
+            token,
+            accumulatedText,
+            provisional: provisional === true,
+          });
+          if (!provisional) {
+            accumulated = accumulatedText ?? accumulated + token;
+            streaming?.update(accumulated);
+          }
+        },
+        "VOICE_DM",
+        opts.signal,
+      ),
       opts.signal,
     );
+    textEvidence.push({
+      kind: "final",
+      atMs: now(),
+      text: send.text ?? "",
+      completed: send.completed,
+    });
     reply = (send.text ?? "").trim();
     completed = send.completed;
     agentName = send.agentName;
     noResponseReason = send.noResponseReason;
   } catch (error) {
     // error-policy:J1 turn boundary — failure becomes an explicit fail row
+    opts.signal?.removeEventListener("abort", cancelStreaming);
+    const cancelledEvidence = await streaming?.cancel();
     return {
+      ...(cancelledEvidence ? { playbackEvidence: cancelledEvidence } : {}),
       index,
       speaker: turn.speaker,
       expectedSpeakerLabel,
@@ -365,6 +442,7 @@ async function runTurn(
       expectedTranscript,
       reply: "",
       durationMs: Math.round(now() - t0),
+      textEvidence,
       detail: { stage: "send", wer: Number(wer.toFixed(3)) },
       error: error instanceof Error ? error.message : String(error),
     };
@@ -377,64 +455,112 @@ async function runTurn(
   let ttsOk = true;
   let ttsError: string | undefined;
   let playbackEvidence: VoicePlaybackEvidenceEvent[] | undefined;
+  if (!responded && streaming) {
+    playbackEvidence = await streaming.cancel();
+    ttsOk = !playbackEvidence.some((event) => event.kind === "source-started");
+    if (!ttsOk)
+      ttsError = "Streaming audio started for a turn without a final response";
+  }
   if (responded) {
     try {
-      if (opts.playReply) {
-        const messageId = `workbench:${opts.scenario.id}:${index}:${crypto.randomUUID()}`;
-        playbackEvidence = await opts.playReply(reply, index, messageId);
-        const queued = playbackEvidence.filter(
-          (event) => event.kind === "queued",
-        );
-        const started = playbackEvidence.filter(
+      if (opts.playReply || streaming) {
+        const evidence = streaming
+          ? await streaming.finish(reply)
+          : opts.playReply
+            ? await opts.playReply(reply, index, messageId)
+            : [];
+        playbackEvidence = evidence;
+        const taskIds = [
+          ...new Set(playbackEvidence.map((event) => event.taskId)),
+        ];
+        const checks = taskIds.map((taskId) => {
+          const events = evidence.filter((event) => event.taskId === taskId);
+          const queued = events.filter((event) => event.kind === "queued");
+          const started = events.filter(
+            (event) => event.kind === "source-started",
+          );
+          const terminals = events.filter((event) => event.kind === "terminal");
+          const selectedBuffer = events.find(
+            (event) =>
+              event.kind === "decoded" &&
+              event.bufferId === started[0]?.bufferId,
+          );
+          const encoded = events.filter((event) => event.kind === "encoded");
+
+          let peak = 0;
+          let sumSquares = 0;
+          let sampleCount = 0;
+          if (selectedBuffer?.kind === "decoded") {
+            for (const channel of selectedBuffer.channels)
+              for (const sample of channel) {
+                peak = Math.max(peak, Math.abs(sample));
+                sumSquares += sample * sample;
+                sampleCount += 1;
+              }
+          }
+          const detail = {
+            ttsPeak: peak,
+            ttsRms: sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0,
+          };
+          const ok =
+            queued.length === 1 &&
+            queued[0]?.telemetry?.messageId === messageId &&
+            events.every((event) => event.taskId === taskId) &&
+            started.length === 1 &&
+            terminals.length === 1 &&
+            terminals[0]?.outcome === "source-ended" &&
+            started[0] !== undefined &&
+            selectedBuffer !== undefined &&
+            events[0] === queued[0] &&
+            events.indexOf(started[0]) > events.indexOf(selectedBuffer) &&
+            events.at(-1) === terminals[0] &&
+            encoded.length === 1 &&
+            encoded[0] !== undefined &&
+            events.indexOf(encoded[0]) < events.indexOf(selectedBuffer) &&
+            peak >= 0.02 &&
+            detail.ttsRms >= 1e-4;
+          return { ok, detail };
+        });
+        const spoken = evidence
+          .filter((event) => event.kind === "queued")
+          .map((event) => event.text)
+          .join(" ");
+        const normalizeSpeech = (text: string) =>
+          toSpeakableText(text).replace(/\s+/gu, " ").trim();
+        const queuedIds = evidence
+          .filter((event) => event.kind === "queued")
+          .map((event) => event.taskId);
+        const starts = evidence.filter(
           (event) => event.kind === "source-started",
         );
-        const terminals = playbackEvidence.filter(
-          (event) => event.kind === "terminal",
-        );
-        const selectedBuffer = playbackEvidence.find(
-          (event) =>
-            event.kind === "decoded" && event.bufferId === started[0]?.bufferId,
-        );
-        const encoded = playbackEvidence.filter(
-          (event) => event.kind === "encoded",
-        );
-        const taskId = queued[0]?.taskId;
-        let peak = 0;
-        let sumSquares = 0;
-        let sampleCount = 0;
-        if (selectedBuffer?.kind === "decoded") {
-          for (const channel of selectedBuffer.channels)
-            for (const sample of channel) {
-              peak = Math.max(peak, Math.abs(sample));
-              sumSquares += sample * sample;
-              sampleCount += 1;
-            }
-        }
-        ttsDetail = {
-          ttsPeak: peak,
-          ttsRms: sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0,
-        };
+        const ordered =
+          starts.length === queuedIds.length &&
+          starts.every((event, index) => {
+            if (event.taskId !== queuedIds[index]) return false;
+            if (index === 0) return true;
+            const previousEnd = evidence.findIndex(
+              (entry) =>
+                entry.kind === "terminal" &&
+                entry.taskId === queuedIds[index - 1],
+            );
+            return previousEnd >= 0 && previousEnd < evidence.indexOf(event);
+          });
         ttsOk =
-          queued.length === 1 &&
-          queued[0]?.telemetry?.messageId === messageId &&
-          playbackEvidence.every((event) => event.taskId === taskId) &&
-          started.length === 1 &&
-          terminals.length === 1 &&
-          terminals[0]?.outcome === "source-ended" &&
-          started[0] !== undefined &&
-          selectedBuffer !== undefined &&
-          playbackEvidence[0] === queued[0] &&
-          playbackEvidence.indexOf(started[0]) >
-            playbackEvidence.indexOf(selectedBuffer) &&
-          playbackEvidence.at(-1) === terminals[0] &&
-          encoded.length === 1 &&
-          encoded[0] !== undefined &&
-          playbackEvidence.indexOf(encoded[0]) <
-            playbackEvidence.indexOf(selectedBuffer) &&
-          peak >= 0.02 &&
-          ttsDetail.ttsRms >= 1e-4;
+          !opts.signal?.aborted &&
+          ordered &&
+          checks.length > 0 &&
+          checks.every((check) => check.ok) &&
+          normalizeSpeech(spoken) === normalizeSpeech(reply);
+        ttsDetail = {
+          ttsSegments: checks.length,
+          ttsPeak: Math.max(0, ...checks.map((check) => check.detail.ttsPeak)),
+          ttsRms: checks.length
+            ? Math.min(...checks.map((check) => check.detail.ttsRms))
+            : 0,
+        };
         if (!ttsOk)
-          ttsError = `Buffered playback provenance did not confirm this turn (${terminals[0]?.outcome ?? "unavailable"})`;
+          ttsError =
+            "Buffered playback provenance did not confirm every segment";
       } else {
         const tts = await synthesizeReply(opts, reply);
         ttsDetail = tts.detail;
@@ -443,10 +569,12 @@ async function runTurn(
       }
     } catch (error) {
       // error-policy:J1 stage boundary — failure is recorded on the turn row
+      if (streaming) playbackEvidence = await streaming.cancel();
       ttsOk = false;
       ttsError = error instanceof Error ? error.message : String(error);
     }
   }
+  opts.signal?.removeEventListener("abort", cancelStreaming);
   // Inject this turn's silent pauses AFTER the round-trip so the next turn is
   // separated by the scenario's declared gap (barge-in / EOT timing).
   if (turn.pausesMs?.length) {
@@ -461,7 +589,12 @@ async function runTurn(
     ttsOk &&
     (!speakerAttributionRan || speakerLabelOk);
   const detail: Record<string, string | number | boolean> = {
-    ttsObservation: opts.playReply ? "buffered-playback" : "decode-only",
+    ttsObservation: streaming
+      ? "streaming-buffered-playback"
+      : opts.playReply
+        ? "buffered-playback"
+        : "decode-only",
+    textDelivery: streaming ? "streaming-queue" : "final-reply-only",
     transcript,
     expectedTranscript,
     wer: Number(wer.toFixed(3)),
@@ -484,6 +617,7 @@ async function runTurn(
   if (turn.expectedEntity) detail.expectedEntity = turn.expectedEntity;
   return {
     ...(playbackEvidence ? { playbackEvidence } : {}),
+    textEvidence,
     index,
     speaker: turn.speaker,
     expectedSpeakerLabel,
@@ -601,7 +735,12 @@ export async function runVoiceWorkbench(
     turns.length > 0 && turns.every((t) => t.status === "skipped");
   const requiresDiarization = scenario.classes.includes("diarization");
   let overall: VoiceWorkbenchReport["overall"] = "pass";
-  if (hasFail || diarization.status === "fail") {
+  if (
+    opts.signal?.aborted ||
+    turns.length !== scenario.turns.length ||
+    hasFail ||
+    diarization.status === "fail"
+  ) {
     overall = "fail";
   } else if (
     allSkipped ||

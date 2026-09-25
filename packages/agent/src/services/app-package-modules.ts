@@ -36,7 +36,7 @@ import { getPluginInfo } from "./registry-client.ts";
 export type {
   AppLaunchSessionContext,
   AppRunSessionContext,
-} from "@elizaos/core/contracts/apps";
+} from "@elizaos/core";
 export type AppLaunchPreparationResolver = (
   ctx: AppLaunchSessionContext,
 ) => Promise<AppLaunchPreparation | null>;

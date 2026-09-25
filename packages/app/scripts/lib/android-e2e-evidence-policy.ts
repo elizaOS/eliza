@@ -34,7 +34,7 @@ const PHASES = new Set([
 ]);
 
 const STATUSES = new Set(["started", "passed", "failed", "skipped"]);
-const COUNTERS = new Set(["mediaArtifactCount"]);
+const COUNTERS = new Set(["mediaArtifactCount", "sourceLine", "specId"]);
 
 const CODES = new Set([
   "PHASE_STARTED",
@@ -49,6 +49,17 @@ const CODES = new Set([
   "ANDROID_E2E_PASSED",
   "ANDROID_E2E_FAILED",
   "UNHANDLED_ERROR",
+  "PLAYWRIGHT_PASSED",
+  "PLAYWRIGHT_FAILED",
+  "PLAYWRIGHT_TIMED_OUT",
+  "PLAYWRIGHT_SKIPPED",
+  "PLAYWRIGHT_INTERRUPTED",
+  "PLAYWRIGHT_REPORT_UNAVAILABLE",
+  "PROJECTION_UNTRUSTED_ANCESTRY",
+  "PROJECTION_INVALID_REVISION",
+  "PROJECTION_INVALID_BUILD_ID",
+  "PROJECTION_VIDEO_FAILED",
+  "PROJECTION_DESTINATION_EXISTS",
 ]);
 
 const STEP_PHASES = new Map([
@@ -145,6 +156,109 @@ export function createAndroidEvidenceBoundary({
   };
 }
 
+// Only source-owned probe identifiers and numeric locations leave the private
+// report. Titles, errors, attachments, stdout and stderr may contain device data.
+export function reportAndroidPlaywrightResults(reportPath, boundary) {
+  const specs = [
+    "onboarding-to-home.android.spec.ts",
+    "route-coverage.android.spec.ts",
+    "native-plugin-view-smoke.android.spec.ts",
+  ];
+  const statuses = new Map([
+    ["passed", "PLAYWRIGHT_PASSED"],
+    ["failed", "PLAYWRIGHT_FAILED"],
+    ["timedOut", "PLAYWRIGHT_TIMED_OUT"],
+    ["skipped", "PLAYWRIGHT_SKIPPED"],
+    ["interrupted", "PLAYWRIGHT_INTERRUPTED"],
+  ]);
+  try {
+    const stat = fs.lstatSync(reportPath);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      stat.size > 16 * 1024 * 1024
+    ) {
+      throw new Error("Invalid private report");
+    }
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+    let emitted = 0;
+    let visited = 0;
+    const visit = (suites, depth = 0) => {
+      if (!Array.isArray(suites) || depth > 16) return;
+      for (const suite of suites.slice(0, 1024)) {
+        if (++visited > 2048) return;
+        if (!suite || typeof suite !== "object") continue;
+        for (const spec of (Array.isArray(suite.specs)
+          ? suite.specs
+          : []
+        ).slice(0, 1024)) {
+          if (!spec || typeof spec !== "object") continue;
+          const specId = specs.indexOf(spec.file);
+          if (specId < 0 || !Number.isSafeInteger(spec.line) || spec.line < 1)
+            continue;
+          for (const test of (Array.isArray(spec.tests)
+            ? spec.tests
+            : []
+          ).slice(0, 16)) {
+            for (const result of (Array.isArray(test.results)
+              ? test.results
+              : []
+            ).slice(0, 16)) {
+              const code = statuses.get(result.status);
+              if (!code || emitted >= 2048) continue;
+              boundary.event(
+                "route-capture",
+                result.status === "passed"
+                  ? "passed"
+                  : result.status === "skipped"
+                    ? "skipped"
+                    : "failed",
+                code,
+                { specId: specId + 1, sourceLine: spec.line },
+              );
+              emitted += 1;
+            }
+          }
+        }
+        visit(suite.suites, depth + 1);
+      }
+    };
+    visit(report.suites);
+    if (emitted === 0) throw new Error("No recognized results");
+  } catch {
+    boundary.event("route-capture", "failed", "PLAYWRIGHT_REPORT_UNAVAILABLE");
+  }
+}
+
+export function androidProjectionFailureCode(error) {
+  const codes = new Map([
+    [
+      "Android evidence publication ancestry is writable by another principal.",
+      "PROJECTION_UNTRUSTED_ANCESTRY",
+    ],
+    [
+      "Android evidence publication ancestry is owned by another principal.",
+      "PROJECTION_UNTRUSTED_ANCESTRY",
+    ],
+    [
+      "Android evidence revision must be an exact lowercase hexadecimal value.",
+      "PROJECTION_INVALID_REVISION",
+    ],
+    [
+      "Android renderer build ID must be an exact lowercase hexadecimal value.",
+      "PROJECTION_INVALID_BUILD_ID",
+    ],
+    ["Android evidence video redaction failed.", "PROJECTION_VIDEO_FAILED"],
+    [
+      "Android evidence output directory must not already exist.",
+      "PROJECTION_DESTINATION_EXISTS",
+    ],
+  ]);
+  return (
+    codes.get(error instanceof Error ? error.message : null) ?? "PHASE_FAILED"
+  );
+}
+
 /**
  * Runs teardown phases without letting an earlier device failure bypass lease
  * release, evidence projection, or deletion of the private workspace.
@@ -156,11 +270,16 @@ export async function settleAndroidEvidenceTeardown({
   onFailure = () => {},
 }) {
   let failureCount = 0;
-  const recordFailure = (phase) => {
+  const recordFailure = (phase, error) => {
     requireAllowlisted(PHASES, phase, "Android teardown phase");
     failureCount += 1;
     try {
-      onFailure(phase);
+      onFailure(
+        phase,
+        phase === "evidence-projection"
+          ? androidProjectionFailureCode(error)
+          : "PHASE_FAILED",
+      );
     } catch {
       // A reporting callback must not bypass the remaining cleanup phases.
     }
@@ -177,8 +296,8 @@ export async function settleAndroidEvidenceTeardown({
     }
     try {
       await project({ failureCount });
-    } catch {
-      recordFailure("evidence-projection");
+    } catch (error) {
+      recordFailure("evidence-projection", error);
     }
   } finally {
     await cleanup();

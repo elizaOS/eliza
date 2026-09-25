@@ -343,6 +343,9 @@ export {
 	readCanonicalArrayLength,
 	stableJsonString,
 } from "./canonical-json.js";
+export { default as channelPluginMap } from "./catalog/channel-plugin-map.json" with {
+	type: "json",
+};
 export {
 	type AccountAuthKind,
 	type AccountConfig,
@@ -382,6 +385,9 @@ export {
 	resourcesSchema,
 	type SecondarySurface,
 } from "./catalog/index.js";
+export { default as providerPluginMap } from "./catalog/provider-plugin-map.json" with {
+	type: "json",
+};
 export {
 	AGENT_REGISTRY_SEARCH_POLICY,
 	CORE_REGISTRY_SEARCH_POLICY,
@@ -396,6 +402,9 @@ export {
 	runtimeRegistryEntrySchema,
 	searchRegistryEntries,
 } from "./catalog/runtime-kernel.js";
+export { default as shortIdPluginMap } from "./catalog/short-id-plugin-map.json" with {
+	type: "json",
+};
 export {
 	buildElizaCharacterCatalog,
 	CHARACTER_PRESET_META,
@@ -2444,6 +2453,61 @@ export {
 export * from "./database/document-source-segments";
 export * from "./embedding-vector-space";
 export {
+	AGENT_READY_EVENT,
+	APP_EMOTE_EVENT,
+	APP_PAUSE_EVENT,
+	APP_RESUME_EVENT,
+	APPEARANCE_APPLY_EVENT,
+	type AppDocumentEventName,
+	type AppEmoteEventDetail,
+	type AppEventName,
+	type AppearanceApplyPayload,
+	type AppWindowEventName,
+	BACKGROUND_APPLY_EVENT,
+	type BackgroundApplyOp,
+	type BackgroundApplyPayload,
+	type BackgroundShaderUniformPatch,
+	BRIDGE_READY_EVENT,
+	CHAT_AVATAR_VOICE_EVENT,
+	type ChatAvatarVoiceEventDetail,
+	COMMAND_PALETTE_EVENT,
+	CONNECT_EVENT,
+	createShellNavigateViewWsFrame,
+	ELIZA_CLOUD_STATUS_UPDATED_EVENT,
+	type ElizaCloudStatusUpdatedDetail,
+	type ElizaDocumentEventName,
+	type ElizaEventName,
+	type ElizaWindowEventName,
+	EMOTE_PICKER_EVENT,
+	FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
+	FUSED_WAKE_EVENT,
+	type FusedWakeEventDetail,
+	type FusedWakeStage,
+	MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+	NAVIGATE_VIEW_EVENT,
+	type NavigateViewDetail,
+	type NavigateViewType,
+	NETWORK_STATUS_CHANGE_EVENT,
+	type NetworkStatusChangeDetail,
+	normalizeCompletedActionHandoffId,
+	normalizeShellNavigateViewPayload,
+	PUSH_TO_TALK_HOLD_EVENT,
+	PUSH_TO_TALK_TOGGLE_EVENT,
+	type PushToTalkHoldDetail,
+	SELF_STATUS_SYNC_EVENT,
+	SHARE_TARGET_EVENT,
+	SHELL_NAVIGATE_VIEW_WS_EVENT,
+	type ShellNavigateViewPayload,
+	type ShellNavigateViewType,
+	type ShellNavigateViewWsFrame,
+	STOP_EMOTE_EVENT,
+	TRAY_ACTION_EVENT,
+	VOICE_CONFIG_UPDATED_EVENT,
+	VOICE_SETTINGS_APPLY_EVENT,
+	type VoiceSettingsApplyPayload,
+	VRM_TELEPORT_COMPLETE_EVENT,
+} from "./events.js";
+export {
 	applyHostExecutionBaseline,
 	applyHostToolchainExecutionBaseline,
 	captureHostExecutionBaseline,
@@ -2694,6 +2758,12 @@ export {
 	buildStoreVariantBlockedMessage,
 	isLocalCodeExecutionAllowed,
 } from "./platform/sandbox-policy.js";
+export {
+	installProcessCrashGuards,
+	type ProcessCrashGuardOptions,
+	resetProcessCrashGuardsForTest,
+	type UncaughtExceptionPolicy,
+} from "./process-guards.js";
 export {
 	RESTART_EXIT_CODE,
 	type RestartHandler,
@@ -3288,6 +3358,13 @@ export {
 	type SessionStore,
 } from "./sessions/types.js";
 export * from "./settings";
+export {
+	isElizaSettingsDebugEnabled,
+	MAX_STRING,
+	sanitizeDebugString,
+	sanitizeForSettingsDebug,
+	settingsDebugCloudSummary,
+} from "./settings-debug.js";
 export * from "./streaming-context";
 export {
 	CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
@@ -3641,6 +3718,7 @@ export {
 	decodeUrlPathComponent,
 	type PathComponentDecodeResult,
 } from "./utils/path-component.js";
+export { getMacPermissionDeepLink } from "./utils/permission-deep-links.js";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 export * from "./utils/project-registry";

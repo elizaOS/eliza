@@ -1,20 +1,22 @@
 /**
  * Typed constants for eliza:* custom events dispatched across the app.
  *
- * The cross-platform event names + detail payloads + dispatch helpers live in
+ * The cross-platform event names and detail payloads live in
  * `@elizaos/core/events` (the single source of truth, also consumed by the
- * server). This module re-exports them and adds the UI-only events that have no
+ * server). This module owns DOM event dispatch and adds UI-only events with no
  * server producer (focus-connector, voice-control, tutorial chat-control, and
  * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions
  * here widen the shared unions with those UI-only events, so the local
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
 import {
+  APP_EMOTE_EVENT,
+  type AppEmoteEventDetail,
   CONNECT_EVENT,
-  createNavigateViewEvent,
+  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
+  type ElizaCloudStatusUpdatedDetail,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
-  type NavigateViewEvent,
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/core/events";
@@ -32,10 +34,6 @@ export {
   type ChatAvatarVoiceEventDetail,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
-  createNavigateViewEvent,
-  dispatchAppEmoteEvent,
-  dispatchElizaCloudStatusUpdated,
-  dispatchNavigateViewEvent,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
   type ElizaCloudStatusUpdatedDetail,
   EMOTE_PICKER_EVENT,
@@ -43,7 +41,6 @@ export {
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
-  type NavigateViewEvent,
   type NavigateViewType,
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
@@ -57,6 +54,28 @@ export {
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "@elizaos/core/events";
+export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
+
+export function createNavigateViewEvent(
+  detail: NavigateViewDetail,
+): NavigateViewEvent {
+  return new CustomEvent(NAVIGATE_VIEW_EVENT, { detail });
+}
+
+export function dispatchNavigateViewEvent(detail: NavigateViewDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(createNavigateViewEvent(detail));
+}
+
+export function dispatchAppEmoteEvent(detail: AppEmoteEventDetail): void {
+  dispatchWindowEvent(APP_EMOTE_EVENT, detail);
+}
+export function dispatchElizaCloudStatusUpdated(
+  detail: ElizaCloudStatusUpdatedDetail,
+): void {
+  dispatchWindowEvent(ELIZA_CLOUD_STATUS_UPDATED_EVENT, detail);
+}
+
 export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
 export * from "../views/view-event-bus";
 export * from "../views/view-event-types";

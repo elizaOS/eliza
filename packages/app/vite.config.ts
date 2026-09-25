@@ -2511,6 +2511,10 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-native-mobile-signals/src/index.ts",
         ],
         [
+          "@elizaos/capacitor-network-policy",
+          "plugins/plugin-native-network-policy/src/index.ts",
+        ],
+        [
           "@elizaos/capacitor-system",
           "plugins/plugin-native-system/src/index.ts",
         ],
@@ -3188,10 +3192,12 @@ export const INVALID_TRACER_PROVIDER = {};
       },
     },
     fs: {
-      // Allow serving files from the app directory and eliza src
+      // CSS assets resolve to their real installation path, which can be
+      // outside this worktree when Bun dependencies are linked.
       allow: [
         here,
         elizaRoot,
+        path.dirname(_require.resolve("@fontsource/poppins/package.json")),
         ...(fs.existsSync(bunLinkedPackageCacheRoot)
           ? [bunLinkedPackageCacheRoot]
           : []),

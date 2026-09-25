@@ -10,7 +10,6 @@ import {
   type EngineLike,
   resolveElizaEngine,
 } from "../engine-resolver.ts";
-import { approxTokens } from "../metrics.ts";
 import type { ModeAdapter, ModeRequest, ModeResult } from "../types.ts";
 
 export interface ElizaUnguidedModeOptions {
@@ -75,7 +74,7 @@ export class ElizaUnguidedMode implements ModeAdapter {
           rawOutput,
           firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
           totalLatencyMs: finishedAt - startedAt,
-          tokensGenerated: approxTokens(rawOutput),
+          tokensGenerated: null,
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -100,7 +99,7 @@ export class ElizaUnguidedMode implements ModeAdapter {
           rawOutput: accumulated,
           firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
           totalLatencyMs: Date.now() - startedAt,
-          tokensGenerated: approxTokens(accumulated),
+          tokensGenerated: null,
           error: message,
         };
       }
@@ -135,7 +134,7 @@ function emptyResult(message: string): ModeResult {
     rawOutput: "",
     firstTokenLatencyMs: null,
     totalLatencyMs: 0,
-    tokensGenerated: 0,
+    tokensGenerated: null,
     error: message,
   };
 }

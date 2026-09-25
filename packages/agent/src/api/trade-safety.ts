@@ -3,7 +3,7 @@
  * Extracted so they can be unit-tested without pulling in the full server.
  */
 
-export type { TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+export type { TradePermissionMode } from "@elizaos/core";
 
 import type { TradePermissionMode } from "@elizaos/core";
 

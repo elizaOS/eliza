@@ -50,7 +50,7 @@
     "test:orchestrator:pr:e2e": "cd scenario-runner && EVAL_MODEL_PROVIDER=deterministic CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY= SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../../../plugins/plugin-agent-orchestrator/test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-orchestrator --run-dir ../../../reports/scenarios/pr-deterministic-orchestrator --export-native ../../../reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
     "test:lifeops:pr:e2e": "cd scenario-runner && TZ=UTC EVAL_MODEL_PROVIDER=deterministic CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY= SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../../../plugins/plugin-personal-assistant/test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-lifeops --run-dir ../../../reports/scenarios/pr-deterministic-lifeops --export-native ../../../reports/scenarios/pr-deterministic-lifeops/native.jsonl",
     "test:live:e2e": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run test/scenarios --lane live-only --report-dir ../../../reports/scenarios/live --run-dir ../../../reports/scenarios/live",
-    "test:pr:e2e": "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e && bun run test:lifeops:pr:e2e",
+    "test:pr:e2e": "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e && bun run test:lifeops:pr:e2e && bun run test:notes:e2e",
     "test:real-llm:attachment": "cd scenario-runner && node ../scripts/scenario-runner/real-llm-attachment-smoke.ts",
     "test:real-service:audio": "cd scenario-runner && node ../scripts/scenario-runner/real-service-audio-roundtrip.ts",
     "test:real-service:voice": "cd scenario-runner && node ../scripts/scenario-runner/real-service-voice-e2e.ts",
@@ -66,7 +66,8 @@
     "test:synthetic-world": "bun --conditions=eliza-source test synthetic-world/test",
     "typecheck:synthetic-world": "tsc --noEmit -p synthetic-world/tsconfig.json && tsc --noEmit -p synthetic-world/tsconfig.cloud-integration.json",
     "gepa:setup": "bun scenario-runner/src/gepa-setup.ts",
-    "test:gepa": "node ../scripts/run-vitest.ts run --config scenario-runner/vitest.gepa.config.ts"
+    "test:gepa": "node ../scripts/run-vitest.ts run --config scenario-runner/vitest.gepa.config.ts",
+    "test:notes:e2e": "bun test --conditions eliza-source e2e/notes-calendar-runtime.e2e.test.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

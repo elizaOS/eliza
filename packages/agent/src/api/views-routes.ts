@@ -22,25 +22,22 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
+  createShellNavigateViewWsFrame,
   ElizaError,
   EventType,
   type IAgentRuntime,
   logger,
+  normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RoleGateRole,
   type RouteHelpers,
   type RouteRequestMeta,
   readJsonBody,
+  type ShellNavigateViewPayload,
   STANDARD_CAPABILITIES,
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
-
-import {
-  createShellNavigateViewWsFrame,
-  normalizeCompletedActionHandoffId,
-  type ShellNavigateViewPayload,
-} from "@elizaos/core/events";
 
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

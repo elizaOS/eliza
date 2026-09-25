@@ -892,69 +892,6 @@ function sleepWindowDaysFromUrl(rawUrl: string): number {
   const parsed = Number(new URL(rawUrl).searchParams.get("windowDays"));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 }
-// Valid populated DTOs for the /api/lifeops/money/* endpoints the decomposed
-// FinancesView fetches, so `finances:gui` renders its `finances-populated`
-// branch (a connected source + balance + transactions + recurring) instead of
-// the connect-a-source empty state.
-function populatedMoneyDashboard() {
-  return {
-    spending: {
-      windowDays: 30,
-      fromDate: "2026-05-18",
-      toDate: "2026-06-17",
-      totalSpendUsd: 1234.5,
-      totalIncomeUsd: 4000,
-      netUsd: 2765.5,
-      transactionCount: 12,
-    },
-    generatedAt: "2026-06-17T12:00:00.000Z",
-  };
-}
-function populatedMoneySources() {
-  return {
-    sources: [
-      {
-        id: "src-1",
-        kind: "plaid",
-        label: "Checking",
-        institution: "Acme Bank",
-        status: "active",
-      },
-    ],
-  };
-}
-function populatedMoneyTransactions() {
-  return {
-    transactions: [
-      {
-        id: "tx-1",
-        postedAt: "2026-06-16T09:00:00.000Z",
-        amountUsd: 42.5,
-        direction: "debit",
-        merchantDisplay: "Coffee Bar",
-        merchantNormalized: "coffee-bar",
-        merchantRaw: "COFFEE BAR #12",
-        description: "Latte",
-        category: "dining",
-        currency: "USD",
-      },
-    ],
-  };
-}
-function populatedMoneyRecurring() {
-  return {
-    charges: [
-      {
-        merchantNormalized: "netflix",
-        merchantDisplay: "Netflix",
-        cadence: "monthly",
-        averageAmountUsd: 15.99,
-        nextExpectedAt: "2026-07-01T00:00:00.000Z",
-        category: "entertainment",
-      },
-    ],
-  };
-}
 // Valid populated LifeOpsInbox for the /api/lifeops/inbox endpoint the decomposed
 // InboxView fetches, so `inbox:gui` renders its `inbox-populated` branch (channel
 // groups + triage rows) instead of the connect-a-channel / inbox-zero empty
@@ -2847,50 +2784,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       ),
     });
   });
-  await page.route("**/api/lifeops/money/dashboard**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneyDashboard()),
-    });
-  });
-  await page.route("**/api/lifeops/money/sources**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneySources()),
-    });
-  });
-  await page.route("**/api/lifeops/money/transactions**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneyTransactions()),
-    });
-  });
-  await page.route("**/api/lifeops/money/recurring**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneyRecurring()),
-    });
-  });
   // GoalsView fetches GET /api/lifeops/goals (no query); the bare pattern keeps
   // the POST create + /goals/:id sub-resource routes falling through to the API.
   await page.route("**/api/lifeops/goals", async (route) => {
@@ -3273,6 +3166,19 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptySelfControlStatus()),
+    });
+  });
+  // This deterministic browser fixture disables host process spawning. Model
+  // the production PTY gate explicitly so cockpit retries exercise its error
+  // UI instead of the stub server's unhandled-route 501.
+  await page.route("**/api/pty/sessions", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      status: 403,
+      json: {
+        error:
+          "Interactive PTY sessions are disabled (PTY_INTERACTIVE_ENABLED=false or store build).",
+      },
     });
   });
   // Coding-project registry read by the tasks/cockpit surfaces; the keyless

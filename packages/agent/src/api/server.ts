@@ -465,7 +465,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           { createShellNavigateViewWsFrame },
         ] = await Promise.all([
           import("./views-routes.ts"),
-          import("@elizaos/core/events"),
+          import("@elizaos/core"),
         ]);
         const send = getViewsBroadcastWsToClientId(hostKey);
         if (

@@ -1003,7 +1003,8 @@ public class ElizaAgentService extends Service {
             };
         return new ElizaBionicInferenceServer(
             BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir, ramClass,
-            inferenceIdleUnloadMs(ramClass), probe);
+            inferenceIdleUnloadMs(ramClass), probe,
+            () -> ai.eliza.plugins.networkpolicy.NetworkPolicyReader.INSTANCE.readNetworkState(this));
     }
 
     // ── Asset extraction ─────────────────────────────────────────────────

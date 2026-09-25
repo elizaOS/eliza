@@ -72,7 +72,6 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
 	wallet: { viewId: "inventory", label: "Wallet" },
 	calendar: { viewId: "calendar", label: "Calendar" },
 	inbox: { viewId: "inbox", label: "Inbox" },
-	finances: { viewId: "finances", label: "Finances" },
 	focus: { viewId: "focus", label: "Focus" },
 	goals: { viewId: "goals", label: "Goals" },
 	health: { viewId: "health", label: "Health" },

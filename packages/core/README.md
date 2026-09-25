@@ -19,6 +19,15 @@ Host configuration is exported from the root as well. `AppMemoryConfig` and
 names configuration UI patches. `getAppBootConfigEnvAliases` and
 `resolveAppAliasedEnvValue` retain the host store's initialization behavior.
 
+Settings debug sanitizers, macOS permission links, and generated channel, provider,
+and short-ID plugin maps are available through the root. Process crash guards also
+use the root API and require the Node/Bun process host; importing core does not
+install them. Settings debugging uses the host `ELIZA_SETTINGS_DEBUG` flag and
+boot aliases; Vite debug flags are interpreted by the UI host.
+
+Event names, payload contracts, and navigation-frame normalization are exported
+from the root. DOM event creation and dispatch belong to the UI host.
+
 HTTP contracts and explicit host helpers are available from the root. Hosts still
 install their route lifecycle explicitly. `AgentStreamEventType` and `AgentLogEntry`
 name HTTP DTOs; `StreamEventType` and `LogEntry` keep their runtime meanings.

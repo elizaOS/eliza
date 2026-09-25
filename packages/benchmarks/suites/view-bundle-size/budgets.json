@@ -56,11 +56,6 @@
       "measuredGzipBytes": 4695,
       "gzipBudgetBytes": 5500
     },
-    "plugin-finances": {
-      "measuredRawBytes": 9581,
-      "measuredGzipBytes": 2856,
-      "gzipBudgetBytes": 3500
-    },
     "plugin-goals": {
       "measuredRawBytes": 7166,
       "measuredGzipBytes": 2424,

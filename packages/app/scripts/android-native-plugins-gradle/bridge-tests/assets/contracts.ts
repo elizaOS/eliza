@@ -113,8 +113,544 @@
             bytes.charCodeAt(3) === 255,
           "native drawing must produce opaque red pixels",
         );
+        for (const rect of [
+          { x: -1, y: 0, width: 1, height: 1 },
+          { x: 0, y: -1, width: 1, height: 1 },
+          { x: 8, y: 0, width: 1, height: 1 },
+          { x: 0, y: 8, width: 1, height: 1 },
+          { x: 0, y: 0, width: 0, height: 1 },
+          { x: 0, y: 0, width: 1, height: -1 },
+        ]) {
+          await rejects("getPixelData", { canvasId, rect });
+        }
+        const clipped = await call("getPixelData", {
+          canvasId,
+          rect: { x: 7, y: 7, width: 2147483647, height: 2147483647 },
+        });
+        assert(
+          clipped.width === 1 &&
+            clipped.height === 1 &&
+            atob(clipped.data) === String.fromCharCode(255, 0, 0, 255),
+          "oversized pixel region clips without overflow and preserves drawing",
+        );
         const png = await call("toImage", { canvasId, format: "png" });
         assert(png.base64.startsWith("iVBOR"), "native PNG encoding");
+        window.nativeCanvasEvidence = {
+          original: pixels,
+          clipped,
+          rejectedRegions: 6,
+          png: png.base64,
+        };
+        const canvasStages = [];
+        async function nativeImagePixels(stage) {
+          const nativeImage = await call("toImage", {
+            canvasId,
+            format: "png",
+          });
+          const image = new Image();
+          image.src = `data:image/png;base64,${nativeImage.base64}`;
+          await image.decode();
+          assert(
+            image.naturalWidth === nativeImage.width &&
+              image.naturalHeight === nativeImage.height,
+            "native PNG dimensions agree with receipt",
+          );
+          const decoder = document.createElement("canvas");
+          decoder.width = nativeImage.width;
+          decoder.height = nativeImage.height;
+          const context = decoder.getContext("2d");
+          context.drawImage(image, 0, 0);
+          const rgba = context.getImageData(
+            0,
+            0,
+            decoder.width,
+            decoder.height,
+          ).data;
+          canvasStages.push({ stage, ...nativeImage });
+          return (x, y) =>
+            Array.from(
+              rgba.slice(
+                (y * decoder.width + x) * 4,
+                (y * decoder.width + x) * 4 + 4,
+              ),
+            );
+        }
+        function pixelEquals(actual, expected, message, tolerance = 0) {
+          assert(
+            actual.length === 4 &&
+              actual.every(
+                (value, index) =>
+                  Math.abs(value - expected[index]) <= tolerance,
+              ),
+            `${message}: ${actual}`,
+          );
+        }
+        const { layerId } = await call("createLayer", {
+          canvasId,
+          layer: { name: "blue-overlay", visible: true, opacity: 1, zIndex: 1 },
+        });
+        await call("drawRect", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 8, height: 8 },
+          fill: { color: { r: 0, g: 0, b: 255, a: 1 } },
+          drawOptions: { layerId },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-visible"))(3, 3),
+          [0, 0, 255, 255],
+          "visible layer covers base",
+        );
+        await call("updateLayer", {
+          canvasId,
+          layerId,
+          layer: { visible: false },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-hidden"))(3, 3),
+          [255, 0, 0, 255],
+          "hidden layer exposes base",
+        );
+        await call("updateLayer", {
+          canvasId,
+          layerId,
+          layer: { visible: true, opacity: 0.5, name: "half-blue" },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-opacity"))(3, 3),
+          [128, 0, 127, 255],
+          "native layer alpha blends with base",
+          1,
+        );
+        const layers = await call("getLayers", { canvasId });
+        const layer = layers.layers.find((value) => value.id === layerId);
+        assert(
+          layer?.name === "half-blue" &&
+            layer.visible &&
+            Math.abs(layer.opacity - 0.5) < 0.001,
+          "layer metadata matches updates",
+        );
+        await call("deleteLayer", { canvasId, layerId });
+        assert(
+          !(await call("getLayers", { canvasId })).layers.some(
+            (value) => value.id === layerId,
+          ),
+          "deleted layer disappears",
+        );
+        await rejects("updateLayer", {
+          canvasId,
+          layerId,
+          layer: { visible: true },
+        });
+        pixelEquals(
+          (await nativeImagePixels("layer-deleted"))(3, 3),
+          [255, 0, 0, 255],
+          "deleted layer no longer composites",
+        );
+        await call("clear", { canvasId });
+        pixelEquals(
+          (await nativeImagePixels("cleared"))(3, 3),
+          [0, 0, 0, 0],
+          "clear removes base pixels",
+        );
+        await call("setTransform", {
+          canvasId,
+          transform: { translateX: 4, translateY: 0 },
+        });
+        await call("drawRect", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 2, height: 2 },
+          fill: { color: { r: 255, g: 0, b: 0, a: 1 } },
+        });
+        let sample = await nativeImagePixels("translated");
+        pixelEquals(
+          sample(0, 0),
+          [0, 0, 0, 0],
+          "transform leaves original coordinates empty",
+        );
+        pixelEquals(
+          sample(4, 0),
+          [255, 0, 0, 255],
+          "transform moves native drawing",
+        );
+        await call("resetTransform", { canvasId });
+        await call("drawRect", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 2, height: 2 },
+          fill: { color: { r: 0, g: 255, b: 0, a: 1 } },
+        });
+        pixelEquals(
+          (await nativeImagePixels("transform-reset"))(0, 0),
+          [0, 255, 0, 255],
+          "reset restores drawing coordinates",
+        );
+        await call("resize", { canvasId, size: { width: 12, height: 10 } });
+        const resized = await call("getPixelData", { canvasId });
+        assert(
+          resized.width === 12 &&
+            resized.height === 10 &&
+            atob(resized.data).length === 480,
+          "native resize reports exact dimensions and byte length",
+        );
+        sample = await nativeImagePixels("resized");
+        pixelEquals(
+          sample(0, 0),
+          [0, 255, 0, 255],
+          "resize preserves existing pixels",
+        );
+        pixelEquals(
+          sample(11, 9),
+          [0, 0, 0, 0],
+          "resize initializes added area transparent",
+        );
+        await call("clear", {
+          canvasId,
+          rect: { x: 0, y: 0, width: 2, height: 2 },
+        });
+        sample = await nativeImagePixels("region-cleared");
+        pixelEquals(
+          sample(0, 0),
+          [0, 0, 0, 0],
+          "region clear removes selected pixels",
+        );
+        pixelEquals(
+          sample(4, 0),
+          [255, 0, 0, 255],
+          "region clear preserves other pixels",
+        );
+        window.nativeCanvasEvidence.stages = canvasStages;
+        await call("resize", { canvasId, size: { width: 160, height: 80 } });
+        const textCases = [];
+        window.nativeCanvasEvidence.textCases = textCases;
+        for (const variant of [
+          { name: "monospace", font: "monospace" },
+          { name: "top", baseline: "top" },
+          { name: "middle", baseline: "middle" },
+          { name: "bottom", baseline: "bottom" },
+          { name: "max-width", maxWidth: 40 },
+        ]) {
+          const { name, ...overrides } = variant;
+          const args = {
+            text: "Canvas Wi42",
+            position: { x: 4, y: 36 },
+            style: {
+              font: "sans-serif",
+              size: 24,
+              color: "#3366ff",
+              ...overrides,
+            },
+          };
+          await call("clear", { canvasId });
+          await call("drawText", { canvasId, ...args });
+          const individual = await call("getPixelData", { canvasId });
+          const individualPng = await call("toImage", {
+            canvasId,
+            format: "png",
+          });
+          await call("clear", { canvasId });
+          await call("drawBatch", {
+            canvasId,
+            commands: [{ type: "text", args }],
+          });
+          const batch = await call("getPixelData", { canvasId });
+          const batchPng = await call("toImage", { canvasId, format: "png" });
+          textCases.push({
+            name,
+            args,
+            width: batch.width,
+            height: batch.height,
+            pixelsMatch: individual.data === batch.data,
+            individualPng,
+            batchPng,
+          });
+          const rgba = atob(individual.data);
+          assert(
+            rgba.length === 160 * 80 * 4 &&
+              Array.from(rgba).some(
+                (value, index) => index % 4 === 3 && value.charCodeAt(0) > 0,
+              ),
+            `individual text renders visible pixels: ${name}`,
+          );
+        }
+        const mismatchedText = textCases.filter(
+          ({ pixelsMatch, width, height }) =>
+            !pixelsMatch || width !== 160 || height !== 80,
+        );
+        assert(
+          mismatchedText.length === 0,
+          `batch text preserves individual rendering: ${mismatchedText.map(({ name }) => name).join(", ")}`,
+        );
+        await call("resize", { canvasId, size: { width: 16, height: 16 } });
+        const imageFixture = document.createElement("canvas");
+        imageFixture.width = 4;
+        imageFixture.height = 2;
+        const imageContext = imageFixture.getContext("2d");
+        imageContext.fillStyle = "#ff0000";
+        imageContext.fillRect(0, 0, 2, 2);
+        imageContext.fillStyle = "#0000ff";
+        imageContext.fillRect(2, 0, 2, 2);
+        const dataUrl = imageFixture.toDataURL("image/png");
+        const operationCases = [];
+        window.nativeCanvasEvidence.operationCases = operationCases;
+        const variants = [
+          ...[
+            {
+              name: "cropped-base64-image",
+              image: { base64: dataUrl.split(",")[1] },
+            },
+            { name: "cropped-data-url-image", image: dataUrl },
+          ].map(({ name, image }) => ({
+            name,
+            commands: [
+              {
+                type: "image",
+                args: {
+                  image,
+                  srcRect: { x: 2, y: 0, width: 2, height: 2 },
+                  destRect: { x: 0, y: 0, width: 4, height: 4 },
+                },
+              },
+            ],
+          })),
+          {
+            name: "dashed-then-solid-line",
+            commands: [
+              {
+                type: "line",
+                args: {
+                  from: { x: 1, y: 3 },
+                  to: { x: 15, y: 3 },
+                  stroke: { color: "#0000ff", width: 2, dashPattern: [2, 2] },
+                },
+              },
+              {
+                type: "line",
+                args: {
+                  from: { x: 1, y: 10 },
+                  to: { x: 15, y: 10 },
+                  stroke: { color: "#0000ff", width: 2 },
+                },
+              },
+            ],
+          },
+        ];
+        for (const { name, commands } of variants) {
+          await call("clear", { canvasId });
+          for (const { type, args } of commands) {
+            await call(type === "image" ? "drawImage" : "drawLine", {
+              canvasId,
+              ...args,
+            });
+          }
+          const individual = await call("getPixelData", { canvasId });
+          const individualPng = await call("toImage", {
+            canvasId,
+            format: "png",
+          });
+          const rgba = atob(individual.data);
+          const offset =
+            name === "dashed-then-solid-line" ? (10 * 16 + 4) * 4 : 0;
+          assert(
+            rgba.length === 16 * 16 * 4 &&
+              rgba.slice(offset, offset + 4) ===
+                String.fromCharCode(0, 0, 255, 255),
+            `individual operation produces the expected blue pixel: ${name}`,
+          );
+          await call("clear", { canvasId });
+          await call("drawBatch", { canvasId, commands });
+          const batch = await call("getPixelData", { canvasId });
+          const batchPng = await call("toImage", { canvasId, format: "png" });
+          operationCases.push({
+            name,
+            commands,
+            pixelsMatch: individual.data === batch.data,
+            individualPng,
+            batchPng,
+          });
+        }
+        const mismatchedOperations = operationCases.filter(
+          ({ pixelsMatch }) => !pixelsMatch,
+        );
+        assert(
+          mismatchedOperations.length === 0,
+          `batch operations preserve individual rendering: ${mismatchedOperations.map(({ name }) => name).join(", ")}`,
+        );
+        const imageFailures = [];
+        window.nativeCanvasEvidence.imageFailures = imageFailures;
+        const imageOutcome = async (method, options) =>
+          call(method, options).then(
+            () => ({ rejected: false, code: null, commandIndex: null }),
+            (error) => ({
+              rejected: true,
+              code: error.code ?? null,
+              commandIndex: error.data?.commandIndex ?? null,
+            }),
+          );
+        for (const [name, image] of [
+          ["missing", null],
+          ["empty-object", {}],
+          ["bad-base64", { base64: "%%%" }],
+          ["non-image-bytes", { base64: btoa("not an image") }],
+          ["invalid-data-url", "data:image/png;base64,%%%"],
+          ["unsupported-url", "https://example.invalid/canvas.png"],
+        ]) {
+          const args = {
+            image,
+            destRect: { x: 0, y: 0, width: 4, height: 4 },
+            drawOptions: {
+              opacity: 0.5,
+              transform: { translateX: 5, translateY: 5 },
+            },
+          };
+          for (const method of ["drawImage", "drawBatch"]) {
+            const before = await call("getPixelData", { canvasId });
+            const outcome = await imageOutcome(
+              method,
+              method === "drawImage"
+                ? { canvasId, ...args }
+                : { canvasId, commands: [{ type: "image", args }] },
+            );
+            const after = await call("getPixelData", { canvasId });
+            imageFailures.push({
+              name,
+              method,
+              ...outcome,
+              unchanged: before.data === after.data,
+            });
+          }
+        }
+        assert(
+          imageFailures.every(
+            ({ rejected, code, commandIndex, method, unchanged }) =>
+              rejected &&
+              code === "INVALID_IMAGE" &&
+              unchanged &&
+              (method !== "drawBatch" || commandIndex === 0),
+          ),
+          "invalid canvas images reject with typed errors and preserve pixels",
+        );
+        await call("clear", { canvasId });
+        const prefix = {
+          type: "rect",
+          args: {
+            rect: { x: 0, y: 0, width: 2, height: 2 },
+            fill: { color: "#ff0000" },
+          },
+        };
+        const partial = await imageOutcome("drawBatch", {
+          canvasId,
+          commands: [
+            prefix,
+            {
+              type: "image",
+              args: {
+                image: { base64: "%%%" },
+                destRect: { x: 0, y: 0, width: 4, height: 4 },
+              },
+            },
+            {
+              type: "rect",
+              args: {
+                rect: { x: 8, y: 8, width: 2, height: 2 },
+                fill: { color: "#00ff00" },
+              },
+            },
+          ],
+        });
+        const partialPixels = await call("getPixelData", { canvasId });
+        window.nativeCanvasEvidence.imageBatchFailure = {
+          ...partial,
+          png: await call("toImage", { canvasId, format: "png" }),
+        };
+        assert(
+          partial.rejected &&
+            partial.code === "INVALID_IMAGE" &&
+            partial.commandIndex === 1,
+          "batch image failure identifies its command index",
+        );
+        assert(
+          atob(partialPixels.data).slice(0, 4) ===
+            String.fromCharCode(255, 0, 0, 255),
+          "batch failure preserves its applied prefix and restores drawing state",
+        );
+        assert(
+          atob(partialPixels.data).slice(
+            (8 * 16 + 8) * 4,
+            (8 * 16 + 8) * 4 + 4,
+          ) === String.fromCharCode(0, 0, 0, 0),
+          "batch failure does not execute subsequent commands",
+        );
+        const malformedCommands = [
+          ["unknown type", { type: "unsupported", args: {} }],
+          ["missing arguments", { type: "rect" }],
+          ["null command", null],
+          ["string command", "rect"],
+          ["array command", []],
+          ["non-object arguments", { type: "rect", args: 7 }],
+          ["missing rectangle", { type: "rect", args: {} }],
+          ["missing ellipse center", { type: "ellipse", args: {} }],
+          ["missing line endpoints", { type: "line", args: {} }],
+          ["missing path commands", { type: "path", args: { path: {} } }],
+          [
+            "missing text style",
+            { type: "text", args: { text: "hello", position: { x: 0, y: 0 } } },
+          ],
+          [
+            "missing image destination",
+            { type: "image", args: { image: dataUrl } },
+          ],
+        ];
+        window.nativeCanvasEvidence.malformedCommands = [];
+        for (const [name, command] of malformedCommands) {
+          await call("clear", { canvasId });
+          const outcome = await imageOutcome("drawBatch", {
+            canvasId,
+            commands: [
+              prefix,
+              command,
+              {
+                type: "rect",
+                args: {
+                  rect: { x: 8, y: 8, width: 2, height: 2 },
+                  fill: { color: "#00ff00" },
+                },
+              },
+            ],
+          });
+          const pixels = atob((await call("getPixelData", { canvasId })).data);
+          const prefixPreserved =
+            pixels.slice(0, 4) === String.fromCharCode(255, 0, 0, 255);
+          const suffixStopped =
+            pixels.slice((8 * 16 + 8) * 4, (8 * 16 + 8) * 4 + 4) ===
+            String.fromCharCode(0, 0, 0, 0);
+          window.nativeCanvasEvidence.malformedCommands.push({
+            name,
+            ...outcome,
+            prefixPreserved,
+            suffixStopped,
+          });
+          assert(
+            outcome.rejected &&
+              outcome.code === "INVALID_COMMAND" &&
+              outcome.commandIndex === 1,
+            `malformed batch command rejects with index: ${name}`,
+          );
+          assert(
+            prefixPreserved && suffixStopped,
+            `malformed batch preserves only applied prefix: ${name}`,
+          );
+        }
+        await call("drawImage", {
+          canvasId,
+          image: dataUrl,
+          srcRect: { x: 2, y: 0, width: 2, height: 2 },
+          destRect: { x: 0, y: 0, width: 4, height: 4 },
+        });
+        const recoveredImage = await call("getPixelData", { canvasId });
+        assert(
+          atob(recoveredImage.data).slice(0, 4) ===
+            String.fromCharCode(0, 0, 255, 255),
+          "valid image drawing recovers after rejected inputs",
+        );
       } finally {
         await call("destroy", { canvasId });
       }
@@ -128,6 +664,104 @@
       });
       assert(Array.isArray(result.contacts), "real contacts provider result");
       await rejects("createContact", { displayName: "" });
+      if (descriptor.contactsFixture) {
+        const { marker, emails, phonePrefix } = descriptor.contactsFixture;
+        const expected = [
+          {
+            name: `${marker} Zoë, Example`,
+            phones: [`${phonePrefix}0`, `${phonePrefix}1`],
+            emails: emails.slice(0, 2),
+          },
+          {
+            name: String.raw`${marker} Literal\notes`,
+            phones: [`${phonePrefix}2`],
+            emails: [emails[2]],
+          },
+          {
+            name: `Dr. ${marker} Given Middle Family;Suffix Jr.`,
+            phones: [],
+            emails: [emails[3]],
+          },
+        ];
+        const vcardText = [
+          "BEGIN:VCARD",
+          "VERSION:4.0",
+          String.raw`FN:${marker} Zoë\, Exa`,
+          " mple",
+          `TEL:${phonePrefix}0`,
+          `TEL;TYPE=cell:${phonePrefix}1`,
+          `TEL:${phonePrefix}0`,
+          `EMAIL;TYPE=work:${emails[0]}`,
+          `EMAIL:${emails[1]}`,
+          "END:VCARD",
+          "BEGIN:VCARD",
+          "VERSION:4.0",
+          String.raw`FN:${marker} Literal\\notes`,
+          `TEL:${phonePrefix}2`,
+          `EMAIL:${emails[2]}`,
+          "END:VCARD",
+          "BEGIN:VCARD",
+          "VERSION:3.0",
+          String.raw`N:Family\;Suffix;${marker} Given;Middle;Dr.;Jr.`,
+          `EMAIL:${emails[3]}`,
+          "END:VCARD",
+        ].join("\r\n");
+        // The third card exercises the bridge's existing structured-name fallback.
+        await rejects("importVCard", { vcardText: "" });
+        await rejects("importVCard", {
+          vcardText: "BEGIN:VCARD\r\nVERSION:4.0\r\nEND:VCARD",
+        });
+        assert(
+          (await call("listContacts", { query: marker })).contacts.length === 0,
+          "invalid imports create no synthetic rows",
+        );
+        const imported = await call("importVCard", { vcardText });
+        assert(
+          imported.imported.length === 3,
+          "multi-card import receipt count",
+        );
+        for (let index = 0; index < expected.length; index++) {
+          const record = imported.imported[index];
+          const wanted = expected[index];
+          assert(
+            record.sourceName === wanted.name,
+            `decoded vCard name ${index}: ${JSON.stringify(record.sourceName)}`,
+          );
+          assert(
+            typeof record.displayName === "string" &&
+              record.displayName.includes(marker),
+            `provider display name retains imported identity ${index}`,
+            // Android formats suffixes (for example, adding a comma before Jr.).
+            // The Kotlin fixture independently compares this receipt to ContactsProvider.
+          );
+          assert(
+            JSON.stringify([...record.phoneNumbers].sort()) ===
+              JSON.stringify([...wanted.phones].sort()),
+            `all imported phone numbers ${index}`,
+          );
+          assert(
+            JSON.stringify([...record.emailAddresses].sort()) ===
+              JSON.stringify([...wanted.emails].sort()),
+            `all imported email addresses ${index}`,
+          );
+        }
+        const listed = await call("listContacts", { query: marker });
+        assert(
+          listed.contacts.length === 3,
+          "imported contacts are searchable",
+        );
+        for (const record of imported.imported) {
+          const actual = listed.contacts.find(
+            (entry) => entry.id === record.id,
+          );
+          assert(
+            actual?.displayName === record.displayName,
+            "readback matches import identity and name",
+          );
+        }
+        window.nativeContactsEvidence = { imported, listed, marker };
+      }
+
       break;
     }
     case "plugin-native-messages": {
@@ -590,6 +1224,109 @@
           session: "wrong-session",
           id,
         });
+        const bounds = { x: 0, y: 0, width: 320, height: 240 };
+        await call("setBounds", {
+          ...identity,
+          id,
+          ...bounds,
+          outerClip: {
+            ...bounds,
+            cornerRadii: {
+              topLeft: 0,
+              topRight: 0,
+              bottomLeft: 0,
+              bottomRight: 0,
+            },
+          },
+        });
+        await call("presentSurface", { ...identity, id });
+        const page = (title, text) =>
+          `data:text/html;charset=utf-8,${encodeURIComponent(
+            `<html><head><title>${title}</title></head><body><main>${text}</main><div id="loaded"></div><script>document.querySelector("#loaded").textContent=String(performance.timeOrigin)+"-"+Math.random()</script><span hidden>hidden fixture</span><input value="private fixture"></body></html>`,
+          )}`;
+        const firstUrl = page("First fixture", "First visible café 漢字");
+        const secondUrl = page("Second fixture", "Second visible page");
+        const waitForPage = async (title, previousText) => {
+          const deadline = Date.now() + 8000;
+          let result;
+          let error;
+          while (Date.now() < deadline) {
+            try {
+              result = await call("readPage", { ...identity, id });
+              if (result.title === title && result.text !== previousText)
+                return result;
+            } catch (caught) {
+              error = String(caught);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error(
+            `Page did not become readable: ${title}; ${error}; ${JSON.stringify(result)}`,
+          );
+        };
+        await call("navigate", { ...identity, id, url: firstUrl });
+        const first = await waitForPage("First fixture");
+        assert(
+          first.text.startsWith("First visible café 漢字\n") &&
+            !first.text.includes("fixture") &&
+            first.truncated === false,
+          "native page reader preserves complete visible Unicode text and excludes hidden/input content",
+        );
+        const selected = await call("readPage", {
+          ...identity,
+          id,
+          selector: "main",
+        });
+        assert(
+          selected.text === "First visible café 漢字",
+          "native page selector reads the requested element",
+        );
+        await rejects("readPage", { ...identity, id, selector: "[" });
+        await rejects("readPage", { ...identity, id, selector: ".missing" });
+        const capturePresentation = async (name) => {
+          window.nativeBrowserCapture = { name, done: false };
+          const deadline = Date.now() + 5000;
+          while (!window.nativeBrowserCapture.done) {
+            if (Date.now() >= deadline)
+              throw new Error(`Screenshot did not complete: ${name}`);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        };
+        await capturePresentation("browser-before-invalid-present.png");
+        await rejects("presentSurface", { ...identity, id: "missing-surface" });
+        await capturePresentation("browser-after-invalid-present.png");
+        assert(
+          (await call("getSurfaceState", { ...identity, id })).foregrounded,
+          "rejected presentation preserves the currently visible surface",
+        );
+        await call("navigate", { ...identity, id, url: secondUrl });
+        const second = await waitForPage("Second fixture");
+        await call("goBack", { ...identity, id });
+        const back = await waitForPage("First fixture");
+        assert(
+          back.text.startsWith(`${selected.text}\n`),
+          "native history restores the earlier page",
+        );
+        await call("reloadSurface", { ...identity, id });
+        const reloaded = await waitForPage("First fixture", back.text);
+        assert(
+          reloaded.text.startsWith(`${selected.text}\n`) &&
+            reloaded.text !== back.text,
+          "native reload preserves readable page content",
+        );
+        await call("presentSurface", { ...identity });
+        await rejects("readPage", { ...identity, id });
+        await call("presentSurface", { ...identity, id });
+        const restored = await waitForPage("First fixture");
+        window.nativeBrowserEvidence = {
+          first,
+          selected,
+          second,
+          back,
+          reloaded,
+          restored,
+          state: await call("getSurfaceState", { ...identity, id }),
+        };
       } finally {
         await call("destroySurface", { ...identity, id });
       }

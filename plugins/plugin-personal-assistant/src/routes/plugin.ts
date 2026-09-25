@@ -377,41 +377,8 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/definitions/:id/reopen" },
   { type: "GET", path: "/api/lifeops/connectors/health/status" },
   { type: "GET", path: "/api/lifeops/health/summary" },
-  { type: "GET", path: "/api/lifeops/money/dashboard" },
-  { type: "GET", path: "/api/lifeops/money/sources" },
-  { type: "POST", path: "/api/lifeops/money/sources" },
-  { type: "POST", path: "/api/lifeops/money/import-csv" },
-  { type: "GET", path: "/api/lifeops/money/transactions" },
-  { type: "GET", path: "/api/lifeops/money/recurring" },
-  { type: "POST", path: "/api/lifeops/money/plaid/link-token" },
-  { type: "POST", path: "/api/lifeops/money/plaid/complete" },
-  { type: "POST", path: "/api/lifeops/money/plaid/update-link-token" },
-  { type: "POST", path: "/api/lifeops/money/plaid/update-complete" },
-  { type: "POST", path: "/api/lifeops/money/plaid/disconnect" },
-  { type: "POST", path: "/api/lifeops/money/plaid/sync" },
-  {
-    type: "POST",
-    name: "lifeops.money.plaid.webhook",
-    publicReason:
-      "Plaid delivers Item/transaction webhooks directly to the callback URL registered at link time; Plaid cannot hold the local gate token.",
-    publicWrite:
-      "Authenticated out-of-band by the Plaid-Verification ES256 JWT: signature against Plaid's JWK (kid lookup through Eliza Cloud), exact raw-body SHA-256 pinning, and a bounded iat freshness window — all verified before any lookup or state change.",
-    // `path` sits directly above `public` so the public-route audit ledger
-    // attributes this declaration to the webhook path, not a neighbouring route.
-    path: "/api/lifeops/money/plaid/webhook",
-    public: true,
-  },
-  { type: "POST", path: "/api/lifeops/money/paypal/authorize-url" },
-  { type: "POST", path: "/api/lifeops/money/paypal/complete" },
-  { type: "POST", path: "/api/lifeops/money/paypal/sync" },
-  { type: "GET", path: "/api/lifeops/money/bills" },
-  { type: "POST", path: "/api/lifeops/money/bills/mark-paid" },
-  { type: "POST", path: "/api/lifeops/money/bills/snooze" },
   { type: "GET", path: "/api/lifeops/smart-features/settings" },
   { type: "POST", path: "/api/lifeops/smart-features/settings" },
-  { type: "GET", path: "/api/lifeops/subscriptions/playbook-lookup" },
-  { type: "GET", path: "/api/lifeops/subscriptions/playbooks" },
-  { type: "POST", path: "/api/lifeops/subscriptions/cancel" },
   { type: "POST", path: "/api/lifeops/email-unsubscribe/scan" },
   { type: "POST", path: "/api/lifeops/email-unsubscribe/unsubscribe" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
@@ -540,8 +507,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     publicReason:
       "Health connector OAuth success landing must render after provider redirects.",
   },
-  // /api/lifeops/money/sources/:sourceId
-  { type: "DELETE", path: "/api/lifeops/money/sources/:sourceId" },
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },

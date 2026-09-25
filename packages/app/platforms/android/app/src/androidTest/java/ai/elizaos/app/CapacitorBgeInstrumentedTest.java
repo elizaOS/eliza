@@ -2,6 +2,9 @@
 package ai.elizaos.app;
 
 import static org.junit.Assert.*;
+import android.os.Bundle;
+import android.util.Base64;
+import java.nio.charset.StandardCharsets;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -58,6 +61,13 @@ public class CapacitorBgeInstrumentedTest {
                 + "} finally { await bridge.releaseBge({contextId:context.contextId}); }"
                 + "let released = null; try { await bridge.embedBge(args); } catch (error) { released = error.code; }"
                 + "window.__elizaBgeProof.released = released;"
+                + "const reopened = await bridge.initBgeEmbedding({model:" + JSONObject.quote(model.toString()) + ",contextSize:512});"
+                + "const reopenedArgs = {...args,contextId:reopened.contextId};"
+                + "window.__elizaBgeProof.reopened = await bridge.embedBge(reopenedArgs);"
+                + "await bridge.releaseAllContexts();"
+                + "let releasedAll = null; try { await bridge.tokenizeBge(reopenedArgs); } catch (error) { releasedAll = error.code; }"
+                + "window.__elizaBgeProof.releasedAll = releasedAll;"
+                + "await bridge.releaseAllContexts();"
                 + "window.__elizaBgeProof.finished = true;"
                 + "})().catch(error => { window.__elizaBgeProof = {finished:true,ok:false,error:String(error),code:error.code}; });";
             evaluate(scenario, script);
@@ -79,6 +89,7 @@ public class CapacitorBgeInstrumentedTest {
             assertEquals("[101,101,103,102,102]", result.getJSONArray("tokens").toString());
             assertEquals("EMBEDDING_TOKENIZER_MISMATCH", result.getString("mismatch"));
             assertEquals("EMBEDDING_CONTEXT_UNAVAILABLE", result.getString("released"));
+            assertEquals("EMBEDDING_CONTEXT_UNAVAILABLE", result.getString("releasedAll"));
             JSONObject vector = result.getJSONObject("vector");
             assertEquals(BgeEmbeddingSession.SPACE, vector.getString("embeddingSpace"));
             assertEquals(result.getJSONArray("tokens").toString(), vector.getJSONArray("tokenIds").toString());
@@ -91,6 +102,16 @@ public class CapacitorBgeInstrumentedTest {
                 norm += value * value;
             }
             assertEquals(1.0, norm, 1e-5);
+            JSONArray reopened = result.getJSONObject("reopened").getJSONArray("embedding");
+            assertEquals(384, reopened.length());
+            for (int i = 0; i < values.length(); i++) {
+                assertEquals(values.getDouble(i), reopened.getDouble(i), 1e-5);
+            }
+            Bundle status = new Bundle();
+            status.putString("nativeArtifactName", "capacitor-embedding-proof.json");
+            status.putString("nativeArtifactBase64", Base64.encodeToString(
+                result.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP));
+            InstrumentationRegistry.getInstrumentation().sendStatus(2, status);
         } finally {
             try (var files = Files.walk(root)) {
                 var iterator = files.sorted(java.util.Comparator.reverseOrder()).iterator();

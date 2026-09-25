@@ -25,7 +25,7 @@ import {
 export type {
   IPermissionsRegistry,
   Prober,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core";
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 

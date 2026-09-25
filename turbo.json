@@ -169,7 +169,8 @@
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
-        "@elizaos/plugin-web-search#build"
+        "@elizaos/plugin-web-search#build",
+        "@elizaos/plugin-wallet#build"
       ]
     },
     "@elizaos/cloud-shared#typecheck": {

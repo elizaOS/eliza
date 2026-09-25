@@ -188,25 +188,20 @@ public class NativeAgentLifecycleInstrumentedTest {
                 observation.put("threads", threads);
                 samples.put(observation);
             }
-            String[] traceOutput = boundedDebuggerd(worker, childPid, deadline);
-            String trace = traceOutput[0];
-            String stderr = traceOutput[1].toLowerCase(java.util.Locale.ROOT);
-            if (stderr.contains("permission denied") || stderr.contains("operation not permitted"))
-                errors.put("nativeBacktrace: permission denied");
-            else if (stderr.contains("no such process")) errors.put("nativeBacktrace: process exited");
-            else if (stderr.contains("timed out") || stderr.contains("timeout")) errors.put("nativeBacktrace: command timeout");
-            else if (!stderr.isBlank()) errors.put("nativeBacktrace: diagnostic stderr present");
-            JSONArray frames = new JSONArray();
-            boolean owned = false;
-            for (String line : trace.split("\\n")) {
-                Matcher header = Pattern.compile(".*----- pid ([0-9]+) at .*").matcher(line);
-                if (header.matches()) owned = Integer.parseInt(header.group(1)) == childPid;
-                if (line.contains("----- end ")) owned = false;
-                // debuggerd -b only; exclude registers, memory, abort text, argv and other processes.
-                if (owned && line.trim().matches("#[0-9]+ pc [0-9a-f]+ .*")) frames.put(line.trim());
+            String sampler = InstrumentationRegistry.getArguments().getString("startupPcSampler", "");
+            if (!sampler.matches("/data/local/tmp/eliza-startup-pc-[0-9]+")) {
+                errors.put("pcSampler: verified root helper unavailable");
+                return;
             }
-            evidence.put("runningChildFrames", frames);
-            if (frames.length() == 0) errors.put("nativeBacktrace: no owned frames (unavailable or denied)");
+            String[] result = boundedNativeProbe(worker, sampler, childPid, deadline);
+            JSONArray frames = new JSONArray();
+            for (String line : result[0].split("\\n")) {
+                if (line.matches("sample:[01] module:[A-Za-z0-9._\\[\\]-]+ pc_offset:[0-9a-f]+")
+                        || line.equals("detached") || line.matches("error:[a-z0-9_]+")) frames.put(line);
+            }
+            evidence.put("runningChildPcSamples", frames);
+            if (frames.length() == 0) errors.put("pcSampler: no records");
+            if (!result[1].isBlank()) errors.put("pcSampler: diagnostic stderr present");
         } catch (Exception error) {
             errors.put("runningChildProbe: " + error.getClass().getSimpleName());
         } finally {
@@ -239,10 +234,10 @@ public class NativeAgentLifecycleInstrumentedTest {
         return result.toString();
     }
 
-    private String[] boundedDebuggerd(ExecutorService worker, int pid, long deadline) throws Exception {
+    private String[] boundedNativeProbe(ExecutorService worker, String sampler, int pid, long deadline) throws Exception {
         // UiAutomation uses Runtime.exec(String): it does not parse shell quoting or redirections.
         Future<ParcelFileDescriptor[]> launch = worker.submit(() -> InstrumentationRegistry.getInstrumentation()
-            .getUiAutomation().executeShellCommandRwe("timeout 3 debuggerd -b " + pid));
+            .getUiAutomation().executeShellCommandRwe("su 0 timeout 3 " + sampler + " " + pid + " " + android.os.Process.myUid()));
         ParcelFileDescriptor[] streams;
         try {
             streams = launch.get(Math.max(1, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS);
@@ -282,6 +277,7 @@ public class NativeAgentLifecycleInstrumentedTest {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals("Only the isolated agent host lane may run this test", "1",
             InstrumentationRegistry.getArguments().getString("isolatedAgentHost"));
+        boolean lifecyclePassed = false;
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             try {
                 scenario.onActivity(activity -> {
@@ -306,13 +302,14 @@ public class NativeAgentLifecycleInstrumentedTest {
                         JSONObject report = new JSONObject((String) decoded);
                         export("agent-lifecycle.json", report.toString(2).getBytes(StandardCharsets.UTF_8));
                         assertTrue(report.toString(2), report.getBoolean("ok"));
+                        lifecyclePassed = true;
                         return;
                     }
                     Thread.sleep(500);
                 }
                 fail("Native agent lifecycle did not finish: " + result);
             } finally {
-                exportStartupDiagnostics(context);
+                if (!lifecyclePassed) exportStartupDiagnostics(context);
             }
         } finally {
             try {

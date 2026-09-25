@@ -127,6 +127,15 @@ class NativeBridgeInstrumentedTest {
             }
             return
         }
+        if (descriptor.getString("directory") == "plugin-native-contacts") {
+            ContactsImportFixture(context).use { fixture ->
+                descriptor.put("contactsFixture", fixture.descriptor)
+                runContract(descriptor, script) { result ->
+                    fixture.verifyImported(result.getJSONObject("contacts").getJSONObject("imported").getJSONArray("imported"))
+                }
+            }
+            return
+        }
         val phoneFixture = if (descriptor.getString("directory") == "plugin-native-phone") PhoneCallLogFixture(context) else null
         try {
             phoneFixture?.let { descriptor.put("phoneFixture", it.descriptor) }
@@ -139,7 +148,7 @@ class NativeBridgeInstrumentedTest {
         }
     }
 
-    private fun runContract(descriptor: JSONObject, script: String) {
+    private fun runContract(descriptor: JSONObject, script: String, verifyResult: (JSONObject) -> Unit = {}) {
         ActivityScenario.launch(NativeBridgeTestActivity::class.java).use { scenario ->
             scenario.moveToState(Lifecycle.State.RESUMED)
             assertEquals("Bridge host must be foregrounded", Lifecycle.State.RESUMED, scenario.state)
@@ -151,11 +160,75 @@ class NativeBridgeInstrumentedTest {
             evaluate(scenario, "window.nativeDescriptor = $descriptor; $script")
             val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             while (System.nanoTime() < finishDeadline) {
+                if (descriptor.getString("directory") == "plugin-native-browser-surface") {
+                    val captureRaw = evaluate(scenario, "JSON.stringify(window.nativeBrowserCapture || null)")
+                    val captureText = JSONTokener(captureRaw).nextValue() as? String
+                    if (captureText != null && captureText != "null") {
+                        val capture = JSONObject(captureText)
+                        if (!capture.getBoolean("done")) {
+                            val name = capture.getString("name")
+                            check(name in listOf("browser-before-invalid-present.png", "browser-after-invalid-present.png"))
+                            val drawn = CountDownLatch(1)
+                            scenario.onActivity { activity ->
+                                val webViews = mutableListOf<android.webkit.WebView>()
+                                fun visit(view: android.view.View) {
+                                    if (view is android.webkit.WebView && view.isShown) webViews.add(view)
+                                    if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                                }
+                                visit(activity.window.decorView)
+                                val pending = java.util.concurrent.atomic.AtomicInteger(webViews.size)
+                                if (webViews.isEmpty()) drawn.countDown()
+                                for (view in webViews) view.postVisualStateCallback(0L, object : android.webkit.WebView.VisualStateCallback() {
+                                    override fun onComplete(requestId: Long) {
+                                        if (pending.decrementAndGet() == 0) activity.window.decorView.postOnAnimation {
+                                            activity.window.decorView.postOnAnimation { drawn.countDown() }
+                                        }
+                                    }
+                                })
+                            }
+                            assertTrue("Native presentation did not render", drawn.await(5, TimeUnit.SECONDS))
+                            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                            val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+                            val bytes = java.io.ByteArrayOutputStream()
+                            try { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)) }
+                            finally { bitmap.recycle() }
+                            InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                                putString("nativeArtifactName", name)
+                                putString("nativeArtifactBase64", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
+                            })
+                            evaluate(scenario, "window.nativeBrowserCapture.done = true")
+                        }
+                    }
+                }
                 val raw = evaluate(scenario, "window.nativeContractResult")
                 if (raw != "null") {
                     val result = JSONObject(JSONTokener(raw).nextValue() as String)
                     assertFalse("Native contract failed: $result", result.has("error"))
                     assertTrue("Contract must assert native behavior", result.getInt("assertions") > 0)
+                    if (descriptor.getString("directory") == "plugin-native-canvas") {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeCanvasEvidence)")
+                        result.put("canvas", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "canvas-pixels.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
+                    if (descriptor.getString("directory") == "plugin-native-browser-surface") {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeBrowserEvidence)")
+                        result.put("browser", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "browser-navigation.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
+                    if (descriptor.has("contactsFixture")) {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeContactsEvidence)")
+                        result.put("contacts", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "contacts-import-bridge.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
                     if (descriptor.has("smsRole")) {
                         val evidence = evaluate(scenario, "JSON.stringify(window.nativeSmsEvidence)")
                         result.put("sms", JSONObject(JSONTokener(evidence).nextValue() as String))
@@ -192,6 +265,7 @@ class NativeBridgeInstrumentedTest {
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
                         })
                     }
+                    verifyResult(result)
                     return
                 }
                 Thread.sleep(30)

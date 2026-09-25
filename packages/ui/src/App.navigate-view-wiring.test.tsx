@@ -13,10 +13,6 @@
 import { Capacitor } from "@capacitor/core";
 import type { PluginAppNavTab } from "@elizaos/core";
 import {
-  createNavigateViewEvent,
-  NAVIGATE_VIEW_EVENT,
-} from "@elizaos/core/events";
-import {
   act,
   cleanup,
   fireEvent,
@@ -37,6 +33,7 @@ import { invokeViewInteract } from "./components/views/view-interact-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import { DEFAULT_BRANDING } from "./config/branding-base";
 import { BrandingContext } from "./config/branding-react.hooks";
+import { createNavigateViewEvent, NAVIGATE_VIEW_EVENT } from "./events";
 import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import {

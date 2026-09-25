@@ -4134,31 +4134,6 @@ const server = http.createServer(async (req, res) => {
     sendJson(req, res, 200, { relationships: [], entities: [] });
     return;
   }
-  if (req.method === "GET" && url.pathname === "/api/lifeops/money/dashboard") {
-    sendJson(req, res, 200, {
-      balanceUsd: 0,
-      sources: [],
-      recentTransactions: [],
-      recurringCharges: [],
-      spendByCategory: [],
-    });
-    return;
-  }
-  if (
-    req.method === "GET" &&
-    (url.pathname === "/api/lifeops/money/sources" ||
-      url.pathname === "/api/lifeops/money/transactions" ||
-      url.pathname === "/api/lifeops/money/recurring")
-  ) {
-    const key = url.pathname.endsWith("sources")
-      ? "sources"
-      : url.pathname.endsWith("transactions")
-        ? "transactions"
-        : "recurringCharges";
-    sendJson(req, res, 200, { [key]: [] });
-    return;
-  }
-
   if (
     req.method === "GET" &&
     url.pathname === "/api/lifeops/screen-time/summary"

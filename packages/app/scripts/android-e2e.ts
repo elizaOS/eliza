@@ -36,6 +36,7 @@ import { resolveAndroidE2eBuildScript } from "./lib/android-e2e-build.ts";
 import {
   createAndroidEvidenceBoundary,
   projectAndroidDeviceEvidenceBundle,
+  reportAndroidPlaywrightResults,
   settleAndroidEvidenceTeardown,
 } from "./lib/android-e2e-evidence-policy.ts";
 import {
@@ -663,6 +664,10 @@ async function main() {
           },
         );
       } finally {
+        reportAndroidPlaywrightResults(
+          path.join(bundle.reportsDir, "android-playwright.json"),
+          evidenceBoundary,
+        );
         const videoPath = await routeRecording.stop();
         routeRecording = null;
         if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
@@ -766,10 +771,10 @@ async function main() {
         );
       },
       cleanup: () => fs.rmSync(privateRoot, { recursive: true, force: true }),
-      onFailure: (phase) => {
+      onFailure: (phase, code) => {
         finalResult = "failed";
         if (!finalError) finalError = new Error("Android teardown failed.");
-        evidenceBoundary.event(phase, "failed", "PHASE_FAILED");
+        evidenceBoundary.event(phase, "failed", code);
       },
     });
   }

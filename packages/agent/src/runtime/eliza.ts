@@ -32,6 +32,7 @@ import {
   formatError,
   getFirstRunProviderOption,
   type IAgentRuntime,
+  isElizaSettingsDebugEnabled,
   isMobilePlatform,
   type LogEntry,
   logger,
@@ -48,16 +49,12 @@ import {
   resolveElizaCloudTopology,
   resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
+  settingsDebugCloudSummary,
   stringToUuid,
   type TargetInfo,
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-
-import {
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/core/settings-debug";
 
 import {
   AUTONOMY_SERVICE_TYPE,

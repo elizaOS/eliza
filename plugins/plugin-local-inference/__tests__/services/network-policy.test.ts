@@ -17,7 +17,7 @@ import {
 } from "../../src/services/network-policy";
 
 beforeEach(() => {
-	for (const name of ["ELIZA_NETWORK_POLICY", "ELIZA_HEADLESS", "CI"]) {
+	for (const name of ["ELIZA_NETWORK_POLICY", "ELIZA_HEADLESS", "CI", "ELIZA_BIONIC_HOST_DELEGATED", "ELIZA_BIONIC_INFERENCE_SOCK"]) {
 		vi.stubEnv(name, undefined);
 	}
 	vi.stubEnv("DISPLAY", ":0");
@@ -285,6 +285,22 @@ describe("platform probe factories", () => {
 });
 
 describe("pickActiveProbe", () => {
+	it("uses the host socket without a renderer and fails closed when the host disappears", async () => {
+		vi.stubEnv("DISPLAY", undefined);
+		vi.stubEnv("WAYLAND_DISPLAY", undefined);
+		vi.stubEnv("ELIZA_BIONIC_HOST_DELEGATED", "1");
+		vi.stubEnv("ELIZA_BIONIC_INFERENCE_SOCK", `eliza-missing-${crypto.randomUUID()}`);
+		const snapshot = await describeRuntimeNetwork({ estimatedBytes: 1_000_000 });
+		expect(snapshot.probeId).toBe("android-host");
+		expect(snapshot.state).toEqual({ connectionType: "unknown", metered: null });
+		expect(snapshot.decision.allow).toBe(false);
+	});
+	it("preserves explicit headless policy even with a native host", () => {
+		vi.stubEnv("ELIZA_BIONIC_HOST_DELEGATED", "1");
+		vi.stubEnv("ELIZA_BIONIC_INFERENCE_SOCK", "unused-native-host");
+		vi.stubEnv("ELIZA_NETWORK_POLICY", "headless");
+		expect(pickActiveProbe().id).toBe("headless");
+	});
 	it("returns headless probe when ELIZA_NETWORK_POLICY=headless", () => {
 		vi.stubEnv("ELIZA_NETWORK_POLICY", "headless");
 		expect(pickActiveProbe().id).toBe("headless");

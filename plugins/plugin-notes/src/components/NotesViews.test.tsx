@@ -22,6 +22,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotesSnapshot, StickyNote } from "../types.js";
+import { parseNoteContent } from "../validation.js";
 import type { NotesState } from "./useNotesState.js";
 
 const stateHook = vi.hoisted(() => vi.fn());
@@ -413,6 +414,25 @@ describe("Notes state labels", () => {
 });
 
 describe("chat-only presentation", () => {
+  it.each([
+    "Title\n\nBody\n",
+    "x".repeat(241),
+    `${"a".repeat(239)}😀tail`,
+    "Reminder:  keep both spaces: and this colon.",
+  ])("lossless content renders exact authored bytes: %s", (content) => {
+    const populated = snapshot(4);
+    populated.notes = [stickyNote(parseNoteContent(content))];
+    stateHook.mockReturnValue(hookState({ snapshot: populated }));
+    const view = render(<NotesView />);
+    const row = view.container.querySelector('[data-agent-id="note-1"]');
+    expect(row).toBeTruthy();
+    const contentNode = row?.querySelector("[data-note-content]");
+    const rendered =
+      contentNode?.textContent ??
+      `${row?.querySelector("h2")?.textContent ?? ""}${populated.notes[0].body ? (row?.querySelector("p")?.textContent ?? "") : ""}`;
+    expect(rendered).toBe(content);
+  });
+
   it("renders authoritative notes without direct mutation controls", () => {
     const populated = snapshot(4);
     populated.notes = [stickyNote()];
@@ -423,7 +443,7 @@ describe("chat-only presentation", () => {
 
     const note = notes.container.querySelector('[data-agent-id="note-1"]');
     expect(note?.querySelector("h2")?.textContent).toBe("Release checklist");
-    expect(note?.querySelector("p")?.textContent).toBe(
+    expect(note?.querySelector("[data-note-content] span")?.textContent).toBe(
       "Verify the signed build",
     );
     expect(note?.getAttribute("data-agent-id")).toBe("note-1");
@@ -454,12 +474,14 @@ describe("chat-only presentation", () => {
     expect(rows).toHaveLength(2);
     const firstRow = rows[0] as HTMLElement;
     const firstHeading = firstRow.querySelector<HTMLElement>("h2");
-    const firstBody = firstRow.querySelector<HTMLElement>("p");
+    const firstBody = firstRow.querySelector<HTMLElement>(
+      "[data-note-content] span",
+    );
     if (!firstHeading || !firstBody) {
       throw new Error("The first Notes row is missing its content hierarchy.");
     }
-    expect(firstHeading.style.overflowWrap).toBe("anywhere");
-    expect(firstBody.style.overflowWrap).toBe("anywhere");
+    expect(firstHeading.parentElement?.style.overflowWrap).toBe("anywhere");
+    expect(firstBody.parentElement).toBe(firstHeading.parentElement);
   });
 });
 

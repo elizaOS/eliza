@@ -1,6 +1,8 @@
 package ai.eliza.plugins.websiteblocker
 
 import android.content.Context
+import android.app.KeyguardManager
+import android.net.VpnService
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -79,11 +81,37 @@ class WebsiteBlockerBridgeInstrumentedTest {
     }
 
     private fun ready(scenario: ActivityScenario<WebsiteBlockerBridgeTestActivity>) {
+        // Showing the test activity over the lock screen does not unlock the
+        // system VPN consent activity that it launches.
+        val keyguard = instrumentation.targetContext.getSystemService(KeyguardManager::class.java)
+        assertFalse("VPN consent tests require an emulator without a secure screen lock", keyguard.isKeyguardSecure)
+        device.wakeUp()
+        scenario.onActivity { keyguard.requestDismissKeyguard(it, null) }
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (keyguard.isKeyguardLocked) {
+            assertTrue("Emulator lock screen did not dismiss before VPN consent", System.nanoTime() < deadline)
+            Thread.sleep(20)
+        }
         while (evaluate(scenario, "Boolean(window.Capacitor && window.Capacitor.nativePromise)") != "true") {
             assertTrue("Capacitor initialization timed out", System.nanoTime() < deadline)
             Thread.sleep(20)
         }
+    }
+
+    private fun startWithConsent(scenario: ActivityScenario<WebsiteBlockerBridgeTestActivity>, options: JSONObject) {
+        val consentRequired = VpnService.prepare(instrumentation.targetContext) != null
+        begin(scenario, "startBlock", options)
+        if (consentRequired) {
+            val approve = device.wait(Until.findObject(By.res("android", "button1").pkg("com.android.vpndialogs")), 10000)
+            if (approve == null) {
+                val hierarchy = ByteArrayOutputStream()
+                device.dumpWindowHierarchy(hierarchy)
+                export("vpn-consent-missing.xml", hierarchy.toByteArray())
+                throw AssertionError("Android VPN approval button did not appear on the unlocked emulator")
+            }
+            approve.click()
+        }
+        assertTrue(result(scenario).getBoolean("success"))
     }
 
     private fun export(name: String, bytes: ByteArray) {
@@ -202,9 +230,7 @@ class WebsiteBlockerBridgeInstrumentedTest {
             ready(scenario)
             var failure: Throwable? = null
             try {
-                begin(scenario, "startBlock", JSONObject().put("websites", JSONArray().put("example.com")))
-                device.wait(Until.findObject(By.res("android", "button1")), 3000)?.click()
-                assertTrue(result(scenario).getBoolean("success"))
+                startWithConsent(scenario, JSONObject().put("websites", JSONArray().put("example.com")))
                 waitVpn(true)
                 assertEquals("Blocked hostname must return NXDOMAIN", 3, query("example.com", transcript))
                 assertEquals("Unblocked DNS must still resolve", 0, query("example.org", transcript))
@@ -303,9 +329,7 @@ class WebsiteBlockerBridgeInstrumentedTest {
             ready(scenario)
             var failure: Throwable? = null
             try {
-                begin(scenario, "startBlock", JSONObject().put("websites", JSONArray().put("example.com")).put("durationMinutes", 1))
-                device.wait(Until.findObject(By.res("android", "button1")), 3000)?.click()
-                assertTrue(result(scenario).getBoolean("success"))
+                startWithConsent(scenario, JSONObject().put("websites", JSONArray().put("example.com")).put("durationMinutes", 1))
                 waitVpn(true)
                 val activeAt = android.os.SystemClock.elapsedRealtime()
                 waitVpn(false, 75)

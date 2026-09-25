@@ -3,7 +3,7 @@
  * read/switch surface the UI project switcher is wired to.
  *
  * The registry itself is the merged core store in
- * `@elizaos/core/utils/project-registry` (a `projects.json` snapshot under the
+ * `@elizaos/core` (a `projects.json` snapshot under the
  * per-user state dir). This module is a thin HTTP projection over it:
  *
  *   GET  /api/projects            → { projects, activeProjectId }

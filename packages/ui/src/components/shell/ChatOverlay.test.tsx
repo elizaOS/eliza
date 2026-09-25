@@ -3346,6 +3346,50 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
+  it.each(["keyboard", "button"])(
+    "starts typed /transcribe through %s without sending an agent turn",
+    async (entry) => {
+      const send = vi.fn();
+      const toggleTranscriptionMode = vi.fn();
+      render(
+        <ChatOverlay
+          controller={makeController({
+            send,
+            canSend: false,
+            toggleTranscriptionMode,
+          })}
+        />,
+      );
+      const composer = screen.getByTestId("chat-composer-textarea");
+      fireEvent.change(composer, { target: { value: "/transcribe" } });
+      if (entry === "keyboard") fireEvent.keyDown(composer, { key: "Enter" });
+      else
+        fireEvent.click(
+          screen.getByRole("button", { name: "start transcription" }),
+        );
+      expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+      expect(send).not.toHaveBeenCalled();
+      expect((composer as HTMLTextAreaElement).value).toBe("");
+    },
+  );
+
+  it("keeps ordinary slash text on the chat path", () => {
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController({ send, toggleTranscriptionMode })}
+      />,
+    );
+    const composer = screen.getByTestId("chat-composer-textarea");
+    fireEvent.change(composer, {
+      target: { value: "/transcribe these notes" },
+    });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(send).toHaveBeenCalledWith("/transcribe these notes");
+    expect(toggleTranscriptionMode).not.toHaveBeenCalled();
+  });
+
   it("gives transcription one exclusive stop control", async () => {
     const toggleTranscriptionMode = vi.fn();
     const user = userEvent.setup();

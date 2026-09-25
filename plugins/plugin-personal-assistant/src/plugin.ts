@@ -919,7 +919,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     runtime: IAgentRuntime,
   ) => {
     registerPersonalAssistantConflictDetectHost(runtime);
-    // Domain plugins (finances bill dueness, routes and actions alike) resolve
+    // Domain plugins, routes and actions alike, resolve
     // "today" through the shared calendar zone owner; the owner facts are the
     // only source of the user's configured zone, so register before any turn.
     registerCalendarTimeZoneResolver(runtime, (_runtime, now) =>
