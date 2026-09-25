@@ -114,4 +114,3 @@ def run(args, sources, script, required_evidence, serial, extra_inputs=None, ext
             if child.poll() is None:
                 child.kill()
             child.wait()
-
