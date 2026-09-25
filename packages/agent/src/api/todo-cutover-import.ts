@@ -7,17 +7,16 @@
 
 import {
   type AgentRuntime,
-  ElizaError,
-  type UUID,
-  validateUuid,
-} from "@elizaos/core";
-import {
   createSharedTodoCutoverSnapshot,
+  ElizaError,
   type SharedTodoCutoverRecord,
   type SharedTodoCutoverSnapshot,
   TODO_CUTOVER_PROVENANCE_KEY,
   type TodoCutoverJsonValue,
-} from "@elizaos/core/todo-cutover";
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+
 import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos";
 import {
   deserializeTodoMutationRecord,

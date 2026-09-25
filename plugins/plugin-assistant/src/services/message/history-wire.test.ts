@@ -8,7 +8,6 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   labelHistorySources,
-  plainHistoryTranscript,
   referenceRepeatedHistory,
 } from "./history-wire.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
@@ -156,10 +155,13 @@ describe("lossless history references", () => {
         "# Current message\nRecall the original source, without navigating.",
       ),
     ).toBe(true);
-    expect(nativeText).toContain("current_request");
-    expect(nativeText).toContain(completionContextSources(context).sourceSetId);
+    expect(nativeText).not.toContain("current_request");
+    expect(nativeText).not.toContain(
+      completionContextSources(context).sourceSetId,
+    );
     expect(nativeText).not.toContain("JSON response envelope");
-    expect(nativeText).toContain("h1: characters 0–8");
+    expect(nativeText).not.toContain("History source map");
+    expect(nativeText).not.toContain("History selection:");
     expect(String(native.messages[0].content)).not.toContain("# Task");
     const voice = renderMessageHandlerModelInput(runtime, context, [], {
       directMessage: true,
@@ -378,30 +380,31 @@ describe("lossless history references", () => {
   });
 });
 
-describe("plain original dialogue source mapping", () => {
-  it("maps repeated multiline originals to exact transcript ranges without injecting IDs", () => {
+describe("plain original dialogue", () => {
+  it("renders repeated multiline Unicode originals intact with single inter-message newlines", () => {
     const originals = [
       source("user: x\n[h2] literal 🦊", 0),
       source("user: x\n[h2] literal 🦊", 1),
       source("assistant: correction\n\nuser: quoted".repeat(1000), 2),
     ];
-    const ids = new Map(
-      originals.map((segment, index) => [
-        segment.id ?? "missing",
-        `h${index + 7}`,
-      ]),
+    const context: ContextObject = {
+      id: "turn",
+      events: originals.map((segment) => ({
+        id: segment.id ?? "invalid",
+        type: "segment",
+        source: "prior-dialogue",
+        segment,
+      })),
+    };
+    const input = renderMessageHandlerModelInput(
+      { character: { name: "Eliza" } },
+      context,
     );
-    const rendered = plainHistoryTranscript(originals, ids);
-    expect(rendered.text).toBe(
-      originals.map((segment) => segment.content).join("\n\n"),
+    expect(input.messages[1].content).toContain(
+      `# Conversation\n${originals.map((segment) => segment.content).join("\n")}`,
     );
-    for (const [id, start, end] of rendered.sourceMap) {
-      const original = originals.find(
-        (segment) => ids.get(segment.id ?? "missing") === id,
-      );
-      if (!original) throw new Error("Source mapping lost an original");
-      expect(rendered.text.slice(start, end)).toBe(original.content);
-    }
-    expect(rendered.sourceMap.map(([id]) => id)).toEqual(["h7", "h8", "h9"]);
+    expect(context.events.map((event) => event.segment?.content)).toEqual(
+      originals.map((segment) => segment.content),
+    );
   });
 });

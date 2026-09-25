@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -127,12 +127,6 @@
 			"import": "./dist/canonical-json.js",
 			"default": "./dist/canonical-json.js"
 		},
-		"./catalog/app-registry": {
-			"eliza-source": "./src/catalog/app-registry.ts",
-			"types": "./dist/catalog/app-registry.d.ts",
-			"import": "./dist/catalog/app-registry.js",
-			"default": "./dist/catalog/app-registry.js"
-		},
 		"./catalog/channel-plugin-map.json": {
 			"eliza-source": "./src/catalog/channel-plugin-map.json",
 			"default": "./dist/catalog/channel-plugin-map.json"
@@ -150,12 +144,6 @@
 		"./catalog/generated.json": {
 			"eliza-source": "./src/catalog/generated.json",
 			"default": "./dist/catalog/generated.json"
-		},
-		"./catalog": {
-			"eliza-source": "./src/catalog/index.ts",
-			"types": "./dist/catalog/index.d.ts",
-			"import": "./dist/catalog/index.js",
-			"default": "./dist/catalog/index.js"
 		},
 		"./catalog/loader": {
 			"eliza-source": "./src/catalog/loader.ts",

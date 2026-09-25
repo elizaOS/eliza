@@ -40,6 +40,8 @@ import {
   hasAtLeastRole,
   InferenceTurnTimer,
   isChatFailureKind,
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -57,6 +59,7 @@ import {
   parseChatFailureKind,
   parseChatTerminalFailure,
   parsePositiveInteger,
+  parseSharedTodoCutoverSnapshot,
   projectCompleteToolValueForModel,
   type RoleGrantSource,
   type RolesWorldMetadata,
@@ -71,6 +74,7 @@ import {
   resolveAppliedUserFacingEffectReceipts,
   runWithInferenceTiming,
   stringToUuid,
+  TodoCutoverContractError,
   type TrustedApiPrincipal,
   timeInferenceSpan,
   type UUID,
@@ -78,15 +82,6 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 
-import {
-  parseSharedTodoCutoverSnapshot,
-  TodoCutoverContractError,
-} from "@elizaos/core/todo-cutover";
-
-import {
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
-} from "@elizaos/core/voice";
 import {
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,

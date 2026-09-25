@@ -344,6 +344,75 @@ export {
 	stableJsonString,
 } from "./canonical-json.js";
 export {
+	type AccountAuthKind,
+	type AccountConfig,
+	type AppEntry,
+	type AppLaunch,
+	accountConfigSchema,
+	appEntrySchema,
+	appLaunchSchema,
+	type ConfigField,
+	type ConnectorEntry,
+	clearRegistryCacheForTests,
+	configFieldSchema,
+	connectorEntrySchema,
+	getApps,
+	getConnectors,
+	getEntry,
+	getEntryByNpmName,
+	getPlugins,
+	indexEntries,
+	type LoadedRegistry,
+	loadRegistry,
+	mergeWithRuntime,
+	normalizeConnectorAuth,
+	type PluginEntry,
+	pluginEntrySchema,
+	type RegistryEntry,
+	type RegistryKind,
+	type RegistryRuntimeOverlay,
+	type RegistryValidationError,
+	type RegistryView,
+	type RenderHints,
+	type Resources,
+	registerRegistryEntry,
+	registryEntrySchema,
+	registryRuntimeOverlaySchema,
+	renderSchema,
+	resourcesSchema,
+	type SecondarySurface,
+} from "./catalog/index.js";
+export {
+	AGENT_REGISTRY_SEARCH_POLICY,
+	CORE_REGISTRY_SEARCH_POLICY,
+	type DecodeRuntimeRegistryOptions,
+	decodeRuntimeRegistry,
+	isRegistryCacheFresh,
+	isValidRegistryPackageName,
+	type NormalizedRegistryEntry,
+	type RegistrySearchable,
+	type RegistrySearchPolicy,
+	type RuntimeRegistryWireEntry,
+	runtimeRegistryEntrySchema,
+	searchRegistryEntries,
+} from "./catalog/runtime-kernel.js";
+export {
+	buildElizaCharacterCatalog,
+	CHARACTER_PRESET_META,
+	CHARACTER_PRESETS,
+	getDefaultAgentName,
+	getDefaultStylePreset,
+	getPresetNameMap,
+	getStylePresets,
+	normalizeCharacterLanguage,
+	resolveStylePresetByAvatarIndex,
+	resolveStylePresetById,
+	resolveStylePresetByName,
+	SHARED_STYLE_RULES,
+	STYLE_PRESETS,
+	setDefaultAgentName,
+} from "./character-presets.js";
+export {
 	CHAT_IMAGE_MIME_TYPE_SET,
 	CHAT_IMAGE_MIME_TYPES,
 	CHAT_UPLOAD_MIME_TYPE_SET,
@@ -474,6 +543,11 @@ export {
 	runtimeExecutionModeForDeploymentTarget,
 	shouldUseSandboxExecution,
 } from "./config/runtime-mode.js";
+export {
+	CONNECTOR_IDS,
+	type ConnectorId,
+	ELIZA_LOCAL_CONNECTOR_IDS,
+} from "./config/schema.js";
 export type {
 	AgentDefaultsConfig,
 	AgentModelEntryConfig,
@@ -658,6 +732,81 @@ export type {
 	UiSpecVisibilityCondition,
 	VisibilityOperator,
 } from "./config/ui-spec.js";
+export {
+	AudioElevenlabsSfxConfigSchema,
+	AudioGenConfigSchema,
+	AudioGenProviderSchema,
+	AudioSunoConfigSchema,
+	BedrockDiscoverySchema,
+	BlockStreamingChunkSchema,
+	BlockStreamingCoalesceSchema,
+	ChannelHeartbeatVisibilitySchema,
+	CliBackendSchema,
+	CloudMediaConfigSchema,
+	DebounceMsBySurfaceSchema,
+	DmConfigSchema,
+	DmPolicySchema,
+	ExecutableTokenSchema,
+	GroupChatSchema,
+	GroupPolicySchema,
+	HexColorSchema,
+	HumanDelaySchema,
+	IdentitySchema,
+	ImageConfigSchema,
+	ImageFalConfigSchema,
+	ImageGoogleConfigSchema,
+	ImageOpenaiConfigSchema,
+	ImageProviderSchema,
+	ImageXaiConfigSchema,
+	InboundDebounceSchema,
+	LinkModelSchema,
+	MarkdownConfigSchema,
+	MarkdownTableModeSchema,
+	MediaConfigSchema,
+	MediaModeSchema,
+	MediaUnderstandingAttachmentsSchema,
+	MediaUnderstandingCapabilitiesSchema,
+	MediaUnderstandingModelSchema,
+	MediaUnderstandingScopeSchema,
+	MessagePolicySchema,
+	ModelApiSchema,
+	ModelCompatSchema,
+	ModelDefinitionInputSchema,
+	ModelDefinitionSchema,
+	ModelProviderSchema,
+	ModelsConfigSchema,
+	MSTeamsReplyStyleSchema,
+	NativeCommandsSettingSchema,
+	normalizeAllowFrom,
+	ProviderCommandsSchema,
+	QueueDropSchema,
+	QueueModeBySurfaceSchema,
+	QueueModeSchema,
+	QueueSchema,
+	ReplyToModeSchema,
+	RetryConfigSchema,
+	requireOpenAllowFrom,
+	ToolsLinksSchema,
+	ToolsMediaSchema,
+	ToolsMediaUnderstandingSchema,
+	TranscribeAudioSchema,
+	TtsAutoSchema,
+	TtsConfigSchema,
+	TtsModeSchema,
+	TtsProviderSchema,
+	VideoConfigSchema,
+	VideoFalConfigSchema,
+	VideoGoogleConfigSchema,
+	VideoOpenaiConfigSchema,
+	VideoProviderSchema,
+	VisionAnthropicConfigSchema,
+	VisionConfigSchema,
+	VisionGoogleConfigSchema,
+	VisionOllamaConfigSchema,
+	VisionOpenaiConfigSchema,
+	VisionProviderSchema,
+	VisionXaiConfigSchema,
+} from "./config/zod-schema.core.js";
 export {
 	AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
 	AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
@@ -1404,6 +1553,12 @@ export {
 	type LifeOpsConnectorDegradation,
 	type LifeOpsConnectorDegradationAxis,
 } from "./contracts/lifeops-connector-degradation.js";
+export type {
+	ProviderEnableState,
+	ProviderId,
+	ProviderMeta,
+	ProviderStatus,
+} from "./contracts/local-inference-providers.js";
 export {
 	type PatchMemoryRequest,
 	PatchMemoryRequestSchema,
@@ -2318,6 +2473,10 @@ export {
 	textIncludesKeywordTerm,
 } from "./i18n/keyword-matching-core.js";
 export { VALIDATION_KEYWORD_DOCS } from "./i18n/keywords.js";
+export {
+	selectUserAuthorizedRecurrence,
+	textStatesExplicitRecurrence,
+} from "./i18n/recurrence-markers.js";
 export * from "./inference-trace.js";
 export {
 	type CreateIntegrationSpanOptions,
@@ -2535,6 +2694,13 @@ export {
 	buildStoreVariantBlockedMessage,
 	isLocalCodeExecutionAllowed,
 } from "./platform/sandbox-policy.js";
+export {
+	RESTART_EXIT_CODE,
+	type RestartHandler,
+	requestRestart,
+	requireRestartHandler,
+	setRestartHandler,
+} from "./restart.js";
 export * from "./retrieval/rerank.js";
 export * from "./retrieval/search.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
@@ -2777,6 +2943,13 @@ export {
 	URGENCY_KEYWORDS,
 } from "./security/injection-primitives.ts";
 export * from "./security/log-redaction.js";
+export {
+	isLoopbackRemoteAddress,
+	isRemoteAddressInCidrList,
+	isTrustedLocalRequest,
+	type LocalRequestTrustPolicy,
+	proxyClientHeaderBlocksLocalTrust,
+} from "./security/loopback-trust.js";
 export { validateMcpServerConfig } from "./security/mcp-server-config.ts";
 export {
 	buildFailureReplyPrompt,
@@ -2953,6 +3126,13 @@ export {
 	type EnsureAgentVoiceOptions,
 	ensureAgentVoice,
 } from "./security/voice-gate.ts";
+export {
+	DEV_MODE_ENV,
+	getSelfEditDeniedSuffixes,
+	isSelfEditEnabled,
+	isSelfEditPathDenied,
+	SELF_EDIT_ENABLE_ENV,
+} from "./self-edit.js";
 export * from "./sensitive-request-policy";
 export {
 	createSensitiveRequestDispatchRegistry,
@@ -3120,6 +3300,25 @@ export {
 	type TargetSourceRegistry,
 	TargetSourceRegistryService,
 } from "./target-sources/registry";
+export {
+	createSharedTodoCutoverSnapshot,
+	MAX_SHARED_TODO_CUTOVER_BYTES,
+	MAX_SHARED_TODO_CUTOVER_COUNT,
+	MAX_SHARED_TODO_CUTOVER_MUTATION_COUNT,
+	parseSharedTodoCutoverSnapshot,
+	SHARED_TODO_CUTOVER_VERSION,
+	SHARED_TODO_MUTATION_OPERATIONS,
+	SHARED_TODO_MUTATION_WIRE_VERSION,
+	SHARED_TODO_STATUSES,
+	type SharedTodoCutoverRecord,
+	type SharedTodoCutoverSnapshot,
+	type SharedTodoMutationCutoverRecord,
+	type SharedTodoMutationOperation,
+	type SharedTodoStatus,
+	TODO_CUTOVER_PROVENANCE_KEY,
+	TodoCutoverContractError,
+	type TodoCutoverJsonValue,
+} from "./todo-cutover.js";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export {
@@ -3164,6 +3363,13 @@ export {
 	type WordTimingViolation,
 } from "./transcripts.js";
 export * from "./tunnel-service";
+export {
+	asNonEmptyString,
+	asObjectArray,
+	asRecordOrUndefined as asObjectRecordOrUndefined,
+	isPlainObject as hasPlainObjectTag,
+	type UnknownRecord,
+} from "./type-guards.js";
 export { asRecord as asObjectRecord } from "./type-guards.ts";
 // Export everything from types
 export * from "./types/access-context.js";
@@ -3371,6 +3577,10 @@ export {
 	setElizaApiToken,
 } from "./utils/eliza-globals.js";
 export {
+	resolveElizaPackageRoot,
+	resolveElizaPackageRootSync,
+} from "./utils/eliza-root.js";
+export {
 	DEFAULT_APP_ROUTE_PLUGIN_MODULES,
 	isEnvDisabled,
 	normalizeEnvValue,
@@ -3444,7 +3654,6 @@ export {
 export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
-
 export { createSerialise } from "./utils/serialise.js";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
@@ -3474,3 +3683,39 @@ export * from "./utils/workspace-folder-config";
 // Export validation utilities
 export * from "./validation/keywords";
 export * from "./validation/secrets";
+export {
+	collapseViewDeclarations,
+	getViewModalities,
+} from "./views/view-declarations.js";
+export {
+	AGENT_SURFACE_CAPABILITY_IDS,
+	parseViewInteractionClientId,
+	readViewInteractionClientId,
+	STANDARD_CAPABILITIES,
+	type StandardCapability,
+	type ViewInteractRequest,
+	type ViewInteractResult,
+} from "./views/view-interact-protocol.js";
+export {
+	dedupeModalities,
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./views/view-kind.js";
+export {
+	ASR_PROVIDERS,
+	EDGE_BACKUP_VOICES,
+	hasConfiguredApiKey,
+	LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+	LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+	PREMADE_VOICES,
+	parseVoiceUiContext,
+	REALTIME_VOICE_CLIENT_TRANSPORT,
+	sanitizeApiKey,
+	VOICE_PROVIDERS,
+	type VoicePreset,
+	type VoiceUiContext,
+} from "./voice.js";

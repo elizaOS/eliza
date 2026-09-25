@@ -479,11 +479,6 @@
       "import": "./dist/first-run/first-run-config.js",
       "default": "./dist/first-run/first-run-config.js"
     },
-    "./registry": {
-      "types": "./dist/registry/index.d.ts",
-      "import": "./dist/registry/index.js",
-      "default": "./dist/registry/index.js"
-    },
     "./services/vault-mirror": {
       "types": "./dist/services/vault-mirror.d.ts",
       "import": "./dist/services/vault-mirror.js",

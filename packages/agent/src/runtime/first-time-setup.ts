@@ -22,10 +22,10 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   formatError,
+  getStylePresets,
   migrateLegacyRuntimeConfig,
   type StylePreset,
 } from "@elizaos/core";
-import { getStylePresets } from "@elizaos/core/character-presets";
 
 import { persistConfigEnv } from "../api/config-env.ts";
 import {

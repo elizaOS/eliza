@@ -8,7 +8,7 @@
  * the base. The base schema/hints are computed once and cached; buildConfigSchema
  * layers any plugin/connector metadata on top per call.
  */
-import { CONNECTOR_IDS } from "@elizaos/core/config/schema";
+import { CONNECTOR_IDS } from "@elizaos/core";
 import { VERSION } from "../runtime/version.ts";
 import { isSensitiveConfigKey } from "./sensitive-keys.ts";
 import { ElizaSchema } from "./zod-schema.ts";

@@ -229,6 +229,8 @@ try {
   });
   assert.equal(publicApi.getElizaCuratedAppDefinition('packed fixture')?.canonicalName, '@elizaos/plugin-packed-core-fixture');
   assert.ok(publicApi.getCuratedAppDefinitions().some((entry) => entry.slug === 'packed-core-fixture'));
+  const registry = publicApi.loadRegistry();
+  assert.ok(publicApi.getApps(registry).length > 0, 'packed root reads the shipped first-party catalog');
 
   const walletFields = Object.freeze({ ALCHEMY_API_KEY: '  fixture-alchemy  ', INFURA_API_KEY: 'fixture-retired' });
   const walletProviders = Object.freeze({ evm: 'ALCHEMY', bsc: 'eliza-cloud', solana: 'eliza-cloud' });
@@ -259,7 +261,7 @@ try {
   for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'messageHandlerTemplate', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
-  for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'config', 'config/types', 'config/boot-config', 'config/plugin-auto-enable', 'config/types.agent-defaults', 'config/types.agents', 'config/types.eliza', 'config/types.gateway', 'config/types.hooks', 'config/types.messages', 'config/types.tools', 'awareness', 'contracts/health', 'contracts', 'i18n/validation-keywords', 'knowledge-graph', 'lifeops-constants', 'lifeops-normalize', 'markdown', 'validation-keywords', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
+  for (const subpath of ['catalog', 'catalog/app-registry', 'node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'config', 'config/types', 'config/boot-config', 'config/plugin-auto-enable', 'config/types.agent-defaults', 'config/types.agents', 'config/types.eliza', 'config/types.gateway', 'config/types.hooks', 'config/types.messages', 'config/types.tools', 'awareness', 'contracts/health', 'contracts', 'i18n/validation-keywords', 'knowledge-graph', 'lifeops-constants', 'lifeops-normalize', 'markdown', 'validation-keywords', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
     await assert.rejects(import('@elizaos/core/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
   }
 } finally { await runtime.stop(); }

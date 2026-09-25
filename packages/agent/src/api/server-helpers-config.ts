@@ -7,15 +7,12 @@ import {
   ElizaError,
   FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
   FIRST_RUN_PROVIDER_CATALOG,
-  logger,
-  sendJsonError,
-} from "@elizaos/core";
-
-import {
   getDefaultStylePreset,
   getStylePresets,
+  logger,
   normalizeCharacterLanguage,
-} from "@elizaos/core/character-presets";
+  sendJsonError,
+} from "@elizaos/core";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";

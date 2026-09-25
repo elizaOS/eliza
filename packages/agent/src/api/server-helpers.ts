@@ -28,16 +28,13 @@ import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
   sendJsonError,
   toWellFormedUnicode,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-
-import {
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-} from "@elizaos/core/character-presets";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";

@@ -11,8 +11,9 @@ import {
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
+  searchRegistryEntries,
 } from "@elizaos/core";
-import { searchRegistryEntries } from "@elizaos/core/catalog/runtime-kernel";
+
 import type {
   RegistryAppInfo,
   RegistryPluginInfo,

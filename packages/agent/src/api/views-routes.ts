@@ -21,6 +21,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 import {
+  AGENT_SURFACE_CAPABILITY_IDS,
   ElizaError,
   EventType,
   type IAgentRuntime,
@@ -30,6 +31,7 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
   readJsonBody,
+  STANDARD_CAPABILITIES,
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
@@ -40,10 +42,6 @@ import {
   type ShellNavigateViewPayload,
 } from "@elizaos/core/events";
 
-import {
-  AGENT_SURFACE_CAPABILITY_IDS,
-  STANDARD_CAPABILITIES,
-} from "@elizaos/core/views/view-interact-protocol";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type ActiveViewElement,

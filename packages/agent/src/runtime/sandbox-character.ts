@@ -16,9 +16,9 @@ import {
   type CharacterSettings,
   logger,
   normalizeFirstRunProviderId,
+  resolveElizaPackageRootSync,
 } from "@elizaos/core";
 
-import { resolveElizaPackageRootSync } from "@elizaos/core/utils/eliza-root";
 import type { ElizaConfig } from "../config/config.ts";
 
 /** Injectable local-file seam used by deterministic character-loader tests. */

@@ -31,9 +31,9 @@ import {
   createSerialise,
   ElizaError,
   logger,
+  requestRestart,
   resolveStateDir,
 } from "@elizaos/core";
-import { requestRestart } from "@elizaos/core/restart";
 
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { getPluginInfo, type RegistryPluginInfo } from "./registry-client.js";

@@ -2,11 +2,8 @@
 import type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
 import type { ViewModality } from "../types/view-kind.js";
 
-export type {
-	CollapsedView,
-	ViewDeclaration,
-	ViewModality,
-} from "@elizaos/core";
+export type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
+export type { ViewModality } from "../types/view-kind.js";
 
 import { dedupeModalities } from "./view-kind.js";
 
