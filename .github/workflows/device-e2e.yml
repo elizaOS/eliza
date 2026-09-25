@@ -140,6 +140,7 @@ jobs:
             test-results/android-native-agent/**/report.json
             test-results/android-native-agent/**/*.log
             test-results/android-native-agent/**/agent-lifecycle.json
+            test-results/android-native-agent/**/agent-startup-diagnostics.json
             test-results/android-native-agent/**/agent-runtime.txt
           if-no-files-found: warn
           retention-days: 14
