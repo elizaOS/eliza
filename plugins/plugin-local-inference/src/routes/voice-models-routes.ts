@@ -48,15 +48,17 @@ import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
 import { sendJson, sendJsonError } from "@elizaos/core/api/http-helpers";
-import {
-	DEFAULT_NETWORK_POLICY_PREFERENCES,
-	type NetworkPolicyPreferences,
-} from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import type { NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import {
 	VOICE_MODEL_VERSIONS,
 	type VoiceModelId,
 	type VoiceModelVersion,
 } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import {
+	normalizeNetworkPreferences as normalizePrefs,
+	readVoiceNetworkPreferences as readPreferences,
+	voiceNetworkPreferencesPath as voicePrefsPath,
+} from "@elizaos/plugin-native-inference/voice-network-preferences";
 import { evaluateRuntimePolicy } from "../services/network-policy";
 import { stageWakeWordModel } from "../services/voice/wake-word-staging";
 import {
@@ -146,9 +148,6 @@ function isOwnerRequest(req: http.IncomingMessage): boolean {
 function voicePrefsDir(): string {
 	return path.join(resolveStateDir(process.env), "local-inference");
 }
-function voicePrefsPath(): string {
-	return path.join(voicePrefsDir(), "voice-update-prefs.json");
-}
 function voicePinsPath(): string {
 	return path.join(voicePrefsDir(), "voice-update-pins.json");
 }
@@ -157,22 +156,6 @@ function bundleVoiceDir(): string {
 }
 function voiceStagingDir(): string {
 	return path.join(resolveStateDir(process.env), "cache", "voice-staging");
-}
-async function readPreferences(): Promise<NetworkPolicyPreferences> {
-	try {
-		const raw = await fsp.readFile(voicePrefsPath(), "utf8");
-		const parsed = JSON.parse(raw) as Partial<PreferencesFile>;
-		return normalizePrefs(parsed);
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-			return DEFAULT_NETWORK_POLICY_PREFERENCES;
-		}
-		logger.warn(
-			{ err },
-			"[voice-models-routes] failed to read voice-update-prefs.json — using defaults",
-		);
-		return DEFAULT_NETWORK_POLICY_PREFERENCES;
-	}
 }
 async function writePreferences(
 	prefs: NetworkPolicyPreferences,
@@ -185,51 +168,6 @@ async function writePreferences(
 		quietHours: prefs.quietHours.map((q) => ({ start: q.start, end: q.end })),
 	};
 	await fsp.writeFile(voicePrefsPath(), JSON.stringify(out, null, 2), "utf8");
-}
-function normalizePrefs(
-	candidate: Partial<PreferencesFile> | null | undefined,
-): NetworkPolicyPreferences {
-	const def = DEFAULT_NETWORK_POLICY_PREFERENCES;
-	if (!candidate || typeof candidate !== "object") return def;
-	const quietHours = Array.isArray(candidate.quietHours)
-		? candidate.quietHours
-				.filter(
-					(
-						q,
-					): q is {
-						start: string;
-						end: string;
-					} =>
-						!!q &&
-						typeof q === "object" &&
-						typeof (
-							q as {
-								start: unknown;
-							}
-						).start === "string" &&
-						typeof (
-							q as {
-								end: unknown;
-							}
-						).end === "string",
-				)
-				.map((q) => ({ start: q.start, end: q.end }))
-		: def.quietHours;
-	return {
-		autoUpdateOnWifi:
-			typeof candidate.autoUpdateOnWifi === "boolean"
-				? candidate.autoUpdateOnWifi
-				: def.autoUpdateOnWifi,
-		autoUpdateOnCellular:
-			typeof candidate.autoUpdateOnCellular === "boolean"
-				? candidate.autoUpdateOnCellular
-				: def.autoUpdateOnCellular,
-		autoUpdateOnMetered:
-			typeof candidate.autoUpdateOnMetered === "boolean"
-				? candidate.autoUpdateOnMetered
-				: def.autoUpdateOnMetered,
-		quietHours,
-	};
 }
 async function readPins(): Promise<Set<VoiceModelId>> {
 	try {
