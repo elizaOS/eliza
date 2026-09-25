@@ -20,6 +20,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -118,12 +121,100 @@ public class NativeAgentLifecycleInstrumentedTest {
         } catch (Exception error) {
             errors.put("crashBuffer: " + error.getClass().getSimpleName());
         }
+        exportRunningChildProbe(evidence, errors, pids);
         try {
             evidence.put("errors", errors);
             export("agent-startup-diagnostics.json", evidence.toString(2).getBytes(StandardCharsets.UTF_8));
         } catch (Exception error) {
             // Diagnostics must not replace the original lifecycle assertion failure.
             android.util.Log.e("TestRunner", "Startup diagnostics export failed", error);
+        }
+    }
+
+    /** One deadline covers both thread samples and the native backtrace, including command startup. */
+    private void exportRunningChildProbe(JSONObject evidence, JSONArray errors, Set<Integer> pids) {
+        int childPid = -1;
+        for (int pid : pids) if (pid != android.os.Process.myPid()) childPid = pid;
+        if (childPid <= 0) return;
+        final long deadline = SystemClock.elapsedRealtime() + 9000;
+        ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "startup-native-diagnostics");
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            evidence.put("probedChildPid", childPid);
+            JSONArray samples = new JSONArray();
+            evidence.put("threadSamples", samples);
+            String sampleCommand = "timeout 2 sh -c 'n=0; for d in /proc/" + childPid
+                + "/task/[0-9]*; do [ -d \"$d\" ] || continue; n=$((n+1)); [ $n -le 32 ] || break; "
+                + "echo TID:${d##*/}; cat \"$d/stat\"; echo WCHAN; cat \"$d/wchan\"; echo; done'";
+            for (int sample = 0; sample < 2; sample++) {
+                if (sample > 0) Thread.sleep(200);
+                String raw = boundedShell(worker, sampleCommand, deadline);
+                JSONObject observation = new JSONObject();
+                observation.put("elapsedRealtimeMs", SystemClock.elapsedRealtime());
+                JSONArray threads = new JSONArray();
+                JSONObject thread = null;
+                boolean nextWchan = false;
+                for (String line : raw.split("\\n")) {
+                    if (line.matches("TID:[0-9]+")) {
+                        thread = new JSONObject();
+                        thread.put("tid", line.substring(4));
+                        threads.put(thread);
+                    } else if (thread != null && line.equals("WCHAN")) {
+                        nextWchan = true;
+                    } else if (thread != null && nextWchan) {
+                        if (line.matches("[A-Za-z0-9_]+")) thread.put("wchan", line);
+                        nextWchan = false;
+                    } else if (thread != null && line.matches("[0-9]+ \\(.*")) {
+                        // Discard comm and all address fields. stat fields 14/15 are CPU ticks.
+                        int end = line.lastIndexOf(')');
+                        String[] fields = line.substring(end + 2).split("\\s+");
+                        if (fields.length > 12 && fields[0].matches("[A-Za-z]")
+                                && fields[11].matches("[0-9]+") && fields[12].matches("[0-9]+")) {
+                            thread.put("state", fields[0]);
+                            thread.put("userTicks", fields[11]);
+                            thread.put("systemTicks", fields[12]);
+                        }
+                    }
+                }
+                if (threads.length() == 0) errors.put("threadSample: unavailable or denied");
+                observation.put("threads", threads);
+                samples.put(observation);
+            }
+            String trace = boundedShell(worker, "timeout 3 debuggerd -b " + childPid + " 2>&1", deadline);
+            JSONArray frames = new JSONArray();
+            boolean owned = false;
+            for (String line : trace.split("\\n")) {
+                Matcher header = Pattern.compile(".*----- pid ([0-9]+) at .*").matcher(line);
+                if (header.matches()) owned = Integer.parseInt(header.group(1)) == childPid;
+                if (line.contains("----- end ")) owned = false;
+                // debuggerd -b only; exclude registers, memory, abort text, argv and other processes.
+                if (owned && line.trim().matches("#[0-9]+ pc [0-9a-f]+ .*")) frames.put(line.trim());
+            }
+            evidence.put("runningChildFrames", frames);
+            if (frames.length() == 0) errors.put("nativeBacktrace: no owned frames (unavailable or denied)");
+        } catch (Exception error) {
+            errors.put("runningChildProbe: " + error.getClass().getSimpleName());
+        } finally {
+            worker.shutdownNow();
+        }
+    }
+
+    private String boundedShell(ExecutorService worker, String command, long deadline) throws Exception {
+        long remaining = deadline - SystemClock.elapsedRealtime();
+        if (remaining <= 0) throw new java.util.concurrent.TimeoutException("startup probe deadline");
+        Future<String> pending = worker.submit(() -> {
+            try (InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(
+                    InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))) {
+                return new String(input.readNBytes(65536), StandardCharsets.UTF_8);
+            }
+        });
+        try {
+            return pending.get(remaining, TimeUnit.MILLISECONDS);
+        } finally {
+            pending.cancel(true);
         }
     }
 

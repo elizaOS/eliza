@@ -195,6 +195,11 @@ import {
   type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
 import {
+  getPluginInventory,
+  handlePluginInventoryRoutes,
+} from "./plugin-inventory-routes.ts";
+import { handlePluginManagementRoutes } from "./plugin-management-routes.ts";
+import {
   attachPtySessionWsBridge,
   cancelPendingPtySessionStop,
   MAX_PTY_INPUT_MESSAGE_LENGTH,
@@ -2279,6 +2284,32 @@ async function handleRequestForViewClient(
   ) {
     return;
   }
+  if (handlePluginInventoryRoutes({ method, pathname, res, state, json })) {
+    return;
+  }
+  if (
+    (pathname === "/api/secrets" || pathname.startsWith("/api/plugins/")) &&
+    (await handlePluginManagementRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+      getPlugins: async () => getPluginInventory(state),
+      isOwner: isTrajectoryOwnerRequest(
+        req,
+        method,
+        pathname,
+        await resolveHostSessionAuthorization(),
+      ),
+      scheduleRuntimeRestart,
+      restartRuntime,
+    }))
+  )
+    return;
   // Live-load a plugin from an on-disk directory into the running runtime. This
   // is what makes a freshly scaffolded/edited local plugin (VIEWS/APP create)
   // actually appear without an agent restart — its views register via
