@@ -23,7 +23,7 @@ import {
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { isLocalCodeExecutionAllowed } from "@elizaos/core/platform/sandbox-policy";
 import {
   createTerminalUnsupportedTasksAction,
@@ -164,6 +164,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // delegation surface.
           overrides: {
             spawn_agent: {
+              parameters: tasksAction.parameters?.map((parameter) =>
+                parameter.name === "task"
+                  ? { ...parameter, required: true }
+                  : parameter,
+              ),
               description:
                 "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A

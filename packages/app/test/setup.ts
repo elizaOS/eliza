@@ -4,13 +4,13 @@
  * Navigator sub-objects are installed as `vi.fn()` stubs so tests can spy on them.
  */
 
-import React from "react";
-import { vi } from "vitest";
 import {
   createMemoryStorage,
   hasStorageApi,
   suppressReactTestConsoleErrors,
-} from "./helpers/browser-mocks";
+} from "@elizaos/testing/browser-mocks";
+import React from "react";
+import { vi } from "vitest";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;

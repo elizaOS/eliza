@@ -296,3 +296,58 @@ describe("buildRendererManifest", () => {
     expect(manifest.iosApnsEnabled).toBeNull();
   });
 });
+
+it("detects equal-sized asset changes under the same emitted filename", () => {
+  const dist = path.join(tmp, "dist");
+  const staged = path.join(tmp, "public");
+  makeDist(dist, { assets: { "index-stable.js": "one" } });
+  writeRendererBuildManifest(dist);
+  fs.cpSync(dist, staged, { recursive: true });
+  fs.writeFileSync(path.join(staged, "assets/index-stable.js"), "two");
+  expect(computeRendererFingerprint(staged).buildId).not.toBe(
+    computeRendererFingerprint(dist).buildId,
+  );
+  expect(() => assertStagedRendererMatchesBuild(dist, staged)).toThrow(
+    /staged assets are missing or changed/,
+  );
+});
+
+it("rejects incomplete asset copies even when their stamp and HTML match", () => {
+  const dist = path.join(tmp, "dist");
+  const staged = path.join(tmp, "public");
+  makeDist(dist);
+  writeRendererBuildManifest(dist);
+  fs.cpSync(dist, staged, { recursive: true });
+  fs.rmSync(path.join(staged, "assets"), { recursive: true });
+  expect(() => assertStagedRendererMatchesBuild(dist, staged)).toThrow(
+    /staged assets are missing or changed/,
+  );
+});
+
+it("preflights source identity and directory overlap before deleting staged assets", () => {
+  const dist = path.join(tmp, "dist");
+  const staged = path.join(tmp, "public");
+  makeDist(dist);
+  makeDist(staged, { assets: { "keep.js": "keep" } });
+  expect(() => overlayFreshRendererIntoPublic(dist, staged)).toThrow(
+    /fresh renderer manifest/,
+  );
+  expect(fs.readFileSync(path.join(staged, "assets/keep.js"), "utf8")).toBe(
+    "keep",
+  );
+  writeRendererBuildManifest(dist);
+  expect(() => overlayFreshRendererIntoPublic(dist, dist)).toThrow(/overlap/);
+  expect(() =>
+    overlayFreshRendererIntoPublic(dist, path.join(dist, "nested")),
+  ).toThrow(/overlap/);
+  expect(fs.existsSync(path.join(dist, "assets/index-abc123.js"))).toBe(true);
+});
+
+it("requires the requested build variant even when the stamp omitted it", () => {
+  const dist = path.join(tmp, "dist");
+  makeDist(dist);
+  writeRendererBuildManifest(dist);
+  expect(() =>
+    assertRendererRebuiltSince(dist, { notBefore: 0, expectVariant: "store" }),
+  ).toThrow(/wrong-variant/);
+});

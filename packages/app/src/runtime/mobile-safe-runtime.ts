@@ -1133,6 +1133,11 @@ export class MemoryMobileSafeVirtualFileSystem
   private snapshotCounter = 0;
 
   constructor(options: { quotaBytes?: number; maxFileBytes?: number } = {}) {
+    for (const [name, value] of Object.entries(options)) {
+      if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+        throw new Error(`${name} must be a non-negative safe integer`);
+      }
+    }
     this.quotaBytes = options.quotaBytes;
     this.maxFileBytes = options.maxFileBytes;
   }
@@ -1145,6 +1150,9 @@ export class MemoryMobileSafeVirtualFileSystem
 
   async writeFile(path: string, data: Uint8Array): Promise<void> {
     const normalized = normalizeMobileSafePath(path);
+    if (this.directories.has(normalized)) {
+      throw new Error(`Cannot write a file over a directory: ${normalized}`);
+    }
     if (
       typeof this.maxFileBytes === "number" &&
       data.byteLength > this.maxFileBytes
@@ -1155,7 +1163,7 @@ export class MemoryMobileSafeVirtualFileSystem
     }
 
     const existing = this.files.get(normalized)?.data.byteLength ?? 0;
-    const current = await this.usedBytes();
+    const current = this.usedBytes();
     const nextUsedBytes = current - existing + data.byteLength;
     if (
       typeof this.quotaBytes === "number" &&
@@ -1241,14 +1249,13 @@ export class MemoryMobileSafeVirtualFileSystem
   }
 
   async createSnapshot(note?: string): Promise<MobileSafeRuntimeSnapshot> {
-    const { usedBytes, fileCount } = await this.quota();
     const id = `mobile-safe-${Date.now()}-${++this.snapshotCounter}`;
     const meta: MobileSafeRuntimeSnapshot = {
       id,
       createdAt: Date.now(),
       ...(note ? { note } : {}),
-      filesBytes: usedBytes,
-      fileCount,
+      filesBytes: this.usedBytes(),
+      fileCount: this.files.size,
     };
     const files = new Map<string, { data: Uint8Array; updatedAt: number }>();
     for (const [filePath, entry] of this.files) {
@@ -1262,7 +1269,7 @@ export class MemoryMobileSafeVirtualFileSystem
       files,
       directories: new Set(this.directories),
     });
-    return meta;
+    return { ...meta };
   }
 
   async diffCurrent(snapshotId: string): Promise<MobileSafeRuntimeDiffEntry[]> {
@@ -1289,7 +1296,7 @@ export class MemoryMobileSafeVirtualFileSystem
 
   async quota(): Promise<MobileSafeRuntimeQuota> {
     return {
-      usedBytes: await this.usedBytes(),
+      usedBytes: this.usedBytes(),
       fileCount: this.files.size,
       ...(typeof this.quotaBytes === "number"
         ? { quotaBytes: this.quotaBytes }
@@ -1300,7 +1307,7 @@ export class MemoryMobileSafeVirtualFileSystem
     };
   }
 
-  private async usedBytes(): Promise<number> {
+  private usedBytes(): number {
     let usedBytes = 0;
     for (const entry of this.files.values()) {
       usedBytes += entry.data.byteLength;
@@ -1316,10 +1323,15 @@ export class MemoryMobileSafeVirtualFileSystem
     }
     const parts = normalized.slice(1).split("/");
     let current = "";
+    const parents: string[] = [];
     for (const part of parts) {
       current = `${current}/${part}`;
-      this.directories.add(current);
+      if (this.files.has(current)) {
+        throw new Error(`Cannot create a directory over a file: ${current}`);
+      }
+      parents.push(current);
     }
+    for (const parent of parents) this.directories.add(parent);
   }
 }
 

@@ -9,11 +9,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  analyzeImageFile,
   comparePixels,
   summarizeDiff,
 } from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
-import { analyzeImageFile } from "../mvp-visual-verify/ocr.ts";
 import {
   analyzeScreenshot,
   changeMetric,

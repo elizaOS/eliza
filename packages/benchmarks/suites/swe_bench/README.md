@@ -46,3 +46,9 @@ A genuine orchestration lane must record parent TASKS calls, child session and
 workspace identities, completion/cancellation receipts, and the independently
 graded child diff. Lifecycle decision tests alone do not satisfy that contract.
 DeepSWE is a coding agent evaluated on SWE-bench, not another dataset in this repo.
+
+Each native attempt uses a fresh trace identifier and receipt directory. Before
+official grading, its recorded task trajectory must match the complete prompt
+and context, contain a tool stage, and have a finished status and end timestamp.
+Missing, malformed, ambiguous, or unfinished trajectories fail the attempt; a
+generated patch remains available as diagnostic evidence, never a resolution score.

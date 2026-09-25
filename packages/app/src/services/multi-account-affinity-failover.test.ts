@@ -51,6 +51,7 @@ vi.setConfig({ testTimeout: 240_000, hookTimeout: 240_000 });
 import {
   __resetDefaultAccountPoolForTests,
   getDefaultAccountPool,
+  sweepAccountPoolKeepAlive,
 } from "./account-pool.js";
 import { getCodingAgentSelectorBridge } from "./coding-account-bridge.js";
 
@@ -383,4 +384,24 @@ describe("needs-reauth eviction is affinity-proof", () => {
     });
     expect(back?.id).toBe("stale");
   });
+});
+
+it("does not probe or refresh a disabled subscription account", async () => {
+  writeAccount("anthropic-subscription", "disabled", "synthetic-disabled", 1);
+  const pool = getDefaultAccountPool();
+  const account = pool.get("disabled", "anthropic-subscription");
+  if (!account) throw new Error("Missing stored fixture account");
+  await pool.upsert({ ...account, enabled: false });
+  const providerFetch = vi
+    .fn<typeof fetch>()
+    .mockRejectedValue(
+      new Error("Disabled account must not contact its provider"),
+    );
+  expect(await sweepAccountPoolKeepAlive({ fetch: providerFetch })).toEqual({
+    checked: 1,
+    refreshed: 0,
+    failed: 0,
+  });
+  expect(providerFetch).not.toHaveBeenCalled();
+  expect(pool.get("disabled", "anthropic-subscription")?.enabled).toBe(false);
 });

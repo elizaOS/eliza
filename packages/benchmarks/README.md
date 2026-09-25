@@ -29,3 +29,11 @@ Install `requirements-ci.txt` for that lane. Live framework runs are explicit
 manual selections requiring credentials; harness unit suites use
 `pytest --import-mode=importlib`. Docker execution requires
 `BENCHMARK_DOCKER_TESTS=1` and the pinned evaluator image.
+
+Eliza's OSWorld and VisualWebBench HTTP routes require native image-description
+capability. Select an auxiliary model/endpoint with
+`--extra '{"vision_model":"<model>","vision_base_url":"<url>"}'`; configure its key
+through `OPENAI_IMAGE_DESCRIPTION_API_KEY`. Otherwise the orchestrator uses the
+configured image model or the selected primary model. Results record image-model
+usage, and comparison groups include the configured vision model and endpoint
+fingerprint. A successful transport test is not a live vision-quality score.

@@ -128,6 +128,8 @@ export type TurnOutcome = (
 
 export interface MessageProcessingResult {
 	outcome: TurnOutcome;
+	/** Final planner assessment; not an independent benchmark grade. Omitted when unavailable. */
+	requestFulfilled?: boolean;
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];

@@ -119,7 +119,8 @@ export interface RuntimeModelDispatchHost {
 		source: unknown,
 		result: unknown,
 		provider: string,
-	): void;
+		signal?: AbortSignal,
+	): void | Promise<void>;
 	currentRoomId(): UUID | undefined;
 	isSecretSwapEnabled(): boolean;
 	isPiiSwapEnabled(): boolean;
@@ -2109,12 +2110,15 @@ export class RuntimeModelDispatch {
 					modelType === ModelType.TEXT_EMBEDDING ||
 					modelType === ModelType.TEXT_EMBEDDING_BATCH
 				) {
-					this.host.validateEmbeddingOutput(
+					await this.host.validateEmbeddingOutput(
 						String(modelType),
 						params,
 						embeddingProviderOutput,
 						resultRef.current,
 						resolvedModel.provider,
+						explicitSignal && contextSignal
+							? AbortSignal.any([explicitSignal, contextSignal])
+							: (explicitSignal ?? contextSignal),
 					);
 				}
 				return resultRef.current as R;

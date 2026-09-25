@@ -165,6 +165,8 @@ async function generateEmbeddingWithOllama(
     body: JSON.stringify({
       model,
       input: text,
+      // Oversized context must fail explicitly; Ollama otherwise truncates it.
+      truncate: false,
     }),
   });
 
@@ -270,10 +272,10 @@ async function handleTextEmbedding(
       : params === null
         ? "test_dimension"
         : params.text;
-  return generateEmbeddingWithOllama(
-    DEFAULT_MODELS.embedding,
-    text || "test_dimension",
-  );
+  if (!text?.trim()) {
+    throw new Error("Cannot generate embedding for empty text");
+  }
+  return generateEmbeddingWithOllama(DEFAULT_MODELS.embedding, text);
 }
 
 /**

@@ -39,12 +39,12 @@ import {
   removePublicBuildStamp,
   shouldSkipBuildStamp,
 } from "./scripts/build-stamp.ts";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.ts";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.ts";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
 } from "./scripts/lib/android-cloud-routing-markers.ts";
+import { CAPACITOR_PLUGIN_NAMES } from "./scripts/lib/capacitor-plugin-names.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
@@ -2521,10 +2521,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
-        [
-          "@elizaos/plugin-relationships",
-          "plugins/plugin-relationships/src/register.ts",
-        ],
         [
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",

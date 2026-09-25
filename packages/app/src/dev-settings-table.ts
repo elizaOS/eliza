@@ -25,7 +25,7 @@ const DEFAULT_CAPS = {
 } as const;
 
 export type DevSettingsTableOptions = {
-  caps?: Partial<typeof DEFAULT_CAPS>;
+  caps?: Partial<Record<keyof typeof DEFAULT_CAPS, number>>;
   /** Multiline ~80 cols by default; set `wide` for legacy single-line table. */
   layout?: "wide" | "narrow";
   /** Max line length for `layout: "narrow"` (default 80). */
@@ -37,7 +37,14 @@ export type DevSettingsTableOptions = {
   narrowFrame?: boolean;
 };
 
+function requireWidth(width: number, minimum = 1): void {
+  if (!Number.isSafeInteger(width) || width < minimum) {
+    throw new RangeError(`Table width must be a safe integer >= ${minimum}`);
+  }
+}
+
 export function truncateCell(value: string, maxWidth: number): string {
+  requireWidth(maxWidth, 0);
   const wellFormed = toWellFormedUnicode(value);
   if (wellFormed.length <= maxWidth) return wellFormed;
   if (maxWidth < 2) return truncateWellFormed(wellFormed, maxWidth);
@@ -46,8 +53,8 @@ export function truncateCell(value: string, maxWidth: number): string {
 
 /** Word-wrap to at most `width` columns; breaks on spaces, then hard-breaks long tokens. */
 export function wrapToWidth(text: string, width: number): string[] {
-  if (width < 1) return [text];
-  const normalized = text.replace(/\s+/g, " ").trim();
+  requireWidth(width);
+  const normalized = toWellFormedUnicode(text).replace(/\s+/g, " ").trim();
   if (!normalized) return [""];
   const lines: string[] = [];
   let remaining = normalized;
@@ -58,11 +65,16 @@ export function wrapToWidth(text: string, width: number): string[] {
     }
     let breakAt = remaining.lastIndexOf(" ", width);
     if (breakAt <= 0) breakAt = width;
+    // Never split a surrogate pair at a hard wrap boundary.
+    if (
+      breakAt < remaining.length &&
+      /[\uDC00-\uDFFF]/.test(remaining[breakAt])
+    ) {
+      breakAt = breakAt > 1 ? breakAt - 1 : 2;
+    }
     const chunk = remaining.slice(0, breakAt).trimEnd();
     lines.push(chunk.length > 0 ? chunk : remaining.slice(0, width));
-    remaining = remaining
-      .slice(breakAt === width ? width : breakAt)
-      .trimStart();
+    remaining = remaining.slice(breakAt).trimStart();
   }
   return lines;
 }
@@ -88,6 +100,7 @@ function emitLabeledLines(
 }
 
 export function boxTopRule(title: string, outer: number): string {
+  requireWidth(outer, 0);
   const inner = outer - 2;
   if (inner < 4)
     return truncateWellFormed(toWellFormedUnicode(title), Math.max(0, outer));
@@ -117,13 +130,12 @@ function boxEmptyRow(outer: number): string {
 }
 
 export function boxRow(line: string, outer: number): string {
+  requireWidth(outer, 6);
   const inner = outer - 2;
   const maxMid = Math.max(0, inner - 4);
   const wellFormed = toWellFormedUnicode(line);
   const vis =
-    wellFormed.length > maxMid
-      ? `${truncateWellFormed(wellFormed, Math.max(0, maxMid - 1))}…`
-      : wellFormed;
+    wellFormed.length > maxMid ? truncateCell(wellFormed, maxMid) : wellFormed;
   const pad = maxMid - vis.length;
   return `│ ${vis}${" ".repeat(pad)} │`;
 }
@@ -157,6 +169,7 @@ export function formatDevSettingsTableNarrow(
   outerWidth = 80,
   frame = true,
 ): string {
+  requireWidth(outerWidth);
   if (!frame) {
     return formatDevSettingsTableNarrowUnframed(title, rows, outerWidth);
   }
@@ -204,6 +217,7 @@ export function formatDevSettingsTable(
     );
   }
   const caps = { ...DEFAULT_CAPS, ...options?.caps };
+  for (const width of Object.values(caps)) requireWidth(width);
   const header: DevSettingsRow = {
     setting: "Setting",
     effective: "Effective",

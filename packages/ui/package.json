@@ -603,6 +603,12 @@
     "./brand.css": "./dist/brand/brand.css",
     "./brand-classic.css": "./dist/brand-classic/brand.css",
     "./assets/*": "./assets/*",
+    "./terminal/theme": {
+      "types": "./dist/terminal/theme.d.ts",
+      "eliza-source": "./src/terminal/theme.ts",
+      "import": "./dist/terminal/theme.js",
+      "default": "./dist/terminal/theme.js"
+    },
     "./terminal/palette": {
       "eliza-source": "./src/terminal/palette.ts",
       "types": "./dist/terminal/palette.d.ts",
