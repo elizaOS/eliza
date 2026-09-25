@@ -579,6 +579,66 @@
           ) === String.fromCharCode(0, 0, 0, 0),
           "batch failure does not execute subsequent commands",
         );
+        const malformedCommands = [
+          ["unknown type", { type: "unsupported", args: {} }],
+          ["missing arguments", { type: "rect" }],
+          ["null command", null],
+          ["string command", "rect"],
+          ["array command", []],
+          ["non-object arguments", { type: "rect", args: 7 }],
+          ["missing rectangle", { type: "rect", args: {} }],
+          ["missing ellipse center", { type: "ellipse", args: {} }],
+          ["missing line endpoints", { type: "line", args: {} }],
+          ["missing path commands", { type: "path", args: { path: {} } }],
+          [
+            "missing text style",
+            { type: "text", args: { text: "hello", position: { x: 0, y: 0 } } },
+          ],
+          [
+            "missing image destination",
+            { type: "image", args: { image: dataUrl } },
+          ],
+        ];
+        window.nativeCanvasEvidence.malformedCommands = [];
+        for (const [name, command] of malformedCommands) {
+          await call("clear", { canvasId });
+          const outcome = await imageOutcome("drawBatch", {
+            canvasId,
+            commands: [
+              prefix,
+              command,
+              {
+                type: "rect",
+                args: {
+                  rect: { x: 8, y: 8, width: 2, height: 2 },
+                  fill: { color: "#00ff00" },
+                },
+              },
+            ],
+          });
+          const pixels = atob((await call("getPixelData", { canvasId })).data);
+          const prefixPreserved =
+            pixels.slice(0, 4) === String.fromCharCode(255, 0, 0, 255);
+          const suffixStopped =
+            pixels.slice((8 * 16 + 8) * 4, (8 * 16 + 8) * 4 + 4) ===
+            String.fromCharCode(0, 0, 0, 0);
+          window.nativeCanvasEvidence.malformedCommands.push({
+            name,
+            ...outcome,
+            prefixPreserved,
+            suffixStopped,
+          });
+          assert(
+            outcome.rejected &&
+              outcome.code === "INVALID_COMMAND" &&
+              outcome.commandIndex === 1,
+            `malformed batch command rejects with index: ${name}`,
+          );
+          assert(
+            prefixPreserved && suffixStopped,
+            `malformed batch preserves only applied prefix: ${name}`,
+          );
+        }
         await call("drawImage", {
           canvasId,
           image: dataUrl,

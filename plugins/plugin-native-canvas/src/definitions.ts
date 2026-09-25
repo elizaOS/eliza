@@ -445,8 +445,9 @@ export interface CanvasPlugin {
 
   /**
    * Execute a batch of drawing commands
-   * Android rejects undecodable image commands with INVALID_IMAGE and
-   * data.commandIndex. Earlier commands remain applied; later commands do not run.
+   * Android rejects malformed command envelopes, unknown types and missing required
+   * argument objects with INVALID_COMMAND. Undecodable images reject with INVALID_IMAGE.
+   * Both include data.commandIndex; earlier commands remain applied and later commands do not run.
    */
   drawBatch(options: {
     canvasId: string;
