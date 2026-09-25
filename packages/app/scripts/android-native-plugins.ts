@@ -134,6 +134,21 @@ export function parseNativeArtifacts(output) {
   return artifacts;
 }
 
+function restoreMobileSignalsScreen(adb, outputDir) {
+  // Also recover screen state if instrumentation crashed mid-transition.
+  adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
+  adb("shell", "wm", "dismiss-keyguard");
+  const deadline = Date.now() + 5_000;
+  while (!/\bmWakefulness=Awake\b/.test(adb("shell", "dumpsys", "power"))) {
+    if (Date.now() >= deadline)
+      throw new Error("Emulator did not return to awake state");
+  }
+  fs.writeFileSync(
+    path.join(outputDir, "mobile-signals-host-cleanup.json"),
+    JSON.stringify({ awake: true, observedBy: "dumpsys power" }),
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const value = (flag) => args[args.indexOf(flag) + 1];
@@ -614,20 +629,7 @@ async function main() {
         }
         if (plugin.directory === "plugin-native-mobile-signals") {
           try {
-            // Also recover screen state if instrumentation crashed mid-transition.
-            adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
-            adb("shell", "wm", "dismiss-keyguard");
-            const deadline = Date.now() + 5_000;
-            while (
-              !/\bmWakefulness=Awake\b/.test(adb("shell", "dumpsys", "power"))
-            ) {
-              if (Date.now() >= deadline)
-                throw new Error("Emulator did not return to awake state");
-            }
-            fs.writeFileSync(
-              path.join(outputDir, "mobile-signals-host-cleanup.json"),
-              JSON.stringify({ awake: true, observedBy: "dumpsys power" }),
-            );
+            restoreMobileSignalsScreen(adb, outputDir);
           } catch (error) {
             entry.pass = false;
             entry.problems.push(`screen-state cleanup: ${error}`);
