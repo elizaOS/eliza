@@ -27,6 +27,32 @@ describe("buildWaitForUrlPredicate", () => {
     expect(predicate.test("https://ci.example/done")).toBe(true);
   });
 
+  it("stays deterministic for a global-flag pattern across repeated polls", () => {
+    // `wait_for_url` polls the same predicate repeatedly. A retained `g` flag
+    // would advance `lastIndex` and make alternate calls report no match.
+    const predicate = buildWaitForUrlPredicate("/auth\\/callback/g");
+    const url = "https://example.com/auth/callback";
+    expect(predicate.kind).toBe("regex");
+    for (let poll = 0; poll < 5; poll += 1) {
+      expect(predicate.test(url)).toBe(true);
+    }
+  });
+
+  it("stays deterministic for a sticky-flag pattern without anchoring", () => {
+    // `y` would require a match at `lastIndex`; URL matching is unanchored.
+    const predicate = buildWaitForUrlPredicate("/callback/y");
+    expect(predicate.kind).toBe("regex");
+    expect(predicate.test("https://example.com/auth/callback")).toBe(true);
+    expect(predicate.test("https://example.com/auth/callback")).toBe(true);
+  });
+
+  it("keeps case-insensitivity when stateful flags are combined", () => {
+    const predicate = buildWaitForUrlPredicate("/DONE/gi");
+    expect(predicate.kind).toBe("regex");
+    expect(predicate.test("https://ci.example/done")).toBe(true);
+    expect(predicate.test("https://ci.example/DONE")).toBe(true);
+  });
+
   it("treats a bare pattern with metacharacters as a literal substring", () => {
     // Without /.../ wrapping, metacharacters are matched literally.
     const predicate = buildWaitForUrlPredicate("?status=done");
