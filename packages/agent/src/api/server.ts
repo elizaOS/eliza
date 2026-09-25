@@ -194,6 +194,7 @@ import {
   isBlockedEnvKey,
   type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
+import { handlePluginInventoryRoutes } from "./plugin-inventory-routes.ts";
 import {
   attachPtySessionWsBridge,
   cancelPendingPtySessionStop,
@@ -2277,6 +2278,9 @@ async function handleRequestForViewClient(
       error,
     })
   ) {
+    return;
+  }
+  if (handlePluginInventoryRoutes({ method, pathname, res, state, json })) {
     return;
   }
   // Live-load a plugin from an on-disk directory into the running runtime. This
