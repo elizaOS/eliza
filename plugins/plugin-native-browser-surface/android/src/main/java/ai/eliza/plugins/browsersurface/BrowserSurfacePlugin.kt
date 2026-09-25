@@ -597,15 +597,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "presentSurface") ?: return@runOnUiThread
             val owner = identity.owner
+            val selected = id?.let {
+                ownedSurface(call, it, identity, "presentSurface")
+                    ?: return@runOnUiThread
+            }
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
-            }
-            val selected = id?.let {
-                ownedSurface(call, it, identity, "presentSurface")
-                    ?: return@runOnUiThread
             }
             selected?.let { surface ->
                 surface.container.bringToFront()
