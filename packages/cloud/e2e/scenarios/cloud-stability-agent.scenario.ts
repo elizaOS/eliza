@@ -35,7 +35,7 @@ const reminderArgs = {
   },
 };
 const plannerToolNames = [
-  ownerRemindersAction.name,
+  `${ownerRemindersAction.name}_CREATE`,
   "DISCOVER_ACTIONS",
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
@@ -337,7 +337,7 @@ const definition = scenario({
           toolCalls: [
             {
               id: "call-cloud-owner-reminder",
-              name: "OWNER_REMINDERS",
+              name: "OWNER_REMINDERS_CREATE",
               arguments: reminderArgs,
             },
           ],
@@ -493,7 +493,7 @@ const definition = scenario({
       name: "message planning previews the reminder before owner confirmation",
       predicate: (ctx: ScenarioContext) => {
         const preview = ctx.turns?.[0]?.actionsCalled.find(
-          (action) => action.actionName === "OWNER_REMINDERS",
+          (action) => action.actionName === "OWNER_REMINDERS_CREATE",
         );
         const data = preview?.result?.data;
         return data &&
