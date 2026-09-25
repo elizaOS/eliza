@@ -120,6 +120,8 @@ LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
     *SYNTHETIC_HARNESSES,
     "compare",
+    # Native routes are partial; retain results without requiring Codex in every cohort.
+    "codex",
     # smithers publishes to latest/ but is intentionally NOT in
     # CANONICAL_REAL_HARNESSES: it has partial benchmark coverage, so it must
     # not be a required agent for cross-harness comparability.
@@ -1349,6 +1351,21 @@ def _publication_quarantine_reason(
         return "unsucceeded_run"
     if not _is_numeric_score(score):
         return "missing_score"
+    if agent.strip().lower() == "codex":
+        if provider != "codex-native" or benchmark_id != "eliza_1":
+            return "codex_unsupported_publication_route"
+        execution = metrics.get("execution")
+        receipts = metrics.get("native_receipts")
+        if (not isinstance(execution, dict) or execution.get("harness") != "codex"
+                or execution.get("model_requested") != model
+                or execution.get("provider_label") != provider):
+            return "codex_execution_identity_mismatch"
+        count = metrics.get("case_count")
+        if (not isinstance(count, int) or isinstance(count, bool) or count <= 0
+                or not isinstance(receipts, dict)
+                or receipts.get("attempt_count") != count
+                or receipts.get("completed_turns") != count):
+            return "codex_missing_native_receipts"
     runtime_provenance = (
         metrics.get("runtime_provenance")
         if isinstance(metrics.get("runtime_provenance"), dict)

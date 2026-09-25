@@ -45,7 +45,11 @@ not establish Eliza TASKS/ACP orchestration, and its score publication is disabl
 A genuine orchestration lane must record parent TASKS calls, child session and
 workspace identities, completion/cancellation receipts, and the independently
 graded child diff. Lifecycle decision tests alone do not satisfy that contract.
-DeepSWE is a coding agent evaluated on SWE-bench, not another dataset in this repo.
+[Datacurve DeepSWE](https://github.com/datacurve-ai/deep-swe) is a separate
+long-horizon benchmark using Harbor-format tasks and the Pier runner. It is not
+executed by this SWE-bench CLI. Its isolated verifier must grade committed agent
+changes in a pristine environment; keep tests and reference solutions out of the
+agent workspace. Agentica DeepSWE-Preview is a different project: a coding model.
 
 Each native attempt uses a fresh trace identifier and receipt directory. Before
 official grading, its recorded task trajectory must match the complete prompt

@@ -397,8 +397,8 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
         "eliza_1",
         "eliza-1",
         registered=False,
-        phases=_phase(extra={"task": "should_respond", "n": 10}),
-        reason="The cross-harness adapter covers the complete 59-case should_respond corpus with ten repetitions; local-only decode-mode tasks remain outside this comparison.",
+        phases=_phase(extra={"task": "should_respond", "fixture_set": "manual", "n": 10}),
+        reason="The cross-harness adapter covers all 32 manual should_respond cases across RESPOND, IGNORE and STOP with ten repetitions; the RESPOND-only derived corpus and local decode-mode tasks remain outside this comparison.",
     ),
     _entry(
         "experience",

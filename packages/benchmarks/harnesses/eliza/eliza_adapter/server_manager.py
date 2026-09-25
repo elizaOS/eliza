@@ -107,7 +107,7 @@ def _resolve_node() -> str | None:
 def _server_command(server_script: Path) -> list[str]:
     """Return the benchmark server command.
 
-    Prefer bun: it resolves the monorepo's TypeScript sources
+    Prefer bun with explicit eliza-source exports: it resolves the monorepo's TypeScript sources
     directly (including internal `./index.node` source imports that tsx
     cannot resolve under the eliza-source condition). Node+tsx is the
     fallback and deliberately does NOT pass --conditions=eliza-source: it
@@ -117,7 +117,7 @@ def _server_command(server_script: Path) -> list[str]:
     if forced:
         return [*shlex.split(forced), str(server_script)]
     if shutil.which("bun"):
-        return ["bun", "--no-env-file", "run", str(server_script)]
+        return ["bun", "run", "--conditions=eliza-source", "--no-env-file", str(server_script)]
     node = _resolve_node()
     if node:
         major = _node_major(node)
@@ -427,21 +427,6 @@ class ElizaServerManager:
             self.port,
             cwd,
         )
-
-        # Clear stale tsx transformer caches. node --import tsx caches
-        # transformed TypeScript by source-file content hash + version. When
-        # core source files get renamed/restructured between runs (e.g.
-        # `consolidatedReflectionAction` rename, evaluator removal), the cache
-        # holds onto the old AST and the next boot fails with cryptic
-        # `does not provide an export named X` errors. Purging on every start
-        # is cheap (the cache rebuilds within seconds) and removes a tarpit.
-        try:
-            tmp_root = Path(tempfile.gettempdir())
-            for entry in tmp_root.iterdir():
-                if entry.name.startswith("tsx-") and entry.is_dir():
-                    shutil.rmtree(entry, ignore_errors=True)
-        except Exception as exc:  # never block server boot on cache cleanup
-            logger.debug("tsx cache cleanup skipped: %s", exc)
 
         log_dir = Path(env.get("ELIZA_BENCH_LOG_DIR") or tempfile.gettempdir())
         log_dir.mkdir(parents=True, exist_ok=True)
