@@ -7,8 +7,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { ElizaError } from "@elizaos/core";
-import { registryEntrySchema } from "@elizaos/core/catalog";
+import { ElizaError, registryEntrySchema } from "@elizaos/core";
+
 import catalog from "@elizaos/core/catalog/generated.json" with {
   type: "json",
 };

@@ -3,7 +3,8 @@
 Node runtime kernel for Eliza agents: plugin registration, authorization, state, model
 dispatch, memory, and cancellation.
 
-Import from `@elizaos/core`. Hosts explicitly supply database adapters, model providers,
+Import from `@elizaos/core`, including first-party catalog access and curated-app
+registration. Hosts explicitly supply database adapters, model providers,
 and `@elizaos/plugin-assistant` for conversational behavior. The root entrypoint is the Node runtime. Explicit leaf exports provide wire
 contracts and pure utilities without loading that runtime. Core does not own host
 route tables or install assistant behavior implicitly. Runtime settings are per-agent and do not implicitly read process.env.

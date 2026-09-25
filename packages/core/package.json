@@ -127,12 +127,6 @@
 			"import": "./dist/canonical-json.js",
 			"default": "./dist/canonical-json.js"
 		},
-		"./catalog/app-registry": {
-			"eliza-source": "./src/catalog/app-registry.ts",
-			"types": "./dist/catalog/app-registry.d.ts",
-			"import": "./dist/catalog/app-registry.js",
-			"default": "./dist/catalog/app-registry.js"
-		},
 		"./catalog/channel-plugin-map.json": "./dist/catalog/channel-plugin-map.json",
 		"./catalog/curated-app-definitions.json": "./dist/catalog/curated-app-definitions.json",
 		"./catalog/generate": {
