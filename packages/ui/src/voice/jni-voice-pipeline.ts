@@ -71,9 +71,10 @@ export interface JniAttributedTurn {
   embeddingNorm: number;
   /** The decoded 256-d speaker embedding (empty when the turn was too short). */
   embedding: Float32Array;
-  /** Per-frame pyannote powerset labels for the 5 s diariz window. */
+  /** Concatenated per-window pyannote labels; class identities are window-local. */
   diarizLabels: Int8Array;
-  /** Distinct diariz classes that fired (1 ≈ single speaker). */
+  diarizWindows?: ElizaVoiceTurn["diarizWindows"];
+  /** Distinct window-local label values; this is not a speaker count. */
   diarizDistinctClasses: number;
   /** The ambient-gate verdict for this turn. */
   signal: VoiceTurnSignal;
@@ -514,6 +515,7 @@ export class JniVoicePipeline {
         embeddingNorm: raw.embNorm,
         embedding,
         diarizLabels: base64ToInt8(raw.labels),
+        diarizWindows: raw.diarizWindows,
         diarizDistinctClasses: raw.diarizDistinctClasses,
         signal,
       };
