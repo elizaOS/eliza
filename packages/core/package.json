@@ -306,48 +306,6 @@
 			"import": "./dist/config/schema.js",
 			"default": "./dist/config/schema.js"
 		},
-		"./config/types.agent-defaults": {
-			"eliza-source": "./src/config/types.agent-defaults.ts",
-			"types": "./dist/config/types.agent-defaults.d.ts",
-			"import": "./dist/config/types.agent-defaults.js",
-			"default": "./dist/config/types.agent-defaults.js"
-		},
-		"./config/types.agents": {
-			"eliza-source": "./src/config/types.agents.ts",
-			"types": "./dist/config/types.agents.d.ts",
-			"import": "./dist/config/types.agents.js",
-			"default": "./dist/config/types.agents.js"
-		},
-		"./config/types.eliza": {
-			"eliza-source": "./src/config/types.eliza.ts",
-			"types": "./dist/config/types.eliza.d.ts",
-			"import": "./dist/config/types.eliza.js",
-			"default": "./dist/config/types.eliza.js"
-		},
-		"./config/types.gateway": {
-			"eliza-source": "./src/config/types.gateway.ts",
-			"types": "./dist/config/types.gateway.d.ts",
-			"import": "./dist/config/types.gateway.js",
-			"default": "./dist/config/types.gateway.js"
-		},
-		"./config/types.hooks": {
-			"eliza-source": "./src/config/types.hooks.ts",
-			"types": "./dist/config/types.hooks.d.ts",
-			"import": "./dist/config/types.hooks.js",
-			"default": "./dist/config/types.hooks.js"
-		},
-		"./config/types.messages": {
-			"eliza-source": "./src/config/types.messages.ts",
-			"types": "./dist/config/types.messages.d.ts",
-			"import": "./dist/config/types.messages.js",
-			"default": "./dist/config/types.messages.js"
-		},
-		"./config/types.tools": {
-			"eliza-source": "./src/config/types.tools.ts",
-			"types": "./dist/config/types.tools.d.ts",
-			"import": "./dist/config/types.tools.js",
-			"default": "./dist/config/types.tools.js"
-		},
 		"./config/ui-spec": {
 			"eliza-source": "./src/config/ui-spec.ts",
 			"types": "./dist/config/ui-spec.d.ts",

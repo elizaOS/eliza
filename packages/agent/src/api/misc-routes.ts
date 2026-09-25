@@ -13,13 +13,14 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
+  type CustomActionDef,
   logger,
   ModelType,
   parseBooleanValue,
   validateUuid,
 } from "@elizaos/core";
-import { type StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import type { StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
+import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import {
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
@@ -36,7 +37,6 @@ import {
 import { isAndroidMobile } from "@elizaos/core/runtime-env";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { type CustomActionDef } from "../config/types.eliza.ts";
 import {
   buildTestHandler,
   registerCustomActionLive,
@@ -44,7 +44,7 @@ import {
 import { runShell } from "../services/shell-execution-router.ts";
 import { customActionGenerateTemplate } from "./custom-action-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
-import { type ServerState } from "./server-types.ts";
+import type { ServerState } from "./server-types.ts";
 import {
   capturedTerminalOutputIsSafe,
   MAX_TERMINAL_CAPTURE_BYTES,

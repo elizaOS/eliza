@@ -14,10 +14,20 @@ import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
 } from "./lib/report-artifact-path.ts";
+import { testOutputPath } from "./lib/test-output.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-const DEFAULT_JSON_OUTPUT = "reports/plugin-view-inventory.json";
-const DEFAULT_MARKDOWN_OUTPUT = "reports/plugin-view-inventory.md";
+const DEFAULT_JSON_OUTPUT = path
+  .relative(
+    REPO_ROOT,
+    testOutputPath("plugin-view-inventory", "inventory.json"),
+  )
+  .split(path.sep)
+  .join("/");
+const DEFAULT_MARKDOWN_OUTPUT = path
+  .relative(REPO_ROOT, testOutputPath("plugin-view-inventory", "inventory.md"))
+  .split(path.sep)
+  .join("/");
 
 export function parsePluginViewInventoryArgs(args) {
   let stdout = "summary";
@@ -82,7 +92,7 @@ function artifactPath(value, extension, label) {
 
 function printUsage() {
   process.stdout.write(
-    "Usage: node packages/scripts/audit-plugin-view-inventory.ts [--json|--markdown] [--output <reports/*.json>] [--markdown-output <reports/*.md>]\n",
+    "Usage: node packages/scripts/audit-plugin-view-inventory.ts [--json|--markdown] [--output <path.json>] [--markdown-output <path.md>]\n",
   );
 }
 

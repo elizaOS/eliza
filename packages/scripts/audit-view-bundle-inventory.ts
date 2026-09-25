@@ -14,13 +14,20 @@ import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
 } from "./lib/report-artifact-path.ts";
+import { testOutputPath } from "./lib/test-output.ts";
 import {
   discoverViewBundleInventory,
   serializeViewBundleInventory,
 } from "./lib/view-bundle-inventory.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-const DEFAULT_OUTPUT = "reports/view-bundle-inventory.json";
+const DEFAULT_OUTPUT = path
+  .relative(
+    REPO_ROOT,
+    testOutputPath("view-bundle-inventory", "inventory.json"),
+  )
+  .split(path.sep)
+  .join("/");
 
 export function parseViewInventoryArgs(args) {
   let json = false;
