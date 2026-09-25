@@ -1161,7 +1161,13 @@ class CanvasPlugin : Plugin() {
                 val y = rectObj.int("y")
                 val w = rectObj.int("width", bitmap.width)
                 val h = rectObj.int("height", bitmap.height)
-                Rect(x, y, (x + w).coerceAtMost(bitmap.width), (y + h).coerceAtMost(bitmap.height))
+                // Reject invalid origins before Bitmap.getPixels can throw on the UI thread.
+                // Clamp extents before adding so large positive sizes cannot overflow.
+                if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height || w <= 0 || h <= 0) {
+                    call.reject("Invalid pixel region")
+                    return@runOnUiThread
+                }
+                Rect(x, y, x + w.coerceAtMost(bitmap.width - x), y + h.coerceAtMost(bitmap.height - y))
             } else {
                 Rect(0, 0, bitmap.width, bitmap.height)
             }

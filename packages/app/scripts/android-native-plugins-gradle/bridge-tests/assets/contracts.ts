@@ -113,8 +113,34 @@
             bytes.charCodeAt(3) === 255,
           "native drawing must produce opaque red pixels",
         );
+        for (const rect of [
+          { x: -1, y: 0, width: 1, height: 1 },
+          { x: 0, y: -1, width: 1, height: 1 },
+          { x: 8, y: 0, width: 1, height: 1 },
+          { x: 0, y: 8, width: 1, height: 1 },
+          { x: 0, y: 0, width: 0, height: 1 },
+          { x: 0, y: 0, width: 1, height: -1 },
+        ]) {
+          await rejects("getPixelData", { canvasId, rect });
+        }
+        const clipped = await call("getPixelData", {
+          canvasId,
+          rect: { x: 7, y: 7, width: 2147483647, height: 2147483647 },
+        });
+        assert(
+          clipped.width === 1 &&
+            clipped.height === 1 &&
+            atob(clipped.data) === String.fromCharCode(255, 0, 0, 255),
+          "oversized pixel region clips without overflow and preserves drawing",
+        );
         const png = await call("toImage", { canvasId, format: "png" });
         assert(png.base64.startsWith("iVBOR"), "native PNG encoding");
+        window.nativeCanvasEvidence = {
+          original: pixels,
+          clipped,
+          rejectedRegions: 6,
+          png: png.base64,
+        };
       } finally {
         await call("destroy", { canvasId });
       }
