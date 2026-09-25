@@ -1194,7 +1194,8 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   next_event: {
     description:
       "Read the single next ongoing or upcoming event relative to now, including after today. Use this for next-event requests, even without a title/keyword filter; feed only reads a bounded agenda and may contain entirely elapsed events.",
-    descriptionCompressed: "single next ongoing or upcoming event relative to now",
+    descriptionCompressed:
+      "single next ongoing or upcoming event relative to now",
     required: [],
     optional: ["intent", "details"],
   },
