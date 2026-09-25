@@ -11,37 +11,35 @@ import type http from "node:http";
 import path from "node:path";
 import {
   type AgentRuntime,
+  CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
   type Content,
   ContentType,
+  type ConversationMetadata,
   createMessageMemory,
+  decodeUrlPathComponent,
   logger,
-  MESSAGE_SOURCE_CLIENT_CHAT,
-  type Media,
-  toWellFormedUnicode,
-  type UUID,
-  validateUuid,
-} from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core/api/http-helpers";
-import {
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-} from "@elizaos/core/character-presets";
-import {
-  CHAT_UPLOAD_MIME_TYPES,
   MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
   MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
   MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
-} from "@elizaos/core/chat-upload-limits";
-import { type ConversationMetadata } from "@elizaos/core/contracts/conversation-routes";
-import {
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  type Media,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
-import { decodeUrlPathComponent } from "@elizaos/core/utils/path-component";
-import { type ElizaConfig } from "../config/config.ts";
+  sendJsonError,
+  toWellFormedUnicode,
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+
+import {
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+} from "@elizaos/core/character-presets";
+
+import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentEventServiceLike,
@@ -54,9 +52,9 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
-import {
-  type ChatAttachmentWithData,
-  type ChatImageAttachment,
+import type {
+  ChatAttachmentWithData,
+  ChatImageAttachment,
 } from "./server-types.ts";
 
 export {
@@ -176,7 +174,7 @@ export function initializeOGCodeInState(): void {
 // Types
 // ---------------------------------------------------------------------------
 // AgentStartupDiagnostics is canonical in @elizaos/core.
-export { type AgentStartupDiagnostics } from "@elizaos/core/api/agent-api-types";
+export type { AgentStartupDiagnostics } from "@elizaos/core";
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
@@ -353,7 +351,7 @@ export function decodePathComponent(
 // ---------------------------------------------------------------------------
 // Chat image validation
 // ---------------------------------------------------------------------------
-// Caps + allowlist live in @elizaos/core/chat-upload-limits (imported above,
+// Caps + allowlist live in @elizaos/core (imported above,
 // aliased to the historical local names) so the UI composer enforces the exact
 // same numbers pre-send and the two sides cannot drift.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;

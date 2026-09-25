@@ -16,19 +16,20 @@
  * empty brief, distinct from an unreachable one.
  */
 
-import { type IAgentRuntime, logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   type AppRunSummary,
+  createSelfApiRequestHeaders,
+  type IAgentRuntime,
+  logger,
   type RegistryAppInfo,
-} from "@elizaos/core/contracts/apps";
-import {
+  toWellFormedUnicode,
   type WalletBalancesResponse,
   type WalletConfigStatus,
   type WalletNftsResponse,
   type WalletTradingProfileResponse,
-} from "@elizaos/core/contracts/wallet-types";
-import { createSelfApiRequestHeaders } from "@elizaos/core/runtime-env";
-import { type ConversationScope } from "../api/server-types.ts";
+} from "@elizaos/core";
+
+import type { ConversationScope } from "../api/server-types.ts";
 
 async function renderCharacterLiveState(
   runtime: IAgentRuntime,

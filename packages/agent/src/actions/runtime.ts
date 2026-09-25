@@ -16,25 +16,24 @@
  */
 
 import crypto from "node:crypto";
-import type {
-  Action,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
-import { logger, toWellFormedUnicode } from "@elizaos/core";
-import { type AwarenessRegistry } from "@elizaos/core/awareness/registry";
 import {
-  getValidationKeywordTerms,
-  textIncludesKeywordTerm,
-} from "@elizaos/core/i18n/keyword-matching";
-import { requestRestart } from "@elizaos/core/restart";
-import {
+  type Action,
+  type ActionResult,
+  type AwarenessRegistry,
   createSelfApiRequestHeaders,
+  getValidationKeywordTerms,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
+  textIncludesKeywordTerm,
+  toWellFormedUnicode,
+  type UUID,
+} from "@elizaos/core";
+
+import { requestRestart } from "@elizaos/core/restart";
+
 import { isSelfEditEnabled } from "@elizaos/core/self-edit";
 
 const RUNTIME_OPS = [

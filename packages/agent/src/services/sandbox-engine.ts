@@ -2,11 +2,13 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { arch, platform } from "node:os";
-import { ElizaError, logger, sanitizeSpawnEnv } from "@elizaos/core";
 import {
   applyHostExecutionBaseline,
+  ElizaError,
+  logger,
   resolveHostExecutable,
-} from "@elizaos/core/host-execution-env";
+  sanitizeSpawnEnv,
+} from "@elizaos/core";
 
 export type SandboxEngineType = "docker" | "apple-container" | "auto";
 

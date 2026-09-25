@@ -9,7 +9,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { writeJsonAtomicSync } from "@elizaos/core";
 import {
   type BscTradeSide,
   type BscTradeTxStatus,
@@ -22,7 +21,9 @@ import {
   type WalletTradingProfileSourceFilter,
   type WalletTradingProfileTokenBreakdown,
   type WalletTradingProfileWindow,
-} from "@elizaos/core/contracts/wallet-types";
+  writeJsonAtomicSync,
+} from "@elizaos/core";
+
 import { resolveStateDir } from "../config/paths.ts";
 
 const WALLET_PROFILE_LEDGER_VERSION = 1;

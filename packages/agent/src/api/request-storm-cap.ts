@@ -11,9 +11,9 @@
  * substitute for edge rate limiting against adversarial traffic.
  */
 import { createHash } from "node:crypto";
-import { type IncomingMessage, type ServerResponse } from "node:http";
-import { logger } from "@elizaos/core";
-import { resolveSelfApiCredential } from "@elizaos/core/runtime-env";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { logger, resolveSelfApiCredential } from "@elizaos/core";
+
 import { isLoopbackRemoteAddress } from "./loopback-trust.js";
 
 // One cold dashboard hydration fans out across the independent product

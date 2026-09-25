@@ -17,17 +17,18 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,
+  parseCanonicalInteger,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+
 import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
-import { type ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "../config/config.ts";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
-import { type ConnectorHealthMonitor } from "./connector-health.ts";
+import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
 import { isTrustedLocalRequest } from "./server-helpers-auth.ts";

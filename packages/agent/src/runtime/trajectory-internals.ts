@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
+  asObjectRecord as asRecord,
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
@@ -26,16 +27,16 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { asRecord } from "@elizaos/core/type-guards";
+
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
-import {
-  type TrajectoryActionAttempt,
-  type TrajectoryLlmCall,
-  type TrajectoryProviderAccess,
-  type TrajectorySkillInvocation,
-  type TrajectoryStatus,
-  type TrajectoryStep,
-  type TrajectoryStepKind,
+import type {
+  TrajectoryActionAttempt,
+  TrajectoryLlmCall,
+  TrajectoryProviderAccess,
+  TrajectorySkillInvocation,
+  TrajectoryStatus,
+  TrajectoryStep,
+  TrajectoryStepKind,
 } from "../types/trajectory.ts";
 import { observationExtractionTemplate } from "./observation-prompt.js";
 

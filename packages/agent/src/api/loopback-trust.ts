@@ -1,6 +1,7 @@
 /** Agent host environment policy for strict same-machine request classification. */
+
+import { readAliasedEnv } from "@elizaos/core";
 import { isTrustedLocalRequest as classifyLocalRequest } from "@elizaos/core/security/loopback-trust";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 
 export {

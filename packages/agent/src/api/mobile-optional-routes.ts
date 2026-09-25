@@ -12,12 +12,13 @@
  */
 import type http from "node:http";
 import {
+  isMobilePlatform,
+  normalizeDeploymentTargetConfig,
   readRequestBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import { normalizeDeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+} from "@elizaos/core";
+
 import { loadEffectiveElizaConfig } from "../config/config.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 /**

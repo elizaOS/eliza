@@ -52,9 +52,14 @@
  * EVM/Solana wallet surface, mirroring the /api/wallet route gate).
  */
 
-import type { AgentRuntime, NotificationInput } from "@elizaos/core";
-import { logger, ServiceType } from "@elizaos/core";
-import { type WalletBalancesResponse } from "@elizaos/core/contracts/wallet-types";
+import {
+  type AgentRuntime,
+  logger,
+  type NotificationInput,
+  ServiceType,
+  type WalletBalancesResponse,
+} from "@elizaos/core";
+
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
 import {
   getScheduledTaskRunner,

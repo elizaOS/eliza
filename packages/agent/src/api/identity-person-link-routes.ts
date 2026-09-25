@@ -5,17 +5,16 @@
  */
 import {
   ElizaError,
+  type HttpPlugin,
   type IdentityPersonLinkActorRole,
   PrincipalService,
-  type UUID,
-  validateUuid,
-} from "@elizaos/core";
-import {
-  type HttpPlugin,
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+
 import { computeIdentityPersonLinkRequestDigest } from "@elizaos/plugin-sql";
 
 const ATTEST_PATH = "/api/identity/person-links/attest";

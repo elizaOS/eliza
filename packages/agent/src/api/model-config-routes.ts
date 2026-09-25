@@ -31,19 +31,16 @@
 
 import {
   type AgentRuntime,
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   ElizaError,
   logger,
   ModelType,
+  type RouteHelpers,
+  type RouteRequestMeta,
+  resolveServiceRoutingInConfig,
 } from "@elizaos/core";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
-import { resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
-import {
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
+
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { isCerebrasMode, resolveOpenAIBaseURL } from "@elizaos/plugin-openai";
 import type { ElizaConfig } from "../config/config.ts";

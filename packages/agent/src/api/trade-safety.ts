@@ -3,9 +3,9 @@
  * Extracted so they can be unit-tested without pulling in the full server.
  */
 
-export { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+export type { TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
 
-import { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+import type { TradePermissionMode } from "@elizaos/core";
 
 /** Maximum number of autonomous agent trades allowed per calendar day. */
 export const AGENT_AUTO_MAX_DAILY_TRADES = 25;

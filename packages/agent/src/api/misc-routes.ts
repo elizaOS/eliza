@@ -13,15 +13,12 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
+  buildStoreVariantBlockedMessage,
   type CustomActionDef,
+  isAndroidMobile,
+  isLocalCodeExecutionAllowed,
   logger,
   ModelType,
-  parseBooleanValue,
-  validateUuid,
-} from "@elizaos/core";
-import type { StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import {
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
@@ -29,12 +26,12 @@ import {
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
-} from "@elizaos/core/contracts/misc-routes";
-import {
-  buildStoreVariantBlockedMessage,
-  isLocalCodeExecutionAllowed,
-} from "@elizaos/core/platform/sandbox-policy";
-import { isAndroidMobile } from "@elizaos/core/runtime-env";
+  parseBooleanValue,
+  type ReadJsonBodyOptions,
+  type StreamEventEnvelope,
+  validateUuid,
+} from "@elizaos/core";
+
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {

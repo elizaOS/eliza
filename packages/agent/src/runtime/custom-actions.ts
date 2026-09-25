@@ -19,16 +19,15 @@ import {
   type Action,
   type CustomActionDef,
   type CustomActionHandler,
+  createSelfApiRequestHeaders,
   type HandlerOptions,
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
+  resolveServerOnlyPort,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  createSelfApiRequestHeaders,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
+
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */

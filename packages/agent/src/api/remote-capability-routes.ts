@@ -15,18 +15,17 @@ import net from "node:net";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  decodeUrlPathComponent,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   isLoopbackHost,
   isPrivateIpAddress,
   type JsonObject,
   normalizeHostLike,
-} from "@elizaos/core";
-import {
   type RouteHelpers,
   type RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
-import { decodeUrlPathComponent } from "@elizaos/core/utils/path-component";
+} from "@elizaos/core";
+
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
@@ -41,16 +40,16 @@ import {
   type RemoteCapabilityEndpointProvider,
   type RemoteCapabilityEndpointTrustPolicyOptions,
 } from "../services/remote-capability-endpoint-provider.ts";
-import { type RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
+import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
   desktopCompanionCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
 } from "../services/remote-capability-url-endpoint-providers.ts";
-import {
-  type RemotePluginSyncResult,
-  type RemotePluginTrustPolicy,
+import type {
+  RemotePluginSyncResult,
+  RemotePluginTrustPolicy,
 } from "../services/remote-plugin-adapter.ts";
 import {
   detectClientPlatform,

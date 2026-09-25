@@ -15,8 +15,9 @@ import {
   type AgentConfig,
   type CharacterSettings,
   logger,
+  normalizeFirstRunProviderId,
 } from "@elizaos/core";
-import { normalizeFirstRunProviderId } from "@elizaos/core/contracts/first-run-options";
+
 import { resolveElizaPackageRootSync } from "@elizaos/core/utils/eliza-root";
 import type { ElizaConfig } from "../config/config.ts";
 

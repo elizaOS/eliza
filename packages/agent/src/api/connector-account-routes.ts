@@ -27,9 +27,10 @@ import {
   getConnectorAccountManager,
   isPrivacyLevel,
   type Metadata,
+  parseCanonicalInteger,
+  type ReadJsonBodyOptions,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+
 import { extractRows } from "@elizaos/plugin-sql";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";

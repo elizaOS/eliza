@@ -48,8 +48,10 @@ import {
   getConnectorAccountManager,
   type Memory,
   normalizeConnectorSource,
+  PostInboxMessageRequestSchema,
   type RoleGateRole,
   type Room,
+  type RouteHelpers,
   requireConfirmedSendHandlerDelivery,
   roleRank,
   toWellFormedUnicode,
@@ -57,8 +59,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import type { RouteHelpers } from "@elizaos/core/api/route-helpers";
-import { PostInboxMessageRequestSchema } from "@elizaos/core/contracts/inbox-routes";
+
 import {
   resolveEffectiveMuteState,
   setRoomMuteUntil,

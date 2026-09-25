@@ -14,9 +14,10 @@ import {
   type IMediaGenerationService,
   logger,
   type MediaGenerationRequest,
+  type Route,
   ServiceType,
 } from "@elizaos/core";
-import type { Route } from "@elizaos/core/api/http-plugin";
+
 import {
   persistDataUrl,
   persistMediaBytes,

@@ -219,9 +219,148 @@ export {
 } from "./actions/to-tool.ts";
 export { validateToolArgs } from "./actions/validate-tool-args.ts";
 export {
+	MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+	resolveRetainableAgentBackupBytes,
+	SnapshotPayloadTooLargeError,
+} from "./agent-backup-limits.js";
+export type {
+	AgentAutomationMode,
+	AgentStartupDiagnostics,
+	ChatImageAttachment,
+	ColumnInfo,
+	ConnectionTestResult,
+	CreateTriggerRequest,
+	DatabaseStatus,
+	LogEntry as AgentLogEntry,
+	PluginParamDef,
+	QueryResult,
+	RuntimeOrderItem,
+	RuntimeServiceOrderItem,
+	SkillEntry,
+	StreamEventEnvelope,
+	StreamEventType as AgentStreamEventType,
+	TableInfo,
+	TriggerHealthSnapshot,
+	TriggerSummary,
+	TriggerTaskMetadata,
+	UpdateTriggerRequest,
+} from "./api/agent-api-types.js";
+export { drainAppRoutePluginLoaders } from "./api/drain-app-route-plugins.js";
+export {
+	DEFAULT_MAX_BODY_BYTES,
+	isJsonObjectBody,
+	readJsonBody,
+	readRequestBody,
+	readRequestBodyBuffer,
+	sendJson,
+	sendJsonError,
+	writeJsonError,
+	writeJsonErrorSafe,
+	writeJsonResponse,
+	writeJsonResponseSafe,
+} from "./api/http-helpers.js";
+export {
+	assertPublicRouteIntent,
+	type HttpMethod,
+	type HttpPlugin,
+	type LegacyRouteHandler,
+	type PaymentEnabledRoute,
+	type Route,
+	type RouteBodyValue,
+	type RouteHandler,
+	type RouteHandlerContext,
+	type RouteHandlerResult,
+	type RouteManifest,
+	type RouteRequest,
+	type RouteResponse,
+	type RouteRuntimeMode,
+	type X402RequestValidator,
+} from "./api/http-plugin.js";
+export {
+	getHttpRuntime,
+	getPluginHttpRoutes,
+	type HttpRuntimeState,
+	installHttpPluginLifecycle,
+	registerHttpPluginRoutes,
+} from "./api/http-plugin-runtime.js";
+export type {
+	AppPackageRouteContext,
+	AppPackageRouteDispatchContext,
+	ReadJsonBodyOptions,
+	ReadTextBodyOptions,
+	RequestBodyOptions,
+	RouteHelpers,
+	RouteRequestContext,
+	RouteRequestMeta,
+} from "./api/route-helpers.js";
+export {
+	getRuntimeRouteHostContext,
+	type RuntimeRouteHostContext,
+	type RuntimeRouteTelemetryMeta,
+	type RuntimeRouteTelemetrySpan,
+	setRuntimeRouteHostContext,
+} from "./api/runtime-route-context.js";
+export {
+	type AudioRedactionSpan,
+	type AudioRedactionSpanPlan,
+	assertCompleteAudioRedactionPlan,
+	type BuildRedactionSpanOptions,
+	buildAudioRedactionSpans,
+	DEFAULT_REDACTION_PAD_MS,
+	type MergeRedactionSpanOptions,
+	matchPiiSpansToWords,
+	mergeRedactionSpans,
+	normalizeSpokenText,
+	type PiiSpanMatchResult,
+	type PiiTextSpan,
+	RedactionSpanError,
+} from "./audio-redaction.js";
+export {
+	AudioRedactionVerifyUnavailableError,
+	findMissingSentinels,
+	findResidualPii,
+	judgeRedactedTranscript,
+	type RedactionTranscribeInput,
+	type RedactionTranscriber,
+	type RedactionTranscript,
+	type RedactionVerifierFinding,
+	type RedactionVerifyExpectation,
+	type RedactionVerifyResult,
+	verifyAudioRedaction,
+} from "./audio-redaction-verify.js";
+export {
 	AwarenessRegistry,
 	normalizeSummaryLine,
 } from "./awareness/registry.js";
+export {
+	AGENT_BACKUP_CANONICAL_JSON,
+	CANONICAL_JSON_UNBOUNDED,
+	type CanonicalJsonOptions,
+	type CanonicalJsonUnbounded,
+	canonicalJsonString,
+	failCanonicalJsonUnbounded,
+	isCanonicalJsonArray,
+	readCanonicalArrayLength,
+	stableJsonString,
+} from "./canonical-json.js";
+export {
+	CHAT_IMAGE_MIME_TYPE_SET,
+	CHAT_IMAGE_MIME_TYPES,
+	CHAT_UPLOAD_MIME_TYPE_SET,
+	CHAT_UPLOAD_MIME_TYPES,
+	type ChatUploadMimeType,
+	MAX_CHAT_ATTACHMENT_NAME_LENGTH,
+	MAX_CHAT_IMAGE_BASE64_BYTES,
+	MAX_CHAT_IMAGE_RAW_BYTES,
+	MAX_CHAT_MEDIA_BASE64_BYTES,
+	MAX_CHAT_MEDIA_RAW_BYTES,
+	MAX_CHAT_UPLOAD_ATTACHMENTS,
+	maxRawBytesForBase64,
+} from "./chat-upload-limits.js";
+export {
+	type DurationMsParseOptions,
+	parseDurationMs,
+} from "./cli/parse-duration.js";
 export {
 	type AllowedHostPattern,
 	parseAllowedHostEnv,
@@ -303,6 +442,12 @@ export {
 	type ValidationFunction,
 	visibility,
 } from "./config/config-catalog.js";
+export {
+	DISTRIBUTION_PROFILES,
+	type DistributionProfile,
+	isDistributionProfile,
+	resolveDistributionProfile,
+} from "./config/distribution-profile.js";
 export { CONNECTOR_PLUGINS } from "./config/plugin-auto-enable-engine.js";
 export {
 	buildPluginConfigUiSpec,
@@ -2135,8 +2280,28 @@ export {
 	PutWorkbenchVfsFileRequestSchema,
 	type WorkbenchTodoPriority,
 } from "./contracts/workbench-routes.js";
+export {
+	conversationClientUserMemoryId,
+	type DurableConversationChatMarker,
+	normalizeChatIdempotencyKey,
+	readDurableConversationChatMarker,
+} from "./conversation-chat-marker.js";
 export * from "./database/document-source-segments";
 export * from "./embedding-vector-space";
+export {
+	applyHostExecutionBaseline,
+	applyHostToolchainExecutionBaseline,
+	captureHostExecutionBaseline,
+	createHostExecutionBaseline,
+	getHostExecutionBaseline,
+	HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
+	type HostExecutionBaseline,
+	isHostExecutionBaselineMirrorKey,
+	isHostExecutionToolchainEnvKey,
+	resolveHostExecutable,
+	validateHostExecutionDirectory,
+	validateHostExecutionPath,
+} from "./host-execution-env.js";
 export {
 	getValidationKeywordLocaleTerms,
 	getValidationKeywordTerms,
@@ -2366,6 +2531,10 @@ export {
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
+export {
+	buildStoreVariantBlockedMessage,
+	isLocalCodeExecutionAllowed,
+} from "./platform/sandbox-policy.js";
 export * from "./retrieval/rerank.js";
 export * from "./retrieval/search.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
@@ -2499,6 +2668,52 @@ export {
 	rerollBudgetCeilingFromSetting,
 	SchemaValidationFailedError,
 } from "./runtime/validated-model-call";
+export {
+	API_EXPOSE_PORT_KEYS,
+	createSelfApiRequestHeaders,
+	DEFAULT_DESKTOP_API_PORT,
+	DEFAULT_DESKTOP_UI_PORT,
+	DEFAULT_SERVER_ONLY_PORT,
+	ELIZA_RUNTIME_ENV_KEYS,
+	type ElizaRuntimeEnv,
+	firstWinningEnvString,
+	isAndroidMobile,
+	isDevApiWatchEnabled,
+	isIosMobile,
+	isLoopbackBindHost,
+	isMobilePlatform,
+	isNullOriginAllowed,
+	isWildcardBindHost,
+	type PortPreferenceResolution,
+	type ResolvedApiSecurityConfig,
+	type ResolvedRuntimePorts,
+	type RuntimeEnvRecord,
+	resolveAllowedHosts,
+	resolveAllowedOrigins,
+	resolveAllowNullOrigin,
+	resolveApiAllowedHosts,
+	resolveApiAllowedOrigins,
+	resolveApiBindHost,
+	resolveApiExposePort,
+	resolveApiSecurityConfig,
+	resolveApiToken,
+	resolveConfiguredApiToken,
+	resolveDesktopApiPort,
+	resolveDesktopApiPortPreference,
+	resolveDesktopUiPort,
+	resolveDesktopUiPortPreference,
+	resolveDisableAutoApiToken,
+	resolveElizaRuntimeEnv,
+	resolvePlatform,
+	resolveRuntimePorts,
+	resolveSelfApiCredential,
+	resolveServerOnlyPort,
+	resolveSingleProcessPort,
+	resolveUiPort,
+	setApiToken,
+	stripOptionalHostPort,
+	syncResolvedApiPort,
+} from "./runtime-env.js";
 export { flattenRuntimeSettings } from "./runtime-settings.ts";
 // Export character schemas
 export * from "./schemas/character";
@@ -2907,6 +3122,47 @@ export {
 } from "./target-sources/registry";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export {
+	activeWordIndex,
+	type FlatTranscriptWord,
+	flattenTranscriptWords,
+	normalizeTranscriptScope,
+	summarizeTranscript,
+	TRANSCRIPT_CAPTURE_MODES,
+	TRANSCRIPT_CONSENT_STATES,
+	TRANSCRIPT_FRAGMENT_MAX_CHARS,
+	TRANSCRIPT_PERMISSION_STATES,
+	TRANSCRIPT_POLICY_STATES,
+	TRANSCRIPT_PREVIEW_CHARS,
+	TRANSCRIPT_RETENTION_STATES,
+	TRANSCRIPT_SHARING_STATES,
+	type Transcript,
+	type TranscriptCaptureMode,
+	type TranscriptCapturePrivacyState,
+	type TranscriptCaptureSharingState,
+	type TranscriptConsentState,
+	type TranscriptKnowledgeFragment,
+	type TranscriptPermissionState,
+	type TranscriptPolicyState,
+	type TranscriptRetentionState,
+	type TranscriptScope,
+	type TranscriptSegment,
+	type TranscriptSharingState,
+	type TranscriptSource,
+	type TranscriptStatus,
+	type TranscriptSummary,
+	type TranscriptSummaryMeetingMeta,
+	type TranscriptWord,
+	transcriptCapturePrivacyState,
+	transcriptDurationMs,
+	transcriptKnowledgeFragments,
+	transcriptPlainText,
+	transcriptPreview,
+	transcriptSpeakerCount,
+	validateAsrWordTimings,
+	type WordTimingValidation,
+	type WordTimingViolation,
+} from "./transcripts.js";
 export * from "./tunnel-service";
 export { asRecord as asObjectRecord } from "./type-guards.ts";
 // Export everything from types
@@ -3043,6 +3299,10 @@ export {
 } from "./utils/action-results.ts";
 export { hasActionContext } from "./utils/action-validation.ts";
 export {
+	extractAssistantReplyText,
+	stripAssistantStageDirections,
+} from "./utils/assistant-text.js";
+export {
 	readJsonFile,
 	writeJsonAtomic,
 	writeJsonAtomicSync,
@@ -3110,10 +3370,20 @@ export {
 	setElizaApiBase,
 	setElizaApiToken,
 } from "./utils/eliza-globals.js";
+export {
+	DEFAULT_APP_ROUTE_PLUGIN_MODULES,
+	isEnvDisabled,
+	normalizeEnvValue,
+	normalizeEnvValueOrNull,
+	readAliasedEnv,
+	type SyncElizaEnvAliasOptions,
+	syncElizaEnvAliases,
+} from "./utils/env.js";
 export * from "./utils/env-alias.js";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export * from "./utils/example-names.js";
+export { isSafeExecutableValue } from "./utils/exec-safety.js";
 export {
 	isExpectedLocalEmbeddingUnavailability,
 	modelProviderFailureDetails,
@@ -3144,6 +3414,23 @@ export {
 	providerRetryAfterMs,
 } from "./utils/model-retry";
 export { providerRateLimitRetryAt } from "./utils/model-retry.ts";
+export {
+	type CanonicalIntegerResult,
+	type ParseCanonicalIntegerOptions,
+	type ParseClampedIntegerOptions,
+	type ParseClampedNumberOptions,
+	type ParsePositiveNumberOptions,
+	parseCanonicalInteger,
+	parseClampedFloat,
+	parseClampedInteger,
+	parseNonNegativeInteger,
+	parsePositiveFloat,
+	parsePositiveInteger,
+} from "./utils/number-parsing.js";
+export {
+	decodeUrlPathComponent,
+	type PathComponentDecodeResult,
+} from "./utils/path-component.js";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 export * from "./utils/project-registry";
@@ -3157,6 +3444,8 @@ export {
 export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
+
+export { createSerialise } from "./utils/serialise.js";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
 // Export streaming utilities
