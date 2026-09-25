@@ -255,9 +255,10 @@ async function openEarnings(page: Page, mode: QuoteMode) {
   await page.evaluate(() => {
     window.location.hash = "#cloud-monetization";
   });
-  await expect(page.locator("#cloud-monetization")).toBeVisible({
+  await expect(page).toHaveURL(/\/cloud\/monetization$/, {
     timeout: 30_000,
   });
+  await expect(page.getByRole("tabpanel", { name: "Earnings" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Redeem for elizaOS" }),
   ).toBeVisible({ timeout: 30_000 });
