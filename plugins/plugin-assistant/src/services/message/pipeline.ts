@@ -1917,7 +1917,7 @@ export async function runV5MessageRuntimeStage1(
                 providers: plannerState.data.providers,
                 request: getUserMessageText(args.message),
                 reply: groundedModelReply,
-                actionResults: [],
+                actionResults: callbackActionResults,
                 actions: args.runtime.actions,
               })
             : undefined;

@@ -4,6 +4,7 @@ import {
   getStreamingContext,
   getUserMessageText,
   type IAgentRuntime,
+  isObjectRecord,
   type Memory,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
@@ -120,7 +121,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
   shouldRun: ({ messageHandler }) =>
     messageHandler.processMessage === "RESPOND" &&
     !messageHandler.plan.deterministicToolCall,
-  async evaluate({ runtime, message, userRoles, messageHandler }) {
+  async evaluate({ runtime, message, state, userRoles, messageHandler }) {
     const staged = decisions.get(message);
     decisions.delete(message);
     getStreamingContext()?.abortSignal?.throwIfAborted();
@@ -135,6 +136,22 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       !userRoles?.some((role) => role === staged.senderRole)
     )
       return;
+    const views = listViews(runtime, { viewType: "gui" }).filter((view) =>
+      satisfiesRoleGate(userRoles, view.roleGate),
+    );
+    const metadata = message.content.metadata;
+    const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
+    // Egress-only evidence: no prompt text or new provider/model invocation.
+    state.data.providers ??= {};
+    state.data.providers.VIEW_NAVIGATION = {
+      data: {
+        views: views.map(({ id, label }) => ({ id, label })),
+        currentViewId:
+          views.find(
+            (view) => view.available !== false && view.id === currentView,
+          )?.id ?? null,
+      },
+    };
     const value = staged.value;
     if (value.disposition === "forbidden" || value.disposition === "none") {
       setTurnActionConstraint({

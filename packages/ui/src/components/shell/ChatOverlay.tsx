@@ -6256,15 +6256,18 @@ export function ChatOverlay({
                               )}
                               {liveVoiceTranscript ? (
                                 <MessageScrollerItem messageId="live-voice-user">
-                                  <div data-testid="chat-live-voice-transcript">
+                                  <div
+                                    data-testid="chat-live-voice-transcript"
+                                    aria-live="polite"
+                                    aria-atomic="true"
+                                  >
                                     <ChatMessage
                                       appearance="glass"
-                                      message={shellToChatMessageData({
+                                      message={{
                                         id: "live-voice-user",
                                         role: "user",
-                                        content: liveVoiceTranscript,
-                                        createdAt: 0,
-                                      })}
+                                        text: liveVoiceTranscript,
+                                      }}
                                       reduceMotion={reduce}
                                     />
                                   </div>
@@ -6279,12 +6282,11 @@ export function ChatOverlay({
                                     <ChatMessage
                                       appearance="glass"
                                       agentName={agentName}
-                                      message={shellToChatMessageData({
+                                      message={{
                                         id: "live-voice-acknowledgment",
                                         role: "assistant",
-                                        content: realtimeVoice.progressText,
-                                        createdAt: 0,
-                                      })}
+                                        text: realtimeVoice.progressText,
+                                      }}
                                       reduceMotion={reduce}
                                     />
                                   </div>

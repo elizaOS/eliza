@@ -6,6 +6,7 @@ import {
   ContextRegistry,
   type GenerateTextResult,
   type IAgentRuntime,
+  isObjectRecord,
   type Memory,
   type MessageHandlerResult,
   ModelType,
@@ -16,6 +17,7 @@ import {
 } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { uiContextProvider } from "../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/uiContext.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { runPlannerLoop } from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
@@ -72,8 +74,13 @@ async function fixture(delivered = 1) {
       name: "test-nav-views",
       description: "Fixture view owner",
       views: [
-        { id: "notes", label: "Notes", path: "/notes" },
-        { id: "calendar", label: "Calendar", path: "/calendar" },
+        { id: "notes", label: "Notes", path: "/notes", bundleUrl: "/notes.js" },
+        {
+          id: "calendar",
+          label: "Calendar",
+          path: "/calendar",
+          bundleUrl: "/calendar.js",
+        },
       ],
     },
     { pluginDir: process.cwd(), indexEmbeddings: false },
@@ -528,11 +535,17 @@ describe("model-selected host navigation", () => {
         async () => {
           const selected = await selectNavigation(f, input, { disposition });
           expect(selected.plan.deterministicToolCall).toBeUndefined();
-          if (disposition === "forbidden" || disposition === "none")
+          if (disposition === "forbidden" || disposition === "none") {
             expect(await show(f.runtime, "Notes", input)).toMatchObject({
               success: false,
               data: { navigation: { status: "forbidden" } },
             });
+            expect(
+              await viewsAction.handler(f.runtime, input, undefined, {
+                parameters: { action: "list" },
+              }),
+            ).toMatchObject({ success: true });
+          }
         },
       );
       expect(f.requests()).toBe(0);
@@ -701,4 +714,140 @@ describe("model-selected host navigation", () => {
       expect(f.frames).toHaveLength(1);
     },
   );
+  it.each([
+    {
+      name: "forbidden navigation with an unsupported confirmation",
+      disposition: "forbidden",
+      currentView: "chat",
+      request: "Do not change views. Tell me what you can do.",
+      reply: "Notes is open.",
+      needsRecovery: true,
+    },
+    {
+      name: "ordinary conversation without navigation",
+      disposition: "none",
+      currentView: "chat",
+      request: "Hello",
+      reply: "Hello!",
+      needsRecovery: false,
+    },
+    {
+      name: "a truthful statement about the current view",
+      disposition: "none",
+      currentView: "notes",
+      request: "Which view is open? Do not change views.",
+      reply: "Notes is open.",
+      needsRecovery: false,
+    },
+  ])("guards the final pipeline reply for $name", async (scenario) => {
+    const f = await fixture();
+    const input = clientMessage();
+    input.content.text = scenario.request;
+    input.content.metadata = {
+      ...(isObjectRecord(input.content.metadata) ? input.content.metadata : {}),
+      uiView: scenario.currentView,
+      uiViewPath: scenario.currentView === "notes" ? "/notes" : "/chat",
+    };
+    const fields = new ResponseHandlerFieldRegistry();
+    for (const field of [
+      ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+      viewNavigationField,
+    ])
+      fields.register(field);
+    const initialState = { values: {}, data: { providers: {} }, text: "" };
+    const uiContext = await uiContextProvider.get(
+      f.runtime,
+      input,
+      initialState,
+    );
+    const state = {
+      values: uiContext.values ?? {},
+      data: { providers: { UI_CONTEXT: uiContext } },
+      text: uiContext.text ?? "",
+    };
+    const recoveryRequired = new Error(
+      "unsupported navigation reply requires recovery",
+    );
+    const useModel = vi.fn(async (type: string) => {
+      if (type !== ModelType.RESPONSE_HANDLER) throw recoveryRequired;
+      expect(useModel).toHaveBeenCalledTimes(1);
+      return {
+        text: "",
+        toolCalls: [
+          {
+            name: "HANDLE_RESPONSE",
+            arguments: {
+              shouldRespond: "RESPOND",
+              contexts: ["simple"],
+              contextRequests: [],
+              intents: [],
+              candidateActionNames: [],
+              replyText: scenario.reply,
+              replyEffectStatus: "none",
+              facts: [],
+              relationships: [],
+              topics: [],
+              addressedTo: [],
+              emotion: "none",
+              visualContinuation: {
+                disposition: scenario.disposition,
+                viewId: "",
+                singleViewOnly: false,
+                navigationOnly: false,
+                reason: "The current request does not authorize navigation",
+              },
+            },
+          },
+        ],
+        finishReason: "tool-calls",
+      };
+    });
+    Object.assign(
+      f.runtime,
+      createMockRuntime({
+        ...f.runtime,
+        character: { name: "Agent", bio: [] },
+        contexts: new ContextRegistry([
+          { id: "general", description: "General tasks" },
+        ]),
+        responseHandlerFieldRegistry: fields,
+        responseHandlerFieldEvaluators: [...fields.list()],
+        responseHandlerEvaluators: [viewNavigationEvaluator],
+        providers: [],
+        evaluators: [],
+        runActionsByMode: async () => [],
+        getModelRegistrations: () => [],
+        useModel: useModel as unknown as IAgentRuntime["useModel"],
+        composeState: async () => state,
+      }),
+    );
+    const result = runWithStreamingContext(
+      { messageId: String(input.id), onStreamChunk: () => {} },
+      () =>
+        runV5MessageRuntimeStage1({
+          runtime: f.runtime,
+          state,
+          message: input,
+          responseId: "55555555-5555-4555-8555-555555555555" as UUID,
+        }),
+    );
+    const [settled] = await Promise.allSettled([result]);
+    expect(f.requests()).toBe(0);
+    expect(f.frames).toHaveLength(0);
+    if (scenario.needsRecovery) {
+      expect(settled).toMatchObject({
+        status: "rejected",
+        reason: { code: "REPLY_GROUNDING_FAILED" },
+      });
+    } else {
+      expect(settled).toMatchObject({
+        status: "fulfilled",
+        value: {
+          kind: "direct_reply",
+          result: { responseContent: { text: scenario.reply } },
+        },
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+    }
+  });
 });

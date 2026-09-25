@@ -81,6 +81,41 @@ describe("exact message publication replay", () => {
 		await expect(mutations.createMessageMemory(m)).resolves.toBe(m.id);
 		expect(hook).toHaveBeenCalledTimes(1);
 	});
+	it("accepts host-admitted replay with adapter-generated timestamp and empty metadata", async () => {
+		const { adapter, mutations, hook } = await fixture();
+		const m = message();
+		delete m.createdAt;
+		delete m.metadata;
+		await adapter.createMemories([{ memory: m, tableName: "messages" }]);
+		await expect(mutations.createMessageMemory(m)).resolves.toBe(m.id);
+		expect(hook).not.toHaveBeenCalled();
+	});
+	it.each([
+		["small", "Open Calendar"],
+		["segmented", "complete original 🙂".repeat(10000)],
+	])(
+		"rejects changed timestamp or memory metadata on %s replay",
+		async (_, text) => {
+			const { adapter, mutations, hook } = await fixture();
+			const m = message(text);
+			await mutations.createMessageMemory(m);
+			for (const changed of [
+				{ ...m, createdAt: 1700000000001 },
+				{ ...m, metadata: { ...m.metadata, scope: "private" } },
+				{ ...m, metadata: undefined },
+			] as Memory[]) {
+				await expect(
+					mutations.createMessageMemory(changed),
+				).rejects.toMatchObject({
+					code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+				});
+			}
+			const [stored] = await adapter.getMemoriesByIds([m.id], "messages");
+			expect(stored.createdAt).toBe(m.createdAt);
+			expect(stored.metadata).toEqual(m.metadata);
+			expect(hook).toHaveBeenCalledTimes(1);
+		},
+	);
 	it("rejects a replay if an immutable segment is missing", async () => {
 		const { adapter, mutations } = await fixture();
 		const m = message("segment evidence 🙂".repeat(10000));

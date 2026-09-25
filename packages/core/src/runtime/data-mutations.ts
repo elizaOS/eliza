@@ -376,6 +376,10 @@ export class RuntimeDataMutations {
 				stored.agentId === expected.agentId &&
 				stored.roomId === expected.roomId &&
 				stored.entityId === expected.entityId &&
+				// Adapters assign timestamps when callers omit them.
+				(expected.createdAt === undefined ||
+					stored.createdAt === expected.createdAt) &&
+				isDeepStrictEqual(stored.metadata ?? {}, expected.metadata ?? {}) &&
 				isDeepStrictEqual(stored.content, expected.content);
 			if (sameEvidence(existing[0], projectedParent)) {
 				const segments = projection.segments.length
@@ -387,10 +391,7 @@ export class RuntimeDataMutations {
 				if (
 					projection.segments.every((segment) => {
 						const stored = segments.find((entry) => entry.id === segment.id);
-						return (
-							sameEvidence(stored, segment) &&
-							isDeepStrictEqual(stored?.metadata, segment.metadata)
-						);
+						return sameEvidence(stored, segment);
 					})
 				)
 					return id;

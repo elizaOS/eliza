@@ -3263,6 +3263,16 @@ describe("ChatOverlay", () => {
     expect(
       screen.getByTestId("chat-live-voice-transcript").textContent,
     ).toContain("Open my notes");
+    expect(
+      screen
+        .getByTestId("chat-live-voice-transcript")
+        .getAttribute("aria-live"),
+    ).toBe("polite");
+    expect(
+      screen
+        .getByTestId("chat-live-voice-transcript")
+        .querySelector('[data-testid="thread-line-timestamp"]'),
+    ).toBeNull();
     expect(screen.getByTestId("chat-composer-row").textContent).not.toContain(
       "Open my notes",
     );
@@ -3771,6 +3781,11 @@ describe("ChatOverlay", () => {
       expect(
         screen.getByTestId("chat-live-voice-acknowledgment").textContent,
       ).toContain("Checking your note.");
+      expect(
+        screen
+          .getByTestId("chat-live-voice-acknowledgment")
+          .querySelector('[data-testid="thread-line-timestamp"]'),
+      ).toBeNull();
       expect(screen.queryByTestId("turn-status-label")).toBeNull();
       expect(screen.getAllByText("Checking your note.")).toHaveLength(1);
       rerender(

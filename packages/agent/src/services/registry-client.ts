@@ -228,7 +228,7 @@ export function addRegistryEndpoint(label: string, url: string): void {
     { label, url: normalised, enabled: true },
   ];
   saveElizaConfig(cfg);
-  memoryCache = null;
+  invalidateRegistryCaches();
 }
 
 /** Remove a custom registry endpoint by URL. Cannot remove the default. */
@@ -250,7 +250,7 @@ export function removeRegistryEndpoint(url: string): void {
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = updated;
   saveElizaConfig(cfg);
-  memoryCache = null;
+  invalidateRegistryCaches();
 }
 
 /** Toggle an endpoint's enabled status. */
@@ -268,7 +268,7 @@ export function toggleRegistryEndpoint(url: string, enabled: boolean): void {
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = endpoints;
   saveElizaConfig(cfg);
-  memoryCache = null;
+  invalidateRegistryCaches();
 }
 
 export function isDefaultEndpoint(url: string): boolean {
@@ -283,11 +283,11 @@ function bindRegistryDiscoveryScope(): string {
   const discoveryScope = JSON.stringify([
     resolveStateDir(),
     ...resolveWorkspaceRootsForDiscovery(),
+    getConfiguredEndpoints(),
   ]);
   if (registryDiscoveryScope !== discoveryScope) {
     registryDiscoveryScope = discoveryScope;
     invalidateRegistryCaches();
-    registryRefreshPromise = null;
   }
 
   return discoveryScope;
@@ -396,6 +396,7 @@ export async function getRegistryPlugins(): Promise<
 function invalidateRegistryCaches(): void {
   memoryCache = null;
   registryLoadPromise = null;
+  registryRefreshPromise = null;
   registryGeneration += 1;
 }
 
@@ -412,8 +413,8 @@ async function removeRegistryFileCache(): Promise<void> {
   // A prior generation publishes memory before its best-effort file write
   // finishes. Drain that write before unlinking so it cannot recreate stale
   // disk state after this refresh has installed a newer snapshot.
-  if (registryFileWritePromise) await registryFileWritePromise;
   const filePath = cacheFilePath();
+  if (registryFileWritePromise) await registryFileWritePromise;
   try {
     await fs.unlink(filePath);
   } catch (error) {
@@ -433,15 +434,21 @@ export async function refreshRegistry(): Promise<
   bindRegistryDiscoveryScope();
   if (registryRefreshPromise) return registryRefreshPromise;
 
-  const refresh = (async () => {
-    // Removal is useful persistent cleanup but is not required for correctness:
-    // the refresh explicitly bypasses the file tier even when unlink is denied.
-    await removeRegistryFileCache();
-    invalidateRegistryCaches();
-    return loadRegistryPlugins(true);
-  })().finally(() => {
-    if (registryRefreshPromise === refresh) registryRefreshPromise = null;
-  });
+  const generation = registryGeneration;
+  // Removal is useful persistent cleanup but is not required for correctness:
+  // the refresh explicitly bypasses the file tier even when unlink is denied.
+  const refresh = removeRegistryFileCache()
+    .then(() => {
+      // Endpoint or workspace changes may have installed a newer load while file
+      // cleanup awaited I/O. Do not invalidate that newer generation.
+      if (generation !== registryGeneration) return getRegistryPlugins();
+      invalidateRegistryCaches();
+      registryRefreshPromise = refresh;
+      return loadRegistryPlugins(true);
+    })
+    .finally(() => {
+      if (registryRefreshPromise === refresh) registryRefreshPromise = null;
+    });
   registryRefreshPromise = refresh;
   return refresh;
 }

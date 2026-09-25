@@ -73,17 +73,6 @@ export const viewsAction: Action = {
       );
     const signal = getStreamingContext()?.abortSignal;
     if (signal?.aborted) return fail("cancelled", "Navigation was cancelled.");
-    const constraint = getTurnActionConstraint(
-      {
-        messageId: message.id ?? "",
-        roomId: message.roomId,
-        actorId: message.entityId,
-        action: "VIEWS",
-      },
-      "show",
-    );
-    if (constraint?.disposition === "deny")
-      return fail("forbidden", constraint.reason);
     const params = options?.parameters;
     if (!isObjectRecord(params))
       return fail(
@@ -101,6 +90,17 @@ export const viewsAction: Action = {
         ),
         data: { views },
       };
+    const constraint = getTurnActionConstraint(
+      {
+        messageId: message.id ?? "",
+        roomId: message.roomId,
+        actorId: message.entityId,
+        action: "VIEWS",
+      },
+      "show",
+    );
+    if (constraint?.disposition === "deny")
+      return fail("forbidden", constraint.reason);
     if (params.action !== "show" || typeof params.view !== "string")
       return fail(
         "invalid",
