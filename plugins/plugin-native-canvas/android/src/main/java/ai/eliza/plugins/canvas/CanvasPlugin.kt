@@ -23,6 +23,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.net.URL
 import java.util.UUID
@@ -34,6 +35,7 @@ class CanvasPlugin : Plugin() {
     private val canvases = mutableMapOf<String, ManagedCanvas>()
     private var nextCanvasId = 1
     private var nextLayerId = 1
+    private var standaloneWebCanvas: ManagedCanvas? = null
 
     // ---- Data Structures ----
 
@@ -43,6 +45,7 @@ class CanvasPlugin : Plugin() {
         val id: String,
         var view: CanvasView,
         var webView: WebView? = null,
+        var webDialog: android.app.Dialog? = null,
         var layers: MutableMap<String, ManagedLayer> = mutableMapOf(),
         var size: CanvasSize,
         var touchEnabled: Boolean = false,
@@ -58,6 +61,22 @@ class CanvasPlugin : Plugin() {
         var view: CanvasView
     )
 
+    private fun resolveTarget(
+        call: PluginCall,
+        canvas: ManagedCanvas,
+        layerId: String?,
+        commandIndex: Int? = null
+    ): CanvasView? {
+        if (layerId == null) return canvas.view
+        val target = canvas.layers[layerId]?.view
+        if (target == null) {
+            val details = JSObject().put("layerId", layerId)
+            commandIndex?.let { details.put("commandIndex", it) }
+            call.reject("Layer not found: $layerId", "LAYER_NOT_FOUND", null, details)
+        }
+        return target
+    }
+
     // ---- CanvasView: a View backed by a Bitmap/Canvas ----
 
     class CanvasView(context: android.content.Context, private var size: CanvasSize) :
@@ -68,6 +87,15 @@ class CanvasPlugin : Plugin() {
         private var drawCanvas: Canvas = Canvas(bitmap)
         private val drawPaint = Paint()
         var touchHandler: ((String, List<TouchInfo>) -> Unit)? = null
+        var acceptsTouch: Boolean = false
+        private var activeTouches: List<TouchInfo> = emptyList()
+
+        fun cancelActiveTouch() {
+            if (activeTouches.isEmpty()) return
+            val touches = activeTouches
+            activeTouches = emptyList()
+            touchHandler?.invoke("cancel", touches)
+        }
 
         data class TouchInfo(
             val id: Int, val x: Float, val y: Float, val pressure: Float?
@@ -114,6 +142,7 @@ class CanvasPlugin : Plugin() {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (!acceptsTouch) return false
             val type = when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> "start"
                 MotionEvent.ACTION_MOVE -> "move"
@@ -121,6 +150,8 @@ class CanvasPlugin : Plugin() {
                 MotionEvent.ACTION_CANCEL -> "cancel"
                 else -> return super.onTouchEvent(event)
             }
+            // Ignore framework cancellation and trailing events after explicit cancellation.
+            if (event.actionMasked != MotionEvent.ACTION_DOWN && activeTouches.isEmpty()) return true
 
             val touches = mutableListOf<TouchInfo>()
             for (i in 0 until event.pointerCount) {
@@ -134,6 +165,11 @@ class CanvasPlugin : Plugin() {
                 )
             }
 
+            activeTouches = when (event.actionMasked) {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> emptyList()
+                MotionEvent.ACTION_POINTER_UP -> touches.filterIndexed { index, _ -> index != event.actionIndex }
+                else -> touches
+            }
             touchHandler?.invoke(type, touches)
             return true
         }
@@ -186,14 +222,8 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             canvases[canvasId]?.let { canvas ->
-                canvas.webView?.let { wv ->
-                    wv.destroy()
-                    (wv.parent as? ViewGroup)?.removeView(wv)
-                }
-                (canvas.view.parent as? ViewGroup)?.removeView(canvas.view)
-                canvas.layers.values.forEach { layer ->
-                    (layer.view.parent as? ViewGroup)?.removeView(layer.view)
-                }
+                detachCanvasViews(canvas)
+                canvas.webView?.destroy()
             }
             canvases.remove(canvasId)
             call.resolve()
@@ -215,51 +245,15 @@ class CanvasPlugin : Plugin() {
         }
 
         activity.runOnUiThread {
-            val webView = bridge.webView
-            val parent = webView?.parent as? ViewGroup
-
-            if (parent != null) {
-                canvas.view.layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-
-                parent.addView(canvas.view, 0)
-                webView.setBackgroundColor(Color.TRANSPARENT)
-
-                // If a web canvas exists, ensure it's also in the hierarchy.
-                canvas.webView?.let { wv ->
-                    if (wv.parent == null) {
-                        wv.layoutParams = FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT
-                        )
-                        parent.addView(wv, 0)
-                    }
-                }
-
-                // Set up touch handler.
-                canvas.view.touchHandler = { type, touches ->
-                    if (canvas.touchEnabled) {
-                        val touchArray = JSArray()
-                        touches.forEach { touch ->
-                            touchArray.put(JSObject().apply {
-                                put("id", touch.id)
-                                put("x", touch.x.toDouble())
-                                put("y", touch.y.toDouble())
-                                touch.pressure?.let { put("force", it.toDouble()) }
-                            })
-                        }
-
-                        notifyListeners("touch", JSObject().apply {
-                            put("type", type)
-                            put("touches", touchArray)
-                            put("timestamp", System.currentTimeMillis())
-                        })
-                    }
-                }
+            val host = bridge.webView
+            val parent = host.parent as? ViewGroup
+            if (parent == null) {
+                call.reject("Canvas host is detached", "HOST_UNAVAILABLE")
+                return@runOnUiThread
             }
-
+            configureTouch(canvas)
+            placeCanvasViews(canvas, parent)
+            host.setBackgroundColor(Color.TRANSPARENT)
             call.resolve()
         }
     }
@@ -270,14 +264,12 @@ class CanvasPlugin : Plugin() {
             call.reject("Missing canvasId")
             return
         }
-
         val canvas = canvases[canvasId] ?: run {
             call.reject("Canvas not found")
             return
         }
-
         activity.runOnUiThread {
-            (canvas.view.parent as? ViewGroup)?.removeView(canvas.view)
+            detachCanvasViews(canvas)
             call.resolve()
         }
     }
@@ -331,7 +323,7 @@ class CanvasPlugin : Plugin() {
         val rectObj = call.getObject("rect")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
 
             val rect = rectObj?.let {
                 RectF(
@@ -384,8 +376,7 @@ class CanvasPlugin : Plugin() {
             val layer = ManagedLayer(layerId, name, visible, opacity, zIndex, view)
             canvas.layers[layerId] = layer
 
-            val parent = canvas.view.parent as? ViewGroup
-            parent?.addView(view)
+            configureTouch(canvas)
             sortLayers(canvas)
 
             call.resolve(JSObject().apply {
@@ -419,6 +410,7 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             layerObj.booleanOrNull("visible")?.let {
+                if (!it) layer.view.cancelActiveTouch()
                 layer.visible = it
                 layer.view.visibility = if (it) View.VISIBLE else View.GONE
             }
@@ -457,6 +449,7 @@ class CanvasPlugin : Plugin() {
         }
 
         activity.runOnUiThread {
+            layer.view.cancelActiveTouch()
             (layer.view.parent as? ViewGroup)?.removeView(layer.view)
             canvas.layers.remove(layerId)
             call.resolve()
@@ -514,7 +507,7 @@ class CanvasPlugin : Plugin() {
         val cornerRadius = call.getFloat("cornerRadius") ?: 0f
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val paint = Paint().apply { isAntiAlias = true }
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -586,7 +579,7 @@ class CanvasPlugin : Plugin() {
         val strokeObj = call.getObject("stroke")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val paint = Paint().apply { isAntiAlias = true }
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -651,7 +644,7 @@ class CanvasPlugin : Plugin() {
         val layerId = drawOpts?.getString("layerId")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
@@ -704,7 +697,7 @@ class CanvasPlugin : Plugin() {
         val strokeObj = call.getObject("stroke")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val paint = Paint().apply { isAntiAlias = true }
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -769,7 +762,7 @@ class CanvasPlugin : Plugin() {
         val layerId = drawOpts?.getString("layerId")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
@@ -854,7 +847,7 @@ class CanvasPlugin : Plugin() {
         val srcRectObj = call.getObject("srcRect")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
@@ -953,9 +946,10 @@ class CanvasPlugin : Plugin() {
                 val paint = Paint().apply { isAntiAlias = true }
 
                 val drawOptsObj = args.optJSONObject("drawOptions")
-                val targetLayerId = drawOptsObj?.optString("layerId")
-                val targetView =
-                    targetLayerId?.let { canvas.layers[it]?.view } ?: canvas.view
+                val targetLayerId = if (type == "clear") args.stringOrNull("layerId")
+                    else drawOptsObj?.stringOrNull("layerId")
+                val targetView = resolveTarget(call, canvas, targetLayerId, i)
+                    ?: return@runOnUiThread
                 val drawCanvas = targetView.getDrawCanvas()
                 val drawOpts = drawOptsObj?.let { jsObjectFromJSON(it) }
                 val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -1105,13 +1099,10 @@ class CanvasPlugin : Plugin() {
                     }
                     "clear" -> {
                         val clearRectJson = args.optJSONObject("rect")
-                        val clearLayerId = args.stringOrNull("layerId")
-                        val clearView =
-                            clearLayerId?.let { canvas.layers[it]?.view } ?: targetView
                         if (clearRectJson != null) {
-                            clearView.clear(rectFromJSON(clearRectJson))
+                            targetView.clear(rectFromJSON(clearRectJson))
                         } else {
-                            clearView.clear()
+                            targetView.clear()
                         }
                     }
                 }
@@ -1309,59 +1300,116 @@ class CanvasPlugin : Plugin() {
             call.reject("Missing canvasId")
             return
         }
-        val enabled = call.getBoolean("enabled") ?: false
+        val enabled = call.data.opt("enabled") as? Boolean ?: run {
+            call.reject("enabled must be a boolean", "INVALID_ARGUMENT")
+            return
+        }
         val canvas = canvases[canvasId] ?: run {
             call.reject("Canvas not found")
             return
         }
 
         activity.runOnUiThread {
+            if (canvas.touchEnabled == enabled) {
+                call.resolve()
+                return@runOnUiThread
+            }
+            if (!enabled) cancelCanvasTouches(canvas)
             canvas.touchEnabled = enabled
-            canvas.view.isClickable = enabled
+            configureTouch(canvas)
+            sortLayers(canvas)
             call.resolve()
         }
     }
 
     // ======== Web Canvas Operations ========
 
+    private fun webCanvas(call: PluginCall, createStandalone: Boolean = false): ManagedCanvas? {
+        if (call.data.has("canvasId")) {
+            val id = call.data.opt("canvasId") as? String
+            if (id == null) {
+                call.reject("canvasId must be a string", "INVALID_ARGUMENT")
+                return null
+            }
+            val canvas = canvases[id]
+            if (canvas == null) call.reject("Canvas not found", "CANVAS_NOT_FOUND")
+            return canvas
+        }
+        if (standaloneWebCanvas == null && createStandalone) {
+            val size = CanvasSize(1, 1)
+            standaloneWebCanvas = ManagedCanvas("web_default", CanvasView(context, size), size = size)
+        }
+        val canvas = standaloneWebCanvas
+        if (canvas == null) call.reject("No web view - call navigate() first", "WEBVIEW_NOT_READY")
+        return canvas
+    }
+
+    private fun placeStandaloneWebView(canvas: ManagedCanvas, wv: WebView, placement: String) {
+        canvas.webDialog?.let { dialog ->
+            dialog.setOnDismissListener(null)
+            (wv.parent as? ViewGroup)?.removeView(wv)
+            dialog.dismiss()
+        }
+        canvas.webDialog = null
+        (wv.parent as? ViewGroup)?.removeView(wv)
+        if (placement == "popup") {
+            val dialog = android.app.Dialog(activity)
+            dialog.setContentView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            dialog.setOnDismissListener {
+                (wv.parent as? ViewGroup)?.removeView(wv)
+                wv.destroy()
+                if (canvas.webView === wv) canvas.webView = null
+                canvas.webDialog = null
+            }
+            canvas.webDialog = dialog
+            dialog.show()
+        } else {
+            val host = bridge.webView
+            val parent = host.parent as? ViewGroup ?: throw IllegalStateException("Web view host is detached")
+            wv.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            parent.addView(wv, if (placement == "inline") 0 else parent.childCount)
+            if (placement == "inline") host.setBackgroundColor(Color.TRANSPARENT)
+        }
+    }
+
     // ---- Navigate ----
 
     @PluginMethod
     fun navigate(call: PluginCall) {
-        val canvasId = call.getString("canvasId") ?: run {
-            call.reject("Missing canvasId")
+        val url = call.getString("url")?.trim()
+        if (url.isNullOrEmpty()) {
+            call.reject("Missing url", "INVALID_ARGUMENT")
             return
         }
-        val canvas = canvases[canvasId] ?: run {
-            call.reject("Canvas not found")
-            return
-        }
-        val urlString = call.getString("url") ?: run {
-            call.reject("Missing url")
-            return
-        }
+        val placementValue = call.data.opt("placement")
+        val explicitCanvas = call.data.has("canvasId")
+        val placement = (placementValue as? String) ?: "inline"
         val placementObj = call.getObject("placement")
-
+        if (call.data.has("placement") &&
+            !(placementValue is String && placement in setOf("inline", "fullscreen", "popup")) &&
+            !(explicitCanvas && placementObj != null)) {
+            call.reject("Invalid web view placement", "INVALID_ARGUMENT")
+            return
+        }
         activity.runOnUiThread {
-            val wv = ensureWebView(canvas)
-
-            // Apply placement if provided, otherwise fill the canvas.
-            if (placementObj != null) {
-                val x = placementObj.float("x")
-                val y = placementObj.float("y")
-                val w = placementObj.float("width", canvas.size.width.toFloat())
-                val h = placementObj.float("height", canvas.size.height.toFloat())
-                wv.x = x
-                wv.y = y
-                wv.layoutParams = FrameLayout.LayoutParams(w.toInt(), h.toInt())
+            val canvas = webCanvas(call, createStandalone = true) ?: return@runOnUiThread
+            try {
+                val wv = ensureWebView(canvas)
+                if (!explicitCanvas) placeStandaloneWebView(canvas, wv, placement)
+                if (placementObj != null) {
+                    wv.x = placementObj.float("x")
+                    wv.y = placementObj.float("y")
+                    // Preserve the subtype required by Capacitor's actual host parent.
+                    wv.layoutParams = wv.layoutParams.apply {
+                        width = placementObj.float("width", canvas.size.width.toFloat()).toInt()
+                        height = placementObj.float("height", canvas.size.height.toFloat()).toInt()
+                    }
+                }
+                wv.loadUrl(url)
+                call.resolve(JSObject().put("url", url))
+            } catch (error: Exception) {
+                call.reject("Navigation failed: ${error.message}", "NAVIGATION_FAILED", error)
             }
-
-            val trimmed = urlString.trim()
-            wv.loadUrl(trimmed)
-
-            call.resolve(JSObject().apply {
-                put("url", trimmed)
-            })
         }
     }
 
@@ -1369,21 +1417,14 @@ class CanvasPlugin : Plugin() {
 
     @PluginMethod
     fun eval(call: PluginCall) {
-        val canvasId = call.getString("canvasId") ?: run {
-            call.reject("Missing canvasId")
-            return
-        }
-        val canvas = canvases[canvasId] ?: run {
-            call.reject("Canvas not found")
-            return
-        }
+        val canvas = webCanvas(call) ?: return
         val script = call.getString("script") ?: run {
             call.reject("Missing script")
             return
         }
 
         val wv = canvas.webView ?: run {
-            call.reject("No web view - call navigate() first")
+            call.reject("No web view - call navigate() first", "WEBVIEW_NOT_READY")
             return
         }
 
@@ -1400,63 +1441,64 @@ class CanvasPlugin : Plugin() {
 
     @PluginMethod
     fun snapshot(call: PluginCall) {
-        val canvasId = call.getString("canvasId") ?: run {
-            call.reject("Missing canvasId")
-            return
-        }
-        val canvas = canvases[canvasId] ?: run {
-            call.reject("Canvas not found")
-            return
-        }
+        val canvas = webCanvas(call) ?: return
 
         val wv = canvas.webView ?: run {
-            call.reject("No web view - call navigate() first")
+            call.reject("No web view - call navigate() first", "WEBVIEW_NOT_READY")
             return
         }
 
-        val maxWidth = call.getFloat("maxWidth")
-        val quality = call.getDouble("quality") ?: 0.82
-        val formatStr = call.getString("format") ?: "png"
+        val maxWidthValue = call.data.opt("maxWidth")
+        val qualityValue = call.data.opt("quality")
+        val formatValue = call.data.opt("format")
+        val maxWidth = (maxWidthValue as? Number)?.toDouble()
+        val quality = (qualityValue as? Number)?.toDouble() ?: 0.82
+        val formatStr = (formatValue as? String) ?: "png"
+        if ((call.data.has("maxWidth") && (maxWidth == null || !maxWidth.isFinite() || maxWidth < 1 || maxWidth > Int.MAX_VALUE || maxWidth % 1.0 != 0.0)) ||
+            (call.data.has("quality") && (qualityValue !is Number || !quality.isFinite() || quality !in 0.0..1.0)) ||
+            (call.data.has("format") && (formatValue !is String || formatStr !in setOf("png", "jpeg", "webp")))) {
+            call.reject("Snapshot requires a positive integer maxWidth, quality from 0 to 1 and png/jpeg/webp format", "INVALID_ARGUMENT")
+            return
+        }
 
         activity.runOnUiThread {
-            // Capture the WebView as a bitmap (same approach as classic CanvasController).
-            val width = wv.width.coerceAtLeast(1)
-            val height = wv.height.coerceAtLeast(1)
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val bitmapCanvas = Canvas(bitmap)
-            wv.draw(bitmapCanvas)
-
-            // Scale if maxWidth specified.
-            val scaled = if (maxWidth != null && maxWidth > 0 && bitmap.width > maxWidth) {
-                val scale = maxWidth / bitmap.width
-                val newH = (bitmap.height * scale).toInt().coerceAtLeast(1)
-                Bitmap.createScaledBitmap(bitmap, maxWidth.toInt(), newH, true).also {
-                    if (it !== bitmap) bitmap.recycle()
+            if (wv.width <= 0 || wv.height <= 0) {
+                call.reject("Web view has not been laid out", "WEBVIEW_NOT_READY")
+                return@runOnUiThread
+            }
+            val width = maxWidth?.toInt()?.coerceAtMost(wv.width) ?: wv.width
+            val height = (wv.height.toDouble() * width / wv.width).toInt().coerceAtLeast(1)
+            if (width.toLong() * height > Int.MAX_VALUE / 4) {
+                call.reject("Snapshot exceeds the bitmap byte-count limit", "INVALID_ARGUMENT")
+                return@runOnUiThread
+            }
+            var bitmap: Bitmap? = null
+            try {
+                // Render directly at the requested size instead of allocating a full-size intermediate.
+                val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap = output
+                val drawCanvas = Canvas(output)
+                drawCanvas.scale(width.toFloat() / wv.width, height.toFloat() / wv.height)
+                wv.draw(drawCanvas)
+                val outputStream = ByteArrayOutputStream()
+                @Suppress("DEPRECATION")
+                val compressFormat = when (formatStr) {
+                    "jpeg" -> Bitmap.CompressFormat.JPEG
+                    "webp" -> Bitmap.CompressFormat.WEBP
+                    else -> Bitmap.CompressFormat.PNG
                 }
-            } else {
-                bitmap
+                check(output.compress(compressFormat, (quality * 100).toInt(), outputStream)) { "Image encoder failed" }
+                call.resolve(JSObject().apply {
+                    put("base64", Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP))
+                    put("format", formatStr)
+                    put("width", width)
+                    put("height", height)
+                })
+            } catch (error: Exception) {
+                call.reject("Snapshot failed: ${error.message}", "SNAPSHOT_FAILED", error)
+            } finally {
+                bitmap?.recycle()
             }
-
-            val outputStream = ByteArrayOutputStream()
-            val (compressFormat, compressQuality) = when (formatStr) {
-                "jpeg" -> Bitmap.CompressFormat.JPEG to (quality * 100).toInt()
-                    .coerceIn(1, 100)
-                else -> Bitmap.CompressFormat.PNG to 100
-            }
-            scaled.compress(compressFormat, compressQuality, outputStream)
-            val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
-            val outputFormat = if (formatStr == "jpeg") "jpeg" else "png"
-
-            val resultWidth = scaled.width
-            val resultHeight = scaled.height
-            if (scaled !== bitmap) scaled.recycle()
-
-            call.resolve(JSObject().apply {
-                put("base64", base64)
-                put("format", outputFormat)
-                put("width", resultWidth)
-                put("height", resultHeight)
-            })
         }
     }
 
@@ -1464,16 +1506,9 @@ class CanvasPlugin : Plugin() {
 
     @PluginMethod
     fun a2uiPush(call: PluginCall) {
-        val canvasId = call.getString("canvasId") ?: run {
-            call.reject("Missing canvasId")
-            return
-        }
-        val canvas = canvases[canvasId] ?: run {
-            call.reject("Canvas not found")
-            return
-        }
+        val canvas = webCanvas(call) ?: return
         val wv = canvas.webView ?: run {
-            call.reject("No web view - call navigate() first")
+            call.reject("No web view - call navigate() first", "WEBVIEW_NOT_READY")
             return
         }
 
@@ -1527,18 +1562,7 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             wv.evaluateJavascript(js) { result ->
-                val resultStr = result?.replace("\"", "") ?: ""
-                when {
-                    resultStr == "a2ui_not_ready" -> {
-                        call.reject("A2UI host not ready - ensure the canvas page includes the A2UI runtime")
-                    }
-                    resultStr.startsWith("error:") -> {
-                        call.reject("a2uiPush JS error: $resultStr")
-                    }
-                    else -> {
-                        call.resolve()
-                    }
-                }
+                settleA2UI(call, "a2uiPush", result)
             }
         }
     }
@@ -1547,16 +1571,9 @@ class CanvasPlugin : Plugin() {
 
     @PluginMethod
     fun a2uiReset(call: PluginCall) {
-        val canvasId = call.getString("canvasId") ?: run {
-            call.reject("Missing canvasId")
-            return
-        }
-        val canvas = canvases[canvasId] ?: run {
-            call.reject("Canvas not found")
-            return
-        }
+        val canvas = webCanvas(call) ?: return
         val wv = canvas.webView ?: run {
-            call.reject("No web view - call navigate() first")
+            call.reject("No web view - call navigate() first", "WEBVIEW_NOT_READY")
             return
         }
 
@@ -1577,12 +1594,17 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             wv.evaluateJavascript(js) { result ->
-                if (result != null && result.contains("error:")) {
-                    call.reject("a2uiReset failed: $result")
-                } else {
-                    call.resolve()
-                }
+                settleA2UI(call, "a2uiReset", result)
             }
+        }
+    }
+
+    private fun settleA2UI(call: PluginCall, operation: String, result: String?) {
+        val status = try { result?.let { JSONTokener(it).nextValue() as? String } } catch (_: Exception) { null }
+        when (status) {
+            "ok" -> call.resolve()
+            "a2ui_not_ready", "no_reset" -> call.reject("A2UI host is not ready for $operation", "A2UI_NOT_READY")
+            else -> call.reject("$operation failed: ${status ?: "No completion result"}", "A2UI_FAILED")
         }
     }
 
@@ -1681,6 +1703,7 @@ class CanvasPlugin : Plugin() {
                 pluginRef.notifyListeners("webViewReady", JSObject().apply {
                     put("canvasId", canvasId)
                     put("url", url ?: "")
+                    put("title", view.title ?: "")
                 })
             }
 
@@ -1708,8 +1731,7 @@ class CanvasPlugin : Plugin() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            val parent = canvas.view.parent as? ViewGroup
-            parent?.addView(wv, 0)
+            sortLayers(canvas)
             canvas.view.setBackgroundColor(Color.TRANSPARENT)
         }
 
@@ -2055,14 +2077,64 @@ class CanvasPlugin : Plugin() {
 
     // ---- Layer Sorting ----
 
+    private fun ownedViews(canvas: ManagedCanvas): List<View> =
+        listOfNotNull(canvas.webView, canvas.view) + canvas.layers.values.sortedBy { it.zIndex }.map { it.view }
+
+    private fun cancelCanvasTouches(canvas: ManagedCanvas) {
+        canvas.view.cancelActiveTouch()
+        canvas.layers.values.forEach { it.view.cancelActiveTouch() }
+    }
+
+    private fun detachCanvasViews(canvas: ManagedCanvas) {
+        cancelCanvasTouches(canvas)
+        ownedViews(canvas).forEach { (it.parent as? ViewGroup)?.removeView(it) }
+    }
+
+    private fun placeCanvasViews(canvas: ManagedCanvas, parent: ViewGroup) {
+        val views = ownedViews(canvas)
+        val existingFirst = if (canvas.touchEnabled) parent.childCount - views.size else 0
+        if (existingFirst >= 0 && views.withIndex().all { (index, view) ->
+                view.parent === parent && parent.getChildAt(existingFirst + index) === view
+            }) return
+        detachCanvasViews(canvas)
+        val first = if (canvas.touchEnabled) parent.childCount else 0
+        views.forEachIndexed { index, view ->
+            if (view !== canvas.webView) {
+                view.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            parent.addView(view, first + index)
+        }
+    }
+
+    private fun configureTouch(canvas: ManagedCanvas) {
+        val surfaces = listOf(canvas.view) + canvas.layers.values.map { it.view }
+        surfaces.forEach { view ->
+            view.acceptsTouch = canvas.touchEnabled
+            view.isClickable = canvas.touchEnabled
+            view.touchHandler = { type, touches ->
+                if (canvas.touchEnabled) {
+                    val values = JSArray()
+                    touches.forEach { touch ->
+                        values.put(JSObject().apply {
+                            put("id", touch.id)
+                            put("x", touch.x.toDouble())
+                            put("y", touch.y.toDouble())
+                            touch.pressure?.let { put("force", it.toDouble()) }
+                        })
+                    }
+                    notifyListeners("touch", JSObject().apply {
+                        put("type", type)
+                        put("touches", values)
+                        put("timestamp", System.currentTimeMillis())
+                    })
+                }
+            }
+        }
+    }
+
     private fun sortLayers(canvas: ManagedCanvas) {
         val parent = canvas.view.parent as? ViewGroup ?: return
-        val sorted = canvas.layers.values.sortedBy { it.zIndex }
-        sorted.forEachIndexed { index, layer ->
-            parent.removeView(layer.view)
-            // Offset by 1 if web view is at index 0 inside canvas.view.
-            parent.addView(layer.view, index + 1)
-        }
+        placeCanvasViews(canvas, parent)
     }
 
     // ---- Lifecycle ----
@@ -2070,12 +2142,18 @@ class CanvasPlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         canvases.values.forEach { canvas ->
+            detachCanvasViews(canvas)
             canvas.webView?.destroy()
-            (canvas.view.parent as? ViewGroup)?.removeView(canvas.view)
-            canvas.layers.values.forEach { layer ->
-                (layer.view.parent as? ViewGroup)?.removeView(layer.view)
+        }
+        standaloneWebCanvas?.let { canvas ->
+            canvas.webDialog?.setOnDismissListener(null)
+            canvas.webDialog?.dismiss()
+            canvas.webView?.let { wv ->
+                (wv.parent as? ViewGroup)?.removeView(wv)
+                wv.destroy()
             }
         }
+        standaloneWebCanvas = null
         canvases.clear()
     }
 }

@@ -274,11 +274,9 @@ export async function startAndroidScreenRecord({
           { encoding: "utf8", timeout: ADB_COMMAND_TIMEOUT_MS },
         );
         if (!pid.stdout || pid.stdout.trim() === "") break;
-        spawnSync(
-          adb,
-          ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
-          { stdio: "ignore", timeout: ADB_COMMAND_TIMEOUT_MS },
-        );
+        // A second SIGINT tells Android screenrecord to abort immediately,
+        // including while its encoder is writing the trailing moov atom.
+        // Signal once above, then let the bounded exit wait finish the file.
         await delay(500);
       }
       if (recorder.exitCode === null) {

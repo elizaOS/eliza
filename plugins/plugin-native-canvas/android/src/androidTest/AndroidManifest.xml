@@ -2,9 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application>
-        <provider android:name="ai.eliza.plugins.camera.GalleryFailureProvider"
-            android:authorities="ai.eliza.plugins.camera.galleryfixture" android:exported="false" />
-        <activity android:name="ai.eliza.plugins.camera.CameraTestActivity"
+        <activity android:name="ai.eliza.plugins.canvas.CanvasTestActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
     </application>

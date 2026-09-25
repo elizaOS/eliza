@@ -275,7 +275,7 @@ function AppProviderInner({
 
   // --- Pairing ---
   // --- Pairing (via usePairingState) ---
-  const pairingHook = usePairingState();
+  const pairingHook = usePairingState(retryStartup);
   const {
     state: {
       pairingEnabled,

@@ -182,7 +182,10 @@ import {
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
 } from "./events";
-import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
+import {
+  clearPendingRemoteFirstRun,
+  completeRemoteAgentFirstRun,
+} from "./first-run/adopt-remote-first-run";
 import {
   isElizaCloudRuntimeLocked,
   persistMobileRuntimeModeForServerTarget,
@@ -2684,6 +2687,7 @@ function AppContent() {
         }
       }
       try {
+        clearPendingRemoteFirstRun();
         const connection = applyLaunchConnection({
           kind: "remote",
           apiBase: payload.gatewayUrl,

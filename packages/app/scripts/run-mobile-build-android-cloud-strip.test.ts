@@ -196,6 +196,7 @@ it("removes BGE runtime and its instrumented tests from an actual cloud source t
       ["main", "ElizaBionicInferenceServer.java"],
       ["test", "BgeEmbeddingSessionTest.java"],
       ["androidTest", "BionicEmbeddingInstrumentedTest.java"],
+      ["androidTest", "BionicSpeechInstrumentedTest.java"],
       ["androidTest", "CapacitorBgeInstrumentedTest.java"],
     ];
     for (const [sourceSet, name] of files) {

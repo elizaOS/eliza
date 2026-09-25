@@ -37,6 +37,7 @@ afterEach(() => {
 
 function makeAppDist(
   meta: {
+    commit?: string | null;
     variant?: string;
     capacitorTarget?: string;
     runtimeMode?: string;
@@ -57,6 +58,31 @@ function makeAppDist(
 }
 
 describe("mobileWebDistReuseStatus", () => {
+  it.each([null, "a".repeat(40), "b".repeat(10), "b".repeat(40)])(
+    "requires an exact renderer revision when the device lane pins it: %s",
+    (commit) => {
+      const expectedCommit = "b".repeat(40);
+      const { appDir } = makeAppDist({
+        variant: "direct",
+        capacitorTarget: "android",
+        commit,
+      });
+      const status = mobileWebDistReuseStatus({
+        appDir,
+        repoRoot: tmp,
+        expectedVariant: "direct",
+        expectedTarget: "android",
+        expectedCommit,
+        buildNeeded: () => false,
+      });
+      expect(status.reusable).toBe(commit === expectedCommit);
+      if (commit !== expectedCommit)
+        expect(status.problems).toContain(
+          `dist commit=${commit ?? "missing"} but required commit=${expectedCommit}`,
+        );
+    },
+  );
+
   it("reuses dist only when manifest variant/target match and Vite says it is fresh", () => {
     const { appDir } = makeAppDist({
       variant: "direct",

@@ -14,3 +14,27 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-canvas build  # build
 bun run --cwd plugins/plugin-native-canvas test   # tests
 ```
+
+Android drawing and clearing reject unknown or deleted layer IDs with
+`LAYER_NOT_FOUND`. Batch errors include `commandIndex`; earlier commands remain
+applied and later commands do not run. Device contracts verify layer isolation,
+encoded pixels, and failure recovery through the real WebView bridge:
+
+```bash
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5580 --plugin plugin-native-canvas
+```
+
+Android's public WebView methods own a standalone view: `navigate` selects inline,
+fullscreen, or popup placement; `eval`, `snapshot`, and A2UI calls use that view.
+Existing explicit `canvasId` calls remain isolated. Inline content sits behind the
+host WebView; fullscreen sits above it; popup uses a native dialog. Wait for
+`webViewReady` before using page content. Snapshot supports PNG/JPEG/WebP and
+rejects invalid options or an unlaid view. A2UI requires the page's runtime host.
+
+Android attachment owns the base, layers, and embedded WebView together. Detach
+removes that group; reattach preserves its contents and layer order. Enabling
+touch places the drawing surfaces above the host; disabling it returns input to
+the host. Repeated attachment does not add duplicate views.
+Touch settings require a boolean. Disabling, hiding, or removing an active surface emits
+one cancellation with the last pointer coordinates; repeated enable/attach calls
+preserve an unchanged gesture.

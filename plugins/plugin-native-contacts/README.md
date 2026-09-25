@@ -35,3 +35,7 @@ requests access through Android's dialog, denies it, verifies read/create/import
 rejections, then grants access and verifies recovery without denied writes leaving
 contacts behind. Permission results and native grant states are exported separately
 from the subsequent granted-access suite.
+
+Permission preflight artifacts include Android grant flags before and after the
+request. Missing-dialog failures preserve the actual WebView reply and window
+hierarchy; tests remain failures and are not retried automatically.

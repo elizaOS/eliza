@@ -20,6 +20,7 @@ import {
   finalizeAndroidRecordingSegments,
   hasPositiveVideoDuration,
   isFinalizedMp4,
+  startAndroidScreenRecord,
   startChunkedAndroidScreenRecord,
 } from "./android-capture.ts";
 
@@ -409,6 +410,45 @@ describe("chunked Android screenrecord collection", () => {
     });
     return { recorder, artifactDir };
   }
+
+  test("single recording receives one interrupt while its encoder finalizes", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-single-adb-"));
+    dirs.push(dir);
+    const adb = path.join(dir, "adb");
+    const interrupts = path.join(dir, "interrupts");
+    const sampled = path.join(dir, "sampled");
+    fs.writeFileSync(
+      adb,
+      [
+        "#!/bin/sh",
+        "op=",
+        'for a in "$@"; do',
+        '  case "$a" in pkill) op=interrupt; break;; pidof) op=pid; break;; pull) op=pull; break;; stat) op=stat; break;; screenrecord) op=record; break;; esac',
+        "done",
+        'if [ "$op" = record ]; then sleep 2; exit 0; fi',
+        `if [ "$op" = interrupt ]; then echo signal >> '${interrupts}'; exit 0; fi`,
+        `if [ "$op" = pid ]; then if [ ! -e '${sampled}' ]; then touch '${sampled}'; echo 123; fi; exit 0; fi`,
+        'if [ "$op" = stat ]; then echo 28; exit 0; fi',
+        'if [ "$op" = pull ]; then',
+        '  for out in "$@"; do :; done',
+        '  printf "\\000\\000\\000\\010ftyp\\000\\000\\000\\014mdatXXXX" > "$out"',
+        // Android screenrecord aborts finalization on a repeated interrupt.
+        `  if [ "$(wc -l < '${interrupts}')" -eq 1 ]; then printf "\\000\\000\\000\\010moov" >> "$out"; fi`,
+        "fi",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    savedFfprobeBin = process.env.ELIZA_FFPROBE_BIN;
+    ffprobeBinSaved = true;
+    process.env.ELIZA_FFPROBE_BIN = fakeFfprobe("complete");
+    const recorder = await startAndroidScreenRecord({
+      adb,
+      serial: "emulator-fixture",
+      artifactDir: dir,
+    });
+    expect(await recorder.stop()).toBe(path.join(dir, "screenrecord.mp4"));
+    expect(fs.readFileSync(interrupts, "utf8")).toBe("signal\n");
+  }, 15_000);
 
   test("stop() waits for the in-flight final pull before packaging", async () => {
     const { recorder, artifactDir } = await runRecorder("complete");

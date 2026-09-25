@@ -54,17 +54,18 @@
           devices.some((device) => device.supportedResolutions.length > 0),
         "camera capabilities must cross bridge",
       );
-      await call("setSettings", { settings: { flash: "off" } });
-      assert(
-        (await call("getSettings")).settings.flash === "off",
-        "settings round trip",
-      );
+      await rejects("setSettings", { settings: { flash: "off" } });
       await rejects("capturePhoto");
       await call("startPreview", {
         direction: "back",
         resolution: { width: 640, height: 480 },
       });
       try {
+        await call("setSettings", { settings: { flash: "off" } });
+        assert(
+          (await call("getSettings")).settings.flash === "off",
+          "active camera settings round trip",
+        );
         const photo = await call("capturePhoto", {
           format: "png",
           width: 32,
@@ -650,6 +651,576 @@
           atob(recoveredImage.data).slice(0, 4) ===
             String.fromCharCode(0, 0, 255, 255),
           "valid image drawing recovers after rejected inputs",
+        );
+        const layerCases = [];
+        window.nativeCanvasEvidence.layerCases = layerCases;
+        const green = { color: "#00ff00" };
+        const primitives = [
+          {
+            type: "rect",
+            method: "drawRect",
+            args: { rect: { x: 2, y: 2, width: 8, height: 8 }, fill: green },
+          },
+          {
+            type: "ellipse",
+            method: "drawEllipse",
+            args: {
+              center: { x: 6, y: 6 },
+              radiusX: 4,
+              radiusY: 4,
+              fill: green,
+            },
+          },
+          {
+            type: "line",
+            method: "drawLine",
+            args: {
+              from: { x: 2, y: 6 },
+              to: { x: 10, y: 6 },
+              stroke: { color: "#00ff00", width: 4 },
+            },
+          },
+          {
+            type: "path",
+            method: "drawPath",
+            args: {
+              path: { commands: [{ type: "rect", args: [2, 2, 8, 8] }] },
+              fill: green,
+            },
+          },
+          {
+            type: "text",
+            method: "drawText",
+            args: {
+              text: "W",
+              position: { x: 2, y: 12 },
+              style: { font: "sans-serif", size: 12, color: "#00ff00" },
+            },
+          },
+          {
+            type: "image",
+            method: "drawImage",
+            args: {
+              image: dataUrl,
+              destRect: { x: 2, y: 2, width: 8, height: 8 },
+            },
+          },
+          {
+            type: "clear",
+            method: "clear",
+            args: { rect: { x: 2, y: 2, width: 8, height: 8 } },
+          },
+        ];
+        const { layerId: activeLayer } = await call("createLayer", {
+          canvasId,
+          layer: { name: "target", visible: true, opacity: 1, zIndex: 1 },
+        });
+        const { layerId: deletedLayer } = await call("createLayer", {
+          canvasId,
+          layer: { name: "deleted" },
+        });
+        await call("deleteLayer", { canvasId, layerId: deletedLayer });
+        for (const primitive of primitives) {
+          for (const batched of [false, true]) {
+            await call("clear", { canvasId });
+            await call("drawRect", {
+              canvasId,
+              rect: { x: 0, y: 0, width: 16, height: 16 },
+              fill: { color: "#ff0000" },
+            });
+            await call("clear", { canvasId, layerId: activeLayer });
+            if (primitive.type === "clear") {
+              await call("drawRect", {
+                canvasId,
+                rect: { x: 0, y: 0, width: 16, height: 16 },
+                fill: green,
+                drawOptions: { layerId: activeLayer },
+              });
+            }
+            const targetArgs = (id) => ({
+              ...primitive.args,
+              ...(primitive.type === "clear"
+                ? { layerId: id }
+                : { drawOptions: { layerId: id } }),
+            });
+            const invoke = (id) =>
+              imageOutcome(
+                batched ? "drawBatch" : primitive.method,
+                batched
+                  ? {
+                      canvasId,
+                      commands: [
+                        { type: primitive.type, args: targetArgs(id) },
+                      ],
+                    }
+                  : { canvasId, ...targetArgs(id) },
+              );
+            const beforeBase = (await call("getPixelData", { canvasId })).data;
+            const beforeImage = (
+              await call("toImage", { canvasId, format: "png" })
+            ).base64;
+            const valid = await invoke(activeLayer);
+            const validImage = (
+              await call("toImage", { canvasId, format: "png" })
+            ).base64;
+            const validBase = (await call("getPixelData", { canvasId })).data;
+            layerCases.push({
+              type: primitive.type,
+              batched,
+              target: "valid",
+              ...valid,
+              baseUnchanged: beforeBase === validBase,
+              compositeChanged: beforeImage !== validImage,
+            });
+            if (primitive.type === "ellipse" || primitive.type === "path") {
+              const rendered = await nativeImagePixels(
+                `${primitive.type}-${batched ? "batch" : "direct"}-layer`,
+              );
+              pixelEquals(
+                rendered(6, 6),
+                [0, 255, 0, 255],
+                "layer primitive fills its center",
+              );
+              pixelEquals(
+                rendered(0, 0),
+                [255, 0, 0, 255],
+                "layer primitive leaves outside base visible",
+              );
+              if (primitive.type === "ellipse")
+                pixelEquals(
+                  rendered(2, 2),
+                  [255, 0, 0, 255],
+                  "ellipse does not fill bounding-box corner",
+                );
+            }
+            for (const [target, id] of [
+              ["unknown", "missing-layer"],
+              ["deleted", deletedLayer],
+            ]) {
+              const baseBefore = (await call("getPixelData", { canvasId }))
+                .data;
+              const imageBefore = (
+                await call("toImage", { canvasId, format: "png" })
+              ).base64;
+              const outcome = await invoke(id);
+              layerCases.push({
+                type: primitive.type,
+                batched,
+                target,
+                ...outcome,
+                baseUnchanged:
+                  baseBefore ===
+                  (await call("getPixelData", { canvasId })).data,
+                compositeUnchanged:
+                  imageBefore ===
+                  (await call("toImage", { canvasId, format: "png" })).base64,
+              });
+            }
+          }
+        }
+        assert(
+          layerCases.every((entry) =>
+            entry.target === "valid"
+              ? !entry.rejected && entry.baseUnchanged && entry.compositeChanged
+              : entry.rejected &&
+                entry.code === "LAYER_NOT_FOUND" &&
+                entry.baseUnchanged &&
+                entry.compositeUnchanged &&
+                (!entry.batched || entry.commandIndex === 0),
+          ),
+          "every drawing and clear operation targets only existing layers, including batch commands",
+        );
+        await call("deleteLayer", { canvasId, layerId: activeLayer });
+        const batchLayerFailures = [];
+        window.nativeCanvasEvidence.batchLayerFailures = batchLayerFailures;
+        for (const primitive of primitives) {
+          await call("clear", { canvasId });
+          const outcome = await imageOutcome("drawBatch", {
+            canvasId,
+            commands: [
+              prefix,
+              {
+                type: primitive.type,
+                args: {
+                  ...primitive.args,
+                  ...(primitive.type === "clear"
+                    ? { layerId: deletedLayer }
+                    : {
+                        drawOptions: {
+                          layerId: deletedLayer,
+                          transform: { translateX: 4 },
+                        },
+                      }),
+                },
+              },
+              {
+                type: "rect",
+                args: {
+                  rect: { x: 12, y: 12, width: 2, height: 2 },
+                  fill: green,
+                },
+              },
+            ],
+          });
+          const pixels = atob((await call("getPixelData", { canvasId })).data);
+          const expected = Array.from({ length: 16 * 16 }, (_, index) =>
+            index % 16 < 2 && Math.floor(index / 16) < 2
+              ? String.fromCharCode(255, 0, 0, 255)
+              : String.fromCharCode(0, 0, 0, 0),
+          ).join("");
+          batchLayerFailures.push({
+            type: primitive.type,
+            ...outcome,
+            onlyPrefixApplied: pixels === expected,
+          });
+          assert(
+            outcome.rejected &&
+              outcome.code === "LAYER_NOT_FOUND" &&
+              outcome.commandIndex === 1 &&
+              pixels === expected,
+            "missing-layer batch preserves exact applied prefix and stops suffix",
+          );
+          await call("drawRect", {
+            canvasId,
+            rect: { x: 4, y: 4, width: 2, height: 2 },
+            fill: green,
+          });
+          pixelEquals(
+            (await nativeImagePixels(`recovered-after-${primitive.type}`))(
+              4,
+              4,
+            ),
+            [0, 255, 0, 255],
+            "drawing state remains usable after layer rejection",
+          );
+        }
+        const web = { publicCalls: [], snapshots: [] };
+        window.nativeCanvasEvidence.web = web;
+        const captureCall = async (method, options = {}) => {
+          try {
+            return { method, ok: true, value: await call(method, options) };
+          } catch (error) {
+            return {
+              method,
+              ok: false,
+              message: error.message,
+              code: error.code ?? null,
+            };
+          }
+        };
+        web.readiness = [];
+        let navigationSequence = 0;
+        const navigateReady = async (options) => {
+          const url = `about:blank#canvas-e2e-${++navigationSequence}`;
+          let event;
+          const listener = window.Capacitor.addListener(
+            descriptor.name,
+            "webViewReady",
+            (value) => {
+              if (
+                value.url === url &&
+                value.canvasId === (options.canvasId ?? "web_default")
+              )
+                event = value;
+            },
+          );
+          try {
+            const result = await call("navigate", { ...options, url });
+            const deadline = performance.now() + 5000;
+            while (!event && performance.now() < deadline)
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            assert(
+              event && typeof event.title === "string",
+              "native navigation emits matching ready event with title",
+            );
+            web.readiness.push(event);
+            return result;
+          } finally {
+            await listener.remove();
+          }
+        };
+        web.beforeNavigation = [];
+        for (const method of ["eval", "snapshot", "a2uiPush", "a2uiReset"])
+          web.beforeNavigation.push(
+            await captureCall(method, method === "eval" ? { script: "1" } : {}),
+          );
+        assert(
+          web.beforeNavigation.every(
+            (value) => !value.ok && value.code === "WEBVIEW_NOT_READY",
+          ),
+          "public operations reject before a WebView exists",
+        );
+        web.publicCalls.push({
+          method: "navigate",
+          ok: true,
+          value: await navigateReady({ placement: "inline" }),
+        });
+        const { canvasId: unlaidCanvas } = await call("create", {
+          size: { width: 32, height: 32 },
+        });
+        try {
+          await navigateReady({ canvasId: unlaidCanvas });
+          web.unlaidSnapshot = await captureCall("snapshot", {
+            canvasId: unlaidCanvas,
+          });
+          assert(
+            !web.unlaidSnapshot.ok &&
+              web.unlaidSnapshot.code === "WEBVIEW_NOT_READY",
+            "unlaid WebView rejects snapshot instead of fabricating a one-pixel image",
+          );
+        } finally {
+          await call("destroy", { canvasId: unlaidCanvas });
+        }
+        // Exercise the existing explicit-canvas path independently of the public contract.
+        await call("attach", { canvasId });
+        await navigateReady({
+          canvasId,
+          placement: { x: 0, y: 0, width: 128, height: 96 },
+        });
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const ready = await call("eval", {
+            canvasId,
+            script: "document.readyState",
+          });
+          if (ready.result === '"complete"') break;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const setupScript = `document.title='Canvas E2E'; document.documentElement.style.cssText='margin:0;background:#ff0000'; document.body.style.cssText='margin:0;background:#ff0000'; document.body.innerHTML='<div style="position:fixed;inset:0;background:#ff0000"><div style="position:absolute;left:50%;top:0;right:0;bottom:0;background:#0000ff"></div></div>'; window.fixtureMessages=[]; window.elizaA2UI={applyMessages(messages){window.fixtureMessages.push(...messages)},reset(){window.fixtureMessages=[]}}; 'ready'`;
+        web.setup = await call("eval", { canvasId, script: setupScript });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        web.evaluation = await call("eval", {
+          canvasId,
+          script: "({title:document.title,answer:6*7})",
+        });
+        assert(
+          JSON.parse(web.evaluation.result).answer === 42 &&
+            JSON.parse(web.evaluation.result).title === "Canvas E2E",
+          "native web view executes JavaScript in navigated document",
+        );
+        for (const format of ["png", "jpeg", "webp"]) {
+          const snapshot = await call("snapshot", {
+            canvasId,
+            format,
+            maxWidth: 64,
+            quality: 0.9,
+          });
+          const encoded = atob(snapshot.base64);
+          assert(
+            format === "png"
+              ? encoded.slice(0, 8) === "\x89PNG\r\n\x1a\n"
+              : format === "jpeg"
+                ? encoded.charCodeAt(0) === 255 && encoded.charCodeAt(1) === 216
+                : encoded.slice(0, 4) === "RIFF" &&
+                  encoded.slice(8, 12) === "WEBP",
+            "snapshot bytes have the requested file signature",
+          );
+          const image = new Image();
+          image.src = `data:image/${snapshot.format};base64,${snapshot.base64}`;
+          await image.decode();
+          const decoder = document.createElement("canvas");
+          decoder.width = image.naturalWidth;
+          decoder.height = image.naturalHeight;
+          const ctx = decoder.getContext("2d");
+          ctx.drawImage(image, 0, 0);
+          const sample = (x, y) =>
+            Array.from(ctx.getImageData(x, y, 1, 1).data);
+          const left = sample(8, 24),
+            right = sample(56, 24);
+          web.snapshots.push({
+            requestedFormat: format,
+            ...snapshot,
+            decodedWidth: image.naturalWidth,
+            decodedHeight: image.naturalHeight,
+            left,
+            right,
+          });
+        }
+        web.invalidSnapshots = [];
+        for (const options of [
+          { maxWidth: 0 },
+          { maxWidth: 0.5 },
+          { maxWidth: -1 },
+          { maxWidth: "64" },
+          { maxWidth: null },
+          { maxWidth: 2147483648 },
+          { quality: -1 },
+          { quality: 1.1 },
+          { quality: "0.5" },
+          { format: "gif" },
+          { format: null },
+        ]) {
+          const outcome = await captureCall("snapshot", {
+            canvasId,
+            ...options,
+          });
+          web.invalidSnapshots.push({ options, ...outcome });
+        }
+        assert(
+          web.invalidSnapshots.every(
+            (value) => !value.ok && value.code === "INVALID_ARGUMENT",
+          ),
+          "malformed snapshot options reject before allocation",
+        );
+        web.publicPlacements = [];
+        for (const placement of ["inline", "fullscreen", "popup"]) {
+          await navigateReady({ placement });
+          await call("eval", { script: setupScript });
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const evaluation = await call("eval", {
+            script: "({title:document.title,answer:6*7})",
+          });
+          const snapshot = await call("snapshot", {
+            format: "png",
+            maxWidth: 64,
+          });
+          const image = new Image();
+          image.src = `data:image/png;base64,${snapshot.base64}`;
+          await image.decode();
+          const decoder = document.createElement("canvas");
+          decoder.width = image.naturalWidth;
+          decoder.height = image.naturalHeight;
+          const ctx = decoder.getContext("2d");
+          ctx.drawImage(image, 0, 0);
+          const left = Array.from(
+            ctx.getImageData(8, Math.floor(image.naturalHeight / 2), 1, 1).data,
+          );
+          const right = Array.from(
+            ctx.getImageData(56, Math.floor(image.naturalHeight / 2), 1, 1)
+              .data,
+          );
+          web.publicPlacements.push({
+            placement,
+            evaluation,
+            snapshot,
+            left,
+            right,
+          });
+          assert(
+            JSON.parse(evaluation.result).answer === 42 &&
+              snapshot.width === 64 &&
+              image.naturalWidth === 64 &&
+              image.naturalHeight === snapshot.height &&
+              left[0] === 255 &&
+              right[2] === 255,
+            "public web view placement renders and evaluates its own document",
+          );
+        }
+        // Return from popup before checking effects on the public standalone WebView.
+        await navigateReady({ placement: "inline" });
+        await call("eval", { script: setupScript });
+        const message = { role: "assistant", type: "text", content: "hello" };
+        web.publicCalls.push(
+          await captureCall("eval", { script: "document.title" }),
+        );
+        web.publicCalls.push(
+          await captureCall("snapshot", { format: "png", maxWidth: 64 }),
+        );
+        web.publicCalls.push(
+          await captureCall("a2uiPush", { messages: [message] }),
+        );
+        web.pushed = await call("eval", { script: "window.fixtureMessages" });
+        assert(
+          JSON.parse(web.pushed.result)[0].content === "hello",
+          "public A2UI push reaches the standalone document",
+        );
+        web.publicCalls.push(await captureCall("a2uiReset"));
+        web.reset = await call("eval", { script: "window.fixtureMessages" });
+        assert(
+          JSON.parse(web.reset.result).length === 0,
+          "public A2UI reset clears the document fixture",
+        );
+        web.isolation = {
+          explicit: await call("eval", { canvasId, script: "document.title" }),
+          standalone: await call("eval", {
+            script: "document.title='Standalone E2E';document.title",
+          }),
+          explicitAfter: await call("eval", {
+            canvasId,
+            script: "document.title",
+          }),
+        };
+        assert(
+          JSON.parse(web.isolation.explicit.result) === "Canvas E2E" &&
+            JSON.parse(web.isolation.explicitAfter.result) === "Canvas E2E" &&
+            JSON.parse(web.isolation.standalone.result) === "Standalone E2E",
+          "public and explicit WebViews retain independent documents",
+        );
+        web.unknownCanvas = [];
+        for (const method of [
+          "navigate",
+          "eval",
+          "snapshot",
+          "a2uiPush",
+          "a2uiReset",
+        ])
+          web.unknownCanvas.push(
+            await captureCall(method, {
+              canvasId: "missing-canvas",
+              url: "about:blank",
+              script: "1",
+            }),
+          );
+        assert(
+          web.unknownCanvas.every(
+            (value) => !value.ok && value.code === "CANVAS_NOT_FOUND",
+          ),
+          "unknown explicit canvas never falls back to public WebView",
+        );
+        web.a2uiFailures = [];
+        for (const [name, script, code] of [
+          ["missing", "delete window.elizaA2UI", "A2UI_NOT_READY"],
+          [
+            "throwing",
+            `window.elizaA2UI={applyMessages(){throw new Error('fixture "push"')},reset(){throw new Error('fixture "reset"')}}`,
+            "A2UI_FAILED",
+          ],
+        ]) {
+          await call("eval", { script });
+          for (const method of ["a2uiPush", "a2uiReset"]) {
+            const outcome = await captureCall(
+              method,
+              method === "a2uiPush" ? { messages: [message] } : {},
+            );
+            web.a2uiFailures.push({ name, ...outcome });
+            if (name === "throwing")
+              assert(
+                outcome.message.includes(
+                  method === "a2uiPush" ? '"push"' : '"reset"',
+                ),
+                "A2UI error diagnostics preserve quoted text",
+              );
+            assert(
+              !outcome.ok && outcome.code === code,
+              "missing and throwing A2UI handlers reject explicitly",
+            );
+          }
+        }
+        await call("eval", { script: setupScript });
+        await call("a2uiPush", { messages: [message] });
+        assert(
+          JSON.parse(
+            (await call("eval", { script: "window.fixtureMessages" })).result,
+          ).length === 1,
+          "A2UI recovers after explicit failure",
+        );
+        assert(
+          web.snapshots.every(
+            (value) =>
+              value.format === value.requestedFormat &&
+              value.width === 64 &&
+              value.height === 48 &&
+              value.decodedWidth === 64 &&
+              value.decodedHeight === 48 &&
+              value.left[0] > 240 &&
+              value.left[2] < 15 &&
+              value.right[2] > 240 &&
+              value.right[0] < 15,
+          ),
+          "native snapshots encode the requested format, dimensions and rendered colors",
+        );
+        assert(
+          web.publicCalls.every((value) => value.ok),
+          "public web canvas methods work without an undocumented canvasId",
         );
       } finally {
         await call("destroy", { canvasId });
