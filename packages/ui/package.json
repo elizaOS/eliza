@@ -604,8 +604,8 @@
     "./brand-classic.css": "./dist/brand-classic/brand.css",
     "./assets/*": "./assets/*",
     "./terminal/theme": {
-      "types": "./dist/terminal/theme.d.ts",
       "eliza-source": "./src/terminal/theme.ts",
+      "types": "./dist/terminal/theme.d.ts",
       "import": "./dist/terminal/theme.js",
       "default": "./dist/terminal/theme.js"
     },

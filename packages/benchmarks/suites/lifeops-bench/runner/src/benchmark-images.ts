@@ -69,7 +69,7 @@ export function prepareBenchmarkImages(context: BenchmarkContext): {
     return {
       id: stored.hash,
       url: stored.url,
-      sha256: stored.hash,
+      checksum: stored.hash,
       contentType: ContentType.IMAGE,
       mimeType: mime as string,
       size: bytes.length,
