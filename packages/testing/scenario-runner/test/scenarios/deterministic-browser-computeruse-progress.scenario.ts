@@ -2,9 +2,10 @@
  * Keyless coverage that browser and computer-use progress events stream through
  * to the scenario surface. Runs on the pr-deterministic lane under the model provider.
  */
-import type { Action, AgentRuntime } from "@elizaos/core";
+import type { Action, AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
+import type { BrowserService } from "../../../../../plugins/plugin-browser/src/browser-service.ts";
 import { browserPlugin } from "../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,
@@ -259,6 +260,21 @@ async function seedScenario(ctx: {
   ) {
     await runtime.registerPlugin(browserPlugin);
   }
+
+  // Explicit scenario-owned DOM target; production requires a connected browser.
+  const browserRuntime = runtime as IAgentRuntime;
+  await browserRuntime.getServiceLoadPromise("browser");
+  const browser = browserRuntime.getService<BrowserService>("browser");
+  if (!browser) return "browser service unavailable";
+  browser.registerTarget({
+    id: "workspace",
+    name: "Scenario DOM workspace",
+    description: "Seeded deterministic DOM fixture",
+    kind: "app",
+    priority: 100,
+    available: async () => true,
+    execute: executeBrowserWorkspaceCommand,
+  });
 
   __resetBrowserWorkspaceStateForTests();
   await executeBrowserWorkspaceCommand({
