@@ -25,7 +25,7 @@ const title = "Cedar focus block";
 const startAt = "2027-02-05T15:00:00.000Z";
 const endAt = "2027-02-05T15:30:00.000Z";
 
-async function eventProposals(runtime: AgentRuntime) {
+export async function eventProposals(runtime: AgentRuntime) {
   const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
   return (
     await queue.list({
