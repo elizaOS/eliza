@@ -423,6 +423,8 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 
 		expect(unaddressed.systemContent).toBe(addressed.systemContent);
+		expect(unaddressed.turnContent).toContain("ambient_turn_policy:");
+		expect(addressed.turnContent).not.toContain("ambient_turn_policy:");
 		const taskBlock = (content: string) =>
 			content
 				.slice(content.indexOf(FULL_TEMPLATE_MARKER))
