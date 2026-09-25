@@ -7,8 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  androidProjectionFailureCode,
   createAndroidEvidenceBoundary,
   projectAndroidDeviceEvidenceBundle,
+  reportAndroidPlaywrightResults,
   settleAndroidEvidenceTeardown,
 } from "./android-e2e-evidence-policy.ts";
 
@@ -636,4 +638,136 @@ describe("Android evidence diagnostics boundary", () => {
       expect(Buffer.concat(publicBytes).includes(canary)).toBe(false);
     },
   );
+});
+
+describe("Android hosted probe diagnostics", () => {
+  test("projects actual report files to static IDs and statuses without private text", () => {
+    const root = fixtureRoot();
+    const reportPath = path.join(root, "report.json");
+    const canary = "PRIVATE_DEVICE_RESPONSE_CANARY";
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        suites: [
+          {
+            title: canary,
+            specs: [
+              {
+                file: "onboarding-to-home.android.spec.ts",
+                line: 95,
+                title: canary,
+                tests: [
+                  {
+                    results: [
+                      {
+                        status: "timedOut",
+                        error: { message: canary },
+                        stdout: [canary],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                file: "route-coverage.android.spec.ts",
+                line: 82,
+                tests: [
+                  {
+                    results: [
+                      { status: "passed", attachments: [{ body: canary }] },
+                    ],
+                  },
+                ],
+              },
+              {
+                file: canary,
+                line: 1,
+                tests: [{ results: [{ status: "failed" }] }],
+              },
+              {
+                file: "native-plugin-view-smoke.android.spec.ts",
+                line: canary,
+                tests: [{ results: [{ status: "failed" }] }],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const chunks = [];
+    reportAndroidPlaywrightResults(
+      reportPath,
+      createAndroidEvidenceBoundary({ write: (chunk) => chunks.push(chunk) }),
+    );
+    expect(chunks).toEqual([
+      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_TIMED_OUT specId=1 sourceLine=95\n",
+      "[android-e2e] phase=route-capture status=passed code=PLAYWRIGHT_PASSED specId=2 sourceLine=82\n",
+    ]);
+    expect(chunks.join("")).not.toContain(canary);
+  });
+
+  test("missing, malformed, unrecognized and symlink reports explicitly fail closed", () => {
+    const root = fixtureRoot();
+    const reportPath = path.join(root, "report.json");
+    const chunks = [];
+    const boundary = createAndroidEvidenceBoundary({
+      write: (chunk) => chunks.push(chunk),
+    });
+    reportAndroidPlaywrightResults(reportPath, boundary);
+    fs.writeFileSync(reportPath, "PRIVATE_INVALID_JSON");
+    reportAndroidPlaywrightResults(reportPath, boundary);
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        suites: [
+          null,
+          {
+            specs: [
+              null,
+              {
+                file: "route-coverage.android.spec.ts",
+                line: 8,
+                tests: [{ results: [{ status: "PRIVATE_STATUS" }] }],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    reportAndroidPlaywrightResults(reportPath, boundary);
+    const link = path.join(root, "link.json");
+    fs.symlinkSync(reportPath, link);
+    reportAndroidPlaywrightResults(link, boundary);
+    expect(chunks).toHaveLength(4);
+    expect(
+      chunks.every(
+        (chunk) =>
+          chunk ===
+          "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_REPORT_UNAVAILABLE\n",
+      ),
+    ).toBe(true);
+  });
+
+  test("projection failures expose fixed classifications while cleanup still runs", async () => {
+    const calls = [];
+    await settleAndroidEvidenceTeardown({
+      project: () => {
+        throw new Error(
+          "Android evidence publication ancestry is writable by another principal.",
+        );
+      },
+      cleanup: () => calls.push("cleanup"),
+      onFailure: (phase, code) => calls.push(`${phase}:${code}`),
+    });
+    expect(calls).toEqual([
+      "evidence-projection:PROJECTION_UNTRUSTED_ANCESTRY",
+      "cleanup",
+    ]);
+    expect(
+      androidProjectionFailureCode(new Error("PRIVATE_DEVICE_CANARY")),
+    ).toBe("PHASE_FAILED");
+    expect(androidProjectionFailureCode("PRIVATE_DEVICE_CANARY")).toBe(
+      "PHASE_FAILED",
+    );
+  });
 });
