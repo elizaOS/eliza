@@ -66,13 +66,15 @@ function fixture(
       metadata: { version: 1, etag: '"1"' },
     })),
   };
+  const reportError = vi.fn();
   const runtime = {
+    reportError,
     agentId: "00000000-0000-4000-8000-000000000aaa",
     getService: (name: string) => (name === "calendar" ? service : null),
     getSetting: () => undefined,
     character: { name: "Eliza" },
   } as unknown as IAgentRuntime;
-  return { service, runtime };
+  return { service, runtime, reportError };
 }
 async function create(
   extracted: Record<string, unknown>,
@@ -80,7 +82,7 @@ async function create(
   request?: { text: string; createdAt: number },
   sourceKey = key,
 ) {
-  const { runtime, service } = fixture(events, "fresh", sourceKey);
+  const { runtime, service, reportError } = fixture(events, "fresh", sourceKey);
   const parsed = {
     grantId: key.grantId,
     calendarId: key.calendarId,
@@ -90,7 +92,17 @@ async function create(
     rawResponse: JSON.stringify(parsed),
     parsed,
   }));
+  const schedule = vi.fn(async () => ({
+    requestId: "calendar-approval",
+    action: "schedule_event" as const,
+    state: "pending" as const,
+    acceptedAt: "2027-09-17T12:00:00.000Z",
+    idempotencyKey: "calendar-approval:test",
+    replayed: false,
+    text: "Approval required",
+  }));
   const action = createCalendarActionRunner({
+    mutationGateway: { schedule, modify: vi.fn(), cancel: vi.fn() },
     runJsonModel: runJsonModel as CalendarActionDeps["runJsonModel"],
     runTextModel: async () => null,
     recentConversationTexts: async () => [],
@@ -112,7 +124,7 @@ async function create(
       details: { start, end },
     },
   });
-  return { result, service, runJsonModel };
+  return { result, service, runJsonModel, schedule, reportError };
 }
 
 describe("calendar conversational write boundary", () => {
@@ -123,7 +135,7 @@ describe("calendar conversational write boundary", () => {
       grantId: "connector-account:work",
       connectorAccountId: "work",
     };
-    const { service } = await create(
+    const { result, service, schedule, reportError } = await create(
       {
         title: "Call dad",
         startAt: start,
@@ -133,8 +145,8 @@ describe("calendar conversational write boundary", () => {
       },
       [],
       {
-        text: "Use my work Google account, primary calendar, at the requested time.",
-        createdAt: Date.now(),
+        text: "Use my work Google account, primary calendar, on September 18, 2027 at the requested time.",
+        createdAt: Date.parse("2027-09-17T12:00:00Z"),
       },
       sourceKey,
     );
@@ -147,6 +159,19 @@ describe("calendar conversational write boundary", () => {
       }),
     );
     expect(service.createCalendarEvent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: true },
+    });
+    expect(schedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          grantId: sourceKey.grantId,
+          calendarId: "primary",
+        }),
+      }),
+    );
+    expect(reportError).not.toHaveBeenCalled();
   });
 
   it.each([
