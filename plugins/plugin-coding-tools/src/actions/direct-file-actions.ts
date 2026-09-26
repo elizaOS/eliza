@@ -56,7 +56,7 @@ export const readAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Revision returned by the previous read; required for a nonzero offset.",
+        "Omit for an initial read from the beginning. For a reference or nonzero offset, copy the revision from the latest READ of this exact file; never invent or reuse another file’s revision. After WRITE or EDIT, read from the beginning without expectedRevision to obtain the new revision.",
       required: false,
       schema: { type: "string" },
     },
