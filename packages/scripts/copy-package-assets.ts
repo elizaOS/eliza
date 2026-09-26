@@ -138,9 +138,18 @@ export async function copyPackageAssets({
   const distDir = path.join(packageDir, "dist");
 
   for (const assetPath of assetPaths) {
-    const sourcePath = path.join(packageDir, assetPath);
+    let sourcePath = path.join(packageDir, assetPath);
     if (!existsSync(sourcePath)) {
-      throw new Error(`missing asset path: ${sourcePath}`);
+      // Package-local asset missing: dependency patch ownership moved to the
+      // repository root in the app consolidation. Fall back to the identical
+      // repository-root path (e.g. "patches") so publish asset assembly keeps
+      // working for packages that no longer carry a private copy (#32493).
+      const rootPath = path.join(repositoryRoot, assetPath);
+      if (existsSync(rootPath)) {
+        sourcePath = rootPath;
+      } else {
+        throw new Error(`missing asset path: ${sourcePath}`);
+      }
     }
 
     const relativeTarget = assetPath.replace(/^src\//, "");
