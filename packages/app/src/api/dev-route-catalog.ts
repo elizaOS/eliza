@@ -81,7 +81,7 @@ const ROUTES: DevRouteEntry[] = [
     // a launcher tile — there is no "Messages" launcher group.
     tabId: "chat",
     path: "/chat",
-    label: "Messages",
+    label: "Home",
     group: "Hidden",
     visibility: "all",
     featureFlag: null,

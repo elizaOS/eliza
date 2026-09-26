@@ -887,9 +887,14 @@ describe("model-selected host navigation", () => {
     }
     expect(f.requests()).toBe(0);
   });
-  it.each([false, true])(
-    "runs the canonical pipeline and gates the held reply (wrong destination=%s)",
-    async (wrongDestination) => {
+  it.each([
+    { reply: "Home.", wrongDestination: false },
+    { reply: "Chat is open.", wrongDestination: false },
+    { reply: "Messages is open.", wrongDestination: true },
+    { reply: "Calendar is open.", wrongDestination: true },
+  ])(
+    "runs the canonical pipeline and gates the held reply ($reply)",
+    async ({ reply, wrongDestination }) => {
       const f = await fixture();
       const input = clientMessage();
       input.content.text = "Open Home";
@@ -922,9 +927,7 @@ describe("model-selected host navigation", () => {
                 contextRequests: [],
                 intents: ["Open Home"],
                 candidateActionNames: ["VIEWS"],
-                replyText: wrongDestination
-                  ? "Calendar is open."
-                  : "Chat is open.",
+                replyText: reply,
                 replyEffectStatus: "pending",
                 facts: [],
                 relationships: [],
@@ -980,7 +983,7 @@ describe("model-selected host navigation", () => {
         expect(useModel).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({
           kind: "planned_reply",
-          result: { responseContent: { text: "Chat is open." } },
+          result: { responseContent: { text: reply } },
         });
       }
       expect(f.frames).toHaveLength(1);

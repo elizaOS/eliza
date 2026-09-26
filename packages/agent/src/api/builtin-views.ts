@@ -89,14 +89,14 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "chat",
     viewKind: "system",
-    label: "Messages",
+    label: "Home",
     description:
-      "Conversations with your agent, inbound messages from every connector",
+      "Home screen with the app launcher and conversations with your agent",
     icon: "MessageSquare",
     heroImagePath: "assets/view-heroes/chat.png",
     path: "/chat",
     order: 1,
-    tags: ["messaging", "conversation", "agent"],
+    tags: ["home", "launcher", "conversation", "agent"],
     responseContext: { primaryContext: "general" },
     anticipatoryIntent:
       "Offer to pick up the most recent thread or surface anything the user left unfinished, and ask what they want to work on next.",

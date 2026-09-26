@@ -1270,7 +1270,11 @@ async function runPlannerLoopIterations(
       // provider envelope has no such field — the reserved
       // `eliza_turn_scope` tool argument (#17034). Anything unspecified is
       // "no opinion" and cannot erase an earlier explicit pending scope.
-      if (plannerOutput.completed !== undefined) {
+      // A host-seeded settled result enters a reply-only lane, not a new work
+      // plan. Its synthesis cannot reopen work scope; if that reply is invalid,
+      // the evaluator must judge the settled evidence below. Ordinary planning
+      // (including mixed requests) retains the explicit pending-scope guard.
+      if (!postToolReplySeed && plannerOutput.completed !== undefined) {
         lastPlannerExplicitCompleted = plannerOutput.completed;
         // The evaluator renders the immutable base plus modelHistory, so a
         // context-only assignment would hide this declaration from its model.
