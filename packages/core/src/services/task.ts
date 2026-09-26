@@ -260,6 +260,13 @@ export class TaskService extends Service {
 			await tick;
 		}, this.TICK_INTERVAL);
 		this.hasTimer = true;
+		// WHY: the tick loop is a background optimizer, so it must never hold the
+		// event loop open. Hosts that embed the runtime (CLI commands, one-shot
+		// jobs, tests) depend on the process exiting once their work is done; the
+		// timer is explicit-cleared by stop()/stopTimer(), which is the only way
+		// the loop should end.
+		const handle = this.timer as { unref?: () => void } | null | undefined;
+		handle?.unref?.();
 	}
 
 	/**

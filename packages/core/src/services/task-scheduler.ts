@@ -230,6 +230,10 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 			});
 		activeTick = tickPromise;
 	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
+	// WHY: the shared scheduler is a background optimizer; keep the same
+	// "do not hold the loop open" contract every other runtime interval follows
+	// (utils/deadline.ts, inference-priority-gate, memory-watchdog).
+	timer.unref?.();
 }
 
 export function stopTaskScheduler(): void {
