@@ -18,9 +18,9 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, spawn: spawnMock };
 });
 
-vi.mock("@elizaos/shared/host-execution-env", async (importOriginal) => {
+vi.mock("@elizaos/core", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@elizaos/shared/host-execution-env")>();
+    await importOriginal<typeof import("@elizaos/core")>();
   return { ...actual, resolveHostExecutable: () => "/usr/local/bin/docker" };
 });
 
