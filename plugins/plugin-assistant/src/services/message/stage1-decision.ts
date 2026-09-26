@@ -44,6 +44,8 @@ import {
 } from "../../runtime/builtin-field-evaluators";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
+import { getEvaluatorProgressState } from "../evaluator-progress.ts";
+import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
 import { resolveStage1SenderRole } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
@@ -51,6 +53,7 @@ import { listAvailableContextsForTurn } from "./context-catalog.js";
 import {
   createContextReadTool,
   extractContextRead,
+  hasContextReadToolCall,
   projectDiscoverableContext,
   READ_CONTEXT_TOOL_NAME,
   withAvailableContextRequests,
@@ -68,6 +71,7 @@ import {
   type HistoryDiscovery,
   historyReferences,
   loadHistoryReferences,
+  projectReviewedHistory,
   readHistoryContextRequests,
   repairableHistorySourceIds,
   requestedHistory,
@@ -216,8 +220,39 @@ export async function generateStage1Decision(
   const discoveryEnabled = progressiveContextChannel;
   let history: HistoryDiscovery | undefined;
   let historyReadEvidence: HistoryDiscovery | undefined;
-  // Full originals stay inline and flow unchanged into planning. Builtin
-  // source selection is not another responsibility of the reply handler.
+  if (
+    discoveryEnabled &&
+    args.runtime.evaluators?.some(
+      (evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
+    ) &&
+    !args.runtime.providers?.some((provider) =>
+      provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+    )
+  ) {
+    try {
+      const checkpoint = await getEvaluatorProgressState(
+        args.runtime,
+        args.message,
+        HISTORY_RETENTION_EVALUATOR,
+      );
+      stage1TurnSignal.throwIfAborted();
+      history = projectReviewedHistory(
+        context,
+        {
+          agentId: args.runtime.agentId,
+          roomId: args.message.roomId,
+          entityId: args.message.entityId,
+          roles: [senderRole],
+        },
+        checkpoint,
+      );
+    } catch (error) {
+      stage1TurnSignal.throwIfAborted();
+      args.runtime.reportError("MessageService.historyRetention", error, {
+        roomId: args.message.roomId,
+      });
+    }
+  }
   // A plugin that owns this name retains its ordinary provider-reference
   // contract; framework catalog discovery must not shadow its requests.
   let contextCatalogRead = false;
@@ -269,9 +304,7 @@ export async function generateStage1Decision(
   let sourceReplySnapshot: ReturnType<typeof createSourceReplySnapshot>;
   let sourceReplyRendering: SourceReplyRendering | undefined;
   let effectiveReplySchema: JSONSchema | undefined;
-  let providerMessageHandler: string | GenerateTextResult | undefined;
   const interpretNativeReply = (raw: string | GenerateTextResult) => {
-    providerMessageHandler = raw;
     sourceReplyRendering = undefined;
     const bound = sourceSelectionBinding?.resolve(raw) ?? raw;
     const snapshot = sourceReplySnapshot;
@@ -427,12 +460,7 @@ export async function generateStage1Decision(
     nativeHistoryRead = Boolean(
       history &&
         readTool &&
-        selectedResponseHandlerFields.includes(
-          completionContextFieldEvaluator,
-        ) &&
         selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-        canonicalResponseHandlerSchema.properties?.completionContext ===
-          completionContextFieldEvaluator.schema &&
         canonicalResponseHandlerSchema.properties?.contextRequests ===
           contextRequestsFieldEvaluator.schema,
     );
@@ -618,6 +646,60 @@ export async function generateStage1Decision(
     // Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
     providerOptions: stage1ProviderOptions,
   };
+  let recordedCallCount = 0;
+  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+    // A cancelled turn that never enters useModel has no attempted model stage.
+    params.signal.throwIfAborted();
+    const startedAt = Date.now();
+    let outcome:
+      | { raw: string | GenerateTextResult }
+      | { error: unknown }
+      | undefined;
+    try {
+      const raw = (await args.runtime.useModel(
+        ModelType.RESPONSE_HANDLER,
+        params,
+      )) as string | GenerateTextResult;
+      outcome = { raw };
+      return raw;
+    } catch (error) {
+      outcome = { error };
+      throw error;
+    } finally {
+      // This semantic stage records an attempted runtime request, not proof of
+      // provider dispatch. Only completed results supply provider identity/usage.
+      // Keep every retry before parsing, discovery validation or field effects.
+      if (recorder && trajectoryId && outcome) {
+        recordedCallCount += 1;
+        registerStageTask(
+          recordMessageHandlerStage({
+            recorder,
+            trajectoryId,
+            stageId: `stage-msghandler-${messageHandlerStartedAt}-${recordedCallCount}`,
+            messages: params.messages,
+            tools: params.tools,
+            toolChoice: params.toolChoice,
+            providerOptions: params.providerOptions,
+            ...outcome,
+            startedAt,
+            endedAt: Date.now(),
+            segmentHashes: computePrefixHashes(params.promptSegments).map(
+              (entry) => entry.segmentHash,
+            ),
+            prefixHash: stage1PrefixHash,
+            provider:
+              "raw" in outcome
+                ? args.runtime.getLastResolvedModelProvider?.(
+                    ModelType.RESPONSE_HANDLER,
+                  )
+                : undefined,
+            state: args.state,
+            runtime: args.runtime,
+          }),
+        );
+      }
+    }
+  };
   // Provider-shape retry: cloud reasoning models reached over
   // OpenAI-compatible providers can intermittently return either no
   // content at all or a required native tool call with no arguments. Both
@@ -638,17 +720,14 @@ export async function generateStage1Decision(
   }
   let rawMessageHandler: string | GenerateTextResult = args.codingMode
     ? directCodingResponseHandlerResult()
-    : ((await args.runtime.useModel(
-        ModelType.RESPONSE_HANDLER,
-        stage1ModelParams,
-      )) as string | GenerateTextResult);
+    : await generateRecordedStage1(stage1ModelParams);
   rawMessageHandler = interpretNativeReply(rawMessageHandler);
   const contextReadEnabled = () =>
     messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
-  let stage1RetryReason = extractContextRead(
-    rawMessageHandler,
-    contextReadEnabled(),
-  )
+  if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
+    extractContextRead(rawMessageHandler, false);
+  }
+  let stage1RetryReason = hasContextReadToolCall(rawMessageHandler)
     ? null
     : getStage1RetryReason(rawMessageHandler);
   while (
@@ -670,15 +749,12 @@ export async function generateStage1Decision(
       },
       `[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
     );
-    rawMessageHandler = (await args.runtime.useModel(
-      ModelType.RESPONSE_HANDLER,
-      stage1ModelParams,
-    )) as string | GenerateTextResult;
+    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
     rawMessageHandler = interpretNativeReply(rawMessageHandler);
-    stage1RetryReason = extractContextRead(
-      rawMessageHandler,
-      contextReadEnabled(),
-    )
+    if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
+      extractContextRead(rawMessageHandler, false);
+    }
+    stage1RetryReason = hasContextReadToolCall(rawMessageHandler)
       ? null
       : getStage1RetryReason(rawMessageHandler);
   }
@@ -687,7 +763,7 @@ export async function generateStage1Decision(
   let terminalDecisionReviewed = false;
   const terminalReaskEnabled =
     readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
-  if (!args.codingMode) {
+  if (!args.codingMode && !hasContextReadToolCall(rawMessageHandler)) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     // A source quotation is an answer even with no model-authored prose.
     // Terminal decisions retain the channel policy and shared review budget.
@@ -728,29 +804,26 @@ export async function generateStage1Decision(
         conversationId: stage1ConversationId,
       });
       stage1TurnSignal.throwIfAborted();
-      const repaired = (await args.runtime.useModel(
-        ModelType.RESPONSE_HANDLER,
-        {
-          ...stage1ModelParams,
-          messages: repairedInput.messages,
-          promptSegments: repairedInput.promptSegments,
-          providerOptions: withModelInputBudgetProviderOptions(
-            {
-              ...stage1ProviderOptions,
-              ...repairedCacheOptions,
-              eliza: {
-                ...(stage1ProviderOptions.eliza as object),
-                ...(repairedCacheOptions.eliza as object),
-              },
+      const repaired = await generateRecordedStage1({
+        ...stage1ModelParams,
+        messages: repairedInput.messages,
+        promptSegments: repairedInput.promptSegments,
+        providerOptions: withModelInputBudgetProviderOptions(
+          {
+            ...stage1ProviderOptions,
+            ...repairedCacheOptions,
+            eliza: {
+              ...(stage1ProviderOptions.eliza as object),
+              ...(repairedCacheOptions.eliza as object),
             },
-            buildModelInputBudget({
-              messages: repairedInput.messages,
-              promptSegments: repairedInput.promptSegments,
-              tools: messageHandlerTools,
-            }),
-          ),
-        },
-      )) as string | GenerateTextResult;
+          },
+          buildModelInputBudget({
+            messages: repairedInput.messages,
+            promptSegments: repairedInput.promptSegments,
+            tools: messageHandlerTools,
+          }),
+        ),
+      });
       if (extractMessageHandlerRawParsed(repaired)) {
         rawMessageHandler = interpretNativeReply(repaired);
       }
@@ -764,33 +837,59 @@ export async function generateStage1Decision(
   let historySelectionRepairAttempted = false;
   let historyReadForDecision = false;
   while (discoveryEnabled) {
-    const nativeRead = extractContextRead(
-      rawMessageHandler,
-      contextReadEnabled(),
-    );
-    const parsedDecision =
-      nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
-    const explicit = readHistoryContextRequests(
-      context,
-      history,
-      parsedDecision,
-      discovery.available,
-    );
-    const historyRequested = requestedHistory(
-      context,
-      history,
-      parsedDecision,
-      explicit,
-      Boolean(nativeRead),
-    );
+    let nativeRead: ReturnType<typeof extractContextRead>;
+    let parsedDecision: ReturnType<typeof extractMessageHandlerRawParsed> =
+      null;
+    let explicit: string[] = [];
+    let invalidReadRepair: string | undefined;
+    try {
+      nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled());
+      parsedDecision =
+        nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
+      explicit = readHistoryContextRequests(
+        context,
+        history,
+        parsedDecision,
+        discovery.available,
+      );
+    } catch (error) {
+      if (
+        routingRepairAttempted ||
+        !(error instanceof ElizaError) ||
+        ![
+          "CONTEXT_DISCOVERY_INVALID_REQUEST",
+          "CONTEXT_DISCOVERY_INVALID_READ",
+        ].includes(error.code) ||
+        stage1HitCompletionLimit(rawMessageHandler, stage1ModelParams.maxTokens)
+      )
+        throw error;
+      // Nothing from an invalid control call can authorize a provider read,
+      // acknowledgment, extraction or action. Reuse the one routing repair;
+      // a repeated invalid response still fails closed.
+      invalidReadRepair = [
+        "context_read_repair: The previous context read was invalid. Nothing from it was read, delivered or executed.",
+        `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.`,
+        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations, use HANDLE_RESPONSE to select the appropriate available context and action candidates for the planner. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
+      ].join("\n");
+    }
+    const historyRequested = invalidReadRepair
+      ? []
+      : requestedHistory(
+          context,
+          history,
+          parsedDecision,
+          explicit,
+          Boolean(nativeRead),
+        );
     const requested = [...new Set([...explicit, ...historyRequested])];
     const routingRepair =
-      !routingRepairAttempted &&
+      invalidReadRepair ??
+      (!routingRepairAttempted &&
       explicit.length === 0 &&
       (requested.length === 0 ||
         canRepairIncompleteHistorySelection(context, history, parsedDecision))
         ? getStage1RoutingRepair(parsedDecision)
-        : undefined;
+        : undefined);
     repairHistoryIdentity =
       !routingRepair &&
       !historySelectionRepairAttempted &&
@@ -1173,10 +1272,7 @@ export async function generateStage1Decision(
       "[message] Resolving context or routing before final response decision",
     );
     stage1TurnSignal.throwIfAborted();
-    rawMessageHandler = (await args.runtime.useModel(
-      ModelType.RESPONSE_HANDLER,
-      stage1ModelParams,
-    )) as string | GenerateTextResult;
+    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
     rawMessageHandler = interpretNativeReply(rawMessageHandler);
   }
   const messageHandlerEndedAt = Date.now();
@@ -1413,28 +1509,6 @@ export async function generateStage1Decision(
     parsed: structuredClone(messageHandler),
   });
 
-  if (!args.codingMode && recorder && trajectoryId) {
-    registerStageTask(
-      recordMessageHandlerStage({
-        recorder,
-        trajectoryId,
-        messages: messageHandlerInput.messages,
-        tools: messageHandlerTools,
-        toolChoice: "required",
-        providerOptions: stage1ModelParams.providerOptions,
-        raw: providerMessageHandler ?? rawMessageHandler,
-        parsed: messageHandler,
-        startedAt: messageHandlerStartedAt,
-        endedAt: messageHandlerEndedAt,
-        segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-        prefixHash: stage1PrefixHash,
-        provider: messageHandlerProvider,
-        state: args.state,
-        runtime: args.runtime,
-      }),
-    );
-  }
-
   return {
     messageHandler,
     providerReview:
@@ -1457,6 +1531,7 @@ export async function generateStage1Decision(
     providerDiscoveryEnabled: discoveryEnabled,
     loadedContextProviders: [...loadedContext],
     historyReadEvidence,
+    backgroundHistory: history,
     contextCatalogRead,
     fieldRunResult,
     inferenceMessageText,

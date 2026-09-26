@@ -411,6 +411,136 @@ async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
 	return { runtime, message, rows, cache, state, world };
 }
 
+it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+	"uses a valid background checkpoint without a second decision call: %s",
+	async (channelType) => {
+		const { runtime, message, rows, state } = await reviewedHistoryFixture();
+		message.content.channelType = channelType;
+		const before = structuredClone(rows);
+		runtime.useModel = vi.fn(async () =>
+			stage1Response({
+				contexts: ["simple"],
+				replyParts: true,
+				replyText: "Hello.",
+			}),
+		);
+		const result = await runStage1({ runtime, message, state });
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		const params = useModelCalls(runtime)[0][1] as {
+			messages: unknown;
+			tools: unknown;
+		};
+		const wire = JSON.stringify(params.messages);
+		expect(wire).toContain("Never change my records");
+		expect(wire).not.toContain("blueberry");
+		expect(wire).toContain("history:all");
+		expect(JSON.stringify(params.tools)).not.toContain('"completionContext"');
+		expect(rows).toEqual(before);
+	},
+);
+
+it.each(["history:all", "history:h2", "history:search-user:blueberry"])(
+	"restores background-reviewed originals through native reads without a completion field: %s",
+	async (reference) => {
+		const { runtime, message, rows, state } = await reviewedHistoryFixture();
+		const before = structuredClone(rows);
+		let calls = 0;
+		runtime.useModel = vi.fn(async (_type, params) => {
+			calls++;
+			const wire = JSON.stringify(params);
+			if (calls === 1) {
+				expect(wire).not.toContain("blueberry");
+				return {
+					text: "",
+					toolCalls: [
+						{
+							id: "read",
+							name: "READ_CONTEXT",
+							arguments: { contextRequests: [reference] },
+						},
+					],
+				};
+			}
+			expect(wire).toContain("blueberry");
+			return stage1Response({
+				contexts: ["simple"],
+				replyParts: true,
+				replyText: "The earlier label was blueberry.",
+			});
+		});
+		const result = await runStage1({ runtime, message, state });
+		expect(result.kind).toBe("direct_reply");
+		expect(calls).toBe(2);
+		expect(rows).toEqual(before);
+	},
+);
+
+it("carries background history through the real planned-turn handoff without another review call", async () => {
+	const { runtime, message, rows, state } = await reviewedHistoryFixture();
+	message.content.text =
+		"Read the current calendar record without changing anything.";
+	const before = structuredClone(rows);
+	const handler = vi.fn(async (_runtime, _message, actionState) => {
+		const supplied = String(actionState?.values.selectedActionConversation);
+		expect(supplied).not.toContain("blueberry");
+		expect(supplied).toContain("Never change my records");
+		return {
+			success: true,
+			text: "The record says violet.",
+			transcriptVisibility: "internal" as const,
+			modelReplyRequired: true,
+		};
+	});
+	runtime.actions = [
+		{
+			name: "CALENDAR_READ",
+			description: "Read current calendar record",
+			contexts: ["calendar"],
+			validate: async () => true,
+			handler,
+		},
+	];
+	let calls = 0;
+	runtime.useModel = vi.fn(async (_type, params) => {
+		calls++;
+		const wire = JSON.stringify(params);
+		expect(wire).toContain("Never change my records");
+		expect(wire).not.toContain("blueberry");
+		if (calls === 1)
+			return stage1Response({
+				contexts: ["calendar"],
+				intents: ["Read current calendar record"],
+				candidateActionNames: ["CALENDAR_READ"],
+				replyText: "",
+				extra: { requiresTool: true, replyEffectStatus: "pending" },
+			});
+		if (calls === 2) {
+			expect(wire).toContain("RESTORE_CONTEXT");
+			expect(wire).not.toContain("eliza_completion_context");
+			return {
+				text: "",
+				toolCalls: [{ id: "read-once", name: "CALENDAR_READ", arguments: {} }],
+			};
+		}
+		if (calls === 3)
+			return JSON.stringify({
+				thought: "The read settled the request.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "The record says violet.",
+			});
+		throw new Error("Unexpected model retry");
+	});
+	const result = await runStage1({ runtime, message, state });
+	expect(result.kind).toBe("planned_reply");
+	if (result.kind === "planned_reply")
+		expect(result.result.responseContent?.text).toBe("The record says violet.");
+	expect(calls).toBe(3);
+	expect(handler).toHaveBeenCalledTimes(1);
+	expect(rows).toEqual(before);
+});
+
 function makeMemorySearchAction(minRole: "USER" | "OWNER" = "USER"): Action {
 	return {
 		name: "MEMORY",
@@ -1119,7 +1249,13 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			expect(result.kind).toBe("direct_reply");
 			expect(runtime.useModel).toHaveBeenCalledTimes(1);
-			expect(runtime.reportError).not.toHaveBeenCalled();
+			if (mode === "cache-failure")
+				expect(runtime.reportError).toHaveBeenCalledWith(
+					"MessageService.historyRetention",
+					expect.any(Error),
+					expect.any(Object),
+				);
+			else expect(runtime.reportError).not.toHaveBeenCalled();
 		},
 	);
 
@@ -1169,7 +1305,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						tools: unknown;
 					};
 					const text = input.messages.map((m) => m.content).join("\n");
-					if (calls === 1) {
+					if (calls === 1 || ["mixed", "extra", "unknown"].includes(mode)) {
 						expect(JSON.stringify(input.tools)).toContain(
 							'"name":"READ_CONTEXT"',
 						);
@@ -1231,17 +1367,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					return stage1Response({
 						replyText: "Read original evidence.",
 						replyParts: false,
-						extra: {
-							completionContext: {
-								mode: "relevant_prior_dialogue",
-								complete: true,
-								sourceSetId: "current_request",
-								relevantSourceIds: ["h2"],
-								constraintSourceIds: ["h1"],
-								referentSourceIds: [],
-								pendingIntentSourceIds: [],
-							},
-						},
 					});
 				},
 			) as IAgentRuntime["useModel"];
@@ -1268,7 +1393,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			if (["mixed", "extra", "unknown", "cancel-read"].includes(mode)) {
 				await expect(run()).rejects.toThrow();
 				expect(dispatch).not.toHaveBeenCalled();
-				expect(calls).toBe(1);
+				expect(calls).toBe(mode === "cancel-read" ? 1 : 2);
 				expect(progress).not.toHaveBeenCalled();
 			} else {
 				const result = await run();
@@ -1860,25 +1985,46 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it("rejects an unknown context request before another model call or action", async () => {
+	it("rejects a persistent unknown context request after one repair without reading or dispatching", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contextRequests: ["OTHER_USERS_userPersonalityPreferences"],
 			}),
+			stage1Response({
+				contextRequests: ["OTHER_USERS_userPersonalityPreferences"],
+			}),
 		]);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const forbiddenRead = vi.fn(async () => ({
+			text: "OTHER_SCOPE_PRIVATE_BODY",
+		}));
+		runtime.providers = [
+			{ name: "OTHER_USERS_userPersonalityPreferences", get: forbiddenRead },
+		];
 		await expect(
 			runStage1({
 				runtime,
 				message: makeMessage({ channelType: ChannelType.DM }),
 			}),
-		).rejects.toThrow("Request only context providers");
-		expect(useModelCalls(runtime)).toHaveLength(1);
+		).rejects.toMatchObject({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(JSON.stringify(useModelCalls(runtime)[1][1])).toContain(
+			"context_read_repair",
+		);
+		expect(JSON.stringify(useModelCalls(runtime))).not.toContain(
+			"OTHER_SCOPE_PRIVATE_BODY",
+		);
+		expect(runtime.composeState).not.toHaveBeenCalled();
+		expect(forbiddenRead).not.toHaveBeenCalled();
+		expect(dispatch).not.toHaveBeenCalled();
 	});
 	it("refuses a repeated context request instead of creating an unbounded model loop", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ contextRequests: ["userPersonalityPreferences"] }),
 			stage1Response({ contextRequests: ["userPersonalityPreferences"] }),
+			stage1Response({ contextRequests: ["userPersonalityPreferences"] }),
 		]);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
 		const state = makeState();
 		state.data.providers = {
 			userPersonalityPreferences: {
@@ -1893,8 +2039,19 @@ describe("runV5MessageRuntimeStage1", () => {
 				message: makeMessage({ channelType: ChannelType.DM }),
 				state,
 			}),
-		).rejects.toThrow("Request only context providers");
-		expect(useModelCalls(runtime)).toHaveLength(2);
+		).rejects.toMatchObject({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" });
+		expect(useModelCalls(runtime)).toHaveLength(3);
+		expect(runtime.composeState).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(useModelCalls(runtime)[0][1])).not.toContain(
+			"All the authorized saved facts",
+		);
+		expect(JSON.stringify(useModelCalls(runtime)[1][1])).toContain(
+			"All the authorized saved facts",
+		);
+		expect(JSON.stringify(useModelCalls(runtime)[2][1])).toContain(
+			"context_read_repair",
+		);
+		expect(dispatch).not.toHaveBeenCalled();
 	});
 	it("separates shared-room agents while preserving resumed Stage 1 affinity", async () => {
 		const captures: Array<{ key: string; messages: unknown }> = [];
@@ -4104,49 +4261,78 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
 	});
 
-	it("does not let a plugin-owned catalog provider enter Stage 1", async () => {
-		const description = "Complete registered routing description. ".repeat(40);
-		const providerText =
-			"Plugin-owned catalog reference content, not the framework routing catalog.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				contextRequests: ["CONTEXT_CATALOG"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Read the plugin reference.",
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{ id: "custom_catalog", description },
-		]);
-		runtime.providers = [
-			{ name: "CONTEXT_CATALOG", cacheStable: true, get: vi.fn() },
-		];
-		const state = makeState();
-		state.data.providers = {
-			CONTEXT_CATALOG: {
-				text: providerText,
-				discoveryText: "context_discovery: CONTEXT_CATALOG",
-			},
-		};
-		runtime.composeState = vi.fn(async () => structuredClone(state));
-		await expect(
-			runStage1({
+	it.each(["corrected", "persistent"])(
+		"keeps plugin-owned catalog bodies outside Stage 1 across bounded repair: %s",
+		async (mode) => {
+			const description = "Complete registered routing description. ".repeat(
+				40,
+			);
+			const providerText =
+				"Plugin-owned catalog reference content, not the framework routing catalog.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					contextRequests: ["CONTEXT_CATALOG"],
+					facts: ["UNVERIFIED_PLUGIN_CATALOG_FACT"],
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					contextRequests: mode === "persistent" ? ["CONTEXT_CATALOG"] : [],
+					replyText:
+						mode === "persistent" ? "" : "The plugin reference is unavailable.",
+				}),
+			]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const providerRead = vi.fn(async () => ({ text: providerText }));
+			runtime.contexts = new ContextRegistry([
+				{ id: "custom_catalog", description },
+			]);
+			runtime.providers = [
+				{ name: "CONTEXT_CATALOG", cacheStable: true, get: providerRead },
+			];
+			const state = makeState();
+			state.data.providers = {
+				CONTEXT_CATALOG: {
+					text: providerText,
+					discoveryText: "context_discovery: CONTEXT_CATALOG",
+				},
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			const run = runStage1({
 				runtime,
 				message: makeMessage({ channelType: ChannelType.DM }),
 				state,
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-			}),
-		).rejects.toThrow(
-			"Request only context providers listed as available for this turn.",
-		);
-		expect(useModelCalls(runtime)).toHaveLength(1);
-		expect(JSON.stringify(useModelCalls(runtime)[0][1])).not.toContain(
-			providerText,
-		);
-	});
+			});
+			if (mode === "persistent") {
+				await expect(run).rejects.toMatchObject({
+					code: "CONTEXT_DISCOVERY_INVALID_REQUEST",
+				});
+				expect(dispatch).not.toHaveBeenCalled();
+			} else {
+				const result = await run;
+				expect(result.kind).toBe("direct_reply");
+				if (result.kind === "direct_reply")
+					expect(result.result.responseContent?.text).toBe(
+						"The plugin reference is unavailable.",
+					);
+				expect(dispatch).toHaveBeenCalledTimes(1);
+				expect(dispatch.mock.calls[0][0].rawParsed.facts).toEqual([]);
+			}
+			expect(useModelCalls(runtime)).toHaveLength(2);
+			expect(JSON.stringify(useModelCalls(runtime))).not.toContain(
+				providerText,
+			);
+			expect(JSON.stringify(useModelCalls(runtime)[1][1])).toContain(
+				"context_read_repair",
+			);
+			expect(runtime.composeState).not.toHaveBeenCalled();
+			expect(providerRead).not.toHaveBeenCalled();
+		},
+	);
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {
 		const runtime = makeRuntime([
@@ -13120,9 +13306,18 @@ describe("explicit discovery survives planner surface construction", () => {
 		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
 			"DISCOVER_ACTIONS",
 		);
-		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
+		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
 			"MEMORY_SEARCH",
 		);
+		const afterDiscovery = calls[2][1] as { tools: Array<{ name: string }> };
+		expect(
+			afterDiscovery.tools.filter(({ name }) => name === "MEMORY_SEARCH"),
+		).toEqual(
+			firstPlanner.tools.filter(({ name }) => name === "MEMORY_SEARCH"),
+		);
+		expect(
+			afterDiscovery.tools.filter(({ name }) => name === "MEMORY_SEARCH"),
+		).toHaveLength(1);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply")
 			expect(result.result.responseContent?.text).toBe(answer);
@@ -13264,7 +13459,16 @@ describe("explicit discovery survives planner surface construction", () => {
 			);
 			expect(
 				firstPlanner.tools.some(({ name }) => name === "MEMORY_SEARCH"),
-			).toBe(hints.length === 0);
+			).toBe(true);
+			const afterDiscovery = calls[2][1] as { tools: Array<{ name: string }> };
+			expect(
+				afterDiscovery.tools.filter(({ name }) => name === "MEMORY_SEARCH"),
+			).toEqual(
+				firstPlanner.tools.filter(({ name }) => name === "MEMORY_SEARCH"),
+			);
+			expect(
+				afterDiscovery.tools.filter(({ name }) => name === "MEMORY_SEARCH"),
+			).toHaveLength(1);
 			expect(result.kind).toBe("planned_reply");
 			if (result.kind === "planned_reply")
 				expect(result.result.responseContent?.text).toBe(answer);
@@ -13538,10 +13742,14 @@ describe("explicit discovery survives planner surface construction", () => {
 			expect(planner.tools?.map((tool) => tool.name)).not.toContain(
 				"DISCOVER_TOOLS",
 			);
-			if (!includeDomain)
-				expect(planner.tools?.map((tool) => tool.name)).not.toContain(
-					"RUNTIME",
-				);
+			// Relevant contextual bootstrap may expose the domain before discovery;
+			// exposing its schema still cannot execute it or replace discovery.
+			expect(
+				planner.tools?.filter((tool) => tool.name === "RUNTIME"),
+			).toHaveLength(1);
+			expect(
+				planner.tools?.filter((tool) => tool.name === "DISCOVER_ACTIONS"),
+			).toHaveLength(1);
 			expect(domainHandler).not.toHaveBeenCalled();
 			if (result.kind === "planned_reply")
 				expect(result.result.responseContent?.text).toBe(

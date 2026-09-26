@@ -68,6 +68,7 @@ export type PlannedReplyClaimKind =
   | "financial_completion"
   | "financial_holding"
   | "stated_time"
+  | "view_navigation"
   | "empty_tracked_state";
 
 /** Discard stale or malformed optional projections; legacy full evidence remains usable. */
@@ -382,6 +383,64 @@ export type PlannedReplyEgressDecision =
       kind: PlannedReplyClaimKind;
     };
 
+/** Standalone confirmations about registered views need current identity or delivery evidence.
+ * This validates reply prose only; it never selects or authorizes an action.
+ */
+function navigationClaimIsUngrounded(args: {
+  reply: string;
+  providers?: StateData["providers"];
+  actionResults: readonly ActionResult[];
+}): boolean {
+  const evidence = args.providers?.VIEW_NAVIGATION?.data;
+  if (!Array.isArray(evidence?.views)) return false;
+  const views = evidence.views.filter(
+    (view): view is { id: string; label: string } =>
+      isRecord(view) &&
+      typeof view.id === "string" &&
+      typeof view.label === "string",
+  );
+  const claimed = views.find((view) =>
+    [view.id, view.label].some((name) => {
+      if (!name.trim()) return false;
+      const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const target = `(?:the\\s+)?${escaped}(?:\\s+(?:view|screen|app))?`;
+      return new RegExp(
+        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:is|are)\\s+(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target})[.!]*$`,
+        "iu",
+      ).test(args.reply.trim());
+    }),
+  );
+  if (!claimed) return false;
+  const claimsDelivery =
+    /^(?:Done[.!]?\s*[-—:]?\s*)?(?:I(?:['’]ve| have)?\s+)?opened\s/iu.test(
+      args.reply.trim(),
+    );
+  let currentViewId = claimsDelivery ? null : evidence.currentViewId;
+  for (const result of args.actionResults) {
+    const navigation = result.data?.navigation;
+    if (!isRecord(navigation) || navigation.effect !== "view_navigation")
+      continue;
+    if (result.success !== true || navigation.status !== "delivered") continue;
+    const view = result.data?.view;
+    // A delivered operation supersedes the entry-time UI snapshot. Invalid or
+    // mismatched receipts cannot fall back to that now-stale snapshot.
+    currentViewId =
+      isRecord(view) &&
+      result.transcriptVisibility === "internal" &&
+      typeof navigation.viewId === "string" &&
+      navigation.viewId === view.id &&
+      navigation.label === view.label &&
+      typeof navigation.handoffId === "string" &&
+      navigation.handoffId.length > 0 &&
+      result.values?.completedActionDelivered === true &&
+      result.values.viewId === navigation.viewId &&
+      result.values.completedActionHandoffId === navigation.handoffId
+        ? navigation.viewId
+        : null;
+  }
+  return currentViewId !== claimed.id;
+}
+
 /**
  * Final planned replies may assert only state proven by a matching action
  * receipt from this trajectory. Rejection degrades to an honest statement at
@@ -400,6 +459,9 @@ export function evaluatePlannedReplyEgress(args: {
 }): PlannedReplyEgressDecision {
   const reply = args.reply.trim();
   if (!reply) return { verdict: "allow" };
+  if (navigationClaimIsUngrounded(args)) {
+    return { verdict: "reject", kind: "view_navigation" };
+  }
   if (
     financialCompletionIsUngrounded(reply, args.actionResults, args.request)
   ) {
@@ -564,6 +626,9 @@ export async function resolvePlannedReplyEgress(args: {
       ...financialObservationProviders(args.providers),
       ...(reason === "stated_time" && args.providers?.CURRENT_TIME
         ? { CURRENT_TIME: args.providers.CURRENT_TIME }
+        : {}),
+      ...(reason === "view_navigation" && args.providers?.VIEW_NAVIGATION
+        ? { VIEW_NAVIGATION: args.providers.VIEW_NAVIGATION }
         : {}),
     },
   });

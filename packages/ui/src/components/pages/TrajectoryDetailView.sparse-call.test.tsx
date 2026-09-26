@@ -85,7 +85,7 @@ describe("sparse trajectory call rendering", () => {
     expect(JSON.stringify(call)).toBe(recorded);
   });
 
-  it("preserves multiple roles and nontext message fields in recorded alternatives", () => {
+  it("prefers complete native roles and nontext fields over flattened alternatives", () => {
     for (const messages of [
       [
         { role: "user", content: "Question" },
@@ -99,7 +99,7 @@ describe("sparse trajectory call rendering", () => {
         userPrompt: "Complete recorded alternative",
       });
       expect(buildTrajectoryCallText(call).inputText).toBe(
-        "Complete recorded alternative",
+        JSON.stringify(messages, null, 2),
       );
     }
   });

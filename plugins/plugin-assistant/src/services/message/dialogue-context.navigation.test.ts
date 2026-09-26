@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import {
   historicalActionResults,
-  historicalEffectReceipts,
+  historicalReceiptGroups,
 } from "./navigation-history";
 import { renderMessageHandlerModelInput } from "./stage1-input";
 
@@ -85,9 +85,9 @@ describe("historical navigation input", () => {
     ];
     marker.outcomeJson = JSON.stringify(outcome);
     expect(
-      historicalEffectReceipts(
+      historicalReceiptGroups(
         historicalActionResults(original, current, "agent"),
-      ),
+      ).effects,
     ).toEqual([{ actionName: "NOTES_DELETE", success: true, receipt }]);
     for (const changed of [
       { entityId: "other" },
@@ -126,9 +126,9 @@ describe("historical navigation input", () => {
     outcome.actionResults[0].effectReceipts[0].commit = null;
     marker.outcomeJson = JSON.stringify(outcome);
     expect(
-      historicalEffectReceipts(
+      historicalReceiptGroups(
         historicalActionResults(original, current, "agent"),
-      ),
+      ).effects,
     ).toEqual([]);
   });
   it("shares one evidence rule without dropping or rewriting any authorized outcome", () => {
@@ -189,8 +189,39 @@ describe("historical navigation input", () => {
       expect(wire.indexOf("runtime:historical_navigation_scope")).toBeLessThan(
         wire.indexOf("current_turn_boundary:"),
       );
-      for (const receipt of receipts)
-        expect(wire).toContain(JSON.stringify(receipt));
+      const tableSegment = input.promptSegments.find(
+        (segment) => segment.label === "runtime:historical_navigation_table",
+      );
+      const table = JSON.parse(tableSegment?.content.trim() ?? "{}");
+      expect(table.columns).toEqual(["requestSourceEventId", "navigation"]);
+      expect(table.receiptColumns).toEqual(["success", "receipt"]);
+      const decodedRows = table.rows.map(
+        ([source, navigation]: [string, [boolean, [number, unknown[]]][]]) => [
+          source,
+          navigation.map(([success, [shape, values]]) => [
+            success,
+            JSON.stringify(
+              Object.fromEntries(
+                table.receiptShapes[shape].map((key: string, index: number) => [
+                  key,
+                  values[index],
+                ]),
+              ),
+            ),
+          ]),
+        ],
+      );
+      expect(decodedRows).toEqual(
+        receipts.map((receipt) => [
+          receipt.requestSourceEventId,
+          receipt.navigation.map(
+            (entry: { success: boolean; receipt: string }) => [
+              entry.success,
+              entry.receipt,
+            ],
+          ),
+        ]),
+      );
     }
     expect(originals).toEqual(before);
   });

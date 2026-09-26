@@ -1,3 +1,7 @@
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+
+export { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+
 /**
  * Discovers installable plugins and apps from the local filesystem and merges
  * them into the registry map that backs `GET /api/apps`. Scans monorepo
@@ -9,7 +13,6 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   logger,
   packageNameToAppDisplayName,
@@ -113,63 +116,6 @@ const LOCAL_PLUGIN_TAG_STOPWORDS = new Set([
   "elizaos-plugins",
   "feature",
 ]);
-
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const p of paths) {
-    const resolved = path.resolve(p);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
-}
-
-export function resolveWorkspaceRootsForDiscovery(options: {
-  readonly moduleDir: string;
-  readonly cwd: string;
-  readonly envRoot?: string;
-}): string[] {
-  const envRoot = options.envRoot?.trim();
-  if (envRoot) return uniquePaths([envRoot]);
-  const packageRoot = path.resolve(options.moduleDir, "..", "..");
-  const cwd = options.cwd;
-  const roots = [
-    packageRoot,
-    cwd,
-    path.resolve(cwd, ".."),
-    path.resolve(cwd, "..", ".."),
-  ].filter((candidate): candidate is string => Boolean(candidate));
-
-  // Monorepos (e.g. Eliza) hoist `@elizaos/*` under the repo root, while this
-  // module lives in `packages/agent`. When the process cwd is deep (`apps/...`,
-  // Electrobun bundle, etc.), cwd-based roots never reach that `node_modules`.
-  // Walk up from the agent package so `getPluginInfo` can resolve vendored
-  // workspace plugins for install.
-  let walk = path.resolve(packageRoot);
-  for (let depth = 0; depth < 8; depth += 1) {
-    roots.push(walk);
-    const parent = path.dirname(walk);
-    if (parent === walk) break;
-    walk = parent;
-  }
-
-  const anchors = new Set([path.resolve(packageRoot), path.resolve(cwd)]);
-  return uniquePaths(roots).filter(
-    (candidate) =>
-      anchors.has(candidate) || !path.basename(candidate).startsWith("."),
-  );
-}
-
-function resolveWorkspaceRoots(): string[] {
-  return resolveWorkspaceRootsForDiscovery({
-    moduleDir: path.dirname(fileURLToPath(import.meta.url)),
-    cwd: process.cwd(),
-    envRoot: process.env.ELIZA_WORKSPACE_ROOT,
-  });
-}
 
 function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {
   return (
@@ -498,7 +444,7 @@ async function discoverLocalWorkspaceApps(): Promise<
     { packageDir: string; dirName: string }
   >();
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const discoveredRoots = new Map<string, boolean>();
     const addDiscoveredRoot = (
       root: string,
@@ -656,7 +602,7 @@ async function discoverNodeModulePlugins(): Promise<
 > {
   const discovered = new Map<string, RegistryPluginInfo>();
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const elizaosDir = path.join(workspaceRoot, "node_modules", "@elizaos");
     const entries = await readDirectoryEntries(elizaosDir, "@elizaos dir", {
       suppressMissing: true,
@@ -719,7 +665,7 @@ async function discoverPackagesFolderPlugins(): Promise<
 > {
   const discovered = new Map<string, RegistryPluginInfo>();
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const packagesDir = path.join(workspaceRoot, "packages");
     const entries = await readDirectoryEntries(packagesDir, "packages dir", {
       suppressMissing: true,

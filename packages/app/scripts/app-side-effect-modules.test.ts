@@ -23,7 +23,7 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
-function fixture(registration: unknown, source: string) {
+function fixture(registration: unknown, source: string, leafSource?: string) {
   const directory = mkdtempSync(
     path.join(os.tmpdir(), "app-root-registration-"),
   );
@@ -36,11 +36,16 @@ function fixture(registration: unknown, source: string) {
     JSON.stringify({
       name: "fixture-app-registration",
       type: "module",
-      exports: { ".": "./src/index.ts" },
+      exports: {
+        ".": "./src/index.ts",
+        ...(leafSource ? { "./register": "./src/register.ts" } : {}),
+      },
       elizaos: { appRegister: registration },
     }),
   );
   writeFileSync(path.join(plugin, "src/index.ts"), source);
+  if (leafSource)
+    writeFileSync(path.join(plugin, "src/register.ts"), leafSource);
   mkdirSync(path.join(directory, "node_modules"));
   symlinkSync(
     plugin,
@@ -58,6 +63,34 @@ function fixture(registration: unknown, source: string) {
 }
 
 describe("root app registration", () => {
+  it("executes the declared browser leaf without evaluating a server root barrel", () => {
+    const { directory } = fixture(
+      { export: "registerApp", subpath: "register" },
+      'throw new Error("Server-only package root must not execute");',
+      `import { writeFileSync } from 'node:fs'; export function registerApp() { writeFileSync(new URL('./leaf-receipt', import.meta.url), 'registered'); }`,
+    );
+    const runner = path.join(directory, "leaf-runner.ts");
+    writeFileSync(
+      runner,
+      `import { loaders } from './registration.mjs'; await loaders[0].load();`,
+    );
+    execFileSync(process.execPath, [runner], { cwd: directory });
+    expect(
+      readFileSync(
+        path.join(directory, "plugins/plugin-fixture/src/leaf-receipt"),
+        "utf8",
+      ),
+    ).toBe("registered");
+  });
+  it("rejects a registration leaf escaping package ownership", () => {
+    expect(() =>
+      fixture(
+        { export: "registerApp", subpath: "../server" },
+        "export function registerApp() {}",
+      ),
+    ).toThrow("subpath must name a package leaf");
+  });
+
   it("calls the named root export only when the generated loader runs", () => {
     const { directory } = fixture(
       { export: "registerApp" },

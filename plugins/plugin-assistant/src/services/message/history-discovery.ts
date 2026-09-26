@@ -2,9 +2,11 @@
  * effects. Original context events remain intact; only Stage-1 rendering changes. */
 
 import type {
+  ContextEvent,
   ContextObject,
   ContextObjectPromptSegment,
   JSONSchema,
+  JsonValue,
   PromptSegment,
 } from "@elizaos/core";
 import {
@@ -12,11 +14,13 @@ import {
   completionContextSources,
   ElizaError,
   parseCompletionContextSelection,
+  selectHistoricalNavigation,
 } from "@elizaos/core";
 import {
   type HistoryRetentionCheckpoint,
   type HistoryRetentionScope,
   includeLinkedSources,
+  validateHistoryRetention,
   visibleHistoryEventIds,
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
@@ -85,9 +89,11 @@ export function withReviewedHistorySelection(
           complete: {
             ...complete,
             ...(nativeRead ? { enum: [true] } : {}),
-            description: nativeRead
-              ? "HANDLE_RESPONSE certifies that this request’s dialogue dependencies are resolved from supplied originals. If any remain missing or uncertain, choose READ_CONTEXT instead; never certify unseen content."
-              : "True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content. This certifies source selection, not completion of future tool work.",
+            description:
+              (nativeRead
+                ? "HANDLE_RESPONSE certifies that this request’s dialogue dependencies are resolved from supplied originals. If any remain missing or uncertain, choose READ_CONTEXT instead; never certify unseen content."
+                : "True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content.") +
+              " This certifies source selection, not completion of future tool work.",
           },
         },
       },
@@ -131,6 +137,8 @@ const QUOTATION_ENDS = new Map([
 ]);
 
 export interface HistoryDiscovery {
+  /** Complete background review; distinct from current-request relevance. */
+  checkpoint?: HistoryRetentionCheckpoint;
   sourceSetId: string;
   scope: HistoryRetentionScope;
   visibleEventIds: ReadonlySet<string>;
@@ -169,6 +177,8 @@ export function projectReviewedHistory(
   );
   const projection = {
     sourceSetId: bound.sourceSetId,
+    checkpoint:
+      validateHistoryRetention(context, scope, checkpoint) ?? undefined,
     scope,
     visibleEventIds: visible,
     loadedSourceIds: new Set<string>(),
@@ -199,6 +209,86 @@ export function projectReviewedHistory(
   ))
     projection.loadedSourceIds.add(source.id);
   return projection;
+}
+
+/** Keep canonical events intact; metadata carries only a validated rendering view. */
+export function withBackgroundHistory(
+  context: ContextObject,
+  history?: HistoryDiscovery,
+): ContextObject {
+  if (
+    !history?.checkpoint ||
+    history.sourceSetId !== completionContextSources(context).sourceSetId
+  )
+    return context;
+  return {
+    ...context,
+    metadata: {
+      ...context.metadata,
+      backgroundHistory: {
+        sourceSetId: history.sourceSetId,
+        scope: history.scope,
+        checkpoint: history.checkpoint,
+        loadedSourceIds: [...history.loadedSourceIds],
+      } as unknown as JsonValue,
+    },
+  };
+}
+
+/** Revalidate the complete review and exact current-turn originals on every view. */
+export function projectBackgroundHistory(context: ContextObject) {
+  const full = { context, applied: false, omittedSourceCount: 0 };
+  // Any explicit foreground review owns its fallback semantics, including full.
+  if (context.metadata?.completionContext !== undefined) return full;
+  const raw = context.metadata?.backgroundHistory;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return full;
+  const view = raw as unknown as {
+    sourceSetId: string;
+    scope: HistoryRetentionScope;
+    checkpoint: HistoryRetentionCheckpoint;
+    loadedSourceIds: string[];
+  };
+  if (
+    !view.scope ||
+    !Array.isArray(view.scope.roles) ||
+    !Array.isArray(view.loadedSourceIds)
+  )
+    return full;
+  const bound = completionContextSources(context);
+  if (view.sourceSetId !== bound.sourceSetId) return full;
+  let history: HistoryDiscovery | undefined;
+  try {
+    history = projectReviewedHistory(context, view.scope, view.checkpoint);
+  } catch {
+    // error-policy:J3 Invalid optional projection metadata retains full originals.
+    return full;
+  }
+  if (
+    !history ||
+    view.loadedSourceIds.some(
+      (id) => !bound.sources.some((source) => source.id === id),
+    )
+  )
+    return full;
+  const included = new Set(history.visibleEventIds);
+  for (const source of bound.sources)
+    if (view.loadedSourceIds.includes(source.id)) included.add(source.event.id);
+  const omitted = new Set<ContextEvent>(
+    bound.sources
+      .filter((source) => !included.has(source.event.id))
+      .map((source) => source.event),
+  );
+  if (!omitted.size) return full;
+  return {
+    context: {
+      ...context,
+      events: selectHistoricalNavigation(context, included).events.filter(
+        (event) => !omitted.has(event),
+      ),
+    },
+    applied: true,
+    omittedSourceCount: omitted.size,
+  };
 }
 
 export function historyReferences(
@@ -270,6 +360,15 @@ export function requestedHistory(
   // Native read decisions select references, not completion sources. Their
   // names were authorized above; the ordinary fresh read barrier still runs.
   if (explicitRead) return requested;
+  // A complete background review permits its advertised view without assigning
+  // foreground relevance. Explicit malformed/incomplete selections still restore.
+  if (
+    raw &&
+    !("completionContext" in raw) &&
+    projection.checkpoint &&
+    validateHistoryRetention(context, projection.scope, projection.checkpoint)
+  )
+    return requested;
   if (explicit.length > 0 && requested.length === 0) return [];
   if (
     !selection ||

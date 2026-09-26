@@ -38,6 +38,7 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { viewsAction } from "../actions/views.ts";
 import { registerAttachmentKnowledgeBackfillWorker } from "../api/attachment-knowledge-backfill.ts";
 import { registerAttachmentKnowledgeIngestHook } from "../api/attachment-knowledge-ingest.ts";
 import {
@@ -86,6 +87,10 @@ import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
 import { retainedPendantSchema } from "./retained-pendant-schema.ts";
+import {
+  viewNavigationEvaluator,
+  viewNavigationField,
+} from "./view-navigation.ts";
 export type ElizaPluginConfig = {
   workspaceDir?: string;
   sessionStorePath?: string;
@@ -187,7 +192,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundUploadImageRoute,
       ...filesRoutes,
     ],
+    responseHandlerFieldEvaluators: [viewNavigationField],
+    responseHandlerEvaluators: [viewNavigationEvaluator],
     actions: [
+      ...promoteSubactionsToActions(viewsAction),
       terminalAction,
       ...promoteSubactionsToActions(triggerAction),
       pageDelegateAction,

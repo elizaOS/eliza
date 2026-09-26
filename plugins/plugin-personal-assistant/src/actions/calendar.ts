@@ -1185,15 +1185,17 @@ async function guardProtectedSleepCreate(args: {
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
     description:
-      "Read the full unfiltered agenda. For whole dates use details.date and optional inclusive endDate with timeZone; for partial days use timeMin/timeMax. A date-only request or no-keyword-filter request belongs here, not search_events.",
+      "Read the full unfiltered agenda within a date or time range, including elapsed events. For whole dates use details.date and optional inclusive endDate with timeZone; for partial days use timeMin/timeMax. Omitted bounds mean today, not the next upcoming event. Use CALENDAR_NEXT_EVENT for the single next event relative to now, including across dates; if it is not loaded, discover that exact operation. Do not pass next_event to CALENDAR_FEED. Use search_events for an event-content filter.",
     descriptionCompressed:
-      "full unfiltered agenda/date/time-range; dates are bounds, not keywords",
+      "bounded unfiltered agenda, may include past events; next upcoming event -> CALENDAR_NEXT_EVENT",
     required: [],
     optional: ["intent", "details"],
   },
   next_event: {
-    description: "Next upcoming event.",
-    descriptionCompressed: "next upcoming event",
+    description:
+      "Read the single next ongoing or upcoming event relative to now, including after today. Use this for next-event requests, even without a title/keyword filter; feed only reads a bounded agenda and may contain entirely elapsed events.",
+    descriptionCompressed:
+      "single next ongoing or upcoming event relative to now",
     required: [],
     optional: ["intent", "details"],
   },
@@ -1608,6 +1610,8 @@ export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
+  historicalObservationOperations:
+    googleCalendarAction.historicalObservationOperations,
   // Keep optional operation-specific details optional in provider tool schemas.
   toolSchemaStrict: false,
   similes: [

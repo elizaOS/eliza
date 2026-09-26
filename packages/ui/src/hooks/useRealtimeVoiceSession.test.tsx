@@ -358,6 +358,80 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.status).toBe("idle");
   });
 
+  it("does not resume cancelled speech from queued frames after barge-in", async () => {
+    const { options, ws, pbCtx } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const starting = beginStart(result);
+    await waitFor(() => expect(ws.sockets).toHaveLength(1));
+    const sock = await driveReady(ws);
+    await starting;
+    await waitFor(() => expect(result.current.status).toBe("listening"));
+
+    await act(async () => {
+      sock.emitControl({ t: "stt_final", text: "Read my note", traceId: "T1" });
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(4096).fill(1));
+      await flushAsync();
+    });
+    expect(result.current.agentSpeaking).toBe(true);
+    await act(async () => {
+      result.current.bargeIn();
+      sock.emitControl({ t: "llm_first_text", traceId: "T1" });
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(4096).fill(1));
+      await flushAsync();
+    });
+    expect(result.current.agentSpeaking).toBe(false);
+    expect(result.current.status).toBe("listening");
+    expect(pbCtx.scriptNode?.render(4096).every((sample) => sample === 0)).toBe(
+      true,
+    );
+    await act(async () => {
+      sock.emitControl({ t: "stt_final", text: "Next note", traceId: "T2" });
+      sock.emitControl({ t: "speaking_start", traceId: "T2" });
+      sock.emitAudio(new Uint8Array(4096).fill(1));
+      await flushAsync();
+    });
+    expect(result.current.agentSpeaking).toBe(true);
+    expect(pbCtx.scriptNode?.render(4096).some((sample) => sample !== 0)).toBe(
+      true,
+    );
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
+  it("keeps speaking through final text and usage until the device drains audio", async () => {
+    const { options, ws, pbCtx } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const starting = beginStart(result);
+    await waitFor(() => expect(ws.sockets).toHaveLength(1));
+    const sock = await driveReady(ws);
+    await starting;
+    await waitFor(() => expect(result.current.status).toBe("listening"));
+    await act(async () => {
+      sock.emitControl({ t: "stt_final", text: "Read my note", traceId: "T1" });
+      sock.emitControl({ t: "progress", text: "Checking.", traceId: "T1" });
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(8192).fill(1));
+      sock.emitControl({ t: "llm_first_text", traceId: "T1" });
+      sock.emitControl({ t: "speaking_end", traceId: "T1" });
+      sock.emitControl({ t: "usage", traceId: "T1" });
+      await flushAsync();
+    });
+    expect(result.current.status).toBe("speaking");
+    expect(result.current.agentSpeaking).toBe(true);
+    await act(async () => {
+      pbCtx.scriptNode?.render(8192);
+      await flushAsync();
+    });
+    expect(result.current.status).toBe("listening");
+    expect(result.current.agentSpeaking).toBe(false);
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("does not report active until socket open + server ready + mic capturing (truthful `active`)", async () => {
     const { options, ws, micCtx } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));

@@ -4,12 +4,16 @@
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
-import type { CompletionContextSelection } from "../types/components";
+import type {
+	ActionParameterSchema,
+	CompletionContextSelection,
+} from "../types/components";
 import type {
 	ContextEvent,
 	ContextObject,
 	ContextSegmentEvent,
 } from "../types/context-object";
+import { normalizeEffectReceipt } from "../types/effects";
 import type { JSONSchema } from "../types/model";
 import { hashStableJson } from "./context-hash";
 
@@ -20,7 +24,7 @@ export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `History selection: use
 Use relevant_prior_dialogue with complete=true when dependencies are resolved (an empty selection is valid), otherwise all_prior_dialogue with complete=false. Exhaustive dialogue coverage needs all originals; live-record questions need tools. Use the sourceSetId required by the response schema. Current request, system/provider constraints and receipts remain complete; selection proves relevance, never execution.`;
 
 /** Shared static and registered Stage-1 wire schema. */
-export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
+export const COMPLETION_CONTEXT_SCHEMA = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
@@ -72,7 +76,7 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 		"referentSourceIds",
 		"pendingIntentSourceIds",
 	],
-};
+} satisfies JSONSchema & ActionParameterSchema;
 
 /** A labeled history always supplies its source-set identity. Keep the schema
  * static across such turns, but do not offer an empty-ID escape hatch that
@@ -207,7 +211,7 @@ export function collectCompletionContextSources(
 	return sources;
 }
 
-function isHistoricalNavigationEvent(
+function isHistoricalRequestEvidenceEvent(
 	event: ContextEvent,
 ): event is ContextSegmentEvent {
 	if (
@@ -222,7 +226,8 @@ function isHistoricalNavigationEvent(
 		typeof segment === "object" &&
 		!Array.isArray(segment) &&
 		"label" in segment &&
-		segment.label === "runtime:historical_navigation" &&
+		(segment.label === "runtime:historical_navigation" ||
+			segment.label === "runtime:historical_observations") &&
 		"content" in segment &&
 		typeof segment.content === "string" &&
 		"id" in segment &&
@@ -230,7 +235,8 @@ function isHistoricalNavigationEvent(
 	);
 }
 
-/** Historical navigation is evidence for its original request, not a new task.
+/** Historical navigation and owner-declared read observations follow their
+ * original requests, never current state or mutation authority.
  * Only known, unambiguous request bindings may follow a history projection.
  * Unknown or malformed records stay inline; originals are never modified. */
 export function selectHistoricalNavigation(
@@ -240,10 +246,18 @@ export function selectHistoricalNavigation(
 	const sources = collectCompletionContextSources(context);
 	if (sources.length === 0) return context;
 	const known = new Set(sources.map(({ event }) => event.id));
+	const requests = new Set(
+		sources
+			.filter((source) => source.event.segment.label === "prior_message:user")
+			.map((source) => source.event.id),
+	);
+	const eventIdCounts = new Map<string, number>();
+	for (const event of context.events)
+		eventIdCounts.set(event.id, (eventIdCounts.get(event.id) ?? 0) + 1);
 	return {
 		...context,
 		events: context.events.filter((event) => {
-			if (!isHistoricalNavigationEvent(event)) return true;
+			if (!isHistoricalRequestEvidenceEvent(event)) return true;
 			try {
 				const receipt: unknown = JSON.parse(event.segment.content);
 				if (
@@ -255,6 +269,43 @@ export function selectHistoricalNavigation(
 					!known.has(receipt.requestSourceEventId)
 				)
 					return true;
+				if (event.segment.label === "runtime:historical_observations") {
+					// The message-service collector owns exact operation admission. This
+					// boundary independently rejects unsafe or unfamiliar receipt shapes.
+					if (
+						eventIdCounts.get(event.id) !== 1 ||
+						!requests.has(receipt.requestSourceEventId) ||
+						Object.keys(receipt).sort().join(",") !==
+							"observations,requestSourceEventId,scope" ||
+						!("scope" in receipt) ||
+						typeof receipt.scope !== "string" ||
+						!receipt.scope.trim() ||
+						!("observations" in receipt) ||
+						!Array.isArray(receipt.observations) ||
+						!receipt.observations.length ||
+						!receipt.observations.every((observation) => {
+							if (
+								!observation ||
+								typeof observation !== "object" ||
+								Array.isArray(observation) ||
+								Object.keys(observation).sort().join(",") !==
+									"actionName,receipt,success" ||
+								typeof observation.actionName !== "string" ||
+								!observation.actionName.trim() ||
+								observation.success !== true
+							)
+								return false;
+							const normalized = normalizeEffectReceipt(observation.receipt);
+							return (
+								normalized.outcome === "noop" &&
+								!normalized.idempotency.replayed &&
+								hashStableJson(normalized) ===
+									hashStableJson(observation.receipt)
+							);
+						})
+					)
+						return true;
+				}
 				return includedEventIds.has(receipt.requestSourceEventId);
 			} catch {
 				// error-policy:J3 A malformed binding cannot authorize context omission.
@@ -276,7 +327,9 @@ export function completionContextSources(context: ContextObject): {
 			roomId: context.metadata?.roomId,
 			messageId: context.metadata?.messageId,
 			sources: sources.map(({ id, event }) => ({ id, event })),
-			navigationEvidence: context.events.filter(isHistoricalNavigationEvent),
+			navigationEvidence: context.events.filter(
+				isHistoricalRequestEvidenceEvent,
+			),
 		}),
 		sources,
 	};

@@ -15,11 +15,12 @@ describe("normalizeCalendarAttendees (planner-arg sanitization)", () => {
     [{ email: "sam@acme.co", displayName: "Sam" }, "marco"],
     [{ displayName: "Sam" }],
     [null],
+    [{ email: "11:15:00" }, { email: "America/Los_Angeles" }],
   ])(
     "rejects unresolved proposals without dropping guests from the list: %j",
     (...attendees) => {
       expect(() => normalizeCalendarAttendees({ attendees })).toThrow(
-        "email address is not verified",
+        "generated details.attendees arguments are malformed",
       );
     },
   );
