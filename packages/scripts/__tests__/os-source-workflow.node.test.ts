@@ -46,7 +46,7 @@ case "$1" in
       healthy) printf '%s\\n' ' ${commit} dependency' ;;
       *) exit 43 ;;
     esac ;;
-  show) echo '2026-09-24T00:00:00Z' ;;
+  show) echo '2026-09-23T17:00:00-07:00' ;;
   *) exit 44 ;;
 esac
 `,

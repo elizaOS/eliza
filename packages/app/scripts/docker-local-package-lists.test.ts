@@ -1,7 +1,10 @@
 /** Tests manifest-driven Docker runtime closure with real isolated workspace manifests. */
+
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { collectDockerWorkspaceDirs } from "./collect-docker-runtime-deps.ts";
 
@@ -26,6 +29,24 @@ afterEach(() => {
 });
 
 describe("Docker runtime dependency closure", () => {
+  it("emits the JavaScript dependencies required by the shipped UI exports", () => {
+    const names = execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(
+          new URL("./collect-docker-runtime-deps.ts", import.meta.url),
+        ),
+        "--names",
+      ],
+      { encoding: "utf8" },
+    )
+      .trim()
+      .split("\n");
+    expect(names).toContain("@capacitor/core");
+    expect(names).toContain("@radix-ui/react-tooltip");
+    expect(names).not.toContain("@capacitor/cli");
+  });
+
   it("includes transitive and cyclic runtime dependencies once, without development or optional dependencies", () => {
     const root = workspace({
       agent: {
@@ -64,7 +85,7 @@ describe("Docker runtime dependency closure", () => {
     );
   });
 
-  it("keeps UI linked without expanding its browser-only dependency tree", () => {
+  it("includes UI runtime dependencies loaded through plugin exports", () => {
     const root = workspace({
       agent: {
         name: "@elizaos/agent",
@@ -72,13 +93,17 @@ describe("Docker runtime dependency closure", () => {
       },
       ui: {
         name: "@elizaos/ui",
-        dependencies: { "browser-only": "workspace:*" },
+        dependencies: { "@elizaos/auth": "workspace:*" },
+        devDependencies: { "browser-build-only": "workspace:*" },
+      },
+      auth: {
+        name: "@elizaos/auth",
       },
     });
     expect(
       collectDockerWorkspaceDirs(root, ["packages/agent"]).map((dir) =>
         path.relative(root, dir),
       ),
-    ).toEqual(["packages/agent", "packages/ui"]);
+    ).toEqual(["packages/agent", "packages/ui", "packages/auth"]);
   });
 });
