@@ -5,6 +5,7 @@ import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_MTP_TIER_IDS,
+	ELIZA_1_PUBLISHED_ARTIFACT_BYTES,
 	ELIZA_1_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
@@ -12,7 +13,10 @@ import {
 	MODEL_CATALOG,
 	tierBundleSlug,
 } from "./catalog";
-import { recommendForFirstRun } from "./recommendation";
+import {
+	catalogDownloadSizeBytes,
+	recommendForFirstRun,
+} from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
@@ -35,6 +39,38 @@ describe("local inference catalog", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			expect(model.id.startsWith("eliza-1-")).toBe(true);
 		}
+	});
+
+	it("derives offered sizes from the published artifact bytes (#30652)", () => {
+		const GIB = 1024 ** 3;
+		for (const model of MODEL_CATALOG) {
+			const bytes =
+				ELIZA_1_PUBLISHED_ARTIFACT_BYTES[
+					model.id as keyof typeof ELIZA_1_PUBLISHED_ARTIFACT_BYTES
+				];
+			expect(bytes, `${model.id} has no artifact sizes`).toBeTruthy();
+			// Text weights (RAM fit) match the hosted text GGUF.
+			expect(model.sizeGb).toBeCloseTo(bytes.textBytes / GIB, 1);
+			// The RAM floor always leaves room for weights, overhead, and KV.
+			expect(model.minRamGb).toBeGreaterThan(model.sizeGb + 1);
+			if (model.publishStatus === "published") {
+				// The offer is the whole bundle the downloader fetches.
+				expect(bytes.downloadBytes).toBeGreaterThan(bytes.textBytes);
+				expect(model.downloadSizeGb).toBeCloseTo(
+					(bytes.downloadBytes ?? 0) / GIB,
+					1,
+				);
+				expect(
+					Math.abs(
+						catalogDownloadSizeBytes(model) - (bytes.downloadBytes ?? 0),
+					),
+				).toBeLessThan(0.05 * GIB);
+			}
+		}
+		// Observed on native macOS first-run: 7,515,535,183 bytes transferred.
+		const twoB = findCatalogModel("eliza-1-2b");
+		expect(twoB?.downloadSizeGb).toBe(7);
+		expect(twoB?.sizeGb).toBe(4.6);
 	});
 
 	it("uses eliza-1 size ids as user-facing display names", () => {

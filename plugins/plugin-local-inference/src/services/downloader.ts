@@ -691,7 +691,11 @@ export class Downloader {
 			modelId,
 			state: "queued",
 			received: 0,
-			total: Math.round(catalogEntry.sizeGb * 1024 ** 3),
+			// Whole-bundle bytes, so the disk preflight and progress reflect what
+			// is actually fetched (not just the text GGUF).
+			total: Math.round(
+				(catalogEntry.downloadSizeGb ?? catalogEntry.sizeGb) * 1024 ** 3,
+			),
 			bytesPerSec: 0,
 			etaMs: null,
 			startedAt: new Date().toISOString(),

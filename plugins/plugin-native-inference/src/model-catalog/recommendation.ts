@@ -123,18 +123,23 @@ export function classifyRecommendationPlatform(
   return "desktop-cpu";
 }
 
+/**
+ * What the user actually downloads: the whole bundle (`downloadSizeGb`) when
+ * the catalog knows it, else the text weights. Never use `sizeGb` alone for a
+ * download offer — it is the text GGUF, not the bundle.
+ */
 export function catalogDownloadSizeGb(
   model: CatalogModel,
   _catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): number {
-  return model.sizeGb;
+  return model.downloadSizeGb ?? model.sizeGb;
 }
 
 export function catalogDownloadSizeBytes(
   model: CatalogModel,
-  _catalog: readonly CatalogModel[] = MODEL_CATALOG,
+  catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): number {
-  return Math.round(model.sizeGb * BYTES_PER_GB);
+  return Math.round(catalogDownloadSizeGb(model, catalog) * BYTES_PER_GB);
 }
 
 function effectiveMemoryGb(probe: HardwareProbe): number {

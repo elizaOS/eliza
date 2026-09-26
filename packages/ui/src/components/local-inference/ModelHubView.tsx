@@ -16,6 +16,7 @@ import type {
   ModelBucket,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { catalogDownloadSizeGb } from "../../services/local-inference/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
@@ -155,7 +156,7 @@ function ModelListRow({
   const modelMeta = [
     model.params,
     model.quant,
-    `${model.sizeGb.toFixed(1)} GB`,
+    `${catalogDownloadSizeGb(model).toFixed(1)} GB`,
   ];
 
   return (

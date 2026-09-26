@@ -402,7 +402,15 @@ export interface CatalogModel {
 	/** Optional human-facing parameter label when `params` is normalized. */
 	parameterLabel?: string;
 	quant: string;
+	/** Primary text GGUF size (GiB); feeds RAM-fit math, not download offers. */
 	sizeGb: number;
+	/**
+	 * Total bytes (GiB) the downloader fetches for this entry — for a bundle,
+	 * the manifest plus every installed component. Download offers, disk
+	 * preflight and progress totals use this; falls back to `sizeGb` when
+	 * absent (no published bundle).
+	 */
+	downloadSizeGb?: number;
 	/** Minimum system RAM (GB) we recommend before offering this model. */
 	minRamGb: number;
 	category: ModelCategory;

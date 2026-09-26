@@ -38,7 +38,8 @@ describe("memory benchmark report", () => {
 					lastUsedAt: null,
 				} satisfies InstalledModel,
 			],
-			hardware: hardware(4.5),
+			// 2B's floor is its 4.6 GiB text GGUF + KV reserve + overhead (8 GB).
+			hardware: hardware(8),
 		});
 		const twoB = plan.find((model) => model.modelId === "eliza-1-2b");
 		expect(twoB?.installed).toBe(true);

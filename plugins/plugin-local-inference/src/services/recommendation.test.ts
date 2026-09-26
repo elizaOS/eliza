@@ -292,8 +292,9 @@ describe("model-fit + smaller-fallback ladder (#8848)", () => {
 	});
 
 	it("preserves the runtime mobile ladder while requiring explicit ARM backend support", () => {
+		// 12 GB clears the 4B floor (7.5 GiB text GGUF + KV + overhead).
 		const supportedMobile = probe({
-			totalRamGb: 8,
+			totalRamGb: 12,
 			arch: "arm64",
 			cpuFeatures: { neon: true },
 			mobile: { platform: "android" },

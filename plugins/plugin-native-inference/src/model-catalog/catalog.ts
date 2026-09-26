@@ -272,11 +272,56 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = ["turbo3", "turbo4"];
 
+/**
+ * Byte sizes of the hosted `elizaos/eliza-1` artifacts, cut from the Hugging
+ * Face tree and the published manifests (checked 2026-09-26). The catalog's
+ * `sizeGb` (text weights, used for RAM fit) and `downloadSizeGb` (everything
+ * the downloader fetches, used for the offer, disk preflight and progress) are
+ * derived from these numbers instead of hand-typed estimates.
+ *
+ *   - `textBytes`: the primary text GGUF (`files.text`).
+ *   - `downloadBytes`: the manifest plus every file `collectBundleFiles`
+ *     installs (text, voice, asr, vision, mtp, cache, embedding, vad,
+ *     wakeword; `imagegen` is fetched on demand and excluded). Absent for
+ *     pending tiers, which publish no manifest and cannot be downloaded.
+ */
+export const ELIZA_1_PUBLISHED_ARTIFACT_BYTES: Readonly<
+  Record<Eliza1TierId, { textBytes: number; downloadBytes?: number }>
+> = {
+  // bundles/e2b, manifest 0.0.1-local.1-gemma4.
+  "eliza-1-2b": { textBytes: 4_967_494_592, downloadBytes: 7_515_535_183 },
+  // bundles/e4b, manifest 1.0.0-weights-staged.2-gemma4.
+  "eliza-1-4b": { textBytes: 8_031_240_160, downloadBytes: 11_533_330_266 },
+  // Pending tiers: only the (pre-Gemma-cutover) text GGUF is hosted.
+  "eliza-1-9b": { textBytes: 7_381_381_632 },
+  "eliza-1-27b": { textBytes: 18_687_045_248 },
+  "eliza-1-27b-256k": { textBytes: 18_687_045_248 },
+};
+
+const BYTES_PER_GIB = 1024 ** 3;
+
+function bytesToCatalogGb(bytes: number): number {
+  return Number((bytes / BYTES_PER_GIB).toFixed(1));
+}
+
+function tierTextSizeGb(id: Eliza1TierId): number {
+  return bytesToCatalogGb(ELIZA_1_PUBLISHED_ARTIFACT_BYTES[id].textBytes);
+}
+
+function tierDownloadSizeGb(id: Eliza1TierId): number | undefined {
+  const bytes = ELIZA_1_PUBLISHED_ARTIFACT_BYTES[id].downloadBytes;
+  return bytes === undefined ? undefined : bytesToCatalogGb(bytes);
+}
+
 interface TierSpec {
   id: Eliza1TierId;
   params: CatalogModel["params"];
   parameterLabel?: CatalogModel["parameterLabel"];
-  sizeGb: number;
+  /**
+   * RAM floor: text weights (`tierTextSizeGb`) + a native-window KV reserve +
+   * ~1 GB runtime overhead. `device-fit.ts` derives the per-token KV rate from
+   * `minRamGb - sizeGb - 1`, so this must stay above the weights.
+   */
   minRamGb: number;
   bucket: CatalogModel["bucket"];
   contextLength: number;
@@ -305,9 +350,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-2b": {
     id: "eliza-1-2b",
     params: "2B",
-    sizeGb: 1.4,
-    minRamGb: 4,
-    q4MinRamGb: 4,
+    // 4.6 GiB text GGUF + 1.6 GB KV reserve + 1 GB overhead.
+    minRamGb: 8,
+    q4MinRamGb: 8,
     bucket: "small",
     contextLength: 131072,
     textContextSuffix: "128k",
@@ -323,15 +368,13 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-4b": {
     id: "eliza-1-4b",
     params: "4B",
-    sizeGb: 2.6,
-    // 4B is the shipped mid/mobile tier. The 2.6 GB Q4_K_M weights are sized
-    // for a 128k Eliza-1 bundle on the Gemma 4 E4B base. Gemma KV is already
-    // minimal (MQA + windowed-SWA + shared-KV) so the runtime ships stock KV
-    // (f16/q8_0) — the legacy head_dim=128 QJL/Polar kernels do not apply to
-    // Gemma's dual head dims (512 global / 256 swa). The floor stays above the
-    // model size to leave headroom for the OS, app, and KV cache.
-    minRamGb: 6,
-    q4MinRamGb: 6,
+    // 4B is the shipped mid tier on the Gemma 4 E4B base (7.5 GiB text GGUF).
+    // Gemma KV is already minimal (MQA + windowed-SWA + shared-KV) so the
+    // runtime ships stock KV (f16/q8_0) — the legacy head_dim=128 QJL/Polar
+    // kernels do not apply to Gemma's dual head dims (512 global / 256 swa).
+    // The floor is weights + 2.4 GB KV reserve + 1 GB overhead.
+    minRamGb: 11,
+    q4MinRamGb: 11,
     bucket: "mid",
     contextLength: 131072,
     textContextSuffix: "128k",
@@ -344,9 +387,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-9b": {
     id: "eliza-1-9b",
     params: "9B",
-    sizeGb: 5.4,
-    minRamGb: 12,
-    q4MinRamGb: 12,
+    // 6.9 GiB hosted text GGUF + 5.6 GB KV reserve + 1 GB overhead.
+    minRamGb: 14,
+    q4MinRamGb: 14,
     bucket: "large",
     contextLength: 131072,
     textContextSuffix: "128k",
@@ -360,9 +403,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-27b": {
     id: "eliza-1-27b",
     params: "27B",
-    sizeGb: 16.8,
-    minRamGb: 32,
-    q4MinRamGb: 32,
+    // 17.4 GiB hosted text GGUF + 14.2 GB KV reserve + 1 GB overhead.
+    minRamGb: 33,
+    q4MinRamGb: 33,
     bucket: "large",
     contextLength: 131072,
     textContextSuffix: "128k",
@@ -375,9 +418,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     id: "eliza-1-27b-256k",
     params: "27B",
     parameterLabel: "27B 256k",
-    sizeGb: 16.8,
-    minRamGb: 48,
-    q4MinRamGb: 48,
+    // 17.4 GiB hosted text GGUF + 30.2 GB KV reserve + 1 GB overhead.
+    minRamGb: 49,
+    q4MinRamGb: 49,
     bucket: "large",
     contextLength: 262144,
     textContextSuffix: "256k",
@@ -707,6 +750,7 @@ function blurbForTier(id: Eliza1TierId): string {
 
 function chatTier(id: Eliza1TierId): CatalogModel {
   const spec = TIER_SPECS[id];
+  const downloadSizeGb = tierDownloadSizeGb(id);
   return {
     id,
     displayName: tierDisplayName(id),
@@ -717,7 +761,8 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     params: spec.params,
     parameterLabel: spec.parameterLabel,
     quant: "Eliza-1 optimized local runtime",
-    sizeGb: spec.sizeGb,
+    sizeGb: tierTextSizeGb(id),
+    ...(downloadSizeGb === undefined ? {} : { downloadSizeGb }),
     minRamGb: spec.minRamGb,
     category: "chat",
     bucket: spec.bucket,
@@ -730,7 +775,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     gpuProfile: spec.gpuProfile,
     quantization: textQuantizationMatrix({
       primaryGgufFile: bundlePath(id, textFileForTier(id)),
-      q4SizeGb: spec.sizeGb,
+      q4SizeGb: tierTextSizeGb(id),
       q4MinRamGb: spec.q4MinRamGb,
       onDevice: isOnDeviceTier(id),
     }),
