@@ -64,6 +64,7 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
+import { isHttpTransportServerConfig, serverConfigTimeoutMillis } from "./utils/server-config.ts";
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   const guarded = await fetchWithSsrfGuard({
@@ -303,8 +304,10 @@ export class McpService extends Service {
     connection: McpConnection,
     _state: ConnectionState
   ): void {
-    const config = JSON.parse(connection.server.config) as McpServerConfig;
-    const isHttpTransport = config.type !== "stdio";
+    // The stored config is untrusted persisted JSON; the derivation is total so
+    // a malformed row cannot abort handler wiring, and it mirrors the transport
+    // `initializeConnection` builds: only an explicit `stdio` type is stdio.
+    const isHttpTransport = isHttpTransportServerConfig(connection.server.config);
     connection.transport.onerror = async (error): Promise<void> => {
       const errorMessage = error?.message ?? String(error);
       const lower = errorMessage.toLowerCase();
@@ -341,9 +344,7 @@ export class McpService extends Service {
   private startPingMonitoring(name: string): void {
     const connection = this.connections.get(name);
     if (!connection) return;
-    const config = JSON.parse(connection.server.config) as McpServerConfig;
-    const isHttpTransport = config.type !== "stdio";
-    if (isHttpTransport) {
+    if (isHttpTransportServerConfig(connection.server.config)) {
       return;
     }
     const state = this.connectionStates.get(name);
@@ -569,10 +570,9 @@ export class McpService extends Service {
       throw new Error(`Server "${serverName}" is disabled`);
     }
     let timeout = DEFAULT_MCP_TIMEOUT_SECONDS;
-    const config = JSON.parse(connection.server.config) as McpServerConfig;
-    if (config.type === "stdio" && config.timeoutInMillis) {
-      timeout = config.timeoutInMillis;
-    }
+    // A malformed stored config must not turn every tool call into a raw
+    // SyntaxError; the derivation keeps the default timeout in that case.
+    timeout = serverConfigTimeoutMillis(connection.server.config, DEFAULT_MCP_TIMEOUT_SECONDS);
     const result = await connection.client.callTool(
       {
         name: toolName,
