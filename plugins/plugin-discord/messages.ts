@@ -20,6 +20,7 @@ import {
 	type Media,
 	type Memory,
 	MemoryType,
+	parseBooleanValue,
 	type SendHandlerPersistenceFailure,
 	type SendHandlerReceipt,
 	type Service,
@@ -1088,17 +1089,14 @@ export class MessageManager {
 				: "all"
 		) as StatusReactionScope;
 
-		const envelopeSetting = this.runtime.getSetting(
-			"DISCORD_ENVELOPE_ENABLED",
-		) as string | undefined;
+		// The runtime coerces "true"/"false" to booleans before returning, so
+		// both flags are parsed rather than compared against string literals.
 		this.envelopeEnabled =
-			envelopeSetting !== "false" && envelopeSetting !== "0";
-
-		const draftStreamSetting = this.runtime.getSetting(
-			"DISCORD_DRAFT_STREAMING",
-		) as string | undefined;
+			parseBooleanValue(this.runtime.getSetting("DISCORD_ENVELOPE_ENABLED")) ??
+			true;
 		this.draftStreamingEnabled =
-			draftStreamSetting === "true" || draftStreamSetting === "1";
+			parseBooleanValue(this.runtime.getSetting("DISCORD_DRAFT_STREAMING")) ??
+			false;
 		this.stalenessConfig = getDiscordStalenessConfig((key) =>
 			this.runtime.getSetting(key),
 		);
