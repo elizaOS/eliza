@@ -247,16 +247,27 @@ describe("READ", () => {
     const initial = await readFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: file, limit: 10 },
     });
-
-    const expectedRevision = (
-      initial.data as { readView: { reference: { revision: string } } }
-    ).readView.reference.revision;
+    const { revision } = (
+      (initial.data as Record<string, unknown>).readView as {
+        reference: { revision: string };
+      }
+    ).reference;
 
     const first = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 5, limit: 1, expectedRevision },
+      parameters: {
+        file_path: file,
+        offset: 5,
+        limit: 1,
+        expectedRevision: revision,
+      },
     });
     const second = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 5, limit: 1, expectedRevision },
+      parameters: {
+        file_path: file,
+        offset: 5,
+        limit: 1,
+        expectedRevision: revision,
+      },
     });
 
     expect(first.success).toBe(false);

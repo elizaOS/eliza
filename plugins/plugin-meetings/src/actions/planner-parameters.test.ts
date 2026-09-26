@@ -46,7 +46,7 @@ function session(over: Partial<MeetingSession>): MeetingSession {
   } as MeetingSession;
 }
 
-/** The exact core planner path: alias remap, then schema validation. */
+/** The core planner path: schema validation over the declared parameters. */
 function plannerArgs(
   action: Action,
   args: Record<string, unknown>,
