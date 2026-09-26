@@ -388,13 +388,13 @@ export function inspectSendHandlerResult(
 		memories: [],
 		code: "CONNECTOR_PARTIAL_DELIVERY_REPLAY",
 		message:
-			"A prior matching attempt reached only part of the provider payload.",
+			"A prior matching attempt completed only part of the transport payload.",
 	};
 }
 
 /**
- * Require a complete provider delivery before a caller reports success.
- * Provider-accepted/local-persistence failures throw with a do-not-retry
+ * Require complete transport delivery before a caller reports success.
+ * Transport-completed/local-persistence failures throw with a do-not-retry
  * warning so outer boundaries cannot accidentally duplicate an external send.
  */
 export function requireConfirmedSendHandlerDelivery(
@@ -411,8 +411,12 @@ export function requireConfirmedSendHandlerDelivery(
 		(disposition.receipt.persistence.status === "partial" ||
 			disposition.receipt.persistence.status === "failed")
 	) {
+		const acceptance =
+			disposition.receipt.evidenceKind === "local-effect"
+				? "The local transport reported completion without provider message IDs"
+				: `The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}`;
 		throw new Error(
-			`The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+			`${acceptance}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
 		);
 	}
 	return disposition;

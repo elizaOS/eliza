@@ -12,6 +12,7 @@ import type {
   SendHandlerReceipt,
   SendHandlerResult,
 } from "@elizaos/core";
+import { requireConfirmedSendHandlerDelivery } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { inferOp, messageAction } from "./message.ts";
@@ -599,6 +600,18 @@ describe("MESSAGE op=send delivery evidence", () => {
       ...receipt(["native-completion-1"]),
       evidenceKind: "local-effect",
     };
+    expect(() =>
+      requireConfirmedSendHandlerDelivery({
+        kind: "delivered",
+        memories: [],
+        receipt: {
+          ...localReceipt,
+          persistence: { status: "failed", failures: [] },
+        },
+      }),
+    ).toThrow(
+      /local transport reported completion without provider message IDs/,
+    );
     const { result, upsertMemory } = await sendWithOutcome({
       kind: "delivered",
       receipt: localReceipt,
