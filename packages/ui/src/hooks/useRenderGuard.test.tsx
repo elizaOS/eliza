@@ -10,14 +10,6 @@ import {
   useRenderGuard,
 } from "./useRenderGuard";
 
-vi.mock("@elizaos/logger", () => ({
-  logger: {
-    error: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-  },
-}));
-
 function Probe({ name }: { name: string }) {
   useRenderGuard(name);
   return null;
