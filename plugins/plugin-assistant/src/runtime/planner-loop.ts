@@ -5635,7 +5635,7 @@ function deferCodingCompletionUntilMutationVerified(args: {
           : "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
         messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
           ? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
-          : "Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+          : "Run the narrowest relevant test, typecheck, lint, or build with SHELL as a standalone foreground command, without pipes (including head, tail, or tee), semicolons, background execution, or failure-masking operators. Use the cwd parameter or a cd directory && verifier chain. Inspection and git diff --check do not satisfy this verification requirement. A successful command must leave the workspace unchanged.",
       };
   args.trajectory.evaluatorOutputs.push(
     projectToolDiagnosticValue(
