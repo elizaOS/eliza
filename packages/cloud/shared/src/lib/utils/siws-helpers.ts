@@ -104,6 +104,19 @@ async function consumeSiwsNonce(redis: CompatibleRedis, nonce: string): Promise<
   return value !== null;
 }
 
+/**
+ * Parses an optional SIWS timestamp field, failing closed on a present but
+ * unparseable value rather than letting NaN slip past the window comparisons.
+ */
+function parseOptionalTimestamp(value: string | undefined, label: string): Date | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`SIWS message ${label} is not a valid date`);
+  }
+  return parsed;
+}
+
 export function parseSiwsMessage(message: string): SiwsMessage {
   const lines = message.split("\n");
   if (lines.length < 7) {
@@ -155,10 +168,12 @@ export function parseSiwsMessage(message: string): SiwsMessage {
   if (Number.isNaN(issuedAt.getTime())) {
     throw new Error("SIWS message Issued At is not a valid date");
   }
-  const expirationTime = fields["Expiration Time"]
-    ? new Date(fields["Expiration Time"])
-    : undefined;
-  const notBefore = fields["Not Before"] ? new Date(fields["Not Before"]) : undefined;
+  // An unparseable timestamp must be rejected, not ignored: `new Date("x")`
+  // yields NaN, and both window checks below compare with `<=` / `>`, which are
+  // false for NaN — so a malformed Expiration Time would make the message
+  // never expire and a malformed Not Before would make it immediately valid.
+  const expirationTime = parseOptionalTimestamp(fields["Expiration Time"], "Expiration Time");
+  const notBefore = parseOptionalTimestamp(fields["Not Before"], "Not Before");
 
   return {
     domain,
