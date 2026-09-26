@@ -1035,6 +1035,12 @@ describe("explicit unscheduled owner authority", () => {
 describe("runLifeOperationHandler clarification contract", () => {
   beforeEach(() => {
     serviceState.createCalls.length = 0;
+    // Fixtures name September 26, 2026 as a future date; keep "now" before it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-11T18:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("accepts an explicitly undated owner todo as a task", async () => {
@@ -2602,6 +2608,12 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     serviceState.createCalls.length = 0;
     serviceState.goalCreateCalls.length = 0;
     serviceState.ownerEntityIds.length = 0;
+    // Fixtures name September 26, 2026 as a future date; keep "now" before it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-11T18:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("marks an expired bare confirmation as awaiting the owner without classifying the app footer", async () => {
