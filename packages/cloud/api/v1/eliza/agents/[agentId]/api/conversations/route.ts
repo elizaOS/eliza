@@ -1,7 +1,11 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import { prewarmResolvedSharedAgentSession } from "@/lib/services/shared-runtime/prewarm-shared-agent";
+import {
+  resolveSharedAgent,
+  resolveSharedRuntimeWorkerRequestContext,
+} from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestConversationCreate,
   sharedRestConversationsList,
@@ -32,6 +36,19 @@ app.get("/", async (c) => {
     return applyCorsHeaders(
       Response.json({ success: false, error: r.error }, { status: r.status }),
       CORS_METHODS,
+    );
+  }
+  // Opening the conversation is the session start: warm every cache the
+  // cache-only first turn consults before a human can type, so that turn does
+  // not pay the retryable warming 503 (#22552). Off the response path; a
+  // missing Worker context only skips the warm.
+  const worker = resolveSharedRuntimeWorkerRequestContext(c);
+  if (!("error" in worker)) {
+    worker.executionCtx.waitUntil(
+      prewarmResolvedSharedAgentSession(r, {
+        namespace: worker.namespace,
+        requestContext: c,
+      }),
     );
   }
   const body = sharedRestConversationsList(

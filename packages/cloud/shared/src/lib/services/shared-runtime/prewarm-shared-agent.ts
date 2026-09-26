@@ -202,3 +202,56 @@ export async function prewarmPersonalSharedAgentTurnCaches(
   }
   await settlePrewarmLegs(agent, legs);
 }
+
+/**
+ * Keep-warm leg for a rowless Personal Shared room. The cron only knows the
+ * namespaced agent id and room from mirrored history; it cannot derive the
+ * owning organization, so the organization-scoped rate-limit gate is warmed at
+ * session start instead (see {@link prewarmResolvedSharedAgentSession}). This
+ * leg keeps the room's conversation object and its turn-ingress modules warm.
+ * Personal rooms start empty exactly as their turns do, so it never migrates
+ * or rewrites history.
+ */
+export async function prewarmPersonalSharedRoom(
+  agentId: string,
+  roomId: string,
+  namespace: RuntimeDurableObjectNamespace,
+): Promise<void> {
+  await settlePrewarmLegs({ id: agentId, organization_id: "" }, [
+    {
+      leg: "conversation-object",
+      run: coordinateSharedConversationPrewarm(agentId, roomId, {
+        namespace,
+        startEmpty: true,
+      }),
+    },
+  ]);
+}
+
+/**
+ * Session-start prewarm: when the app opens a Shared conversation (before a
+ * human can type), hydrate the same caches the cache-only first turn consults.
+ * Personal Shared identities warm their rate-limit gate and conversation
+ * object; sandbox-backed shared agents run the full provision-time legs with
+ * the opening request's credential. Best-effort and off the response path.
+ */
+export function prewarmResolvedSharedAgentSession(
+  resolved:
+    | { agentKind: "personal"; agent: SharedRuntimeAgent; agentId: string }
+    | { agentKind?: undefined; agent: AgentSandbox; agentId: string },
+  options: {
+    namespace: RuntimeDurableObjectNamespace;
+    requestContext: Context<AppEnv>;
+  },
+): Promise<void> {
+  if (resolved.agentKind === "personal") {
+    return prewarmPersonalSharedAgentTurnCaches(resolved.agent, options.namespace, {
+      warmConversation: true,
+      conversationId: resolved.agentId,
+    });
+  }
+  return prewarmSharedAgentTurnCaches(resolved.agent, {
+    namespace: options.namespace,
+    requestContext: options.requestContext,
+  });
+}
