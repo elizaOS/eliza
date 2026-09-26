@@ -2,6 +2,7 @@
 
 import {
   type EffectReceipt,
+  ElizaError,
   type PlannerRuntime,
   type PlannerTrajectory,
   type RecordedStage,
@@ -811,4 +812,82 @@ describe("coding verification recovery guidance", () => {
     expect(guidance).toContain("standalone");
     expect(guidance).not.toContain("or diff check");
   });
+});
+
+describe("incomplete coding model output", () => {
+  it("preserves settled effects without another model call or tool replay", async () => {
+    let calls = 0;
+    let effects = 0;
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "incomplete-after-write" },
+      runtime: {
+        useModel: async () => {
+          calls++;
+          if (calls > 1)
+            throw new ElizaError("Provider output stopped", {
+              code: "MODEL_OUTPUT_INCOMPLETE",
+              context: { finishReason: "length" },
+            });
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "write-before-incomplete",
+                name: "WRITE",
+                arguments: { eliza_turn_scope: "more_work_pending" },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async () => {
+        effects++;
+        return {
+          success: true,
+          text: "File written",
+          effectReceipts: [receipt],
+          data: { file: "changed.ts" },
+        };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(effects).toBe(1);
+    expect(result.trajectory.steps[0]?.result?.effectReceipts).toEqual([
+      receipt,
+    ]);
+    expect(result.trajectory.steps[0]?.result?.data?.file).toBe("changed.ts");
+    expect(result.evaluator?.success).toBe(false);
+    expect(result.terminalFailure).toMatchObject({
+      code: "MODEL_OUTPUT_INCOMPLETE",
+      kind: "provider_issue",
+      transient: false,
+    });
+    expect(result.finalMessage).toContain("incomplete");
+  });
+  it.each([
+    {
+      codingMode: false,
+      error: new ElizaError("Provider output stopped", {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+      }),
+    },
+    { codingMode: true, error: new TypeError("Implementation bug") },
+  ])(
+    "does not swallow unrelated failures ($codingMode)",
+    async ({ codingMode, error }) => {
+      await expect(
+        runPlannerLoop({
+          codingMode,
+          context: { id: "propagated-error" },
+          runtime: {
+            useModel: async () => {
+              throw error;
+            },
+          },
+          executeToolCall: async () => ({ success: true }),
+        }),
+      ).rejects.toBe(error);
+    },
+  );
 });
