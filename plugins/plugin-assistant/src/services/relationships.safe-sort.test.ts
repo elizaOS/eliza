@@ -9,7 +9,11 @@
 
 import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { RelationshipsService, safeSortNumber } from "./relationships.ts";
+import {
+  RelationshipsService,
+  safeSortNumber,
+  toFiniteTimestamp,
+} from "./relationships.ts";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111" as UUID;
 const SOURCE = "22222222-2222-4222-8222-222222222222" as UUID;
@@ -79,6 +83,149 @@ describe("RelationshipsService.analyzeRelationship recency sort", () => {
 
     expect(analytics).not.toBeNull();
     expect(analytics?.lastInteractionAt).toBe(new Date(validAt).toISOString());
+  });
+});
+
+describe("RelationshipsService.analyzeRelationship non-finite timestamps", () => {
+  // Minimal runtime shared by the cases: two participants in one room, with
+  // the message rows supplied per test so one corrupt/Infinity row can be
+  // planted next to valid ones.
+  const makeRuntime = (rows: Array<Record<string, unknown>>) => ({
+    agentId: AGENT_ID,
+    async getRelationships() {
+      return [
+        {
+          id: "rel-nf",
+          sourceEntityId: SOURCE,
+          targetEntityId: TARGET,
+          strength: 0,
+        },
+      ];
+    },
+    async getRoomsForParticipant() {
+      return [ROOM];
+    },
+    async getMemoriesByRoomIds({ offset }: { offset?: number }) {
+      return offset ? [] : rows;
+    },
+    async createComponent() {
+      return true;
+    },
+  });
+
+  it("never reports a NaN averageResponseTime from a corrupt timestamp", async () => {
+    const validAt = 1_700_000_000_000;
+    const service = new RelationshipsService(
+      makeRuntime([
+        {
+          id: "m-1",
+          entityId: SOURCE,
+          roomId: ROOM,
+          createdAt: validAt,
+          content: { text: "hello" },
+        },
+        {
+          id: "m-2",
+          entityId: TARGET,
+          roomId: ROOM,
+          createdAt: "not-a-timestamp",
+          content: { text: "hi" },
+        },
+      ]) as never,
+    );
+
+    const analytics = await service.analyzeRelationship(SOURCE, TARGET);
+    expect(analytics).not.toBeNull();
+    // The corrupt row cannot participate, and a non-finite average is never
+    // reported as a healthy-looking number (an omitted field is explicit
+    // "no measurement"; NaN serializes to null and lies about it).
+    expect(analytics?.averageResponseTime).toBeUndefined();
+    expect(analytics).not.toHaveProperty("averageResponseTime");
+  });
+
+  it("still averages finite alternating replies", async () => {
+    const base = 1_700_000_000_000;
+    const service = new RelationshipsService(
+      makeRuntime([
+        {
+          id: "m-1",
+          entityId: SOURCE,
+          roomId: ROOM,
+          createdAt: base,
+          content: { text: "a" },
+        },
+        {
+          id: "m-2",
+          entityId: TARGET,
+          roomId: ROOM,
+          createdAt: base + 1_000,
+          content: { text: "b" },
+        },
+        {
+          id: "m-3",
+          entityId: SOURCE,
+          roomId: ROOM,
+          createdAt: base + 5_000,
+          content: { text: "c" },
+        },
+      ]) as never,
+    );
+
+    const analytics = await service.analyzeRelationship(SOURCE, TARGET);
+    // Two alternating steps: 1000ms and 4000ms -> 2500ms average.
+    expect(analytics?.averageResponseTime).toBe(2_500);
+  });
+
+  it("does not throw RangeError on an Infinity timestamp and reports the finite one", async () => {
+    const validAt = 1_700_000_000_000;
+    const service = new RelationshipsService(
+      makeRuntime([
+        {
+          id: "m-finite",
+          entityId: SOURCE,
+          roomId: ROOM,
+          createdAt: validAt,
+          content: { text: "hello" },
+        },
+        {
+          id: "m-inf",
+          entityId: TARGET,
+          roomId: ROOM,
+          createdAt: Number.POSITIVE_INFINITY,
+          content: { text: "hi" },
+        },
+      ]) as never,
+    );
+
+    const analytics = await service.analyzeRelationship(SOURCE, TARGET);
+    expect(analytics).not.toBeNull();
+    expect(analytics?.lastInteractionAt).toBe(new Date(validAt).toISOString());
+    expect(analytics?.averageResponseTime).toBeUndefined();
+  });
+
+  it("omits lastInteractionAt when every timestamp is non-finite", async () => {
+    const service = new RelationshipsService(
+      makeRuntime([
+        {
+          id: "m-a",
+          entityId: SOURCE,
+          roomId: ROOM,
+          createdAt: Number.POSITIVE_INFINITY,
+          content: { text: "hello" },
+        },
+        {
+          id: "m-b",
+          entityId: TARGET,
+          roomId: ROOM,
+          createdAt: "not-a-timestamp",
+          content: { text: "hi" },
+        },
+      ]) as never,
+    );
+
+    const analytics = await service.analyzeRelationship(SOURCE, TARGET);
+    expect(analytics).not.toBeNull();
+    expect(analytics?.lastInteractionAt).toBeUndefined();
   });
 });
 
@@ -202,4 +349,13 @@ describe("RelationshipsService.listOverdueFollowups ordering", () => {
     ]);
     expect(overdue[0].daysSinceInteraction).toBe(Number.POSITIVE_INFINITY);
   });
+});
+
+it("accepts stored ISO timestamps and rejects out-of-range dates", () => {
+  expect(toFiniteTimestamp("2026-09-25T12:00:00.000Z")).toBe(
+    Date.parse("2026-09-25T12:00:00.000Z"),
+  );
+  for (const value of [1e100, Infinity, NaN, "", " ", false, "not a date"])
+    expect(toFiniteTimestamp(value)).toBeUndefined();
+  expect(toFiniteTimestamp(0)).toBe(0);
 });
