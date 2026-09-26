@@ -33,7 +33,14 @@ const CREDENTIAL_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: "openai-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
   { label: "bearer", pattern: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/g },
   { label: "github-token", pattern: /\bghp_[A-Za-z0-9]{20,}\b/g },
-  { label: "aws-access-key", pattern: /\bAKIA[0-9A-Z]{16}\b/g },
+  { label: "github-token", pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+  { label: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Case-sensitive so ordinary prose is not folded into a credential shape.
+  { label: "google-oauth-token", pattern: /\bya29\.[A-Za-z0-9_\-.]{10,}/g },
+  {
+    label: "aws-access-key",
+    pattern: /\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b/g,
+  },
 ];
 
 const GEO_PATTERNS: RegExp[] = [
