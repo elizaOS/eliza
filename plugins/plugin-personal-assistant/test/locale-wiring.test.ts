@@ -159,3 +159,21 @@ describe("locale wiring (OwnerFactStore.locale -> buildActionCatalog)", () => {
     expect(resolver).toBeNull();
   });
 });
+
+it("uses the default for ambiguous text and preserves explicit owner locale precedence", async () => {
+  const unset = await setupRuntimeWithLocale(null);
+  expect(
+    await createOwnerLocaleExamplesProvider(unset.runtime)({
+      recentMessage: "hola merci café",
+    }),
+  ).toBeNull();
+  const explicit = await setupRuntimeWithLocale("es");
+  const resolver = await createOwnerLocaleExamplesProvider(explicit.runtime)({
+    recentMessage: "bonjour merci",
+  });
+  const routines =
+    buildRoutinesCatalog(resolver).parentByName.get("OWNER_ROUTINES");
+  expect(getExamplesAsPairs(routines?.examples)[0][0].content.text).toBe(
+    "recuérdame cepillarme los dientes por la mañana y por la noche",
+  );
+});

@@ -20,6 +20,7 @@
  * model rollouts don't need shorter, and matching the existing models
  * route keeps the CDN behavior predictable.
  */
+import { ElizaError } from "@elizaos/core";
 import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelVersion,
@@ -105,14 +106,28 @@ function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return copy;
 }
 function decodeBase64Strict(input: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    const buf = Buffer.from(input, "base64");
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const trimmed = input.trim();
+  const normalized = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+  // Accept either standard alphabet, with optional padding, but never mixed
+  // alphabets, interior whitespace, misplaced padding, or discarded slack bits.
+  if (
+    (/[+/]/.test(trimmed) && /[-_]/.test(trimmed)) ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{2,3})?$/.test(
+      normalized,
+    )
+  ) {
+    throw new ElizaError("Invalid base64 credential", { code: "INVALID_VOICE_CATALOG_CREDENTIAL" });
   }
-  const bin = atob(input);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  const bytes =
+    typeof Buffer !== "undefined"
+      ? new Uint8Array(Buffer.from(normalized, "base64"))
+      : Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
+  if (encodeBase64(bytes) !== normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")) {
+    throw new ElizaError("Non-canonical base64 credential", {
+      code: "INVALID_VOICE_CATALOG_CREDENTIAL",
+    });
+  }
+  return bytes;
 }
 function encodeBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== "undefined") {
