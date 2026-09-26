@@ -44,15 +44,35 @@ function check(
   });
 }
 describe("navigation reply grounding", () => {
-  it.each(["Notes is open.", "Opened Notes.", "You're on Notes."])(
-    "rejects unsupported confirmation %s",
-    (reply) => {
-      expect(check(reply)).toEqual({
-        verdict: "reject",
-        kind: "view_navigation",
-      });
-    },
-  );
+  it("rejects the captured leading Notes confirmation before a compound answer", () => {
+    // isolated-model-trial/step-1790409433162-tjz9ol.json, handler call 0:
+    // no navigation candidate/intent, current view chat, and no delivery.
+    const reply =
+      "Notes open. Latest note: “Input audit September 25” – The audit token is amber. Next calendar event: “Input audit September 26” today, 10:00–10:15 AM. No changes made.";
+    expect(check(reply)).toEqual({
+      verdict: "reject",
+      kind: "view_navigation",
+    });
+  });
+
+  it.each([
+    "Notes is open.",
+    "Opened Notes.",
+    "You're on Notes.",
+    "Notes open.",
+    "Notes open. Latest note: example.",
+    "Notes is open. Latest note: example.",
+    "Notes are now open!\nLatest note: example.",
+    "Opened Notes. Latest note: example.",
+    "You're on Notes. Latest note: example.",
+    "Done. Notes open. Latest note: example.",
+    "Notes open. Which note would you like?",
+  ])("rejects unsupported confirmation %s", (reply) => {
+    expect(check(reply)).toEqual({
+      verdict: "reject",
+      kind: "view_navigation",
+    });
+  });
   it.each([
     "Hello!",
     "Notes is not open.",
@@ -61,6 +81,20 @@ describe("navigation reply grounding", () => {
     "“Notes is open.”",
     "Notes was open earlier.",
     "The door is open.",
+    "Home.",
+    "Notes open? Latest note: example.",
+    "Is Notes open? Latest note: example.",
+    "Notes is open, right?",
+    "Notes is not open. Latest note: example.",
+    "Do not open Notes. Latest note: example.",
+    "If Notes is open, select a note. Latest note: example.",
+    "Notes would be open. Latest note: example.",
+    "“Notes open.” Latest note: example.",
+    '"Opened Notes." Latest note: example.',
+    "You said: ‘Notes open.’ Latest note: example.",
+    "Notes open-source tools are useful.",
+    "Notes are open to interpretation.",
+    "Notebook open. Latest note: example.",
   ])(
     "preserves conversation, quotations, and non-view statements: %s",
     (reply) => {
@@ -71,6 +105,13 @@ describe("navigation reply grounding", () => {
     expect(check("Notes is open.", "notes")).toEqual({ verdict: "allow" });
     expect(check("Home is open.")).toEqual({ verdict: "allow" });
     expect(check("Opened Notes.", "notes")).toEqual({
+      verdict: "reject",
+      kind: "view_navigation",
+    });
+    expect(check("Notes open. Latest note: example.", "notes")).toEqual({
+      verdict: "allow",
+    });
+    expect(check("Opened Notes. Latest note: example.", "notes")).toEqual({
       verdict: "reject",
       kind: "view_navigation",
     });
@@ -90,6 +131,22 @@ describe("navigation reply grounding", () => {
     expect(check("Opened Notes.", "chat", [results[0]])).toEqual({
       verdict: "allow",
     });
+    expect(check("Notes open. Latest note: example.", "chat", results)).toEqual(
+      {
+        verdict: "reject",
+        kind: "view_navigation",
+      },
+    );
+    expect(
+      check("Calendar open. Next event: example.", "chat", results),
+    ).toEqual({
+      verdict: "allow",
+    });
+    expect(
+      check("Opened Notes. Latest note: example.", "chat", [results[0]]),
+    ).toEqual({
+      verdict: "allow",
+    });
   });
   it.each(["handoff", "view", "failed", "unconfirmed", "visible"])(
     "rejects %s receipt evidence",
@@ -103,6 +160,12 @@ describe("navigation reply grounding", () => {
         result.values = { ...result.values, completedActionDelivered: false };
       if (kind === "visible") delete result.transcriptVisibility;
       expect(check("Notes is open.", "chat", [result])).toEqual({
+        verdict: "reject",
+        kind: "view_navigation",
+      });
+      expect(
+        check("Notes open. Latest note: example.", "chat", [result]),
+      ).toEqual({
         verdict: "reject",
         kind: "view_navigation",
       });
