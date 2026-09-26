@@ -3331,6 +3331,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomId?: UUID;
     excludeRoomIds?: UUID[];
     worldId?: UUID;
+    metadata?: Record<string, unknown>;
     textContains?: string;
     orderBy?: "createdAt";
     orderDirection?: "asc" | "desc";
@@ -3445,6 +3446,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // 2026-09-06: the owner's facts stored by a second agent rendered in the
       // first agent's FACTS block and could not be forgotten from it).
       conditions.push(eq(memoryTable.agentId, agentId ?? this.agentId));
+
+      // Same JSONB containment predicate as countMemories so the two agree.
+      if (params.metadata && Object.keys(params.metadata).length > 0) {
+        conditions.push(sql`${memoryTable.metadata} @> ${JSON.stringify(params.metadata)}::jsonb`);
+      }
 
       if (textContains) {
         // Push the keyword filter into the store as a case-insensitive ILIKE;
