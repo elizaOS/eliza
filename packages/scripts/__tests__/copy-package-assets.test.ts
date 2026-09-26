@@ -140,4 +140,36 @@ describe("copy-package-assets", () => {
       ).toBe(false);
     }
   });
+
+  test("falls back to the repository-root copy when the package-local asset path is missing", async () => {
+    const repositoryRoot = mkdtempSync(join(tmpdir(), "eliza-repo-root-"));
+    const packageRoot = mkdtempSync(join(tmpdir(), "eliza-package-assets-"));
+    temporaryDirectories.push(repositoryRoot, packageRoot);
+    writeFixture(repositoryRoot, "patches/dependency.patch", "ROOT PATCH
+");
+
+    await copyPackageAssets({
+      repositoryRoot,
+      packageDirectory: packageRoot,
+      assetPaths: ["patches"],
+    });
+
+    expect(existsSync(join(packageRoot, "dist/patches/dependency.patch"))).toBe(
+      true,
+    );
+  });
+
+  test("still fails when the asset path is missing from both the package and the repository root", async () => {
+    const repositoryRoot = mkdtempSync(join(tmpdir(), "eliza-repo-root-"));
+    const packageRoot = mkdtempSync(join(tmpdir(), "eliza-package-assets-"));
+    temporaryDirectories.push(repositoryRoot, packageRoot);
+
+    await expect(
+      copyPackageAssets({
+        repositoryRoot,
+        packageDirectory: packageRoot,
+        assetPaths: ["patches"],
+      }),
+    ).rejects.toThrow("missing asset path");
+  });
 });
