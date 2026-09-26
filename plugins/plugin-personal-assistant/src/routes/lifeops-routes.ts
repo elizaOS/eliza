@@ -24,7 +24,7 @@ import {
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
@@ -114,6 +114,7 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { parseLocalDateKey } from "../lifeops/time.js";
 import { handleAccountHandoffRoutes } from "./account-handoff.js";
 import {
   entityHasVerifiedMachineAuthBinding,
@@ -471,8 +472,11 @@ function parseDateOnlyQuery(
   if (!normalized) {
     return null;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    throw new LifeOpsServiceError(400, `${field} must be a YYYY-MM-DD date`);
+  if (parseLocalDateKey(normalized) === null) {
+    throw new LifeOpsServiceError(
+      400,
+      `${field} must be a valid YYYY-MM-DD calendar date`,
+    );
   }
   return normalized;
 }

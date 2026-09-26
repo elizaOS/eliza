@@ -512,6 +512,9 @@ describe("HealthDomain connector lifecycle and summaries", () => {
     await expect(
       domain.getHealthSummary({ startDate: "yesterday" }),
     ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      domain.getHealthSummary({ startDate: "2026-02-30" }),
+    ).rejects.toMatchObject({ status: 400 });
     await expect(domain.getHealthSummary({ days: -3 })).rejects.toMatchObject({
       status: 400,
     });
