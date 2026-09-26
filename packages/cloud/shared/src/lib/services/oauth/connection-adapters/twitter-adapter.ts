@@ -11,6 +11,7 @@ import { Errors } from "../errors";
 import { OAUTH_PROVIDERS } from "../provider-registry";
 import type { OAuthConnection, OAuthStandardConnectionRole, TokenResult } from "../types";
 import { formatOAuthConnectionRole } from "../types";
+import { projectXCatalogIdentity } from "../x-identity";
 import {
   deletePlatformSecrets,
   fetchPlatformSecrets,
@@ -109,14 +110,15 @@ export const twitterAdapter: ConnectionAdapter = {
       const roleSecrets = platformSecrets.filter((secret) =>
         Object.values(names).includes(secret.name as (typeof names)[keyof typeof names]),
       );
+      const identity = projectXCatalogIdentity({ userId, username });
       connections.push({
         id: connectionId(organizationId, role),
         connectionRole: formatOAuthConnectionRole(role),
         platform: PLATFORM,
-        platformUserId: userId || "unknown",
-        username: username || undefined,
-        displayName: username ? `@${username}` : undefined,
-        status: "active",
+        platformUserId: identity.platformUserId,
+        username: identity.username,
+        displayName: identity.displayName,
+        status: identity.status,
         scopes: oauth2Scope ? oauth2Scope.split(/\s+/).filter(Boolean) : [],
         linkedAt: getEarliestSecretDate(roleSecrets.length > 0 ? roleSecrets : platformSecrets),
         tokenExpired: false,
@@ -144,14 +146,15 @@ export const twitterAdapter: ConnectionAdapter = {
         LEGACY_SECRET_NAMES.oauth2Scope,
         "twitter.legacy.oauth2Scope",
       );
+      const identity = projectXCatalogIdentity({ userId, username });
       connections.push({
         id: connectionId(organizationId, "OWNER"),
         connectionRole: "owner",
         platform: PLATFORM,
-        platformUserId: userId || "unknown",
-        username: username || undefined,
-        displayName: username ? `@${username}` : undefined,
-        status: "active",
+        platformUserId: identity.platformUserId,
+        username: identity.username,
+        displayName: identity.displayName,
+        status: identity.status,
         scopes: oauth2Scope ? oauth2Scope.split(/\s+/).filter(Boolean) : [],
         linkedAt: getEarliestSecretDate(platformSecrets),
         tokenExpired: false,
