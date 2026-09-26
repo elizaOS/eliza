@@ -58,7 +58,21 @@ class ElizaAgent(BaseAgent):
     def network_allowlist(self) -> NetworkAllowlist:
         return NetworkAllowlist(domains=[self.domain])
 
+    async def _prepare_git_identity(self, environment: BaseEnvironment) -> None:
+        # DeepSWE collects BASE..HEAD, so the agent must be able to commit its
+        # own work. Configure only this disposable task checkout, never a host
+        # global identity. This creates no commit and changes no task source.
+        result = await environment.exec(
+            "git config --local user.name 'Eliza Benchmark' && "
+            "git config --local user.email 'benchmark@eliza.invalid' && "
+            "git var GIT_AUTHOR_IDENT && git var GIT_COMMITTER_IDENT",
+            cwd="/app", timeout_sec=10,
+        )
+        if result.return_code != 0:
+            raise RuntimeError("Cannot configure task-local Git author and committer identity")
+
     async def setup(self, environment: BaseEnvironment) -> None:
+        await self._prepare_git_identity(environment)
         await environment.upload_file(self.bundle, "/tmp/eliza-runtime.tar")
         copied = await environment.exec("sha256sum /tmp/eliza-runtime.tar", user="root", timeout_sec=120)
         checksum = (copied.stdout or "").split()
