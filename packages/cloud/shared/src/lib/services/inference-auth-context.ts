@@ -856,11 +856,26 @@ export async function resolveInferenceAuthContext(
           credentialId: cached.ctx.apiKeyId,
           userId: cached.ctx.userId,
         };
+        // Aged hits refresh through one coalesced, retained hydration so an
+        // active key never falls off the physical TTL into a cold
+        // authoritative request. The deferred-credential branch returns early
+        // below, so the refresh must be scheduled before it (#30722).
+        const scheduleAgedRefresh = () => {
+          if (!options.executionCtx) return;
+          if (Date.now() - cached.ctx.cachedAt < AUTH_CONTEXT_REFRESH_AFTER_MS) return;
+          const hydrationOptions = {
+            ...options,
+            executionCtx: options.executionCtx,
+          };
+          const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
+          observeHydrationProjection(hydration, hydrationOptions, false);
+        };
         if (deferStrongCredentialCheck) {
           observeInferenceApiKeyUsage(
             { kind: "authorized", ctx: cached.ctx, source: "cache" },
             options.executionCtx,
           );
+          scheduleAgedRefresh();
           trace.result = "authorized_cache";
           return {
             kind: "authorized",
@@ -890,16 +905,7 @@ export async function resolveInferenceAuthContext(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
           options.executionCtx,
         );
-        if (options.executionCtx) {
-          if (Date.now() - cached.ctx.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
-            const hydrationOptions = {
-              ...options,
-              executionCtx: options.executionCtx,
-            };
-            const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
-            observeHydrationProjection(hydration, hydrationOptions, false);
-          }
-        }
+        scheduleAgedRefresh();
         trace.result = "authorized_cache";
         return { kind: "authorized", ctx: cached.ctx, source: "cache" };
       }
