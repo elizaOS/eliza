@@ -4,7 +4,9 @@ import {
   type EffectReceipt,
   type PlannerRuntime,
   type PlannerTrajectory,
+  type RecordedStage,
   runWithStreamingContext,
+  type TrajectoryRecorder,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runPlannerLoop } from "./planner-loop.ts";
@@ -28,6 +30,7 @@ function harness(
   total: number,
   promptTokens = 100,
   discoveryName = "DISCOVER_ACTIONS",
+  reasoningTokens = 0,
 ) {
   let rounds = 0;
   const executed: string[] = [];
@@ -49,6 +52,7 @@ function harness(
         ],
         usage: {
           promptTokens,
+          reasoningTokens,
           completionTokens: 1,
           totalTokens: promptTokens + 1,
         },
@@ -80,16 +84,96 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("preserves reported reasoning usage in recorded planner stages", async () => {
+    const stages: RecordedStage[] = [];
+    const recorder = {
+      recordStage: async (_id: string, stage: RecordedStage) => {
+        stages.push(stage);
+      },
+    } as unknown as TrajectoryRecorder;
+    const h = harness(2, 100, "DISCOVER_ACTIONS", 7);
+    await runPlannerLoop({
+      ...h,
+      context: { id: "reasoning-usage" },
+      codingMode: true,
+      recorder,
+      trajectoryId: "reasoning-usage",
+    });
+    const plannerStages = stages.filter((stage) => stage.kind === "planner");
+    expect(plannerStages).toHaveLength(2);
+    expect(
+      plannerStages.every((stage) => stage.model?.usage?.reasoningTokens === 7),
+    ).toBe(true);
+  });
+  it.each([false, true])(
+    "scopes the operator budget to coding turns (coding=%s)",
+    async (codingMode) => {
+      vi.stubEnv("ELIZA_CODING_MAX_PROMPT_TOKENS", "130");
+      try {
+        const h = harness(4, 60);
+        const result = await runPlannerLoop({
+          ...h,
+          context: { id: "operator-budget" },
+          codingMode,
+        });
+        expect(h.executed).toHaveLength(codingMode ? 2 : 4);
+        expect(result.terminalFailure?.kind).toBe(
+          codingMode ? "resource_limit" : undefined,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+  it("retains an explicit host budget ahead of the operator default", async () => {
+    vi.stubEnv("ELIZA_CODING_MAX_PROMPT_TOKENS", "130");
+    try {
+      const h = harness(4, 60);
+      const result = await runPlannerLoop({
+        ...h,
+        context: { id: "host-budget" },
+        codingMode: true,
+        config: { maxTrajectoryPromptTokens: 1000 },
+      });
+      expect(h.executed).toHaveLength(4);
+      expect(result.terminalFailure).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+  it("rejects an invalid coding budget before executing any model or tool", async () => {
+    vi.stubEnv("ELIZA_CODING_MAX_PROMPT_TOKENS", "0");
+    try {
+      const h = harness(4, 60);
+      await expect(
+        runPlannerLoop({
+          ...h,
+          context: { id: "invalid-budget" },
+          codingMode: true,
+        }),
+      ).rejects.toThrow("ELIZA_CODING_MAX_PROMPT_TOKENS");
+      expect(h.rounds).toBe(0);
+      expect(h.executed).toHaveLength(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it.each([false, true])(
     "continues through discovery and more than sixteen domain calls with distinct recall queries (coding=%s)",
     async (codingMode) => {
       const h = harness(40);
+      const modelCalls = vi.spyOn(h.runtime, "useModel");
       const result = await runPlannerLoop({
         ...h,
         context: { id: "long-work" },
         codingMode,
       });
       expect(h.executed).toHaveLength(40);
+      if (codingMode)
+        expect(modelCalls.mock.calls[0]?.[1]).toMatchObject({ stream: false });
+      expect(modelCalls.mock.calls[0]?.[1]).toMatchObject({
+        providerOptions: { eliza: { thinking: codingMode ? "on" : "off" } },
+      });
       expect(
         h.executed.filter((name) => name === "MEMORY_SEARCH"),
       ).toHaveLength(20);

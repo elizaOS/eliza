@@ -306,9 +306,18 @@ export async function runPlannerLoop(
   params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
   const usage = { promptTokens: 0, completionTokens: 0, modelCalls: 0 };
-  const maxPromptTokens = mergeChainingLoopConfig(
+  const defaultPromptBudget = mergeChainingLoopConfig(
     params.config,
   ).maxTrajectoryPromptTokens;
+  const maxPromptTokens =
+    params.config?.maxTrajectoryPromptTokens ??
+    (params.codingMode === true
+      ? resolvePositivePlannerInt(
+          "ELIZA_CODING_MAX_PROMPT_TOKENS",
+          process.env.ELIZA_CODING_MAX_PROMPT_TOKENS,
+          defaultPromptBudget,
+        )
+      : defaultPromptBudget);
   const observeModelUsage = (sample: {
     promptTokens: number;
     completionTokens: number;
@@ -325,7 +334,11 @@ export async function runPlannerLoop(
       });
     }
   };
-  const trackedParams = { ...params, onModelUsage: observeModelUsage };
+  const trackedParams = {
+    ...params,
+    config: { ...params.config, maxTrajectoryPromptTokens: maxPromptTokens },
+    onModelUsage: observeModelUsage,
+  };
   let result: PlannerLoopResult;
   let liveTrajectory: PlannerTrajectory | undefined;
   try {
@@ -3750,9 +3763,11 @@ async function dispatchPlannerModelCall(params: {
     grammar?: string;
     spanSamplerPlan?: SpanSamplerPlan;
     maxTokens?: number;
+    stream?: boolean;
     signal?: AbortSignal;
   } = {
     messages: renderedInput.messages,
+    ...(params.trajectory.codingMode === true ? { stream: false } : {}),
     promptSegments: renderedInput.promptSegments,
     providerOptions: cacheProviderOptions({
       prefixHash,
@@ -3776,7 +3791,7 @@ async function dispatchPlannerModelCall(params: {
     eliza: {
       ...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
         .eliza ?? {}),
-      thinking: "off",
+      thinking: params.trajectory.codingMode === true ? "on" : "off",
     },
   };
   if (hasTools) {
@@ -4436,6 +4451,9 @@ function extractUsage(
     if (typeof cachedPrompt === "number") {
       out.cacheReadInputTokens = cachedPrompt;
     }
+  }
+  if (typeof usage.reasoningTokens === "number") {
+    out.reasoningTokens = usage.reasoningTokens;
   }
   const cacheCreation = usage.cacheCreationInputTokens;
   if (typeof cacheCreation === "number") {
