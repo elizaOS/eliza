@@ -69,6 +69,7 @@
     "@lydell/node-pty": "^1.1.0"
   },
   "devDependencies": {
+    "@elizaos/testing": "workspace:*",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
