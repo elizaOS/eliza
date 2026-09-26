@@ -129,6 +129,7 @@ class PierAdapterBoundaryTests(unittest.TestCase):
 
         async def execute(*args, **kwargs):
             self.assertIn('PATH="/opt/eliza/bin:$PATH"', args[0])
+            self.assertEqual(kwargs["env"]["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP"], "1")
             return SimpleNamespace(return_code=1)
 
         async def download_file(source, destination):
@@ -150,6 +151,7 @@ class PierAdapterBoundaryTests(unittest.TestCase):
             asyncio.run(agent.run("Solve the task", environment, SimpleNamespace(metadata={})))
         settings = json.loads(uploads["/private-state/eliza.json"])["env"]["vars"]
         self.assertEqual(settings["OPENAI_REASONING_EFFORT"], "none")
+        self.assertEqual(settings["ELIZA_CANONICAL_EMBEDDINGS_ENABLED"], "false")
         self.assertEqual(settings["CEREBRAS_MODEL"], "test-model")
         self.assertEqual(settings["OPENAI_LARGE_MODEL"], "test-model")
         self.assertEqual(settings["OPENAI_BASE_URL"], "https://api.cerebras.ai/v1")

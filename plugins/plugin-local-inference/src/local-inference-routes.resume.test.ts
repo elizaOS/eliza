@@ -132,10 +132,8 @@ function isRegistered(): boolean {
 }
 
 /**
- * Waits for the whole download to settle: the final file is in place, the
- * `.part` is gone and the model is registered. Returning on the file alone
- * lets `afterEach` delete the state dir while the job is still registering,
- * which leaves that job in flight for the next test's download.
+ * Waits until the final file is in place, the `.part` is gone and the model is
+ * registered; the registry write lands after the rename.
  */
 async function waitForFinalFile(timeoutMs = 30_000): Promise<Buffer> {
 	const deadline = Date.now() + timeoutMs;
@@ -163,7 +161,14 @@ describe("local-inference resumed download integrity (#29454)", () => {
 		httpsController.handler = null;
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		// The job registers the model before it finishes (default assignment,
+		// then leaving the active map). Clear it so the next test's
+		// start_download for the same id is not deduped onto this job.
+		await applyLocalInferenceManagementMutation({
+			op: "cancel_download",
+			modelId: MODEL_ID,
+		});
 		rmSync(tempStateDir, { recursive: true, force: true });
 		if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
 		else process.env.ELIZA_STATE_DIR = originalStateDir;
