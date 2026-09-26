@@ -115,6 +115,9 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Model metadata forwarded to completion evaluation by host facades. */
+	getModelRegistrations?(): ModelRegistrationInfo[];
+	supportsModelAttemptPreparation?: boolean;
 	/** Reauthorize deferred provider reads before restoring model context. */
 	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */

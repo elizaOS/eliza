@@ -349,7 +349,21 @@ function evaluatorQueuedCallIds(
 export async function runEvaluator(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
-  const configuredModel = params.runtime.getSetting?.("ELIZA_EVALUATOR_MODEL");
+  const configuredModel = resolveSetting(
+    params.runtime.getSetting
+      ? {
+          getSetting: (key) => {
+            const value = params.runtime.getSetting?.(key);
+            // Model IDs are strings. Preserve explicit blank/nonstring values
+            // as no override, rather than coercing false or falling through to env.
+            return typeof value === "string" || value == null
+              ? (value ?? null)
+              : "";
+          },
+        }
+      : undefined,
+    "ELIZA_EVALUATOR_MODEL",
+  );
   const model =
     params.model?.trim() ||
     (typeof configuredModel === "string"
