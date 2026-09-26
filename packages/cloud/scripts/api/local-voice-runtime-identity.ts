@@ -57,10 +57,10 @@ export class LocalVoiceRuntimeIdentityError extends Error {
   }
 }
 
-/** A ready runtime has not created its first default conversation yet. */
-export class LocalVoiceConversationPendingError extends LocalVoiceRuntimeIdentityError {}
+/** Startup is pending while the runtime or its first UI conversation is not ready. */
+export class LocalVoiceRuntimePendingError extends LocalVoiceRuntimeIdentityError {}
 
-/** Wait only for first-chat creation; invalid identities and transport failures remain errors. */
+/** Wait for normal startup; invalid identities and transport failures remain errors. */
 export async function waitForLocalVoiceRuntimeIdentity(
   options: ResolveLocalVoiceRuntimeIdentityOptions & {
     signal?: AbortSignal;
@@ -80,7 +80,7 @@ export async function waitForLocalVoiceRuntimeIdentity(
     } catch (error) {
       // error-policy:J4 A fresh runtime without a conversation remains visibly
       // pending; no gateway, session or microphone is made available yet.
-      if (!(error instanceof LocalVoiceConversationPendingError)) throw error;
+      if (!(error instanceof LocalVoiceRuntimePendingError)) throw error;
       if (!notified) {
         options.onWaiting?.();
         notified = true;
@@ -149,8 +149,16 @@ export async function resolveLocalVoiceRuntimeIdentity(
       fetchImpl,
     ),
   );
-  if (health.ready !== true || health.canRespond !== true) {
+  if (
+    typeof health.ready !== "boolean" ||
+    typeof health.canRespond !== "boolean"
+  ) {
     throw new LocalVoiceRuntimeIdentityError(
+      "local runtime health must declare boolean readiness",
+    );
+  }
+  if (health.ready !== true || health.canRespond !== true) {
+    throw new LocalVoiceRuntimePendingError(
       "local runtime is not ready to respond",
     );
   }
@@ -370,7 +378,7 @@ function selectConversationId(
     (left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs,
   );
   if (candidates.length === 0) {
-    throw new LocalVoiceConversationPendingError(
+    throw new LocalVoiceRuntimePendingError(
       "local runtime has no conversation for the running agent",
     );
   }

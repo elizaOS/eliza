@@ -38,6 +38,14 @@ export const BRAND_CONFIG_FLAG = "--brand-config";
 export const BRAND_CONFIG_ENV = "DISTRO_ANDROID_BRAND_CONFIG";
 export const DEFAULT_BRAND_CONFIG = path.join(here, "brand.eliza.json");
 
+export class BrandConfigurationError extends Error {
+  code = "ELIZAOS_BRAND_CONFIG_ERROR";
+  constructor(message, options) {
+    super(message, options);
+    this.name = "BrandConfigurationError";
+  }
+}
+
 const REQUIRED_FIELDS = [
   "brand",
   "appName",
@@ -61,7 +69,9 @@ export function extractBrandConfigFlag(argv) {
     if (arg === BRAND_CONFIG_FLAG) {
       const value = argv[i + 1];
       if (!value || value.startsWith("--")) {
-        throw new Error(`${BRAND_CONFIG_FLAG} requires a path value`);
+        throw new BrandConfigurationError(
+          `${BRAND_CONFIG_FLAG} requires a path value`,
+        );
       }
       brandConfigPath = path.resolve(value);
       i += 1;
@@ -90,25 +100,33 @@ export function resolveBrandConfigPath(brandConfigPath = null) {
 export function loadBrandConfig(configPath) {
   const resolved = resolveBrandConfigPath(configPath);
   if (!fs.existsSync(resolved)) {
-    throw new Error(`Brand config not found: ${resolved}`);
+    throw new BrandConfigurationError(`Brand config not found: ${resolved}`);
   }
   const raw = fs.readFileSync(resolved, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(
+    throw new BrandConfigurationError(
       `Brand config ${resolved} is not valid JSON: ${err.message}`,
     );
   }
   for (const field of REQUIRED_FIELDS) {
     if (typeof parsed[field] !== "string" || parsed[field].length === 0) {
-      throw new Error(
+      throw new BrandConfigurationError(
         `Brand config ${resolved} is missing required string field "${field}"`,
       );
     }
   }
   // Defaults for optional fields.
+  if (
+    parsed.architecture !== undefined &&
+    !["x86_64", "arm64", "riscv64"].includes(parsed.architecture)
+  ) {
+    throw new BrandConfigurationError(
+      `Brand config ${resolved} has invalid architecture`,
+    );
+  }
   parsed.initRcName = parsed.initRcName ?? `init.${parsed.brand}.rc`;
   parsed.vendorDir = parsed.vendorDir ?? `android/vendor/${parsed.brand}`;
   if (
@@ -118,7 +136,7 @@ export function loadBrandConfig(configPath) {
       path.isAbsolute(parsed.aospLockPath) ||
       parsed.aospLockPath.split(/[\\/]/).includes(".."))
   ) {
-    throw new Error(
+    throw new BrandConfigurationError(
       `Brand config ${resolved} has invalid repository-relative aospLockPath`,
     );
   }
@@ -129,7 +147,7 @@ export function loadBrandConfig(configPath) {
       path.isAbsolute(parsed.aospDeviceOverlay) ||
       parsed.aospDeviceOverlay.split(/[\\/]/).includes(".."))
   ) {
-    throw new Error(
+    throw new BrandConfigurationError(
       `Brand config ${resolved} has invalid repository-relative aospDeviceOverlay`,
     );
   }
@@ -140,6 +158,18 @@ export function loadBrandConfig(configPath) {
     "packages/app",
     "build:android:system",
   ];
+  if (
+    !Array.isArray(parsed.buildAndroidSystemCmd) ||
+    parsed.buildAndroidSystemCmd.length === 0 ||
+    typeof parsed.buildAndroidSystemCmd[0] !== "string" ||
+    !parsed.buildAndroidSystemCmd[0].trim() ||
+    parsed.buildAndroidSystemCmd.some(
+      (argument) => typeof argument !== "string" || argument.includes("\0"),
+    )
+  )
+    throw new BrandConfigurationError(
+      `Brand config ${resolved} requires an executable and literal string arguments in buildAndroidSystemCmd`,
+    );
   parsed.commonMakefile = parsed.commonMakefile ?? `${parsed.brand}_common.mk`;
   parsed.cuttlefishMakefile =
     parsed.cuttlefishMakefile ?? `${parsed.productName}.mk`;

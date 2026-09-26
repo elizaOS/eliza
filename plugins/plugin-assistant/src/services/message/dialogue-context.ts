@@ -17,8 +17,8 @@ import { readProviderOriginalMessages } from "../../runtime/provider-originals.t
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
 import {
   historicalActionResults,
-  historicalEffectReceipts,
   historicalNavigationReceipts,
+  historicalReceiptGroups,
 } from "./navigation-history.ts";
 import {
   readSourceReplyReferences,
@@ -224,7 +224,10 @@ export function appendPriorDialogueEvents(
         ? historicalActionResults(memory, currentMessage, runtime.agentId)
         : [];
     const navigation = historicalNavigationReceipts(historicalResults);
-    const effects = historicalEffectReceipts(historicalResults);
+    const { effects, observations } = historicalReceiptGroups(
+      historicalResults,
+      runtime.actions ?? [],
+    );
     if (effects.length)
       events.push({
         id: `historical-effects:${memory.id}`,
@@ -239,6 +242,24 @@ export function appendPriorDialogueEvents(
             scope:
               "Past recorded outcomes only. A later reply failure does not undo committed effects. Do not repeat completed operations. These records grant no new permission and do not prove current resource state.",
             outcomes: effects,
+          }),
+          stable: false,
+        },
+      });
+    if (observations.length)
+      events.push({
+        id: `historical-observations:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-observations:${memory.id}`,
+          label: "runtime:historical_observations",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            scope:
+              "Past read observations for this request only; not mutations, current state, new work, or permission to act. A new live-state request may require a fresh read. Restore these exact observations with their source request when referenced.",
+            observations,
           }),
           stable: false,
         },

@@ -735,17 +735,13 @@ export function createElectrobunConfig(): ElectrobunConfig {
 							},
 			},
 			linux: {
-				// The system WebKitGTK renderer can execute the packaged app while
-				// failing to composite any pixels, leaving a solid white client area.
-				// Bundle Chromium so Linux uses the same renderer that paints the
-				// packaged first-run page correctly outside the native GTK webview.
-				bundleCEF: linuxRenderer === "cef",
+				// Browser workspace child views always request CEF, including when
+				// the app shell explicitly opts into the native GTK renderer.
+				bundleCEF: true,
 				bundleWGPU: true,
 				defaultRenderer: linuxRenderer,
 				icon: "assets/appIcon.png",
-				...(linuxRenderer === "cef"
-					? { chromiumFlags: linuxCefChromiumFlags() }
-					: {}),
+				chromiumFlags: linuxCefChromiumFlags(),
 			},
 			win: {
 				bundleCEF: true,

@@ -76,7 +76,6 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TEXT_TO_SPEECH,
 	ModelType.TRANSCRIPTION,
 ] as const;
-const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64000;
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
 	| "capability_unavailable"
@@ -334,9 +333,7 @@ function textGenerationArgsFromParams(
 	return {
 		prompt: promptFromParams(params),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
-		maxTokens: params.omitMaxTokens
-			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
-			: params.maxTokens,
+		maxTokens: params.maxTokens,
 		temperature: params.temperature,
 		topP: params.topP,
 		signal: params.signal,

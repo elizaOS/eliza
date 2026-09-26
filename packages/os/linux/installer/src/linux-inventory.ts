@@ -3,6 +3,7 @@ import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { InstallInventoryProvider } from "./executor";
+import { detectLinuxInstallFirmware } from "./linux-firmware";
 import {
   createDiskInventoryFingerprint,
   validateDiskInventory,
@@ -338,7 +339,15 @@ export function parseLinuxBootAncestorPaths(
   return [...paths].sort();
 }
 
-class ExecFileCommandRunner implements LinuxInventoryCommandRunner {
+export class LinuxInventoryCommandError extends Error {
+  readonly code = "ELIZAOS_LINUX_INVENTORY_COMMAND_ERROR";
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "LinuxInventoryCommandError";
+  }
+}
+
+export class ExecFileCommandRunner implements LinuxInventoryCommandRunner {
   async run(
     command: string,
     args: readonly string[],
@@ -360,11 +369,17 @@ class ExecFileCommandRunner implements LinuxInventoryCommandRunner {
         stderr?: string;
         code?: number | string;
       };
-      return {
-        stdout: failed.stdout ?? "",
-        stderr: failed.stderr ?? failed.message,
-        exitCode: typeof failed.code === "number" ? failed.code : 127,
-      };
+      if (typeof failed.code === "number" || failed.code === "ENOENT") {
+        return {
+          stdout: failed.stdout ?? "",
+          stderr: failed.stderr ?? failed.message,
+          exitCode: typeof failed.code === "number" ? failed.code : 127,
+        };
+      }
+      throw new LinuxInventoryCommandError(
+        `Linux inventory command could not complete: ${command}`,
+        { cause: error },
+      );
     }
   }
 }
@@ -795,6 +810,7 @@ export function parseLinuxLsblkInventory(options: {
 export interface LinuxInstallInventoryProviderOptions {
   runner?: LinuxInventoryCommandRunner;
   byIdDirectory?: string;
+  /** Trusted override; otherwise inspect kernel sysfs on each inventory probe. */
   firmware?: DiskInventory["firmware"];
   resolveDeviceIdentity?: (devicePath: string) => Promise<string>;
 }
@@ -840,7 +856,7 @@ export function assertLinuxInventorySnapshotUnchanged(
 export class LinuxInstallInventoryProvider implements InstallInventoryProvider {
   private readonly runner: LinuxInventoryCommandRunner;
   private readonly byIdDirectory: string;
-  private readonly firmware: DiskInventory["firmware"];
+  private readonly firmware: DiskInventory["firmware"] | undefined;
   private readonly resolveDeviceIdentity: (
     devicePath: string,
   ) => Promise<string>;
@@ -848,7 +864,7 @@ export class LinuxInstallInventoryProvider implements InstallInventoryProvider {
   constructor(options: LinuxInstallInventoryProviderOptions = {}) {
     this.runner = options.runner ?? new ExecFileCommandRunner();
     this.byIdDirectory = options.byIdDirectory ?? "/dev/disk/by-id";
-    this.firmware = options.firmware ?? "unknown";
+    this.firmware = options.firmware;
     this.resolveDeviceIdentity =
       options.resolveDeviceIdentity ?? resolveLinuxDeviceIdentity;
   }
@@ -948,7 +964,7 @@ export class LinuxInstallInventoryProvider implements InstallInventoryProvider {
       devicePath: options.devicePath,
       kernelDeviceIdentity: options.deviceIdentity,
       firmwarePath: requiredString("firmware path", firmwarePath.stdout),
-      firmware: this.firmware,
+      firmware: this.firmware ?? (await detectLinuxInstallFirmware()),
       serialized: lsblk.stdout,
       partitionTableVerified: verification.exitCode === 0,
       gptRedundancyVerified: isSgdiskRedundancyVerified(gptVerification),

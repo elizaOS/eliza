@@ -12,9 +12,8 @@
 
 elizaOS is an open-source TypeScript framework and product stack for autonomous
 AI agents. This monorepo contains the core runtime, the Eliza app, the CLI,
-cloud services, native bridges, and first-party plugins. The bootable Linux and
-Android distributions live in the separate
-[`elizaOS/os`](https://github.com/elizaOS/os) repository.
+cloud services, native bridges, and first-party plugins. Linux and Android
+distribution tooling lives in [`packages/os`](packages/os/README.md).
 
 ## Choose a starting point
 
@@ -24,7 +23,7 @@ Android distributions live in the separate
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
 | Build an agent or plugin | Start with [the runtime](#build-an-agent) and the [developer docs](https://docs.elizaos.ai/) |
 | Contribute | Read the repository guide in [AGENTS.md](AGENTS.md) |
-| Run a whole device as elizaOS | Use the installers and target guides in [`elizaOS/os`](https://github.com/elizaOS/os) |
+| Run a whole device as elizaOS | Start with the build requirements and target guides in [`packages/os`](packages/os/README.md) |
 
 ## Run Eliza from source
 

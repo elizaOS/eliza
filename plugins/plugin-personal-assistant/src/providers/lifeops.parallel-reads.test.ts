@@ -393,6 +393,12 @@ describe("lifeops provider read fan-out", () => {
       throw new Error(
         "Authorized LifeOps context must provide a complete body and reference",
       );
+    expect(result.text).toContain(
+      "Goals, todos, reminders and temporary or live task state require their owning tools",
+    );
+    expect(result.discoveryText).toContain(
+      "profile extraction does not complete those operations",
+    );
     const context: ContextObject = {
       id: "lifeops-reference",
       metadata: { providerDiscoveryEnabled: true },

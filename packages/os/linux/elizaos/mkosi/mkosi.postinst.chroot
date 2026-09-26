@@ -3,10 +3,17 @@
 # unsuffixed mkosi scripts run on the host, not inside the image.
 set -euo pipefail
 
-required_packages=(dconf-cli gdm3 gnome-shell gnome-initial-setup network-manager speech-dispatcher-espeak-ng xdg-desktop-portal-gnome)
+required_packages=(plymouth plymouth-label mtools dosfstools e2fsprogs util-linux dconf-cli gdm3 gnome-shell gnome-initial-setup network-manager wireless-regdb speech-dispatcher-espeak-ng xdg-desktop-portal-gnome)
 for package in "${required_packages[@]}"; do
     dpkg-query -W -f='${db:Status-Status}\n' "$package" | grep -qx 'installed' || {
         echo "[mkosi.postinst] required package is not installed: $package" >&2
+        exit 1
+    }
+done
+
+for regulatory_file in /usr/lib/firmware/regulatory.db /usr/lib/firmware/regulatory.db.p7s; do
+    [ -s "$regulatory_file" ] || {
+        echo "[mkosi.postinst] wireless regulatory database is missing: $regulatory_file" >&2
         exit 1
     }
 done
@@ -52,33 +59,7 @@ fi
 install -D -m 0644 "$grow_definition" /usr/lib/elizaos/repart-grow/30-home.conf
 
 control_source="${source_root}/linux/control"
-control_inputs=(
-    THREAT_MODEL.md
-    eliza_control/__init__.py
-    eliza_control/__main__.py
-    eliza_control/audit.py
-    eliza_control/auth.py
-    eliza_control/broker.py
-    eliza_control/installer.py
-    eliza_control/policy.py
-    eliza_control/provision.py
-    eliza_control/protocol.py
-    eliza_control/remote.py
-    systemd/eliza-control-broker.service
-    systemd/eliza-control-broker.socket
-    systemd/eliza-control-provision.service
-    systemd/eliza-control-emergency-disable.service
-    sysusers.d/eliza-control.conf
-    tmpfiles.d/eliza-control.conf
-    polkit/49-eliza-control.rules
-    polkit/ai.elizaos.control.policy
-    protocol/audit-receipt.schema.json
-    protocol/broker-request.schema.json
-    protocol/execution-result.schema.json
-    protocol/installer-execution.schema.json
-    protocol/remote-envelope.schema.json
-    protocol/root-exec.schema.json
-)
+mapfile -t control_inputs < "${source_root}/linux/control-inputs.list"
 control_input_count=0
 for input in "${control_inputs[@]}"; do
     if [ -L "${control_source}/${input}" ]; then
@@ -118,50 +99,57 @@ fi
 desktop=/opt/elizaos/bin/eliza-desktop
 agent=/opt/elizaos/bin/eliza-agent
 manifest=/opt/elizaos/share/desktop-artifact-manifest.json
-case "$build_mode" in
-    development|fixture)
-        # An explicit developer/fixture image may exercise the base desktop
-        # without a cross-repository application artifact.
-        if { [ -e "$desktop" ] && [ ! -x "$agent" ]; } || \
-           { [ -e "$agent" ] && [ ! -x "$desktop" ]; }; then
-            echo "[mkosi.postinst] partial desktop artifact topology" >&2
+expected_arch="${ARCHITECTURE:-unknown}"
+[ "$expected_arch" != x86-64 ] || expected_arch=x86_64
+receipt_directory="$(mktemp -d)"
+trap 'rm -rf -- "$receipt_directory"' EXIT
+verified_metadata="${receipt_directory}/desktop-verified.json"
+if [ "$build_mode" = release ] && [ ! -e "$manifest" ]; then
+    echo "[mkosi.postinst] release artifact input is missing: $manifest" >&2
+    exit 1
+fi
+if [ -e "$manifest" ] || [ -L "$manifest" ]; then
+    signing_key="${ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY:-}"
+    signing_key_pin="${ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256:-}"
+    if [ -z "$signing_key" ] || [ -z "$signing_key_pin" ]; then
+        echo "[mkosi.postinst] release signing public key and pinned SPKI digest are required" >&2
+        exit 1
+    fi
+    verifier="${source_root}/scripts/linux/verify-desktop-artifact.py"
+    if [ ! -f "$verifier" ] || [ -L "$verifier" ]; then
+        echo "[mkosi.postinst] desktop artifact verifier is missing or is a symlink" >&2
+        exit 1
+    fi
+    python3 "$verifier" \
+        --manifest "$manifest" \
+        --architecture "$expected_arch" \
+        --public-key "$signing_key" \
+        --public-key-spki-sha256 "$signing_key_pin" \
+        --extract-to /opt/elizaos \
+        --verified-metadata-output "$verified_metadata"
+    for required in "$desktop" "$agent" /opt/elizaos/bin/eliza-desktop-doctor; do
+        if [ ! -x "$required" ] || [ -L "$required" ]; then
+            echo "[mkosi.postinst] verified release entrypoint is missing, linked, or not executable: $required" >&2
             exit 1
         fi
-        ;;
-    release)
-        for required in "$manifest"; do
-            if [ ! -e "$required" ]; then
-                echo "[mkosi.postinst] release artifact input is missing: $required" >&2
-                exit 1
-            fi
-        done
-        expected_arch="${ARCHITECTURE:-unknown}"
-        [ "$expected_arch" != x86-64 ] || expected_arch=x86_64
-        signing_key="${ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY:-}"
-        signing_key_pin="${ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256:-}"
-        if [ -z "$signing_key" ] || [ -z "$signing_key_pin" ]; then
-            echo "[mkosi.postinst] release signing public key and pinned SPKI digest are required" >&2
-            exit 1
-        fi
-        verifier="${source_root}/scripts/linux/verify-desktop-artifact.py"
-        if [ ! -f "$verifier" ] || [ -L "$verifier" ]; then
-            echo "[mkosi.postinst] desktop artifact verifier is missing or is a symlink" >&2
-            exit 1
-        fi
-        python3 "$verifier" \
-            --manifest "$manifest" \
-            --architecture "$expected_arch" \
-            --public-key "$signing_key" \
-            --public-key-spki-sha256 "$signing_key_pin" \
-            --extract-to /opt/elizaos
-        for required in "$desktop" "$agent" /opt/elizaos/bin/eliza-doctor; do
-            if [ ! -x "$required" ] || [ -L "$required" ]; then
-                echo "[mkosi.postinst] verified release entrypoint is missing, linked, or not executable: $required" >&2
-                exit 1
-            fi
-        done
-        ;;
-esac
+    done
+elif { [ -e "$desktop" ] && [ ! -x "$agent" ]; } || \
+     { [ -e "$agent" ] && [ ! -x "$desktop" ]; }; then
+    echo "[mkosi.postinst] partial desktop artifact topology" >&2
+    exit 1
+fi
+
+# Browser bytes must come from the archive above, never a separate unsigned input.
+browser_stager="${source_root}/scripts/linux/stage-browser-artifact.py"
+if [ ! -f "$browser_stager" ] || [ -L "$browser_stager" ]; then
+    echo "[mkosi.postinst] browser artifact stager is missing or is a symlink" >&2
+    exit 1
+fi
+browser_arguments=(--architecture "$expected_arch" --build-mode "$build_mode")
+if [ -f "$verified_metadata" ]; then
+    browser_arguments+=(--verified-metadata "$verified_metadata")
+fi
+python3 "$browser_stager" "${browser_arguments[@]}"
 
 systemctl enable gdm3.service NetworkManager.service systemd-resolved.service
 if [ "$control_installed" -eq 1 ]; then

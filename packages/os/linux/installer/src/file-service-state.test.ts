@@ -135,6 +135,29 @@ describe("durable installer root-service state", () => {
     expect(await readdir(join(root, "targets"))).toEqual([]);
   });
 
+  it("preserves filesystem causes when required state directories are missing", async () => {
+    const { root, state } = await stateFixture();
+    await rm(join(root, "authorizations"), { recursive: true });
+    await expect(state.claim(authorization())).rejects.toMatchObject({
+      name: "InstallRecoveryRequiredError",
+      cause: { code: "ENOENT" },
+    });
+  });
+
+  it("reports failed lock cleanup instead of returning the operation result", async () => {
+    const { root, state } = await stateFixture();
+    const identity = "c".repeat(64);
+    await expect(
+      state.runExclusive(identity, "8:0:42", "a".repeat(64), async () => {
+        await rm(join(root, "targets", `${identity}.lock`));
+        return "completed";
+      }),
+    ).rejects.toMatchObject({
+      name: "InstallRecoveryRequiredError",
+      cause: { code: "ENOENT" },
+    });
+  });
+
   it("retains the cross-plan target lock after an execution failure", async () => {
     const { root, state } = await stateFixture();
 

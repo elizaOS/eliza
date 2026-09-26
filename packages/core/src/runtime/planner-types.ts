@@ -11,6 +11,7 @@ import type {
 import type { ActionReplyFailure } from "../types/action-reply";
 import type {
 	ActionResult,
+	CompletionContextSelection,
 	EvaluationResult,
 	ReplyEffectStatus,
 } from "../types/components";
@@ -36,6 +37,8 @@ export interface PlannerToolCall {
 	id?: string;
 	name: string;
 	params?: Record<string, unknown>;
+	/** Whole-turn source review from the planner; null explicitly retains full context after invalid metadata. */
+	completionContext?: CompletionContextSelection | null;
 }
 
 export type EvaluatorRoute = EvaluationResult["decision"];

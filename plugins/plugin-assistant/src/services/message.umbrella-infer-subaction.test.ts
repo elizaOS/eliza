@@ -422,6 +422,90 @@ it("does not substitute an umbrella for an independently implemented child", () 
 // Domain extraction must see the same reviewed originals as the planner while
 // cached provider state stays complete and reusable by later turns.
 describe("action-local conversation evidence", () => {
+  it.each([
+    "selected",
+    "incomplete",
+    "stale",
+    "unknown",
+    "empty",
+    "restored",
+  ] as const)(
+    "uses action-local %s review over 361 originals without changing reply context",
+    async (mode) => {
+      const { actions, states } = ledgerFamily();
+      const plannerContext: ContextObject = {
+        id: message.id,
+        metadata: {
+          roomId: message.roomId,
+          messageId: message.id,
+          ...(mode === "restored" ? { plannerQueryTokensRestored: true } : {}),
+        },
+        events: Array.from({ length: 361 }, (_, i) => ({
+          id: `history:source-${i}`,
+          type: "segment" as const,
+          source: "prior-dialogue",
+          createdAt: i,
+          segment: {
+            id: `history:source-${i}`,
+            label: "prior_message:user",
+            content: `Original ${i}\nKeep its continuation, speaker and timestamp.`,
+            stable: false,
+            metadata: {
+              roomId: message.roomId,
+              entityId: message.entityId,
+              speakerName: "Owner",
+            },
+          },
+        })),
+      };
+      const selection = {
+        mode: "selected" as const,
+        complete: mode !== "incomplete",
+        sourceSetId:
+          mode === "stale"
+            ? "0".repeat(64)
+            : completionContextSources(plannerContext).sourceSetId,
+        relevantSourceIds:
+          mode === "empty"
+            ? []
+            : mode === "unknown"
+              ? ["h999"]
+              : ["h2", "h360"],
+        constraintSourceIds: mode === "empty" ? [] : ["h1", "h361"],
+        referentSourceIds: [],
+        pendingIntentSourceIds: [],
+      };
+      const before = structuredClone(plannerContext);
+      const { result, useModel } = await execute({
+        actions,
+        plannerContext,
+        toolCall: {
+          name: "LEDGER",
+          params: { action: "create", text: "hello" },
+          completionContext: selection,
+        },
+      });
+      expect(result.success).toBe(true);
+      const evidence = JSON.parse(
+        String(states[0]?.values.selectedActionConversation),
+      );
+      expect(evidence).toEqual(
+        mode === "empty"
+          ? []
+          : mode === "selected"
+            ? [
+                plannerContext.events[0],
+                plannerContext.events[1],
+                plannerContext.events[359],
+                plannerContext.events[360],
+              ]
+            : plannerContext.events,
+      );
+      expect(plannerContext).toEqual(before);
+      expect(useModel).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["selected", "empty", "stale", "missing"] as const)(
     "supplies %s source selection without mutating cached state",
     async (mode) => {

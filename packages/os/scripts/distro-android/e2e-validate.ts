@@ -28,8 +28,12 @@ import path from "node:path";
 import process from "node:process";
 import { validateBootedDevice } from "./boot-validate.ts";
 import { loadBrandFromArgv } from "./brand-config.ts";
-import { buildStepMap, captureScreens, resolveAdb } from "./capture-screens.ts";
-import { isMainModule } from "./is-main.ts";
+import {
+  buildStepMap,
+  captureScreens,
+  resolveAdb,
+  resolveDeviceSerial,
+} from "./capture-screens.ts";
 
 export function parseSubArgs(argv) {
   const args = {
@@ -60,7 +64,7 @@ export function parseSubArgs(argv) {
       args.adb = path.resolve(readFlagValue(arg, i));
       i += 1;
     } else if (arg === "--timeout-ms") {
-      args.timeoutMs = Number.parseInt(readFlagValue(arg, i), 10);
+      args.timeoutMs = Number(readFlagValue(arg, i));
       i += 1;
     } else if (arg === "--skip-boot-validate") {
       args.skipBootValidate = true;
@@ -83,7 +87,7 @@ export function parseSubArgs(argv) {
     }
   }
   if (!args.outDir) throw new Error("--out is required");
-  if (!Number.isFinite(args.timeoutMs) || args.timeoutMs <= 0) {
+  if (!Number.isSafeInteger(args.timeoutMs) || args.timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive integer");
   }
   return args;
@@ -119,6 +123,7 @@ async function main(argv = process.argv.slice(2)) {
         },
         brand,
       );
+      report.serial = report.bootValidate.serial;
       console.log(
         "[e2e] Boot validation passed (HOME/Dialer/SMS/Assistant roles + perms).",
       );
@@ -131,15 +136,18 @@ async function main(argv = process.argv.slice(2)) {
   }
 
   try {
-    report.screenshots = await captureScreens({
-      outDir: args.outDir,
-      serial: args.serial,
-      adb,
-      steps: args.steps,
-      label: args.label,
-      noLaunch: false,
-      stepMap,
-    });
+    if (report.errors.length === 0) {
+      report.serial = resolveDeviceSerial(adb, report.serial);
+      report.screenshots = await captureScreens({
+        outDir: args.outDir,
+        serial: report.serial,
+        adb,
+        steps: args.steps,
+        label: args.label,
+        noLaunch: false,
+        stepMap,
+      });
+    }
   } catch (error) {
     report.errors.push({ phase: "capture-screens", message: error.message });
     console.error(`[e2e] Screenshot capture FAILED: ${error.message}`);
@@ -156,7 +164,6 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-const isMain = isMainModule(import.meta);
-if (isMain) {
+if (import.meta.main) {
   await main();
 }

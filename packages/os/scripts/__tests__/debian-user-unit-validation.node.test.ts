@@ -22,12 +22,26 @@ const validatorName = "validate-user-units";
 const canVerify =
   process.platform === "linux" && existsSync("/usr/bin/systemd-analyze");
 
-function runValidator(directory) {
-  return spawnSync(join(directory, validatorName), [], {
+function runValidator(directory, args = []) {
+  return spawnSync(join(directory, validatorName), args, {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
 }
+
+test("mkosi user units pass the real systemd validator", {
+  // Requires Linux with systemd-analyze to exercise the actual unit validator.
+  skip: !canVerify,
+}, () => {
+  const valid = runValidator(packaging, [
+    join(
+      repositoryRoot,
+      "linux/elizaos/mkosi/mkosi.extra/usr/lib/systemd/user",
+    ),
+    "/opt/elizaos",
+  ]);
+  assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+});
 
 test("Debian user-unit validation accepts the shipped graph and rejects unknown directives", {
   // Requires Linux with systemd-analyze to exercise the actual unit validator.

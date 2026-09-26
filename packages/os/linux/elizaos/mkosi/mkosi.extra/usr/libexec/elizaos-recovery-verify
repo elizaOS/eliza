@@ -12,9 +12,9 @@ esac
 for unit in eliza-control-broker.service eliza-control-broker.socket; do
     state="$(systemctl show --property=ActiveState --value "$unit")"
     case "$state" in
-        ''|inactive|failed) ;;
+        inactive|failed) ;;
         *)
-            echo "elizaos-recovery-verify: privileged broker boundary is active: $unit ($state)" >&2
+            echo "elizaos-recovery-verify: privileged broker boundary is active or unknown: $unit ($state)" >&2
             exit 1
             ;;
     esac
@@ -30,7 +30,13 @@ active_user_managers="$(
 }
 
 for cmdline in /proc/[0-9]*/cmdline; do
-    process="$(tr '\000' ' ' <"$cmdline" 2>/dev/null || true)"
+    if ! process="$(tr '\000' ' ' <"$cmdline" 2>/dev/null)"; then
+        # Processes may exit while /proc is being scanned. Other read failures
+        # cannot establish that the agent is absent.
+        [ ! -e "$cmdline" ] && continue
+        echo "elizaos-recovery-verify: cannot inspect process: $cmdline" >&2
+        exit 1
+    fi
     case " $process " in
         *' /usr/bin/eliza-agent '*|*' /opt/elizaos/bin/eliza-agent '*)
             echo "elizaos-recovery-verify: Eliza agent process is running" >&2

@@ -1304,6 +1304,46 @@ describe("planner source selection and restoration", () => {
 		);
 	});
 
+	it("distinguishes deferred note bodies from missing live timestamp evidence on evaluator wire", async () => {
+		const full = withSelection(historyContext());
+		full.metadata = { ...full.metadata, providerDiscoveryEnabled: true };
+		full.events.push({
+			id: "provider:SAVED_NOTES",
+			type: "provider",
+			name: "SAVED_NOTES",
+			text: "Complete note bodies without timestamps. ".repeat(100),
+			discoveryText:
+				"Current note ID/title index, not bodies or timestamps. Full provider contains content, not timestamps; NOTES_LIST supplies record metadata.",
+		});
+		const before = JSON.stringify(full);
+		let input = "";
+		const restore = vi.fn(async (original: ContextObject) => original);
+		const useModel = vi.fn(async (_type, params) => {
+			input = JSON.stringify(params.messages);
+			return JSON.stringify({
+				success: false,
+				decision: "CONTINUE",
+				thought:
+					"The requested latest note needs current record timestamps from a tool.",
+			});
+		});
+		await runEvaluator({
+			context: full,
+			trajectory: trajectory(full),
+			runtime: { useModel, restoreProviderContext: restore },
+		});
+		expect(input).toContain("not bodies or timestamps");
+		expect(input).toContain("full only when both");
+		expect(input).toContain("Missing live-record fields are tool work");
+		expect(input).toContain("Selected prior dialogue sources");
+		expect(input).not.toContain("Only Stage-1-selected");
+		expect(input).not.toContain("Complete note bodies without timestamps.");
+		expect(input).not.toContain("Old completed unrelated weather request.");
+		expect(restore).not.toHaveBeenCalled();
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(full)).toBe(before);
+	});
+
 	it("restores every original source without executing any call in the restoration batch", async () => {
 		const full = withSelection(historyContext());
 		const before = JSON.stringify(full);

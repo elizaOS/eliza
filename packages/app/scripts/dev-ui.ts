@@ -1290,6 +1290,8 @@ if (uiOnly) {
     // Normal local development must use the gateway health probe. Force-arming
     // is a diagnostic override and must remain explicit so a missing or
     // unhealthy Cartesia gateway cannot masquerade as available voice.
+    // UI owns first-conversation creation; voice waits for readiness separately.
+    startVite();
     void waitForPort(API_PORT)
       .then(async () => {
         const deadline = Date.now() + 300_000;
@@ -1331,10 +1333,7 @@ if (uiOnly) {
       // text development stays available and gateway health cannot pass.
       .catch(() =>
         console.error("[eliza] Voice gateway waiting for local API failed."),
-      )
-      .finally(() => {
-        if (!shuttingDown) startVite();
-      });
+      );
   } else {
     startVite();
   }

@@ -1,6 +1,6 @@
 Subject: [PATCH] zlib: generic-only kernels for riscv64 (no SIMD table)
 
-legacy Zig Bun's zlib.ts selects per-arch zlib-ng SIMD kernels and throws
+bun-v1.3.14's zlib.ts selects per-arch zlib-ng SIMD kernels and throws
 for arches without a table. riscv64 has no RVV kernels wired up here, so
 build the portable generic C fallbacks (WITH_ALL_FALLBACKS) like a
 no-SIMD target. Required for --arch=riscv64 configure to succeed.

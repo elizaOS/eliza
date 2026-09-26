@@ -15,6 +15,7 @@
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["bun", "node"]
   },
   "include": ["src", "vite.config.ts", "vitest.config.ts"],

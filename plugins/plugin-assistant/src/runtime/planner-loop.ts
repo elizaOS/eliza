@@ -1,3 +1,4 @@
+import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
 /**
  * The planner's tool-calling agent loop: iteratively calls the planner model,
  * dispatches queued tool calls, and either gates or runs the trajectory
@@ -10,6 +11,7 @@
 
 import type {
   Action,
+  ActionParameterSchema,
   ActionResult,
   ContextEvent,
   ContextObject,
@@ -41,7 +43,10 @@ import {
   buildStageChatMessages,
   type ChainingLoopConfig,
   type ChatMessage,
+  COMPLETION_CONTEXT_SCHEMA,
+  COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   captureToolStageIO,
+  completionContextSources,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
   createUnavailableGroundedActionReply,
@@ -72,6 +77,7 @@ import {
   normalizePromptSegments,
   PROVIDER_CONTEXT_OVERFLOW,
   type PromptSegment,
+  parseCompletionContextSelection,
   parseInteractionBlocks,
   parseJsonObject,
   parsePseudoTagToolInvocations,
@@ -117,7 +123,11 @@ import {
   plannerSchema,
   plannerTemplate,
 } from "../prompts/planner.ts";
-import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
+import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
+import {
+  labelHistorySources,
+  referenceRepeatedHistory,
+} from "../services/message/history-wire.ts";
 import {
   declaredIntentsFromContext,
   repairFinishWithProgressPromise,
@@ -2804,6 +2814,7 @@ function renderPlannerModelInput(params: {
   promptSegments: PromptSegment[];
   cacheKeySegments: PromptSegment[];
   sourceSelectionApplied: boolean;
+  actionSourceSelectionSchema?: JSONSchema & ActionParameterSchema;
 } {
   const original = params.trajectory.modelBaseContext ?? params.context;
   const selected =
@@ -2815,16 +2826,69 @@ function renderPlannerModelInput(params: {
           omittedSourceCount: 0,
           selection: undefined,
         };
+  const background =
+    params.allowSourceSelection && !params.codingMode && !selected.applied
+      ? projectBackgroundHistory(original)
+      : { context: selected.context, applied: false, omittedSourceCount: 0 };
   const diagnosticProjection =
     params.allowSourceSelection && !params.codingMode
-      ? referencePlannerQueryTokens(selected.context)
-      : { context: selected.context, applied: false };
+      ? referencePlannerQueryTokens(background.context)
+      : { context: background.context, applied: false };
   const deferred =
     params.allowSourceSelection && !params.codingMode
       ? projectDeferredProviders(diagnosticProjection.context)
       : { context: diagnosticProjection.context, available: [] };
   const renderedContext = renderContextObject(deferred.context);
-  if (params.allowSourceSelection && !params.codingMode) {
+  // Domain planning can review originals for the whole pending turn without changing
+  // the reply handler or mutating the complete restorable context.
+  const actionSources =
+    params.allowSourceSelection &&
+    !selected.applied &&
+    !background.applied &&
+    original.metadata?.plannerQueryTokensRestored !== true &&
+    !params.codingMode &&
+    !params.replyOnly &&
+    params.tools?.some(
+      (tool) =>
+        !isTerminalToolCall({ name: tool.name }) &&
+        !isDiscoveryActionName(tool.name) &&
+        tool.name !== "RESTORE_CONTEXT",
+    )
+      ? completionContextSources(original)
+      : undefined;
+  const actionSourceSelectionSchema:
+    | (JSONSchema & ActionParameterSchema)
+    | undefined = actionSources?.sources.length
+    ? {
+        ...COMPLETION_CONTEXT_SCHEMA,
+        properties: {
+          ...COMPLETION_CONTEXT_SCHEMA.properties,
+          sourceSetId: {
+            type: "string",
+            enum: [actionSources.sourceSetId],
+            description:
+              "Use this exact identity for the originals supplied with this planner request.",
+          },
+        },
+      }
+    : undefined;
+  if (actionSourceSelectionSchema && actionSources) {
+    renderedContext.promptSegments = labelHistorySources(
+      renderedContext.promptSegments,
+      new Map(actionSources.sources.map(({ id, event }) => [event.id, id])),
+    );
+    renderedContext.promptSegments.push({
+      id: "action-source-review",
+      label: "action_source_review",
+      stable: false,
+      content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
+    });
+  }
+  if (
+    params.allowSourceSelection &&
+    !params.codingMode &&
+    !actionSourceSelectionSchema
+  ) {
     renderedContext.promptSegments = referenceRepeatedHistory(
       original,
       renderedContext.promptSegments,
@@ -2844,6 +2908,12 @@ function renderPlannerModelInput(params: {
       stable: false,
       content:
         "The tokenized retrieval query is referenced by exact source event, count and hash. It is derived search diagnostics, not additional user instructions. All routing decisions remain inline. Call RESTORE_CONTEXT alone if the original diagnostic array is needed; it restores the complete list together with original dialogue before any effects.",
+    });
+  if (background.applied)
+    renderedContext.promptSegments.push({
+      id: "planner-background-history",
+      stable: false,
+      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
     });
   if (selected.applied)
     renderedContext.promptSegments.push({
@@ -2865,7 +2935,7 @@ function renderPlannerModelInput(params: {
           nativeToolsOnly: true,
         })
       : template;
-  const instructions = (
+  let instructions = (
     params.replyOnly && !params.codingMode && template === plannerTemplate
       ? plannerReplyTemplate
       : params.codingMode
@@ -2874,6 +2944,12 @@ function renderPlannerModelInput(params: {
             scopedTemplate.split("context_object:")[0] ?? scopedTemplate,
           )
   ).trim();
+  if (actionSourceSelectionSchema) {
+    const shared = completionContextFieldInstructions(
+      actionSourceSelectionSchema,
+    );
+    if (!instructions.includes(shared)) instructions += `\n\n${shared}`;
+  }
   const completeStepMessages =
     params.trajectory.modelHistory ??
     trajectoryStepsToMessages(params.trajectory.steps, {
@@ -2893,10 +2969,11 @@ function renderPlannerModelInput(params: {
   if (routingHintsBlock) {
     extraSegments.push({ content: routingHintsBlock, stable: false });
   }
-  const contextSegments =
+  const contextSegments = compactHistoricalReceiptSegments(
     extraSegments.length > 0
       ? [...renderedContext.promptSegments, ...extraSegments]
-      : renderedContext.promptSegments;
+      : renderedContext.promptSegments,
+  );
   // The planner stage instructions are template-derived (`plannerTemplate`)
   // and use stable authored variants for the exposed tools, so they belong in
   // the cached prefix. Marking the segment `stable: true` lets the
@@ -2942,8 +3019,10 @@ function renderPlannerModelInput(params: {
     messages,
     promptSegments,
     cacheKeySegments,
+    actionSourceSelectionSchema,
     sourceSelectionApplied:
       selected.applied ||
+      background.applied ||
       diagnosticProjection.applied ||
       deferred.available.length > 0,
   };
@@ -3148,6 +3227,7 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
  * JSON callers retain their top-level `completed` contract.
  */
 export const TURN_SCOPE_ARG = "eliza_turn_scope";
+export const ACTION_CONTEXT_ARG = "eliza_completion_context";
 export const TURN_SCOPE_FINAL = "final";
 export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
 
@@ -3302,6 +3382,37 @@ export function withTurnScopeToolArg(
   });
 }
 
+/** Exact field prose is shared once; validation remains on every native tool. */
+export function completionContextFieldInstructions(schema: JSONSchema): string {
+  return [
+    `Completion-context field instructions (${ACTION_CONTEXT_ARG}):`,
+    ...(schema.description ? [schema.description] : []),
+    ...Object.entries(schema.properties ?? {}).flatMap(([name, property]) =>
+      property.description ? [`${name}: ${property.description}`] : [],
+    ),
+  ].join("\n");
+}
+
+export function withSharedCompletionContextDescriptions(
+  schema: JSONSchema,
+  sharedSystemPrompt?: string,
+): JSONSchema {
+  // Isolated/custom callers keep the complete field descriptions unless the
+  // trusted system actually contains this exact contract, not just its title.
+  if (!sharedSystemPrompt?.includes(completionContextFieldInstructions(schema)))
+    return schema;
+  return {
+    ...schema,
+    description: `Follow the shared Completion-context field instructions (${ACTION_CONTEXT_ARG}).`,
+    properties: Object.fromEntries(
+      Object.entries(schema.properties ?? {}).map(([name, property]) => {
+        const { description: _description, ...validation } = property;
+        return [name, validation];
+      }),
+    ),
+  };
+}
+
 /**
  * Strip the reserved turn-scope argument from every call and fold the
  * declarations into one turn-level completion signal. Any
@@ -3317,14 +3428,25 @@ function extractTurnScopeSignal(calls: PlannerToolCall[]): {
   let sawFinal = false;
   const toolCalls = calls.map((call) => {
     const value = call.params?.[TURN_SCOPE_ARG];
-    if (value === undefined) return call;
+    const selection = call.params?.[ACTION_CONTEXT_ARG];
+    if (value === undefined && selection === undefined) return call;
     if (value === TURN_SCOPE_MORE_WORK_PENDING) sawPending = true;
     else if (value === TURN_SCOPE_FINAL) sawFinal = true;
-    const { [TURN_SCOPE_ARG]: _scope, ...params } = call.params as Record<
-      string,
-      unknown
-    >;
-    return { ...call, params };
+    const {
+      [TURN_SCOPE_ARG]: _scope,
+      [ACTION_CONTEXT_ARG]: _selection,
+      ...params
+    } = call.params as Record<string, unknown>;
+    return {
+      ...call,
+      params,
+      ...(selection !== undefined
+        ? {
+            completionContext:
+              parseCompletionContextSelection(selection) ?? null,
+          }
+        : {}),
+    };
   });
   return {
     toolCalls,
@@ -3671,6 +3793,43 @@ async function dispatchPlannerModelCall(params: {
         ? renderedInput.messages[0].content
         : undefined,
     );
+    const actionSourceSchema = renderedInput.actionSourceSelectionSchema
+      ? withSharedCompletionContextDescriptions(
+          renderedInput.actionSourceSelectionSchema,
+          renderedInput.messages[0]?.role === "system" &&
+            typeof renderedInput.messages[0].content === "string"
+            ? renderedInput.messages[0].content
+            : undefined,
+        )
+      : undefined;
+    if (actionSourceSchema) {
+      modelParams.tools = modelParams.tools?.map((tool) => {
+        if (
+          isTerminalToolCall({ name: tool.name }) ||
+          isDiscoveryActionName(tool.name) ||
+          tool.name === "RESTORE_CONTEXT"
+        )
+          return tool;
+        const schema = tool.parameters;
+        if (!schema || schema.type !== "object") return tool;
+        if (schema.properties?.[ACTION_CONTEXT_ARG] !== undefined)
+          throw new ElizaError(
+            "Action declares reserved planner source metadata",
+            { code: "PLANNER_SOURCE_PARAMETER_CONFLICT" },
+          );
+        return {
+          ...tool,
+          parameters: {
+            ...schema,
+            properties: {
+              ...schema.properties,
+              [ACTION_CONTEXT_ARG]: actionSourceSchema,
+            },
+            required: [...(schema.required ?? []), ACTION_CONTEXT_ARG],
+          },
+        };
+      });
+    }
     // Force a native tool call. With actions exposed directly as tools,
     // every viable planner outcome —
     // invoking an action, calling REPLY for a final message, or terminating
@@ -3689,7 +3848,23 @@ async function dispatchPlannerModelCall(params: {
     const exposedTools = collectExposedTools(params.context);
     const plannerActions = exposedTools.map((tool) => ({
       name: tool.name,
-      parameters: tool.action?.parameters ?? [],
+      parameters: [
+        ...(tool.action?.parameters ?? []),
+        ...(renderedInput.actionSourceSelectionSchema &&
+        !isTerminalToolCall({ name: tool.name }) &&
+        !isDiscoveryActionName(tool.name) &&
+        tool.name !== "RESTORE_CONTEXT"
+          ? [
+              {
+                name: ACTION_CONTEXT_ARG,
+                description:
+                  "Review all pending intents and standing constraints using the supplied original-source labels.",
+                required: true,
+                schema: renderedInput.actionSourceSelectionSchema,
+              },
+            ]
+          : []),
+      ],
       allowAdditionalParameters:
         tool.action?.allowAdditionalParameters === true,
     }));
@@ -3825,6 +4000,72 @@ async function dispatchPlannerModelCall(params: {
   const endedAt = Date.now();
 
   const parsed = parsePlannerOutput(raw);
+
+  // A per-tool subset cannot narrow later planning. Only unanimous, complete,
+  // request-bound whole-turn review may select originals for subsequent stages.
+  const domainCalls = parsed.toolCalls.filter(
+    (call) =>
+      !isTerminalToolCall(call) &&
+      !isDiscoveryActionName(call.name) &&
+      call.name !== "RESTORE_CONTEXT",
+  );
+  if (
+    domainCalls.length > 0 &&
+    !parsed.toolCalls.some((call) => call.name === "RESTORE_CONTEXT")
+  ) {
+    const original = params.trajectory.modelBaseContext ?? params.context;
+    const previous = selectCompletionContext(original);
+    const newReview = renderedInput.actionSourceSelectionSchema !== undefined;
+    const submitted = domainCalls.some(
+      (call) => call.completionContext !== undefined,
+    );
+    const selection = newReview
+      ? domainCalls[0]?.completionContext
+      : previous.selection;
+    const unanimous =
+      original.metadata?.plannerQueryTokensRestored !== true &&
+      selection?.mode === "selected" &&
+      selection.complete &&
+      ((!newReview && !submitted) ||
+        domainCalls.every(
+          (call) =>
+            JSON.stringify(call.completionContext) ===
+            JSON.stringify(selection),
+        ));
+    const reviewed = unanimous
+      ? selectCompletionContext({
+          ...original,
+          metadata: { ...original.metadata, completionContext: selection },
+        })
+      : undefined;
+    const accepted = reviewed?.applied ? selection : undefined;
+    params.trajectory.modelBaseContext = {
+      ...original,
+      metadata: {
+        ...original.metadata,
+        completionContext: accepted ?? (submitted ? null : undefined),
+        ...(submitted ? { backgroundHistory: undefined } : {}),
+      },
+    };
+    params.trajectory.context = {
+      ...params.trajectory.context,
+      metadata: {
+        ...params.trajectory.context.metadata,
+        completionContext: accepted ?? (submitted ? null : undefined),
+        ...(submitted ? { backgroundHistory: undefined } : {}),
+      },
+    };
+    parsed.toolCalls = parsed.toolCalls.map((call) => ({
+      ...call,
+      // No offered/submitted foreground review is distinct from an explicit
+      // invalid/full review: only the former may keep background projection.
+      completionContext:
+        accepted ??
+        (projectBackgroundHistory(original).applied && !submitted
+          ? undefined
+          : null),
+    }));
+  }
 
   // Notify the cumulative-token observer first, BEFORE recording, so the
   // loop's `maxTrajectoryPromptTokens` guard fires immediately on the call
@@ -3966,6 +4207,7 @@ async function callPlanner(
       (!(
         readHistory &&
         (selectCompletionContext(original).applied ||
+          projectBackgroundHistory(original).applied ||
           referencePlannerQueryTokens(original).applied)
       ) &&
         !(readProviders && projectDeferredProviders(original).available.length))
@@ -3990,7 +4232,11 @@ async function callPlanner(
         metadata: {
           ...original.metadata,
           ...(readHistory
-            ? { completionContext: undefined, plannerQueryTokensRestored: true }
+            ? {
+                completionContext: undefined,
+                backgroundHistory: undefined,
+                plannerQueryTokensRestored: true,
+              }
             : {}),
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
@@ -4560,6 +4806,13 @@ async function executeQueuedToolCall(params: {
     });
   }
   params.trajectory.plannedQueue.shift();
+  if (params.toolCall.name === "VIEWS_SHOW") {
+    // Runtime-owned correlation is fresh for this execution, never model authority.
+    params.toolCall.params = {
+      ...params.toolCall.params,
+      navigationStepId: crypto.randomUUID(),
+    };
+  }
   const streamingContext = getStreamingContext();
   const contextEvent = findToolContextEvent(
     params.trajectory.context,

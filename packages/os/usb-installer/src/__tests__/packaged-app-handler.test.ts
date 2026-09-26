@@ -23,6 +23,8 @@ async function fixture() {
   await fs.mkdir(path.join(root, "assets"));
   await fs.writeFile(path.join(root, "index.html"), "<h1>elizaOS</h1>");
   await fs.writeFile(path.join(root, "assets", "app.js"), "export {};");
+  await fs.writeFile(path.join(root, "assets", "font.woff2"), "font fixture");
+  await fs.writeFile(path.join(root, "site.webmanifest"), "{}");
   const requests: Request[] = [];
   const handler = createPackagedAppHandler(root, async (request) => {
     requests.push(request);
@@ -38,6 +40,21 @@ describe("packaged app handler", () => {
     expect(index.status).toBe(200);
     expect(index.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(await index.text()).toContain("elizaOS");
+    for (const resource of [
+      "/index.html",
+      "/site.webmanifest",
+      "/assets/app.js",
+    ]) {
+      const response = await handler(
+        new Request(`http://127.0.0.1:3742${resource}`),
+      );
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    const font = await handler(
+      new Request("http://127.0.0.1:3742/assets/font.woff2"),
+    );
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(await font.text()).toBe("font fixture");
 
     const script = await handler(
       new Request("http://127.0.0.1:3742/assets/app.js"),

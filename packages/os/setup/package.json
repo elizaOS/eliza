@@ -4,6 +4,13 @@
   "private": true,
   "description": "Electrobun desktop app for flashing elizaOS AOSP builds onto Pixel devices via ADB and fastboot.",
   "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -41,6 +48,6 @@
     "react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^5.0.1"
   }
 }

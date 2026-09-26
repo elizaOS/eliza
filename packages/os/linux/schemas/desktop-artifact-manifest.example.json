@@ -11,7 +11,7 @@
   "entrypoints": {
     "desktop": "bin/eliza-desktop",
     "agent": "bin/eliza-agent",
-    "doctor": "bin/eliza-doctor"
+    "doctor": "bin/eliza-desktop-doctor"
   },
   "capabilities": {
     "tray": true,

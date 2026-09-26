@@ -3,13 +3,14 @@
  * seeded browser tab. Runs on the pr-deterministic lane under the model provider.
  */
 
-import type { Action } from "@elizaos/core";
+import type { Action, IAgentRuntime } from "@elizaos/core";
 import type { CapturedAction, ScenarioTurnExecution } from "@elizaos/testing";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
   scenario,
 } from "@elizaos/testing";
+import type { BrowserService } from "../../../../../plugins/plugin-browser/src/browser-service.ts";
 import { browserPlugin } from "../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,
@@ -352,6 +353,21 @@ export default scenario({
         ) {
           await runtime.registerPlugin(browserPlugin);
         }
+
+        // Explicit scenario-owned DOM target; production requires a connected browser.
+        const browserRuntime = runtime as IAgentRuntime;
+        await browserRuntime.getServiceLoadPromise("browser");
+        const browser = browserRuntime.getService<BrowserService>("browser");
+        if (!browser) return "browser service unavailable";
+        browser.registerTarget({
+          id: "workspace",
+          name: "Scenario DOM workspace",
+          description: "Seeded deterministic DOM fixture",
+          kind: "app",
+          priority: 100,
+          available: async () => true,
+          execute: executeBrowserWorkspaceCommand,
+        });
 
         // BrowserService.start() seeds a default search tab asynchronously.
         // Drive that seeding to completion (idempotent — returns the existing

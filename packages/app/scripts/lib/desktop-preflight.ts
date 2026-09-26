@@ -11,6 +11,17 @@ import path from "node:path";
 const EACCES_VIEW_PATTERN =
   /electrobun[\\/](?:node_modules[\\/])?view|electrobun[\\/](?:node_modules[\\/])?electrobun[\\/]view/i;
 
+/** Bound simultaneous runtime package builds without changing dependency order. */
+export function resolveDesktopBuildConcurrency(value) {
+  if (value === undefined) return 8;
+  if (!/^[1-9]\d*$/.test(value) || Number(value) > 32) {
+    throw new Error(
+      "ELIZA_DESKTOP_BUILD_CONCURRENCY must be an integer from 1 to 32.",
+    );
+  }
+  return Number(value);
+}
+
 export function parseBunVersion(rawVersion) {
   const raw = String(rawVersion ?? "").trim();
   // Bun may print only "1.3.10" or a prefixed line (e.g. "Bun 1.3.10"); scan for semver.

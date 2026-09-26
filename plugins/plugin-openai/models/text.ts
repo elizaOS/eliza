@@ -18,6 +18,7 @@ import {
   assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  composeToolDiagnosticRedactor,
   createPreparedModelRequestGuard,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
@@ -45,6 +46,7 @@ import {
   type ModelMessage,
   Output,
   RetryError,
+  type StreamTextTransform,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -80,6 +82,7 @@ import {
   sanitizeFunctionNameForCerebras,
 } from "../utils/schema-compat";
 import { countTokensForModel } from "../utils/tokenization";
+import { StructuredOutputProgressGuard } from "./structured-output-progress";
 
 // ============================================================================
 // Types
@@ -3215,6 +3218,57 @@ async function generateTextAtEndpoint(
     ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
     : undefined;
 
+  const progressController =
+    cerebrasMode &&
+    params.stream &&
+    (params.streamStructured === true ||
+      params.responseSchema !== undefined ||
+      responseFormatType === "json_object")
+      ? new AbortController()
+      : undefined;
+  const requestSignal = progressController
+    ? params.signal
+      ? AbortSignal.any([params.signal, progressController.signal])
+      : progressController.signal
+    : params.signal;
+  let stalledOutput: { error: unknown; text: string } | undefined;
+  // SDK Output.object buffers text while its parsed partial value is unchanged.
+  // Observe raw deltas before that transform, otherwise whitespace is only
+  // exposed after the provider has already exhausted its output window.
+  const progressTransform: StreamTextTransform<ToolSet> | undefined = progressController
+    ? () => {
+        const guards = new Map<string, StructuredOutputProgressGuard>();
+        const received: string[] = [];
+        return new TransformStream({
+          transform(part, controller) {
+            requestSignal?.throwIfAborted();
+            const delta =
+              part.type === "text-delta"
+                ? part.text
+                : params.streamStructured === true && part.type === "tool-input-delta"
+                  ? part.delta
+                  : undefined;
+            if (typeof delta === "string") {
+              received.push(delta);
+              const id = part.type === "tool-input-delta" ? part.id : "text";
+              let guard = guards.get(id);
+              if (!guard) {
+                guard = new StructuredOutputProgressGuard(progressController);
+                guards.set(id, guard);
+              }
+              try {
+                guard.observe(delta);
+              } catch (error) {
+                stalledOutput = { error, text: received.join("") };
+                controller.error(error);
+                return;
+              }
+            }
+            controller.enqueue(part);
+          },
+        });
+      }
+    : undefined;
   const generateParams: NativeTextParams = {
     model,
     ...deepToWellFormedUnicode(promptOrMessages),
@@ -3227,7 +3281,8 @@ async function generateTextAtEndpoint(
     // tails). Retries are owned by the transient lanes below (bounded 3s
     // backoff) and by the runtime's provider failover, never by the SDK.
     maxRetries: 0,
-    ...(params.signal ? { abortSignal: params.signal } : {}),
+    ...(progressTransform ? { experimental_transform: progressTransform } : {}),
+    ...(requestSignal ? { abortSignal: requestSignal } : {}),
     // An omitted caller cap delegates the output boundary to the provider/model.
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
@@ -3307,8 +3362,18 @@ async function generateTextAtEndpoint(
             streamTiming,
           }
         ).catch((error: unknown) => {
+          if (stalledOutput) {
+            details.response = stalledOutput.text;
+            details.finishReason = "error";
+            details.providerMetadata = {
+              ...(details.providerMetadata && typeof details.providerMetadata === "object"
+                ? details.providerMetadata
+                : {}),
+              error: "Structured output stopped making JSON progress.",
+            };
+          }
           noteRateLimitCooldown(modelCooldowns, modelName, error);
-          throw error;
+          throw stalledOutput?.error ?? error;
         });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
@@ -3571,7 +3636,7 @@ async function generateTextAtEndpoint(
       Promise.all([rawTextPromise, finishReasonPromise]),
       ([text]) => text
     );
-    const finalizeStreamingTelemetry = async () => {
+    const finalizeStreamingTelemetry = async (streamIterationErrorForTelemetry?: unknown) => {
       if (telemetryFinalized) {
         return;
       }
@@ -3582,7 +3647,7 @@ async function generateTextAtEndpoint(
         restoredToolCallsPromise,
       ]);
 
-      details.response = restoreResponseText(responseChunks.join(""));
+      details.response = stalledOutput?.text ?? restoreResponseText(responseChunks.join(""));
       if (usageResult.status === "fulfilled" && usageResult.value) {
         applyUsageToDetails(details, usageResult.value);
         emitModelUsageEvent(
@@ -3617,6 +3682,23 @@ async function generateTextAtEndpoint(
         companionStreamError ??= toolCallsResult.reason;
       }
 
+      const streamError =
+        stalledOutput?.error ??
+        streamIterationErrorForTelemetry ??
+        capturedStreamError ??
+        companionStreamError;
+      if (streamError !== undefined) {
+        details.providerMetadata = {
+          ...(details.providerMetadata && typeof details.providerMetadata === "object"
+            ? details.providerMetadata
+            : {}),
+          providerFinishReason: details.finishReason,
+          error: composeToolDiagnosticRedactor(runtime)(
+            streamError instanceof Error ? streamError.message : String(streamError)
+          ),
+        };
+        details.finishReason = "error";
+      }
       const elapsed =
         (typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
@@ -3681,10 +3763,13 @@ async function generateTextAtEndpoint(
             noteRateLimitCooldown(modelCooldowns, modelName, error);
           }
         } finally {
-          await finalizeStreamingTelemetry();
+          await finalizeStreamingTelemetry(streamIterationError);
         }
         const streamError = enrichProviderCallError(
-          streamIterationError ?? capturedStreamError ?? companionStreamError
+          stalledOutput?.error ??
+            streamIterationError ??
+            capturedStreamError ??
+            companionStreamError
         );
         if (streamError && !streamIterationError && !capturedStreamError) {
           noteRateLimitCooldown(modelCooldowns, modelName, streamError);

@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -30,6 +31,51 @@ const script = join(
 function run(args: string[]) {
   return spawnSync("node", [script, ...args], { encoding: "utf8" });
 }
+
+test("a failed packaged probe read cannot be attested as probe absence", () => {
+  const { root } = scaffoldAospRoot({});
+  try {
+    const realDebugfs = execFileSync("sh", ["-c", "command -v debugfs"], {
+      encoding: "utf8",
+    }).trim();
+    const bin = join(root, "test-bin");
+    mkdirSync(bin);
+    const wrapper = join(bin, "debugfs");
+    for (const status of [0, 17]) {
+      writeFileSync(
+        wrapper,
+        `#!/bin/sh\ncase "$2" in *init.elizaos-debug.rc*) echo 'image read failed' >&2; exit ${status};; esac\nexec "${realDebugfs}" "$@"\n`,
+      );
+      chmodSync(wrapper, 0o755);
+      const result = spawnSync(
+        process.execPath,
+        [script, "attest", "--aosp-root", root],
+        {
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        },
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("image read failed");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an unreadable staging tree cannot be skipped by image freshness checks", () => {
+  const { root, productDir } = scaffoldAospRoot({});
+  try {
+    const stagedProduct = join(productDir, "product");
+    rmSync(stagedProduct, { recursive: true, force: true });
+    writeFileSync(stagedProduct, "not a directory");
+    const result = run(["attest", "--aosp-root", root]);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("ENOTDIR");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const STOCK_FSTAB_DATA_LINE =
   "/dev/block/by-name/userdata /data f2fs noatime,nosuid,nodev " +

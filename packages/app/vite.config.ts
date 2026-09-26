@@ -2564,6 +2564,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-blocker/native",
           "plugins/plugin-blocker/src/native.ts",
         ],
+        // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
+        // bundle. Resolve from source so the app build does not require
+        // plugin-calendar to be built first (its dist is absent during the
+        // renderer build in CI). client-calendar is a side-effect import that
+        // augments ElizaClient.prototype with the calendar feed methods.
+        [
+          "@elizaos/plugin-calendar/api/client-calendar",
+          "plugins/plugin-calendar/src/api/client-calendar.ts",
+        ],
+        ["@elizaos/plugin-calendar/ui", "plugins/plugin-calendar/src/ui.ts"],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
@@ -2670,6 +2680,10 @@ export const INVALID_TRACER_PROVIDER = {};
         path.resolve(elizaRoot, "packages/cloud/shared"),
       ]),
       ...createWorkspacePackageExportAliases([
+        path.resolve(elizaRoot, "plugins/plugin-relationships"),
+        path.resolve(elizaRoot, "plugins/plugin-calendar"),
+        path.resolve(elizaRoot, "plugins/plugin-notes"),
+        path.resolve(elizaRoot, "plugins/plugin-knowledge"),
         path.resolve(elizaRoot, "packages/core"),
         path.resolve(elizaRoot, "plugins/plugin-local-inference"),
         path.resolve(elizaRoot, "plugins/plugin-native-inference"),

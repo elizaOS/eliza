@@ -12,6 +12,8 @@ import { useAgentElement } from "../../../agent-surface";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
+import { openBrowserWebsite } from "../../../bridge/system-browser";
+import { loadPasswordProviderSettings } from "../../../platform/password-provider-settings";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { confirmDesktopAction } from "../../../utils/desktop-dialogs";
 import { Alert } from "../../ui/alert";
@@ -640,35 +642,57 @@ function DeleteLoginButton({
 
 function ExternalRowAction({ login }: { login: SavedLogin }) {
   const { t } = useTranslation();
-  const href =
-    login.source === "1password"
-      ? `https://my.1password.com/vaults/all/allitems/${encodeURIComponent(login.identifier)}`
-      : "https://vault.bitwarden.com/";
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function openVault() {
+    setBusy(true);
+    setError(null);
+    try {
+      const settings = await loadPasswordProviderSettings();
+      const provider = login.source === "1password" ? "1password" : "bitwarden";
+      await openBrowserWebsite(settings.webVaults[provider]);
+    } catch {
+      // error-policy:J4 Never substitute a US vault after a configured destination fails.
+      setError(
+        "Could not open your provider. Check Passwords → Account & server settings in Browser.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   const viewLabel = t("logins.viewIn", {
     source: SOURCE_LABEL[login.source],
     defaultValue: "View in {{source}}",
   });
-  const { ref, agentProps } = useAgentElement<HTMLAnchorElement>({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `logins-view-external-${login.source}-${login.identifier}`,
-    role: "link",
+    role: "button",
     label: viewLabel,
     group: "logins",
-    description: `Open this login in ${SOURCE_LABEL[login.source]}`,
+    description: `Open the ${SOURCE_LABEL[login.source]} web vault on this device`,
+    onActivate: () => void openVault(),
   });
   return (
-    <Button asChild variant="outlineMuted" size="sm" className="h-7 text-2xs">
-      <a
+    <div className="max-w-56 space-y-1">
+      <Button
         ref={ref}
         {...agentProps}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        variant="outlineMuted"
+        size="sm"
+        className="h-7 text-2xs"
+        disabled={busy}
+        onClick={() => void openVault()}
         aria-label={viewLabel}
         title={viewLabel}
       >
         <ExternalLink className="size-3" aria-hidden />
         {t("logins.view", { defaultValue: "View" })}
-      </a>
-    </Button>
+      </Button>
+      {error && (
+        <p role="alert" className="text-2xs text-danger">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

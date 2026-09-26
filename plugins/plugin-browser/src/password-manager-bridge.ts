@@ -1,19 +1,13 @@
 /**
- * Password manager bridge — dual-backend (1Password CLI `op` or ProtonPass CLI).
- *
- * Security posture:
- *   - Plaintext credentials NEVER enter return values.
- *   - `injectCredentialToClipboard` pipes the secret from the backend CLI
- *     directly into the OS clipboard via `execFile` without ever surfacing
- *     the value to the Node process beyond a narrow buffer that is
- *     discarded immediately.
- *   - Nothing is logged that could contain secret material.
- *   - All subprocess invocations use `execFile` with an args array.
+ * Provides password-manager metadata and confirmed clipboard delivery without
+ * exposing secret fields to callers. 1Password fields use expiring clipboard
+ * leases; classic pass owns its native first-line copy and expiry.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { leaseCredentialClipboard } from "./credential-clipboard.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -267,13 +261,11 @@ async function runOp(
       maxBuffer: 16 * 1024 * 1024,
     });
     return stdout;
-  } catch (error) {
+  } catch {
+    // error-policy:J2 Backend diagnostics can contain credentials and stay private.
     throw new PasswordManagerError(
-      `1Password CLI failed for "${args[0] ?? ""}": ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      "1Password CLI failed. Open and unlock 1Password, then try again.",
       "1password",
-      error,
     );
   }
 }
@@ -405,106 +397,46 @@ async function listItemsViaProtonPass(
 // Clipboard injection
 // ---------------------------------------------------------------------------
 
-function clipboardCommand(): { cmd: string; args: string[] } {
-  switch (process.platform) {
-    case "darwin":
-      return { cmd: "pbcopy", args: [] };
-    case "win32":
-      return { cmd: "clip", args: [] };
-    default:
-      // Linux/BSD — prefer xclip, but the command must be present on PATH.
-      return { cmd: "xclip", args: ["-selection", "clipboard"] };
-  }
-}
-
-/**
- * Pipe stdout of a producer subprocess directly into the clipboard command.
- *
- * The plaintext secret passes through this process's memory only as kernel
- * pipe buffers between the two children — it is never buffered as a JS
- * string, never logged, and never returned.
- */
+/** Reads one successful provider field before making any clipboard change. */
 async function pipeToClipboard(
   producer: { cmd: string; args: string[] },
   backend: PasswordManagerBackend,
 ): Promise<void> {
-  const clip = clipboardCommand();
-
-  await new Promise<void>((resolve, reject) => {
-    const source = spawn(producer.cmd, producer.args, {
-      stdio: ["ignore", "pipe", "pipe"],
+  let secret: Buffer;
+  try {
+    const result = await execFileAsync(producer.cmd, producer.args, {
+      encoding: "buffer",
+      timeout: 15_000,
+      maxBuffer: 1024 * 1024,
     });
-    const sink = spawn(clip.cmd, clip.args, {
-      stdio: ["pipe", "ignore", "pipe"],
-    });
-
-    let settled = false;
-    const settle = (err?: Error) => {
-      if (settled) return;
-      settled = true;
-      if (err) {
-        source.kill();
-        sink.kill();
-        reject(err);
-      } else {
-        resolve();
-      }
-    };
-
-    source.on("error", (err) =>
-      settle(
-        new PasswordManagerError(
-          `Failed to run ${producer.cmd}: ${err.message}`,
-          backend,
-          err,
-        ),
-      ),
+    secret = result.stdout;
+  } catch {
+    // error-policy:J2 CLI failures may embed plaintext stdout/stderr; never retain them.
+    throw new PasswordManagerError(
+      "Credential retrieval failed. Unlock your password manager and try again.",
+      backend,
     );
-    sink.on("error", (err) =>
-      settle(
-        new PasswordManagerError(
-          `Failed to run clipboard command ${clip.cmd}: ${err.message}`,
-          backend,
-          err,
-        ),
-      ),
+  }
+  // op emits a line terminator after the field, which is not part of the password.
+  if (secret.at(-1) === 10) {
+    const end = secret.at(-2) === 13 ? secret.length - 2 : secret.length - 1;
+    secret = secret.subarray(0, end);
+  }
+  if (secret.length === 0) {
+    throw new PasswordManagerError(
+      "The saved credential field is empty.",
+      backend,
     );
-
-    source.stdout.pipe(sink.stdin);
-
-    let sourceExit: number | null = null;
-    let sinkExit: number | null = null;
-    const maybeDone = () => {
-      if (sourceExit === null || sinkExit === null) return;
-      if (sourceExit !== 0) {
-        settle(
-          new PasswordManagerError(
-            `${producer.cmd} exited with code ${sourceExit}`,
-            backend,
-          ),
-        );
-        return;
-      }
-      if (sinkExit !== 0) {
-        settle(
-          new PasswordManagerError(
-            `${clip.cmd} exited with code ${sinkExit}`,
-            backend,
-          ),
-        );
-        return;
-      }
-      settle();
-    };
-    source.on("close", (code) => {
-      sourceExit = code ?? 0;
-      maybeDone();
-    });
-    sink.on("close", (code) => {
-      sinkExit = code ?? 0;
-      maybeDone();
-    });
-  });
+  }
+  try {
+    await leaseCredentialClipboard(secret, CLIPBOARD_TTL_SECONDS * 1000);
+  } catch {
+    // error-policy:J2 Keep native clipboard diagnostics outside model-facing results.
+    throw new PasswordManagerError(
+      "Credential clipboard is unavailable. Open your password manager to fill this login.",
+      backend,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -613,12 +545,31 @@ export async function injectCredentialToClipboard(
     );
   }
   let producerCmd = binary;
-  const producerArgs = ["show", itemId];
   // Fallback to classic `pass` when protonpass isn't pinned and missing.
   if (!config?.protonPassPath) {
     const hasProton = await probeBinary(binary, ["--version"]);
     if (!hasProton) producerCmd = "pass";
   }
-  await pipeToClipboard({ cmd: producerCmd, args: producerArgs }, "protonpass");
+  if (producerCmd !== "pass") {
+    throw new PasswordManagerError(
+      "Use the Proton Pass application to copy or fill credentials; its CLI field format is not supported.",
+      "protonpass",
+    );
+  }
+  try {
+    await execFileAsync(producerCmd, ["show", "--clip=1", itemId], {
+      timeout: 15_000,
+      env: {
+        ...process.env,
+        PASSWORD_STORE_CLIP_TIME: String(CLIPBOARD_TTL_SECONDS),
+      },
+    });
+  } catch {
+    // error-policy:J2 pass owns the clipboard lifetime; never expose its subprocess output.
+    throw new PasswordManagerError(
+      "Password-store clipboard copy failed. Unlock the store and try again.",
+      "protonpass",
+    );
+  }
   return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS };
 }

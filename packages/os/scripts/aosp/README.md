@@ -1,17 +1,5 @@
 # AOSP device toolkit
 
-These scripts deploy and smoke-test elizaOS AOSP images.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Deployment and runtime smoke checks for Cuttlefish and supported devices. See
+[Android build entrypoints](../../android/README.md) and each script's `--help`.
+Application sources resolve through [eliza-source.ts](../eliza-source.ts).

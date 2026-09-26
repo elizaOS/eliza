@@ -138,7 +138,11 @@ export interface CreateFetchHandlerDeps {
 export function createFetchHandler(
   deps: CreateFetchHandlerDeps = {},
 ): FetchHandler {
-  const backend = deps.backend ?? new AdbFlasherBackend();
+  const backend =
+    deps.backend ??
+    new AdbFlasherBackend({
+      healthTokenFile: process.env.ELIZAOS_ANDROID_HEALTH_TOKEN_FILE,
+    });
   const iosBackend = deps.iosBackend ?? new SideloaderIosBackend();
   const depManager = deps.depManager ?? new DependencyManager();
   const authToken = deps.authToken;

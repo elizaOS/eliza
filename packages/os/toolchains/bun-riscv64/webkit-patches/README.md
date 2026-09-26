@@ -1,17 +1,5 @@
-# WebKit riscv64 patches
+# WebKit patches
 
-This directory holds the WebKit-side patches that have to land on top of `oven-sh/WebKit @ ${WEBKIT_COMMIT}` (see `../bun-version.json:webkit.fork_commit`) to produce a buildable JavaScriptCore for `riscv64-unknown-linux-musl` with LLInt + Baseline JIT enabled.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Patches for the WebKit fork pinned in [bun-version.json](../bun-version.json).
+The [cross-build wrapper](../README.md) defaults to C-loop; the experimental JIT
+path refuses unresolved recipe placeholders.

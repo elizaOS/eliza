@@ -53,10 +53,12 @@ import {
   type NativeBrowserClientTransport,
   readNativeBrowserPage,
 } from "./native-page-reader.js";
+import { NativeSocketBrowserTarget } from "./native-socket-target.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
+  isBrowserWorkspaceBridgeConfigured,
 } from "./workspace/browser-workspace.js";
 import {
   assertBrowserWorkspaceUrl,
@@ -209,6 +211,7 @@ export class BrowserService extends Service {
   /** Registration order — used as the default preference order. */
   private readonly targetOrder: string[] = [];
   private nativeClientTransport: NativeBrowserClientTransport | null = null;
+  private nativeSocketTarget: NativeSocketBrowserTarget | null = null;
 
   setNativeClientTransport(
     transport: NativeBrowserClientTransport | null,
@@ -216,7 +219,33 @@ export class BrowserService extends Service {
     this.nativeClientTransport = transport;
   }
 
+  async executeNativeDeviceCommand(
+    command: BrowserWorkspaceCommand,
+    profileId: string,
+  ): Promise<BrowserWorkspaceCommandResult> {
+    if (
+      !this.nativeSocketTarget ||
+      this.nativeSocketTarget.getProfileId() !== profileId
+    )
+      throw new BrowserDispatchFailure(
+        "POLICY_BLOCKED",
+        "The authorized Chromium profile is not connected to this device.",
+        { targetId: "chromium-device" },
+      );
+    return this.execute(command, "chromium-device");
+  }
+  getNativeDeviceStatus():
+    | { connected: false }
+    | { connected: true; profileId: string; targetId: string } {
+    const profileId = this.nativeSocketTarget?.getProfileId();
+    return profileId
+      ? { connected: true, profileId, targetId: "chromium-device" }
+      : { connected: false };
+  }
+
   async stop(): Promise<void> {
+    await this.nativeSocketTarget?.stop();
+    this.nativeSocketTarget = null;
     this.nativeClientTransport = null;
     this.targets.clear();
     this.targetOrder.length = 0;
@@ -225,6 +254,21 @@ export class BrowserService extends Service {
   static override async start(runtime: IAgentRuntime): Promise<BrowserService> {
     const service = new BrowserService(runtime);
     service.registerTarget(createWorkspaceTarget());
+    const nativeTarget = new NativeSocketBrowserTarget((error) => {
+      if (isBrowserDispatchFailure(error) && error.kind === "UNAVAILABLE")
+        logger.info(
+          "[browser] Native Chromium is unavailable; waiting for its connection.",
+        );
+      else runtime.reportError("browser.native-transport", error);
+    });
+    service.nativeSocketTarget = nativeTarget;
+    service.registerTarget(nativeTarget);
+    try {
+      await nativeTarget.start();
+    } catch (error) {
+      // error-policy:J4 unavailable native transport remains an explicitly unavailable target.
+      runtime.reportError("browser.native-transport", error);
+    }
     try {
       const stagehandTarget = await maybeCreateStagehandTarget();
       if (stagehandTarget) service.registerTarget(stagehandTarget);
@@ -460,7 +504,17 @@ export class BrowserService extends Service {
         const url = command.url
           ? assertBrowserWorkspaceUrl(command.url)
           : undefined;
-        await this.nativeClientTransport.navigate(nativeClientId, url);
+        try {
+          await this.nativeClientTransport.navigate(nativeClientId, url);
+        } catch (error) {
+          // error-policy:J2 preserve typed transport failures; an opaque failure after dispatch cannot prove navigation did not begin.
+          if (isBrowserDispatchFailure(error)) throw error;
+          throw new BrowserDispatchFailure(
+            "UNCERTAIN_OUTCOME",
+            `Native browser command "${command.subaction}" failed after dispatch and may have partially completed. Read the requesting client's page before retrying.`,
+            { targetId: "native-client", cause: error },
+          );
+        }
         return {
           targetId: "native-client",
           mode: "web",
@@ -471,6 +525,35 @@ export class BrowserService extends Service {
             note: "Navigation delivered to the requesting client; read the native page to verify loaded content.",
           },
         };
+      }
+      if (command.id)
+        throw new BrowserDispatchFailure(
+          "UNSUPPORTED",
+          "Server tab IDs cannot address the requesting client's native tabs.",
+          { targetId: "native-client" },
+        );
+      if (
+        this.nativeClientTransport?.executeCommand &&
+        command.subaction !== "get"
+      ) {
+        try {
+          return await this.nativeClientTransport.executeCommand(
+            nativeClientId,
+            command,
+          );
+        } catch (error) {
+          // error-policy:J2 preserve native failures and prevent uncertain effects from being replayed.
+          if (
+            isBrowserDispatchFailure(error) ||
+            isIdempotentBrowserSubaction(command.subaction)
+          )
+            throw error;
+          throw new BrowserDispatchFailure(
+            "UNCERTAIN_OUTCOME",
+            "The native browser command may have executed; read the same browser before retrying.",
+            { targetId: "native-client", cause: error },
+          );
+        }
       }
       return readNativeBrowserPage(
         command,
@@ -688,11 +771,11 @@ function createWorkspaceTarget(): BrowserTarget {
     id: "workspace",
     name: "Browser Workspace",
     description:
-      "Eliza's electrobun-embedded BrowserView (desktop) or JSDOM fallback (web). Always available.",
+      "Eliza's configured embedded Chromium workspace. A server-side DOM emulator is not a connected browser.",
     kind: "app",
     priority: 100,
     score: ({ mobile }) => (mobile ? 120 : 100),
-    available: async () => true,
+    available: async () => isBrowserWorkspaceBridgeConfigured(),
     execute: async (command) => {
       const { executeBrowserWorkspaceCommand } = await import(
         "./workspace/browser-workspace.js"

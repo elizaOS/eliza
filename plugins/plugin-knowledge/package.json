@@ -10,7 +10,13 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./register": {
+      "types": "./dist/register.d.ts",
+      "eliza-source": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    }
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -29,7 +35,8 @@
   "sideEffects": false,
   "elizaos": {
     "appRegister": {
-      "export": "registerKnowledgeApp"
+      "export": "registerKnowledgeApp",
+      "subpath": "register"
     },
     "app": {
       "heroImage": "assets/hero.png"
@@ -66,7 +73,6 @@
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "typescript": "^6.0.3"
   }
 }

@@ -92,7 +92,7 @@ import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
-import { installCalendarClient } from "@elizaos/plugin-calendar";
+import { installCalendarClient } from "@elizaos/plugin-calendar/api/client-calendar";
 import type { GetLifeOpsScheduleMergedStateResponse } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 // Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
 // app/api/client.ts imports this file (LifeOps extension) as a side-effect

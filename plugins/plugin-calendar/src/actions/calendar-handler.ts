@@ -1172,6 +1172,8 @@ export function rejectedArgumentForCalendarServiceError(
   switch (code) {
     case "CALENDAR_TARGET_SELECTOR_INVALID":
       return "target";
+    case "CALENDAR_ATTENDEE_ARGUMENT_INVALID":
+      return "details.attendees";
     case "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED":
       return "details.notifyAttendees";
     case "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED":
@@ -1187,6 +1189,7 @@ function buildCalendarServiceErrorFallback(
 ): string {
   if (
     error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
+    error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
     error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
     error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
   ) {
@@ -4647,6 +4650,15 @@ function calendarAttendeeIdentityRequired(): CalendarServiceError {
   );
 }
 
+/** Malformed generated arguments can be repaired without inventing a user clarification. */
+function calendarAttendeeArgumentInvalid(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was created. The generated details.attendees arguments are malformed: each attendee needs a valid email address. Correct the arguments using the original user request. Do not invent guests or put dates, times, or time zones into email fields. If the user requested a guest whose address is missing, ask for that address; if no guest was requested, use no attendees. Never silently drop a user-requested guest.",
+    "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+  );
+}
+
 /** Every proposed attendee needs explicit address evidence before creating an event. */
 export function userAuthorizedCalendarAttendees(
   attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
@@ -4682,7 +4694,7 @@ export function normalizeCalendarAttendees(
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
   if (!attendees) {
-    if (details?.attendees != null) throw calendarAttendeeIdentityRequired();
+    if (details?.attendees != null) throw calendarAttendeeArgumentInvalid();
     return undefined;
   }
   const normalized = attendees.map(
@@ -4690,7 +4702,7 @@ export function normalizeCalendarAttendees(
       if (typeof attendee === "string") {
         const email = attendee.trim();
         if (!attendeeEmailAccepted(email))
-          throw calendarAttendeeIdentityRequired();
+          throw calendarAttendeeArgumentInvalid();
         return { email };
       }
       if (
@@ -4698,14 +4710,14 @@ export function normalizeCalendarAttendees(
         typeof attendee !== "object" ||
         Array.isArray(attendee)
       ) {
-        throw calendarAttendeeIdentityRequired();
+        throw calendarAttendeeArgumentInvalid();
       }
       const record = attendee as Record<string, unknown>;
       if (
         typeof record.email !== "string" ||
         !attendeeEmailAccepted(record.email.trim())
       ) {
-        throw calendarAttendeeIdentityRequired();
+        throw calendarAttendeeArgumentInvalid();
       }
       return {
         email: record.email.trim(),
@@ -5094,6 +5106,12 @@ export function createCalendarActionRunner(
 
 const calendarAction: CalendarHandlerAction = {
   name: "CALENDAR",
+  // These owner-authored producers only observe snapshots; current results
+  // remain complete, while bound historical observations may follow review.
+  historicalObservationOperations: [
+    "calendar.event.next.read",
+    "calendar.feed.read",
+  ],
   // This operation union needs absent optional detail fields to stay absent on the wire.
   toolSchemaStrict: false,
   similes: [
@@ -5326,7 +5344,18 @@ const calendarAction: CalendarHandlerAction = {
       intent,
       scenario,
       facts,
-      context: context ?? {},
+      context: {
+        ...context,
+        ...(scenario === "feed_results"
+          ? {
+              asOf: new Date().toISOString(),
+              selection: "bounded_agenda",
+              nextEventLookupPerformed: false,
+              completionBoundary:
+                "This read covers only the stated time window and retains elapsed events. An event ending before asOf is past, never the next event. This feed does not establish the next event or absence of upcoming events outside its bounds. For the single next ongoing or upcoming event, use CALENDAR_NEXT_EVENT; discover that exact operation if it is not loaded.",
+            }
+          : {}),
+      },
     });
     const respond = async <
       T extends NonNullable<ActionResult["data"]> | undefined,
@@ -5493,6 +5522,8 @@ const calendarAction: CalendarHandlerAction = {
       }
 
       if (subaction === "create_event") {
+        // Reject malformed generated arguments before any lookup or model extraction.
+        normalizeCalendarAttendees(details);
         const calendarContext = await loadCreateEventCalendarContext(
           service,
           details,
@@ -7035,7 +7066,9 @@ const calendarAction: CalendarHandlerAction = {
         runtime.reportError("calendar:action", error, {
           // The action owns this clarification; keep diagnostics without
           // escalating repeated missing guest details into a second reply.
-          diagnosticOnly: error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+          diagnosticOnly:
+            error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
           subaction: subaction ?? "none",
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7071,6 +7104,7 @@ const calendarAction: CalendarHandlerAction = {
             // This typed preflight rejection performed no read or effect. Keep
             // its receipt and evaluation while allowing a corrected plan to finish.
             ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
             (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
               explicitSubaction === "search_events" &&
               searchQueries.length === 0) ||
@@ -7106,6 +7140,7 @@ const calendarAction: CalendarHandlerAction = {
             retryable: error.status >= 500,
             acceptance:
               error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
+              error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
               error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
               (subaction === "create_event" ||
                 subaction === "update_event" ||
@@ -7122,7 +7157,7 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "subaction",
       description:
-        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including requests with no title or keyword filter. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the next upcoming event; create_event only when creating a new event.",
+        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including elapsed events; omitted bounds mean today, not the next upcoming event. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the single next ongoing or upcoming event relative to now, including across dates and without a keyword filter; create_event only when creating a new event.",
       required: false,
       schema: {
         type: "string" as const,

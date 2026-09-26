@@ -11,6 +11,17 @@ export interface ReleaseSequenceStore {
   accept(sequences: Readonly<Record<string, number>>): Promise<void>;
 }
 
+export class ReleaseSequencePersistenceError extends Error {
+  readonly code = "ELIZAOS_RELEASE_SEQUENCE_RECOVERY_REQUIRED";
+  constructor(cause: unknown) {
+    super(
+      "Release sequence persistence failed; state lock retained for explicit recovery.",
+      { cause },
+    );
+    this.name = "ReleaseSequencePersistenceError";
+  }
+}
+
 interface SequenceStateFile {
   schemaVersion: 1;
   sequences: Record<string, number>;
@@ -48,6 +59,31 @@ function validateSequences(value: unknown): Record<string, number> {
   return result;
 }
 
+async function withCleanup(
+  operation: () => Promise<void>,
+  ...cleanup: Array<() => Promise<unknown>>
+): Promise<void> {
+  const failures: unknown[] = [];
+  try {
+    await operation();
+  } catch (error) {
+    failures.push(error);
+  }
+  for (const release of cleanup) {
+    try {
+      await release();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(
+      failures,
+      "Release sequence operation and cleanup failed.",
+    );
+}
+
 export class FileReleaseSequenceStore implements ReleaseSequenceStore {
   private operation = Promise.resolve();
 
@@ -57,8 +93,13 @@ export class FileReleaseSequenceStore implements ReleaseSequenceStore {
     }
   }
 
-  accept(sequences: Readonly<Record<string, number>>): Promise<void> {
-    const operation = this.operation.then(() => this.acceptLocked(sequences));
+  async accept(sequences: Readonly<Record<string, number>>): Promise<void> {
+    // Capture authenticated values before queueing behind another update.
+    const snapshot = validateSequences({
+      schemaVersion: 1,
+      sequences: { ...sequences },
+    });
+    const operation = this.operation.then(() => this.acceptLocked(snapshot));
     this.operation = operation.catch(() => undefined);
     return operation;
   }
@@ -91,21 +132,37 @@ export class FileReleaseSequenceStore implements ReleaseSequenceStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
         throw new Error(
-          "Release sequence state is locked by another installer process; retry after it exits.",
+          "Release sequence state is locked by an active operation or a failed write requiring explicit recovery.",
         );
       }
       throw error;
     }
-    try {
-      await this.acceptWithFileLock(candidates, directory);
-    } finally {
-      await fs.rmdir(lockPath);
-    }
+    let persistenceStarted = false;
+    let completed = false;
+    await withCleanup(
+      async () => {
+        try {
+          await this.acceptWithFileLock(candidates, directory, () => {
+            persistenceStarted = true;
+          });
+          completed = true;
+        } catch (cause) {
+          if (persistenceStarted)
+            throw new ReleaseSequencePersistenceError(cause);
+          throw cause;
+        }
+      },
+      async () => {
+        // After an uncertain write, an equal sequence must not bypass durability.
+        if (!persistenceStarted || completed) await fs.rmdir(lockPath);
+      },
+    );
   }
 
   private async acceptWithFileLock(
     candidates: Readonly<Record<string, number>>,
     directory: string,
+    onPersistenceStarted: () => void,
   ): Promise<void> {
     const validatedCandidates = validateSequences({
       schemaVersion: 1,
@@ -135,41 +192,45 @@ export class FileReleaseSequenceStore implements ReleaseSequenceStore {
       `.${path.basename(this.statePath)}.${process.pid}.${randomUUID()}.tmp`,
     );
     let handle: fs.FileHandle | undefined;
-    try {
-      handle = await fs.open(temporaryPath, "wx", 0o600);
-      await handle.writeFile(
-        `${JSON.stringify({ schemaVersion: 1, sequences: next })}\n`,
-        "utf8",
-      );
-      await handle.sync();
-      await handle.close();
-      handle = undefined;
-      await fs.rename(temporaryPath, this.statePath);
-      const directoryHandle = await fs.open(directory, "r");
-      try {
-        try {
-          await directoryHandle.sync();
-        } catch (error) {
-          const code = (error as NodeJS.ErrnoException).code;
-          if (
-            process.platform !== "win32" ||
-            !["EPERM", "EINVAL", "ENOTSUP"].includes(code ?? "")
-          ) {
-            throw error;
-          }
-          // Windows does not expose POSIX directory fsync. The file itself was
-          // fsynced before the same-volume atomic rename above; all other
-          // platforms and error codes remain fail-closed.
-        }
-      } finally {
-        await directoryHandle.close();
-      }
-    } finally {
-      await handle?.close();
-      await fs.unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== "ENOENT") throw error;
-      });
-    }
+    onPersistenceStarted();
+    await withCleanup(
+      async () => {
+        handle = await fs.open(temporaryPath, "wx", 0o600);
+        await handle.writeFile(
+          `${JSON.stringify({ schemaVersion: 1, sequences: next })}\n`,
+          "utf8",
+        );
+        await handle.sync();
+        await handle.close();
+        handle = undefined;
+        await fs.rename(temporaryPath, this.statePath);
+        const directoryHandle = await fs.open(directory, "r");
+        await withCleanup(
+          async () => {
+            try {
+              await directoryHandle.sync();
+            } catch (error) {
+              const code = (error as NodeJS.ErrnoException).code;
+              if (
+                process.platform !== "win32" ||
+                !["EPERM", "EINVAL", "ENOTSUP"].includes(code ?? "")
+              ) {
+                throw error;
+              }
+              // Windows does not expose POSIX directory fsync. The file itself was
+              // fsynced before the same-volume atomic rename above; all other
+              // platforms and error codes remain fail-closed.
+            }
+          },
+          () => directoryHandle.close(),
+        );
+      },
+      () => handle?.close() ?? Promise.resolve(),
+      () =>
+        fs.unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        }),
+    );
   }
 }
 

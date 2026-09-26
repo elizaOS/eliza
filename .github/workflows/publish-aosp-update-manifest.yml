@@ -1,0 +1,83 @@
+name: Publish AOSP Update Manifest
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version string (e.g. 2.0.0-beta.0)
+        type: string
+        required: true
+      channel:
+        description: Release channel
+        type: string
+        default: beta
+      tag:
+        description: Git tag / GitHub release tag to attach manifest to
+        type: string
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version string (e.g. 2.0.0-beta.0)
+        type: string
+        required: true
+      channel:
+        description: Release channel
+        type: choice
+        default: beta
+        options:
+          - stable
+          - beta
+          - canary
+      tag:
+        description: Git tag / GitHub release tag (e.g. v2.0.0-beta.2)
+        type: string
+        required: true
+
+defaults:
+  run:
+    working-directory: packages/os
+
+concurrency:
+  group: aosp-update-manifest-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-manifest:
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.15.0"
+
+      - name: Validate signed Android releases and publish index
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]
+          case "$RELEASE_CHANNEL" in stable|beta|canary) ;; *) exit 2 ;; esac
+          stage=$(mktemp -d "$RUNNER_TEMP/android-release.XXXXXX")
+          trap 'rm -rf -- "$stage"' EXIT
+          gh release view --repo "$GITHUB_REPOSITORY" -- "$RELEASE_TAG" >/dev/null
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern "elizaos-*-android-*.zip" --dir "$stage" -- "$RELEASE_TAG"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern "*.android-release.json" --dir "$stage" -- "$RELEASE_TAG"
+          output="$stage/aosp-update-manifest-${RELEASE_CHANNEL}.json"
+          node scripts/android/publish-update-manifest.ts \
+            "$stage" "$RELEASE_VERSION" "$RELEASE_CHANNEL" "$RELEASE_TAG" \
+            "$GITHUB_REPOSITORY" "$output"
+          gh release upload --repo "$GITHUB_REPOSITORY" --clobber -- "$RELEASE_TAG" "$output"

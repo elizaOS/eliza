@@ -34,6 +34,30 @@ const DISCORD_LINK_WITH_EMBED = [
   "  Description:(none)",
 ].join("\n");
 
+describe("scheduled mutation negation scope", () => {
+  const actions = [{ name: "VIEWS" }, { name: "CALENDAR" }, { name: "NOTES" }];
+  it.each([
+    "Open Notes and read my latest existing note and my next saved Calendar event. Do not create, edit, or delete anything.",
+    "Read my calendar and do not delete any events.",
+    "Do not delete, update, or create calendar events.",
+  ])("does not infer mutation from a restriction: %s", (text) => {
+    expect(
+      inferDirectCurrentRequestCandidateInference(actions, text).kind,
+    ).not.toBe("owner-scheduled-admin");
+  });
+  it.each([
+    "Move lunch to Friday on my calendar.",
+    "Do not delete calendar events; move lunch to Friday.",
+    "Do not delete lunch, but move the calendar event to Friday.",
+    "Move the calendar event to Friday without deleting anything.",
+  ])("preserves affirmative calendar work beside restrictions: %s", (text) => {
+    expect(inferDirectCurrentRequestCandidateInference(actions, text)).toEqual({
+      names: ["CALENDAR"],
+      kind: "owner-scheduled-admin",
+    });
+  });
+});
+
 describe("looksLikeBareLinkShare", () => {
   it("fires on a bare URL with no commentary", () => {
     expect(looksLikeBareLinkShare("https://example.com/some/page")).toBe(true);

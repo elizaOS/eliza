@@ -411,6 +411,11 @@ export type DisclosureGate =
 	| { require: "audience_admission"; subject: DisclosureSubject };
 
 export interface Action {
+	/** Exact owner-declared read-only operation IDs whose successful, non-replayed
+	 * noop receipts may follow their original request through history projection.
+	 * Undeclared operations and mutation outcomes remain complete inline evidence. */
+	historicalObservationOperations?: readonly string[];
+
 	/** Action name */
 	name: string;
 

@@ -6,3 +6,8 @@ if (!addonPath) throw new Error("native addon path is required");
 const binding = createRequire(import.meta.url)(addonPath);
 assert.equal(typeof binding.capture, "function");
 assert.throws(() => binding.capture(-1), /non-negative/);
+
+assert.equal(typeof binding.openDiskSession, "function");
+assert.throws(() => binding.openDiskSession(), {
+  code: "ELIZAOS_INSTALL_DISK_ERROR",
+});

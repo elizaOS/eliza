@@ -137,6 +137,16 @@ export interface NativePageRead {
 
 export interface ElizaSurfaceManagerPlugin {
   /**
+   * Android: open a website in installed full Chromium with browser-owned
+   * storage and permissions. Resolves on dispatch, not page load. This is not
+   * an isolated native surface and rejects if Chromium is unavailable.
+   */
+  openBrowser(options: { url: string }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    engine: "chromium";
+    surface: "custom-tab";
+  }>;
+  /**
    * Create a native web surface with the given EXPLICIT process/storage policy.
    * Rejects when `process` or `storage` is missing, or when the platform cannot
    * honour the requested isolation (e.g. Android without multi-profile support).

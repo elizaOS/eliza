@@ -97,6 +97,37 @@ describe("getStage1RoutingRepair", () => {
     expect(repair).toContain("details the user already stated");
   });
 
+  it.each([false, true])(
+    "repairs a domain preview with pending work (requiresTool=%s)",
+    (requiresTool) => {
+      const repair = getStage1RoutingRepair(
+        decision({
+          contexts: ["calendar"],
+          candidateActionNames: ["CALENDAR_CREATE_EVENT"],
+          replyEffectStatus: "non_applied",
+          requiresTool,
+          replyText:
+            "The previous attempt failed. Should this be just for you?",
+        }),
+      );
+      expect(repair).toContain("response_contract_repair:");
+      expect(repair).toContain("must wait for the user");
+    },
+  );
+
+  it("preserves a consistent domain clarification without pending work", () => {
+    expect(
+      getStage1RoutingRepair(
+        decision({
+          contexts: ["calendar"],
+          candidateActionNames: ["CALENDAR_CREATE_EVENT"],
+          replyEffectStatus: "non_applied",
+          intents: [],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
   it("leaves consistent decisions alone", () => {
     expect(
       getStage1RoutingRepair(

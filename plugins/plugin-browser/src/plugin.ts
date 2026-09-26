@@ -5,6 +5,11 @@ import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { browserAction } from "./actions/browser.js";
 import { BrowserService } from "./browser-service.js";
 import { browserWorkspaceProvider } from "./providers/workspace.js";
+import {
+  nativeDeviceBrowserProfileRoutes,
+  nativeDeviceBrowserRoute,
+  nativeDeviceBrowserStatusRoute,
+} from "./routes/native-device.js";
 import { browserWorkspaceRoutes } from "./routes/workspace-setup.js";
 import { browserBridgeSchema } from "./schema.js";
 import { preflightStagehandServer } from "./targets/stagehand-target.js";
@@ -14,7 +19,12 @@ export const browserPlugin: Plugin = {
     "Browser automation through the embedded desktop workspace, JSDOM, and optional Stagehand targets.",
   // Existing LifeOps history still reads these persisted record tables.
   schema: browserBridgeSchema,
-  routes: browserWorkspaceRoutes,
+  routes: [
+    ...browserWorkspaceRoutes,
+    nativeDeviceBrowserRoute,
+    nativeDeviceBrowserStatusRoute,
+    ...nativeDeviceBrowserProfileRoutes,
+  ],
   services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
   // Prepare the optional local stagehand-server before services start. Owned

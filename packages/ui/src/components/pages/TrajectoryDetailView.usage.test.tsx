@@ -70,6 +70,78 @@ describe("TrajectoryDetailView recorded usage", () => {
     api.copy.mockReset();
   });
 
+  it.each([true, false])(
+    "preserves recorded messages and labeled alternatives (compact=%s)",
+    async (compact) => {
+      const fixture = detail();
+      const messages = [
+        {
+          role: "user",
+          content: "Actual selected context",
+          name: "retained-envelope",
+        },
+      ];
+      api.getTrajectoryDetail.mockResolvedValue({
+        ...fixture,
+        trajectory: { ...fixture.trajectory, llmCallCount: 1 },
+        llmCalls: [
+          {
+            ...fixture.llmCalls[0],
+            systemPrompt: "System instructions",
+            messages,
+            userPrompt: "System instructions plus legacy context",
+            prompt: "Another legacy representation",
+            tokenUsageEstimated: true,
+          },
+        ],
+      });
+      render(
+        <TrajectoryDetailView
+          trajectoryId="recorded-correction"
+          collapsibleCalls={compact}
+        />,
+      );
+      const input = await screen.findByRole("region", {
+        name: compact ? "Input" : "Recorded messages",
+      });
+      expect(JSON.parse(input.textContent ?? "")).toEqual(messages);
+      fireEvent.click(
+        compact
+          ? screen.getByRole("button", { name: "Copy Input" })
+          : screen.getAllByRole("button", {
+              name: "trajectorydetailview.Copy",
+            })[0],
+      );
+      expect(JSON.parse(api.copy.mock.calls.at(-1)?.[0])).toEqual(messages);
+      expect(screen.getByText(/Token counts estimated/)).toBeTruthy();
+      for (const [label, text] of [
+        [
+          "Recorded user prompt (flattened alternative)",
+          "System instructions plus legacy context",
+        ],
+        [
+          "Recorded prompt (flattened alternative)",
+          "Another legacy representation",
+        ],
+      ]) {
+        fireEvent.click(screen.getByText(label, { selector: "summary" }));
+        expect(screen.getByRole("region", { name: label }).textContent).toBe(
+          text,
+        );
+        fireEvent.click(screen.getByRole("button", { name: `Copy ${label}` }));
+        expect(api.copy).toHaveBeenLastCalledWith(text);
+      }
+      expect(screen.getAllByText(/Not an additional input/)).toHaveLength(2);
+      if (compact) {
+        expect(screen.getByRole("option").textContent).toContain(
+          "≈ 38,396 input tokens",
+        );
+      } else {
+        expect(screen.getAllByText("≈ 38.8k").length).toBeGreaterThan(0);
+      }
+    },
+  );
+
   it("separates retained history from each recorded model input", async () => {
     const text =
       "# Conversation Messages (78 retained)\nprivate diagnostic transcript";

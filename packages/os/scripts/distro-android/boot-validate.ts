@@ -19,7 +19,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.ts";
-import { isMainModule } from "./is-main.ts";
 
 const REQUIRED_ROLES = [
   "android.app.role.HOME",
@@ -597,8 +596,6 @@ export async function main(argv = process.argv.slice(2)) {
   }
 }
 
-const isMain = isMainModule(import.meta);
-
-if (isMain) {
+if (import.meta.main) {
   await main();
 }

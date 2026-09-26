@@ -2,7 +2,10 @@
  * request memories. Delivery is a past transport fact, never current renderer
  * state or evidence of displayed records. No assistant prose supplies authority. */
 import {
+  type Action,
   ChannelType,
+  type EffectReceipt,
+  hashStableJson,
   isObjectRecord,
   type Memory,
   normalizeEffectReceipts,
@@ -69,21 +72,58 @@ export function historicalActionResults(
   return outcome.actionResults.filter(isObjectRecord);
 }
 
-export function historicalEffectReceipts(results: Record<string, unknown>[]) {
-  return results.flatMap((result) => {
-    if (typeof result.success !== "boolean") return [];
+/** Partition only owner-declared exact read operations; generic noops are not reads. */
+export function historicalReceiptGroups(
+  results: Record<string, unknown>[],
+  actions: readonly Action[] = [],
+) {
+  type Outcome = {
+    actionName: string | undefined;
+    success: boolean;
+    receipt: EffectReceipt;
+  };
+  const effects: Outcome[] = [];
+  const observations: Outcome[] = [];
+  const registered = new Map<string, Action | undefined>();
+  for (const action of actions)
+    registered.set(
+      action.name,
+      registered.has(action.name) ? undefined : action,
+    );
+  for (const result of results) {
+    if (typeof result.success !== "boolean") continue;
     try {
-      return normalizeEffectReceipts(result.effectReceipts).map((receipt) => ({
-        actionName:
-          typeof result.actionName === "string" ? result.actionName : undefined,
-        success: result.success,
-        receipt,
-      }));
+      const receipts = normalizeEffectReceipts(result.effectReceipts);
+      const actionName =
+        typeof result.actionName === "string" ? result.actionName : undefined;
+      const declared = actionName
+        ? registered.get(actionName)?.historicalObservationOperations
+        : undefined;
+      // Normalization deliberately scrubs unknown fields and deduplicates IDs.
+      // JSONB may reorder object keys, so compare canonical values structurally;
+      // arrays, extra fields, duplicate IDs and value coercions still matter.
+      // Unsafe evidence stays in the normalized inline effects lane.
+      const canonical =
+        hashStableJson(result.effectReceipts) === hashStableJson(receipts);
+      for (const receipt of receipts) {
+        const outcome = { actionName, success: result.success, receipt };
+        if (
+          canonical &&
+          result.success &&
+          Array.isArray(declared) &&
+          declared.includes(receipt.operation) &&
+          receipt.outcome === "noop" &&
+          receipt.idempotency.replayed === false
+        )
+          observations.push(outcome);
+        else effects.push(outcome);
+      }
     } catch {
-      // error-policy:J3 Malformed stored effects are not historical evidence.
-      return [];
+      // error-policy:J3 Preserve existing rejection of malformed stored receipts.
+      // Raw unknown payload fields must not bypass core receipt normalization.
     }
-  });
+  }
+  return { effects, observations };
 }
 
 export function historicalNavigationReceipts(

@@ -4,6 +4,13 @@
   "private": true,
   "description": "Electrobun application for preparing bootable elizaOS USB installers.",
   "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -31,6 +38,7 @@
     "format:check": "bunx @biomejs/biome format src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts"
   },
   "dependencies": {
+    "@fontsource/poppins": "^5.2.7",
     "vite": "^8.0.0",
     "@elizaos/ui": "workspace:*"
   },
@@ -51,6 +59,6 @@
     "sharp": "^0.35.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^5.0.1"
   }
 }

@@ -803,6 +803,7 @@ export function preferredOperationNames(
     update: ["update", "edit", "change", "modify", "replace"],
     delete: ["delete", "remove", "erase"],
     get: ["get", "read", "retrieve"],
+    next: ["next", "upcoming"],
     open: ["open", "navigate"],
     close: ["close"],
     send: ["send"],

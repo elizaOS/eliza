@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 export type PlatformId = "darwin" | "linux" | "win32" | "unknown";
 
 export type DriveSafety = "safe-removable" | "blocked-system" | "unknown";
@@ -14,6 +13,8 @@ export interface RemovableDrive {
   description?: string;
   /** Platform-reported immutable identity (serial/WWN/unique id), when available. */
   stableId?: string;
+  /** Linux major:minor:diskseq:logical-sector-size captured at drive selection. */
+  kernelDeviceIdentity?: string;
 }
 
 export interface ElizaOsImage {
@@ -74,6 +75,7 @@ export interface WriteRequest {
     sizeBytes: number;
     name?: string;
     stableId?: string;
+    kernelDeviceIdentity?: string;
   };
 }
 

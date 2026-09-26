@@ -3,8 +3,12 @@
 // bounded mkosi assembly, QEMU USB-boot, virtual readback, and two-boot
 // persistence records. This intentionally does not claim installer,
 // desktop-acceptance, or physical-hardware proof.
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createZstdDecompress } from "node:zlib";
 import { parseArgs, sha256File } from "./os-release-lib.ts";
 
 const architectures = new Set(["x86_64", "arm64", "riscv64"]);
@@ -140,8 +144,7 @@ if (
   qemuDocument.success !== true ||
   qemuDocument.preflightOnly !== false ||
   qemuDocument.diskInterface !== "usb" ||
-  qemuDocument.firmwareMode !==
-    (args.architecture === "riscv64" ? "bios" : "pflash") ||
+  qemuDocument.firmwareMode !== "pflash" ||
   qemuDocument.terminationReason !== "required-markers"
 ) {
   errors.push("QEMU evidence is not a successful removable-USB qualification");
@@ -310,7 +313,10 @@ if (
 } else {
   for (const [index, boot] of persistenceDocument.boots.entries()) {
     if (
-      boot?.terminationReason !== "required-markers" ||
+      boot?.success !== true ||
+      boot?.terminationReason !== "guest-poweroff" ||
+      boot?.returnCode !== 0 ||
+      boot?.shutdownError !== null ||
       !["Linux version", "Reached target Graphical Interface"].every((marker) =>
         boot?.markersFound?.includes(marker),
       ) ||
@@ -336,6 +342,28 @@ if (
 
 if (errors.length > 0) {
   throw new Error(`mkosi promotion evidence is invalid:\n${errors.join("\n")}`);
+}
+// Assembly and boot receipts bind different files. Verify their relationship
+// from the actual bytes before promoting either one. Streaming keeps image
+// size independent of verifier memory use.
+const decompressor = createZstdDecompress();
+const expandedHash = createHash("sha256");
+let decompressedSize = 0;
+decompressor.on("data", (chunk) => {
+  decompressedSize += chunk.length;
+});
+try {
+  await pipeline(createReadStream(compressed.path), decompressor, expandedHash);
+} catch (error) {
+  throw new Error("compressed image decompression failed", { cause: error });
+}
+if (
+  decompressedSize !== expanded.size ||
+  expandedHash.digest("hex") !== expanded.sha256
+) {
+  throw new Error(
+    "compressed image does not decompress to the qualified expanded image",
+  );
 }
 process.stdout.write(
   `${JSON.stringify({ architecture: args.architecture, compressedSha256: compressed.sha256, expandedSha256: expanded.sha256, legacyBiosEvidenceSha256: legacyBios?.sha256, persistenceEvidenceSha256: persistence.sha256, sbomSha256: sbom.sha256 })}\n`,

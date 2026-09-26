@@ -60,6 +60,21 @@ describe("local inference provider", () => {
     );
   });
 
+  it("keeps an explicitly uncapped text request uncapped at the backend", async () => {
+    const generate = vi.fn(async () => "complete response");
+    const handlers = createLocalInferenceModelHandlers();
+    await handlers[ModelType.TEXT_LARGE]?.(
+      runtimeWithService({ generate }) as never,
+      { prompt: "Return the complete source.", omitMaxTokens: true } as never,
+    );
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "Return the complete source.",
+        maxTokens: undefined,
+      }),
+    );
+  });
+
   it("renders v5 message arrays before delegating text generation", async () => {
     const generate = vi.fn(async (args: { prompt: string }) => args.prompt);
     const runtime = runtimeWithService({ generate });

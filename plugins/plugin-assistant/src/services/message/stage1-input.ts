@@ -25,9 +25,13 @@ import {
   formatAvailableContextsForPrompt,
   listAvailableContextsForTurn,
 } from "./context-catalog.js";
+import { compactHistoricalReceiptSegments } from "./historical-receipt-wire.js";
 import {
   type HistoryDiscovery,
+  historyReferenceNotice,
   loadedHistorySegments,
+  projectBackgroundHistory,
+  withBackgroundHistory,
 } from "./history-discovery.js";
 import { messageHandlerTemplate } from "./prompts.js";
 import {
@@ -153,9 +157,21 @@ export function renderMessageHandlerModelInput(
   const progressiveContextInput =
     options?.progressiveContext ??
     (options?.directMessage && !options.groupTriage);
-  // Stage 1 receives every original; selection/restoration remains available
-  // to later consumers without a second source-index task in the reply handler.
-  const rendered = renderContextObject(context);
+  const background = projectBackgroundHistory(
+    withBackgroundHistory(
+      context,
+      progressiveContextInput ? options?.history : undefined,
+    ),
+  );
+  const rendered = renderContextObject(background.context);
+  if (background.applied)
+    rendered.promptSegments.push({
+      id: "background-history-notice",
+      stable: false,
+      content:
+        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning; use history:all for exhaustive or uncertain recall." +
+        historyReferenceNotice(context, options?.history),
+    });
   const instructions = renderMessageHandlerInstructions(
     runtime,
     availableContexts,
@@ -210,7 +226,7 @@ export function renderMessageHandlerModelInput(
     (segment) => segment.label !== "message:user",
   );
   const orderedDynamicSegments = [
-    ...historicalNavigationSegments,
+    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
     ...dynamicProviderSegments,
     ...(catalogInstructions
       ? [{ content: catalogInstructions, stable: false }]
@@ -230,7 +246,7 @@ export function renderMessageHandlerModelInput(
       undefined,
       false,
     ),
-    ...otherTurnSegments,
+    ...compactHistoricalReceiptSegments(otherTurnSegments),
     {
       id: "runtime-task",
       content: [

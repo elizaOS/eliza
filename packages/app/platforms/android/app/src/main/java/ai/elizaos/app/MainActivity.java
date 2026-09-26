@@ -102,6 +102,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ElizaVoicePlugin.class);
         registerPlugin(ElizaBgePlugin.class);
         registerPlugin(ResourceProbePlugin.class);
+        registerPlugin(CredentialManagerPlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
         super.onCreate(savedInstanceState);

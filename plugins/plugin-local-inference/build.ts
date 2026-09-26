@@ -77,9 +77,11 @@ export async function buildLocalInferencePlugin(
 			"./src/runtime/index.ts",
 			"./src/routes/index.ts",
 			"./src/services/index.ts",
+			"./src/services/voice/voice-preset-format.ts",
 			"./src/voice-wake.ts",
 			"./src/voice-workbench.ts",
 		],
+		root: "./src",
 		outdir: "dist",
 		target: "node",
 		format: "esm",
@@ -107,6 +109,10 @@ export async function buildLocalInferencePlugin(
 
 	await smokeImport(
 		new URL("./dist/local-inference-routes.js", import.meta.url).href,
+	);
+	await smokeImport(
+		new URL("./dist/services/voice/voice-preset-format.js", import.meta.url)
+			.href,
 	);
 	await smokeImport(
 		new URL("./dist/actions/generate-media.js", import.meta.url).href,

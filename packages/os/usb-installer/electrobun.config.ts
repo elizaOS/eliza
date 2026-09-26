@@ -33,7 +33,12 @@ export default {
     },
     bunVersion: "1.4.2",
     views: {},
-    copy: { dist: "dist" },
+    copy: {
+      dist: "dist",
+      ...(process.platform === "linux"
+        ? { "native/build/linux-raw-writer": "native/linux-raw-writer" }
+        : {}),
+    },
     mac: {
       codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
       notarize: Boolean(
