@@ -244,15 +244,30 @@ describe("READ", () => {
   it("rejects a past-EOF line offset on the repeat call too", async () => {
     const file = path.join(env.tmpDir, "past-eof.txt");
     await fs.writeFile(file, "alpha\nbeta\n", "utf8");
-    await readFileHandler(env.runtime, env.message, undefined, {
+    const initial = await readFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: file, limit: 10 },
     });
+    const { revision } = (
+      (initial.data as Record<string, unknown>).readView as {
+        reference: { revision: string };
+      }
+    ).reference;
 
     const first = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 5, limit: 1 },
+      parameters: {
+        file_path: file,
+        offset: 5,
+        limit: 1,
+        expectedRevision: revision,
+      },
     });
     const second = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 5, limit: 1 },
+      parameters: {
+        file_path: file,
+        offset: 5,
+        limit: 1,
+        expectedRevision: revision,
+      },
     });
 
     expect(first.success).toBe(false);
