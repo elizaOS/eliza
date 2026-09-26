@@ -12,7 +12,10 @@ import type {
   SendHandlerReceipt,
   SendHandlerResult,
 } from "@elizaos/core";
-import { requireConfirmedSendHandlerDelivery } from "@elizaos/core";
+import {
+  inspectSendHandlerResult,
+  requireConfirmedSendHandlerDelivery,
+} from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { inferOp, messageAction } from "./message.ts";
@@ -612,6 +615,31 @@ describe("MESSAGE op=send delivery evidence", () => {
     ).toThrow(
       /local transport reported completion without provider message IDs/,
     );
+    const localOutcomes: SendHandlerOutcome[] = [
+      { kind: "delivered", receipt: localReceipt, memories: [] },
+      {
+        kind: "partially_delivered",
+        receipt: localReceipt,
+        memories: [],
+        code: "PARTIAL",
+        message: "partial",
+      },
+      { kind: "duplicate", priorDelivery: "delivered", receipt: localReceipt },
+      {
+        kind: "duplicate",
+        priorDelivery: "partially_delivered",
+        receipt: localReceipt,
+      },
+    ];
+    for (const outcome of localOutcomes) {
+      const disposition = inspectSendHandlerResult(outcome);
+      expect(disposition).toMatchObject({ receipt: localReceipt });
+      expect(
+        "providerMessageId" in disposition
+          ? disposition.providerMessageId
+          : undefined,
+      ).toBeUndefined();
+    }
     const { result, upsertMemory } = await sendWithOutcome({
       kind: "delivered",
       receipt: localReceipt,
