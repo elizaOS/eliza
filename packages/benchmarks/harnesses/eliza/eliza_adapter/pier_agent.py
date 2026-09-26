@@ -69,7 +69,9 @@ class ElizaAgent(BaseAgent):
             cwd="/app", timeout_sec=10,
         )
         if result.return_code != 0:
-            raise RuntimeError("Cannot configure task-local Git author and committer identity")
+            raise RuntimeError(
+                f"Cannot configure task-local Git author and committer identity: {result.stderr}"
+            )
 
     async def setup(self, environment: BaseEnvironment) -> None:
         await self._prepare_git_identity(environment)

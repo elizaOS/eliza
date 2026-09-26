@@ -13,8 +13,6 @@ import uuid
 from pathlib import Path
 from urllib.request import urlopen
 
-
-
 RIPGREP_RELEASE = "ripgrep-14.1.1-x86_64-unknown-linux-musl"
 RIPGREP_SHA256 = "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e"
 RIPGREP_URL = f"https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/{RIPGREP_RELEASE}.tar.gz"
