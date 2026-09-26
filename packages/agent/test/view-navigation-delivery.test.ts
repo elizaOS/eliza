@@ -587,6 +587,71 @@ const clientMessage = (): Memory => ({
 });
 
 describe("model-selected host navigation", () => {
+  it.each(["none", "forbidden"])(
+    "preserves domain-only work from Calendar with %s navigation",
+    async (disposition) => {
+      const f = await fixture();
+      const input = clientMessage();
+      input.content.text =
+        "Create a note named Input audit September 25 with the exact text: The audit token is amber.";
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "calendar",
+      };
+      const intents = [String(input.content.text)];
+      const selected = await selectNavigation(
+        f,
+        input,
+        {
+          disposition,
+          viewId: "",
+          singleViewOnly: false,
+          navigationOnly: false,
+        },
+        {
+          contexts: ["notes"],
+          intents,
+          candidateActions: ["NOTES"],
+          reply: "",
+        },
+      );
+      expect(selected.plan.contexts).toEqual(["notes"]);
+      expect(selected.plan.intents).toEqual(intents);
+      expect(selected.plan.candidateActions).toEqual(["NOTES"]);
+      expect(selected.plan.replyEffectStatus).toBe("pending");
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+    },
+  );
+  it("preserves a domain clarification without granting navigation or execution", async () => {
+    const f = await fixture();
+    const input = clientMessage();
+    input.content.text = "Draft a note, but ask before saving it.";
+    const selected = await selectNavigation(
+      f,
+      input,
+      {
+        disposition: "none",
+        viewId: "",
+        singleViewOnly: false,
+        navigationOnly: false,
+      },
+      {
+        contexts: ["notes"],
+        intents: [],
+        candidateActions: ["NOTES"],
+        requiresTool: false,
+        reply: "Save this draft?",
+        replyEffectStatus: "non_applied",
+      },
+    );
+    expect(selected.plan.intents).toEqual([]);
+    expect(selected.plan.requiresTool).toBe(false);
+    expect(selected.plan.replyEffectStatus).toBe("non_applied");
+    expect(selected.plan.reply).toBe("Save this draft?");
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(f.requests()).toBe(0);
+  });
   it("selects the existing action without inference and delivers through the real originating-client route", async () => {
     const f = await fixture();
     const input = clientMessage();
@@ -773,6 +838,10 @@ describe("model-selected host navigation", () => {
         expect(type).toBe(ModelType.RESPONSE_HANDLER);
         expect(useModel).toHaveBeenCalledTimes(1);
         expect(JSON.stringify(params)).toContain("visualContinuation");
+        // Verify the host contract reaches the real Stage 1 model request.
+        expect(JSON.stringify(params)).toContain(
+          JSON.stringify(viewNavigationField.description).slice(1, -1),
+        );
         return {
           text: "",
           toolCalls: [
