@@ -767,9 +767,7 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
         "@elizaos/cloud-sdk": "workspace:*",
-        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
-        "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@msgpack/msgpack": "3.1.3",

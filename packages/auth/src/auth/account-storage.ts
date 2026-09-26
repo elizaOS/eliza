@@ -765,6 +765,7 @@ function writeAccountFile(
   accountId: string,
   policy: AccountStoragePolicy,
   value: AccountCredentialRecord,
+  resolveKey: () => Buffer = () => masterKey(policy),
 ): void {
   const dir = providerDir(provider, policy);
   const file = accountFile(provider, accountId, policy);
@@ -786,7 +787,7 @@ function writeAccountFile(
     const envelope: EncryptedAccountEnvelope = {
       schemaVersion: 2,
       ciphertext: encrypt(
-        masterKey(policy),
+        resolveKey(),
         JSON.stringify(value),
         accountAad(provider, accountId),
       ),
@@ -1186,6 +1187,7 @@ function decodeAccountRecord(
   file: string,
   provider: AccountCredentialProvider,
   policy: AccountStoragePolicy,
+  resolveKey: () => Buffer = () => masterKey(policy),
 ): DecodedAccountRecord {
   let parsed: unknown;
   try {
@@ -1207,7 +1209,7 @@ function decodeAccountRecord(
   let decrypted: unknown;
   let requiresRewrite = false;
   try {
-    const key = masterKey(policy);
+    const key = resolveKey();
     const accountId = path.basename(file, ".json");
     let plaintext: string;
     try {
@@ -1276,6 +1278,9 @@ function listAccountsUnlocked(
   assertContained(policy.authRoot, dir, "list-provider-directory");
   assertRegularDirectory(dir, "list-provider");
 
+  // One key resolution per locked read; the next operation observes key changes.
+  let key: Buffer | undefined;
+  const resolveKey = () => (key ??= masterKey(policy));
   const entries = fs.readdirSync(dir);
   const records: AccountCredentialRecord[] = [];
   for (const entry of entries) {
@@ -1293,6 +1298,7 @@ function listAccountsUnlocked(
       filePath,
       provider,
       policy,
+      resolveKey,
     );
     if (parsed.providerId !== provider) {
       throw storageError(
@@ -1312,7 +1318,9 @@ function listAccountsUnlocked(
         { accountId: parsed.id, entry, filePath },
       );
     }
-    records.push(ensureCredentialGeneration(parsed, requiresRewrite, policy));
+    records.push(
+      ensureCredentialGeneration(parsed, requiresRewrite, policy, resolveKey),
+    );
   }
 
   records.sort((a, b) => {
@@ -1364,13 +1372,14 @@ function ensureCredentialGeneration(
   record: AccountCredentialRecord,
   requiresRewrite: boolean,
   policy: AccountStoragePolicy,
+  resolveKey: () => Buffer = () => masterKey(policy),
 ): LoadedAccountCredentialRecord {
   const next: LoadedAccountCredentialRecord = {
     ...record,
     credentialGeneration: record.credentialGeneration ?? randomUUID(),
   };
   if (requiresRewrite || record.credentialGeneration === undefined) {
-    writeAccountFile(next.providerId, next.id, policy, next);
+    writeAccountFile(next.providerId, next.id, policy, next, resolveKey);
     logger.info(
       `[auth] Migrated ${next.providerId} account "${next.id}" storage`,
     );
