@@ -92,6 +92,7 @@ import {
 } from "../security/audit-log.ts";
 import {
   type AgentBackupStateData,
+  AgentSnapshotBudgetExceededError,
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
@@ -895,6 +896,9 @@ const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65536;
 const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60000;
 let lastTerminalRunIdSweepAt = 0;
+function formatBackupMegabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
 }
@@ -1749,6 +1753,33 @@ async function handleRequestForViewClient(
       const backup = await createLocalAgentBackup(state.runtime, state.config);
       json(res, { backup });
     } catch (err) {
+      if (err instanceof AgentSnapshotBudgetExceededError) {
+        // error-policy:J1 a deterministic size refusal is actionable: retrying
+        // the same state cannot succeed, so answer 413 with the typed budget
+        // figures (no paths or database diagnostics) instead of a generic 500.
+        logger.warn(
+          { err },
+          "[agent-backup] Local backup refused: agent state exceeds the backup size limit",
+        );
+        const unit = err.stage === "file count" ? "files" : "bytes";
+        json(
+          res,
+          {
+            error:
+              unit === "files"
+                ? `Agent state has too many files for a local backup (${err.observedBytes} files; the limit is ${err.limitBytes}). Retrying will not help until files are removed from the agent's state.`
+                : `Agent state is too large for a local backup (${formatBackupMegabytes(err.observedBytes)} MB; the limit is ${formatBackupMegabytes(err.limitBytes)} MB). Retrying will not help until the agent's state is smaller.`,
+            code: err.code,
+            stage: err.stage,
+            unit,
+            observed: err.observedBytes,
+            limit: err.limitBytes,
+            retryable: false,
+          },
+          413,
+        );
+        return;
+      }
       // error-policy:J1 backup adapters can include filesystem and database
       // diagnostics in exceptions; keep the original in the redacting logger.
       logger.error({ err }, "[agent-backup] Local backup failed");
