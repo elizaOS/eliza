@@ -727,6 +727,27 @@ export class NativeAcpClient {
       if (line) void this.handleLine(line);
       newline = this.readBuffer.indexOf("\n");
     }
+    if (final) this.finishStdout();
+  }
+
+  /**
+   * Settles stdout at EOF after every newline-terminated frame has been
+   * dispatched whole. ACP frames are newline-delimited, so text left after the
+   * last delimiter is a frame the agent never finished; it becomes a typed
+   * transport failure rather than a parsed partial payload or a silent drop.
+   */
+  private finishStdout(): void {
+    const trailing = this.readBuffer;
+    this.readBuffer = "";
+    if (!trailing.trim()) return;
+    this.closed = true;
+    this.rejectAll(
+      new ElizaError("ACP output ended inside an unterminated frame", {
+        code: "ACP_INCOMPLETE_FRAME",
+        context: { trailingBytes: Buffer.byteLength(trailing, "utf8") },
+      }),
+    );
+    this.proc?.kill();
   }
 
   private async handleLine(line: string): Promise<void> {
