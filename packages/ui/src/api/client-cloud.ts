@@ -1978,7 +1978,11 @@ declare module "./client-base" {
       data: CloudCompatJob;
       error?: string;
     }>;
-    exportAgent(password: string, includeLogs?: boolean): Promise<Response>;
+    exportAgent(
+      password: string,
+      includeLogs?: boolean,
+      excludeSecrets?: boolean,
+    ): Promise<Response>;
     getExportEstimate(): Promise<{
       estimatedBytes: number;
       memoriesCount: number;
@@ -3408,6 +3412,7 @@ ElizaClient.prototype.exportAgent = async function (
   this: ElizaClient,
   password,
   includeLogs = false,
+  excludeSecrets = false,
 ) {
   if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
     throw new Error(
@@ -3419,7 +3424,7 @@ ElizaClient.prototype.exportAgent = async function (
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ password, includeLogs }),
+    body: JSON.stringify({ password, includeLogs, excludeSecrets }),
   });
 };
 
