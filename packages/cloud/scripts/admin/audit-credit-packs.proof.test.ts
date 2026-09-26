@@ -4,10 +4,12 @@
  * an independent copy. Seed and audit subprocesses keep cached database clients
  * isolated and resolve packages from cloud-shared's dependency tree.
  */
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
 
 const SCRIPT = `${import.meta.dir}/audit-credit-packs.ts`;
 const SEED_HELPER = `${import.meta.dir}/audit-credit-packs.seed.ts`;
@@ -208,3 +210,74 @@ describe("audit-credit-packs classification (#22963)", () => {
     }
   }, 60_000);
 });
+
+test("credit-pack seeding is dry by default, atomic and does not reactivate existing rows", async () => {
+  const { dir, url } = await freshDb();
+  const env = childEnv(url, {
+    STRIPE_SMALL_PACK_PRICE_ID: "price_small",
+    STRIPE_SMALL_PACK_PRODUCT_ID: "prod_small",
+    STRIPE_MEDIUM_PACK_PRICE_ID: "price_medium",
+    STRIPE_MEDIUM_PACK_PRODUCT_ID: "prod_medium",
+    STRIPE_LARGE_PACK_PRICE_ID: "price_large",
+    STRIPE_LARGE_PACK_PRODUCT_ID: "prod_large",
+  });
+  const run = (...args: string[]) =>
+    Bun.spawnSync(
+      [process.execPath, `${import.meta.dir}/seed-credit-packs.ts`, ...args],
+      { cwd: dir, env, stdout: "pipe", stderr: "pipe" },
+    );
+  const rows = async () => {
+    const database = new PGlite(dir);
+    try {
+      return (
+        await database.query<{ stripe_price_id: string; is_active: boolean }>(
+          "SELECT stripe_price_id,is_active FROM credit_packs ORDER BY stripe_price_id",
+        )
+      ).rows;
+    } finally {
+      await database.close();
+    }
+  };
+  try {
+    expect(run().exitCode).toBe(0);
+    expect(await rows()).toEqual([]);
+    expect(run("--apply").exitCode).toBe(1);
+    expect(await rows()).toEqual([]);
+    await seed(url, [
+      {
+        name: "Small Pack",
+        credits: "5",
+        price_cents: 4999,
+        stripe_price_id: "price_small",
+        stripe_product_id: "prod_small",
+        is_active: false,
+        sort_order: 1,
+      },
+    ]);
+    for (let index = 0; index < 2; index++) {
+      const result = run("--apply", "--acknowledge-price-credit-ratios");
+      expect(result.stderr.toString(), result.stderr.toString()).not.toContain(
+        "Error",
+      );
+      expect(result.exitCode).toBe(0);
+    }
+    expect(await rows()).toEqual([
+      { stripe_price_id: "price_large", is_active: true },
+      { stripe_price_id: "price_medium", is_active: true },
+      { stripe_price_id: "price_small", is_active: false },
+    ]);
+    const database = new PGlite(dir);
+    await database.exec(
+      "DELETE FROM credit_packs WHERE stripe_price_id <> 'price_large'; UPDATE credit_packs SET price_cents=1 WHERE stripe_price_id='price_large'",
+    );
+    await database.close();
+    expect(run("--apply", "--acknowledge-price-credit-ratios").exitCode).toBe(
+      1,
+    );
+    expect(await rows()).toEqual([
+      { stripe_price_id: "price_large", is_active: true },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60000);

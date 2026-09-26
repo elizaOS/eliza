@@ -35,6 +35,8 @@ import {
   type MessageConnectorUserContext,
   readResponseWithLimit,
   resolveAttachmentBytes,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   Service,
   ServiceType,
   type TargetInfo,
@@ -367,13 +369,6 @@ function normalizeIMessageConnectorHandle(value: string): string {
   if (isEmail(normalizedTarget)) return normalizedTarget.toLowerCase();
   if (isPhoneNumber(normalizedTarget)) return formatPhoneNumber(normalizedTarget);
   return normalizeContactHandle(normalizedTarget) || normalizedTarget;
-}
-
-function firstAttachmentUrl(content: Content): string | undefined {
-  const attachment = content.attachments?.find(
-    (item) => typeof item.url === "string" && item.url.trim().length > 0
-  );
-  return attachment?.url?.trim();
 }
 
 function statusMetadata(status: IMessageServiceStatus): Record<string, string | boolean | null> {
@@ -795,27 +790,69 @@ export class IMessageService extends Service implements IIMessageService {
           : "local-macos-messages-single-account",
         status: statusMetadata(status),
       },
-      sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
+      sendHandler: async (
+        _runtime: IAgentRuntime,
+        target: TargetInfo,
+        content: Content
+      ): Promise<SendHandlerOutcome> => {
         const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
         const text = renderIMessageInteractionText(content, resolveInteractionAppBaseUrl(runtime));
-        const mediaUrl = firstAttachmentUrl(content);
-        if (!text.trim() && !mediaUrl) {
-          return;
-        }
-
+        const attachments = content.attachments ?? [];
+        if (
+          attachments.some(
+            (attachment) => typeof attachment.url !== "string" || !attachment.url.trim()
+          )
+        )
+          return {
+            kind: "not_delivered",
+            code: "IMESSAGE_INVALID_ATTACHMENT",
+            message: "Every attachment requires a URL",
+          };
+        const mediaUrls = attachments.map((attachment) => attachment.url.trim());
+        if (!text.trim() && mediaUrls.length === 0)
+          return {
+            kind: "not_delivered",
+            code: "IMESSAGE_EMPTY_MESSAGE",
+            message: "A message requires text or an attachment",
+          };
         const resolvedTarget = await resolveIMessageSendTarget(runtime, target);
-        if (!resolvedTarget) {
-          throw new Error("iMessage target is missing a phone, email, or chat id");
-        }
-
-        const result = await service.sendMessage(
-          resolvedTarget,
-          text,
-          mediaUrl ? { mediaUrl, accountId } : { accountId }
-        );
-        if (!result.success) {
-          throw new Error(result.error ?? "iMessage send failed");
-        }
+        if (!resolvedTarget)
+          return {
+            kind: "not_delivered",
+            code: "IMESSAGE_TARGET_UNRESOLVED",
+            message: "iMessage target is missing a phone, email, or chat id",
+          };
+        const result = await service.sendMessage(resolvedTarget, text, {
+          ...(mediaUrls.length ? { mediaUrls } : {}),
+          accountId,
+        });
+        const ids = isBlooio
+          ? (result.messageIds ?? (result.messageId ? [result.messageId] : []))
+          : (result.localEffectIds ?? []);
+        if (ids.length === 0)
+          throw new ElizaError(result.error ?? "iMessage returned no completion evidence", {
+            code: "IMESSAGE_DELIVERY_UNKNOWN",
+          });
+        const receipt: SendHandlerReceipt = {
+          providerMessageIds: ids as [string, ...string[]],
+          acceptedAt: Date.now(),
+          evidenceKind: isBlooio ? "provider" : "local-effect",
+          persistence: {
+            status: "not_attempted",
+            reason: isBlooio
+              ? "Provider accepted the message; caller owns local persistence"
+              : "Native transport completed; markers do not prove recipient delivery",
+          },
+        };
+        return result.success
+          ? { kind: "delivered", receipt, memories: [] }
+          : {
+              kind: "partially_delivered",
+              receipt,
+              memories: [],
+              code: "IMESSAGE_PARTIAL_DELIVERY",
+              message: `Some parts completed before failure: ${result.error ?? "unknown failure"}. Do not retry blindly.`,
+            };
       },
       resolveTargets: async (query: string) => {
         const candidates: MessageConnectorTarget[] = [];
@@ -1139,7 +1176,11 @@ export class IMessageService extends Service implements IIMessageService {
       return { success: false, error: "Service not initialized" };
     }
 
-    if (this.settings.transport === "blooio" && options?.mediaUrl) {
+    const mediaUrls = [
+      ...(options?.mediaUrl ? [options.mediaUrl] : []),
+      ...(options?.mediaUrls ?? []),
+    ];
+    if (this.settings.transport === "blooio" && mediaUrls.length > 0) {
       return {
         success: false,
         error:
@@ -1150,17 +1191,27 @@ export class IMessageService extends Service implements IIMessageService {
     // Format phone number if needed
     const target = isPhoneNumber(to) ? formatPhoneNumber(to) : to;
 
-    let media: ResolvedOutboundMedia | null = null;
-    if (options?.mediaUrl) {
+    const mediaList: ResolvedOutboundMedia[] = [];
+    const cleanup = async () => {
+      const results = await Promise.allSettled(mediaList.map((media) => media.cleanup()));
+      for (const result of results)
+        if (result.status === "rejected") {
+          // error-policy:J6 cleanup cannot turn completed transport work into a retry.
+          this.runtime.reportError("imessage.attachmentCleanup", result.reason);
+        }
+    };
+    if (mediaUrls.length) {
       try {
         // Resolve and bound every byte before the first external send. Invalid,
         // inaccessible, oversized, or SSRF-blocked media must fail fast instead
         // of delivering the caption and only then discovering the attachment is
         // unusable.
-        media = await this.resolveOutboundMedia(options.mediaUrl, options.maxBytes);
+        for (const url of mediaUrls)
+          mediaList.push(await this.resolveOutboundMedia(url, options?.maxBytes));
       } catch (error) {
         // error-policy:J1 Outbound connector boundary translates attachment
         // resolution failures into an explicit failed delivery.
+        await cleanup();
         return {
           success: false,
           error: `iMessage attachment resolution error: ${error instanceof Error ? error.message : String(error)}`,
@@ -1171,32 +1222,37 @@ export class IMessageService extends Service implements IIMessageService {
     // Split message if too long
     const chunks = splitMessageForIMessage(text);
     const messageIds: string[] = [];
+    const localEffectIds: string[] = [];
     try {
       for (const chunk of chunks) {
         const result = await this.sendSingleMessage(target, chunk);
         if (result.messageId) messageIds.push(result.messageId);
         if (!result.success) {
-          return { ...result, messageIds };
+          return { ...result, messageIds, localEffectIds };
         }
+        if (this.settings.transport !== "blooio")
+          localEffectIds.push(`imessage-effect:${crypto.randomUUID()}`);
       }
 
       // An attachment is one external effect, independent of text chunking.
-      if (media) {
+      for (const media of mediaList) {
         const mediaResult = await this.sendResolvedAttachment(target, media.path);
         if (mediaResult.messageId) messageIds.push(mediaResult.messageId);
         if (!mediaResult.success) {
-          return { ...mediaResult, messageIds };
+          return { ...mediaResult, messageIds, localEffectIds };
         }
+        localEffectIds.push(`imessage-effect:${crypto.randomUUID()}`);
       }
     } catch (error) {
       // error-policy:J1 preserve accepted provider receipts when a later transport read fails.
       return {
         success: false,
         messageIds,
+        localEffectIds,
         error: `iMessage send outcome is uncertain: ${error instanceof Error ? error.message : String(error)}`,
       };
     } finally {
-      await media?.cleanup();
+      await cleanup();
     }
 
     // Emit sent events — both the plugin-namespaced form (for iMessage-
@@ -1211,7 +1267,7 @@ export class IMessageService extends Service implements IIMessageService {
         accountId,
         to: target,
         text,
-        hasMedia: Boolean(options?.mediaUrl),
+        hasMedia: mediaUrls.length > 0,
       } as EventPayload);
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
@@ -1240,6 +1296,7 @@ export class IMessageService extends Service implements IIMessageService {
       success: true,
       ...(messageIds.length ? { messageId: messageIds[messageIds.length - 1] } : {}),
       messageIds,
+      localEffectIds,
       chatId: target,
     };
   }

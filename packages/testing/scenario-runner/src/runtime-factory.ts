@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
+  AgentEventService,
   AgentRuntime as AgentRuntimeCtor,
   createCharacter,
   ElizaError,
@@ -1164,6 +1165,11 @@ export async function createScenarioRuntime(
   // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
+  await runtime.registerPlugin({
+    name: "scenario-agent-events",
+    description: "Production assistant event delivery for scenarios",
+    services: [AgentEventService],
+  });
   await runtime.registerPlugin(createAssistantPlugin());
   await runtime.registerPlugin(documentsPlugin);
 

@@ -588,6 +588,25 @@ describe("TriageService immediate delivery", () => {
     expect(service.getStore().getDraft("durable-draft")).toEqual(sent);
   });
 
+  it("refuses a recreated draft whose recipient changed after approval", async () => {
+    const sendDraft = vi.fn(async () => ({ externalId: "must-not-send" }));
+    const service = new TriageService(new MessageRefStore());
+    service.register(
+      adapter("gmail", {
+        createDraft: async (_runtime, request) => ({
+          draftId: "recreated",
+          preview: request.body,
+          snapshot: { ...request, to: [{ identifier: "changed@example.com" }] },
+        }),
+        sendDraft,
+      }),
+    );
+    await expect(
+      service.sendPersistedDraft(runtime(), draft()),
+    ).rejects.toMatchObject({ code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" });
+    expect(sendDraft).not.toHaveBeenCalled();
+  });
+
   it("rejects persisted sends when recreation is unavailable or lacks an id", async () => {
     const service = new TriageService(new MessageRefStore());
     service.register(adapter("gmail", { isAvailable: () => false }));

@@ -4,6 +4,10 @@
  */
 
 import { createHash } from "node:crypto";
+import {
+  checkoutAmountUsdToCents,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+} from "@elizaos/cloud-shared/billing";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type Stripe from "stripe";
@@ -34,7 +38,18 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
-const checkoutAmountSchema = z.number().min(1).max(1000);
+// Bounds come from the canonical organization-credit checkout contract so the
+// enforced range and every advertised range cannot drift apart (#22963).
+const checkoutAmountSchema = z
+  .number()
+  .min(
+    ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+    `amountUsd must be at least $${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd}`,
+  )
+  .max(
+    ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
+    `amountUsd cannot exceed $${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd}`,
+  );
 
 const CheckoutSchema = z
   .object({
@@ -128,8 +143,8 @@ app.post("/", async (c) => {
     type LineItem = NonNullable<
       Stripe.Checkout.SessionCreateParams["line_items"]
     >[number];
-    const chargeAmountCents = amount * 100;
-    if (!Number.isSafeInteger(chargeAmountCents)) {
+    const chargeAmountCents = checkoutAmountUsdToCents(amount);
+    if (chargeAmountCents === null) {
       throw ValidationError("Credits must resolve to exact cents");
     }
     const lineItems: LineItem[] = [

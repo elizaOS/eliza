@@ -18,6 +18,7 @@ import {
   getDefaultMessageRefStore,
   type MessageRefStore,
 } from "./message-ref-store.ts";
+import { draftConsentDigest } from "./send-consent.ts";
 import {
   compareMessageRefsByRecency,
   rankScored,
@@ -64,7 +65,10 @@ export interface MessageSearchResult {
 
 export class TriageService {
   private adapters = new Map<MessageSource, MessageAdapter>();
-  private sendsInFlight = new Map<string, Promise<DraftRecord>>();
+  private sendsInFlight = new Map<
+    string,
+    { digest: string; promise: Promise<DraftRecord> }
+  >();
   private persistedSendsInFlight = new Map<string, Promise<DraftRecord>>();
   private schedulesInFlight = new Map<
     string,
@@ -410,7 +414,7 @@ export class TriageService {
       worldId: original.worldId,
       channelId: original.channelId,
     };
-    const { draftId, preview } = await adapter.createDraft(
+    const { draftId, preview, snapshot } = await adapter.createDraft(
       runtime,
       draftRequest,
     );
@@ -428,6 +432,7 @@ export class TriageService {
       worldId: draftRequest.worldId,
       channelId: draftRequest.channelId,
     };
+    if (snapshot) Object.assign(record, structuredClone(snapshot));
     this.store.saveDraft(record);
     return record;
   }
@@ -448,7 +453,7 @@ export class TriageService {
     if (!adapter) {
       throw new Error(`No adapter registered for source "${params.source}"`);
     }
-    const { draftId, preview } = await adapter.createDraft(runtime, {
+    const { draftId, preview, snapshot } = await adapter.createDraft(runtime, {
       source: params.source,
       threadId: params.threadId,
       to: params.to,
@@ -470,6 +475,7 @@ export class TriageService {
       worldId: params.worldId,
       channelId: params.channelId,
     };
+    if (snapshot) Object.assign(record, structuredClone(snapshot));
     this.store.saveDraft(record);
     return record;
   }
@@ -477,6 +483,7 @@ export class TriageService {
   async sendDraft(
     runtime: IAgentRuntime,
     draftId: string,
+    consentDigest?: string,
   ): Promise<DraftRecord> {
     const record = this.store.getDraft(draftId);
     if (!record) {
@@ -486,17 +493,32 @@ export class TriageService {
         severity: "ephemeral",
       });
     }
+    if (
+      consentDigest !== undefined &&
+      draftConsentDigest(record) !== consentDigest
+    ) {
+      throw new ElizaError(
+        "Draft changed after confirmation; preview it again",
+        { code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" },
+      );
+    }
     if (record.sent) return record;
     const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
     const pending = this.sendsInFlight.get(sendKey);
-    if (pending) return pending;
-
-    const send = this.sendDraftOnce(runtime, record);
-    this.sendsInFlight.set(sendKey, send);
+    const digest = draftConsentDigest(record);
+    if (pending) {
+      if (pending.digest !== digest)
+        throw new ElizaError("Another snapshot of this draft is being sent", {
+          code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+        });
+      return pending.promise;
+    }
+    const send = this.sendDraftOnce(runtime, structuredClone(record), digest);
+    this.sendsInFlight.set(sendKey, { digest, promise: send });
     try {
       return await send;
     } finally {
-      if (this.sendsInFlight.get(sendKey) === send) {
+      if (this.sendsInFlight.get(sendKey)?.promise === send) {
         this.sendsInFlight.delete(sendKey);
       }
     }
@@ -505,6 +527,7 @@ export class TriageService {
   private async sendDraftOnce(
     runtime: IAgentRuntime,
     record: DraftRecord,
+    consentDigest?: string,
   ): Promise<DraftRecord> {
     const adapter = this.adapters.get(record.source);
     if (!adapter?.isAvailable(runtime)) {
@@ -515,6 +538,16 @@ export class TriageService {
           context: { draftId: record.draftId, source: record.source },
           severity: "ephemeral",
         },
+      );
+    }
+    if (
+      consentDigest !== undefined &&
+      draftConsentDigest(this.store.getDraft(record.draftId) ?? record) !==
+        consentDigest
+    ) {
+      throw new ElizaError(
+        "Draft changed after confirmation; preview it again",
+        { code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" },
       );
     }
     const { externalId } = await adapter.sendDraft(runtime, record.draftId);
@@ -607,6 +640,18 @@ export class TriageService {
             source: snapshot.source,
           },
           severity: "fatal",
+        },
+      );
+    }
+    if (
+      recreated.snapshot &&
+      draftConsentDigest({ ...snapshot, ...recreated.snapshot }) !==
+        draftConsentDigest(snapshot)
+    ) {
+      throw new ElizaError(
+        "Recreated draft changed its approved payload; preview it again",
+        {
+          code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
         },
       );
     }

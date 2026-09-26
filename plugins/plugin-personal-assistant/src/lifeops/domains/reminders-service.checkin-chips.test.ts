@@ -13,7 +13,11 @@ import {
   registerChannelRegistry,
 } from "../channels/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import { type RemindersDeps, RemindersDomain } from "./reminders-service.js";
+import {
+  type RemindersDeps,
+  RemindersDomain,
+  type SleepCycleCheckinDeliveryReport,
+} from "./reminders-service.js";
 
 const checkinMocks = vi.hoisted(() => ({
   hasCheckinForLocalDay: vi.fn(async () => false),
@@ -109,13 +113,13 @@ function runSleepCycleCheckins(
   domain: RemindersDomain,
   now = NOW,
   schedule = currentSchedule,
-): Promise<void> {
+): Promise<SleepCycleCheckinDeliveryReport[]> {
   return (
     domain as unknown as {
       processSleepCycleCheckins(args: {
         now: Date;
         currentSchedule: unknown;
-      }): Promise<void>;
+      }): Promise<SleepCycleCheckinDeliveryReport[]>;
     }
   ).processSleepCycleCheckins({ now, currentSchedule: schedule });
 }
@@ -151,7 +155,14 @@ describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
   it("emits the night summary with ack chips and persists only after the assistant stream accepts it", async () => {
     const { domain, emitAssistantEvent } = makeDomain();
 
-    await runSleepCycleCheckins(domain);
+    expect(await runSleepCycleCheckins(domain)).toEqual([
+      expect.objectContaining({
+        kind: "night",
+        status: "delivered",
+        persisted: true,
+        reportId: "rep-night-1",
+      }),
+    ]);
 
     expect(checkinMocks.runNightCheckin).toHaveBeenCalledTimes(1);
     expect(checkinMocks.runNightCheckin).toHaveBeenCalledWith(
@@ -283,4 +294,31 @@ describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
       checkinMocks.persistCheckinReport.mock.invocationCallOrder[0],
     ).toBeGreaterThan(smsSend.mock.invocationCallOrder[0]);
   });
+});
+
+it("returns rejected delivery evidence without persisting a day-done marker", async () => {
+  const { domain, emitAssistantEvent } = makeDomain();
+  emitAssistantEvent.mockReturnValue(false);
+  const reports = await runSleepCycleCheckins(domain);
+  expect(reports).toEqual([
+    expect.objectContaining({
+      kind: "night",
+      status: "disconnected",
+      persisted: false,
+      reportId: "rep-night-1",
+    }),
+  ]);
+  expect(checkinMocks.persistCheckinReport).not.toHaveBeenCalled();
+});
+
+it("distinguishes a previously persisted night report from a failed attempt", async () => {
+  const { domain, emitAssistantEvent } = makeDomain();
+  checkinMocks.hasCheckinForLocalDay.mockResolvedValue(true);
+  expect(await runSleepCycleCheckins(domain)).toEqual([
+    expect.objectContaining({
+      status: "skipped_already_sent",
+      persisted: false,
+    }),
+  ]);
+  expect(emitAssistantEvent).not.toHaveBeenCalled();
 });

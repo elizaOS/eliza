@@ -274,6 +274,40 @@ describe("GoogleGmailAdapter", () => {
     );
   });
 
+  it("keeps the approved reply envelope and body across caller mutation and inbox refresh", async () => {
+    const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
+    const sendGmailReply = vi.fn(async () => ({ messageId: "immutable_reply" }));
+    const runtime = runtimeWithGoogleService({ listGmailTriageMessages, sendGmailReply });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    const input = { inReplyToId: "gmail:msg_1", body: "Approved body." };
+    const draft = await adapter.createDraft(runtime, input);
+    expect(draft.snapshot).toMatchObject({
+      worldId: "acct_google_1",
+      to: [{ identifier: "guest@example.com" }],
+      subject: "Planning call",
+    });
+    input.body = "Changed caller body";
+    if (draft.snapshot) draft.snapshot.body = "Changed returned snapshot";
+    listGmailTriageMessages.mockResolvedValue([
+      gmailMessage({
+        fromEmail: "different@example.com",
+        subject: "Changed subject",
+        replyTo: "changed@example.com",
+      }),
+    ]);
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await adapter.sendDraft(runtime, draft.draftId);
+    expect(sendGmailReply).toHaveBeenCalledWith({
+      accountId: "acct_google_1",
+      to: ["guest@example.com"],
+      subject: "Planning call",
+      bodyText: "Approved body.",
+      inReplyTo: "<msg_1@example.com>",
+      references: "<root@example.com>",
+    });
+  });
+
   it("sends a real-client mapped reply to Reply-To instead of From", async () => {
     const list = vi.fn().mockResolvedValue({ data: { messages: [{ id: "msg_1" }] } });
     const get = vi.fn().mockResolvedValue({

@@ -468,7 +468,7 @@ describe("MESSAGE op=send delivery evidence", () => {
     setOutboundPersistenceFailure: (error: Error) => void;
   } {
     let outboundPersistenceFailure: Error | undefined;
-    const upsertMemory = vi.fn(async () => {
+    const upsertMemory = vi.fn(async (_memory: Memory) => {
       if (outboundPersistenceFailure) {
         throw outboundPersistenceFailure;
       }
@@ -593,6 +593,42 @@ describe("MESSAGE op=send delivery evidence", () => {
       expect(createMemory).not.toHaveBeenCalled();
     });
   }
+
+  it("retains local completion evidence without inventing platform message IDs", async () => {
+    const localReceipt: SendHandlerReceipt = {
+      ...receipt(["native-completion-1"]),
+      evidenceKind: "local-effect",
+    };
+    const { result, upsertMemory } = await sendWithOutcome({
+      kind: "delivered",
+      receipt: localReceipt,
+      memories: [],
+    });
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        evidenceKind: "local-effect",
+        responseMessageId: "native-completion-1",
+      },
+    });
+    expect(upsertMemory).toHaveBeenCalled();
+    const stored = upsertMemory.mock.calls[0]?.[0] as Memory | undefined;
+    expect(stored?.metadata).toMatchObject({
+      evidenceKind: "local-effect",
+      localEffectIds: ["native-completion-1"],
+    });
+    expect(stored?.metadata).not.toHaveProperty("platformMessageId");
+    expect(stored?.metadata).not.toHaveProperty("messageIdFull");
+    const replay = await sendWithOutcome({
+      kind: "duplicate",
+      priorDelivery: "delivered",
+      receipt: localReceipt,
+    });
+    expect(replay.result.data).toMatchObject({
+      evidenceKind: "local-effect",
+      newDelivery: false,
+    });
+  });
 
   it("reports a committed duplicate only with the replayed provider receipt", async () => {
     const { result, upsertMemory, createMemory } = await sendWithOutcome({
@@ -784,6 +820,12 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
         (async () => [])) as IAgentRuntime["getRelationships"],
       getCache: (async (key: string) =>
         cache.get(key)) as IAgentRuntime["getCache"],
+      compareAndSetCache: async (key, expected, replacement) => {
+        if (JSON.stringify(cache.get(key)) !== JSON.stringify(expected))
+          return false;
+        cache.set(key, structuredClone(replacement));
+        return true;
+      },
       setCache: (async (key: string, value: unknown) => {
         cache.set(key, value);
         return true;
@@ -1033,6 +1075,12 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
       }) as IAgentRuntime["getRelationshipsByPairs"],
       getCache: (async (key: string) =>
         cache.get(key)) as IAgentRuntime["getCache"],
+      compareAndSetCache: async (key, expected, replacement) => {
+        if (JSON.stringify(cache.get(key)) !== JSON.stringify(expected))
+          return false;
+        cache.set(key, structuredClone(replacement));
+        return true;
+      },
       setCache: (async (key: string, value: unknown) => {
         cache.set(key, value);
         return true;
@@ -1051,13 +1099,19 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
     return { relationshipQueries, runtime, sends };
   }
 
+  let turn = 0;
   async function send(
     runtime: IAgentRuntime,
     text: string,
   ): Promise<ActionResult> {
     const result = await messageAction.handler(
       runtime,
-      { ...message, content: { text, source: "discord" } } as Memory,
+      {
+        ...message,
+        id: `consent-turn-${++turn}`,
+        createdAt: Date.now() + turn,
+        content: { text, source: "discord" },
+      } as Memory,
       undefined,
       {
         parameters: {

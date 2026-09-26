@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import type { Media } from "@elizaos/core";
+import type { IAgentRuntime, Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SlackService } from "./service";
 
@@ -15,7 +15,7 @@ type TestService = SlackService & {
     attachments: Media[],
     threadTs: string | undefined,
     accountId: string | null,
-  ) => Promise<void>;
+  ) => Promise<{ delivered: unknown[]; failures: unknown[] }>;
   fetchAttachmentBytes: ReturnType<typeof vi.fn>;
   uploadFile: ReturnType<typeof vi.fn>;
 };
@@ -110,7 +110,7 @@ describe("Slack outbound attachments", () => {
     );
   });
 
-  it("swallows a fetch failure (warns) and still uploads the rest", async () => {
+  it("reports a fetch failure and still uploads the rest", async () => {
     const service = createService();
     service.fetchAttachmentBytes = vi
       .fn()
@@ -127,7 +127,15 @@ describe("Slack outbound attachments", () => {
         undefined,
         null,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      delivered: [{ fileId: "F1" }],
+      failures: [
+        {
+          url: "http://169.254.169.254/x",
+          code: "SLACK_ATTACHMENT_UPLOAD_FAILED",
+        },
+      ],
+    });
 
     expect(service.uploadFile).toHaveBeenCalledTimes(1);
     expect(
@@ -138,4 +146,64 @@ describe("Slack outbound attachments", () => {
       ).runtime.logger.warn,
     ).toHaveBeenCalled();
   });
+});
+
+it("returns partial receipts instead of success when an attachment cannot be fetched", async () => {
+  const service = createService();
+  Object.assign(service, {
+    resolveAccountIdForTarget: async () => null,
+    getClientForAccount: () => ({}),
+    sendMessage: vi.fn(async () => ({
+      messages: [{ ts: "1234567890.123456" }],
+    })),
+  });
+  service.fetchAttachmentBytes.mockRejectedValueOnce(new Error("fetch denied"));
+  const outcome = await service.handleSendMessage(
+    {} as IAgentRuntime,
+    { source: "slack", channelId: "C12345678" },
+    {
+      text: "caption",
+      attachments: [media({ url: "https://bad.example/file" })],
+    },
+  );
+  expect(outcome).toMatchObject({
+    kind: "partially_delivered",
+    receipt: { providerMessageIds: ["1234567890.123456"] },
+  });
+});
+
+it("rejects a missing attachment URL before sending text", async () => {
+  const service = createService();
+  const send = vi.fn();
+  Object.assign(service, {
+    resolveAccountIdForTarget: async () => null,
+    getClientForAccount: () => ({}),
+    sendMessage: send,
+  });
+  expect(
+    await service.handleSendMessage(
+      {} as IAgentRuntime,
+      { source: "slack", channelId: "C12345678" },
+      { text: "caption", attachments: [media({ url: "" })] },
+    ),
+  ).toMatchObject({ kind: "not_delivered", code: "SLACK_INVALID_ATTACHMENT" });
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("does not turn an uncertain upload into retry-safe non-delivery", async () => {
+  const service = createService();
+  Object.assign(service, {
+    resolveAccountIdForTarget: async () => null,
+    getClientForAccount: () => ({}),
+  });
+  service.uploadFile.mockRejectedValueOnce(
+    new Error("response lost after upload"),
+  );
+  await expect(
+    service.handleSendMessage(
+      {} as IAgentRuntime,
+      { source: "slack", channelId: "C12345678" },
+      { attachments: [media({})] },
+    ),
+  ).rejects.toMatchObject({ code: "SLACK_DELIVERY_UNKNOWN" });
 });
