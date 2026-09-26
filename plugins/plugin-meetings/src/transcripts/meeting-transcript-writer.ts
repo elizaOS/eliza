@@ -37,10 +37,10 @@ import {
   resolveStateDir,
   type UUID,
 } from "@elizaos/core";
-import {
-  type MeetingEndReason,
-  type MeetingParticipant,
-  type MeetingPlatform,
+import type {
+  MeetingEndReason,
+  MeetingParticipant,
+  MeetingPlatform,
 } from "@elizaos/core/meetings";
 import {
   type Transcript,
@@ -206,6 +206,12 @@ export class MeetingTranscriptWriter {
   private lastWriteAt = 0;
   private pendingFlush: ReturnType<typeof setTimeout> | null = null;
   private finalized = false;
+  /**
+   * Serializes every store write so an earlier throttled "recording" flush can
+   * never complete after, and clobber, the terminal "ready" write when both are
+   * in flight on a pooled adapter.
+   */
+  private writeChain: Promise<void> = Promise.resolve();
   constructor(
     private readonly runtime: MeetingTranscriptRuntime,
     private readonly throttleMs: number = DEFAULT_WRITE_THROTTLE_MS,
@@ -291,14 +297,25 @@ export class MeetingTranscriptWriter {
       this.pendingFlush.unref?.();
     }
   }
+  /** Append a store write to {@link writeChain}; the chain absorbs rejections. */
+  private enqueueWrite(write: () => Promise<void>): Promise<void> {
+    const result = this.writeChain.then(write);
+    this.writeChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
   /**
    * Incremental store write. Invoked via `void this.flush()` (fire-and-forget)
    * from the throttle path, so it must never reject — a DB hiccup would surface
    * as an unhandled promise rejection. All failures are caught and logged here;
-   * the next update simply retries.
+   * the next update simply retries. The write runs inside {@link writeChain}
+   * and re-checks `finalized` at execution time, so a queued incremental write
+   * never lands over the finalized record.
    */
-  private async flush(): Promise<void> {
-    if (this.finalized || !this.transcript) return;
+  private flush(): Promise<void> {
+    if (this.finalized || !this.transcript) return Promise.resolve();
     this.lastWriteAt = this.now();
     const next: Transcript = {
       ...this.transcript,
@@ -308,31 +325,34 @@ export class MeetingTranscriptWriter {
     };
     this.transcript = next;
     const { content, metadata } = transcriptContentAndMetadata(next);
-    try {
-      const ok = await this.runtime.updateMemory({
-        id: this.transcriptId,
-        content,
-        metadata,
-      });
-      if (!ok) {
+    return this.enqueueWrite(async () => {
+      if (this.finalized) return;
+      try {
+        const ok = await this.runtime.updateMemory({
+          id: this.transcriptId,
+          content,
+          metadata,
+        });
+        if (!ok) {
+          logger.warn(
+            {
+              transcriptId: this.transcriptId,
+              sessionId: this.input?.sessionId,
+            },
+            "[MeetingService] incremental transcript update hit a missing row",
+          );
+        }
+      } catch (err) {
         logger.warn(
           {
             transcriptId: this.transcriptId,
             sessionId: this.input?.sessionId,
+            error: err instanceof Error ? err.message : String(err),
           },
-          "[MeetingService] incremental transcript update hit a missing row",
+          "[MeetingService] incremental transcript update failed",
         );
       }
-    } catch (err) {
-      logger.warn(
-        {
-          transcriptId: this.transcriptId,
-          sessionId: this.input?.sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "[MeetingService] incremental transcript update failed",
-      );
-    }
+    });
   }
   /** Final write: status "ready", timings, participants, audio + knowledge mirror. */
   async finalize(input: FinalizeMeetingTranscriptInput): Promise<Transcript> {
@@ -347,6 +367,9 @@ export class MeetingTranscriptWriter {
       clearTimeout(this.pendingFlush);
       this.pendingFlush = null;
     }
+    // Let any incremental write already in flight settle first; queued ones
+    // see `finalized` and skip, so the "ready" write below is issued last.
+    await this.writeChain;
     const endedAt = this.now();
     if (input.audioWav && input.retainedAudio) {
       throw new Error(
