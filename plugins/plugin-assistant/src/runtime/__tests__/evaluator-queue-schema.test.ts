@@ -67,6 +67,10 @@ describe("completion recommendations describe the current planner queue", () => 
     expect(messages).toContain("No executable calls remain queued");
     expect(messages).toContain("more_work_pending");
     expect(messages).toContain("effectReceiptIds");
+    expect(messages).toContain(
+      "Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning",
+    );
+    expect(messages).not.toContain("no file paths, internal ids or raw logs");
   });
 
   it("distinguishes two calls to the same tool by their exact queue IDs", async () => {

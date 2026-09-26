@@ -12,6 +12,32 @@ const settled = {
 };
 
 describe("settled navigation reply recovery", () => {
+  it("allows requested technical evidence in settled replies without authorizing tool execution", async () => {
+    const execute = vi.fn();
+    const result = await runPlannerLoop({
+      context,
+      postToolReplySeed: settled,
+      runtime: {
+        useModel: async (_type, params) => {
+          const input = JSON.stringify(params.messages);
+          expect(input).toContain(
+            "Include internal IDs or raw tool data only when explicitly requested and safe to disclose; never expose secrets or internal reasoning",
+          );
+          expect(input).not.toContain(
+            "Do not expose internal IDs or raw tool data",
+          );
+          return JSON.stringify({
+            completed: true,
+            toolCalls: [],
+            messageToUser: "The requested view ID is notes.",
+          });
+        },
+      },
+      executeToolCall: execute,
+    });
+    expect(result.finalMessage).toBe("The requested view ID is notes.");
+    expect(execute).not.toHaveBeenCalled();
+  });
   it.each([false, true])(
     "accepts verified recovery without executing invented reply tools (invented=%s)",
     async (invented) => {
