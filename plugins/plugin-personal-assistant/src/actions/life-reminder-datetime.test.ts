@@ -1033,7 +1033,11 @@ describe("explicit unscheduled owner authority", () => {
 });
 
 describe("runLifeOperationHandler clarification contract", () => {
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-11T18:00:00.000Z"));
     serviceState.createCalls.length = 0;
   });
 
@@ -2597,7 +2601,11 @@ Yes, save it.
 });
 
 describe("runLifeOperationHandler one-off reminder scheduling", () => {
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-11T18:00:00.000Z"));
     serviceState.snoozeCalls.length = 0;
     serviceState.createCalls.length = 0;
     serviceState.goalCreateCalls.length = 0;

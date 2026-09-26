@@ -1,6 +1,6 @@
 /**
  * Planner-path coverage for the three meeting actions: runs the real core
- * `normalizeParamAliases` + `validateToolArgs` over each action's declared
+ * `validateToolArgs` over each action's declared
  * parameters with the arguments its handler reads, then delivers the validated
  * bag through `options.parameters` exactly as the runtime does and asserts the
  * value reaches the handler. Scripted MeetingService stub; no browser.
@@ -14,10 +14,9 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { type MeetingSession, parseMeetingUrl } from "@elizaos/shared";
+import { type MeetingSession, parseMeetingUrl } from "@elizaos/core/meetings";
 import { describe, expect, it } from "vitest";
 import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
-import { normalizeParamAliases } from "../../../../packages/core/src/runtime/execute-planned-tool-call.js";
 import type { MeetingService } from "../service.js";
 import { getMeetingTranscriptAction } from "./get-meeting-transcript.js";
 import { joinMeetingAction } from "./join-meeting.js";
@@ -52,7 +51,7 @@ function plannerArgs(
   action: Action,
   args: Record<string, unknown>,
 ): ReturnType<typeof validateToolArgs> {
-  return validateToolArgs(action, normalizeParamAliases(action, args));
+  return validateToolArgs(action, args);
 }
 
 function runtimeWith(
@@ -118,10 +117,10 @@ describe("JOIN_MEETING planner parameters", () => {
     ]);
   });
 
-  it("remaps the url alias onto meetingUrl", () => {
+  it("rejects an undeclared url alias instead of rewriting planner input", () => {
     const validation = plannerArgs(joinMeetingAction, { url: MEET });
-    expect(validation).toMatchObject({ valid: true, errors: [] });
-    expect(validation.args).toEqual({ meetingUrl: MEET });
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toContain("Unexpected argument 'url'");
   });
 
   it("still rejects an undeclared argument", () => {
@@ -170,10 +169,10 @@ describe("LEAVE_MEETING planner parameters", () => {
     expect(stopped).toEqual(["sess-b"]);
   });
 
-  it("remaps the url alias onto meetingUrl for link-based targeting", () => {
+  it("requires the declared meetingUrl for link-based targeting", () => {
     const validation = plannerArgs(leaveMeetingAction, { url: ZOOM });
-    expect(validation).toMatchObject({ valid: true, errors: [] });
-    expect(validation.args).toEqual({ meetingUrl: ZOOM });
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toContain("Unexpected argument 'url'");
   });
 
   it("still rejects an undeclared argument", () => {

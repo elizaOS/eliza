@@ -342,11 +342,16 @@ describe("boolean contract", () => {
   });
 
   it("reports unknown input instead of guessing a boolean", () => {
-    for (const unknown of ["maybe", "", "2", "yep", "perhaps"]) {
+    for (const unknown of ["maybe", "2", "yep", "perhaps"]) {
       expect(parseBoolean(unknown)).toEqual({ known: false });
       expect(validateField(unknown, booleanControl).valid).toBe(false);
     }
     expect(parseBoolean(null)).toEqual({ known: false });
+    expect(parseBoolean("")).toEqual({ known: false });
+    expect(validateField("", booleanControl).valid).toBe(true);
+    expect(validateField("", { ...booleanControl, required: true }).valid).toBe(
+      false,
+    );
   });
 
   it("keeps an unrecognised extraction as its original string", () => {
