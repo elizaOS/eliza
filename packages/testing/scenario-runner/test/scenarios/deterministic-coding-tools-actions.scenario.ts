@@ -194,7 +194,17 @@ const codingToolModelFixtures: DeterministicModelFixture[] =
     const writing = route.args === writeParameters;
     const planned: ExpectedTool[] = [route];
     if (writing) planned.push({ actionName: "SHELL", args: verifyParameters });
+    // Coding turns expose the complete coding surface, not only the routed
+    // action. Receipts below still require the exact ordered calls and inputs.
     const allowed = new Set([
+      "FILE",
+      "SHELL",
+      "READ",
+      "WRITE",
+      "EDIT",
+      "WORKTREE",
+      "WEB_FETCH",
+      "WEB_SEARCH",
       ...planned.map((tool) => tool.actionName),
       "DISCOVER_ACTIONS",
       "DISCOVER_TOOLS",
