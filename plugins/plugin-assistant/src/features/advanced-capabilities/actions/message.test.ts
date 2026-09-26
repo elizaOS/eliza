@@ -609,7 +609,17 @@ describe("MESSAGE op=send delivery evidence", () => {
         memories: [],
         receipt: {
           ...localReceipt,
-          persistence: { status: "failed", failures: [] },
+          persistence: {
+            status: "failed",
+            failures: [
+              {
+                providerMessageId: "native-completion-1",
+                stage: "memory",
+                code: "WRITE_FAILED",
+                message: "write failed",
+              },
+            ],
+          },
         },
       }),
     ).toThrow(
