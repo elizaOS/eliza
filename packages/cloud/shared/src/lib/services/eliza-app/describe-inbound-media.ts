@@ -295,6 +295,8 @@ export async function describeInboundImageMedia(
           ],
         },
       ],
+      // Admission accounts for this call; disable automatic SDK retries.
+      maxRetries: 0,
       abortSignal: AbortSignal.timeout(INBOUND_MEDIA_VISION_TIMEOUT_MS),
     });
   } catch (error) {

@@ -77,9 +77,9 @@ export async function applyAddressedTo(
     }
     resolved.push(targetId);
 
+    // Reuse the canonical pair even when it has no addressed tag yet.
     const existingList = await runtime.getRelationships({
       entityIds: [speakerId],
-      tags: [ADDRESSED_RELATIONSHIP_TAGS[0]],
     });
     const existing = existingList.find(
       (rel) =>
