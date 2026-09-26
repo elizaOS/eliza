@@ -167,7 +167,8 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     }
     const plan = messageHandler.plan;
     if (
-      value.disposition !== "requested" ||
+      (value.disposition !== "requested" &&
+        value.disposition !== "unresolved") ||
       !message.id ||
       message.content.source !== "client_chat" ||
       !["DM", "VOICE_DM"].includes(String(message.content.channelType)) ||
@@ -186,6 +187,20 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
           view.label.toLowerCase() === target ||
           (target === "home" && view.id === "chat")),
     );
+    if (value.disposition === "unresolved") {
+      if (
+        matches.length !== 1 ||
+        plan.replyEffectStatus !== "pending" ||
+        !plan.intents?.length
+      )
+        return;
+      return {
+        addCandidateActions: ["VIEWS"],
+        addContextSlices: [
+          `Current-request navigation judgment: ${JSON.stringify(value)}. The target matches one caller-visible view, but navigation remains unresolved. Tool availability is not permission to navigate. Preserve conditions, ordering and every domain intent; clarify unresolved choices before effects. No navigation has executed.`,
+        ],
+      };
+    }
     const direct =
       value.singleViewOnly &&
       value.navigationOnly &&

@@ -587,6 +587,67 @@ const clientMessage = (): Memory => ({
 });
 
 describe("model-selected host navigation", () => {
+  it.each([
+    [
+      "notes",
+      [
+        "Open Notes view",
+        "Read latest existing note",
+        "Read next saved calendar event",
+      ],
+      true,
+    ],
+    ["notes", ["Open Notes only if the requested record exists"], true],
+    [
+      "notes",
+      ["Choose between Notes and Calendar after checking records"],
+      true,
+    ],
+    ["unknown-view", ["Open the unspecified destination"], false],
+  ] as const)(
+    "offers tools without resolving ambiguous navigation to %s",
+    async (viewId, intents, known) => {
+      const f = await fixture();
+      f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+        action.name.startsWith("VIEWS"),
+      );
+      const selected = await selectNavigation(
+        f,
+        clientMessage(),
+        {
+          disposition: "unresolved",
+          viewId,
+          singleViewOnly: false,
+          navigationOnly: false,
+        },
+        {
+          contexts: ["general", "notes", "calendar"],
+          intents: [...intents],
+          candidateActions: [],
+          reply: "",
+        },
+      );
+      expect(selected.plan.intents).toEqual(intents);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+      expect(selected.plan.candidateActions).toEqual(known ? ["VIEWS"] : []);
+      if (known) {
+        const actions = await collectV5PlannerCandidateActions({
+          runtime: f.runtime,
+          message: clientMessage(),
+          state: { values: {}, data: {}, text: "" },
+          selectedContexts: ["general", "notes", "calendar"],
+          candidateActions: selected.plan.candidateActions,
+          userRoles: ["OWNER"],
+        });
+        expect(actions.map((action) => action.name)).toEqual(
+          expect.arrayContaining(["VIEWS_LIST", "VIEWS_SHOW"]),
+        );
+        expect(JSON.stringify(selected)).toContain("unresolved");
+      }
+    },
+  );
+
   it.each(["none", "forbidden"])(
     "preserves domain-only work from Calendar with %s navigation",
     async (disposition) => {
@@ -750,41 +811,49 @@ describe("model-selected host navigation", () => {
       expect(f.requests()).toBe(0);
     },
   );
-  it("rechecks owner role and rejects cancellation after the model decision", async () => {
-    const f = await fixture();
-    const input = clientMessage();
-    const roleChanged = await selectNavigation(
-      f,
-      input,
-      { viewId: "chat" },
-      {},
-      () => {
-        f.runtime.getWorld = async () =>
-          ({ id: "world", metadata: { roles: { [owner]: "USER" } } }) as never;
-      },
-    );
-    expect(roleChanged.plan.deterministicToolCall).toBeUndefined();
-    const other = await fixture();
-    const controller = new AbortController();
-    await runWithStreamingContext(
-      {
-        messageId: String(input.id),
-        abortSignal: controller.signal,
-        onStreamChunk: () => {},
-      },
-      async () => {
-        const selected = await selectNavigation(
-          other,
-          clientMessage(),
-          { viewId: "chat" },
-          {},
-          () => controller.abort(),
-        );
-        expect(selected.plan.deterministicToolCall).toBeUndefined();
-      },
-    );
-    expect(f.requests() + other.requests()).toBe(0);
-  });
+  it.each(["requested", "unresolved"])(
+    "rechecks owner role and cancellation for %s",
+    async (disposition) => {
+      const f = await fixture();
+      const input = clientMessage();
+      const roleChanged = await selectNavigation(
+        f,
+        input,
+        { viewId: "chat", disposition },
+        { candidateActions: [] },
+        () => {
+          f.runtime.getWorld = async () =>
+            ({
+              id: "world",
+              metadata: { roles: { [owner]: "USER" } },
+            }) as never;
+        },
+      );
+      expect(roleChanged.plan.deterministicToolCall).toBeUndefined();
+      expect(roleChanged.plan.candidateActions).toEqual([]);
+      const other = await fixture();
+      const controller = new AbortController();
+      await runWithStreamingContext(
+        {
+          messageId: String(input.id),
+          abortSignal: controller.signal,
+          onStreamChunk: () => {},
+        },
+        async () => {
+          const selected = await selectNavigation(
+            other,
+            clientMessage(),
+            { viewId: "chat", disposition },
+            { candidateActions: [] },
+            () => controller.abort(),
+          );
+          expect(selected.plan.deterministicToolCall).toBeUndefined();
+          expect(selected.plan.candidateActions).toEqual([]);
+        },
+      );
+      expect(f.requests() + other.requests()).toBe(0);
+    },
+  );
   it("does not substitute a direct call for contradictory non-navigation hints", async () => {
     const f = await fixture();
     const selected = await selectNavigation(
