@@ -102,6 +102,9 @@ export interface SandboxProvisionHost {
   transferReplacementToPrimary(
     ...args: Parameters<SandboxReplacementCleanup["transferReplacementToPrimary"]>
   ): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]>;
+  fenceAdoptedProvisionForCleanup(
+    ...args: Parameters<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>
+  ): ReturnType<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>;
   pushState(
     ...args: Parameters<SandboxBackup["pushState"]>
   ): ReturnType<SandboxBackup["pushState"]>;
@@ -857,15 +860,44 @@ export class SandboxProvision {
                             skipFundingCleanup = true;
                         }
                         const current = await agentSandboxesRepository.findByIdAndOrg(rec.id, rec.organization_id);
+                        let retiredExactly = false;
                         if (current && this.host.getReplacementCleanupLocator(current)) {
                             await this.host.retirePersistedReplacementCleanup(rec.id, rec.organization_id, undefined, undefined, "lifecycle", handle);
+                            retiredExactly = true;
+                        }
+                        else if (!computeFundingId && isDockerBackedMetadata(handle.metadata)) {
+                            // Adoption cleared the create-time fence. The container name
+                            // is reusable, so delayed teardown by name could resolve a
+                            // healthy successor (#29678). Re-fence the exact node,
+                            // immutable container ID, attempt label and VPN identity,
+                            // then retire through the same exact authority. Incomplete
+                            // identity throws and stays a retryable cleanup failure.
+                            await this.host.fenceAdoptedProvisionForCleanup(rec.id, rec.organization_id, handle, rec.environment_revision);
+                            await this.host.retirePersistedReplacementCleanup(rec.id, rec.organization_id, undefined, undefined, "lifecycle", handle);
+                            retiredExactly = true;
                         }
                         else if (!computeFundingId) {
+                            // Non-Docker providers own no reusable fleet name.
                             const provider = await this.host.getProvider();
                             if (!provider.stopForReplacement) {
                                 throw new Error("Sandbox provider cannot prove failed provision absent");
                             }
                             await provider.stopForReplacement(handle.sandboxId);
+                        }
+                        if (retiredExactly) {
+                            // The fence writes advanced the lifecycle revision under this
+                            // provision's own authority. Rebind the failure mark only when
+                            // generation and job ownership are otherwise unchanged, so the
+                            // failed recovery stays visible instead of a stale CAS miss.
+                            const retired = await agentSandboxesRepository.findByIdAndOrgForWrite(rec.id, rec.organization_id);
+                            if (retired &&
+                                retired.environment_revision === rec.environment_revision &&
+                                retired.lifecycle_job_id === rec.lifecycle_job_id &&
+                                retired.lifecycle_execution_generation === rec.lifecycle_execution_generation &&
+                                retired.deletion_attempt_id === null &&
+                                retired.replacement_cleanup_sandbox_id === null) {
+                                rec = retired;
+                            }
                         }
                     }
                     catch (stopErr) {

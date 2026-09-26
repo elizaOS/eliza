@@ -741,6 +741,42 @@ describe("atomic workflow block (executed verbatim)", () => {
     ]);
   });
 
+  it("rewrites a stale host orphan reconciler to exactly one disabled entry", () => {
+    const result = runAtomicReconcile({
+      seedHostFile:
+        "ORPHAN_RECONCILER_ENABLED=1\nOTHER=keep\nORPHAN_RECONCILER_ENABLED=1\n",
+    });
+    expect(result.host.match(/^ORPHAN_RECONCILER_ENABLED=/gm)).toHaveLength(1);
+    expect(
+      lookupSystemdEnvironmentValue(result.host, "ORPHAN_RECONCILER_ENABLED"),
+    ).toBe("0");
+    expect(result.host).toContain("OTHER=keep\n");
+    // The pre-restart and health gates use the serializer's `equals` verb.
+    const gate = (contents: string) => {
+      const directory = mkdtempSync(path.join(tmpdir(), "orphan-gate-"));
+      const file = path.join(directory, "cloud.env.local");
+      writeFileSync(file, contents);
+      try {
+        execFileSync(
+          process.execPath,
+          [serializerPath, "equals", file, "ORPHAN_RECONCILER_ENABLED"],
+          { input: "0", stdio: "pipe", timeout: 20_000 },
+        );
+        return true;
+      } catch {
+        return false;
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    };
+    expect(gate(result.host)).toBe(true);
+    expect(gate("ORPHAN_RECONCILER_ENABLED=1\n")).toBe(false);
+    expect(workflow).toContain('"$ENV_FILE" ORPHAN_RECONCILER_ENABLED 0; then');
+    expect(workflow).toContain(
+      "Provisioning host orphan reconciler drifted from its disabled policy.",
+    );
+  });
+
   it("tolerates a first deployment with no previously installed backup unit", () => {
     const result = runAtomicReconcile({ backupUnitLoadState: "not-found" });
 

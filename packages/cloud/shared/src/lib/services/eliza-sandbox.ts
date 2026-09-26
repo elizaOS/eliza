@@ -250,6 +250,7 @@ export class ElizaSandboxService {
       this.persistUnresolvedReplacementCleanupFence(...args),
     ensureRuntimeAgentStarted: (...args) => this.ensureRuntimeAgentStarted(...args),
     transferReplacementToPrimary: (...args) => this.transferReplacementToPrimary(...args),
+    fenceAdoptedProvisionForCleanup: (...args) => this.fenceAdoptedProvisionForCleanup(...args),
     pushState: (...args) => this.pushState(...args),
   });
   readonly #warmClaim = new SandboxWarmClaim({
@@ -3384,6 +3385,11 @@ export class ElizaSandboxService {
     ...args: Parameters<SandboxReplacementCleanup["transferReplacementToPrimary"]>
   ): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]> {
     return this.#replacementCleanup.transferReplacementToPrimary(...args);
+  }
+  private fenceAdoptedProvisionForCleanup(
+    ...args: Parameters<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>
+  ): ReturnType<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]> {
+    return this.#replacementCleanup.fenceAdoptedProvisionForCleanup(...args);
   }
   private assertAdminCanaryCleanupExpectation(
     ...args: Parameters<SandboxReplacementCleanup["assertAdminCanaryCleanupExpectation"]>
