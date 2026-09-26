@@ -21,10 +21,25 @@ const SCRIPT = fileURLToPath(
 );
 
 function runCli(args) {
-  return spawnSync(process.execPath, [SCRIPT, ...args], {
-    encoding: "utf8",
-    timeout: 8_000,
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sms-watch-preflight-"));
+  const adb = path.join(dir, "adb");
+  const marker = path.join(dir, "probe-called");
+  fs.writeFileSync(adb, '#!/bin/sh\necho called > "$SMS_PROBE_MARKER"\n', {
+    mode: 0o755,
   });
+  try {
+    const result = spawnSync(process.execPath, [SCRIPT, ...args], {
+      encoding: "utf8",
+      timeout: 8_000,
+      env: { ...process.env, ADB: adb, SMS_PROBE_MARKER: marker },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(fs.existsSync(marker)).toBe(false);
+    return result;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 describe("wireless reconnect", () => {
@@ -164,10 +179,8 @@ describe("parseArgs", () => {
 
 describe("watch-sms-gateway-readiness CLI timing boundary", () => {
   test("rejects --timeout 1e3 before waiting or printing Timed out waiting 1s", () => {
-    const startedAt = Date.now();
     const result = runCli(["--timeout", "1e3", "--interval", "1"]);
-    expect(result.status).not.toBe(0);
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(result.status).toBe(1);
     const combined = `${result.stdout}${result.stderr}`;
     expect(combined).toMatch(
       /--timeout must be a positive decimal integer from 1 to 86400/,
@@ -176,11 +189,9 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     expect(combined).not.toContain("[sms-gateway-watch] waiting:");
   });
 
-  test("rejects --timeout 8abc before sleeping eight seconds", () => {
-    const startedAt = Date.now();
+  test("rejects --timeout 8abc before probing or waiting", () => {
     const result = runCli(["--timeout", "8abc", "--interval", "1"]);
-    expect(result.status).not.toBe(0);
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(result.status).toBe(1);
     const combined = `${result.stdout}${result.stderr}`;
     expect(combined).toMatch(/--timeout must be a positive decimal integer/);
     expect(combined).not.toContain("Timed out waiting 8s");
