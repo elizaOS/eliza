@@ -10,7 +10,10 @@ import {
   type TrajectoryRecorder,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "./planner-loop.ts";
+import {
+  partitionRedundantSucceededCalls,
+  runPlannerLoop,
+} from "./planner-loop.ts";
 
 const receipt: EffectReceipt = {
   receiptId: "saved-record-receipt",
@@ -85,6 +88,74 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("does not replay a committed mutation with nonretryable bookkeeping failure", async () => {
+    const h = harness(2);
+    const result = await runPlannerLoop({
+      ...h,
+      context: { id: "nonretryable-receipt" },
+      codingMode: true,
+    });
+    const call = {
+      id: "write",
+      name: "WRITE",
+      params: { path: "/workspace/file", content: "saved" },
+    };
+    const step = result.trajectory.steps.find((entry) => entry.toolCall);
+    expect(step).toBeDefined();
+    if (!step) throw new Error("Expected an executed step");
+    step.toolCall = call;
+    step.result = {
+      success: false,
+      effectReceipts: [receipt],
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_STATE_TRACKING_FAILED",
+        retryable: false,
+      },
+    };
+    const partition = partitionRedundantSucceededCalls(
+      [call],
+      result.trajectory,
+    );
+    expect(partition.fresh).toEqual([]);
+    expect(partition.nonRetryable).toEqual([call]);
+  });
+  it("keeps native reply schemas identical throughout the trajectory", async () => {
+    const h = harness(4);
+    const schemas: string[] = [];
+    const useModel = h.runtime.useModel;
+    h.runtime.useModel = async (type, input) => {
+      schemas.push(JSON.stringify(input.tools));
+      return useModel(type, input);
+    };
+    await runPlannerLoop({
+      ...h,
+      context: { id: "stable-reply-schema" },
+      codingMode: true,
+      tools: [
+        ...["DISCOVER_ACTIONS", "MEMORY_SEARCH"].map((name) => ({
+          name,
+          description: name,
+          parameters: {
+            type: "object" as const,
+            properties: { query: { type: "string" as const } },
+          },
+        })),
+        {
+          name: "REPLY",
+          description: "Reply",
+          parameters: {
+            type: "object",
+            properties: { text: { type: "string" } },
+            required: ["text"],
+          },
+        },
+      ],
+    });
+    expect(schemas).toHaveLength(4);
+    expect(new Set(schemas).size).toBe(1);
+  });
   it("settles source-bound outcome coverage without a scope-only planner round", async () => {
     let rounds = 0;
     const result = await runPlannerLoop({
@@ -265,49 +336,58 @@ describe("long progressive planner trajectories", () => {
     expect(result.modelUsage?.promptTokens).toBe(100);
   });
 
-  it("advances a pending batch after a committed write without a redundant evaluator call", async () => {
-    let modelCalls = 0;
-    const executed: string[] = [];
-    const result = await runPlannerLoop({
-      codingMode: false,
-      context: { id: "pending-write-read" },
-      runtime: {
-        useModel: async () => {
-          if (++modelCalls > 1)
-            throw new Error(
-              "Unexpected evaluator call between committed write and queued verification",
-            );
-          return {
-            text: "",
-            toolCalls: ["WRITE", "READ"].map((name) => ({
-              id: `pending-${name}`,
-              name,
-              arguments: {
-                path: "/workspace/output",
-                eliza_turn_scope: "more_work_pending",
-              },
-            })),
-          };
+  it.each([false, true])(
+    "advances a pending batch after a committed write without a redundant evaluator call (visible=%s)",
+    async (visible) => {
+      let modelCalls = 0;
+      const executed: string[] = [];
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: { id: "pending-write-read" },
+        runtime: {
+          useModel: async () => {
+            if (++modelCalls > 1)
+              throw new Error(
+                "Unexpected evaluator call between committed write and queued verification",
+              );
+            return {
+              text: "",
+              toolCalls: ["WRITE", "READ"].map((name) => ({
+                id: `pending-${name}`,
+                name,
+                arguments: {
+                  path: "/workspace/output",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              })),
+            };
+          },
         },
-      },
-      executeToolCall: async (call) => {
-        executed.push(call.name);
-        return call.name === "WRITE"
-          ? {
-              success: true,
-              transcriptVisibility: "internal",
-              effectReceipts: [receipt],
-            }
-          : { success: true, text: "Verified output", continueChain: false };
-      },
-    });
-    expect(executed).toEqual(["WRITE", "READ"]);
-    expect(modelCalls).toBe(1);
-    expect(
-      result.trajectory.steps.find((step) => step.toolCall?.name === "WRITE")
-        ?.result?.effectReceipts,
-    ).toEqual([receipt]);
-  });
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          return call.name === "WRITE"
+            ? {
+                success: true,
+                ...(visible
+                  ? {
+                      verifiedUserFacing: true,
+                      turnComplete: true,
+                      userFacingText: "Written",
+                    }
+                  : { transcriptVisibility: "internal" as const }),
+                effectReceipts: [receipt],
+              }
+            : { success: true, text: "Verified output", continueChain: false };
+        },
+      });
+      expect(executed).toEqual(["WRITE", "READ"]);
+      expect(modelCalls).toBe(1);
+      expect(
+        result.trajectory.steps.find((step) => step.toolCall?.name === "WRITE")
+          ?.result?.effectReceipts,
+      ).toEqual([receipt]);
+    },
+  );
 
   it("repairs a typed pre-execution rejection before evaluating completion", async () => {
     let rounds = 0;

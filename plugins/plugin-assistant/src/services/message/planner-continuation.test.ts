@@ -4,6 +4,7 @@ import {
   ChannelType,
   type Memory,
   type PlannerLoopResult,
+  TaskService,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
@@ -212,9 +213,9 @@ it("parks a crash after pre-dispatch checkpoint and never replays it on restart 
       );
       throw new Error("Synthetic crash at uncertain effect boundary");
     });
-  await expect(worker.execute(runtime, {}, await task())).rejects.toThrow(
-    "Synthetic crash",
-  );
+  await expect(worker.execute(runtime, {}, await task())).resolves.toEqual({
+    preserveTask: true,
+  });
   expect((await task()).metadata?.plannerContinuation).toMatchObject({
     phase: "executing",
   });
@@ -251,9 +252,9 @@ it("makes a settled post-tool checkpoint explicitly resumable after re-registrat
     await checkpointActivePlanner(runtime, message, active.state, "after_tool");
     throw new Error("Crash after settlement");
   });
-  await expect(worker.execute(runtime, {}, await task())).rejects.toThrow(
-    "Crash after settlement",
-  );
+  await expect(worker.execute(runtime, {}, await task())).resolves.toEqual({
+    preserveTask: true,
+  });
   expect((await task()).metadata?.plannerContinuation).toMatchObject({
     phase: "running",
   });
@@ -438,5 +439,83 @@ it("keeps cancellation terminal when a checkpoint write is in flight", async () 
   await worker.execute(runtime, {}, await task());
   expect((await task()).metadata?.plannerContinuation).toMatchObject({
     phase: "cancelled",
+  });
+});
+
+it("retains ambiguous execution evidence when the actual task scheduler handles a worker failure", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  const execute = vi
+    .spyOn(required(runtime.messageService), "handleMessage")
+    .mockImplementation(async (_runtime, message) => {
+      const active = required(getActivePlannerContinuation(runtime, message));
+      await checkpointActivePlanner(
+        runtime,
+        message,
+        active.state,
+        "before_tool",
+      );
+      throw new Error("Synthetic transport failure after possible effect");
+    });
+  const scheduler = new TaskService(runtime);
+  const taskId = required((await task()).id);
+  await scheduler.executeTaskById(taskId);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "executing",
+    failure: { code: "PLANNER_CONTINUATION_EXECUTION_FAILED" },
+    state: { trajectory: result.trajectory },
+  });
+  await scheduler.executeTaskById(taskId);
+  expect(execute).toHaveBeenCalledTimes(1);
+});
+
+it("refuses stale queued admission after another invocation settles and releases its lock", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  const queued = await task();
+  const captured = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const getTask = runtime.getTask.bind(runtime);
+  let delayFirstRead = true;
+  vi.spyOn(runtime, "getTask").mockImplementation(async (id) => {
+    const snapshot = await getTask(id);
+    if (delayFirstRead) {
+      delayFirstRead = false;
+      captured.resolve();
+      await release.promise;
+    }
+    return snapshot;
+  });
+  const execute = vi
+    .spyOn(required(runtime.messageService), "handleMessage")
+    .mockImplementation(async (_runtime, message) => {
+      const active = required(getActivePlannerContinuation(runtime, message));
+      await checkpointActivePlanner(
+        runtime,
+        message,
+        active.state,
+        "before_tool",
+      );
+      throw new Error("Park uncertain execution");
+    });
+  const stale = worker.execute(runtime, {}, queued);
+  await captured.promise;
+  await worker.execute(runtime, {}, queued);
+  release.resolve();
+  await stale;
+  expect(execute).toHaveBeenCalledTimes(1);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "executing",
+    attempt: 1,
   });
 });

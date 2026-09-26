@@ -8,7 +8,7 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { writeFileHandler } from "./write.js";
 
@@ -106,6 +106,40 @@ describe("WRITE", () => {
     ]);
     const meta = env.fileState.get("test-room", file);
     expect(meta).toBeDefined();
+  });
+
+  it("rejects a provider acknowledgment for another path without falling back or claiming no effect", async () => {
+    const file = path.join(env.tmpDir, "requested.txt");
+    const other = path.join(env.tmpDir, "different.txt");
+    const writeText = vi.fn(async (params: FileWriteTextParams) => {
+      await fs.writeFile(other, params.text, "utf8");
+      return {
+        path: other,
+        bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      };
+    });
+    const callback = vi.fn(async () => []);
+    const result = await writeFileHandler(
+      runtimeWithRouter(env.runtime, makeWriteRouter(writeText)),
+      env.message,
+      undefined,
+      { parameters: { file_path: file, content: "provider wrote elsewhere" } },
+      callback,
+    );
+    expect(result.success).toBe(false);
+    expect(result.effectReceipts).toBeUndefined();
+    expect(result.failureProvenance).toMatchObject({
+      kind: "persistence_error",
+      code: "FILE_WRITE_UNVERIFIED",
+      retryable: false,
+    });
+    expect(result.data).toMatchObject({ path: file, acceptance: "unknown" });
+    expect(result.text).toContain("requested write outcome is unknown");
+    expect(await fs.readFile(other, "utf8")).toBe("provider wrote elsewhere");
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(env.fileState.get("test-room", file)).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 
   it("rejects writes to existing files that were not READ first (must_read_first)", async () => {

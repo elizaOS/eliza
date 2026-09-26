@@ -40,6 +40,7 @@ export interface PlannerContinuation {
     | "delivered"
     | "cancelled"
     | "blocked";
+  failure?: { code: "PLANNER_CONTINUATION_EXECUTION_FAILED" };
   delivery?: { id: UUID; content: Content; acknowledged: boolean };
   deliveries?: Array<{ id: UUID; content: Content; acknowledged: boolean }>;
 }
@@ -119,11 +120,17 @@ function readCheckpoint(
 async function persistUnlocked(
   runtime: IAgentRuntime,
   checkpoint: PlannerContinuation,
-): Promise<void> {
+  expected?: { phase: PlannerContinuation["phase"]; attempt: number },
+): Promise<boolean> {
   const task = await runtime.getTask(checkpoint.taskId);
   if (!task || task.agentId !== runtime.agentId)
     invalid("Continuation task is missing");
   const previous = readCheckpoint(runtime, task);
+  if (
+    expected &&
+    (previous.phase !== expected.phase || previous.attempt !== expected.attempt)
+  )
+    return false;
   if (previous.phase === "cancelled" && checkpoint.phase !== "cancelled")
     invalid("Continuation was cancelled");
   if (checkpoint.phase === "queued" && previous.phase !== "paused")
@@ -157,6 +164,7 @@ async function persistUnlocked(
           : ["planner-continuation"],
     dueAt: checkpoint.phase === "queued" ? Date.now() : null,
   });
+  return true;
 }
 
 // Serialize lifecycle writes within the existing single-runtime task owner.
@@ -164,7 +172,8 @@ async function persistUnlocked(
 async function persist(
   runtime: IAgentRuntime,
   checkpoint: PlannerContinuation,
-): Promise<void> {
+  expected?: { phase: PlannerContinuation["phase"]; attempt: number },
+): Promise<boolean> {
   let pending = mutations.get(runtime);
   if (!pending) {
     pending = new Map();
@@ -172,7 +181,7 @@ async function persist(
   }
   const predecessor = pending.get(checkpoint.taskId) ?? Promise.resolve();
   const operation = predecessor.then(() =>
-    persistUnlocked(runtime, checkpoint),
+    persistUnlocked(runtime, checkpoint, expected),
   );
   const settled = operation.then(
     () => undefined,
@@ -180,7 +189,7 @@ async function persist(
   );
   pending.set(checkpoint.taskId, settled);
   try {
-    await operation;
+    return await operation;
   } finally {
     if (pending.get(checkpoint.taskId) === settled)
       pending.delete(checkpoint.taskId);
@@ -332,7 +341,13 @@ export async function registerPlannerContinuationWorker(
       }
       active.set(message.id, checkpoint);
       try {
-        await persist(current, checkpoint);
+        if (
+          !(await persist(current, checkpoint, {
+            phase: "queued",
+            attempt: checkpoint.attempt - 1,
+          }))
+        )
+          return { preserveTask: true };
         if (!current.messageService) invalid("Message service unavailable");
         const outputs: Content[] = [];
         const result = await current.messageService.handleMessage(
@@ -422,7 +437,26 @@ export async function registerPlannerContinuationWorker(
         current.reportError("PlannerContinuation.execute", error, {
           taskId: task.id,
         });
-        throw error;
+        try {
+          const latest = await current.getTask(task.id);
+          if (latest) {
+            const durable = readCheckpoint(current, latest);
+            durable.failure = { code: "PLANNER_CONTINUATION_EXECUTION_FAILED" };
+            await persist(current, durable);
+          }
+        } catch (persistenceError) {
+          // Preserve the last durable boundary even when diagnostic persistence fails.
+          current.reportError(
+            "PlannerContinuation.persistFailure",
+            persistenceError,
+            {
+              taskId: task.id,
+            },
+          );
+        }
+        // TaskService deletes failed non-repeat tasks when a worker throws.
+        // Report the failure above, but retain this parked task and its receipts.
+        return { preserveTask: true };
       } finally {
         active.delete(message.id);
         lock.delete(task.id);

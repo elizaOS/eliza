@@ -1071,69 +1071,36 @@ async function runPlannerLoopIterations(
     if (trajectory.plannedQueue.length === 0) {
       const contextBeforePlanner = trajectory.context;
       let synthesizingRequiredModelReply = pendingRequiredModelReply;
-      const previousResult = trajectory.steps.at(-1)?.result;
-      let plannerTools: typeof params.tools =
-        !codingDrainQueue &&
-        pendingScopeRejectedFinish &&
-        !pendingScopeRejectedFinish.output.messageToUser?.trim() &&
-        isSettledInternalSuccess(previousResult) &&
-        previousResult.modelReplyRequired === true
-          ? params.tools?.map((tool) => {
-              const schema = tool.parameters;
-              if (tool.name !== "REPLY" || !schema?.properties?.text)
-                return tool;
-              // Scope-only REPLY can reuse an existing answer, but this
-              // state has none. Reflect the required presentation in the
-              // native schema without mutating the shared tool catalog.
-              return {
-                ...tool,
-                parameters: {
-                  ...schema,
-                  properties: {
-                    ...schema.properties,
-                    effectReceiptIds: {
-                      type: "array" as const,
-                      items: { type: "string" as const },
-                      description:
-                        "Select current-turn committed receipt IDs supporting the changes claimed in text. Use only supplied applied receipts or replayed commits; use [] for replies without change claims. Never invent or display IDs.",
-                    },
-                  },
-                  required: [
-                    ...new Set([
-                      ...(schema.required ?? []),
-                      "text",
-                      "effectReceiptIds",
-                    ]),
-                  ],
-                },
-              };
-            })
-          : params.tools;
-      if (
-        !codingDrainQueue &&
-        (iteration === 1 || pendingUnverifiedTerminalReply) &&
-        !postToolReplySeed &&
-        !canEvaluateUnexecutedReply
-      ) {
-        // There is no existing answer for an empty REPLY to release.
-        // Require presentation, not success: clarifications and refusals
-        // remain possible and still pass ordinary completion evaluation.
-        plannerTools = plannerTools?.map((tool) => {
-          const schema = tool.parameters;
-          if (
-            tool.name !== "REPLY" ||
-            schema?.properties?.text?.type !== "string"
-          )
-            return tool;
-          return {
-            ...tool,
-            parameters: {
-              ...schema,
-              required: [...new Set([...(schema.required ?? []), "text"])],
+      // Keep the terminal contract byte-stable across rounds. Required text and
+      // receipt proof are state-dependent runtime checks, not schema variants
+      // that invalidate every following cached tool-definition prefix.
+      const plannerTools = params.tools?.map((tool) => {
+        const schema = tool.parameters;
+        if (tool.name !== "REPLY" || !schema?.properties?.text) return tool;
+        return {
+          ...tool,
+          parameters: {
+            ...schema,
+            properties: {
+              ...schema.properties,
+              text: {
+                ...schema.properties.text,
+                description:
+                  "Complete grounded user-facing reply. Omit only to release an already verified held reply; without one, provide nonempty text.",
+              },
+              effectReceiptIds: {
+                type: "array" as const,
+                items: { type: "string" as const },
+                description:
+                  "Supplied committed receipt IDs for changes claimed in text; [] for no change claims. Never invent IDs.",
+              },
             },
-          };
-        });
-      }
+            required: (schema.required ?? []).filter(
+              (name) => name !== "text" && name !== "effectReceiptIds",
+            ),
+          },
+        };
+      });
       // Resolve Stage 1's draft/tool-candidate contradiction before exposing
       // an effect to planning. Reuse normal completion evaluation: FINISH
       // can deliver the draft; CONTINUE must still plan the outstanding work.
@@ -2552,6 +2519,7 @@ async function runPlannerLoopIterations(
       latestResult.failureProvenance?.retryable === true &&
       latestResult.data?.acceptance === "rejected" &&
       latestResult.data?.executionStatus === "not_started" &&
+      !latestResult.effectReceipts?.length &&
       !hasAwaitingUserInputMarker(latestResult) &&
       !hasRequiresConfirmationMarker(latestResult)
     ) {
@@ -6125,7 +6093,8 @@ function latestUnresolvedFailedNonTerminalToolStep(
       step.result.success === false &&
       step.result.failureProvenance?.retryable === true &&
       step.result.data?.acceptance === "rejected" &&
-      step.result.data?.executionStatus === "not_started"
+      step.result.data?.executionStatus === "not_started" &&
+      !step.result.effectReceipts?.length
     ) {
       continue;
     }
@@ -7301,7 +7270,10 @@ export function partitionRedundantSucceededCalls(
         succeeded.clear();
       }
       succeeded.add(identity);
-    } else if (step.result.data?.retryable === false) {
+    } else if (
+      step.result.failureProvenance?.retryable === false ||
+      step.result.data?.retryable === false
+    ) {
       failedNonRetryable.add(identity);
     }
   }
@@ -9367,7 +9339,7 @@ function hasDeliveredQueuedNavigation(
  * call when the step just executed settled with at least one committed
  * mutation receipt or a matching delivered navigation. Navigation's required
  * model reply remains owned by the final evaluator. Reads, failures, pauses,
- * non-internal results and terminal queued calls keep per-step evaluation.
+ * unverified visible results and terminal queued calls keep per-step evaluation.
  */
 function selectQueueAutoAdvance(args: {
   trajectory: PlannerTrajectory;
@@ -9384,7 +9356,15 @@ function selectQueueAutoAdvance(args: {
     typeof args.lastPlannerExplicitCompleted === "boolean" &&
     hasDeliveredQueuedNavigation(latestStep);
   if (!deliveredNavigation) {
-    if (!isSettledInternalSuccess(result)) return null;
+    const verifiedSettledResult =
+      result?.success === true &&
+      result.verifiedUserFacing === true &&
+      result.turnComplete === true &&
+      !hasAwaitingUserInputMarker(result) &&
+      !hasRequiresConfirmationMarker(result);
+    if (!isSettledInternalSuccess(result) && !verifiedSettledResult)
+      return null;
+    if (!result) return null;
     const committed = committedReceiptIdsForGate(result);
     if (!committed || committed.length === 0) return null;
   }
