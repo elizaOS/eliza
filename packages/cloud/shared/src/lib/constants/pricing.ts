@@ -1,61 +1,21 @@
-/**
- * Pricing constants for container deployments and operations
- * All costs are in USD stored as decimal values in credit_balance
- *
- * BILLING MODEL: Daily billing for running containers
- * All costs include 20% platform markup.
- */
+/** Daily container hosting prices; only metered resource-scaled rates are advertised. */
 
 import { ElizaError } from "@elizaos/core";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 
-// Base provider costs (before 20% markup)
+// Base provider cost (before 20% markup)
 const BASE_CONTAINER_PRICING = {
-  // One-time costs
-  DEPLOYMENT: 0.42, // ~$0.42 base cost
-  IMAGE_UPLOAD: 0.21, // ~$0.21 base cost
-
-  // Recurring costs - DAILY BILLING
+  // Recurring cost - DAILY BILLING
   // AWS ECS Fargate costs roughly $16.67/month, we add margin
-  MONTHLY_BASE_COST: 16.67, // ~$16.67/month reference (AWS cost)
   DAILY_RUNNING_COST: 0.56, // ~$0.56/day per container (AWS cost)
-
-  // Resource-based costs
-  COST_PER_GB_STORAGE: 0.083, // ~$0.083/GB/month (S3/EBS cost)
-  COST_PER_GB_BANDWIDTH: 0.042, // ~$0.042/GB outbound (AWS cost)
-
-  // Scaling costs
-  COST_PER_ADDITIONAL_INSTANCE: 0.042, // ~$0.042 per instance per hour
 } as const;
 
 export const CONTAINER_PRICING = {
-  // One-time costs (with 20% markup)
-  DEPLOYMENT:
-    Math.round(BASE_CONTAINER_PRICING.DEPLOYMENT * PLATFORM_MARKUP_MULTIPLIER * 100) / 100, // $0.50 per deployment
-  IMAGE_UPLOAD:
-    Math.round(BASE_CONTAINER_PRICING.IMAGE_UPLOAD * PLATFORM_MARKUP_MULTIPLIER * 100) / 100, // $0.25 per image upload
-
-  // Recurring costs - DAILY BILLING (with 20% markup)
-  MONTHLY_BASE_COST:
-    Math.round(BASE_CONTAINER_PRICING.MONTHLY_BASE_COST * PLATFORM_MARKUP_MULTIPLIER * 100) / 100, // $20/month
+  // Recurring cost - DAILY BILLING (with 20% markup)
   DAILY_RUNNING_COST:
     Math.round(BASE_CONTAINER_PRICING.DAILY_RUNNING_COST * PLATFORM_MARKUP_MULTIPLIER * 100) / 100, // $0.67/day per container
 
-  // Resource-based costs (with 20% markup)
-  COST_PER_GB_STORAGE:
-    Math.round(BASE_CONTAINER_PRICING.COST_PER_GB_STORAGE * PLATFORM_MARKUP_MULTIPLIER * 100) / 100, // $0.10/GB/month
-  COST_PER_GB_BANDWIDTH:
-    Math.round(BASE_CONTAINER_PRICING.COST_PER_GB_BANDWIDTH * PLATFORM_MARKUP_MULTIPLIER * 100) /
-    100, // $0.05/GB outbound
-
-  // Scaling costs (with 20% markup)
-  COST_PER_ADDITIONAL_INSTANCE:
-    Math.round(
-      BASE_CONTAINER_PRICING.COST_PER_ADDITIONAL_INSTANCE * PLATFORM_MARKUP_MULTIPLIER * 100,
-    ) / 100, // $0.05 per instance per hour
-
   // Warning thresholds (not pricing, keep as-is)
-  LOW_CREDITS_WARNING_THRESHOLD: 2.0, // Warn when < 3 days of credit ($0.67 * 3)
   SHUTDOWN_WARNING_HOURS: 48, // Hours before shutdown warning
 } as const;
 
@@ -217,39 +177,4 @@ export function resolveMaxContainersForOrg(
  */
 export function getMaxContainersForOrg(creditBalance: unknown, orgSettings?: unknown): number {
   return resolveMaxContainersForOrg(creditBalance, orgSettings).limit;
-}
-
-/**
- * Calculate total deployment cost for AWS ECS containers
- * Cost includes 20% platform markup.
- */
-export function calculateDeploymentCost(config: {
-  imageSize?: number;
-  desiredCount?: number;
-  cpu?: number; // CPU units (256 = 0.25 vCPU)
-  memory?: number; // Memory in MB
-}): number {
-  let totalCost = CONTAINER_PRICING.DEPLOYMENT;
-
-  const instanceCount = config.desiredCount || 1;
-
-  // Additional cost for scaling beyond single instance
-  if (instanceCount > 1) {
-    totalCost += (instanceCount - 1) * CONTAINER_PRICING.COST_PER_ADDITIONAL_INSTANCE;
-  }
-
-  // Additional cost for higher CPU/memory allocations
-  if (config.cpu && config.cpu > 256) {
-    // Base is 256 CPU, charge extra for higher tiers
-    const cpuMultiplier = config.cpu / 256;
-    totalCost += Math.round((cpuMultiplier - 1) * 2.0 * 100) / 100;
-  }
-
-  if (config.memory && config.memory > 512) {
-    // Base is 512MB, charge extra for more memory
-    const memoryMultiplier = config.memory / 512;
-    totalCost += Math.round((memoryMultiplier - 1) * 1.0 * 100) / 100;
-  }
-
-  return totalCost;
 }
