@@ -814,57 +814,63 @@ describe("coding verification recovery guidance", () => {
   });
 });
 
-describe("incomplete coding model output", () => {
-  it("preserves settled effects without another model call or tool replay", async () => {
-    let calls = 0;
-    let effects = 0;
-    const result = await runPlannerLoop({
-      codingMode: true,
-      context: { id: "incomplete-after-write" },
-      runtime: {
-        useModel: async () => {
-          calls++;
-          if (calls > 1)
-            throw new ElizaError("Provider output stopped", {
-              code: "MODEL_OUTPUT_INCOMPLETE",
-              context: { finishReason: "length" },
-            });
+describe("terminal coding model failures", () => {
+  it.each([
+    { code: "MODEL_OUTPUT_INCOMPLETE", kind: "provider_issue" },
+    { code: "PROVIDER_CONTEXT_OVERFLOW", kind: "context_overflow" },
+  ])(
+    "preserves settled effects without retry after $code",
+    async ({ code, kind }) => {
+      let calls = 0;
+      let effects = 0;
+      const result = await runPlannerLoop({
+        codingMode: true,
+        context: { id: "incomplete-after-write" },
+        runtime: {
+          useModel: async () => {
+            calls++;
+            if (calls > 1)
+              throw new ElizaError("Provider output stopped", {
+                code,
+                context: { finishReason: "length" },
+              });
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "write-before-incomplete",
+                  name: "WRITE",
+                  arguments: { eliza_turn_scope: "more_work_pending" },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async () => {
+          effects++;
           return {
-            text: "",
-            toolCalls: [
-              {
-                id: "write-before-incomplete",
-                name: "WRITE",
-                arguments: { eliza_turn_scope: "more_work_pending" },
-              },
-            ],
+            success: true,
+            text: "File written",
+            effectReceipts: [receipt],
+            data: { file: "changed.ts" },
           };
         },
-      },
-      executeToolCall: async () => {
-        effects++;
-        return {
-          success: true,
-          text: "File written",
-          effectReceipts: [receipt],
-          data: { file: "changed.ts" },
-        };
-      },
-    });
-    expect(calls).toBe(2);
-    expect(effects).toBe(1);
-    expect(result.trajectory.steps[0]?.result?.effectReceipts).toEqual([
-      receipt,
-    ]);
-    expect(result.trajectory.steps[0]?.result?.data?.file).toBe("changed.ts");
-    expect(result.evaluator?.success).toBe(false);
-    expect(result.terminalFailure).toMatchObject({
-      code: "MODEL_OUTPUT_INCOMPLETE",
-      kind: "provider_issue",
-      transient: false,
-    });
-    expect(result.finalMessage).toContain("incomplete");
-  });
+      });
+      expect(calls).toBe(2);
+      expect(effects).toBe(1);
+      expect(result.trajectory.steps[0]?.result?.effectReceipts).toEqual([
+        receipt,
+      ]);
+      expect(result.trajectory.steps[0]?.result?.data?.file).toBe("changed.ts");
+      expect(result.evaluator?.success).toBe(false);
+      expect(result.terminalFailure).toMatchObject({
+        code,
+        kind,
+        transient: false,
+      });
+      expect(result.finalMessage).toContain("incomplete");
+    },
+  );
   it.each([
     {
       codingMode: false,
