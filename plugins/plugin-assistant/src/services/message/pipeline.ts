@@ -1100,6 +1100,7 @@ export async function runV5MessageRuntimeStage1(
           state: plannerState,
           selectedContexts,
           candidateActions: getMessageHandlerCandidateActions(messageHandler),
+          intents: messageHandler.plan.intents,
           userRoles: [senderRole],
           diagnostics: candidateGateDiagnostics,
         });
@@ -1243,6 +1244,8 @@ export async function runV5MessageRuntimeStage1(
               query: getUserMessageText(args.message),
               intents: messageHandler.plan.intents,
               contexts: selectedContexts,
+              contextAliases: (context) =>
+                args.runtime.contexts?.get(context)?.aliases,
             }).actions
           : collectBudgetedStageOneCandidateActions({
               actions: plannerCandidateActions,
@@ -1266,6 +1269,8 @@ export async function runV5MessageRuntimeStage1(
         intents: messageHandler.plan.intents,
         contexts: selectedContexts,
         selectedActions: selectedActionFamilies,
+        contextAliases: (context) =>
+          args.runtime.contexts?.get(context)?.aliases,
       }).actions;
     }
     // Discovery is planner protocol, registered below rather than in

@@ -24,10 +24,10 @@ import {
   normalizeContextId,
 } from "@elizaos/core";
 import { buildActionCatalog } from "../../runtime/action-catalog";
-import { tokenizeActionSearchText } from "../../runtime/action-retrieval.ts";
 import {
   actionDiscoveryContexts,
   DEFAULT_PLANNER_QUERY_TOOL_LIMIT,
+  inferActionSearchContexts,
   retrieveContextualPlannerActions,
 } from "./action-surface.js";
 import {
@@ -214,31 +214,13 @@ export function createPlannerToolDiscoveryAction(
         // A discovery query can name its domain without repeating `contexts`.
         // Match whole registered domain phrases, not arbitrary description words;
         // unknown domains keep global search and exact catalog loads stay available.
-        const queryWords = ` ${tokenizeActionSearchText(query ?? "").join(" ")} `;
         const inferredContexts =
           contexts === undefined
-            ? [
-                ...new Set(
-                  freshActions.flatMap((action) =>
-                    actionDiscoveryContexts(action),
-                  ),
-                ),
-              ].filter((context) => {
-                const normalized = normalizeContextId(context);
-                return (
-                  normalized !== "general" &&
-                  normalized !== "simple" &&
-                  [
-                    normalized,
-                    ...(runtime.contexts?.get(normalized)?.aliases ?? []),
-                  ].some((name) => {
-                    const phrase = tokenizeActionSearchText(name).join(" ");
-                    return (
-                      phrase.length > 0 && queryWords.includes(` ${phrase} `)
-                    );
-                  })
-                );
-              })
+            ? inferActionSearchContexts(
+                freshActions,
+                query ?? "",
+                (context) => runtime.contexts?.get(context)?.aliases,
+              )
             : [];
         const searchContexts =
           contexts ??
