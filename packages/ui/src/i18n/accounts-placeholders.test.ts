@@ -58,23 +58,23 @@ describe("accounts i18n catalog placeholders (#30664)", () => {
     expect(
       t("en", "accounts.table.enabledToggle", { label: "Work Account" }),
     ).toBe("Toggle Work Account");
-    expect(
-      t("en", "accounts.table.moveDown", { label: "Work Account" }),
-    ).toBe("Lower priority of Work Account");
-    expect(
-      t("en", "accounts.table.moveUp", { label: "Work Account" }),
-    ).toBe("Raise priority of Work Account");
-    expect(
-      t("en", "accounts.table.refresh", { label: "Work Account" }),
-    ).toBe("Refresh usage for Work Account");
-    expect(
-      t("en", "accounts.table.remove", { label: "Work Account" }),
-    ).toBe("Remove Work Account");
+    expect(t("en", "accounts.table.moveDown", { label: "Work Account" })).toBe(
+      "Lower priority of Work Account",
+    );
+    expect(t("en", "accounts.table.moveUp", { label: "Work Account" })).toBe(
+      "Raise priority of Work Account",
+    );
+    expect(t("en", "accounts.table.refresh", { label: "Work Account" })).toBe(
+      "Refresh usage for Work Account",
+    );
+    expect(t("en", "accounts.table.remove", { label: "Work Account" })).toBe(
+      "Remove Work Account",
+    );
     expect(
       t("en", "accounts.table.renameInput", { label: "Work Account" }),
     ).toBe("Rename Work Account");
-    expect(
-      t("en", "accounts.table.resetsIn", { countdown: "15m" }),
-    ).toBe("resets in 15m");
+    expect(t("en", "accounts.table.resetsIn", { countdown: "15m" })).toBe(
+      "resets in 15m",
+    );
   });
 });

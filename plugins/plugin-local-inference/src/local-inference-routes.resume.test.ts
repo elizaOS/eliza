@@ -113,24 +113,46 @@ function seedPartial(bytes: Buffer): void {
 	writeFileSync(partialPath(), bytes);
 }
 
-async function waitForFinalFile(timeoutMs = 5000): Promise<Buffer> {
+function registryPath(): string {
+	return path.join(localInferenceRoot(), "registry.json");
+}
+
+function readRegistry(): { models: Array<{ id: string; sizeBytes: number }> } {
+	return JSON.parse(readFileSync(registryPath(), "utf8"));
+}
+
+function isRegistered(): boolean {
+	if (!existsSync(registryPath())) return false;
+	try {
+		return readRegistry().models.some((model) => model.id === MODEL_ID);
+	} catch {
+		// The registry may be mid-write; poll again.
+		return false;
+	}
+}
+
+/**
+ * Waits for the whole download to settle: the final file is in place, the
+ * `.part` is gone and the model is registered. Returning on the file alone
+ * lets `afterEach` delete the state dir while the job is still registering,
+ * which leaves that job in flight for the next test's download.
+ */
+async function waitForFinalFile(timeoutMs = 30_000): Promise<Buffer> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		if (existsSync(finalPath()) && !existsSync(partialPath())) {
+		if (
+			existsSync(finalPath()) &&
+			!existsSync(partialPath()) &&
+			isRegistered()
+		) {
 			return readFileSync(finalPath());
 		}
 		await new Promise((resolve) => setTimeout(resolve, 20));
 	}
 	throw new Error(
-		`final model file did not appear within ${timeoutMs}ms (final exists=${existsSync(
+		`download did not settle within ${timeoutMs}ms (final exists=${existsSync(
 			finalPath(),
-		)}, part exists=${existsSync(partialPath())})`,
-	);
-}
-
-function readRegistry(): { models: Array<{ id: string; sizeBytes: number }> } {
-	return JSON.parse(
-		readFileSync(path.join(localInferenceRoot(), "registry.json"), "utf8"),
+		)}, part exists=${existsSync(partialPath())}, registered=${isRegistered()})`,
 	);
 }
 
