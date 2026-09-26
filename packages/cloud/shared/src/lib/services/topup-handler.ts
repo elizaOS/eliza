@@ -14,6 +14,7 @@ import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
+import { x402TopupIdempotencyKey, x402TopupPaymentId } from "./x402-topup-identity.ts";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {
@@ -437,7 +438,18 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       }
     }
 
-    const idempotencyId = `x402:${settlement.network}:${settlement.transaction}`;
+    // `settlement.transaction` is an empty string whenever a facilitator
+    // settles without publishing a hash (the facilitator builds those
+    // settlements with `transaction: ""`), so it cannot be the only per-payment
+    // identity: two different payments with an empty hash would share one
+    // idempotency key, and `addCredits` dedupes on that key, so the second
+    // payment would be silently dropped. The authorization nonce is unique per
+    // payment and is the same fallback the revenue-split source below uses.
+    const settlementPaymentId = x402TopupPaymentId(
+      settlement,
+      paymentPayload.payload.authorization.nonce,
+    );
+    const idempotencyId = x402TopupIdempotencyKey(settlement.network, settlementPaymentId);
     const creditResult = await creditsService.addCredits({
       organizationId,
       amount,
@@ -462,7 +474,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       const { splits } = await referralsService.calculateRevenueSplits(user.id, amount);
       if (splits.length > 0) {
         logger.info(`[x402] Processing revenue splits for $${amount} purchase by user ${user.id}`);
-        const paymentId = settlement.transaction || paymentPayload.payload.authorization.nonce;
+        const paymentId = settlementPaymentId;
         const sourceIdBase = getSourceId(walletAddress, paymentId);
         for (const split of splits) {
           if (split.amount <= 0) continue;
