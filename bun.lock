@@ -1528,6 +1528,7 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
         "esbuild": "^0.28.0",

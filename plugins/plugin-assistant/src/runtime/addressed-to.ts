@@ -79,7 +79,6 @@ export async function applyAddressedTo(
 
     const existingList = await runtime.getRelationships({
       entityIds: [speakerId],
-      tags: [ADDRESSED_RELATIONSHIP_TAGS[0]],
     });
     const existing = existingList.find(
       (rel) =>

@@ -163,3 +163,35 @@ describe("getActivityReportBetween", () => {
     );
   });
 });
+
+it("redacts complete sensitive titles at the activity report boundary", async () => {
+  const titles = [
+    "411111111111",
+    "4111 - 1111 - 1111 - 1111/2024",
+    "４１１１\u200b１１１１\u0301１１１１１１１１",
+    "prefix4111111111111111@example.com",
+  ];
+  mocks.listActivityEvents.mockResolvedValueOnce(
+    titles.map((windowTitle, index) =>
+      event({
+        observedAt: new Date(SINCE_MS + index * 60_000).toISOString(),
+        eventKind: "activate",
+        bundleId: "com.example.Editor",
+        appName: "Editor",
+        windowTitle,
+      }),
+    ),
+  );
+  const report = await getActivityReportBetween(
+    RUNTIME as never,
+    "agent-activity",
+    {
+      sinceMs: SINCE_MS,
+      untilMs: SINCE_MS + 5 * 60_000,
+    },
+  );
+  expect(report.apps[0]?.sampleWindowTitles).toEqual([
+    "[redacted-cc]",
+    "[redacted-email]",
+  ]);
+});

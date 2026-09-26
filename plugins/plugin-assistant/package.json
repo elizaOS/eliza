@@ -74,6 +74,7 @@
     "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
+    "@elizaos/plugin-sqlite": "workspace:*",
     "typescript": "^6.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
