@@ -14,7 +14,7 @@ import type {
     State,
 } from "@elizaos/core";
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
-import { searchKeylessWeb } from "./keyless-web-search";
+import { isKeylessWebSearchUnavailableError, searchKeylessWeb } from "./keyless-web-search";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",
@@ -204,9 +204,29 @@ export async function runWebSearchWith(
         );
     }
     const observedAt = Date.now();
-    const result = await search(normalizedQuery);
+    let result: Awaited<ReturnType<typeof search>>;
+    try {
+        result = await search(normalizedQuery);
+    } catch (error) {
+        if (!isKeylessWebSearchUnavailableError(error)) throw error;
+        // error-policy:J1 a provider outage is a typed action failure, never "no results".
+        return {
+            success: false,
+            text: "Web search is temporarily unavailable.",
+            data: {
+                actionName: "WEB_SEARCH",
+                query: normalizedQuery,
+                unavailable: true,
+                provider: error.provider,
+                reason: error.reason,
+                ...(error.status !== undefined ? { status: error.status } : {}),
+                ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+            },
+            error: error.message,
+        };
+    }
     if (!result) {
-        return await fail("Web search is temporarily unavailable.", undefined, normalizedQuery);
+        return await fail("Web search returned no results.", undefined, normalizedQuery);
     }
     const evidence = webSearchSourceEvidence(result.text);
     return {
