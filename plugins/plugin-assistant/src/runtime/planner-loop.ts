@@ -410,6 +410,7 @@ export async function runPlannerLoop(
       (error.kind === "tool_calls" ||
         error.kind === "trajectory_token_budget" ||
         error.kind === "repeated_observations" ||
+        (params.codingMode === true && error.kind === "repeated_failures") ||
         error.kind === "memory_search_rounds");
     if (liveTrajectory && (timeout || budget)) {
       const message = timeout
@@ -417,7 +418,10 @@ export async function runPlannerLoop(
         : error instanceof TrajectoryLimitExceeded &&
             error.kind === "repeated_observations"
           ? "Planning stopped after repeated checks returned unchanged results. The request remains incomplete; earlier recorded outcomes are preserved."
-          : "Planning reached its configured resource limit before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
+          : error instanceof TrajectoryLimitExceeded &&
+              error.kind === "repeated_failures"
+            ? "Planning stopped after repeated tool failures. The request remains incomplete; earlier recorded outcomes are preserved."
+            : "Planning reached its configured resource limit before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
       return {
         status: "finished",
         trajectory: liveTrajectory,

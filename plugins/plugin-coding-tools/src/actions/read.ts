@@ -371,7 +371,7 @@ export async function readFileHandler(
       return failureToActionResult(
         {
           reason: "stale_read",
-          message: `expected revision ${expected} but found ${currentRevision}`,
+          message: `expected revision ${expected} but found ${currentRevision}. Start a fresh READ of this file_path at offset 0; omit expectedRevision and reference. Resume pagination with the revision and nextOffset returned by that fresh READ.`,
         },
         { revision: currentRevision },
       );

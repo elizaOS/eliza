@@ -822,6 +822,64 @@ describe("coding verification recovery guidance", () => {
 });
 
 describe("terminal coding model failures", () => {
+  it("preserves successful effects and failed reads when repeated failures stop coding", async () => {
+    let calls = 0;
+    let effects = 0;
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "stale-after-write" },
+      config: { maxRepeatedFailures: 2 },
+      runtime: {
+        useModel: async () => {
+          calls++;
+          if (calls > 4) throw new Error("Repeated failure limit was bypassed");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `call-${calls}`,
+                name: calls === 1 ? "WRITE" : "READ",
+                arguments: {
+                  file_path: "changed.ts",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        if (call.name === "WRITE") {
+          effects++;
+          return {
+            success: true,
+            text: "File written",
+            effectReceipts: [receipt],
+          };
+        }
+        return {
+          success: false,
+          text: "stale_read: expected old revision",
+          error: "stale_read",
+        };
+      },
+    });
+    expect(calls).toBe(4);
+    expect(effects).toBe(1);
+    expect(result.trajectory.steps).toHaveLength(4);
+    expect(result.trajectory.steps[0]?.result?.effectReceipts).toEqual([
+      receipt,
+    ]);
+    expect(
+      result.trajectory.steps
+        .slice(1)
+        .every((step) => step.result?.success === false),
+    ).toBe(true);
+    expect(result.evaluator?.success).toBe(false);
+    expect(result.terminalFailure?.kind).toBe("resource_limit");
+    expect(result.finalMessage).toContain("repeated tool failures");
+  });
+
   it.each([
     {
       code: "MODEL_OUTPUT_INCOMPLETE",

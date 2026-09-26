@@ -66,7 +66,7 @@ class PierAdapterBoundaryTests(unittest.TestCase):
 
     def test_git_identity_setup_failure_is_not_hidden(self):
         async def execute(*args, **kwargs):
-            return SimpleNamespace(return_code=128)
+            return SimpleNamespace(return_code=128, stdout="", stderr="identity setup failed")
         with self.assertRaisesRegex(RuntimeError, "task-local Git"):
             asyncio.run(self.agent_class(**self.arguments)._prepare_git_identity(SimpleNamespace(exec=execute)))
 
