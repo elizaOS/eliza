@@ -49,32 +49,13 @@ export function renderNativeCapacitorTsconfig(profile = "strict-es2022") {
   if (profile !== "strict-es2022") {
     throw new Error(`Unknown native Capacitor tsconfig profile: ${profile}`);
   }
-  return `{
-  "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
-    "declaration": true,
-    "declarationMap": true,
-    "esModuleInterop": true,
-    "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "noEmitOnError": false,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitAny": true,
-    "noImplicitReturns": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "outDir": "dist/esm",
-    "rootDir": "src",
-    "skipLibCheck": true,
-    "sourceMap": true,
-    "strict": true,
-    "target": "ES2022"
-  },
-  "include": ["src"]
-}
-`;
+  return readFileSync(
+    path.join(
+      REPO_ROOT,
+      "packages/scripts/config-templates/native-plugin.tsconfig.json",
+    ),
+    "utf8",
+  );
 }
 
 export function renderNativeCapacitorRollup({

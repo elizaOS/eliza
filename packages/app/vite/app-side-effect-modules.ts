@@ -10,7 +10,8 @@ import path from "node:path";
  *
  * App plugins that need to register UI surfaces/pages at app boot self-declare
  * `"elizaos": { "appRegister": { "export": "registerApp" } }` names an
- * explicit function on the package root. Legacy `"register"` and `"ui"`
+ * explicit function on the package root, or an exported browser leaf named by
+ * optional `subpath`. Legacy `"register"` and `"ui"`
  * markers remain readable while those plugins migrate their public surfaces.
  * The renderer build scans for that marker instead of the app shell hardcoding a
  * loader list, so adding or deleting a plugin directory needs zero app-side edits.
@@ -37,7 +38,10 @@ export type SideEffectAppModule = {
   /** Declared registration mode from `elizaos.appRegister`. */
   /** Absolute path to the renderer registration entry imported at boot. */
   entry: string;
-} & ({ mode: "register" | "ui" } | { mode: "root"; exportName: string });
+} & (
+  | { mode: "register" | "ui" }
+  | { mode: "root"; exportName: string; subpath?: string }
+);
 
 const UI_ENTRY_CANDIDATES = ["src/ui.ts", "src/ui/index.ts"];
 const REGISTER_ENTRY = "src/register.ts";
@@ -102,7 +106,22 @@ export function discoverSideEffectAppModules(
             `[app-side-effect-modules] ${name} appRegister must name a root export`,
           );
         }
-        const entry = ["src/index.ts", "src/index.tsx", "index.ts"]
+        const subpath =
+          "subpath" in declaration ? declaration.subpath : undefined;
+        if (
+          subpath !== undefined &&
+          (typeof subpath !== "string" ||
+            !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(subpath))
+        ) {
+          throw new Error(
+            `[app-side-effect-modules] ${name} appRegister subpath must name a package leaf`,
+          );
+        }
+        const entry = (
+          subpath
+            ? [`src/${subpath}.ts`, `src/${subpath}.tsx`]
+            : ["src/index.ts", "src/index.tsx", "index.ts"]
+        )
           .map((relative) => path.join(pkgDir, relative))
           .find((candidate) => fs.existsSync(candidate));
         if (!entry) {
@@ -112,11 +131,12 @@ export function discoverSideEffectAppModules(
         }
         seen.add(name);
         discovered.push({
-          key: `${name}#root:${declaration.export}`,
+          key: `${name}#${subpath ? `leaf:${subpath}` : "root"}:${declaration.export}`,
           packageName: name,
           mode: "root",
           entry,
           exportName: declaration.export,
+          ...(subpath ? { subpath } : {}),
         });
         continue;
       }
@@ -174,7 +194,11 @@ export function appSideEffectModulesPlugin(packageRoots: readonly string[]) {
         .map((module) => {
           const key = JSON.stringify(module.key);
           if (module.mode === "root") {
-            const specifier = JSON.stringify(module.packageName);
+            const specifier = JSON.stringify(
+              module.subpath
+                ? `${module.packageName}/${module.subpath}`
+                : module.packageName,
+            );
             return `  { key: ${key}, load: () => import(${specifier}).then(({ ${module.exportName}: register }) => { if (typeof register !== "function") throw new Error(${JSON.stringify(`${module.packageName} must export callable ${module.exportName}`)}); return register(); }) },`;
           }
           return `  { key: ${key}, load: () => import(${JSON.stringify(module.entry)}) },`;

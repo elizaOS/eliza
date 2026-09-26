@@ -67,6 +67,21 @@ export function createContextReadTool(
   };
 }
 
+/** Detect the attempted operation before deciding whether empty-output retry applies. */
+export function hasContextReadToolCall(
+  raw: string | GenerateTextResult,
+): boolean {
+  return Boolean(
+    raw &&
+      typeof raw === "object" &&
+      Array.isArray(raw.toolCalls) &&
+      raw.toolCalls.some(
+        (entry) =>
+          entry && String(entry.name ?? "").trim() === READ_CONTEXT_TOOL_NAME,
+      ),
+  );
+}
+
 /** A read cannot be combined with a ready response or carry extraction fields. */
 export function extractContextRead(
   raw: string | GenerateTextResult,
@@ -74,16 +89,8 @@ export function extractContextRead(
 ): { contextRequests: string[]; acknowledgment?: string } | undefined {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.toolCalls))
     return undefined;
-  const nameOf = (entry: (typeof raw.toolCalls)[number]) =>
-    String(entry.name ?? "").trim();
-  const reads = raw.toolCalls.filter(
-    (entry) =>
-      entry &&
-      typeof entry === "object" &&
-      nameOf(entry) === READ_CONTEXT_TOOL_NAME,
-  );
-  if (!reads.length) return undefined;
-  const entry = reads[0];
+  if (!hasContextReadToolCall(raw)) return undefined;
+  const entry = raw.toolCalls[0];
   if (!enabled || raw.toolCalls.length !== 1 || !entry)
     throw new ElizaError(
       "A context read must be the only offered Stage 1 operation in this response.",

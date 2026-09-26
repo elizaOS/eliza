@@ -2670,6 +2670,10 @@ export const INVALID_TRACER_PROVIDER = {};
         path.resolve(elizaRoot, "packages/cloud/shared"),
       ]),
       ...createWorkspacePackageExportAliases([
+        path.resolve(elizaRoot, "plugins/plugin-relationships"),
+        path.resolve(elizaRoot, "plugins/plugin-calendar"),
+        path.resolve(elizaRoot, "plugins/plugin-notes"),
+        path.resolve(elizaRoot, "plugins/plugin-knowledge"),
         path.resolve(elizaRoot, "packages/core"),
         path.resolve(elizaRoot, "plugins/plugin-local-inference"),
         path.resolve(elizaRoot, "plugins/plugin-native-inference"),

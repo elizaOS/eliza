@@ -1879,13 +1879,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       stream: RealtimeTtsStream,
       input: RealtimeTtsPhraseInput,
     ): void => {
+      // Count every submitted phrase once, including progress spoken before
+      // the final reply. Buffered phrases are not submitted until this point.
+      this.turnTtsChars += input.text.length;
       this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
       stream.sendPhrase(input);
     };
     const queueStreamingPhrases = (phrases: readonly string[]): void => {
       for (const p of phrases) {
         if (!SPOKEN_TRANSCRIPT_RE.test(p)) continue;
-        this.turnTtsChars += p.length;
         const stream = ensureTts();
         if (pendingPhrase !== null) {
           sendTtsPhrase(stream, {
@@ -1906,7 +1908,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         const completeShortReply = initialReplyBuffer.trim();
         initialReplyBuffer = "";
         if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
-          this.turnTtsChars += completeShortReply.length;
           sendTtsPhrase(ensureTts(), {
             text: completeShortReply,
             continueContext: false,
@@ -1927,7 +1928,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           });
           pendingPhrase = null;
         }
-        this.turnTtsChars += tail.length;
         sendTtsPhrase(ensureTts(), {
           text: tail,
           continueContext: false,

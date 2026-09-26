@@ -1,3 +1,4 @@
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
 /**
  * Plugin discovery and resolution logic.
  *
@@ -638,18 +639,6 @@ function uniquePaths(paths: string[]): string[] {
   return ordered;
 }
 
-function resolveWorkspaceRoots(): string[] {
-  const envRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
-  if (envRoot) {
-    return uniquePaths([envRoot]);
-  }
-
-  // Search cwd by default. Repo-local ./eliza submodule +
-  // setup:upstreams symlinks handle plugin resolution for development. Set
-  // ELIZA_WORKSPACE_ROOT explicitly for external override scenarios.
-  return uniquePaths([process.cwd()]);
-}
-
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
@@ -661,7 +650,7 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   const packageSegment = packageSegmentMatch?.[1];
   if (!packageSegment) return null;
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const candidates = [
       path.join(workspaceRoot, "plugins", packageSegment, "typescript"),
       path.join(workspaceRoot, "plugins", packageSegment),
@@ -724,7 +713,7 @@ async function hasNonSymlinkWorkspaceNodeModulesPackage(
 ): Promise<boolean> {
   for (const workspaceRoot of uniquePaths([
     process.cwd(),
-    ...resolveWorkspaceRoots(),
+    ...resolveWorkspaceRootsForDiscovery(),
   ])) {
     const candidate = path.join(
       workspaceRoot,
@@ -753,7 +742,7 @@ async function resolveWorkspaceNodeModulesPackageRoot(
 ): Promise<string | null> {
   for (const workspaceRoot of uniquePaths([
     process.cwd(),
-    ...resolveWorkspaceRoots(),
+    ...resolveWorkspaceRootsForDiscovery(),
   ])) {
     const candidate = path.join(
       workspaceRoot,
@@ -1930,7 +1919,7 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
 
   for (const workspaceRoot of uniquePaths([
     process.cwd(),
-    ...resolveWorkspaceRoots(),
+    ...resolveWorkspaceRootsForDiscovery(),
   ])) {
     let realWorkspaceRoot: string;
     try {
@@ -2275,7 +2264,7 @@ function computeVerdictFingerprint(
  */
 async function computePluginCandidateSignature(): Promise<string> {
   const parts: string[] = [];
-  for (const root of resolveWorkspaceRoots()) {
+  for (const root of resolveWorkspaceRootsForDiscovery()) {
     await addDirectorySignature(parts, path.join(root, "node_modules"));
     for (const scopeDir of await listNodeModulesScopeDirs(root)) {
       await addDirectorySignature(parts, scopeDir);
@@ -2362,7 +2351,7 @@ async function discoverPluginCandidatesUncached(): Promise<
 
   // 1. node_modules plugin/app packages — covers npm-installed official and
   //    third-party plugins plus dev symlinks pointing at workspace packages.
-  for (const root of resolveWorkspaceRoots()) {
+  for (const root of resolveWorkspaceRootsForDiscovery()) {
     const nodeModulesDir = path.join(root, "node_modules");
     let entries: import("node:fs").Dirent[];
     try {
@@ -2409,7 +2398,7 @@ async function discoverPluginCandidatesUncached(): Promise<
   // 2. workspace `plugins/` dir — covers cases where the plugin is in the
   //    repo source tree without a matching node_modules link. Cheap
   //    fall-through.
-  for (const root of resolveWorkspaceRoots()) {
+  for (const root of resolveWorkspaceRootsForDiscovery()) {
     const pluginsDir = path.join(root, "plugins");
     let entries: import("node:fs").Dirent[];
     try {

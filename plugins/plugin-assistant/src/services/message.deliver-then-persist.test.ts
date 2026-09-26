@@ -613,6 +613,110 @@ describe("simple-path deliver-then-persist ordering", () => {
 });
 
 describe("planning progress delivery boundaries", () => {
+  it.each([
+    'Notes is open. Your latest note is "QA handoff September 24." Your next saved event is "QA handoff September 25," today from 10:00 to 10:15 AM PDT. Nothing was created, edited, or deleted.',
+    "Checking now. Your next saved event is at 10:00 AM.",
+    "Checking that now.",
+  ])(
+    "holds ungrounded read answers while permitting only genuine progress: %s",
+    async (draft) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text =
+        "Read my next saved calendar event. Do not create, edit, or delete anything.";
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      const final =
+        "Your next saved event is QA selected, today from 10:15 to 10:30 AM PDT.";
+      let reads = 0;
+      h.runtime.registerAction({
+        name: "TEST_CALENDAR_READ",
+        description: "Read the next saved calendar event",
+        contexts: ["general"],
+        validate: async () => true,
+        handler: async () => {
+          reads++;
+          return {
+            success: true,
+            text: JSON.stringify({
+              title: "QA selected",
+              start: "10:15",
+              end: "10:30",
+            }),
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: { readOnlyOperation: true },
+          };
+        },
+      });
+      let responses = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          responses++;
+          if (responses > 1) {
+            expect(reads).toBe(1);
+            return JSON.stringify({
+              success: true,
+              decision: "FINISH",
+              thought: "The current read supplies the event.",
+              messageToUser: final,
+              replyEffectStatus: "none",
+            });
+          }
+          const response = stage1DirectReply(draft);
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            intents: ["Read the next saved calendar event"],
+            candidateActionNames: ["TEST_CALENDAR_READ"],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+          });
+          return response;
+        },
+        "planned-read-proof",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          expect(
+            JSON.stringify((params as { tools?: unknown }).tools),
+          ).toContain("TEST_CALENDAR_READ");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "current-read",
+                name: "TEST_CALENDAR_READ",
+                arguments: { eliza_turn_scope: "final" },
+              },
+            ],
+          };
+        },
+        "planned-read-proof",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            expect(reads).toBe(0);
+            progress.push(text);
+          },
+        },
+      );
+      expect(reads).toBe(1);
+      expect(progress).toEqual(draft === "Checking that now." ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([final]);
+    },
+  );
   it.each(
     [ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
       (["clean", "private", "revoked", "envelope"] as const).map((kind) => ({

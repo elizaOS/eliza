@@ -1,3 +1,4 @@
+import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
 /**
  * Evaluator stage of the planner loop: renders the evaluator model input, runs
  * the evaluator model call, and parses/repairs/sanitizes its structured
@@ -59,6 +60,7 @@ import {
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
+import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
@@ -730,7 +732,9 @@ export async function runEvaluator(
     const readHistory = scope === "history" || scope === "full";
     const readProviders = scope === "providers" || scope === "full";
     if (
-      (readHistory && selectCompletionContext(original).applied) ||
+      (readHistory &&
+        (selectCompletionContext(original).applied ||
+          projectBackgroundHistory(original).applied)) ||
       (readProviders && projectDeferredProviders(original).available.length)
     ) {
       // A context read takes precedence over a conflicting verdict. Record
@@ -751,7 +755,13 @@ export async function runEvaluator(
         ...restored,
         metadata: {
           ...original.metadata,
-          ...(readHistory ? { completionContext: undefined } : {}),
+          ...(readHistory
+            ? {
+                completionContext: undefined,
+                backgroundHistory: undefined,
+                plannerQueryTokensRestored: true,
+              }
+            : {}),
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
       };
@@ -843,6 +853,12 @@ async function recordEvaluationStage(args: {
         replyEffectStatus: args.output.replyEffectStatus,
         copyToClipboard: args.output.copyToClipboard,
         recommendedToolCallId: args.output.recommendedToolCallId,
+        ...(typeof args.output.raw?.contextRequest === "string" &&
+        ["history", "providers", "full"].includes(
+          args.output.raw.contextRequest,
+        )
+          ? { contextRequest: args.output.raw.contextRequest }
+          : {}),
         protocolFailure: args.output.protocolFailure,
         parseError: args.output.parseError,
       },
@@ -960,7 +976,10 @@ function renderEvaluatorModelInput(params: {
   const completion = selectCompletionContext(
     params.trajectory.modelBaseContext ?? params.context,
   );
-  const deferred = projectDeferredProviders(completion.context);
+  const background = completion.applied
+    ? { context: completion.context, applied: false, omittedSourceCount: 0 }
+    : projectBackgroundHistory(completion.context);
+  const deferred = projectDeferredProviders(background.context);
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
   );
@@ -973,14 +992,20 @@ function renderEvaluatorModelInput(params: {
       id: "completion-provider-discovery",
       label: "completion_context",
       stable: false,
-      content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
+      content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their advertised complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. A provider reference does not promise fields it explicitly excludes: use a current record tool for those fields rather than expanding history. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
+    });
+  if (background.applied)
+    renderedContext.promptSegments.push({
+      id: "completion-background-history",
+      stable: false,
+      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals, not a current-request source review. For missing or uncertain constraints, corrections, referents or historical evidence request contextRequest=history with decision=CONTINUE, success=false and no user reply or effects. Full canonical originals will be restored without repeating actions.`,
     });
   if (completion.applied) {
     renderedContext.promptSegments.push({
       id: "completion-context-selection",
       label: "completion_context",
       stable: false,
-      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
   const template =
@@ -1006,6 +1031,9 @@ function renderEvaluatorModelInput(params: {
   // Mirrors planner-loop: the evaluator stage instructions are template-derived
   // (`evaluatorTemplate`) and structurally identical across calls. Marking
   // the segment `stable: true` makes them cacheable on Anthropic's wire path.
+  renderedContext.promptSegments = compactHistoricalReceiptSegments(
+    renderedContext.promptSegments,
+  );
   const stableContextSegments = renderedContext.promptSegments.filter(
     (segment) => segment.stable,
   );
@@ -1033,7 +1061,7 @@ function renderEvaluatorModelInput(params: {
     promptSegments,
     cacheKeySegments,
     completionSelectionApplied:
-      completion.applied || deferred.available.length > 0,
+      completion.applied || background.applied || deferred.available.length > 0,
   };
 }
 

@@ -863,7 +863,7 @@ const PROGRESS_PROMISE_CLAUSE =
   String.raw`(?:on it|will do|sure thing|you got it|no problem|right away|` +
   String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
   String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking (?:into|up)|pulling up|grabbing|fetching|getting|working|gathering|running|using|spawning|starting|saving|creating|updating|deleting) (?:it|that|this|on it|(?:[^.!?]|\.(?=\S))+?)(?:\s+now)?|` +
-  String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s(?:[^.!?]|\.(?=\S))+)?|` +
+  String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|start|take care of)(?:\s(?:[^.!?]|\.(?=\S))+)?|` +
   String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s(?:[^.!?]|\.(?=\S))+)?)`;
 // Several progress sentences are still only progress. Every clause must match;
 // an acknowledgment followed by an answer or request for input is not enough.

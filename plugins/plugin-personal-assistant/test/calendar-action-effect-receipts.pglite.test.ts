@@ -542,6 +542,90 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     expect(observed).toBeLessThanOrEqual(Date.now());
   });
 
+  it("distinguishes an elapsed daily feed from tomorrow's next event at evening time", async () => {
+    const now = "2028-09-25T03:53:00.000Z";
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(now));
+    try {
+      for (const [title, startAt, endAt] of [
+        [
+          "Elapsed afternoon event",
+          "2028-09-24T23:30:00.000Z",
+          "2028-09-24T23:45:00.000Z",
+        ],
+        [
+          "Tomorrow upcoming event",
+          "2028-09-25T18:00:00.000Z",
+          "2028-09-25T18:15:00.000Z",
+        ],
+      ]) {
+        await calendar.createCalendarEventMutation(
+          new URL("http://internal.local"),
+          {
+            title,
+            startAt,
+            endAt,
+            timeZone: "America/Los_Angeles",
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            idempotencyKey: title,
+          },
+        );
+      }
+      const actor = message(
+        "00000000-0000-0000-0000-000000009953",
+        "Read my next saved calendar event. Do not change anything.",
+      );
+      const details = {
+        calendarId: ELIZA_CALENDAR_ID,
+        timeZone: "America/Los_Angeles",
+      };
+      const feed = (
+        await invoke(
+          actor,
+          { intent: "next event", details },
+          false,
+          "CALENDAR_FEED",
+        )
+      ).result;
+      expect(feed.success).toBe(true);
+      expect(feed.data?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ title: "Elapsed afternoon event" }),
+        ]),
+      );
+      expect(feed.data?.events).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ title: "Tomorrow upcoming event" }),
+        ]),
+      );
+      expect(feed.data?.replyContext).toMatchObject({
+        scenario: "feed_results",
+        context: {
+          asOf: now,
+          selection: "bounded_agenda",
+          nextEventLookupPerformed: false,
+        },
+      });
+      expect(JSON.stringify(feed.data?.replyContext)).toContain(
+        "CALENDAR_NEXT_EVENT",
+      );
+      const next = (
+        await invoke(actor, { details }, false, "CALENDAR_NEXT_EVENT")
+      ).result;
+      expect(next.success).toBe(true);
+      expect(next.data?.event).toMatchObject({
+        title: "Tomorrow upcoming event",
+        startAt: "2028-09-25T18:00:00.000Z",
+      });
+      expect(next.effectReceipts?.[0]?.operation).not.toBe(
+        "calendar.feed.read",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["CALENDAR_FEED", "CALENDAR_SEARCH_EVENTS"])(
     "executes %s with aliased read bounds through the promoted child",
     async (actionName) => {

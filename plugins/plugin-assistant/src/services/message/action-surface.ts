@@ -47,11 +47,39 @@ import {
   uiViewActionPriority,
 } from "./provider-state.ts";
 
+/** Explicit resource/domain ownership outranks an incidental execution context.
+ * A single-domain owner is more specific than a cross-domain coordinator.
+ */
+function plannerDomainOwnership(action: Action, domain: string): number {
+  const domains = new Set(
+    (action.tags ?? [])
+      .filter((tag) => tag.startsWith("domain:"))
+      .map((tag) => normalizeContextId(tag.slice(7))),
+  );
+  if (
+    (action.tags ?? []).some(
+      (tag) =>
+        tag.startsWith("resource:") &&
+        normalizeContextId(tag.slice(9)) === domain,
+    )
+  )
+    return 3;
+  if (domains.has(domain)) return 2 + 1 / domains.size;
+  const contexts = actionDiscoveryContexts(action)
+    .map(normalizeContextId)
+    .filter((context) => context !== "general" && context !== "simple");
+  return domains.size === 0 && contexts.length === 1 && contexts[0] === domain
+    ? 3
+    : 0;
+}
+
+export const DEFAULT_PLANNER_QUERY_TOOL_LIMIT = 10;
+
 /**
  * Retrieve complete operation definitions from an already authorized registry.
  * Search operates on individual operations rather than expanding every matched
- * parent into its siblings. There is no result cap; unselected operations remain
- * reachable through explicit discovery and the complete catalog read.
+ * parent into its siblings. Bound the selected surface, never the catalog or
+ * ranker; exact hints remain required and deferred operations stay discoverable.
  */
 export function retrieveContextualPlannerActions(args: {
   actions: readonly Action[];
@@ -59,22 +87,32 @@ export function retrieveContextualPlannerActions(args: {
   /** Model-selected outcomes rank operations; the full request still ranks domains. */
   intents?: readonly string[];
   contexts?: readonly string[];
-}): Action[] {
-  const catalog = buildActionCatalog(
-    args.actions.map((action) => ({ ...action, subActions: undefined })),
-  );
-  const retrieval = retrieveActions({
-    catalog,
-    messageText: args.query,
-    selectedContexts: args.contexts,
-  });
+  /** Preserve exact hints while filling only domains they do not own. */
+  selectedActions?: readonly Action[];
+}): {
+  actions: Action[];
+  matchCount: number;
+  selectedCount: number;
+  deferredCount: number;
+} {
+  const retrieval = args.query.trim()
+    ? retrieveActions({
+        catalog: buildActionCatalog(
+          args.actions.map((action) => ({ ...action, subActions: undefined })),
+        ),
+        messageText: args.query,
+        selectedContexts: args.contexts,
+      })
+    : undefined;
   const actionsByName = new Map(
     args.actions.map((action) => [action.name, action]),
   );
-  const matches = retrieval.results.flatMap((result) => {
-    const action = actionsByName.get(result.name);
-    return action && result.score > 0 ? [action] : [];
-  });
+  const matches = retrieval
+    ? retrieval.results.flatMap((result) => {
+        const action = actionsByName.get(result.name);
+        return action && result.score > 0 ? [action] : [];
+      })
+    : [...args.actions];
   // Routing narrows the bootstrap, not registry availability. A mistaken or
   // unknown domain with no matches falls back to the authorized global search;
   // DISCOVER_ACTIONS also permits explicit searches outside the initial domains.
@@ -83,12 +121,76 @@ export function retrieveContextualPlannerActions(args: {
       ?.map(normalizeContextId)
       .filter((context) => context !== "general" && context !== "simple"),
   );
+  const selectMatches = (ranked: readonly Action[]) => {
+    const required = [
+      ...new Map(
+        (args.selectedActions ?? []).map((action) => [action.name, action]),
+      ).values(),
+    ];
+    const requiredNames = new Set(required.map((action) => action.name));
+    const candidates = ranked.filter(
+      (action) => !requiredNames.has(action.name),
+    );
+    const available = Math.max(
+      0,
+      DEFAULT_PLANNER_QUERY_TOOL_LIMIT - required.length,
+    );
+    const chosen = new Set<string>();
+    // Keep a representative for each selected uncovered domain before filling
+    // the remaining slots by rank. Exact hints may exceed this automatic budget.
+    for (const domain of domains) {
+      if (chosen.size >= available) break;
+      const representative = candidates.find((action) =>
+        actionDiscoveryContexts(action).some(
+          (context) => normalizeContextId(context) === domain,
+        ),
+      );
+      if (representative) chosen.add(representative.name);
+    }
+    for (const action of candidates) {
+      if (chosen.size >= available) break;
+      chosen.add(action.name);
+    }
+    const actions = [
+      ...required,
+      ...candidates.filter((action) => chosen.has(action.name)),
+    ];
+    const matchCount = required.length + candidates.length;
+    return {
+      actions,
+      matchCount,
+      selectedCount: actions.length,
+      deferredCount: matchCount - actions.length,
+    };
+  };
+  if (args.selectedActions) {
+    for (const domain of domains) {
+      const strongest = Math.max(
+        0,
+        ...args.actions.map((action) => plannerDomainOwnership(action, domain)),
+      );
+      if (
+        strongest > 0 &&
+        args.selectedActions.some(
+          (action) => plannerDomainOwnership(action, domain) === strongest,
+        )
+      )
+        domains.delete(domain);
+    }
+    if (domains.size === 0) return selectMatches([]);
+  }
   const domainMatches = matches.filter((action) =>
     actionDiscoveryContexts(action).some((context) =>
       domains.has(normalizeContextId(context)),
     ),
   );
+  if (args.selectedActions && domainMatches.length === 0)
+    return selectMatches([]);
   const domainRelevant = domainMatches.length > 0 ? domainMatches : matches;
+  // Context-only discovery enumerates scoped membership, not query relevance.
+  // Preserve every admitted parent/child and incidental-context member in its
+  // match count; only automatic loading is bounded.
+  if (!args.query.trim()) return selectMatches(domainRelevant);
   // Narrow each requested domain independently. A recognized notes operation
   // must not erase a calendar intent whose operation wording has no name match.
   const searchDomains = domains.size > 0 ? [...domains] : [undefined];
@@ -108,10 +210,25 @@ export function retrieveContextualPlannerActions(args: {
       operationQuery,
       candidates.map((action) => action.name),
     );
-    for (const action of candidates) {
-      if (operationNames.size === 0 || operationNames.has(action.name))
+    const operations = candidates.filter(
+      (action) => operationNames.size === 0 || operationNames.has(action.name),
+    );
+    const strongest =
+      domain === undefined
+        ? 0
+        : Math.max(
+            0,
+            ...operations.map((action) =>
+              plannerDomainOwnership(action, domain),
+            ),
+          );
+    for (const action of operations)
+      if (
+        domain === undefined ||
+        strongest === 0 ||
+        plannerDomainOwnership(action, domain) === strongest
+      )
         selected.add(action);
-    }
   }
   // A selected context with no registry matches must still permit global lookup.
   const relevant =
@@ -119,12 +236,13 @@ export function retrieveContextualPlannerActions(args: {
       ? domainRelevant.filter((action) => selected.has(action))
       : domainRelevant;
   const names = new Set(relevant.map((action) => action.name));
-  return relevant.filter(
+  const retrieved = relevant.filter(
     (action) =>
       !action.subActions?.some((child) =>
         names.has(typeof child === "string" ? child : child.name),
       ),
   );
+  return selectMatches(retrieved);
 }
 
 export type V5PlannerActionSurfaceSummary = {

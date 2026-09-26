@@ -113,7 +113,10 @@ import {
   evaluatePlannedReplyEgress,
   resolvePlannedReplyEgress,
 } from "./egress-policy.js";
-import { withHistoryReadEvidence } from "./history-discovery.js";
+import {
+  withBackgroundHistory,
+  withHistoryReadEvidence,
+} from "./history-discovery.js";
 import {
   buildV5ExecutorContext,
   collectBudgetedStageOneCandidateActions,
@@ -144,6 +147,7 @@ import {
   withActionResultsForPrompt,
   withContextRoutingValues,
 } from "./response-state.ts";
+import { replyClaimsInProgressWork } from "./side-effect-claims.ts";
 import {
   getSourceReplyRendering,
   sourceReplyAssertionText,
@@ -370,6 +374,7 @@ export async function runV5MessageRuntimeStage1(
       providerReview,
       loadedContextProviders,
       historyReadEvidence,
+      backgroundHistory,
       sourceReplyRendering,
       contextCatalogRead,
       contextReadAcknowledgmentSent,
@@ -961,6 +966,10 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
+      // A pending draft is not a read result. Only whole-reply progress can
+      // precede tools; answer-like text (including progress plus an answer)
+      // waits for the normal grounded final path. Never fabricate a substitute.
+      if (!replyClaimsInProgressWork(earlyReplyText)) earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
@@ -1225,7 +1234,7 @@ export async function runV5MessageRuntimeStage1(
     const verifyReplyWithoutActionHints =
       prePatchStageOneReplyIsUngroundedAppliedClaim &&
       stageOneCandidates.length === 0;
-    const selectedActionFamilies =
+    let selectedActionFamilies =
       args.codingMode === true || deterministicPlanSelection
         ? []
         : stageOneCandidates.length === 0
@@ -1234,7 +1243,7 @@ export async function runV5MessageRuntimeStage1(
               query: getUserMessageText(args.message),
               intents: messageHandler.plan.intents,
               contexts: selectedContexts,
-            })
+            }).actions
           : collectBudgetedStageOneCandidateActions({
               actions: plannerCandidateActions,
               candidateActions: stageOneCandidates,
@@ -1243,6 +1252,22 @@ export async function runV5MessageRuntimeStage1(
               deferParentHints: true,
               intents: messageHandler.plan.intents,
             });
+    if (
+      args.codingMode !== true &&
+      !deterministicPlanSelection &&
+      stageOneCandidates.length > 0 &&
+      messageHandler.plan.intents?.length
+    ) {
+      // Cost: one in-memory catalog retrieval, no additional model or I/O call.
+      // Fill declared pending domains before paying a discovery/planner round.
+      selectedActionFamilies = retrieveContextualPlannerActions({
+        actions: plannerCandidateActions,
+        query: messageHandler.plan.intents.join("\n"),
+        intents: messageHandler.plan.intents,
+        contexts: selectedContexts,
+        selectedActions: selectedActionFamilies,
+      }).actions;
+    }
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain
     // hint resolved, or when every admitted domain action was selected.
@@ -1393,24 +1418,27 @@ export async function runV5MessageRuntimeStage1(
       },
       "Built v5 planner action surface",
     );
-    const plannerContext = withHistoryReadEvidence(
-      await createV5MessageContextObject({
-        ...args,
-        includeContextCatalog: contextCatalogRead,
-        state: plannerState,
-        selectedContexts,
-        includeTools: true,
-        userRoles: [senderRole],
-        availableContexts,
-        preselectedActions: exposedPlannerActions,
-        actionSurface,
-        ambientTurn,
-        extraProviderExclusions: ambientTurnProviderExclusions(
-          args.runtime,
-          args.message,
-        ),
-      }),
-      historyReadEvidence,
+    const plannerContext = withBackgroundHistory(
+      withHistoryReadEvidence(
+        await createV5MessageContextObject({
+          ...args,
+          includeContextCatalog: contextCatalogRead,
+          state: plannerState,
+          selectedContexts,
+          includeTools: true,
+          userRoles: [senderRole],
+          availableContexts,
+          preselectedActions: exposedPlannerActions,
+          actionSurface,
+          ambientTurn,
+          extraProviderExclusions: ambientTurnProviderExclusions(
+            args.runtime,
+            args.message,
+          ),
+        }),
+        historyReadEvidence,
+      ),
+      backgroundHistory,
     );
     const responseHandlerContextSlices = stringArrayProperty(
       (messageHandler.plan as { contextSlices?: unknown }).contextSlices,
@@ -1917,7 +1945,7 @@ export async function runV5MessageRuntimeStage1(
                 providers: plannerState.data.providers,
                 request: getUserMessageText(args.message),
                 reply: groundedModelReply,
-                actionResults: [],
+                actionResults: callbackActionResults,
                 actions: args.runtime.actions,
               })
             : undefined;

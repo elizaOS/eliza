@@ -170,7 +170,9 @@ jobs:
       - name: Typecheck affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.ts run typecheck --concurrency=4 --affected
+        # Each typecheck may use the inherited 8 GiB heap. Serialize this
+        # closure so concurrent heaps cannot exceed the 16 GiB runner.
+        run: node packages/scripts/run-turbo.ts run typecheck --concurrency=1 --affected
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
