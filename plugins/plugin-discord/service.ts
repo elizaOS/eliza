@@ -3324,7 +3324,10 @@ export class DiscordService extends Service implements IDiscordService {
 				`Discord channel ${channel.id} does not support thread creation.`,
 			);
 		}
-		const name = truncateWellFormed(toWellFormedUnicode(params.name ?? "thread"), 100);
+		const name = truncateWellFormed(
+			toWellFormedUnicode(params.name ?? "thread"),
+			100,
+		);
 		let startMessage: Message | undefined;
 		if (params.parentMessageId) {
 			try {
