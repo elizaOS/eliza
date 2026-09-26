@@ -26,6 +26,7 @@ import {
 import { toolMessageContent } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
+import { renderMessageHandlerModelInput } from "../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import {
@@ -587,6 +588,216 @@ const clientMessage = (): Memory => ({
 });
 
 describe("model-selected host navigation", () => {
+  it("composes fresh view identity without changing schema or retaining another turn's view", async () => {
+    const f = await fixture();
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    const ctx = {
+      runtime: f.runtime,
+      message: input,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "OWNER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    const schema = JSON.stringify(fields.composeSchema());
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      uiView: "notes",
+      uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
+    };
+    expect((await fields.composePromptSlices(ctx)).context).toContain(
+      '"viewId":"notes","label":"Notes"',
+    );
+    input.content.metadata.uiView = "chat";
+    const home = await fields.composePromptSlices(ctx);
+    expect(home.context).toContain('"viewId":"chat","label":"Home"');
+    expect(home.context).not.toContain('"viewId":"notes"');
+    expect(home.context).not.toContain("PRIVATE_CONTROL_SENTINEL");
+    for (const nativeTools of [false, true]) {
+      const rendered = renderMessageHandlerModelInput(
+        { character: { name: "Agent" } },
+        { id: "request", events: [] },
+        [],
+        { nativeTools, responseHandlerContext: home.context },
+      );
+      expect(rendered.messages[1].content).toContain(home.context);
+      expect(rendered.messages[0].content).not.toContain(home.context);
+      expect(
+        rendered.promptSegments.find((segment) =>
+          segment.content.includes(home.context),
+        )?.stable,
+      ).toBe(false);
+    }
+    expect(JSON.stringify(fields.composeSchema())).toBe(schema);
+    input.content.metadata.uiView = "unknown-view";
+    expect((await fields.composePromptSlices(ctx)).context).toBe("");
+    input.content.metadata.uiView = "chat";
+    input.content.source = "external";
+    expect((await fields.composePromptSlices(ctx)).context).toBe("");
+    expect(f.requests()).toBe(0);
+  });
+  it("does not expose a view outside the current caller's role", async () => {
+    const f = await fixture();
+    await registerPluginViews(
+      f.runtime,
+      {
+        name: "restricted-test",
+        description: "Restricted view",
+        views: [
+          {
+            id: "restricted",
+            label: "PRIVATE_VIEW_SENTINEL",
+            path: "/restricted",
+            roleGate: { minRole: "OWNER" },
+          },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      uiView: "restricted",
+    };
+    const ctx = {
+      runtime: f.runtime,
+      message: input,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "USER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    expect((await fields.composePromptSlices(ctx)).context).toBe("");
+    expect(f.requests()).toBe(0);
+  });
+  it.each([
+    [
+      "notes",
+      [
+        "Open Notes view",
+        "Read latest existing note",
+        "Read next saved calendar event",
+      ],
+      true,
+    ],
+    ["notes", ["Open Notes only if the requested record exists"], true],
+    [
+      "notes",
+      ["Choose between Notes and Calendar after checking records"],
+      true,
+    ],
+    ["unknown-view", ["Open the unspecified destination"], false],
+  ] as const)(
+    "offers tools without resolving ambiguous navigation to %s",
+    async (viewId, intents, known) => {
+      const f = await fixture();
+      f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+        action.name.startsWith("VIEWS"),
+      );
+      const selected = await selectNavigation(
+        f,
+        clientMessage(),
+        {
+          disposition: "unresolved",
+          viewId,
+          singleViewOnly: false,
+          navigationOnly: false,
+        },
+        {
+          contexts: ["general", "notes", "calendar"],
+          intents: [...intents],
+          candidateActions: [],
+          reply: "",
+        },
+      );
+      expect(selected.plan.intents).toEqual(intents);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+      expect(selected.plan.candidateActions).toEqual(known ? ["VIEWS"] : []);
+      if (known) {
+        const actions = await collectV5PlannerCandidateActions({
+          runtime: f.runtime,
+          message: clientMessage(),
+          state: { values: {}, data: {}, text: "" },
+          selectedContexts: ["general", "notes", "calendar"],
+          candidateActions: selected.plan.candidateActions,
+          userRoles: ["OWNER"],
+        });
+        expect(actions.map((action) => action.name)).toEqual(
+          expect.arrayContaining(["VIEWS_LIST", "VIEWS_SHOW"]),
+        );
+        expect(JSON.stringify(selected)).toContain("unresolved");
+      }
+    },
+  );
+
+  it.each(["none", "forbidden"])(
+    "preserves domain-only work from Calendar with %s navigation",
+    async (disposition) => {
+      const f = await fixture();
+      const input = clientMessage();
+      input.content.text =
+        "Create a note named Input audit September 25 with the exact text: The audit token is amber.";
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "calendar",
+      };
+      const intents = [String(input.content.text)];
+      const selected = await selectNavigation(
+        f,
+        input,
+        {
+          disposition,
+          viewId: "",
+          singleViewOnly: false,
+          navigationOnly: false,
+        },
+        {
+          contexts: ["notes"],
+          intents,
+          candidateActions: ["NOTES"],
+          reply: "",
+        },
+      );
+      expect(selected.plan.contexts).toEqual(["notes"]);
+      expect(selected.plan.intents).toEqual(intents);
+      expect(selected.plan.candidateActions).toEqual(["NOTES"]);
+      expect(selected.plan.replyEffectStatus).toBe("pending");
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+    },
+  );
+  it("preserves a domain clarification without granting navigation or execution", async () => {
+    const f = await fixture();
+    const input = clientMessage();
+    input.content.text = "Draft a note, but ask before saving it.";
+    const selected = await selectNavigation(
+      f,
+      input,
+      {
+        disposition: "none",
+        viewId: "",
+        singleViewOnly: false,
+        navigationOnly: false,
+      },
+      {
+        contexts: ["notes"],
+        intents: [],
+        candidateActions: ["NOTES"],
+        requiresTool: false,
+        reply: "Save this draft?",
+        replyEffectStatus: "non_applied",
+      },
+    );
+    expect(selected.plan.intents).toEqual([]);
+    expect(selected.plan.requiresTool).toBe(false);
+    expect(selected.plan.replyEffectStatus).toBe("non_applied");
+    expect(selected.plan.reply).toBe("Save this draft?");
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(f.requests()).toBe(0);
+  });
   it("selects the existing action without inference and delivers through the real originating-client route", async () => {
     const f = await fixture();
     const input = clientMessage();
@@ -685,41 +896,49 @@ describe("model-selected host navigation", () => {
       expect(f.requests()).toBe(0);
     },
   );
-  it("rechecks owner role and rejects cancellation after the model decision", async () => {
-    const f = await fixture();
-    const input = clientMessage();
-    const roleChanged = await selectNavigation(
-      f,
-      input,
-      { viewId: "chat" },
-      {},
-      () => {
-        f.runtime.getWorld = async () =>
-          ({ id: "world", metadata: { roles: { [owner]: "USER" } } }) as never;
-      },
-    );
-    expect(roleChanged.plan.deterministicToolCall).toBeUndefined();
-    const other = await fixture();
-    const controller = new AbortController();
-    await runWithStreamingContext(
-      {
-        messageId: String(input.id),
-        abortSignal: controller.signal,
-        onStreamChunk: () => {},
-      },
-      async () => {
-        const selected = await selectNavigation(
-          other,
-          clientMessage(),
-          { viewId: "chat" },
-          {},
-          () => controller.abort(),
-        );
-        expect(selected.plan.deterministicToolCall).toBeUndefined();
-      },
-    );
-    expect(f.requests() + other.requests()).toBe(0);
-  });
+  it.each(["requested", "unresolved"])(
+    "rechecks owner role and cancellation for %s",
+    async (disposition) => {
+      const f = await fixture();
+      const input = clientMessage();
+      const roleChanged = await selectNavigation(
+        f,
+        input,
+        { viewId: "chat", disposition },
+        { candidateActions: [] },
+        () => {
+          f.runtime.getWorld = async () =>
+            ({
+              id: "world",
+              metadata: { roles: { [owner]: "USER" } },
+            }) as never;
+        },
+      );
+      expect(roleChanged.plan.deterministicToolCall).toBeUndefined();
+      expect(roleChanged.plan.candidateActions).toEqual([]);
+      const other = await fixture();
+      const controller = new AbortController();
+      await runWithStreamingContext(
+        {
+          messageId: String(input.id),
+          abortSignal: controller.signal,
+          onStreamChunk: () => {},
+        },
+        async () => {
+          const selected = await selectNavigation(
+            other,
+            clientMessage(),
+            { viewId: "chat", disposition },
+            { candidateActions: [] },
+            () => controller.abort(),
+          );
+          expect(selected.plan.deterministicToolCall).toBeUndefined();
+          expect(selected.plan.candidateActions).toEqual([]);
+        },
+      );
+      expect(f.requests() + other.requests()).toBe(0);
+    },
+  );
   it("does not substitute a direct call for contradictory non-navigation hints", async () => {
     const f = await fixture();
     const selected = await selectNavigation(
@@ -753,12 +972,22 @@ describe("model-selected host navigation", () => {
     }
     expect(f.requests()).toBe(0);
   });
-  it.each([false, true])(
-    "runs the canonical pipeline and gates the held reply (wrong destination=%s)",
-    async (wrongDestination) => {
+  it.each([
+    { reply: "Home.", wrongDestination: false },
+    { reply: "Chat is open.", wrongDestination: false },
+    { reply: "Messages is open.", wrongDestination: true },
+    { reply: "Calendar is open.", wrongDestination: true },
+  ])(
+    "runs the canonical pipeline and gates the held reply ($reply)",
+    async ({ reply, wrongDestination }) => {
       const f = await fixture();
       const input = clientMessage();
       input.content.text = "Open Home";
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "notes",
+        uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
+      };
       const fields = new ResponseHandlerFieldRegistry();
       for (const field of [
         ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
@@ -773,6 +1002,22 @@ describe("model-selected host navigation", () => {
         expect(type).toBe(ModelType.RESPONSE_HANDLER);
         expect(useModel).toHaveBeenCalledTimes(1);
         expect(JSON.stringify(params)).toContain("visualContinuation");
+        // Verify the host contract reaches the real Stage 1 model request.
+        expect(JSON.stringify(params)).toContain(
+          JSON.stringify(viewNavigationField.description).slice(1, -1),
+        );
+        const request = params as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        expect(
+          request.messages.find((entry) => entry.role === "user")?.content,
+        ).toContain('"viewId":"notes","label":"Notes"');
+        expect(
+          request.messages.find((entry) => entry.role === "system")?.content,
+        ).not.toContain("Current request's renderer view");
+        expect(JSON.stringify(params)).not.toContain(
+          "PRIVATE_CONTROL_SENTINEL",
+        );
         return {
           text: "",
           toolCalls: [
@@ -784,9 +1029,7 @@ describe("model-selected host navigation", () => {
                 contextRequests: [],
                 intents: ["Open Home"],
                 candidateActionNames: ["VIEWS"],
-                replyText: wrongDestination
-                  ? "Calendar is open."
-                  : "Chat is open.",
+                replyText: reply,
                 replyEffectStatus: "pending",
                 facts: [],
                 relationships: [],
@@ -842,7 +1085,7 @@ describe("model-selected host navigation", () => {
         expect(useModel).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({
           kind: "planned_reply",
-          result: { responseContent: { text: "Chat is open." } },
+          result: { responseContent: { text: reply } },
         });
       }
       expect(f.frames).toHaveLength(1);

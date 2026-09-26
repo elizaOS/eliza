@@ -238,6 +238,11 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	 */
 	shouldRun?(ctx: ResponseHandlerFieldContext): boolean | Promise<boolean>;
 
+	/** Request-scoped facts for this field, rendered outside the stable prompt/schema.
+	 * Runs only for active fields. Must not execute effects or invoke a model.
+	 */
+	getContext?(ctx: ResponseHandlerFieldContext): string | Promise<string>;
+
 	/**
 	 * Parse / validate the LLM's value for this field. Default: identity.
 	 *
