@@ -1436,11 +1436,12 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     host.__ELIZA_APP_API_BASE__ = window.location.origin;
   });
   let notesRevision = 4;
+  // Schema 2 keeps the authored title/body separator in the body remainder.
   let smokeNotes: SmokeNote[] = [
     {
       id: "note-launch",
       title: "Launch checklist",
-      body: "Cloud agent, phone, and deck are ready.",
+      body: "\nCloud agent, phone, and deck are ready.",
       color: "yellow",
       createdAt: SMOKE_GENERATED_AT,
       updatedAt: SMOKE_GENERATED_AT,
@@ -1448,7 +1449,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     {
       id: "note-follow-up",
       title: "Follow up",
-      body: "Share the demo recording with the team.",
+      body: "\nShare the demo recording with the team.",
       color: "green",
       createdAt: SMOKE_GENERATED_AT,
       updatedAt: SMOKE_GENERATED_AT,
