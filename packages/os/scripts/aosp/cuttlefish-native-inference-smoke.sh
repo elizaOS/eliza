@@ -26,7 +26,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ELIZA_ROOT="$(cd "${ELIZAOS_ELIZA_ROOT:-$OS_ROOT/.eliza-source}" 2>/dev/null && pwd || true)"
+ELIZA_ROOT="$(node "$OS_ROOT/scripts/eliza-source.ts")"
 SOURCE_VERIFY_DIR="$ELIZA_ROOT/plugins/plugin-local-inference/native/verify"
 if [[ -z "$ELIZA_ROOT" || ! -d "$SOURCE_VERIFY_DIR" ]]; then
   echo "[cuttlefish-x86_64-smoke] FAIL: set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout" >&2

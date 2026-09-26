@@ -1,5 +1,5 @@
 {
-  "$schema": "Pinned SHA-256 hashes for vendor downloads. Updated weekly by .github/workflows/update-vendor-checksums.yml. Mismatches block the install.",
+  "$schema": "Pinned SHA-256 hashes for vendor downloads. Updated through .github/workflows/update-vendor-checksums.yml. Mismatches block the install.",
   "platform-tools": {
     "darwin": {
       "url": "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip",

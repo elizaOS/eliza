@@ -1,0 +1,25 @@
+{
+  "revision": "4aeb64ba80e179af87b4b7b16d067c88ef95a526",
+  "source": "https://chromium.googlesource.com/chromium/src",
+  "sha256": {
+    "chrome/browser/extensions/component_loader.cc": "2f885d17e75792dac3c7deeb8f00850677b0a3bf82c3acebe65f18887edea04b",
+    "chrome/browser/extensions/component_extensions_allowlist/allowlist.cc": "03d9d5d4cccd3b74ec2b8e4d486945aa3501499f1dbd9e319b1ed1fa3b275ad5",
+    "chrome/browser/resources/component_extension_resources.grd": "1c895106a9e658cf9b3dc6a492ea2b4d751f78bd875ec77e3171e3b8365d84de",
+    "chrome/browser/resources/BUILD.gn": "96ec4674418ab79dbfe2cb9a25ec04e26ba6d42cc7a1ee5d88feeb468fc7c992",
+    "chrome/browser/extensions/api/messaging/android/native_message_android_port.cc": "d0ab9070d614c81c0c0b7a562c9e857fdfdc11107cefdc07b0d57f4c3b4b06db",
+    "extensions/browser/api/messaging/message_service.cc": "05e3932566ba004edafcbed563b20e66bd50615cbf80f94d33c22482cccedbce",
+    "extensions/common/extension_features.cc": "fd634b38ec97ab62d83100361abcae7d28425ba9decd61928c368bf42df32e67",
+    "chrome/browser/extensions/chrome_url_request_util.cc": "bab3cd0287f4ba4b12bd72f5a0dc9994bd9be75ca1a916b532bc0149b2f773df",
+    "chrome/browser/extensions/chrome_extensions_browser_client.cc": "98afb526ca37333eb1805197a9d18a9a32b87ce363c653391d5d971091e41211",
+    "chrome/browser/extensions/BUILD.gn": "60569cc7ad64f5d50489896f4b276832b9a01191f2be06d0c07dda8aae16d0b0",
+    "tools/gritsettings/resource_ids.spec": "05397d85a3f2ac200fb697a031509990db80f751ff77335d5230f03855821582",
+    "components/webauthn/android/java/src/org/chromium/components/webauthn/AuthenticatorImpl.java": "2eb95724b5ede3885de30bdcb996e66a538b16037e2d310d3dfa02f3e101a4c8",
+    "components/webauthn/android/java/src/org/chromium/components/webauthn/Fido2CredentialRequest.java": "96eb0afb198a7c52548ad1e963575dd73110680dc4fa2e07781750db11bb4e68",
+    "components/webauthn/android/java/src/org/chromium/components/webauthn/cred_man/CredManSupportProvider.java": "a2210fdd2f5dc1da88223dc264c934a7133bf8f71d7d12892333fb1950130e7d",
+    "components/webauthn/android/junit/src/org/chromium/components/webauthn/AuthenticatorImplTest.java": "d86e0e2ab45a556cce03581648a89e3707bd18b87ed49c02eab79f4284fe424b",
+    "components/webauthn/android/junit/src/org/chromium/components/webauthn/Fido2CredentialRequestRobolectricTest.java": "9a66ba7c1122d827205165a3b01db87f39969bf3f1dc8c4ab58b364eecd1f353",
+    "third_party/blink/renderer/bindings/BUILD.gn": "a0f038c3b3079c8a1a500baebf5bc7584b95dc7ceb82d900b62c120321cca6ba",
+    "content/browser/indexed_db/instance/connection.cc": "f305f4ec28f279a36098c450f603bd5c654de576bc71768d54ac80f5aad770f8",
+    "content/browser/indexed_db/instance/transaction_unittest.cc": "eb21c606b01160ed8774d087754552d4abe874a0d752d2401b96ce0253b17f27"
+  }
+}

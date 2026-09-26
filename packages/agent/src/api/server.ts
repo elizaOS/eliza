@@ -458,6 +458,38 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
     if (!browser || typeof browser.setNativeClientTransport !== "function")
       return;
     browser.setNativeClientTransport({
+      executeCommand: async (clientId, command) => {
+        const hostKey = requestingHost(clientId);
+        const [
+          { dispatchViewInteract, getViewsBroadcastWsToClientId },
+          { getView },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("./views-registry.ts"),
+        ]);
+        const entry = getView(runtime, "browser", { viewType: "gui" });
+        const sendToClient = getViewsBroadcastWsToClientId(hostKey);
+        if (!entry || !sendToClient)
+          throw new Error("Native browser control transport is unavailable.");
+        const reply = await dispatchViewInteract(
+          entry,
+          "browser",
+          "browser-command",
+          { command },
+          {
+            clientId,
+            hostKey,
+            broadcastWsToClientId: sendToClient,
+            runtime,
+          },
+        );
+        if (!reply.success)
+          throw new Error(reply.error ?? "Native browser control failed.");
+        return (await getBrowserPlugin()).decodeNativeBrowserCommandResult(
+          command,
+          reply.result,
+        );
+      },
       navigate: async (clientId, url) => {
         const hostKey = requestingHost(clientId);
         const [

@@ -42,10 +42,15 @@ function operatingUid(): number {
   return uid;
 }
 
-function recoveryRequired(message: string): InstallRecoveryRequiredError {
-  return new InstallRecoveryRequiredError(
+function recoveryRequired(
+  message: string,
+  cause?: unknown,
+): InstallRecoveryRequiredError {
+  const error = new InstallRecoveryRequiredError(
     `Installer service state: ${message}`,
   );
+  if (cause !== undefined) error.cause = cause;
+  return error;
 }
 
 /**
@@ -87,8 +92,11 @@ export class DurableFileInstallServiceState
     let stats: Stats;
     try {
       stats = await lstat(path);
-    } catch {
-      throw recoveryRequired("a required state directory is unavailable.");
+    } catch (error) {
+      throw recoveryRequired(
+        "a required state directory is unavailable.",
+        error,
+      );
     }
     if (
       !stats.isDirectory() ||
@@ -109,8 +117,8 @@ export class DurableFileInstallServiceState
       let stats: Stats;
       try {
         stats = await lstat(ancestor);
-      } catch {
-        throw recoveryRequired("a state-path ancestor is unavailable.");
+      } catch (error) {
+        throw recoveryRequired("a state-path ancestor is unavailable.", error);
       }
       const writableByOthers = (stats.mode & 0o022) !== 0;
       const trustedStickyDirectory =
@@ -164,7 +172,10 @@ export class DurableFileInstallServiceState
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") return null;
-      throw recoveryRequired("could not create an exclusive state record.");
+      throw recoveryRequired(
+        "could not create an exclusive state record.",
+        error,
+      );
     }
     try {
       const stats = await handle.stat();
@@ -186,7 +197,14 @@ export class DurableFileInstallServiceState
       await handle.sync();
       return handle;
     } catch (error) {
-      await handle.close().catch(() => {});
+      try {
+        await handle.close();
+      } catch (cleanupError) {
+        throw recoveryRequired(
+          "state record failure and descriptor cleanup failure.",
+          new AggregateError([error, cleanupError]),
+        );
+      }
       throw error;
     }
   }
@@ -277,9 +295,12 @@ export class DurableFileInstallServiceState
     try {
       await unlink(quotaLockPath);
       await this.syncDirectory(this.directory);
-    } catch {
+    } catch (error) {
       throw recoveryRequired(
         "authorization quota lock cleanup was not durably completed; explicit recovery is required.",
+        claimError === undefined
+          ? error
+          : new AggregateError([claimError, error]),
       );
     }
     if (claimError !== undefined) throw claimError;
@@ -329,18 +350,18 @@ export class DurableFileInstallServiceState
     try {
       result = await operation();
     } catch (error) {
-      const failure = recoveryRequired(
+      throw recoveryRequired(
         "target operation failed after lock acquisition; the lock is retained for explicit recovery.",
+        error,
       );
-      failure.cause = error;
-      throw failure;
     }
     try {
       await unlink(path);
       await this.syncDirectory(this.targetsDirectory);
-    } catch {
+    } catch (error) {
       throw recoveryRequired(
         "target lock cleanup was not durably completed; explicit recovery is required.",
+        error,
       );
     }
     return result;

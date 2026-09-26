@@ -77,7 +77,7 @@ bun_jq() {
 # build the post-Zig→Rust-rewrite bun from rust_core_port.target_commit + the
 # nightly it pins, instead of the last-Zig tag (bun.tag). The rust-core/ patch
 # series is mounted at /opt/bun-patches by run-build.sh in this mode.
-if [ "${BUN_RISCV64_RUST_CORE:-1}" = "1" ]; then
+if [ "${BUN_RISCV64_RUST_CORE:-0}" = "1" ]; then
     BUN_TAG="${BUN_TAG:-$(bun_jq 'v.rust_core_port.target_commit')}"
     RUST_NIGHTLY="${RUST_NIGHTLY:-$(bun_jq 'v.rust_core_port.rust_channel')}"
     # bun@target_commit's deps/webkit.ts pins WEBKIT_VERSION=963f8758…, distinct
@@ -216,7 +216,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 log "── stage 2: Bun checkout + patches ──────────────────────────────────"
 
-# BUN_TAG may be a tag (stable release, e.g. bun-v1.4.2) OR a bare commit SHA
+# BUN_TAG may be a tag (stable release, e.g. bun-v1.3.14) OR a bare commit SHA
 # (Rust-core port, e.g. rust_core_port.target_commit). `git clone --branch`
 # rejects a SHA, so fetch the ref directly — GitHub allows fetch-by-SHA
 # (allowAnySHA1InWant) — mirroring the WebKit checkout above. Works for both.

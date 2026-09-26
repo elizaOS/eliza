@@ -14,7 +14,7 @@ const schemaPath = path.join(
 );
 const manifestPath = path.join(
   repoRoot,
-  "release/confidential-2026-05-21/manifest.json",
+  "scripts/__tests__/fixtures/confidential-manifest.json",
 );
 
 async function load() {

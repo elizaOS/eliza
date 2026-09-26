@@ -1,6 +1,9 @@
 /** Validates complete native page reads before exposing text or snapshots to the model. */
 import { ElizaError } from "@elizaos/core";
-import { BrowserDispatchFailure } from "./dispatch-types.js";
+import {
+  BROWSER_DISPATCH_FAILURE_KINDS,
+  BrowserDispatchFailure,
+} from "./dispatch-types.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
@@ -16,6 +19,75 @@ export type NativeBrowserPageReader = (
 export interface NativeBrowserClientTransport {
   readPage: NativeBrowserPageReader;
   navigate: (clientId: string, url?: string) => Promise<void>;
+  /** Authenticated current-client native control; never a server-browser fallback. */
+  executeCommand?: (
+    clientId: string,
+    command: BrowserWorkspaceCommand,
+  ) => Promise<BrowserWorkspaceCommandResult>;
+}
+
+/** Validate native receipts before exposing a result to the planner. */
+export function decodeNativeBrowserCommandResult(
+  command: BrowserWorkspaceCommand,
+  result: unknown,
+): BrowserWorkspaceCommandResult {
+  if (!result || typeof result !== "object" || Array.isArray(result))
+    throw new Error("Invalid native browser receipt.");
+  const envelope = result as Record<string, unknown>;
+  if (envelope.ok === false) {
+    const kind = BROWSER_DISPATCH_FAILURE_KINDS.find(
+      (value) => value === envelope.code,
+    );
+    throw new BrowserDispatchFailure(
+      kind ?? "UNCERTAIN_OUTCOME",
+      typeof envelope.message === "string"
+        ? envelope.message
+        : "Native browser command failed.",
+      { targetId: "native-client" },
+    );
+  }
+  if (
+    envelope.ok !== true ||
+    !envelope.data ||
+    typeof envelope.data !== "object" ||
+    Array.isArray(envelope.data)
+  )
+    throw new Error("Invalid native browser result.");
+  const data = envelope.data as Record<string, unknown>;
+  if (command.subaction === "snapshot") {
+    if (data.representation === "android-accessibility") {
+      if (
+        data.complete !== true ||
+        !Array.isArray(data.elements) ||
+        typeof data.snapshotId !== "string" ||
+        data.packageName !== "org.chromium.chrome"
+      )
+        throw new Error("Incomplete Chromium accessibility snapshot.");
+    } else if (
+      typeof data.text !== "string" ||
+      typeof data.url !== "string" ||
+      typeof data.title !== "string" ||
+      data.truncated !== false
+    ) {
+      throw new ElizaError("Native browser page read is incomplete.", {
+        code: "NATIVE_PAGE_READ_INCOMPLETE",
+      });
+    }
+  } else if (
+    data.dispatched !== true ||
+    data.completed !== false ||
+    data.requiresReadback !== true
+  ) {
+    throw new Error(
+      "Native browser did not return an explicit dispatch receipt.",
+    );
+  }
+  return {
+    targetId: "native-client",
+    mode: "web",
+    subaction: command.subaction,
+    value: data,
+  };
 }
 
 export async function readNativeBrowserPage(

@@ -25,13 +25,17 @@ case "$vm_type" in
         exit 64
         ;;
 esac
-case "$guest_out:$guest_evidence" in
-    /var/tmp/*:/var/tmp/*) ;;
-    *)
-        echo "[mkosi-macos-lima] guest output paths must remain beneath /var/tmp" >&2
-        exit 64
-        ;;
-esac
+for guest_path in "$guest_out" "$guest_evidence"; do
+    case "$guest_path/" in
+        *"/../"*|*"/./"*|*"//"*)
+            echo "[mkosi-macos-lima] guest output paths cannot contain relative or empty components" >&2
+            exit 64 ;;
+        /var/tmp/*/) ;;
+        *)
+            echo "[mkosi-macos-lima] guest output paths must remain beneath /var/tmp" >&2
+            exit 64 ;;
+    esac
+done
 
 usage() {
     cat <<EOF
@@ -94,7 +98,7 @@ doctor() {
 start_vm() {
     require_macos_arm64
     require_lima
-    existing_instances="$(limactl list --format '{{.Name}}' 2>/dev/null || true)"
+    existing_instances="$(limactl list --format '{{.Name}}')"
     for existing_instance in $existing_instances; do
         if [ "$existing_instance" != "$instance" ]; then
             echo "[mkosi-macos-lima] refusing a second VM while '${existing_instance}' exists" >&2

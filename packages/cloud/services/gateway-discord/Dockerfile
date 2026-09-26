@@ -28,8 +28,8 @@ ARG SERVICE_DIR=packages/cloud/services/gateway-discord
 ARG COMMON_DIR=packages/cloud/services/_common
 ARG CORE_DIR=packages/core
 # @discordjs/opus publishes portable N-API v3 Alpine binaries, but its bundled
-# legacy node-pre-gyp crosswalk stops at Node 18 while Bun 1.4.2 identifies its
-# compatibility ABI as 137. Selecting the published Node 18 ABI only for native
+# legacy node-pre-gyp crosswalk stops at Node 18. Selecting the published
+# Node 18 ABI only for native
 # dependency installation lets amd64 and arm64 use that N-API artifact instead
 # of entering the upstream ARM64-musl source-build failure. The service itself
 # still runs on the pinned Bun image above.

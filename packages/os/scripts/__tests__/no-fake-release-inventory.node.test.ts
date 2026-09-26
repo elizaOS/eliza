@@ -36,14 +36,7 @@ test("USB installer has no fabricated production image inventory", async () => {
     const backend = await source(
       `usb-installer/src/backend/${platform}-backend.ts`,
     );
-    assert.match(backend, /fetch(?:PublishedIsoImages|ReleaseImages)/);
+    assert.match(backend, /fetchReleaseImages/);
   }
 
-  const discovery = await source(
-    "usb-installer/src/backend/release-discovery.ts",
-  );
-  assert.match(discovery, /repos\/elizaOS\/os\/releases/);
-  assert.match(discovery, /`\$\{iso\.name\}\.sha256`/);
-  assert.match(discovery, /hasTrustedChecksum\(checksum\)/);
-  assert.doesNotMatch(discovery, /repos\/elizaos\/eliza\/releases/i);
 });

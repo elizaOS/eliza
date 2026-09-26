@@ -1,4 +1,3 @@
-// Implements backend device and HTTP operations for the AOSP setup flasher.
 import { authorizedFetch, backendRoute } from "../runtime/server-url";
 import type {
   AospBuild,

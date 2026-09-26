@@ -184,6 +184,16 @@ async function fail(
 
 /** Runs the same public-read implementation used by the registered action. */
 export async function runWebSearchEdge(query: string): Promise<ActionResult> {
+    return runWebSearchWith(query, searchKeylessWeb);
+}
+
+/** Common receipt handling; the host supplies its authorized browser-first transport. */
+export async function runWebSearchWith(
+    query: string,
+    search: (
+        query: string
+    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>
+): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
     if ([...normalizedQuery].length > MAX_WEB_SEARCH_QUERY_CODE_POINTS) {
@@ -194,7 +204,7 @@ export async function runWebSearchEdge(query: string): Promise<ActionResult> {
         );
     }
     const observedAt = Date.now();
-    const result = await searchKeylessWeb(normalizedQuery);
+    const result = await search(normalizedQuery);
     if (!result) {
         return await fail("Web search is temporarily unavailable.", undefined, normalizedQuery);
     }
@@ -208,7 +218,9 @@ export async function runWebSearchEdge(query: string): Promise<ActionResult> {
             provider: result.provider,
             observedAt,
             sourceUrls: evidence.sourceUrls,
-            sources: evidence.sources,
+            // A Google results-page snapshot is aggregate context, not prose from
+            // the individual linked sites. Retain all text without misattribution.
+            sources: result.provider === "browser" ? [] : evidence.sources,
             evidenceOverflowed: evidence.overflowed,
             truncated: result.truncated,
             value: result.text,

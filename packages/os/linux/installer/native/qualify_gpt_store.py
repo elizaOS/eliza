@@ -188,6 +188,9 @@ def qualify_store(library, artifact, large_artifact, binding, target_fd, target_
     mountpoint.mkdir(mode=0o700)
     try:
         partition_path = Path(loop + "p1")
+        # Partition discovery emits multiple udev events; wait for their device-node
+        # updates before probing or formatting the disposable loop partition.
+        subprocess.run(["udevadm", "settle", "--timeout=15"], check=True, timeout=20)
         deadline = time.monotonic() + 5
         while not partition_path.exists() and time.monotonic() < deadline:
             time.sleep(0.05)

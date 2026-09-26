@@ -22,7 +22,11 @@
     "@elizaos/plugin-workflow": "workspace:*",
     "elysia": "^1.1.0",
     "ioredis": "^5.10.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@elizaos/remote-control-host": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-web-search": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

@@ -8,7 +8,6 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { isMainModule } from "./is-main.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDir, "../..");
@@ -55,6 +54,10 @@ export function loadAospLock(filePath = aospLockPath) {
       !/^[A-Za-z0-9._-]+$/.test(device.codename) ||
       typeof device?.buildId !== "string" ||
       device.buildId.length === 0 ||
+      (device.releaseConfig !== undefined &&
+        !/^[a-z0-9_]+$/.test(device.releaseConfig)) ||
+      (device.vendorApiLevel !== undefined &&
+        !/^[0-9]{6}$/.test(device.vendorApiLevel)) ||
       typeof device?.productBrand !== "string" ||
       !/^[A-Za-z0-9._-]+$/.test(device.productBrand) ||
       typeof device?.productName !== "string" ||
@@ -210,6 +213,17 @@ export function loadAospLock(filePath = aospLockPath) {
   }
   if (lock.generatedVendor !== undefined) {
     const generated = lock.generatedVendor;
+    if (generated.referenceSpec !== undefined) {
+      const reference = generated.referenceSpec;
+      if (
+        !safeRelativePath(reference?.path) ||
+        !Number.isSafeInteger(reference?.sizeBytes) ||
+        reference.sizeBytes <= 0 ||
+        !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? "") ||
+        !/^[a-f0-9]{64}$/.test(reference?.baseSha256 ?? "")
+      )
+        fail(`invalid generated vendor reference in ${filePath}`);
+    }
     if (
       !Array.isArray(generated.command) ||
       generated.command.length === 0 ||
@@ -644,7 +658,7 @@ export function bootstrapAosp({
   return lock;
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   const args = parseBootstrapArgs(process.argv.slice(2));
   const lock = bootstrapAosp(args);
   console.log(

@@ -136,3 +136,36 @@ test("malformed, mismatched, closed and stalled bridge responses fail and clean 
     assert.equal(removed, true);
   }
 });
+
+test("health probe preserves simultaneous transport and forward cleanup failures", async () => {
+  const transportError = new Error("transport failed");
+  const cleanupError = new Error("cleanup failed");
+  const calls = [];
+  await assert.rejects(
+    probeAndroidHealth(
+      "adb",
+      "SERIAL",
+      "token",
+      (_tool, args) => {
+        calls.push(args);
+        if (args.includes("--remove")) throw cleanupError;
+        return "12345";
+      },
+      async () => {
+        throw transportError;
+      },
+    ),
+    (error) => {
+      assert(error instanceof AggregateError);
+      assert.deepEqual(error.errors, [transportError, cleanupError]);
+      return true;
+    },
+  );
+  assert.deepEqual(calls[1], [
+    "-s",
+    "SERIAL",
+    "forward",
+    "--remove",
+    "tcp:12345",
+  ]);
+});

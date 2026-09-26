@@ -9,6 +9,10 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
-    "tsx": "4.21.0"
+    "tsx": "4.21.0",
+    "@elizaos/remote-control-host": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-web-search": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   }
 }

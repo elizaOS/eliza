@@ -54,7 +54,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
@@ -71,6 +72,8 @@
     "miniflare": "4.20260730.0",
     "pg": "^8.23.0",
     "typescript": "^6.0.3",
-    "ws": "^8.21.3"
+    "ws": "^8.21.3",
+    "@elizaos/plugin-todos": "workspace:*",
+    "@elizaos/cloud-sdk": "workspace:*"
   }
 }

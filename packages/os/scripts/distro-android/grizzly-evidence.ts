@@ -21,7 +21,6 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { isMainModule } from "./is-main.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -272,6 +271,6 @@ export function captureEvidence(
   return outDir;
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   captureEvidence(parseArgs(process.argv.slice(2)));
 }

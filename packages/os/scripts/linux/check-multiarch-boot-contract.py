@@ -842,7 +842,7 @@ def main() -> int:
     errors: list[str] = []
     auto_config = read("auto/config")
     makefile = read("Makefile")
-    build_sh = read("build.sh")
+    build_sh = read("build-live-iso.sh")
     dockerfile = read("Dockerfile")
     boot_qemu = read("../../scripts/linux/boot-qemu.sh")
     riscv_harness = read("../../scripts/linux/qemu_virt_boot_riscv64.sh")
@@ -918,17 +918,17 @@ def main() -> int:
     require(
         errors,
         "grub-efi-riscv64-bin" in build_sh,
-        "build.sh must patch live-build's riscv64 GRUB EFI package check",
+        "build-live-iso.sh must patch live-build's riscv64 GRUB EFI package check",
     )
     require(
         errors,
         "default|gui" in build_sh and "config/profiles/gui" in build_sh,
-        "build.sh must support the real GUI profile over the default headless config",
+        "build-live-iso.sh must support the real GUI profile over the default headless config",
     )
     require(
         errors,
         'gen_efi_boot_img "riscv64-efi" "riscv64"' in build_sh,
-        "build.sh must patch live-build's riscv64 EFI image generation",
+        "build-live-iso.sh must patch live-build's riscv64 EFI image generation",
     )
     require(
         errors,

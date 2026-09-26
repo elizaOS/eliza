@@ -5,7 +5,9 @@
       "targetId": "pixel9a-tegu",
       "marketingName": "Pixel 9a",
       "manufacturer": "Google",
-      "codenames": ["tegu"],
+      "codenames": [
+        "tegu"
+      ],
       "reviewedAt": "2026-08-18",
       "authoritativeReferences": [
         "https://developers.google.com/android/drivers",
@@ -27,7 +29,9 @@
       "targetId": "pixel11pro-grizzly",
       "marketingName": "Pixel 11 Pro",
       "manufacturer": "Google",
-      "codenames": ["grizzly"],
+      "codenames": [
+        "grizzly"
+      ],
       "reviewedAt": "2026-09-04",
       "authoritativeReferences": [
         "https://developers.google.com/android/images",
@@ -36,7 +40,7 @@
         "https://github.com/GrapheneOS/vendor_state/commit/afd6a0c9f6ca13d395f00e98227a0866cc14de07"
       ],
       "productName": "eliza_grizzly_phone",
-      "lunchTarget": "eliza_grizzly_phone-trunk_staging-userdebug",
+      "lunchTarget": "eliza_grizzly_phone-cp2a-userdebug",
       "expectedFingerprintPrefix": "elizaOS/eliza_grizzly_phone/grizzly:",
       "aospLockPath": "android/pixel11pro.lock.json",
       "sourceStatus": "pinned-generated",
@@ -52,7 +56,9 @@
       "targetId": "lightphone3-tlp301",
       "marketingName": "Light Phone III",
       "manufacturer": "Light",
-      "codenames": ["TLP301"],
+      "codenames": [
+        "TLP301"
+      ],
       "reviewedAt": "2026-08-18",
       "authoritativeReferences": [
         "https://github.com/lightphone/light-sdk",

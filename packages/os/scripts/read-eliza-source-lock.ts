@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 export const defaultElizaSourceLockPath = path.join(
@@ -11,7 +11,10 @@ export const defaultElizaSourceLockPath = path.join(
 );
 
 export function readElizaSourceLock(lockPath = defaultElizaSourceLockPath) {
-  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+  return validateElizaSourceLock(JSON.parse(readFileSync(lockPath, "utf8")));
+}
+
+export function validateElizaSourceLock(lock) {
   const expectedKeys = [
     "commit",
     "commitTimestamp",
@@ -39,17 +42,23 @@ export function readElizaSourceLock(lockPath = defaultElizaSourceLockPath) {
   if (lock.repository !== "elizaOS/eliza") {
     throw new Error(`Unexpected Eliza source repository: ${lock.repository}`);
   }
-  if (!/^[0-9a-f]{40}$/.test(lock.commit)) {
+  if (typeof lock.commit !== "string" || !/^[0-9a-f]{40}$/.test(lock.commit)) {
     throw new Error(
       "Eliza source lock commit must be a full lowercase Git SHA",
     );
   }
-  if (!/^[A-Za-z0-9._/-]+$/.test(lock.sourceRef)) {
+  if (
+    typeof lock.sourceRef !== "string" ||
+    !/^[A-Za-z0-9._/-]+$/.test(lock.sourceRef)
+  ) {
     throw new Error(`Invalid Eliza source ref: ${lock.sourceRef}`);
   }
   if (
+    typeof lock.commitTimestamp !== "string" ||
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(lock.commitTimestamp) ||
-    Number.isNaN(Date.parse(lock.commitTimestamp))
+    Number.isNaN(Date.parse(lock.commitTimestamp)) ||
+    new Date(lock.commitTimestamp).toISOString().replace(".000Z", "Z") !==
+      lock.commitTimestamp
   ) {
     throw new Error(
       "Eliza source lock timestamp must be an RFC 3339 UTC timestamp",
@@ -96,7 +105,7 @@ function main(argv) {
   process.stdout.write(`${JSON.stringify(lock)}\n`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+if (import.meta.main) {
   try {
     main(process.argv.slice(2));
   } catch (error) {

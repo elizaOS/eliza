@@ -6,7 +6,7 @@
 override_dh_auto_build:
 	set -eu; \
 	debian/validate-user-units; \
-	for executable in eliza-agent eliza-desktop eliza-doctor; do \
+	for executable in eliza-agent eliza-desktop eliza-desktop-doctor; do \
 		test -f "payload/bin/$$executable"; \
 		test ! -L "payload/bin/$$executable"; \
 		test -x "payload/bin/$$executable"; \

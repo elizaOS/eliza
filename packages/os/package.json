@@ -30,7 +30,7 @@
     "verify:layout": "node scripts/verify-os-repository-layout.ts",
     "verify": "bun run verify:layout && bun run verify:installer-native && bun run typecheck && bun run lint && bun run test && bun run test:release",
     "verify:installer-native": "bun run --cwd linux/installer test:native:compile",
-    "verify:linux": "bash scripts/linux/mkosi-lint.sh && python3 scripts/linux/test_mkosi_reproducibility.py",
+    "verify:linux": "bash scripts/linux/mkosi-lint.sh && python3 scripts/linux/test_disposable_disk_vm.py && python3 scripts/linux/test_mkosi_qualification.py && python3 scripts/linux/test_verify_desktop_artifact.py && python3 scripts/linux/test_stage_browser_artifact.py && python3 scripts/linux/test_assemble_browser_payload.py && python3 scripts/linux/test_mkosi_reproducibility.py && python3 scripts/linux/test_riscv64_agent_staging.py",
     "verify:riscv64": "bash scripts/verify-riscv64-buildpaths.sh",
     "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
     "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh"

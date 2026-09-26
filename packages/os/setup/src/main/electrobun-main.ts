@@ -23,6 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Electrobun, { BrowserWindow } from "electrobun/bun";
 import { createServer } from "../../server";
+import { createBackendRequest } from "./backend-request";
 
 const DEFAULT_PORT = 3743;
 
@@ -103,9 +104,7 @@ async function startRendererServer(
       const url = new URL(request.url);
 
       if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-        const backendPath = url.pathname.slice("/api".length) || "/";
-        const target = new URL(`${backendPath}${url.search}`, backendUrl);
-        return fetch(new Request(target, request));
+        return fetch(createBackendRequest(request, backendUrl));
       }
 
       if (request.method !== "GET" && request.method !== "HEAD") {

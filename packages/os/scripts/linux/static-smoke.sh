@@ -31,7 +31,7 @@ while IFS= read -r f; do
     else
         sh -n "${f}" 2>/dev/null || { echo "SH PARSE FAIL: ${f}"; fail=1; }
     fi
-done < <(find scripts config/includes.chroot/usr/local/lib/elizaos config/includes.chroot/usr/lib/elizaos \
+done < <(find ../../scripts/linux config/includes.chroot/usr/local/lib/elizaos config/includes.chroot/usr/lib/elizaos \
     \( -name "*.sh" -o -name "first-boot.sh" -o -name "start-launcher" -o -name "start-chat-overlay" \) \
     2>/dev/null)
 
@@ -60,8 +60,8 @@ grep -q '^FIRMWARE_OPTIONS="--firmware-chroot false --firmware-binary false"$' a
     || { echo "FIRMWARE DISCOVERY ENABLED: declare firmware explicitly"; fail=1; }
 grep -q '^    --cache false \\$' auto/config \
     || { echo "LIVE-BUILD CACHE ENABLED: release builds must not restore stale chroots"; fail=1; }
-grep -q '"${HERE}/binary" "${HERE}/cache" "${HERE}/chroot"' build.sh \
-    || { echo "STALE CACHE RETENTION: build.sh must remove the live-build cache"; fail=1; }
+grep -q '"${HERE}/binary" "${HERE}/cache" "${HERE}/chroot"' build-live-iso.sh \
+    || { echo "STALE CACHE RETENTION: build-live-iso.sh must remove the live-build cache"; fail=1; }
 if grep -q 'apt-cacher-ng' Dockerfile; then
     echo "UNWIRED BUILD CACHE: apt-cacher-ng must not be installed when caching is disabled"
     fail=1
@@ -94,12 +94,12 @@ assert '"sizeBytes": @@SIZE_BYTES@@' in riscv_template
 assert '"id": "riscv64-agent-runtime"' in riscv_template
 assert '"status": "collected"' not in riscv_template
 PY
-grep -q 'packaged app commit .* does not match lock' build.sh \
-    || { echo "UNPINNED PACKAGED APP: build.sh must reject an app outside the source lock"; fail=1; }
-grep -q 'no release manifest contract for' build.sh \
+grep -q 'packaged app commit .* does not match lock' build-live-iso.sh \
+    || { echo "UNPINNED PACKAGED APP: build-live-iso.sh must reject an app outside the source lock"; fail=1; }
+grep -q 'no release manifest contract for' build-live-iso.sh \
     || { echo "MANIFEST FALLBACK: unsupported targets must fail before image assembly"; fail=1; }
-grep -q 'snapshot Release digest mismatch' build.sh \
-    || { echo "UNVERIFIED SNAPSHOT: build.sh must hash both Release files"; fail=1; }
+grep -q 'snapshot Release digest mismatch' build-live-iso.sh \
+    || { echo "UNVERIFIED SNAPSHOT: build-live-iso.sh must hash both Release files"; fail=1; }
 grep -q '^FROM \${DEBIAN_BASE_IMAGE}$' Dockerfile \
     || { echo "FLOATING BUILDER BASE: Dockerfile must consume the digest-pinned lock"; fail=1; }
 if grep -R -E -n '^(indi-dsi|dahdi-firmware-nonfree|firmware-b43-installer|firmware-b43legacy-installer)$' config/package-lists config/profiles 2>/dev/null; then
@@ -139,9 +139,8 @@ if [ -d config/includes.chroot/opt/elizaos-artifacts ] &&
     echo "STALE AGENT ARTIFACTS: generated runtime bytes must not be checked into includes.chroot"
     fail=1
 fi
-grep -q 'mount freshly staged agent artifacts or a packaged desktop app' build.sh \
+grep -q 'mount freshly staged agent artifacts or a packaged desktop app' build-live-iso.sh \
     || { echo "UNBOUND AGENT IMAGE: builds must fail without an explicit runtime input"; fail=1; }
-[ ! -d mkosi ] || { echo "STALE BUILD PATH: mkosi/ must not coexist with canonical live-build"; fail=1; }
 
 # Systemd unit files have [Unit] + [Install] (or are .path/.target).
 for f in $(find config/includes.chroot/etc/systemd -name "*.service" 2>/dev/null); do

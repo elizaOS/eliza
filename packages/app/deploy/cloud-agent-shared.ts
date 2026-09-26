@@ -7,6 +7,7 @@
  */
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import type { AgentRemoteBrowserController } from "@elizaos/remote-control-host";
 import { sql } from "drizzle-orm";
 import { ElizaError } from "../../core/src/errors";
 import restartExitCodeDefinition from "../../core/src/restart-exit-code.json" with {
@@ -383,6 +384,8 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   const MAX_BODY_BYTES = userConfig.maxBodyBytes ?? 1048576;
   const enableChatMode = userConfig.enableChatMode ?? false;
   let agentRuntime: AgentRuntime | null = null;
+  let remoteBrowser: AgentRemoteBrowserController | null = null;
+
   /** In-memory state that persists across snapshots. */
   const state = {
     memories: [] as Array<Record<string, unknown>>,
@@ -464,6 +467,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             : {}),
         },
         secrets: {
+          ...(process.env.ENCRYPTION_SALT
+            ? { ENCRYPTION_SALT: process.env.ENCRYPTION_SALT }
+            : {}),
           ...(process.env.ELIZAOS_CLOUD_API_KEY
             ? { ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY }
             : {}),
@@ -506,8 +512,25 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         .then((m) => m.default)
         .catch(logPluginLoadFailure("@elizaos/plugin-workflow"));
       if (workflowPlugin) plugins.push(workflowPlugin);
+
+      const [{ browserPlugin }, { webSearchPlugin }, remoteHost] =
+        await Promise.all([
+          import("@elizaos/plugin-browser"),
+          import("@elizaos/plugin-web-search"),
+          import("@elizaos/remote-control-host"),
+        ]);
+      const { assistantPlugin } = await import("@elizaos/plugin-assistant");
+      plugins.push(assistantPlugin, browserPlugin, webSearchPlugin);
+      if (process.env.ENCRYPTION_SALT) {
+        const { secretsManagerPlugin } = await import(
+          "@elizaos/plugin-assistant"
+        );
+        plugins.push(secretsManagerPlugin);
+      }
       const runtime = new AgentRuntimeCtor({ character, plugins });
       await runtime.initialize();
+      remoteBrowser = remoteHost.remoteBrowserController(runtime);
+      await remoteHost.restoreRemoteBrowserController(runtime);
       const runtimeWithBridge = runtime as typeof runtime & {
         ensureWorldExists?: (world: Record<string, unknown>) => Promise<void>;
         ensureRoomExists?: (room: Record<string, unknown>) => Promise<void>;
@@ -863,6 +886,57 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         return;
       }
     }
+
+    const remoteBrowserPath =
+      /^\/api\/remote-browser\/(status|pair|confirm|revoke)$/.exec(
+        (req.url ?? "").split("?")[0],
+      );
+    if (remoteBrowserPath) {
+      const operation = remoteBrowserPath[1];
+      const ownerId = process.env.ELIZA_RUNTIME_OWNER_ID;
+      if (!remoteBrowser || !ownerId) {
+        res.writeHead(503);
+        res.end(
+          JSON.stringify({
+            error: "Owner-scoped browser controller is unavailable",
+          }),
+        );
+        return;
+      }
+      if (req.method !== (operation === "status" ? "GET" : "POST")) {
+        res.writeHead(405);
+        res.end(JSON.stringify({ error: "Method not allowed" }));
+        return;
+      }
+      try {
+        remoteBrowser.assertOwner(ownerId);
+        const body =
+          operation === "status" ? null : JSON.parse(await readBody(req));
+        const result =
+          operation === "status"
+            ? remoteBrowser.status()
+            : operation === "pair"
+              ? await remoteBrowser.pair(body, ownerId)
+              : operation === "confirm"
+                ? await remoteBrowser.confirm(body)
+                : await remoteBrowser.revoke();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        logger.error("Remote browser control rejected", {
+          operation,
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+        res.writeHead(409);
+        res.end(
+          JSON.stringify({
+            error: "Browser authorization or device availability changed",
+          }),
+        );
+      }
+      return;
+    }
+
     // The provisioning worker probes the bridge/tailnet port, not the
     // host-only REST mapping. Keep this response aligned with the REST health
     // contract so lifecycle recovery never marks a healthy runtime dead.

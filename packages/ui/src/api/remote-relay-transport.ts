@@ -380,3 +380,38 @@ export const remoteRelayTransportInternals = {
   sendCommand,
   withSessionEnqueue,
 };
+
+/** Sends a typed browser command under a target-approved profile grant without agent text mediation. */
+export async function sendRemoteBrowserCommand(
+  profile: AgentProfile,
+  payload: unknown,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const { parseRemoteBrowserCommandPayload } = await import(
+    "@elizaos/core/contracts/remote-control"
+  );
+  const parsed = parseRemoteBrowserCommandPayload(payload);
+  const result = await sendCommand(
+    await defaultCloudClient(),
+    profile,
+    "browser.command",
+    { profileId: parsed.profileId, command: { ...parsed.command } },
+    signal,
+  );
+  if (
+    !result ||
+    typeof result !== "object" ||
+    Array.isArray(result) ||
+    typeof result.status !== "number" ||
+    typeof result.body !== "string"
+  )
+    throw new Error(
+      "The remote browser returned an invalid transport receipt.",
+    );
+  const body: unknown = JSON.parse(result.body);
+  if (result.status !== 200)
+    throw new Error(
+      `The remote browser command failed with HTTP ${result.status}; inspect the same device before retrying.`,
+    );
+  return body;
+}

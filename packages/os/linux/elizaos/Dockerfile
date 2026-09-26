@@ -20,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # The digest-pinned base's CA set predates the snapshot TLS certificate.
 # Bootstrap over HTTP; apt still authenticates Debian's signed Release and
-# package hashes. build.sh later re-fetches and hashes the locked Release files
+# package hashes. build-live-iso.sh later re-fetches and hashes the locked Release files
 # over HTTPS with the updated ca-certificates package installed here.
 RUN test -n "${DEBIAN_SNAPSHOT_SERIAL}" \
     && printf '%s\n' \
@@ -80,4 +80,4 @@ RUN test -n "${DEBIAN_SNAPSHOT_SERIAL}" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-ENTRYPOINT ["bash", "/build/build.sh"]
+ENTRYPOINT ["bash", "/build/build-live-iso.sh"]

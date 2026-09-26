@@ -18,4 +18,8 @@ esac
 mkdir -p -- "$(dirname -- "$output")"
 ${CC:-cc} -std=c11 -O2 -Wall -Wextra -Werror -fPIC -shared \
   "$(dirname -- "$0")/linux-peer-credentials.c" \
+  "$(dirname -- "$0")/linux-disk-session.c" \
+  "$(dirname -- "$0")/gpt-snapshot.c" \
+  "$(dirname -- "$0")/gpt-artifact-store.c" \
+  "$(dirname -- "$0")/partition-image.c" -lcrypto \
   -o "$output"

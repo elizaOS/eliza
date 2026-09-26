@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/browser-bridge-extension",
+  "version": "2.0.4",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test src/*.test.mjs scripts/*.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && node --check src/background.mjs && node --check src/commands.mjs && node --check scripts/chromium-component.mjs && node --check scripts/chromium-component.test.mjs",
+    "lint": "bunx @biomejs/biome check ."
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/node": "^25.2.3",
+    "@typescript/native": "npm:typescript@^7.0.2"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  }
+}

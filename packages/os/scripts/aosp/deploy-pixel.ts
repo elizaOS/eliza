@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // deploy-pixel.ts — build → verify deployed image → launch → voice-smoke for
 // a physical Android device (Pixel) or a running Cuttlefish cvd.
 //
@@ -54,13 +55,11 @@ import {
   DEFAULT_BRAND_CONFIG,
   loadBrandConfig,
 } from "../distro-android/brand-config.ts";
-import { isMainModule } from "../distro-android/is-main.ts";
+import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const osRepoRoot = path.resolve(here, "../..");
-const repoRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
-);
+const repoRoot = resolveElizaSourceRoot();
 const appScripts = path.join(repoRoot, "packages/app/scripts");
 const appAospScripts = path.join(appScripts, "aosp");
 const androidAgentAssets = path.join(
@@ -624,7 +623,7 @@ async function main(argv = process.argv.slice(2)) {
   process.exit(ok ? 0 : 1);
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   main().catch((err) => {
     console.error(err?.stack || String(err));
     process.exit(1);

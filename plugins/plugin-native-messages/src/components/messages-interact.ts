@@ -8,10 +8,7 @@ import { System } from "@elizaos/capacitor-system";
 import { ElizaError } from "@elizaos/core/errors";
 import { Messages } from "@elizaos/plugin-native-messages/bridge";
 import type { MessagesViewCapabilityId } from "../view-capabilities.ts";
-import {
-  loadMessagesState,
-  normalizeMessagesLimit,
-} from "./messages-view-helpers.ts";
+import { loadMessagesState } from "./messages-view-helpers.ts";
 
 type MessagesCapabilityHandler = (
   params?: Record<string, unknown>,

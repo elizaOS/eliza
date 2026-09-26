@@ -3,7 +3,9 @@
  * agent containers. Workflow operations derive their owner only from trusted
  * internal headers and return typed, non-enumerating errors across tenants.
  */
+
 import { ElizaError } from "@elizaos/core";
+import { remoteBrowserController } from "@elizaos/remote-control-host";
 import { Elysia } from "elysia";
 import type { AgentManager } from "./agent-manager";
 import { EventBodySchema } from "./handlers/event";
@@ -644,6 +646,52 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         return { error: message };
       }
     })
+
+    .all(
+      "/agents/:id/remote-browser/:operation",
+      async ({ params, headers, set, request, body }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        // The trusted control plane verifies agent ownership before forwarding.
+        // A message-sender header alone never grants control of the agent's preferred browser.
+        const ownerId = headerMap["x-eliza-agent-owner-id"];
+        if (!ownerId || ownerId !== headerMap["x-eliza-user-id"]) {
+          set.status = 403;
+          return { error: "Verified agent-owner authorization is required" };
+        }
+        const operation = params.operation;
+        if (
+          !["status", "pair", "confirm", "revoke"].includes(operation) ||
+          request.method !== (operation === "status" ? "GET" : "POST")
+        ) {
+          set.status = 404;
+          return { error: "Unknown browser controller operation" };
+        }
+        try {
+          return await manager.useRuntime(params.id, async (runtime) => {
+            const controller = remoteBrowserController(runtime);
+            controller.assertOwner(ownerId);
+            if (operation === "status") return controller.status();
+            if (operation === "pair") return controller.pair(body, ownerId);
+            if (operation === "confirm") return controller.confirm(body);
+            return controller.revoke();
+          });
+        } catch (error) {
+          // error-policy:J1 Keep credentials and other tenants' authority out of HTTP errors.
+          logger.error("Remote browser controller operation failed", {
+            agentId: params.id,
+            operation,
+            errorType: error instanceof Error ? error.name : "unknown",
+          });
+          set.status = 409;
+          return {
+            error:
+              "Remote browser authorization or device availability changed",
+          };
+        }
+      },
+    )
 
     .get("/agents/:id/workflows/status", async ({ params, headers, set }) => {
       const denial = requireInternalAuth(

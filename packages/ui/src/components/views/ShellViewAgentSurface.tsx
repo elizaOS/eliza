@@ -115,6 +115,17 @@ function InstalledShellViewAgentSurface({
         return handleAgentSurfaceCapability(registry, capability, params);
       }
       switch (capability) {
+        case "browser-command": {
+          const command = params?.command;
+          if (!command || typeof command !== "object" || Array.isArray(command))
+            throw new Error("Native browser command is required.");
+          const value = command as Record<string, unknown>;
+          if (value.subaction !== "snapshot" || !pageReader.current)
+            throw new Error(
+              "This native browser does not support the requested command.",
+            );
+          return { ok: true, data: await pageReader.current() };
+        }
         case "get-text":
           if (pageReader.current) {
             if (

@@ -36,11 +36,13 @@ export interface RuntimeManagementRequest {
 	apiBase?: string;
 	sessionId?: string;
 	code?: string;
+	/** Exact local profile explicitly selected during target confirmation. */
+	browserProfileId?: string;
 	/** One-use server proposal authority for an exact destructive request. */
 	proposalId?: string;
 	proposalNonce?: string;
 	managedNetwork?: boolean;
-	platform?: "macos" | "windows" | "linux";
+	platform?: "macos" | "windows" | "linux" | "android";
 }
 
 export interface RuntimeManagementResult {

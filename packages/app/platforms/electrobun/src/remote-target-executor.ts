@@ -11,7 +11,11 @@ import {
 	REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
 	type RemoteAgentRequest,
 } from "@elizaos/core/contracts/remote-agent-request";
-import type { RemoteJsonValue } from "@elizaos/core/contracts/remote-control";
+import {
+	parseRemoteBrowserCommandPayload,
+	type RemoteCommandAction,
+	type RemoteJsonValue,
+} from "@elizaos/core/contracts/remote-control";
 import type {
 	RemoteTargetCommandExecutor,
 	RemoteTargetEffectResult,
@@ -82,19 +86,24 @@ export class LoopbackRemoteTargetExecutor
 	private readonly fetchImpl: RemoteTargetFetch;
 	private readonly timeoutMs: number | undefined;
 	async execute(input: {
-		action:
-			| "agent.request"
-			| "agent.message"
-			| "agent.pause"
-			| "agent.resume"
-			| "agent.stop"
-			| "agent.status";
+		action: RemoteCommandAction;
 		payload: RemoteJsonValue;
 		executionId: string;
 	}): Promise<RemoteTargetEffectResult> {
 		let request: RemoteAgentRequest;
 		try {
-			if (input.action === "agent.status" && isEmptyObject(input.payload)) {
+			if (input.action === "browser.command") {
+				const command = parseRemoteBrowserCommandPayload(input.payload);
+				request = {
+					path: "/api/browser-device/command",
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(command),
+				};
+			} else if (
+				input.action === "agent.status" &&
+				isEmptyObject(input.payload)
+			) {
 				request = parseRemoteAgentRequest({
 					path: "/api/health",
 					method: "GET",
@@ -114,9 +123,11 @@ export class LoopbackRemoteTargetExecutor
 		const route = classifyRemoteAgentRequestPath(request.path, request.method);
 		const timeoutMs =
 			this.timeoutMs ??
-			(route === "conversation-message-stream"
-				? REMOTE_AGENT_CHAT_TIMEOUT_MS
-				: LOCAL_REQUEST_TIMEOUT_MS);
+			(input.action === "browser.command"
+				? 35000
+				: route === "conversation-message-stream"
+					? REMOTE_AGENT_CHAT_TIMEOUT_MS
+					: LOCAL_REQUEST_TIMEOUT_MS);
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), timeoutMs);
 		try {
