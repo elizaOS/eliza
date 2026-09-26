@@ -28,7 +28,7 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const NATIVE = NATIVE_TOKEN_ADDRESS;
 const OWNER = "0x1111111111111111111111111111111111111111";
 
-// base mainnet native balance, as a decimal string (the shape getWalletBalances returns)
+// base mainnet native balance, as a decimal string (the balance a chain's ok state carries)
 const BASE_BALANCE = "2"; // 2.0 ETH
 
 // Stubs the on-chain ERC-20 read path (`balanceOf` + `decimals`) used to size
@@ -43,6 +43,9 @@ function createWalletProvider(
   balances: Record<string, string> = { base: BASE_BALANCE },
   tokenStub?: TokenStub
 ): WalletProvider {
+  const states = Object.fromEntries(
+    Object.entries(balances).map(([chain, balance]) => [chain, { status: "ok", balance }])
+  );
   return {
     chains: { base },
     getSupportedChains: () => ["base"],
@@ -63,6 +66,7 @@ function createWalletProvider(
         throw new Error(`unexpected readContract: ${functionName}`);
       },
     }),
+    getChainBalanceStates: async () => states,
   } as unknown as WalletProvider;
 }
 
