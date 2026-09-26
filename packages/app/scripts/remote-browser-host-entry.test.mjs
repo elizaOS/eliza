@@ -40,7 +40,11 @@ test("standalone cloud image ships reviewed host code and invokes it after runti
     docker,
     /COPY eliza\/packages\/remote-control-host packages\/remote-control-host/,
   );
-  assert.match(docker, /FROM oven\/bun:1\.3\.14 AS bun-runtime/);
+  const { packageManager } = JSON.parse(read("package.json"));
+  assert.ok(packageManager.startsWith("bun@"));
+  assert.ok(
+    docker.includes(`FROM oven/bun:${packageManager.slice(4)} AS bun-runtime`),
+  );
   assert.match(
     docker,
     /CMD \["bun", "--conditions=eliza-source", "entrypoint.mjs"\]/,

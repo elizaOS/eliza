@@ -459,6 +459,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
               startAt: "2050-09-18T15:00:00-04:00",
               endAt: "2050-09-18T15:15:00-04:00",
               timeZone: "America/New_York",

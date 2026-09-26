@@ -2,7 +2,8 @@
 /**
  * Resolves the agent image's runtime workspaces and registry dependencies from
  * manifests. The image linker uses the same closure; development and optional
- * dependencies do not expand it, and the linked UI stays a static asset surface.
+ * dependencies do not expand it. Plugin exports also load UI modules on the
+ * server, so their declared runtime dependencies belong to this closure.
  */
 
 import fs from "node:fs";
@@ -40,8 +41,6 @@ export function collectDockerWorkspaceDirs(
     if (visited.has(directory)) continue;
     visited.add(directory);
     const pkg = readJson(path.join(directory, "package.json"));
-    // UI is linked for resolution, but its browser dependency tree is not a server input.
-    if (pkg.name === "@elizaos/ui") continue;
     for (const [name, version] of Object.entries(pkg.dependencies ?? {})) {
       const dependency = nameToDir.get(name);
       if (dependency) pending.push(dependency);
@@ -63,7 +62,6 @@ export function collectDockerWorkspaceDirs(
 const EXCLUDE = new Set([
   // Desktop / Electron / Capacitor native shells (not used by the headless
   // server runtime).
-  "@capacitor/core",
   "@capacitor/cli",
   "@capacitor-community/sqlite",
   "@capacitor/barcode-scanner",
@@ -125,7 +123,6 @@ function main() {
   const workspaceDirs = collectDockerWorkspaceDirs();
   for (const directory of workspaceDirs) {
     const pkg = readJson(path.join(directory, "package.json"));
-    if (pkg.name === "@elizaos/ui") continue;
     const deps = pkg.dependencies ?? {};
     for (const [name, range] of Object.entries(deps)) {
       if (!isExternal(name)) continue;
