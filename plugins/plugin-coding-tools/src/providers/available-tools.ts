@@ -50,6 +50,7 @@ export const availableToolsProvider: Provider = {
       "For the first READ of a file, omit offset and expectedRevision. Revisions belong to one file version: never guess them or carry an old revision across WRITE or EDIT. Only the tools exposed for this turn are callable; the toolkit below may include tools unavailable in the current profile.",
       "SHELL background subactions: start_background returns a stable handle; poll_background reads complete incremental stdout/stderr with offsets and rejects if the complete-capture ceiling is exceeded; write_background sends stdin; kill_background terminates; list_background shows sessions.",
       "",
+      "Discover relevant source paths with git ls-files or rg --files when available, then search those paths. Avoid unbounded recursive listings such as ls -R that include node_modules, dependency caches, or generated build output. Inspect dependency or generated files by explicit path when the task requires them; do not dump the whole repository to find a few source files.",
       ...TOOL_NAMES.map((n) => `- ${n}`),
     ];
     return {
