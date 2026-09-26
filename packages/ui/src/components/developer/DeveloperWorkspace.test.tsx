@@ -464,7 +464,14 @@ describe("developer workspace", () => {
       ),
     ).toBe(false);
     expect(within(panel).getByLabelText("Model call")).toBeTruthy();
-    expect(within(panel).getByText("Actual model input")).toBeTruthy();
+    expect(
+      within(panel).getByRole("region", { name: "Input" }).textContent,
+    ).toBe("Actual model input");
+    expect(
+      within(panel).getByRole("region", {
+        name: "Recorded user prompt (flattened alternative)",
+      }).textContent,
+    ).toBe("Actual model input");
     fireEvent.mouseDown(within(panel).getByRole("tab", { name: "Output" }), {
       button: 0,
       ctrlKey: false,
