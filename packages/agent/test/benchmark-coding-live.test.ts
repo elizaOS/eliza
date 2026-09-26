@@ -63,8 +63,8 @@ test
             scenario === "incomplete"
               ? "Read the exact file required-input.txt and report its contents. The file must already exist; do not create it, invent contents, or substitute any other file. If it is missing, the requested task cannot be fulfilled."
               : scenario === "recovered"
-                ? "Use SHELL to run python3 -m unittest -v before making any edits; it will fail because add.py is missing. Then fix the failure by using FILE to create add.py defining add(a, b) returning a + b. Rerun the same python3 -m unittest -v command with SHELL and verify all tests pass. Do not modify test_add.py. Report both the initial failure and the successful recovery."
-                : "Use FILE to create add.py defining add(a, b) returning a + b. The workspace contains test_add.py; do not modify the tests. Use the native SHELL action to run python -m unittest -v in the workspace. Report the observed result.",
+                ? "Use SHELL to run python3 -m unittest -v before making any edits; it will fail because add.py is missing. Then fix the failure by using WRITE to create add.py defining add(a, b) returning a + b. Rerun the same python3 -m unittest -v command with SHELL and verify all tests pass. Do not modify test_add.py. Report both the initial failure and the successful recovery."
+                : "Use WRITE to create add.py defining add(a, b) returning a + b. The workspace contains test_add.py; do not modify the tests. Use the native SHELL action to run python -m unittest -v in the workspace. Report the observed result.",
           context: { workspace },
         }),
       );
@@ -176,7 +176,7 @@ test
         testSource,
       );
       expect(rows[0].actions_taken).toEqual(
-        expect.arrayContaining(["FILE", "SHELL"]),
+        expect.arrayContaining(["WRITE", "SHELL"]),
       );
       expect(await readFile(path.join(workspace, "add.py"), "utf8")).toContain(
         "def add",
