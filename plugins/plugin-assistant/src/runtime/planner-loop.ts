@@ -359,16 +359,19 @@ export async function runPlannerLoop(
       params.codingMode === true &&
       liveTrajectory &&
       error instanceof ElizaError &&
-      error.code === "MODEL_OUTPUT_INCOMPLETE"
+      (error.code === "MODEL_OUTPUT_INCOMPLETE" ||
+        error.code === PROVIDER_CONTEXT_OVERFLOW)
     ) {
-      const message =
-        "The model returned an incomplete response, so the coding task could not finish. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
+      const contextOverflow = error.code === PROVIDER_CONTEXT_OVERFLOW;
+      const message = contextOverflow
+        ? "The coding task remains incomplete because its full context exceeded the model's capacity. Earlier recorded tool outcomes are preserved; no context was discarded to force completion."
+        : "The model returned an incomplete response, so the coding task could not finish. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
       return {
         status: "finished",
         trajectory: liveTrajectory,
         evaluator: { success: false, decision: "FINISH", thought: message },
         terminalFailure: {
-          kind: "provider_issue",
+          kind: contextOverflow ? "context_overflow" : "provider_issue",
           code: error.code,
           transient: false,
           message,
