@@ -71,7 +71,7 @@ jobs:
             exit 1
           fi
           timestamp="$(git show -s --format=%cI HEAD)"
-          timestamp="$(date -u -d "$timestamp" +%Y-%m-%dT%H:%M:%SZ)"
+          timestamp="$(node -e 'console.log(new Date(process.argv[1]).toISOString().replace(".000Z", "Z"))' "$timestamp")"
           echo "commit-timestamp=$timestamp" >> "$GITHUB_OUTPUT"
 
       - name: Validate application checkout
