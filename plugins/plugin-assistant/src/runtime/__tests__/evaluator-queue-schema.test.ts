@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  EVALUATOR_CONTEXT_ROUTES,
   evaluatorSchema,
   evaluatorTemplate,
   evaluatorTemplateForQueue,
@@ -60,13 +61,24 @@ it("keeps every non-queue instruction unchanged", () => {
 describe("completion recommendations describe the current planner queue", () => {
   it("does not advertise a queued-call decision when no calls remain", async () => {
     const { schema, messages } = await captureSchema([]);
-    expect(schema?.properties?.decision.enum).toEqual(["FINISH", "CONTINUE"]);
+    expect(schema?.properties?.decision.enum).toEqual([
+      "FINISH",
+      "CONTINUE",
+      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
+    ]);
     expect(schema?.properties).not.toHaveProperty("recommendedToolCallId");
     expect(schema?.additionalProperties).toBe(false);
+    expect(schema?.properties).not.toHaveProperty("contextRequest");
+    expect(schema).not.toHaveProperty("anyOf");
+    expect(schema).not.toHaveProperty("oneOf");
     expect(messages).not.toContain("NEXT_RECOMMENDED");
     expect(messages).toContain("No executable calls remain queued");
     expect(messages).toContain("more_work_pending");
     expect(messages).toContain("effectReceiptIds");
+    expect(messages).toContain(
+      "Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning",
+    );
+    expect(messages).not.toContain("no file paths, internal ids or raw logs");
   });
 
   it("distinguishes two calls to the same tool by their exact queue IDs", async () => {
@@ -78,6 +90,7 @@ describe("completion recommendations describe the current planner queue", () => 
       "FINISH",
       "NEXT_RECOMMENDED",
       "CONTINUE",
+      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
     ]);
     expect(messages).toContain(
       "NEXT_RECOMMENDED when the next queued tool remains grounded",
@@ -106,7 +119,11 @@ describe("completion recommendations describe the current planner queue", () => 
     );
     expect(JSON.stringify(schema)).not.toContain("private-call-id");
     expect(messages).not.toContain("NEXT_RECOMMENDED");
-    expect(schema?.properties?.decision.enum).toEqual(["FINISH", "CONTINUE"]);
+    expect(schema?.properties?.decision.enum).toEqual([
+      "FINISH",
+      "CONTINUE",
+      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
+    ]);
   });
 
   it("does not mutate the reusable canonical schema across turns", async () => {
