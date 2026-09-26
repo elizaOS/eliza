@@ -908,6 +908,105 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  it("releases the native capture microphone when stop() lands while the permission prompt is pending", async () => {
+    FakeAudioContext.instances = [];
+    const { stream, stop } = makeMicStream();
+    let resolveMic: (value: MediaStream) => void = () => undefined;
+    const getUserMedia = vi.fn(
+      () =>
+        new Promise<MediaStream>((resolve) => {
+          resolveMic = resolve;
+        }),
+    );
+    const swabbleStart = vi.fn(async () => ({ started: true }));
+    const swabbleStop = vi.fn(async () => undefined);
+    const offMessage = vi.fn();
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {
+          swabbleStart,
+          swabbleStop,
+          swabbleAudioChunk: vi.fn(async () => undefined),
+        },
+        onMessage: vi.fn(),
+        offMessage,
+      },
+    });
+    setNavigator({
+      mediaDevices: { getUserMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new SwabbleWeb();
+    const states = vi.fn();
+    await plugin.addListener("stateChange", states);
+
+    const starting = plugin.start({ config: { triggers: ["eliza"] } });
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+    await plugin.stop();
+    expect(swabbleStop).toHaveBeenCalledTimes(1);
+    expect(offMessage).toHaveBeenCalled();
+
+    resolveMic(stream);
+    await expect(starting).resolves.toEqual({
+      started: false,
+      error: "Speech recognition was stopped before it started",
+    });
+
+    // The stream granted after stop() is released and never wired into an
+    // AudioContext, and the plugin stays idle.
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(FakeAudioContext.instances).toHaveLength(0);
+    await expect(plugin.isListening()).resolves.toEqual({ listening: false });
+    expect(states).toHaveBeenLastCalledWith({ state: "idle" });
+  });
+
+  it("stops the native session when stop() lands while the desktop bridge is starting", async () => {
+    let resolveStart: (value: { started: boolean }) => void = () => undefined;
+    const swabbleStart = vi.fn(
+      () =>
+        new Promise<{ started: boolean }>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const swabbleStop = vi.fn(async () => undefined);
+    const getUserMedia = vi.fn();
+    const onMessage = vi.fn();
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {
+          swabbleStart,
+          swabbleStop,
+          swabbleAudioChunk: vi.fn(async () => undefined),
+        },
+        onMessage,
+        offMessage: vi.fn(),
+      },
+      SpeechRecognition: FakeRecognition,
+    });
+    setNavigator({
+      mediaDevices: { getUserMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new SwabbleWeb();
+    const starting = plugin.start({ config: { triggers: ["eliza"] } });
+    await plugin.stop();
+    resolveStart({ started: true });
+
+    await expect(starting).resolves.toEqual({
+      started: false,
+      error: "Speech recognition was stopped before it started",
+    });
+    // The bridge session that started after stop() is stopped, no microphone
+    // is requested, no bridge listeners are attached, and the Web Speech
+    // fallback is not started in its place.
+    expect(swabbleStop).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(FakeRecognition.latest).toBeNull();
+    await expect(plugin.isListening()).resolves.toEqual({ listening: false });
+  });
+
   it("tears down the level meter and mic stream on a non-recoverable recognition error", async () => {
     vi.useFakeTimers();
     try {
