@@ -115,7 +115,12 @@ class ElizaAgent(BaseAgent):
             if model.startswith(prefix):
                 model = model.removeprefix(prefix)
                 break
+        # This coding-only harness provisions text inference and file tools, not
+        # embeddings or wallets. Declare that surface before host startup so it
+        # does not download models or probe unrelated RPC endpoints in the task.
         env = {**self.extra_env,
+               "ELIZA_CANONICAL_EMBEDDINGS_ENABLED": "false",
+               "ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP": "1",
                "ELIZA_STATE_DIR": self.state_dir,
                "ELIZA_CONFIG_PATH": self.state_dir + "/eliza.json",
                "CODING_TOOLS_WORKSPACE_ROOTS": "/app",
@@ -127,6 +132,7 @@ class ElizaAgent(BaseAgent):
                         "CEREBRAS_MODEL": model, "CEREBRAS_SMALL_MODEL": model,
                         "CEREBRAS_LARGE_MODEL": model})
         setting_keys = (
+            "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
             "OPENAI_BASE_URL", "OPENAI_SMALL_MODEL", "OPENAI_LARGE_MODEL",
             "CEREBRAS_BASE_URL", "CEREBRAS_MODEL", "CEREBRAS_SMALL_MODEL",
             "CEREBRAS_LARGE_MODEL", "OPENAI_REASONING_EFFORT",
