@@ -1887,30 +1887,9 @@ async function doDeleteByQuery(
       .trim()
       .toLowerCase();
   const distinctTexts = new Set(matched.map(normalize));
-  // One durable fact plus the observation rows that shadow it (the facts
-  // stage's `current` rows for the same claim, including relationship echoes)
-  // is one memory to the user. Live 2026-09-13 "forget my favorite color"
-  // matched "The user's favorite color is teal." and the echo
-  // "user favorite_color teal"; the planner resent the same query and the
-  // turn died on the repeated-failure limit.
-  const factKindOf = (c: MemoryCandidate): "durable" | "current" | null => {
-    if (c.type !== "facts") return null;
-    const meta = metadataRecord(c.memory);
-    if (meta.kind === "current") return "current";
-    if (meta.kind === "durable") return "durable";
-    return meta.source === STAGE_FACT_SOURCE ? "current" : null;
-  };
-  const durableMatches = matched.filter((c) => factKindOf(c) === "durable");
-  const shadowsOfOneDurableFact =
-    durableMatches.length === 1 &&
-    matched.every(
-      (c) =>
-        c.memory.entityId === durableMatches[0]?.memory.entityId &&
-        (factKindOf(c) === "durable" || factKindOf(c) === "current"),
-    );
   // Retrieval matches do not establish that distinct texts express the same
   // claim, even when their records share an author. Let the planner select ids.
-  if (distinctTexts.size > 1 && !shadowsOfOneDurableFact) {
+  if (distinctTexts.size > 1) {
     const candidates = matched.map((c) => toListItem(c.memory, c.type));
     const lines = candidates.map(
       (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
@@ -1993,22 +1972,14 @@ async function doDeleteByQuery(
   const forgottenTexts = deleted
     .map((item) => toWellFormedUnicode(item.text))
     .filter((value) => value.trim().length > 0);
-  // Observation rows collapsed with a durable fact are the same memory to the
-  // user; the reply names the durable text only.
-  const spokenTexts = shadowsOfOneDurableFact
-    ? durableMatches
-        .map((c) =>
-          toWellFormedUnicode(
-            (c.memory.content as { text?: string } | undefined)?.text ?? "",
-          ),
-        )
-        .filter((value) => value.trim().length > 0)
-    : forgottenTexts;
   return {
     success: true,
     transcriptVisibility: "internal",
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
-    userFacingText: memoryUserFacingLine("Forgot", spokenTexts.join("; ")),
+    userFacingText: memoryUserFacingLine(
+      "Forgot",
+      [...new Set(forgottenTexts)].join("; "),
+    ),
     verifiedUserFacing: true,
     turnComplete: true,
     values: { deletedCount: deleted.length },
