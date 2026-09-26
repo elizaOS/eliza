@@ -3,11 +3,16 @@
  * date/times, the aggregated feed summary, and next-event context into the
  * human-readable strings the CALENDAR action returns to the owner.
  */
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsNextCalendarEventContext,
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsNextCalendarEventContext,
 } from "@elizaos/core/contracts/calendar";
+import {
+  addDaysToLocalDate,
+  getTimeZoneOffsetMinutes,
+  getZonedDateParts,
+} from "./time.js";
 
 function formatCalendarDatePart(
   date: Date,
@@ -63,14 +68,20 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
-function formatEventTime(event: LifeOpsCalendarEvent): string {
+function formatEventTime(
+  event: LifeOpsCalendarEvent,
+  reference?: { asOf: Date; timeZone: string },
+): string {
   if (event.isAllDay) {
     return "all day";
   }
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);
-  const timeZone = event.timezone || undefined;
-  const currentYear = getCalendarYearForDisplay(new Date(), timeZone);
+  const timeZone = reference?.timeZone ?? (event.timezone || undefined);
+  const currentYear = getCalendarYearForDisplay(
+    reference?.asOf ?? new Date(),
+    timeZone,
+  );
   const eventYear = getCalendarYearForDisplay(start, timeZone);
   const includeYear = eventYear !== currentYear;
   const datePart = formatCalendarDatePart(start, timeZone, {
@@ -81,10 +92,16 @@ function formatEventTime(event: LifeOpsCalendarEvent): string {
   const startTime = formatCalendarDatePart(start, timeZone, {
     hour: "numeric",
     minute: "2-digit",
+    ...(reference &&
+    getTimeZoneOffsetMinutes(start, reference.timeZone) !==
+      getTimeZoneOffsetMinutes(end, reference.timeZone)
+      ? { timeZoneName: "short" }
+      : {}),
   });
   const endTime = formatCalendarDatePart(end, timeZone, {
     hour: "numeric",
     minute: "2-digit",
+    ...(reference ? { timeZoneName: "short" } : {}),
   });
   return `${datePart}, ${startTime} – ${endTime}`;
 }
@@ -142,8 +159,49 @@ export function formatNextEventContext(
   if (!context.event) {
     return "No upcoming event was found in the checked calendar window.";
   }
+  let reference: { asOf: Date; timeZone: string } | undefined;
+  let relativeDay: string | undefined;
+  if (
+    context.timeReference &&
+    typeof context.timeReference.asOf === "string" &&
+    !context.event.isAllDay
+  ) {
+    const asOf = new Date(context.timeReference.asOf);
+    const start = new Date(context.event.startAt);
+    const timeZone = context.timeReference.timeZone;
+    if (
+      Number.isFinite(asOf.getTime()) &&
+      Number.isFinite(start.getTime()) &&
+      typeof timeZone === "string" &&
+      timeZone.trim()
+    ) {
+      try {
+        const current = getZonedDateParts(asOf, timeZone);
+        const event = getZonedDateParts(start, timeZone);
+        reference = { asOf, timeZone };
+        for (const [offset, label] of [
+          [-1, "yesterday"],
+          [0, "today"],
+          [1, "tomorrow"],
+        ] as const) {
+          const day = addDaysToLocalDate(current, offset);
+          if (
+            event.year === day.year &&
+            event.month === day.month &&
+            event.day === day.day
+          ) {
+            relativeDay = label;
+            break;
+          }
+        }
+      } catch {
+        // error-policy:J3 malformed optional legacy references cannot support
+        // a relative claim; retain the event's ordinary absolute display.
+      }
+    }
+  }
   const lines = [
-    `**Next event: ${context.event.title}** (${formatEventTime(context.event)})`,
+    `**Next event: ${context.event.title}** (${formatEventTime(context.event, reference)}${relativeDay ? `; ${relativeDay}` : ""})`,
   ];
   if (context.startsInMinutes !== null) {
     lines[0] += ` — ${formatRelativeMinutes(context.startsInMinutes)}`;

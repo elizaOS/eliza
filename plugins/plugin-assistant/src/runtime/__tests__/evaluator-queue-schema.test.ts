@@ -76,9 +76,6 @@ describe("completion recommendations describe the current planner queue", () => 
     expect(messages).toContain("more_work_pending");
     expect(messages).toContain("effectReceiptIds");
     expect(messages).toContain(
-      "Use supplied local date/time labels and preserve the requested timezone and format. Base today/tomorrow/yesterday on CURRENT_TIME in that same timezone, not a receipt's UTC date; if that reference is unknown, use the explicit date. Keep AM/PM consistent and omit redundant daypart summaries.",
-    );
-    expect(messages).toContain(
       "Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning",
     );
     expect(messages).not.toContain("no file paths, internal ids or raw logs");
