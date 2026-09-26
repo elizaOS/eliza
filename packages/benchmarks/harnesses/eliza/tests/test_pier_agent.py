@@ -1,4 +1,7 @@
 """Optional Pier adapter boundary checks; live grading is a separate lane."""
+import asyncio
+import json
+from types import SimpleNamespace
 import hashlib
 import importlib.util
 import tempfile
@@ -44,6 +47,41 @@ class PierAdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(agent.version(), 'test-revision')
         self.assertEqual(agent.network_allowlist().domains, ['api.cerebras.ai'])
         self.assertFalse(agent.SUPPORTS_ATIF)
+
+    def test_runtime_config_projects_public_provider_settings_without_credentials(self):
+        uploads = {}
+        environment = SimpleNamespace(session_id="task", agent_process_env=lambda env: env)
+
+        async def upload(source, destination):
+            uploads[destination] = Path(source).read_text()
+
+        async def execute(*args, **kwargs):
+            return SimpleNamespace(return_code=1)
+
+        async def download_file(source, destination):
+            Path(destination).write_text("")
+
+        async def download_dir(source, destination):
+            Path(destination).mkdir(parents=True, exist_ok=True)
+
+        environment.upload_file = upload
+        environment.exec = execute
+        environment.download_file = download_file
+        environment.download_dir = download_dir
+        agent = self.agent_class(**(self.arguments | {
+            "extra_env": {"CEREBRAS_API_KEY": "fixture", "OPENAI_REASONING_EFFORT": "none",
+                          "UNRELATED_SECRET": "do-not-project"},
+        }))
+        agent.state_dir = "/private-state"
+        with self.assertRaisesRegex(RuntimeError, "Native Eliza CLI exited 1"):
+            asyncio.run(agent.run("Solve the task", environment, SimpleNamespace(metadata={})))
+        settings = json.loads(uploads["/private-state/eliza.json"])["env"]["vars"]
+        self.assertEqual(settings["OPENAI_REASONING_EFFORT"], "none")
+        self.assertEqual(settings["CEREBRAS_MODEL"], "test-model")
+        self.assertEqual(settings["OPENAI_LARGE_MODEL"], "test-model")
+        self.assertEqual(settings["OPENAI_BASE_URL"], "https://api.cerebras.ai/v1")
+        self.assertNotIn("CEREBRAS_API_KEY", settings)
+        self.assertNotIn("UNRELATED_SECRET", settings)
 
 
 if __name__ == '__main__':
