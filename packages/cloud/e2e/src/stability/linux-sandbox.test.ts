@@ -19,6 +19,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -176,6 +177,8 @@ test.skipIf(!hostedLinux)(
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-proof-");
+    const privateEvidence = path.join(directory, "private-evidence.json");
+    await writeFile(privateEvidence, "", { mode: 0o600, flag: "wx" });
     const callerHome = await mkdtemp(
       path.join(repoRoot, ".sandbox-private-home-"),
     );
@@ -264,7 +267,8 @@ test.skipIf(!hostedLinux)(
       await writeFile(
         probe,
         `
-import { fstatSync, readFileSync } from "node:fs";
+import { fstatSync, readFileSync, writeFileSync } from "node:fs";
+writeFileSync(process.env.PROBE_PRIVATE_EVIDENCE, "private-child-evidence", { mode: 0o600 });
 import { spawnSync } from "node:child_process";
 import { connect } from "node:net";
 import { createSocket } from "node:dgram";
@@ -380,6 +384,7 @@ console.log(JSON.stringify({
         environmentPath: await writeSandboxEnvironment(
           directory,
           scenarioChildEnvironment(process.env, {
+            PROBE_PRIVATE_EVIDENCE: privateEvidence,
             PROBE_PARENT_PID: String(process.pid),
             PROBE_ALLOWED_PORT: String(allowedPort),
             PROBE_BLOCKED_PORT: String(blockedPort),
@@ -421,6 +426,10 @@ console.log(JSON.stringify({
       await rm(sentinelDirectory, { recursive: true, force: true });
       expect(stderr).toBe("");
       expect(code).toBe(0);
+      expect(await readFile(privateEvidence, "utf8")).toBe(
+        "private-child-evidence",
+      );
+      expect((await stat(privateEvidence)).uid).toBe(process.getuid?.() ?? -1);
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
       expect(result.uid).toBe(0);
       expect(result.hostUid).not.toBe(process.getuid?.());

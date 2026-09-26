@@ -352,6 +352,10 @@ const childQuiescenceLedgerPath = path.join(
   outputDir,
   "child-quiescence-ledger.json",
 );
+// Keep this private ledger owned by the controller even if the sandbox exits
+// abnormally before its ACL cleanup. The launcher grants the child write access
+// to existing evidence, and writeFile preserves the existing owner and mode.
+await writeFile(childQuiescenceLedgerPath, "", { mode: 0o600, flag: "wx" });
 const childProcessEnvironment = modelProxy
   ? liveModelScenarioChildEnvironment(
       provider as StabilityModelProvider,
