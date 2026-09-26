@@ -1,7 +1,6 @@
 /**
- * Unit tests for `renderDiscordInteractions` — mapping neutral
- * `InteractionBlock` output to Discord action-row/button components.
- * Pure-function assertions.
+ * Tests Discord interaction rendering through the real discord.js component
+ * builder, including connector limits that must be enforced before delivery.
  */
 import type { Content } from "@elizaos/core";
 import {
@@ -14,6 +13,7 @@ import {
 	buildDiscordReplyPayload,
 	renderDiscordInteractions,
 } from "../interactions";
+import { buildDiscordComponents } from "../utils";
 
 describe("renderDiscordInteractions", () => {
 	it("passes plain replies through with no components", () => {
@@ -71,6 +71,35 @@ describe("renderDiscordInteractions", () => {
 			kind: "reply",
 			value: "yes",
 		});
+	});
+
+	it("keeps choice options reachable when labels exceed Discord's 80-character limit", () => {
+		const releaseLabel =
+			"Deploy the production release candidate to the primary cluster and notify the on-call team";
+		const cases = [
+			{
+				text: `Which release do you want?\n[CHOICE:deploy]\na=${releaseLabel}\nb=Cancel\n[/CHOICE]`,
+				expectedLabels: [releaseLabel.slice(0, 80), "Cancel"],
+			},
+			{
+				text: `Which release do you want?\n[CHOICE:deploy]\na=${"A".repeat(90)}\nb=${"B".repeat(90)}\n[/CHOICE]`,
+				expectedLabels: ["A".repeat(80), "B".repeat(80)],
+			},
+		];
+
+		for (const testCase of cases) {
+			const rendered = renderDiscordInteractions({
+				text: testCase.text,
+			} as Content);
+			const built = buildDiscordComponents(rendered.components);
+			const sentLabels =
+				built?.flatMap((row) =>
+					row.toJSON().components.map((component) => component.label),
+				) ?? [];
+
+			expect(sentLabels).toEqual(testCase.expectedLabels);
+			expect(rendered.needsFreeTextReply).toBe(false);
+		}
 	});
 
 	it("uses Discord's 100-byte custom_id budget for longer callback values", () => {
