@@ -19,8 +19,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@elizaos/core")>();
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
   return { ...actual, resolveHostExecutable: () => "/usr/local/bin/docker" };
 });
 
