@@ -109,6 +109,15 @@ class ElizaAgent(BaseAgent):
             env.update({"CEREBRAS_BASE_URL": self.provider_url,
                         "CEREBRAS_MODEL": model, "CEREBRAS_SMALL_MODEL": model,
                         "CEREBRAS_LARGE_MODEL": model})
+        setting_keys = (
+            "OPENAI_BASE_URL", "OPENAI_SMALL_MODEL", "OPENAI_LARGE_MODEL",
+            "CEREBRAS_BASE_URL", "CEREBRAS_MODEL", "CEREBRAS_SMALL_MODEL",
+            "CEREBRAS_LARGE_MODEL", "OPENAI_REASONING_EFFORT",
+        )
+        public_settings = {key: env[key] for key in setting_keys if key in env}
+        runtime_config = self.logs_dir / "runtime-config.json"
+        runtime_config.write_text(json.dumps({"env": {"vars": public_settings}}, indent=2) + "\n")
+        await environment.upload_file(runtime_config, env["ELIZA_CONFIG_PATH"])
         command = shlex.join(["/opt/eliza/bin/bun", "--no-install",
                               "--conditions=eliza-source", "--no-env-file",
                               "/opt/eliza/packages/agent/src/bin.ts", "benchmark",

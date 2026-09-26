@@ -1904,6 +1904,50 @@ describeIfPosix("shellAction", () => {
     }
   });
 
+  it.each(["cwd", "cd", "git-C"] as const)(
+    "preserves trusted coding directory selection through %s",
+    async (mode) => {
+      const roomId = "11111111-aaaa-bbbb-cccc-252525252526";
+      const sessionRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "shell-coding-cwd-"),
+      );
+      const target = path.join(sessionRoot, "checkers");
+      await fs.mkdir(target);
+      await execFileAsync("git", ["init", "-q", target]);
+      try {
+        const { runtime, session } = await makeRuntime();
+        session.setCwd(roomId, sessionRoot);
+        const command =
+          mode === "cd"
+            ? `cd '${target}' && pwd -P`
+            : mode === "git-C"
+              ? `git -C '${target}' rev-parse --show-toplevel`
+              : "pwd";
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            roomId,
+            "Add a checker for the current package, then create a branch and commit the fix.",
+          ),
+          { text: "", values: {}, data: { elizaTrustedCodingMode: true } },
+          { command, ...(mode === "cwd" ? { cwd: target } : {}) },
+        );
+        expect(result.success).toBe(true);
+        expect(result.text).toContain(
+          `--- stdout ---\n${await fs.realpath(target)}\n`,
+        );
+        const data = result.data as Record<string, unknown>;
+        expect(data.command).toBe(command);
+        if (mode === "cwd")
+          expect(await fs.realpath(String(data.cwd))).toBe(
+            await fs.realpath(target),
+          );
+      } finally {
+        await fs.rm(sessionRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("strips unmentioned cd prefixes for running-source checks", async () => {
     const roomId = "11111111-aaaa-bbbb-cccc-252525252525";
     const sessionRoot = path.resolve(

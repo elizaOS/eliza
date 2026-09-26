@@ -51,3 +51,8 @@ not implied by this direct coding adapter.
 For repeated Docker runs, `--no-delete` removes task containers while retaining
 images; Pier 0.3.1 otherwise removes referenced images and may repeatedly hit
 registry quotas. Pin and record the official image digest before each campaign.
+
+The adapter writes model IDs, endpoint URLs, and an explicit
+`OPENAI_REASONING_EFFORT` into private runtime config so the host projects them
+into provider settings. Credentials remain in the agent process environment.
+The retained `runtime-config.json` contains only those public settings.

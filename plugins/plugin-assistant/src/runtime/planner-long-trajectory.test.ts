@@ -2,9 +2,12 @@
 
 import {
   type EffectReceipt,
+  ElizaError,
   type PlannerRuntime,
   type PlannerTrajectory,
+  type RecordedStage,
   runWithStreamingContext,
+  type TrajectoryRecorder,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runPlannerLoop } from "./planner-loop.ts";
@@ -28,6 +31,7 @@ function harness(
   total: number,
   promptTokens = 100,
   discoveryName = "DISCOVER_ACTIONS",
+  reasoningTokens = 0,
 ) {
   let rounds = 0;
   const executed: string[] = [];
@@ -49,6 +53,7 @@ function harness(
         ],
         usage: {
           promptTokens,
+          reasoningTokens,
           completionTokens: 1,
           totalTokens: promptTokens + 1,
         },
@@ -80,16 +85,250 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("cancels a coding rate-limit wait without another inference", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const reason = new Error("caller cancelled during retry");
+      const useModel = vi.fn().mockRejectedValue(
+        Object.assign(new Error("rate limited"), {
+          statusCode: 429,
+          retryAfterMs: 60_000,
+        }),
+      );
+      const turn = runWithStreamingContext(
+        { onStreamChunk: async () => {}, abortSignal: controller.signal },
+        () =>
+          runPlannerLoop({
+            context: { id: "cancel-rate-retry" },
+            codingMode: true,
+            runtime: { useModel },
+            executeToolCall: async () => ({ success: true }),
+          }),
+      );
+      const outcome = turn.then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      controller.abort(reason);
+      expect(await outcome).toEqual({ error: reason });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(useModel).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("keeps the existing coding deadline while waiting for a provider window", async () => {
+    vi.stubEnv("ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS", "1000");
+    vi.useFakeTimers();
+    try {
+      const useModel = vi.fn().mockRejectedValue(
+        Object.assign(new Error("rate limited"), {
+          statusCode: 429,
+          retryAfterMs: 60_000,
+        }),
+      );
+      const turn = runPlannerLoop({
+        context: { id: "deadline-rate-retry" },
+        codingMode: true,
+        runtime: { useModel },
+        executeToolCall: async () => ({ success: true }),
+      });
+      await vi.advanceTimersByTimeAsync(1001);
+      const result = await turn;
+      expect(result.terminalFailure?.code).toBe("PLANNER_MODEL_CALL_TIMEOUT");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(useModel).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("waits for a coding rate-limit window without replaying settled tools", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness(2);
+      const original = h.runtime.useModel;
+      let calls = 0;
+      const inputs: unknown[] = [];
+      h.runtime.useModel = async (...args) => {
+        calls++;
+        inputs.push(args[1]);
+        if (calls === 2)
+          throw Object.assign(new Error("rate limited"), {
+            statusCode: 429,
+            responseHeaders: { "retry-after": "60" },
+          });
+        return original(...args);
+      };
+      const turn = runPlannerLoop({
+        ...h,
+        context: { id: "coding-rate-limit" },
+        codingMode: true,
+      });
+      const settled = turn.then(
+        (result) => ({ result }),
+        (error: unknown) => ({ error }),
+      );
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(calls).toBe(2);
+      expect(h.executed).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      const outcome = await settled;
+      expect(outcome).not.toHaveProperty("error");
+      if (!("result" in outcome)) throw outcome.error;
+      expect(outcome.result.terminalFailure).toBeUndefined();
+      expect(calls).toBe(3);
+      expect(inputs[2]).toBe(inputs[1]);
+      expect(h.executed).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it.each([
+    { codingMode: false, error: { statusCode: 429, retryAfterMs: 10 } },
+    { codingMode: true, error: { statusCode: 429 } },
+    {
+      codingMode: true,
+      error: { statusCode: 429, retryAfterMs: 3_000_000_000 },
+    },
+    {
+      codingMode: true,
+      error: { statusCode: 429, retryAfterMs: 10, code: "insufficient_quota" },
+    },
+    { codingMode: true, error: { statusCode: 500, retryAfterMs: 10 } },
+  ])(
+    "does not add retries outside a temporary coding rate-limit window: %j",
+    async ({ codingMode, error }) => {
+      const useModel = vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("provider failure"), error));
+      await runPlannerLoop({
+        context: { id: "no-rate-retry" },
+        codingMode,
+        runtime: { useModel },
+        executeToolCall: async () => ({ success: true }),
+      }).catch(() => undefined);
+      expect(useModel).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("bounds coding rate-limit retries at three inference attempts", async () => {
+    vi.useFakeTimers();
+    try {
+      const useModel = vi.fn().mockRejectedValue(
+        Object.assign(new Error("rate limited"), {
+          statusCode: 429,
+          retryAfterMs: 10,
+        }),
+      );
+      const turn = runPlannerLoop({
+        context: { id: "bounded-rate-retry" },
+        codingMode: true,
+        runtime: { useModel },
+        executeToolCall: async () => ({ success: true }),
+      }).catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(100);
+      await turn;
+      expect(useModel).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves reported reasoning usage in recorded planner stages", async () => {
+    const stages: RecordedStage[] = [];
+    const recorder = {
+      recordStage: async (_id: string, stage: RecordedStage) => {
+        stages.push(stage);
+      },
+    } as unknown as TrajectoryRecorder;
+    const h = harness(2, 100, "DISCOVER_ACTIONS", 7);
+    await runPlannerLoop({
+      ...h,
+      context: { id: "reasoning-usage" },
+      codingMode: true,
+      recorder,
+      trajectoryId: "reasoning-usage",
+    });
+    const plannerStages = stages.filter((stage) => stage.kind === "planner");
+    expect(plannerStages).toHaveLength(2);
+    expect(
+      plannerStages.every((stage) => stage.model?.usage?.reasoningTokens === 7),
+    ).toBe(true);
+  });
+  it.each([false, true])(
+    "scopes the operator budget to coding turns (coding=%s)",
+    async (codingMode) => {
+      vi.stubEnv("ELIZA_CODING_MAX_PROMPT_TOKENS", "130");
+      try {
+        const h = harness(4, 60);
+        const result = await runPlannerLoop({
+          ...h,
+          context: { id: "operator-budget" },
+          codingMode,
+        });
+        expect(h.executed).toHaveLength(codingMode ? 2 : 4);
+        expect(result.terminalFailure?.kind).toBe(
+          codingMode ? "resource_limit" : undefined,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+  it("retains an explicit host budget ahead of the operator default", async () => {
+    vi.stubEnv("ELIZA_CODING_MAX_PROMPT_TOKENS", "130");
+    try {
+      const h = harness(4, 60);
+      const result = await runPlannerLoop({
+        ...h,
+        context: { id: "host-budget" },
+        codingMode: true,
+        config: { maxTrajectoryPromptTokens: 1000 },
+      });
+      expect(h.executed).toHaveLength(4);
+      expect(result.terminalFailure).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+  it("rejects an invalid coding budget before executing any model or tool", async () => {
+    vi.stubEnv("ELIZA_CODING_MAX_PROMPT_TOKENS", "0");
+    try {
+      const h = harness(4, 60);
+      await expect(
+        runPlannerLoop({
+          ...h,
+          context: { id: "invalid-budget" },
+          codingMode: true,
+        }),
+      ).rejects.toThrow("ELIZA_CODING_MAX_PROMPT_TOKENS");
+      expect(h.rounds).toBe(0);
+      expect(h.executed).toHaveLength(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it.each([false, true])(
     "continues through discovery and more than sixteen domain calls with distinct recall queries (coding=%s)",
     async (codingMode) => {
       const h = harness(40);
+      const modelCalls = vi.spyOn(h.runtime, "useModel");
       const result = await runPlannerLoop({
         ...h,
         context: { id: "long-work" },
         codingMode,
       });
       expect(h.executed).toHaveLength(40);
+      if (codingMode)
+        expect(modelCalls.mock.calls[0]?.[1]).toMatchObject({ stream: false });
+      expect(modelCalls.mock.calls[0]?.[1]).toMatchObject({
+        providerOptions: {
+          eliza: { thinking: "off", preferToolReasoning: codingMode },
+        },
+      });
       expect(
         h.executed.filter((name) => name === "MEMORY_SEARCH"),
       ).toHaveLength(20);
@@ -497,6 +736,164 @@ describe("coding verification recovery scope", () => {
           .filter((step) => step.result)
           .map((step) => step.result?.success),
       ).toEqual([false, true]);
+    },
+  );
+});
+
+describe("coding verification recovery guidance", () => {
+  it("requests an unpiped verifier after a successful but uncertified command", async () => {
+    let round = 0;
+    const commands: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "piped-verification-recovery" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 5) throw new Error("Unexpected planner retry");
+          const name =
+            round === 1
+              ? "WRITE"
+              : round === 2 || round === 4
+                ? "SHELL"
+                : "REPLY";
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `verification-guidance-${round}`,
+                name,
+                arguments:
+                  name === "SHELL"
+                    ? {
+                        command:
+                          round === 2
+                            ? "npx vitest run | tail -5"
+                            : "npx vitest run",
+                        eliza_turn_scope: "more_work_pending",
+                      }
+                    : {
+                        text: "Done",
+                        eliza_turn_scope:
+                          name === "REPLY" ? "final" : "more_work_pending",
+                      },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        if (call.name === "WRITE")
+          return { success: true, text: "File written" };
+        const command = String(call.params?.command);
+        commands.push(command);
+        return {
+          success: true,
+          text: "Tests 14 passed",
+          ...(command === "npx vitest run"
+            ? {
+                verification: {
+                  kind: "test" as const,
+                  status: "passed" as const,
+                  family: "npx vitest",
+                  exitCode: 0,
+                },
+              }
+            : {}),
+        };
+      },
+    });
+    expect(commands).toEqual(["npx vitest run | tail -5", "npx vitest run"]);
+    expect(result.evaluator?.success).toBe(true);
+    const guidance = result.trajectory.evaluatorOutputs
+      .map((output) => output.messageToUser ?? "")
+      .join("\n");
+    expect(guidance).toContain("without pipes");
+    expect(guidance).toContain("standalone");
+    expect(guidance).not.toContain("or diff check");
+  });
+});
+
+describe("terminal coding model failures", () => {
+  it.each([
+    { code: "MODEL_OUTPUT_INCOMPLETE", kind: "provider_issue" },
+    { code: "PROVIDER_CONTEXT_OVERFLOW", kind: "context_overflow" },
+  ])(
+    "preserves settled effects without retry after $code",
+    async ({ code, kind }) => {
+      let calls = 0;
+      let effects = 0;
+      const result = await runPlannerLoop({
+        codingMode: true,
+        context: { id: "incomplete-after-write" },
+        runtime: {
+          useModel: async () => {
+            calls++;
+            if (calls > 1)
+              throw new ElizaError("Provider output stopped", {
+                code,
+                context: { finishReason: "length" },
+              });
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "write-before-incomplete",
+                  name: "WRITE",
+                  arguments: { eliza_turn_scope: "more_work_pending" },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async () => {
+          effects++;
+          return {
+            success: true,
+            text: "File written",
+            effectReceipts: [receipt],
+            data: { file: "changed.ts" },
+          };
+        },
+      });
+      expect(calls).toBe(2);
+      expect(effects).toBe(1);
+      expect(result.trajectory.steps[0]?.result?.effectReceipts).toEqual([
+        receipt,
+      ]);
+      expect(result.trajectory.steps[0]?.result?.data?.file).toBe("changed.ts");
+      expect(result.evaluator?.success).toBe(false);
+      expect(result.terminalFailure).toMatchObject({
+        code,
+        kind,
+        transient: false,
+      });
+      expect(result.finalMessage).toContain("incomplete");
+    },
+  );
+  it.each([
+    {
+      codingMode: false,
+      error: new ElizaError("Provider output stopped", {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+      }),
+    },
+    { codingMode: true, error: new TypeError("Implementation bug") },
+  ])(
+    "does not swallow unrelated failures ($codingMode)",
+    async ({ codingMode, error }) => {
+      await expect(
+        runPlannerLoop({
+          codingMode,
+          context: { id: "propagated-error" },
+          runtime: {
+            useModel: async () => {
+              throw error;
+            },
+          },
+          executeToolCall: async () => ({ success: true }),
+        }),
+      ).rejects.toBe(error);
     },
   );
 });

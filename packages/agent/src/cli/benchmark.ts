@@ -15,6 +15,7 @@ import {
   createMessageMemory,
   type EffectReceipt,
   logger,
+  PI_CODING_ACTION_PROFILE,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -157,7 +158,9 @@ export async function runBenchmarkTask(
       },
       {
         abortSignal,
-        ...(taskType === "coding" ? { codingMode: true } : {}),
+        ...(taskType === "coding"
+          ? { codingMode: true, codingActionProfile: PI_CODING_ACTION_PROFILE }
+          : {}),
         onStreamChunk: async (chunk: string) => {
           if (chunk) streamText += chunk;
         },

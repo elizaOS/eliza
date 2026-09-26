@@ -86,6 +86,7 @@ import {
   projectToolDiagnosticArgs,
   projectToolDiagnosticValue,
   promotedParentRoutingHint,
+  providerRateLimitRetryAt,
   type ResponseSkeleton,
   readSubaction,
   readWorkspaceDeltaReceipt,
@@ -306,9 +307,18 @@ export async function runPlannerLoop(
   params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
   const usage = { promptTokens: 0, completionTokens: 0, modelCalls: 0 };
-  const maxPromptTokens = mergeChainingLoopConfig(
+  const defaultPromptBudget = mergeChainingLoopConfig(
     params.config,
   ).maxTrajectoryPromptTokens;
+  const maxPromptTokens =
+    params.config?.maxTrajectoryPromptTokens ??
+    (params.codingMode === true
+      ? resolvePositivePlannerInt(
+          "ELIZA_CODING_MAX_PROMPT_TOKENS",
+          process.env.ELIZA_CODING_MAX_PROMPT_TOKENS,
+          defaultPromptBudget,
+        )
+      : defaultPromptBudget);
   const observeModelUsage = (sample: {
     promptTokens: number;
     completionTokens: number;
@@ -325,7 +335,11 @@ export async function runPlannerLoop(
       });
     }
   };
-  const trackedParams = { ...params, onModelUsage: observeModelUsage };
+  const trackedParams = {
+    ...params,
+    config: { ...params.config, maxTrajectoryPromptTokens: maxPromptTokens },
+    onModelUsage: observeModelUsage,
+  };
   let result: PlannerLoopResult;
   let liveTrajectory: PlannerTrajectory | undefined;
   try {
@@ -341,6 +355,31 @@ export async function runPlannerLoop(
   } catch (error) {
     // error-policy:J4 Preserve settled effects and pending work at a resource boundary.
     getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (
+      params.codingMode === true &&
+      liveTrajectory &&
+      error instanceof ElizaError &&
+      (error.code === "MODEL_OUTPUT_INCOMPLETE" ||
+        error.code === PROVIDER_CONTEXT_OVERFLOW)
+    ) {
+      const contextOverflow = error.code === PROVIDER_CONTEXT_OVERFLOW;
+      const message = contextOverflow
+        ? "The coding task remains incomplete because its full context exceeded the model's capacity. Earlier recorded tool outcomes are preserved; no context was discarded to force completion."
+        : "The model returned an incomplete response, so the coding task could not finish. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
+      return {
+        status: "finished",
+        trajectory: liveTrajectory,
+        evaluator: { success: false, decision: "FINISH", thought: message },
+        terminalFailure: {
+          kind: contextOverflow ? "context_overflow" : "provider_issue",
+          code: error.code,
+          transient: false,
+          message,
+        },
+        finalMessage: message,
+        modelUsage: usage,
+      };
+    }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
     const budget =
@@ -3315,7 +3354,48 @@ async function dispatchWithCodingCallTimeout<T>(args: {
     (timer as { unref?: () => void }).unref?.();
   });
   try {
-    return await Promise.race([dispatch(controller.signal), timeout]);
+    const dispatchWithRateLimitRetry = async (): Promise<T> => {
+      for (let attempt = 0; ; attempt++) {
+        controller.signal.throwIfAborted();
+        try {
+          return await dispatch(controller.signal);
+        } catch (error) {
+          controller.signal.throwIfAborted();
+          const retryAt = providerRateLimitRetryAt(error);
+          // Only an explicit temporary provider window qualifies. Retry the
+          // inference, never the already-settled tools, under the same deadline.
+          if (attempt >= 2 || retryAt === undefined) throw error;
+          const delayMs = Math.max(0, Math.ceil(retryAt - Date.now()));
+          // Node timers overflow above this bound; never turn a long provider
+          // cooldown into an immediate retry.
+          if (delayMs > 2_147_483_647) throw error;
+          args.logger?.warn?.(
+            {
+              src: "planner-loop",
+              iteration: args.iteration,
+              attempt: attempt + 1,
+              delayMs,
+            },
+            "[planner-loop] coding inference is rate limited; waiting for the provider window",
+          );
+          await new Promise<void>((resolve, reject) => {
+            const onAbort = (): void => {
+              clearTimeout(retryTimer);
+              reject(controller.signal.reason);
+            };
+            const retryTimer = setTimeout(() => {
+              controller.signal.removeEventListener("abort", onAbort);
+              resolve();
+            }, delayMs);
+            controller.signal.addEventListener("abort", onAbort, {
+              once: true,
+            });
+            if (controller.signal.aborted) onAbort();
+          });
+        }
+      }
+    };
+    return await Promise.race([dispatchWithRateLimitRetry(), timeout]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     if (ambientSignal)
@@ -3750,9 +3830,11 @@ async function dispatchPlannerModelCall(params: {
     grammar?: string;
     spanSamplerPlan?: SpanSamplerPlan;
     maxTokens?: number;
+    stream?: boolean;
     signal?: AbortSignal;
   } = {
     messages: renderedInput.messages,
+    ...(params.trajectory.codingMode === true ? { stream: false } : {}),
     promptSegments: renderedInput.promptSegments,
     providerOptions: cacheProviderOptions({
       prefixHash,
@@ -3777,6 +3859,7 @@ async function dispatchPlannerModelCall(params: {
       ...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
         .eliza ?? {}),
       thinking: "off",
+      preferToolReasoning: params.trajectory.codingMode === true,
     },
   };
   if (hasTools) {
@@ -4436,6 +4519,9 @@ function extractUsage(
     if (typeof cachedPrompt === "number") {
       out.cacheReadInputTokens = cachedPrompt;
     }
+  }
+  if (typeof usage.reasoningTokens === "number") {
+    out.reasoningTokens = usage.reasoningTokens;
   }
   const cacheCreation = usage.cacheCreationInputTokens;
   if (typeof cacheCreation === "number") {
@@ -5574,7 +5660,7 @@ function deferCodingCompletionUntilMutationVerified(args: {
           : "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
         messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
           ? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
-          : "Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+          : "Run the narrowest relevant test, typecheck, lint, or build with SHELL as a standalone foreground command, without pipes (including head, tail, or tee), semicolons, background execution, or failure-masking operators. Use the cwd parameter or a cd directory && verifier chain. Inspection and git diff --check do not satisfy this verification requirement. A successful command must leave the workspace unchanged.",
       };
   args.trajectory.evaluatorOutputs.push(
     projectToolDiagnosticValue(
