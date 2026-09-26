@@ -80,11 +80,17 @@ export function convertMarkdownToTelegram(markdown: string): string {
   // Temporarily replace recognized markdown tokens with sentinel strings.
   // Each sentinel is a string like "\u0000{index}\u0000".
   const replacements: string[] = [];
+  // Escaped inner text of each bold replacement, by sentinel index, so a
+  // heading (itself rendered bold) can absorb bold spans in its content
+  // instead of nesting them: MarkdownV2 has no nested bold, and `**` is the
+  // sequence Telegram rejects as "can't find end of bold entity".
+  const boldInner = new Map<number, string>();
   function storeReplacement(formatted: string): string {
     const sentinel = `\u0000${replacements.length}\u0000`;
     replacements.push(formatted);
     return sentinel;
   }
+  const SENTINEL_REPLACE = new RegExp(`${NUL_CHAR}(\\d+)${NUL_CHAR}`, "g");
 
   // Sentinels are delimited by NUL, so a NUL arriving in the caller's text can
   // forge one: an in-range index splices that replacement into a position the
@@ -131,6 +137,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
   converted = converted.replace(/\*\*([^*]+)\*\*/g, (_match, content) => {
     const formattedContent = escapePlainText(content);
     const formatted = `*${formattedContent}*`;
+    boldInner.set(replacements.length, formattedContent);
     return storeReplacement(formatted);
   });
 
@@ -189,14 +196,20 @@ export function convertMarkdownToTelegram(markdown: string): string {
       if (!trimmed) {
         return "";
       }
-      const formatted = `*${escapePlainText(trimmed)}*`;
+      // The whole heading becomes one bold span, so bold already stored for
+      // its content is flattened to that content's escaped text; otherwise
+      // the resolved output would read `**Summary**` or `**Bold* header*`.
+      const flattened = trimmed.replace(SENTINEL_REPLACE, (sentinel, index) => {
+        const inner = boldInner.get(Number.parseInt(index, 10));
+        return inner === undefined ? sentinel : storeReplacement(inner);
+      });
+      const formatted = `*${escapePlainText(flattened)}*`;
       return storeReplacement(formatted);
     },
   );
 
   const SENTINEL_PATTERN = new RegExp(`(${NUL_CHAR}\\d+${NUL_CHAR})`, "g");
   const SENTINEL_TEST = new RegExp(`^${NUL_CHAR}\\d+${NUL_CHAR}$`);
-  const SENTINEL_REPLACE = new RegExp(`${NUL_CHAR}(\\d+)${NUL_CHAR}`, "g");
 
   const finalEscaped = converted
     .split(SENTINEL_PATTERN)
