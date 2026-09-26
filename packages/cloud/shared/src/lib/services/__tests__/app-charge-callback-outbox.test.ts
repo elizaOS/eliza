@@ -163,7 +163,9 @@ describe("app charge callback outbox", () => {
   });
 
   test("app charge status and callback intent commit together and replay recovers deletion", async () => {
-    await dbWrite.execute(`UPDATE crypto_payments SET status='pending' WHERE id='${CHARGE_ID}'`);
+    await dbWrite.execute(
+      `UPDATE crypto_payments SET status='pending', expected_amount='10.123456789' WHERE id='${CHARGE_ID}'`,
+    );
     const settlement = {
       appId: params.appId,
       chargeRequestId: CHARGE_ID,
