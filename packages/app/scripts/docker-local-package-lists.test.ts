@@ -1,7 +1,14 @@
 /** Tests manifest-driven Docker runtime closure with real isolated workspace manifests. */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +36,49 @@ afterEach(() => {
 });
 
 describe("Docker runtime dependency closure", () => {
-  it("emits the JavaScript dependencies required by the shipped UI exports", () => {
+  it("loads plugin UI grammars through the image's pinned tsx loader", () => {
+    const require = createRequire(import.meta.url);
+    const dockerfile = readFileSync(
+      new URL("../deploy/Dockerfile.ci", import.meta.url),
+      "utf8",
+    );
+    const loaderVersion = dockerfile.match(/--no-save tsx@([\d.]+)/)?.[1];
+    expect(loaderVersion).toBe(require("tsx/package.json").version);
+    const output = execFileSync(
+      process.execPath,
+      [
+        "--import",
+        require.resolve("tsx"),
+        "--input-type=module",
+        "--eval",
+        `
+          import { createElement } from 'react';
+          import { renderToStaticMarkup } from 'react-dom/server';
+          import { SyntaxHighlighter } from './prism-light.ts';
+          process.stdout.write(renderToStaticMarkup(
+            createElement(SyntaxHighlighter, { language: 'typescript' }, 'const answer = 42;'),
+          ));
+        `,
+      ],
+      {
+        cwd: fileURLToPath(
+          new URL("../../ui/src/cloud-ui/components/code/", import.meta.url),
+        ),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          TSX_TSCONFIG_PATH: fileURLToPath(
+            new URL("../deploy/tsx-runtime-tsconfig.json", import.meta.url),
+          ),
+        },
+      },
+    );
+    expect(output).toContain("<pre");
+    expect(output).toContain("<span");
+    expect(output.replace(/<[^>]+>/g, "")).toBe("const answer = 42;");
+  });
+
+  it("emits the JavaScript dependencies required by shipped plugins and UI exports", () => {
     const names = execFileSync(
       process.execPath,
       [
@@ -42,6 +91,7 @@ describe("Docker runtime dependency closure", () => {
     )
       .trim()
       .split("\n");
+    expect(names).toContain("git-workspace-service");
     expect(names).toContain("@capacitor/core");
     expect(names).toContain("@radix-ui/react-tooltip");
     expect(names).not.toContain("@capacitor/cli");

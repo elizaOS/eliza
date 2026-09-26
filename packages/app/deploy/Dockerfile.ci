@@ -116,7 +116,7 @@ RUN find node_modules -name '*.map' -delete 2>/dev/null; \
 # at `/opt/tsx` (referenced absolutely by APP_CMD_START). Idempotent and
 # version-pinned.
 FROM node:${NODE_VERSION}-slim AS tsx
-RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
+RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.23.15 \
   && npm cache clean --force
 
 # Workflow execution uses Bun's SQLite runtime even when the agent entrypoint
