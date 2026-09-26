@@ -48,6 +48,7 @@ export const availableToolsProvider: Provider = {
       "Use absolute workspace paths unless a tool says it defaults to session cwd. Configured private/system paths are blocked.",
       "SHELL background subactions: start_background returns a stable handle; poll_background reads complete incremental stdout/stderr with offsets and rejects if the complete-capture ceiling is exceeded; write_background sends stdin; kill_background terminates; list_background shows sessions.",
       "",
+      "Discover relevant source paths with git ls-files or rg --files when available, then search those paths. Avoid unbounded recursive listings such as ls -R that include node_modules, dependency caches, or generated build output. Inspect dependency or generated files by explicit path when the task requires them; do not dump the whole repository to find a few source files.",
       ...TOOL_NAMES.map((n) => `- ${n}`),
     ];
     return {
