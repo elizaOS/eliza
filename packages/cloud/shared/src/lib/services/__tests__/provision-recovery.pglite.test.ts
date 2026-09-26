@@ -320,6 +320,11 @@ test(
         },
       ]);
       const row = await readAgent(fixture.agentId);
+      // The row was never routable and reports the failed recovery.
+      expect(row.status).toBe("error");
+      expect(row.error_message).toContain("HTTP 503");
+      // A transient failure keeps its original cause so the job can retry.
+      expect((result.failureCause as Error).message).toContain("HTTP 503");
       expect(row.replacement_cleanup_sandbox_id).toBeNull();
       expect(row.replacement_cleanup_container_id).toBeNull();
       // The adopted slot is released exactly once by the fenced retirement.
@@ -363,6 +368,209 @@ test(
       expect(result.error).toContain("replacement cleanup remains pending");
       expect(log.nameStops).toEqual([]);
       expect(log.exactStops).toEqual([]);
+    } finally {
+      push.mockRestore();
+      ensure.mockRestore();
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "first creation without a backup commits readiness only after the restore tail",
+  async () => {
+    const fixture = await seedAgent();
+    const log: ProviderLog = { creates: 0, exactStops: [], nameStops: [] };
+    const service = new ElizaSandboxService(dockerProvider(fixture, log));
+    const ensure = ensureRuntimeStub();
+    const push = spyOn(SandboxBackup.prototype, "pushState");
+    try {
+      const result = await service.provision(fixture.agentId, fixture.orgId);
+      expect(result.success).toBe(true);
+      expect(push).not.toHaveBeenCalled();
+      const row = await readAgent(fixture.agentId);
+      expect(row.status).toBe("running");
+      expect(row.sandbox_id).toBe(fixture.containerName);
+      expect(log.exactStops).toEqual([]);
+      expect(await allocation()).toBe(1);
+    } finally {
+      push.mockRestore();
+      ensure.mockRestore();
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a delayed restore keeps the row non-routable and background readiness cannot publish it",
+  async () => {
+    const fixture = await seedAgent();
+    await seedBackup(fixture.agentId, "delayed-restore");
+    const log: ProviderLog = { creates: 0, exactStops: [], nameStops: [] };
+    const service = new ElizaSandboxService(dockerProvider(fixture, log));
+    const ensure = ensureRuntimeStub();
+    let releaseRestore!: () => void;
+    const restoreReleased = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    let restoreStarted!: () => void;
+    const restoreEntered = new Promise<void>((resolve) => {
+      restoreStarted = resolve;
+    });
+    const applied: unknown[] = [];
+    const push = spyOn(SandboxBackup.prototype, "pushState").mockImplementation(
+      async (_bridgeUrl, state) => {
+        restoreStarted();
+        await restoreReleased;
+        applied.push(state);
+      },
+    );
+    try {
+      const provisioning = service.provision(fixture.agentId, fixture.orgId);
+      await restoreEntered;
+      const during = await readAgent(fixture.agentId);
+      expect(during.status).toBe("provisioning");
+      expect(during.sandbox_id).toBe(fixture.containerName);
+      // The daemon stuck-provisioning reconciler sees a healthy container but
+      // cannot prove the backup was applied, so it must not open readiness.
+      expect(await service.reconcileStuckProvisioning(fixture.agentId, fixture.orgId)).toBe(
+        "unresolved",
+      );
+      expect((await readAgent(fixture.agentId)).status).toBe("provisioning");
+      releaseRestore();
+      const result = await provisioning;
+      expect(result.success).toBe(true);
+      expect(applied).toEqual([
+        { memories: [], config: {}, workspaceFiles: { "marker.txt": "delayed-restore" } },
+      ]);
+      expect((await readAgent(fixture.agentId)).status).toBe("running");
+    } finally {
+      releaseRestore();
+      push.mockRestore();
+      ensure.mockRestore();
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "background readiness still recovers a healthy first-creation row with no backup",
+  async () => {
+    const fixture = await seedAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "provisioning",
+        sandbox_id: fixture.containerName,
+        node_id: NODE_ID,
+        container_name: fixture.containerName,
+        bridge_url: "http://127.0.0.1:1",
+        health_url: "http://127.0.0.1:1/health",
+      })
+      .where(eq(agentSandboxes.id, fixture.agentId));
+    const log: ProviderLog = { creates: 0, exactStops: [], nameStops: [] };
+    const service = new ElizaSandboxService(dockerProvider(fixture, log));
+    expect(await service.reconcileStuckProvisioning(fixture.agentId, fixture.orgId)).toBe(
+      "recovered",
+    );
+    expect((await readAgent(fixture.agentId)).status).toBe("running");
+  },
+  TEST_TIMEOUT,
+);
+
+const unrecoverable: Array<{
+  name: string;
+  error?: () => Error;
+  reconstructNull?: true;
+  executionTier?: "custom";
+}> = [
+  {
+    name: "undecryptable snapshot",
+    error: () => Object.assign(new Error("tag mismatch"), { name: "AeadError" }),
+  },
+  {
+    name: "restore authentication failure",
+    error: () => new Error("State restore failed: HTTP 401 {}"),
+  },
+  {
+    name: "missing snapshot object",
+    error: () => new Error("State restore failed: HTTP 410 gone"),
+  },
+  {
+    name: "custom image without a restore endpoint",
+    error: () => new Error("State restore failed: HTTP 404 not found"),
+    executionTier: "custom",
+  },
+  { name: "null reconstruction", reconstructNull: true },
+];
+
+for (const scenario of unrecoverable) {
+  test(
+    `${scenario.name} fails closed, preserves the chain and never boots empty`,
+    async () => {
+      const fixture = await seedAgent();
+      if (scenario.executionTier) {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ execution_tier: scenario.executionTier })
+          .where(eq(agentSandboxes.id, fixture.agentId));
+      }
+      const olderBackup = await seedBackup(fixture.agentId, `${scenario.name}-older`);
+      const latestBackup = await seedBackup(fixture.agentId, `${scenario.name}-latest`);
+      const log: ProviderLog = { creates: 0, exactStops: [], nameStops: [] };
+      const service = new ElizaSandboxService(dockerProvider(fixture, log));
+      const ensure = ensureRuntimeStub();
+      const { agentSandboxesRepository } = await import("../../../db/repositories/agent-sandboxes");
+      const reconstruct = scenario.reconstructNull
+        ? spyOn(agentSandboxesRepository, "getReconstructedBackupState").mockResolvedValue(
+            undefined,
+          )
+        : undefined;
+      const push = spyOn(SandboxBackup.prototype, "pushState").mockImplementation(async () => {
+        if (scenario.error) throw scenario.error();
+      });
+      try {
+        const result = await service.provision(fixture.agentId, fixture.orgId);
+        expect(result.success).toBe(false);
+        expect(result.failureCause).toMatchObject({
+          code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+        });
+        expect(result.error).toContain("forceFreshBoot");
+        const row = await readAgent(fixture.agentId);
+        expect(row.status).toBe("error");
+        // The failed candidate is retired by exact identity, never by name.
+        expect(log.nameStops).toEqual([]);
+        expect(log.exactStops).toHaveLength(1);
+        expect(await allocation()).toBe(0);
+        // Nothing prunes the retained chain on any unrecoverable shape.
+        expect(await backupIds(fixture.agentId)).toEqual([olderBackup, latestBackup].sort());
+      } finally {
+        push.mockRestore();
+        reconstruct?.mockRestore();
+        ensure.mockRestore();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+}
+
+test(
+  "explicit fresh-boot consent boots without restore and still retains the chain",
+  async () => {
+    const fixture = await seedAgent();
+    const backupId = await seedBackup(fixture.agentId, "consented");
+    const log: ProviderLog = { creates: 0, exactStops: [], nameStops: [] };
+    const service = new ElizaSandboxService(dockerProvider(fixture, log));
+    const ensure = ensureRuntimeStub();
+    const push = spyOn(SandboxBackup.prototype, "pushState");
+    try {
+      const result = await service.provision(fixture.agentId, fixture.orgId, {
+        kind: "fresh-boot",
+      });
+      expect(result.success).toBe(true);
+      expect(push).not.toHaveBeenCalled();
+      expect((await readAgent(fixture.agentId)).status).toBe("running");
+      expect(await backupIds(fixture.agentId)).toEqual([backupId]);
     } finally {
       push.mockRestore();
       ensure.mockRestore();

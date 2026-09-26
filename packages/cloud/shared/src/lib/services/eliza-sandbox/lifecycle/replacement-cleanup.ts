@@ -630,7 +630,7 @@ export class SandboxReplacementCleanup {
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
           AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
-          AND status IN ('provisioning', 'running')
+          AND status = 'provisioning'
           AND environment_revision = ${expectedEnvironmentRevision}
           AND sandbox_id = ${incoming.sandboxId}
           AND node_id = ${incoming.nodeId}

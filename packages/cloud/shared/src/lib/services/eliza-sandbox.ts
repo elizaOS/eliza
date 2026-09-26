@@ -3121,6 +3121,18 @@ export class ElizaSandboxService {
     // Paid provisioning may be midway through restoring application state.
     // Health alone must not publish it; the owning provision job completes it.
     if (provider.computeFundingCapability === "host-lease-v1") return "unresolved";
+    // A container that is healthy but was never proven to have applied the
+    // agent's known backup must not become routable (#30697). Health says
+    // nothing about restored state; only the provision job's restore tail may
+    // commit readiness. First creation without any backup keeps the #15310
+    // transport-blip recovery.
+    if (await agentSandboxesRepository.getLatestBackup(agentId)) {
+      logger.warn(
+        "[agent-sandbox] Stuck provisioning row retains an unapplied backup; leaving it for the provision job",
+        { agentId },
+      );
+      return "unresolved";
+    }
 
     const handle: SandboxHandle = {
       sandboxId: probeSource.sandbox_id,
@@ -3460,11 +3472,6 @@ export class ElizaSandboxService {
     ...args: Parameters<SandboxBackup["persistSnapshotWithinTransaction"]>
   ): ReturnType<SandboxBackup["persistSnapshotWithinTransaction"]> {
     return this.#backup.persistSnapshotWithinTransaction(...args);
-  }
-  private degradeUnrecoverableSnapshot(
-    ...args: Parameters<SandboxProvision["degradeUnrecoverableSnapshot"]>
-  ): ReturnType<SandboxProvision["degradeUnrecoverableSnapshot"]> {
-    return this.#provision.degradeUnrecoverableSnapshot(...args);
   }
   private markError(
     ...args: Parameters<SandboxProvision["markError"]>
