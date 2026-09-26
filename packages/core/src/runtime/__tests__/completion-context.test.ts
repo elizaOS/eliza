@@ -639,42 +639,192 @@ describe("source-bound completion relevance", () => {
 		).toBeUndefined();
 	});
 
-	it("cannot loop repeated full-context requests or deliver an intermediate reply", async () => {
-		const context = withSelection(historyContext());
-		const recorded = new Map<string, RecordedStage>();
-		const recorder: TrajectoryRecorder = {
-			startTrajectory: () => "repeated-context-restore",
-			recordStage: async (_id, stage) => {
-				recorded.set(stage.stageId, stage);
-			},
-			endTrajectory: async () => undefined,
-			load: async () => null,
-			list: async () => [],
-		};
-		const useModel = vi.fn(async () =>
-			JSON.stringify({
-				thought: "Need full history.",
-				success: false,
-				decision: "CONTINUE",
-				contextRequest: "full",
-			}),
-		);
-		const effect = vi.fn();
-		const output = await runEvaluator({
-			runtime: { useModel },
-			context,
-			trajectory: trajectory(context),
-			recorder,
-			trajectoryId: "repeated-context-restore",
-			effects: { messageToUser: effect },
-		});
-		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(recorded.size).toBe(2);
-		expect([...recorded.keys()][0]).toContain("-attempt-0");
-		expect([...recorded.keys()][1]).not.toContain("-attempt-");
-		expect(output.protocolFailure).toBe(true);
-		expect(effect).not.toHaveBeenCalled();
-	});
+	it.each(
+		["history", "providers", "full"].flatMap((scope) =>
+			["legacy", "decision"].map((wire) => ({ scope, wire })),
+		),
+	)(
+		"bounds repeated $wire $scope requests before effects",
+		async ({ scope, wire }) => {
+			const context = withSelection(historyContext());
+			context.metadata = {
+				...context.metadata,
+				providerDiscoveryEnabled: true,
+			};
+			context.events.push({
+				id: "provider:guide",
+				type: "provider",
+				name: "GUIDE",
+				text: `Stale guide ${"detail ".repeat(100)}`,
+				discoveryText: "Guide reference available.",
+			});
+			const before = structuredClone(context);
+			const stored = trajectory(context);
+			const originalQueue = structuredClone(stored.plannedQueue);
+			const recorded = new Map<string, RecordedStage>();
+			const recorder: TrajectoryRecorder = {
+				startTrajectory: () => "repeated-context-restore",
+				recordStage: async (_id, stage) => {
+					recorded.set(stage.stageId, stage);
+				},
+				endTrajectory: async () => undefined,
+				load: async () => null,
+				list: async () => [],
+			};
+			const restoreProviderContext = vi.fn(async (original: ContextObject) => ({
+				...original,
+				events: original.events.map((event) =>
+					event.id === "provider:guide"
+						? { ...event, text: "Fresh authorized guide" }
+						: event,
+				),
+			}));
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					thought: "Need missing original context.",
+					success: false,
+					...(wire === "legacy"
+						? { decision: "CONTINUE", contextRequest: scope }
+						: { decision: `RESTORE_${scope.toUpperCase()}` }),
+				}),
+			);
+			const effect = vi.fn();
+			const now = 1_790_400_000_000;
+			const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+			let output: Awaited<ReturnType<typeof runEvaluator>>;
+			try {
+				output = await runEvaluator({
+					runtime: { useModel, restoreProviderContext },
+					context,
+					trajectory: stored,
+					recorder,
+					trajectoryId: "repeated-context-restore",
+					effects: { messageToUser: effect, copyToClipboard: effect },
+				});
+			} finally {
+				clock.mockRestore();
+			}
+			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(restoreProviderContext).toHaveBeenCalledTimes(
+				scope === "history" ? 0 : 1,
+			);
+			expect(recorded.size).toBe(2);
+			expect([...recorded.values()].map((stage) => stage.startedAt)).toEqual([
+				now,
+				now,
+			]);
+			expect(output.protocolFailure).toBe(true);
+			expect(output.parseError).toBe(
+				"Full completion context was already supplied",
+			);
+			expect(effect).not.toHaveBeenCalled();
+			expect(stored.plannedQueue).toEqual(originalQueue);
+			expect(context).toEqual(before);
+		},
+	);
+
+	it.each(["legacy", "decision"])(
+		"restores history then providers once through the %s protocol",
+		async (wire) => {
+			const context = withSelection(historyContext());
+			context.metadata = {
+				...context.metadata,
+				providerDiscoveryEnabled: true,
+			};
+			context.events.push({
+				id: "provider:guide",
+				type: "provider",
+				name: "GUIDE",
+				text: `Stale guide ${"detail ".repeat(100)}`,
+				discoveryText: "Guide reference available.",
+			});
+			const before = structuredClone(context);
+			const stored = trajectory(context);
+			const originalQueue = structuredClone(stored.plannedQueue);
+			const messages: string[] = [];
+			const recorded = new Map<string, RecordedStage>();
+			const recorder: TrajectoryRecorder = {
+				startTrajectory: () => "sequential-context-restore",
+				recordStage: async (_id, stage) => {
+					recorded.set(stage.stageId, stage);
+				},
+				endTrajectory: async () => undefined,
+				load: async () => null,
+				list: async () => [],
+			};
+			const effect = vi.fn();
+			const restoreProviderContext = vi.fn(async (original: ContextObject) => ({
+				...original,
+				events: original.events.map((event) =>
+					event.id === "provider:guide"
+						? { ...event, text: "Fresh authorized guide" }
+						: event,
+				),
+			}));
+			const useModel = vi.fn(
+				async (_type: string, params: { messages?: ChatMessage[] }) => {
+					messages.push(JSON.stringify(params.messages));
+					expect(effect).not.toHaveBeenCalled();
+					const scope = messages.length === 1 ? "history" : "providers";
+					return JSON.stringify({
+						thought: "Need the remaining original source.",
+						success: false,
+						...(wire === "legacy"
+							? { decision: "CONTINUE", contextRequest: scope }
+							: { decision: `RESTORE_${scope.toUpperCase()}` }),
+					});
+				},
+			);
+			const now = 1_790_400_000_000;
+			const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+			let output: Awaited<ReturnType<typeof runEvaluator>>;
+			try {
+				output = await runEvaluator({
+					runtime: { useModel, restoreProviderContext },
+					context,
+					trajectory: stored,
+					recorder,
+					trajectoryId: "sequential-context-restore",
+					effects: { messageToUser: effect, copyToClipboard: effect },
+				});
+			} finally {
+				clock.mockRestore();
+			}
+			expect(useModel).toHaveBeenCalledTimes(3);
+			expect(recorded.size).toBe(3);
+			expect([...recorded.values()].map((stage) => stage.startedAt)).toEqual([
+				now,
+				now,
+				now,
+			]);
+			expect(messages[0]).not.toContain(
+				"Old completed unrelated weather request.",
+			);
+			expect(messages[1]).toContain("Old completed unrelated weather request.");
+			expect(messages[1]).not.toContain("Fresh authorized guide");
+			expect(messages[2]).toContain("Old completed unrelated weather request.");
+			expect(messages[2]).toContain("Fresh authorized guide");
+			for (const message of messages)
+				expect(message).not.toContain("Stale guide");
+			expect(restoreProviderContext).toHaveBeenCalledTimes(1);
+			expect(output.protocolFailure).toBe(true);
+			expect(output.parseError).toBe(
+				"Full completion context was already supplied",
+			);
+			expect(
+				stored.modelBaseContext?.metadata?.completionContext,
+			).toBeUndefined();
+			expect(
+				stored.modelBaseContext?.metadata?.plannerQueryTokensRestored,
+			).toBe(true);
+			expect(stored.modelBaseContext?.metadata?.providerDiscoveryEnabled).toBe(
+				false,
+			);
+			expect(stored.plannedQueue).toEqual(originalQueue);
+			expect(effect).not.toHaveBeenCalled();
+			expect(context).toEqual(before);
+		},
+	);
 
 	it("rejects non-object selectors rather than manufacturing an empty selection", () => {
 		for (const input of [null, false, [], "h1", 1])
@@ -1333,7 +1483,7 @@ describe("planner source selection and restoration", () => {
 			runtime: { useModel, restoreProviderContext: restore },
 		});
 		expect(input).toContain("not bodies or timestamps");
-		expect(input).toContain("full only when both");
+		expect(input).toContain("RESTORE_FULL only when both");
 		expect(input).toContain("Missing live-record fields are tool work");
 		expect(input).toContain("Selected prior dialogue sources");
 		expect(input).not.toContain("Only Stage-1-selected");
