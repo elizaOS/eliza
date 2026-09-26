@@ -147,19 +147,22 @@ export class ResponseHandlerFieldRegistry {
 	 * order — matching how the post-turn EvaluatorService composes its prompt
 	 * at services/evaluator.ts:327-333.
 	 *
-	 * Returns both the rendered string and the list of active field names
-	 * (for the trace).
+	 * Request-scoped field facts are returned separately as context; callers
+	 * must render them in dynamic input, not the stable instructions or schema.
+	 * Also returns active field names for the trace.
 	 */
 	async composePromptSlices(
 		ctx: ResponseHandlerFieldContext,
 		options: ResponseHandlerFieldSelectionOptions = {},
 	): Promise<{
 		rendered: string;
+		context: string;
 		activeFieldNames: string[];
 		skippedFieldNames: string[];
 	}> {
 		const sorted = this.sortedEvaluators(options);
 		const sections: string[] = [];
+		const context: string[] = [];
 		const active: string[] = [];
 		const skipped: string[] = [];
 		for (const evaluator of sorted) {
@@ -170,6 +173,8 @@ export class ResponseHandlerFieldRegistry {
 				active.push(evaluator.name);
 				const slice = evaluator.description;
 				sections.push(`### ${evaluator.name}\n${slice}`);
+				const facts = await evaluator.getContext?.(ctx);
+				if (facts?.trim()) context.push(`### ${evaluator.name}\n${facts}`);
 			} else {
 				skipped.push(evaluator.name);
 				// Field stays declared in schema; instruct LLM to emit its empty value.
@@ -180,6 +185,7 @@ export class ResponseHandlerFieldRegistry {
 		}
 		return {
 			rendered: sections.join("\n\n"),
+			context: context.join("\n\n"),
 			activeFieldNames: active,
 			skippedFieldNames: skipped,
 		};

@@ -525,7 +525,7 @@ export function getAppSlugFromPath(
 export function titleForTab(tab: Tab): string {
   switch (tab) {
     case "chat":
-      return "Messages";
+      return "Home";
     case "phone":
       return "Phone";
     case "messages":
