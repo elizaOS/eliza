@@ -92,7 +92,8 @@ export interface SendHandlerReceipt {
 /** The final provider id from a non-empty delivery receipt. */
 export function primarySendHandlerProviderMessageId(
 	receipt: SendHandlerReceipt,
-): string {
+): string | undefined {
+	if (receipt.evidenceKind === "local-effect") return undefined;
 	return receipt.providerMessageIds[receipt.providerMessageIds.length - 1];
 }
 
@@ -273,7 +274,7 @@ export type SendHandlerDisposition =
 			kind: "partially_delivered";
 			replayed: boolean;
 			receipt: SendHandlerReceipt;
-			providerMessageId: string;
+			providerMessageId?: string;
 			memories: readonly Memory[];
 			code: string;
 			message: string;

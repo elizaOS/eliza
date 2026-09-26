@@ -621,9 +621,13 @@ describe("MESSAGE op=send delivery evidence", () => {
       success: true,
       data: {
         evidenceKind: "local-effect",
-        responseMessageId: "native-completion-1",
+        localEffectIds: ["native-completion-1"],
       },
     });
+    expect(result.data).not.toHaveProperty("providerMessageIds");
+    expect(
+      (result.data as Record<string, unknown>).responseMessageId,
+    ).toBeUndefined();
     expect(upsertMemory).toHaveBeenCalled();
     const stored = upsertMemory.mock.calls[0]?.[0] as Memory | undefined;
     expect(stored?.metadata).toMatchObject({

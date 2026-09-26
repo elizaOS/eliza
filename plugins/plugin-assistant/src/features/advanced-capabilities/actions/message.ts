@@ -3300,7 +3300,9 @@ async function handleSend(
           connectorCode: disposition.code,
           acceptance: "partial",
           responseMessageId: disposition.providerMessageId,
-          providerMessageIds: disposition.receipt.providerMessageIds,
+          ...(disposition.receipt.evidenceKind === "local-effect"
+            ? { localEffectIds: disposition.receipt.providerMessageIds }
+            : { providerMessageIds: disposition.receipt.providerMessageIds }),
           // Absent discriminator documents the provider default; the structured
           // surface states it explicitly so metadata consumers cannot misread
           // local-effect markers as provider-backed ids.
@@ -3340,7 +3342,9 @@ async function handleSend(
           deliveryStatus: "delivered",
           acceptance: "accepted",
           responseMessageId: providerMessageId,
-          providerMessageIds: disposition.receipt.providerMessageIds,
+          ...(disposition.receipt.evidenceKind === "local-effect"
+            ? { localEffectIds: disposition.receipt.providerMessageIds }
+            : { providerMessageIds: disposition.receipt.providerMessageIds }),
           evidenceKind: disposition.receipt.evidenceKind ?? "provider",
           persistenceStatus: disposition.receipt.persistence.status,
           replayed: disposition.replayed,
@@ -3362,7 +3366,9 @@ async function handleSend(
           deliveryStatus: "duplicate",
           priorDelivery: "delivered",
           responseMessageId: providerMessageId,
-          providerMessageIds: disposition.receipt?.providerMessageIds,
+          ...(evidenceKind === "local-effect"
+            ? { localEffectIds: receiptIds }
+            : { providerMessageIds: receiptIds }),
           evidenceKind,
           newDelivery: false,
           persisted: false,
@@ -3408,7 +3414,9 @@ async function handleSend(
           deliveryStatus: "delivered",
           acceptance: "accepted",
           responseMessageId: providerMessageId,
-          providerMessageIds,
+          ...(evidenceKind === "local-effect"
+            ? { localEffectIds: receiptIds }
+            : { providerMessageIds }),
           evidenceKind: disposition.receipt?.evidenceKind ?? "provider",
           persistenceStatus: "failed",
           persistenceCode: persistence.code,
@@ -3475,7 +3483,9 @@ async function handleSend(
       urgency: normalized.urgency,
       memoryId: persisted?.id,
       responseMessageId: providerMessageId,
-      providerMessageIds: receiptIds,
+      ...(evidenceKind === "local-effect"
+        ? { localEffectIds: receiptIds }
+        : { providerMessageIds: receiptIds }),
       evidenceKind,
       deliveryStatus: "delivered",
     },
