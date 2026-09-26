@@ -160,7 +160,11 @@ import {
   flushEarlyLogs,
   listenForUiLogs,
 } from "./early-logs.ts";
-import { createApiEventHub } from "./event-hub.ts";
+import {
+  createApiEventHub,
+  createEventSocketBackpressureGuard,
+  createEventSocketLivenessSweep,
+} from "./event-hub.ts";
 import { computeCanRespond } from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
@@ -3713,6 +3717,19 @@ export async function startApiServer(opts?: {
   const wsActiveConversations = new WeakMap<WebSocket, string>();
   const wsRequests = new WeakMap<WebSocket, http.IncomingMessage>();
   const wsSendQueues = new WeakMap<WebSocket, Promise<void>>();
+  const wsQueuedSendBytes = new WeakMap<WebSocket, number>();
+  const reportWebSocketSendError = (err: unknown): void => {
+    logger.error(
+      `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+    );
+  };
+  const wsBackpressure = createEventSocketBackpressureGuard({
+    clients: wsClients,
+    clientIds: wsClientIds,
+    reportSendError: reportWebSocketSendError,
+    getBufferedAmount: (ws) =>
+      ws.bufferedAmount + (wsQueuedSendBytes.get(ws) ?? 0),
+  });
   const admitWebSocket = async (
     ws: WebSocket,
     request: http.IncomingMessage,
@@ -3726,23 +3743,37 @@ export async function startApiServer(opts?: {
     }
     return ws.readyState === WebSocket.OPEN;
   };
-  const sendWebSocket = (ws: WebSocket, message: string): void => {
+  const sendWebSocket = (ws: WebSocket, message: string): boolean => {
+    if (ws.readyState !== WebSocket.OPEN || !wsBackpressure.admit(ws)) {
+      return false;
+    }
     if (!hostAdmission) {
       ws.send(message);
-      return;
+      return true;
     }
     const request = wsRequests.get(ws);
     if (!request) {
       ws.close(1008, "Host admission rejected");
-      return;
+      return false;
     }
     // Reappraise at delivery, preserving ordering across status, replay, targeted
-    // events and PTY output. Queued frames cannot inherit an earlier approval.
+    // events and PTY output. Queued frames cannot inherit an earlier approval;
+    // their bytes remain visible to the same backpressure guard as ws's native
+    // transport buffer until the admission decision completes.
+    const messageBytes = Buffer.byteLength(message);
+    wsQueuedSendBytes.set(ws, (wsQueuedSendBytes.get(ws) ?? 0) + messageBytes);
     const previous = wsSendQueues.get(ws) ?? Promise.resolve();
     const pending = previous
       .then(async () => {
-        if (await admitWebSocket(ws, request, "websocket-send"))
-          ws.send(message);
+        try {
+          if (await admitWebSocket(ws, request, "websocket-send")) {
+            ws.send(message);
+          }
+        } finally {
+          const remaining = (wsQueuedSendBytes.get(ws) ?? 0) - messageBytes;
+          if (remaining > 0) wsQueuedSendBytes.set(ws, remaining);
+          else wsQueuedSendBytes.delete(ws);
+        }
       })
       .catch(() => {
         // error-policy:J1 Close this transport without exposing frame or policy data.
@@ -3750,6 +3781,7 @@ export async function startApiServer(opts?: {
         ws.close(1011, "Host admission unavailable");
       });
     wsSendQueues.set(ws, pending);
+    return true;
   };
   const eventHub = createApiEventHub({
     state,
@@ -3757,11 +3789,7 @@ export async function startApiServer(opts?: {
     clientIds: wsClientIds,
     activeConversations: wsActiveConversations,
     sendMessage: sendWebSocket,
-    reportSendError: (err) => {
-      logger.error(
-        `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
-      );
-    },
+    reportSendError: reportWebSocketSendError,
   });
   const broadcastWs = eventHub.broadcast;
   const pushEvent = eventHub.publish;
@@ -3876,6 +3904,13 @@ export async function startApiServer(opts?: {
     logger.warn(
       `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
     );
+  });
+  // Server-side ping/pong: a peer whose TCP window froze (backgrounded app,
+  // suspended laptop) never sends a close frame, so without this sweep its
+  // socket and everything the hub queues for it would live until the OS
+  // gives up on the connection.
+  const wsLiveness = createEventSocketLivenessSweep<WebSocket>({
+    clientIds: wsClientIds,
   });
   /**
    * Per-connection active conversation. Each browser window/client owns its own
@@ -4135,6 +4170,7 @@ export async function startApiServer(opts?: {
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
     wsRequests.set(ws, request);
+    wsLiveness.track(ws);
     let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
@@ -4915,6 +4951,7 @@ export async function startApiServer(opts?: {
     {
       name: "WebSocket clients",
       dispose: () => {
+        wsLiveness.stop();
         for (const ws of wsClients) {
           if (ws.readyState !== 1 && ws.readyState !== 0) continue;
           if ("terminate" in ws && typeof ws.terminate === "function") {
