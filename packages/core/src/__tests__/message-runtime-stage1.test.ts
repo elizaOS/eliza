@@ -3926,9 +3926,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			[ChannelType.VOICE_DM, false, true],
 			[ChannelType.GROUP, false, false],
 			[undefined, false, false],
-			[ChannelType.DM, true, false],
+			[ChannelType.DM, true, true],
+			[ChannelType.GROUP, true, true],
+			[undefined, true, true],
 		] as const)(
-			"scopes tool reasoning preference to direct planning (%s, coding=%s)",
+			"scopes tool reasoning preference to direct or coding planning (%s, coding=%s)",
 			async (channelType, codingMode, preferred) => {
 				const reply = {
 					text: "",

@@ -266,6 +266,18 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   return { runtime, sandbox, session, backgroundShell, shellHistoryService };
 }
 
+async function makeReceiptRuntime(
+  message: Memory,
+  opts: RuntimeOptions = {},
+): ReturnType<typeof makeRuntime> {
+  const root = path.join(shellTestStateDir, "workspace");
+  await fs.mkdir(root);
+  await execFileAsync("git", ["init", "-q"], { cwd: root });
+  const services = await makeRuntime({ ...opts, workspaceRoots: root });
+  services.session.setCwd(String(message.roomId), root);
+  return services;
+}
+
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1457,12 +1469,12 @@ describeIfPosix("shellAction", () => {
   });
 
   it("escalates overflow from TERM to KILL and reaps a TERM-ignoring process", async () => {
-    const { runtime, backgroundShell } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime, backgroundShell } = await makeReceiptRuntime(message, {
       backgroundBufferChars: 5,
       backgroundKillGraceMs: 50,
       backgroundReapWaitMs: 500,
     });
-    const message = makeMessage();
     const startedAt = Date.now();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
@@ -1492,11 +1504,11 @@ describeIfPosix("shellAction", () => {
   });
 
   it("bounds explicit kill while escalating a TERM-ignoring process", async () => {
-    const { runtime } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime } = await makeReceiptRuntime(message, {
       backgroundKillGraceMs: 50,
       backgroundReapWaitMs: 500,
     });
-    const message = makeMessage();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
         action: "start_background",
@@ -1525,11 +1537,11 @@ describeIfPosix("shellAction", () => {
   });
 
   it("retains a pending receipt when close cannot prove reap before the deadline", async () => {
-    const { runtime, backgroundShell } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime, backgroundShell } = await makeReceiptRuntime(message, {
       backgroundKillGraceMs: 30,
       backgroundReapWaitMs: 80,
     });
-    const message = makeMessage();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
         action: "start_background",
@@ -1891,6 +1903,50 @@ describeIfPosix("shellAction", () => {
       await fs.rm(staleRoot, { recursive: true, force: true });
     }
   });
+
+  it.each(["cwd", "cd", "git-C"] as const)(
+    "preserves trusted coding directory selection through %s",
+    async (mode) => {
+      const roomId = "11111111-aaaa-bbbb-cccc-252525252526";
+      const sessionRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "shell-coding-cwd-"),
+      );
+      const target = path.join(sessionRoot, "checkers");
+      await fs.mkdir(target);
+      await execFileAsync("git", ["init", "-q", target]);
+      try {
+        const { runtime, session } = await makeRuntime();
+        session.setCwd(roomId, sessionRoot);
+        const command =
+          mode === "cd"
+            ? `cd '${target}' && pwd -P`
+            : mode === "git-C"
+              ? `git -C '${target}' rev-parse --show-toplevel`
+              : "pwd";
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            roomId,
+            "Add a checker for the current package, then create a branch and commit the fix.",
+          ),
+          { text: "", values: {}, data: { elizaTrustedCodingMode: true } },
+          { command, ...(mode === "cwd" ? { cwd: target } : {}) },
+        );
+        expect(result.success).toBe(true);
+        expect(result.text).toContain(
+          `--- stdout ---\n${await fs.realpath(target)}\n`,
+        );
+        const data = result.data as Record<string, unknown>;
+        expect(data.command).toBe(command);
+        if (mode === "cwd")
+          expect(await fs.realpath(String(data.cwd))).toBe(
+            await fs.realpath(target),
+          );
+      } finally {
+        await fs.rm(sessionRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("strips unmentioned cd prefixes for running-source checks", async () => {
     const roomId = "11111111-aaaa-bbbb-cccc-252525252525";
@@ -3251,12 +3307,12 @@ describeIfPosix("shellAction", () => {
   });
 
   it("rejects split-secret output that exceeds the complete-capture limit", async () => {
+    const actor = makeMessage();
     const secret = "marigold9";
-    const { runtime, backgroundShell } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeReceiptRuntime(actor, {
       configuredSecret: secret,
       backgroundBufferChars: 5,
     });
-    const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
         action: "start_background",

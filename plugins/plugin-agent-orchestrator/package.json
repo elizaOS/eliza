@@ -86,10 +86,10 @@
     "node": ">=24"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "git-workspace-service": "0.4.5"
+    "@elizaos/core": "workspace:*"
   },
   "dependencies": {
+    "git-workspace-service": "0.4.5",
     "@octokit/rest": "^22.0.0",
     "smthrs": "0.35.0",
     "coding-agent-adapters": "0.17.0",
@@ -114,7 +114,6 @@
     "@types/bun": "1.4.2",
     "@types/node": "^25.2.3",
     "bun-types": "1.4.2",
-    "git-workspace-service": "0.4.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1",

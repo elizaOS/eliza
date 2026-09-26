@@ -263,7 +263,7 @@ export interface MessageAdapter {
   createDraft(
     runtime: IAgentRuntime,
     draft: DraftRequest,
-  ): Promise<{ draftId: string; preview: string }>;
+  ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }>;
   sendDraft(
     runtime: IAgentRuntime,
     draftId: string,

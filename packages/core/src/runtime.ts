@@ -5130,6 +5130,14 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.adapter.setCaches<T>(entries);
 	}
 
+	async compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean> {
+		return this.adapter.compareAndSetCache(key, expected, replacement);
+	}
+
 	async deleteCaches(keys: string[]): Promise<boolean> {
 		return this.adapter.deleteCaches(keys);
 	}

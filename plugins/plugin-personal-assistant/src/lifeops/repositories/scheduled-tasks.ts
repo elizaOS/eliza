@@ -316,6 +316,7 @@ export class ScheduledTaskRepository {
     );
   }
 
+  /** Reset all agent-owned scheduling evidence between independent scenarios. */
   async resetSchedulingStateForScenario(agentId: string): Promise<void> {
     const quotedAgent = sqlQuote(agentId);
     for (const statement of [
@@ -330,6 +331,7 @@ export class ScheduledTaskRepository {
       `DELETE FROM app_lifeops.life_schedule_insights WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_schedule_observations WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_circadian_states WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_lifeops.life_checkin_reports WHERE agent_id = ${quotedAgent}`,
     ]) {
       await executeRawSql(this.runtime, statement);
     }

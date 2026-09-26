@@ -204,11 +204,12 @@ async function processContainerBilling(
           organizationName: org.name,
           containerName: containerName,
           projectName: container.project_name,
-          dailyCost,
-          monthlyCost: CONTAINER_PRICING.MONTHLY_BASE_COST,
+          // Display full rates while requiredCredits retains the prorated shortfall.
+          dailyCost: dailyRate,
+          monthlyCost: Math.round(dailyRate * 30 * 100) / 100,
           currentBalance: totalAvailable,
           requiredCredits: dailyCost,
-          minimumRecommended: dailyCost * 7, // 1 week
+          minimumRecommended: Math.round(dailyRate * 7 * 100) / 100, // 1 week
           shutdownTime: shutdownTime.toLocaleString("en-US", {
             weekday: "long",
             year: "numeric",

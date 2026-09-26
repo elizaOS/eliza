@@ -1833,6 +1833,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getCaches<T>(keys: string[]): Promise<Map<string, T>>;
 	setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
 	deleteCaches(keys: string[]): Promise<boolean>;
+	/** Atomically insert when expected is undefined, otherwise replace only an
+	 * equal JSON value. Null is a stored value, not absence. False means conflict;
+	 * storage failures throw and must never be retried as ordinary conflicts.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	// Only task instance methods - definitions are in-memory
 	/**

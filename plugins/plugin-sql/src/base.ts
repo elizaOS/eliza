@@ -55,6 +55,7 @@ import {
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
+  encodeCacheCasValue,
   encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
@@ -907,7 +908,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return await operation();
       } catch (error) {
         if (error instanceof TaskTimingValidationError) throw error;
-        if (error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE") {
+        if (
+          error instanceof ElizaError &&
+          (error.code === "WORLD_METADATA_STALE_WRITE" || error.code === "CACHE_CAS_FAILED")
+        ) {
           throw error;
         }
         lastError = error as Error;
@@ -5783,6 +5787,39 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {string} key - The key to delete the cache value for.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was deleted successfully.
    */
+  async compareAndSetCache<T>(key: string, expected: unknown, replacement: T): Promise<boolean> {
+    const replacementJson = encodeCacheCasValue(replacement);
+    const expectedJson = expected === undefined ? undefined : encodeCacheCasValue(expected);
+    // Capture both operands before the first await. One conditional statement;
+    // never replay an uncertain result (the committed response may be lost).
+    return this.withDatabase(async () => {
+      try {
+        const rows =
+          expectedJson === undefined
+            ? await this.db
+                .insert(cacheTable)
+                .values({ key, agentId: this.agentId, value: sql`${replacementJson}::jsonb` })
+                .onConflictDoNothing({ target: [cacheTable.key, cacheTable.agentId] })
+                .returning()
+            : await this.db
+                .update(cacheTable)
+                .set({ value: sql`${replacementJson}::jsonb` })
+                .where(
+                  and(
+                    eq(cacheTable.key, key),
+                    eq(cacheTable.agentId, this.agentId),
+                    sql`${cacheTable.value} = ${expectedJson}::jsonb`
+                  )
+                )
+                .returning();
+        return rows.length === 1;
+      } catch (cause) {
+        // error-policy:J2 distinguish storage failure from a concurrent write.
+        throw new ElizaError("Cache compare-and-set failed", { code: "CACHE_CAS_FAILED", cause });
+      }
+    });
+  }
+
   async deleteCache(key: string): Promise<boolean> {
     return this.withDatabase(async () => {
       try {

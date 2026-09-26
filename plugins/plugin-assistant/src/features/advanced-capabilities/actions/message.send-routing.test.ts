@@ -166,6 +166,12 @@ describe("MESSAGE op=send unresolved recipient asks upfront (no doomed send)", (
     const runtime = createMockRuntime({
       getCache: (async (key: string) =>
         cache.get(key)) as IAgentRuntime["getCache"],
+      compareAndSetCache: async (key, expected, replacement) => {
+        if (JSON.stringify(cache.get(key)) !== JSON.stringify(expected))
+          return false;
+        cache.set(key, structuredClone(replacement));
+        return true;
+      },
       setCache: (async (key: string, value: unknown) => {
         cache.set(key, value);
         return true;

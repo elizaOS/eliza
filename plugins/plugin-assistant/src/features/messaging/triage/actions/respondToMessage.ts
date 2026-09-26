@@ -19,6 +19,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { draftConsentDigest } from "../send-consent.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
@@ -147,6 +148,7 @@ export const respondToMessageAction: Action = {
     const body = parsed.body ?? fallbackReplyBody(original);
     const record = await service.draftReply(runtime, messageId, body);
 
+    const consentDigest = draftConsentDigest(record);
     const policy = getSendPolicy(runtime);
     if (policy) {
       const draftReq: DraftRequest = {
@@ -163,9 +165,11 @@ export const respondToMessageAction: Action = {
       const required = await policy.shouldRequireApproval(runtime, draftReq);
       if (required) {
         const enq = await policy.enqueueApproval(runtime, draftReq, () =>
-          service.sendDraft(runtime, record.draftId).then((r) => ({
-            externalId: r.sentExternalId ?? `pending:${r.draftId}`,
-          })),
+          service
+            .sendDraft(runtime, record.draftId, consentDigest)
+            .then((r) => ({
+              externalId: r.sentExternalId ?? `pending:${r.draftId}`,
+            })),
         );
         const text = `I've drafted the reply on ${record.source} — it's waiting for approval before it goes out.`;
         logger.info(
@@ -197,7 +201,11 @@ export const respondToMessageAction: Action = {
       }
     }
 
-    const sent = await service.sendDraft(runtime, record.draftId);
+    const sent = await service.sendDraft(
+      runtime,
+      record.draftId,
+      consentDigest,
+    );
     const text = `Replied on ${sent.source}.`;
     logger.info(
       `[RespondToMessage] sent draftId=${sent.draftId} externalId=${sent.sentExternalId ?? "unknown"}`,

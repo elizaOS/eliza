@@ -272,7 +272,8 @@ describe("BaseMessageAdapter", () => {
       messageId: message.id,
       op: { kind: "mark_read", read: true },
     });
-    expect(adapter.draft).toBe(draft);
+    expect(adapter.draft).toStrictEqual(draft);
+    expect(adapter.draft).not.toBe(draft);
     expect(adapter.draftId).toBe("draft-1");
     expect(adapter.schedule).toEqual({ draftId: "draft-1", sendAtMs: 2_000 });
   });

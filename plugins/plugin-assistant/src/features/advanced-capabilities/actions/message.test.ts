@@ -12,6 +12,10 @@ import type {
   SendHandlerReceipt,
   SendHandlerResult,
 } from "@elizaos/core";
+import {
+  inspectSendHandlerResult,
+  requireConfirmedSendHandlerDelivery,
+} from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { inferOp, messageAction } from "./message.ts";
@@ -468,7 +472,7 @@ describe("MESSAGE op=send delivery evidence", () => {
     setOutboundPersistenceFailure: (error: Error) => void;
   } {
     let outboundPersistenceFailure: Error | undefined;
-    const upsertMemory = vi.fn(async () => {
+    const upsertMemory = vi.fn(async (_memory: Memory) => {
       if (outboundPersistenceFailure) {
         throw outboundPersistenceFailure;
       }
@@ -593,6 +597,93 @@ describe("MESSAGE op=send delivery evidence", () => {
       expect(createMemory).not.toHaveBeenCalled();
     });
   }
+
+  it("retains local completion evidence without inventing platform message IDs", async () => {
+    const localReceipt: SendHandlerReceipt = {
+      ...receipt(["native-completion-1"]),
+      evidenceKind: "local-effect",
+    };
+    expect(() =>
+      requireConfirmedSendHandlerDelivery({
+        kind: "delivered",
+        memories: [],
+        receipt: {
+          ...localReceipt,
+          persistence: {
+            status: "failed",
+            failures: [
+              {
+                providerMessageId: "native-completion-1",
+                stage: "memory",
+                code: "WRITE_FAILED",
+                message: "write failed",
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(
+      /local transport reported completion without provider message IDs/,
+    );
+    const localOutcomes: SendHandlerOutcome[] = [
+      { kind: "delivered", receipt: localReceipt, memories: [] },
+      {
+        kind: "partially_delivered",
+        receipt: localReceipt,
+        memories: [],
+        code: "PARTIAL",
+        message: "partial",
+      },
+      { kind: "duplicate", priorDelivery: "delivered", receipt: localReceipt },
+      {
+        kind: "duplicate",
+        priorDelivery: "partially_delivered",
+        receipt: localReceipt,
+      },
+    ];
+    for (const outcome of localOutcomes) {
+      const disposition = inspectSendHandlerResult(outcome);
+      expect(disposition).toMatchObject({ receipt: localReceipt });
+      expect(
+        "providerMessageId" in disposition
+          ? disposition.providerMessageId
+          : undefined,
+      ).toBeUndefined();
+    }
+    const { result, upsertMemory } = await sendWithOutcome({
+      kind: "delivered",
+      receipt: localReceipt,
+      memories: [],
+    });
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        evidenceKind: "local-effect",
+        localEffectIds: ["native-completion-1"],
+      },
+    });
+    expect(result.data).not.toHaveProperty("providerMessageIds");
+    expect(
+      (result.data as Record<string, unknown>).responseMessageId,
+    ).toBeUndefined();
+    expect(upsertMemory).toHaveBeenCalled();
+    const stored = upsertMemory.mock.calls[0]?.[0] as Memory | undefined;
+    expect(stored?.metadata).toMatchObject({
+      evidenceKind: "local-effect",
+      localEffectIds: ["native-completion-1"],
+    });
+    expect(stored?.metadata).not.toHaveProperty("platformMessageId");
+    expect(stored?.metadata).not.toHaveProperty("messageIdFull");
+    const replay = await sendWithOutcome({
+      kind: "duplicate",
+      priorDelivery: "delivered",
+      receipt: localReceipt,
+    });
+    expect(replay.result.data).toMatchObject({
+      evidenceKind: "local-effect",
+      newDelivery: false,
+    });
+  });
 
   it("reports a committed duplicate only with the replayed provider receipt", async () => {
     const { result, upsertMemory, createMemory } = await sendWithOutcome({
@@ -784,6 +875,12 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
         (async () => [])) as IAgentRuntime["getRelationships"],
       getCache: (async (key: string) =>
         cache.get(key)) as IAgentRuntime["getCache"],
+      compareAndSetCache: async (key, expected, replacement) => {
+        if (JSON.stringify(cache.get(key)) !== JSON.stringify(expected))
+          return false;
+        cache.set(key, structuredClone(replacement));
+        return true;
+      },
       setCache: (async (key: string, value: unknown) => {
         cache.set(key, value);
         return true;
@@ -1033,6 +1130,12 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
       }) as IAgentRuntime["getRelationshipsByPairs"],
       getCache: (async (key: string) =>
         cache.get(key)) as IAgentRuntime["getCache"],
+      compareAndSetCache: async (key, expected, replacement) => {
+        if (JSON.stringify(cache.get(key)) !== JSON.stringify(expected))
+          return false;
+        cache.set(key, structuredClone(replacement));
+        return true;
+      },
       setCache: (async (key: string, value: unknown) => {
         cache.set(key, value);
         return true;
@@ -1051,13 +1154,19 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
     return { relationshipQueries, runtime, sends };
   }
 
+  let turn = 0;
   async function send(
     runtime: IAgentRuntime,
     text: string,
   ): Promise<ActionResult> {
     const result = await messageAction.handler(
       runtime,
-      { ...message, content: { text, source: "discord" } } as Memory,
+      {
+        ...message,
+        id: `consent-turn-${++turn}`,
+        createdAt: Date.now() + turn,
+        content: { text, source: "discord" },
+      } as Memory,
       undefined,
       {
         parameters: {

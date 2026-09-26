@@ -1451,6 +1451,7 @@
         "coding-agent-adapters": "0.17.0",
         "drizzle-orm": "0.45.2",
         "effect": "4.0.0-beta.105",
+        "git-workspace-service": "0.4.5",
         "lucide-react": "^1.0.0",
         "marked": "^18.0.13",
         "react": "^19.0.0",
@@ -1469,7 +1470,6 @@
         "@types/node": "^25.2.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
-        "git-workspace-service": "0.4.5",
         "playwright": "^1.63.0",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -1478,7 +1478,6 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
-        "git-workspace-service": "0.4.5",
       },
     },
     "plugins/plugin-anthropic": {
@@ -1629,6 +1628,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@elizaos/testing": "workspace:*",
         "@types/cross-spawn": "^6.0.6",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",

@@ -1204,7 +1204,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved. For coding completion verification, run the test, typecheck, lint, or build as a standalone foreground command without pipes or failure-masking operators; use cwd or cd directory && verifier.",
   descriptionCompressed:
     "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
@@ -1732,6 +1732,13 @@ export const shellAction: Action = {
         `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
       );
     }
+    const codingSubAgentShell =
+      state?.data?.elizaTrustedCodingMode === true ||
+      ((): boolean => {
+        const v =
+          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+      })();
     const cwdParam = readStringParam(options, "cwd");
 
     if (!message.roomId) {
@@ -1804,6 +1811,7 @@ export const shellAction: Action = {
       }
       const sessionCwd = await session.getExistingCwd(conversationId);
       if (
+        !codingSubAgentShell &&
         shouldIgnoreUngroundedRuntimeCwd({
           message,
           requestedCwd: v.resolved,
@@ -1843,11 +1851,13 @@ export const shellAction: Action = {
       }
     }
 
-    const groundedCommand = rewriteUngroundedRuntimeDirectoryOverrides({
-      command,
-      message,
-      sessionCwd: cwd,
-    });
+    const groundedCommand = codingSubAgentShell
+      ? command
+      : rewriteUngroundedRuntimeDirectoryOverrides({
+          command,
+          message,
+          sessionCwd: cwd,
+        });
     if (groundedCommand !== command) {
       command = groundedCommand;
       coreLogger.warn(
@@ -1865,13 +1875,6 @@ export const shellAction: Action = {
     // of real output and inflating a 30s build past 90s. Skip all
     // message-text-keyed rewrites for the coding sub-agent; its commands run
     // verbatim.
-    const codingSubAgentShell =
-      state?.data?.elizaTrustedCodingMode === true ||
-      ((): boolean => {
-        const v =
-          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-        return v === "1" || v === "true" || v === "yes" || v === "on";
-      })();
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();

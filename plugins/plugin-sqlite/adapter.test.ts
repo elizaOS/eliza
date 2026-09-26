@@ -1011,3 +1011,54 @@ it("enumerates persisted memory types after reopening the owner file", async () 
   const reopened = await open();
   expect(await reopened.listMemoryTypes()).toEqual(["plugin_unlisted"]);
 });
+
+it("cache CAS has one winner, preserves null and rejects lossy values", async () => {
+  const adapter = await open();
+  const results = await Promise.all(
+    Array.from({ length: 12 }, (_, writer) =>
+      adapter.compareAndSetCache("claim", undefined, { writer }),
+    ),
+  );
+  expect(results.filter(Boolean)).toHaveLength(1);
+  expect(await adapter.compareAndSetCache("absent", null, 1)).toBe(false);
+  expect(await adapter.compareAndSetCache("null", undefined, null)).toBe(true);
+  expect(await adapter.compareAndSetCache("null", null, { b: 2, a: 1 })).toBe(
+    true,
+  );
+  expect(await adapter.compareAndSetCache("null", { a: 1, b: 2 }, "done")).toBe(
+    true,
+  );
+  const cycle: Record<string, unknown> = {};
+  cycle.self = cycle;
+  let invoked = false;
+  const accessor = {
+    get value() {
+      invoked = true;
+      return 1;
+    },
+  };
+  for (const invalid of [
+    undefined,
+    NaN,
+    Infinity,
+    1n,
+    new Date(),
+    Array(2),
+    { x: undefined },
+    cycle,
+    accessor,
+    "\u0000",
+    "\ud800",
+  ]) {
+    await expect(
+      adapter.compareAndSetCache("invalid", undefined, invalid),
+    ).rejects.toMatchObject({ code: "CACHE_CAS_INVALID_VALUE" });
+  }
+  expect(invoked).toBe(false);
+  expect((await adapter.getCaches(["invalid"])).has("invalid")).toBe(false);
+  await adapter.close();
+  const reopened = await open();
+  expect(await reopened.compareAndSetCache("claim", undefined, "replay")).toBe(
+    false,
+  );
+});

@@ -1430,6 +1430,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	getCache<T>(key: string): Promise<T | undefined>;
 	setCache<T>(key: string, value: T): Promise<boolean>;
 	deleteCache(key: string): Promise<boolean>;
+	/** Atomically insert when expected is undefined, otherwise replace only an
+	 * equal JSON value. Null is a stored value, not absence. False means conflict;
+	 * storage failures throw and must never be retried as ordinary conflicts.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	updateEntity(entity: Entity): Promise<void>;
 

@@ -220,6 +220,31 @@ describe("dispatchViaMessageConnector — disposition translation", () => {
     expect(content.agentVoiced).toBe(true);
   });
 
+  it("records native transport completion without manufacturing a provider ID", async () => {
+    const runtime = makeRuntime({
+      connectors: ["discord"],
+      sendResult: {
+        kind: "delivered",
+        memories: [],
+        receipt: {
+          evidenceKind: "local-effect",
+          providerMessageIds: ["native-completion"],
+          acceptedAt: Date.now(),
+          persistence: { status: "not_attempted", reason: "native completion" },
+        },
+      },
+    });
+    const result = await dispatchViaMessageConnector(
+      runtime,
+      makeRecord(),
+      "body",
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(result).not.toHaveProperty("messageId");
+    expect(result).not.toHaveProperty("receipt");
+    expect(runtime.sends).toHaveLength(1);
+  });
+
   it("treats a legacy Memory return as delivered", async () => {
     const runtime = makeRuntime({
       connectors: ["discord"],

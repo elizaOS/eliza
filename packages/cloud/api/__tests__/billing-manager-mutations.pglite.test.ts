@@ -6,6 +6,7 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { relations } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { Hono } from "hono";
+import type Stripe from "stripe";
 import { organizations } from "@/db/schemas/organizations";
 import { userIdentities } from "@/db/schemas/user-identities";
 import { users } from "@/db/schemas/users";
@@ -30,6 +31,7 @@ mock.module("@/db/helpers", () => ({
   getDbConnectionInfo: () => ({}),
 }));
 const effects: string[] = [];
+let checkoutParameters: Stripe.Checkout.SessionCreateParams | undefined;
 const org = randomUUID(),
   otherOrg = randomUUID(),
   userId = randomUUID();
@@ -109,7 +111,8 @@ mock.module("@/lib/stripe", () => ({
     },
     checkout: {
       sessions: {
-        create: async () => {
+        create: async (parameters: Stripe.Checkout.SessionCreateParams) => {
+          checkoutParameters = parameters;
           effects.push("stripe");
           return { id: "cs_test", url: "https://checkout.stripe.test/local" };
         },
@@ -148,6 +151,7 @@ beforeAll(async () => {
 }, 30_000);
 beforeEach(async () => {
   effects.length = 0;
+  checkoutParameters = undefined;
   afterPriceRead = undefined;
   await pg.query(
     "UPDATE users SET role='owner',organization_id=$1,is_active=true WHERE id=$2",
@@ -251,3 +255,25 @@ test("checkout: hardware checkout retains existing member authority", async () =
   ).toBe(200);
   expect(effects).toContain("stripe");
 });
+
+for (const [amount, cents] of [
+  [1, 100],
+  [1.15, 115],
+  [19.99, 1999],
+  [1000, 100000],
+]) {
+  test(`checkout accepts exact decimal cents for ${amount}`, async () => {
+    const response = await request("checkout", {}, org, { amount });
+    expect(response.status).toBe(200);
+    expect(checkoutParameters?.line_items?.[0]?.price_data?.unit_amount).toBe(
+      cents,
+    );
+  });
+}
+for (const amount of [0.99, 1000.01, 1.001, 1.1500000000000001]) {
+  test(`checkout rejects ${amount} before payment effects`, async () => {
+    const response = await request("checkout", {}, org, { amount });
+    expect(response.status).toBe(400);
+    expect(effects).toEqual([]);
+  });
+}
