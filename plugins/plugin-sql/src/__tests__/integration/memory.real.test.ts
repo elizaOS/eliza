@@ -681,6 +681,33 @@ describe("Memory Integration Tests", () => {
       expect(count).toBe(2);
     });
 
+    it("counts zero rows for an explicit empty roomIds list instead of the whole table", async () => {
+      const otherRoomId = v4() as UUID;
+      await adapter.createRooms([
+        {
+          id: otherRoomId,
+          agentId: testAgentId,
+          worldId: testWorldId,
+          name: "Other Room",
+          source: "test",
+          type: ChannelType.GROUP,
+        } as Room,
+      ]);
+      await adapter.createMemory(createTestMemory({ text: "room a one" }), "messages");
+      await adapter.createMemory(createTestMemory({ text: "room a two" }), "messages");
+      await adapter.createMemory(
+        { ...createTestMemory({ text: "room b one" }), roomId: otherRoomId },
+        "messages"
+      );
+
+      expect(await adapter.countMemories({ roomIds: [], tableName: "messages" })).toBe(0);
+      expect(await adapter.countMemories({ tableName: "messages" })).toBe(3);
+      expect(await adapter.countMemories({ roomIds: [testRoomId], tableName: "messages" })).toBe(2);
+      expect(
+        await adapter.countMemories({ roomIds: [testRoomId, otherRoomId], tableName: "messages" })
+      ).toBe(3);
+    });
+
     it("should require tableName on reads and default counts to the messages table", async () => {
       await adapter.createMemory(createTestMemory({ text: "message one" }), "messages");
       await adapter.createMemory(createTestMemory({ text: "message two" }), "messages");
