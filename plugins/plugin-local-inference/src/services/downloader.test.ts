@@ -289,7 +289,18 @@ function installRangeAwareFetchFixture(files: Map<string, string>): {
 	return { rangeRequests };
 }
 
-async function startRangeServer(files: Map<string, string>): Promise<{
+/**
+ * How the local origin answers `Range: bytes=N-`:
+ *  - `honor`: 206 with the tail from N (the HF CDN behaviour);
+ *  - `ignore`: 200 with the full body (CDNs/mirrors/proxies that drop Range);
+ *  - `wrong-offset`: 206 but for the whole file (`bytes 0-…`), a broken proxy.
+ */
+type RangeMode = "honor" | "ignore" | "wrong-offset";
+
+async function startRangeServer(
+	files: Map<string, string>,
+	mode: RangeMode = "honor",
+): Promise<{
 	baseUrl: string;
 	requests: Map<string, string[]>;
 	close: () => Promise<void>;
@@ -315,6 +326,19 @@ async function startRangeServer(files: Map<string, string>): Promise<{
 			response
 				.writeHead(416, { "content-range": `bytes */${bytes.length}` })
 				.end("range not satisfiable");
+			return;
+		}
+		if (range && mode === "ignore") {
+			response.writeHead(200, { "content-length": bytes.length });
+			response.end(bytes);
+			return;
+		}
+		if (range && mode === "wrong-offset") {
+			response.writeHead(206, {
+				"content-length": bytes.length,
+				"content-range": `bytes 0-${bytes.length - 1}/${bytes.length}`,
+			});
+			response.end(bytes);
 			return;
 		}
 		const payload = range ? bytes.subarray(start) : bytes;
@@ -1220,6 +1244,63 @@ describe("local inference downloader stale-content robustness", () => {
 		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
 		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
 	});
+
+	it.each([
+		{
+			mode: "ignore" as const,
+			label: "ignores Range and answers 200 with the full body",
+			expectedRequests: (prefix: number) => [`bytes=${prefix}-`],
+		},
+		{
+			mode: "wrong-offset" as const,
+			label: "answers the resume with a 206 for a different range",
+			expectedRequests: (prefix: number) => [`bytes=${prefix}-`, "full"],
+		},
+	])(
+		"restarts from byte 0, never appends, when the origin $label (#26629)",
+		async ({ mode, expectedRequests }) => {
+			const model = ELIZA_2B_MODEL;
+			const server = await startRangeServer(freshBundleFixtureFiles(), mode);
+			process.env.ELIZA_HF_BASE_URL = server.baseUrl;
+
+			// A genuine interrupted download of the current content: a strict
+			// prefix with the current manifest sha recorded, so a resume is tried.
+			const prefixLen = 17;
+			const textPart = eliza1StagingPartPath(root, CANONICAL_TEXT_PATH);
+			fs.mkdirSync(path.dirname(textPart), { recursive: true });
+			fs.writeFileSync(textPart, freshBundleBytes.text.slice(0, prefixLen));
+			fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
+
+			try {
+				const downloader = new Downloader({
+					probeDeviceCaps: async () => cpuOnlyCaps,
+					probeHardware: async () => fakeProbe(100),
+				});
+				const completed = waitForTerminal(downloader, model.id);
+				await downloader.start(model.id);
+				const job = await completed;
+
+				expect(job.state).toBe("completed");
+				// Exactly the resume attempt (plus the whole-file re-request for an
+				// unusable 206): no sha-mismatch retry, i.e. the first write was
+				// already byte-exact rather than full-body-appended-to-prefix.
+				expect(
+					server.requests.get(eliza1BundleRemotePath(CANONICAL_TEXT_PATH)),
+				).toEqual(expectedRequests(prefixLen));
+				expect(
+					fs.readFileSync(
+						eliza1BundleFinalPath(root, CANONICAL_TEXT_PATH),
+						"utf8",
+					),
+				).toBe(freshBundleBytes.text);
+				const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+				expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+				expect(main?.sizeBytes).toBe(Buffer.byteLength(freshBundleBytes.text));
+			} finally {
+				await server.close();
+			}
+		},
+	);
 
 	it("commits a complete .part after restart without requesting a range past EOF", async () => {
 		const model = ELIZA_2B_MODEL;
