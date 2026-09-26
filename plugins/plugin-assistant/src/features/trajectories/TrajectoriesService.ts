@@ -196,6 +196,44 @@ function requiredTrajectoryCell<T>(
   });
 }
 
+/**
+ * Reads a lifetime count aggregate into the public `number` statistics DTO.
+ * PostgreSQL computes these sums at bigint width, but a JavaScript number is
+ * exact only through `Number.MAX_SAFE_INTEGER`. node-postgres returns int8 as
+ * a decimal string and PGlite returns a `bigint` past that bound, so a total
+ * the DTO cannot represent exactly fails with a typed error instead of being
+ * rounded or reported as a malformed row.
+ */
+export function requiredSafeIntegerStat(
+  value: SqlCell | bigint | undefined,
+  field: string,
+): number {
+  const exact =
+    typeof value === "bigint"
+      ? value
+      : typeof value === "number" && Number.isInteger(value)
+        ? BigInt(value)
+        : typeof value === "string" && /^\d+$/.test(value)
+          ? BigInt(value)
+          : null;
+  if (exact === null || exact < 0n) {
+    throw new ElizaError(`Trajectory database row has an invalid ${field}`, {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { field },
+    });
+  }
+  if (exact > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new ElizaError(
+      `Trajectory statistic ${field} exceeds the exact JavaScript number range`,
+      {
+        code: "TRAJECTORY_STAT_PRECISION_EXCEEDED",
+        context: { field, value: exact.toString() },
+      },
+    );
+  }
+  return Number(exact);
+}
+
 function asEpochMs(value: SqlCell | undefined): number | null {
   if (value instanceof Date) {
     const timestamp = value.getTime();
@@ -3378,6 +3416,8 @@ export class TrajectoriesService extends Service {
     const stats = requiredTrajectoryCell(statsResult.rows[0] ?? null, "stats");
     const requiredStat = (field: string): number =>
       requiredTrajectoryCell(asNumber(pickCell(stats, field)), field);
+    const requiredCount = (field: string): number =>
+      requiredSafeIntegerStat(pickCell(stats, field), field);
     const bySource: Record<string, number> = {};
     const byStatus: Record<string, number> = {};
     const byScenario: Record<string, number> = {};
@@ -3401,13 +3441,13 @@ export class TrajectoriesService extends Service {
     }
 
     return {
-      totalTrajectories: requiredStat("total_trajectories"),
-      totalSteps: requiredStat("total_steps"),
-      totalLlmCalls: requiredStat("total_llm_calls"),
-      totalPromptTokens: requiredStat("total_prompt_tokens"),
-      totalCompletionTokens: requiredStat("total_completion_tokens"),
-      totalCacheReadInputTokens: requiredStat("total_cache_read_input_tokens"),
-      totalCacheCreationInputTokens: requiredStat(
+      totalTrajectories: requiredCount("total_trajectories"),
+      totalSteps: requiredCount("total_steps"),
+      totalLlmCalls: requiredCount("total_llm_calls"),
+      totalPromptTokens: requiredCount("total_prompt_tokens"),
+      totalCompletionTokens: requiredCount("total_completion_tokens"),
+      totalCacheReadInputTokens: requiredCount("total_cache_read_input_tokens"),
+      totalCacheCreationInputTokens: requiredCount(
         "total_cache_creation_input_tokens",
       ),
       averageDurationMs: requiredStat("avg_duration_ms"),

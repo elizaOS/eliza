@@ -4,6 +4,11 @@
  * as bigint. Narrowing that back to int raises "integer out of range" once an
  * agent's lifetime tokens pass 2^31-1, which turns GET /api/trajectories/stats
  * into a permanent 500. Real PGlite database, real service, real schema.
+ *
+ * The bigint aggregate width is a separate boundary from the public DTO's
+ * JavaScript number precision: totals past Number.MAX_SAFE_INTEGER arrive as a
+ * PGlite bigint or a node-postgres decimal string and must fail explicitly
+ * rather than round. Those cases feed the stat reader real PGlite int8 cells.
  */
 
 import { createServer, type Server } from "node:http";
@@ -13,7 +18,10 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes";
-import { TrajectoriesService } from "./TrajectoriesService";
+import {
+  requiredSafeIntegerStat,
+  TrajectoriesService,
+} from "./TrajectoriesService";
 
 const AGENT_ID = "00000000-0000-4000-8000-0000000000aa";
 // Three rows of 800M each: the sum (2.4B) exceeds int32 while every row fits.
@@ -89,5 +97,62 @@ describe("TrajectoriesService.getStats aggregate width", () => {
     expect(stats.totalCacheReadInputTokens).toBe(3 * PER_ROW);
     expect(stats.totalCacheCreationInputTokens).toBe(3 * PER_ROW);
     expect(3 * PER_ROW).toBeGreaterThan(2 ** 31 - 1);
+    expect(3 * PER_ROW).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
+  });
+});
+
+describe("requiredSafeIntegerStat JavaScript precision boundary", () => {
+  async function int8Cells(): Promise<Record<string, unknown>> {
+    const result = await db.execute(
+      sql.raw(`
+        SELECT
+          ${3 * PER_ROW}::bigint AS wide,
+          ${Number.MAX_SAFE_INTEGER}::bigint AS max_safe,
+          (${Number.MAX_SAFE_INTEGER}::bigint + 2) AS past_safe
+      `),
+    );
+    const [row] = (result as unknown as { rows: Record<string, unknown>[] })
+      .rows;
+    if (!row) throw new Error("Missing int8 probe row");
+    return row;
+  }
+
+  it("returns bigint-width totals the public number represents exactly", async () => {
+    const cells = await int8Cells();
+    expect(typeof cells.wide).toBe("number");
+    expect(requiredSafeIntegerStat(cells.wide as number, "total_steps")).toBe(
+      3 * PER_ROW,
+    );
+    expect(
+      requiredSafeIntegerStat(cells.max_safe as number, "total_steps"),
+    ).toBe(Number.MAX_SAFE_INTEGER);
+    expect(requiredSafeIntegerStat("2400000000", "total_steps")).toBe(
+      2_400_000_000,
+    );
+  });
+
+  it("rejects totals past Number.MAX_SAFE_INTEGER instead of rounding them", async () => {
+    const cells = await int8Cells();
+    expect(typeof cells.past_safe).toBe("bigint");
+    const precisionError = expect.objectContaining({
+      code: "TRAJECTORY_STAT_PRECISION_EXCEEDED",
+    });
+    expect(() =>
+      requiredSafeIntegerStat(cells.past_safe as bigint, "total_prompt_tokens"),
+    ).toThrow(precisionError);
+    expect(() =>
+      requiredSafeIntegerStat("9007199254740993", "total_prompt_tokens"),
+    ).toThrow(precisionError);
+  });
+
+  it("rejects missing, negative, fractional, and non-numeric cells", () => {
+    const invalidRow = expect.objectContaining({
+      code: "TRAJECTORY_ROW_INVALID",
+    });
+    for (const cell of [undefined, null, -1, 1.5, "-1", "1.5", "abc", ""]) {
+      expect(() => requiredSafeIntegerStat(cell, "total_steps")).toThrow(
+        invalidRow,
+      );
+    }
   });
 });
