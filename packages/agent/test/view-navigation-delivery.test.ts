@@ -19,6 +19,7 @@ import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { uiContextProvider } from "../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/uiContext.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runEvaluator } from "../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
@@ -142,6 +143,43 @@ async function show(runtime: IAgentRuntime, view: string, input = message) {
   });
 }
 describe("host view navigation", () => {
+  it("keeps evaluator target-selection instructions within the registered navigation contract", async () => {
+    expect(
+      viewsAction.parameters?.find((parameter) => parameter.name === "action")
+        ?.schema.enum,
+    ).toEqual(["list", "show"]);
+    let prompt = "";
+    const context = { id: "selection-contract", events: [] };
+    await runEvaluator({
+      context,
+      trajectory: {
+        context,
+        steps: [],
+        archivedSteps: [],
+        plannedQueue: [],
+        evaluatorOutputs: [],
+      },
+      runtime: {
+        useModel: async (_type, options) => {
+          prompt = JSON.stringify(options.messages);
+          return JSON.stringify({
+            decision: "CONTINUE",
+            success: false,
+            thought: "Target selection still requires a supported interaction.",
+          });
+        },
+      },
+    });
+    expect(prompt).not.toContain("VIEWS interact");
+    expect(prompt).toContain("registered scoped interaction action");
+    expect(prompt).toContain("discover one if missing");
+    expect(prompt).toContain(
+      "fresh rendered state proving it selected and visible",
+    );
+    expect(prompt).toContain(
+      "report that limitation rather than claim target selection",
+    );
+  });
   it("keeps canonical delivery evidence while deferring registry bulk to authorized view lookup", async () => {
     const f = await fixture();
     const capability = {
