@@ -38,6 +38,7 @@ import {
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
+  encodeCacheCasValue,
   filterMemoryReadByAccessContext,
   getWorldMetadataRevision,
   hashAttachmentIdForLocator,
@@ -3171,6 +3172,34 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       });
     }
     return true;
+  }
+
+  async compareAndSetCache<T>(
+    key: string,
+    expected: unknown,
+    replacement: T,
+  ): Promise<boolean> {
+    const expectedJson =
+      expected === undefined ? undefined : encodeCacheCasValue(expected);
+    const replacementJson = encodeCacheCasValue(replacement);
+    try {
+      return await this.transaction(async (tx) => {
+        const current = (await tx.getCaches<unknown>([key])).get(key);
+        if (
+          (current === undefined ? undefined : encodeCacheCasValue(current)) !==
+          expectedJson
+        )
+          return false;
+        await tx.setCaches([{ key, value: JSON.parse(replacementJson) }]);
+        return true;
+      });
+    } catch (cause) {
+      // error-policy:J2 preserve uncertain storage failures instead of conflicts.
+      throw new ElizaError("Cache compare-and-set failed", {
+        code: "CACHE_CAS_FAILED",
+        cause,
+      });
+    }
   }
 
   async deleteCaches(keys: string[]): Promise<boolean> {

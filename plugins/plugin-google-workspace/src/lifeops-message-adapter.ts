@@ -10,7 +10,7 @@
  * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   buildContentReference,
   buildReadSlice,
@@ -67,6 +67,14 @@ type GoogleGmailAdapterService = Pick<IGoogleGmailService, (typeof GMAIL_ADAPTER
 interface GmailDraftContext {
   readonly request: DraftRequest;
   readonly preview: string;
+  readonly replyEnvelope?: {
+    accountId: string;
+    to: string;
+    subject: string;
+    inReplyTo: string | null;
+    references: string | null;
+    externalId: string;
+  };
 }
 
 const GMAIL_READ_MAX_BYTES = 65_536;
@@ -527,27 +535,34 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
 
   protected async createDraftImpl(
     runtime: IAgentRuntime,
-    draft: DraftRequest
-  ): Promise<{ draftId: string; preview: string }> {
-    const preview = toWellFormedUnicode(draft.body);
+    input: DraftRequest
+  ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
+    const draft = structuredClone(input);
+    draft.body = toWellFormedUnicode(draft.body);
+    const preview = draft.body;
+    const draftId = `gmail-draft:${randomUUID()}`;
     if (!draft.inReplyToId) {
-      // New outbound email (draft_followup): recipients must be literal
-      // addresses — Gmail has no in-thread sender to fall back to.
-      const recipients = newDraftRecipients(draft);
-      if (recipients.length === 0) {
-        throw new Error(
-          "[GoogleGmailAdapter] a new Gmail draft requires at least one email-address recipient"
-        );
-      }
-      const draftId = `gmail-new:${Date.now()}`;
+      if (newDraftRecipients(draft).length === 0)
+        throw new ElizaError("A new Gmail draft requires an email recipient", {
+          code: "MESSAGE_RECIPIENT_REQUIRED",
+        });
       this.draftCache.set(draftId, { request: draft, preview });
-      return { draftId, preview };
+      return { draftId, preview, snapshot: structuredClone(draft) };
     }
-    await this.ensureMessage(runtime, draft.inReplyToId);
-    const messageId = externalMessageId(draft.inReplyToId);
-    const draftId = `gmail-draft:${messageId}:${Date.now()}`;
-    this.draftCache.set(draftId, { request: draft, preview });
-    return { draftId, preview };
+    const message = await this.ensureMessage(runtime, draft.inReplyToId);
+    const replyEnvelope = {
+      accountId: messageAccountId(message),
+      to: metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier,
+      subject: message.subject ?? "Re: your message",
+      inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
+      references: metadataString(message.metadata ?? {}, "references"),
+      externalId: message.externalId,
+    };
+    draft.to = [{ identifier: replyEnvelope.to }];
+    draft.worldId = replyEnvelope.accountId;
+    draft.subject = replyEnvelope.subject;
+    this.draftCache.set(draftId, { request: draft, preview, replyEnvelope });
+    return { draftId, preview, snapshot: structuredClone(draft) };
   }
 
   protected async sendDraftImpl(
@@ -569,26 +584,28 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       });
       return { externalId: sent.messageId ?? `gmail-new:${draftId}` };
     }
-    const message = await this.ensureMessage(runtime, request.inReplyToId);
-    const replyTarget =
-      metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier;
+    const envelope = draft.replyEnvelope;
+    if (!envelope)
+      throw new ElizaError("Gmail reply draft has no captured envelope", {
+        code: "MESSAGE_DRAFT_ENVELOPE_MISSING",
+      });
     const sent = await service.sendGmailReply({
-      accountId: messageAccountId(message),
-      to: [replyTarget],
-      subject: message.subject ?? "Re: your message",
+      accountId: envelope.accountId,
+      to: [envelope.to],
+      subject: envelope.subject,
       bodyText: request.body,
-      inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
-      references: metadataString(message.metadata ?? {}, "references"),
+      inReplyTo: envelope.inReplyTo,
+      references: envelope.references,
     });
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
-        messageId: message.externalId,
+        messageId: envelope.externalId,
         operation: "replied",
-        domainEventId: `gmail_reply:${messageAccountId(message)}:${sent.messageId}`,
+        domainEventId: `gmail_reply:${envelope.accountId}:${sent.messageId}`,
       });
     }
     return {
-      externalId: sent.messageId ?? `gmail-reply:${message.externalId}`,
+      externalId: sent.messageId ?? `gmail-reply:${envelope.externalId}`,
     };
   }
 

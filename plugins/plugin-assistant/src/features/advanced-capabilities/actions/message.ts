@@ -46,7 +46,6 @@ import {
   ModelType,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-  requireConfirmation,
   resolveCanonicalOwnerIdForMessage,
   revalidateOwnerExclusiveDisclosure,
   runWithActionRoutingContext,
@@ -69,6 +68,10 @@ import { scheduleDraftSendAction } from "../../messaging/triage/actions/schedule
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
+import {
+  requireSendConsent,
+  sendConsentDigest,
+} from "../../messaging/triage/send-consent.ts";
 import { getDefaultTriageService } from "../../messaging/triage/triage-service.ts";
 import {
   ALL_MESSAGE_SOURCES,
@@ -2752,6 +2755,8 @@ async function persistOutboundMemory(params: {
   content: Content;
   sentMemory?: Memory;
   providerMessageId?: string;
+  evidenceKind?: "provider" | "local-effect";
+  receiptIds?: readonly string[];
   persist: boolean;
 }): Promise<OutboundMemoryPersistence> {
   if (!params.persist) {
@@ -2771,12 +2776,14 @@ async function persistOutboundMemory(params: {
         ? (sentMemory.metadata as Record<string, unknown>)
         : undefined;
     const platformMessageId =
-      params.providerMessageId ??
-      (typeof sentMetadata?.platformMessageId === "string"
-        ? sentMetadata.platformMessageId
-        : typeof sentMetadata?.messageIdFull === "string"
-          ? sentMetadata.messageIdFull
-          : undefined);
+      params.evidenceKind === "local-effect"
+        ? undefined
+        : (params.providerMessageId ??
+          (typeof sentMetadata?.platformMessageId === "string"
+            ? sentMetadata.platformMessageId
+            : typeof sentMetadata?.messageIdFull === "string"
+              ? sentMetadata.messageIdFull
+              : undefined));
     const memory: Memory = {
       ...(sentMemory ?? {}),
       id:
@@ -2802,6 +2809,10 @@ async function persistOutboundMemory(params: {
         type: "message",
         source,
         provider: source,
+        evidenceKind: params.evidenceKind ?? "provider",
+        ...(params.evidenceKind === "local-effect"
+          ? { localEffectIds: params.receiptIds ?? [] }
+          : { providerMessageIds: params.receiptIds ?? [] }),
         ...(platformMessageId
           ? {
               messageIdFull: platformMessageId,
@@ -3148,40 +3159,6 @@ async function handleSend(
     return gate;
   }
 
-  // A direct-to-person delivery resolved from an unvetted source (connector
-  // fuzzy match / raw explicit target) must be a known recipient — present in
-  // this room or relationship-backed — or explicitly confirmed by the user.
-  if (isUnvettedDirectUserCandidate(selected)) {
-    const known = await recipientIsKnownEntity(runtime, message, target);
-    if (!known) {
-      const decision = await requireConfirmation({
-        runtime,
-        message,
-        actionName: "MESSAGE",
-        pendingKey: `send:${selected.connector.source}:${String(target.entityId)}`,
-        prompt: `Send this via ${selected.connector.label} to ${selected.label}? They are not in this room, your contacts, or your relationship graph.`,
-      });
-      if (decision.status !== "confirmed") {
-        const pending = decision.status === "pending";
-        return {
-          success: pending,
-          text: pending
-            ? `"${selected.label}" on ${selected.connector.label} is not in this room or the user's relationship graph. Ask the user to confirm sending to this recipient (yes/no) before the message is delivered; nothing was sent.`
-            : "The user declined sending to this recipient; nothing was sent.",
-          data: {
-            actionName: "MESSAGE",
-            operation: "send",
-            confirmationRequired: pending,
-            awaitingUserInput: pending,
-            cancelled: !pending,
-            source: selected.connector.source,
-            targetLabel: selected.label,
-          },
-        };
-      }
-    }
-  }
-
   // Room-first member delivery: the utterance lands in the shared channel, so
   // address the intended member by name unless the text already does.
   const outboundMessage =
@@ -3205,8 +3182,47 @@ async function handleSend(
   }
   const content = applyContentShaping(selected.connector, builtContent);
 
+  // A direct-to-person delivery resolved from an unvetted source (connector
+  // fuzzy match / raw explicit target) must be a known recipient — present in
+  // this room or relationship-backed — or explicitly confirmed by the user.
+  if (isUnvettedDirectUserCandidate(selected)) {
+    const known = await recipientIsKnownEntity(runtime, message, target);
+    if (!known) {
+      const prompt = `Send via ${selected.connector.label} to ${selected.label} (${String(target.entityId)})${target.accountId ? ` from account ${target.accountId}` : ""}?\n${isRecord(content.metadata) && typeof content.metadata.subject === "string" ? `Subject: ${content.metadata.subject}\n` : ""}${content.text ?? ""}${content.attachments?.length ? `\nAttachments: ${content.attachments.map((attachment) => `${attachment.title ?? "attachment"} (${attachment.url})`).join(", ")}` : ""}`;
+      const decision = await requireSendConsent(
+        runtime,
+        message,
+        sendConsentDigest({ target, content }),
+      );
+      if (decision !== "confirmed") {
+        const pending = decision === "pending";
+        return {
+          success: pending,
+          text: pending
+            ? prompt
+            : "Nothing was sent. Preview the message again before confirming.",
+          userFacingText: pending ? prompt : "Nothing was sent.",
+          verifiedUserFacing: true,
+          turnComplete: true,
+          continueChain: false,
+          data: {
+            actionName: "MESSAGE",
+            operation: "send",
+            confirmationRequired: pending,
+            awaitingUserInput: pending,
+            cancelled: !pending,
+            source: selected.connector.source,
+            targetLabel: selected.label,
+          },
+        };
+      }
+    }
+  }
+
   let persisted: Memory | undefined;
   let providerMessageId: string | undefined;
+  let evidenceKind: "provider" | "local-effect" = "provider";
+  let receiptIds: readonly string[] | undefined;
   try {
     const sendResult = await runtime.sendMessageToTarget(target, content);
     const disposition = inspectSendHandlerResult(sendResult);
@@ -3264,10 +3280,17 @@ async function handleSend(
       );
     }
     if (disposition.kind === "partially_delivered") {
+      // Local-effect receipts carry locally generated completion markers,
+      // not provider-issued ids; guidance must never tell an operator to
+      // reconcile ids against a provider that issued none.
+      const partialDeliveryGuidance =
+        disposition.receipt.evidenceKind === "local-effect"
+          ? `${selected.connector.label} reported completion for part of the message, but the complete payload was not delivered. Do not retry blindly; the transport reported completion for some parts and the transport returned no provider message ids to reconcile. ${disposition.message}`
+          : `${selected.connector.label} accepted part of the message, but the complete payload was not delivered. Do not retry blindly; provider messages ${disposition.receipt.providerMessageIds.join(", ")} already exist. ${disposition.message}`;
       return opFailure(
         "send",
         "MESSAGE_PARTIAL_DELIVERY",
-        `${selected.connector.label} accepted part of the message, but the complete payload was not delivered. Do not retry blindly; provider messages ${disposition.receipt.providerMessageIds.join(", ")} already exist. ${disposition.message}`,
+        partialDeliveryGuidance,
         {
           source: selected.connector.source,
           target,
@@ -3277,7 +3300,13 @@ async function handleSend(
           connectorCode: disposition.code,
           acceptance: "partial",
           responseMessageId: disposition.providerMessageId,
-          providerMessageIds: disposition.receipt.providerMessageIds,
+          ...(disposition.receipt.evidenceKind === "local-effect"
+            ? { localEffectIds: disposition.receipt.providerMessageIds }
+            : { providerMessageIds: disposition.receipt.providerMessageIds }),
+          // Absent discriminator documents the provider default; the structured
+          // surface states it explicitly so metadata consumers cannot misread
+          // local-effect markers as provider-backed ids.
+          evidenceKind: disposition.receipt.evidenceKind ?? "provider",
           replayed: disposition.replayed,
           persistenceStatus: disposition.receipt.persistence.status,
           newDelivery: !disposition.replayed,
@@ -3287,15 +3316,24 @@ async function handleSend(
     }
 
     providerMessageId = disposition.providerMessageId;
+    evidenceKind = disposition.receipt?.evidenceKind ?? "provider";
+    receiptIds = disposition.receipt?.providerMessageIds;
     if (
       disposition.receipt &&
       (disposition.receipt.persistence.status === "partial" ||
         disposition.receipt.persistence.status === "failed")
     ) {
+      // Local-effect receipts carry locally generated completion markers,
+      // not provider-issued ids; guidance must never tell an operator to
+      // reconcile ids against a provider that issued none.
+      const persistenceFailureGuidance =
+        disposition.receipt.evidenceKind === "local-effect"
+          ? `The transport reported completion via ${selected.connector.label}, but local delivery evidence was not fully persisted. The transport returned no provider message ids to reconcile; do not resend.`
+          : `The provider accepted the complete message via ${selected.connector.label}, but local delivery evidence was not fully persisted. Do not resend; reconcile provider messages ${disposition.receipt.providerMessageIds.join(", ")}.`;
       return opFailure(
         "send",
         "MESSAGE_DELIVERED_PERSISTENCE_FAILED",
-        `The provider accepted the complete message via ${selected.connector.label}, but local delivery evidence was not fully persisted. Do not resend; reconcile provider messages ${disposition.receipt.providerMessageIds.join(", ")}.`,
+        persistenceFailureGuidance,
         {
           source: selected.connector.source,
           target,
@@ -3304,7 +3342,10 @@ async function handleSend(
           deliveryStatus: "delivered",
           acceptance: "accepted",
           responseMessageId: providerMessageId,
-          providerMessageIds: disposition.receipt.providerMessageIds,
+          ...(disposition.receipt.evidenceKind === "local-effect"
+            ? { localEffectIds: disposition.receipt.providerMessageIds }
+            : { providerMessageIds: disposition.receipt.providerMessageIds }),
+          evidenceKind: disposition.receipt.evidenceKind ?? "provider",
           persistenceStatus: disposition.receipt.persistence.status,
           replayed: disposition.replayed,
           newDelivery: !disposition.replayed,
@@ -3325,7 +3366,10 @@ async function handleSend(
           deliveryStatus: "duplicate",
           priorDelivery: "delivered",
           responseMessageId: providerMessageId,
-          providerMessageIds: disposition.receipt?.providerMessageIds,
+          ...(evidenceKind === "local-effect"
+            ? { localEffectIds: receiptIds }
+            : { providerMessageIds: receiptIds }),
+          evidenceKind,
           newDelivery: false,
           persisted: false,
         },
@@ -3342,6 +3386,8 @@ async function handleSend(
       content,
       sentMemory,
       providerMessageId,
+      evidenceKind,
+      receiptIds,
       persist: boolParam(params.persist) !== false,
     });
     persisted = persistence.memory;
@@ -3349,10 +3395,17 @@ async function handleSend(
       const providerMessageIds =
         disposition.receipt?.providerMessageIds ??
         (providerMessageId ? [providerMessageId] : undefined);
+      // Local-effect receipts carry locally generated completion markers,
+      // not provider-issued ids; guidance must never tell an operator to
+      // reconcile ids against a provider that issued none.
+      const outboundRecordGuidance =
+        disposition.receipt?.evidenceKind === "local-effect"
+          ? `The transport reported completion via ${selected.connector.label}, but the requested local outbound record failed. The transport returned no provider message ids to reconcile; do not resend.`
+          : `The provider accepted the complete message via ${selected.connector.label}, but the requested local outbound record failed. Do not resend; reconcile the accepted provider message${providerMessageIds?.length === 1 ? "" : "s"}${providerMessageIds ? ` ${providerMessageIds.join(", ")}` : ""}.`;
       return opFailure(
         "send",
         "MESSAGE_DELIVERED_PERSISTENCE_FAILED",
-        `The provider accepted the complete message via ${selected.connector.label}, but the requested local outbound record failed. Do not resend; reconcile the accepted provider message${providerMessageIds?.length === 1 ? "" : "s"}${providerMessageIds ? ` ${providerMessageIds.join(", ")}` : ""}.`,
+        outboundRecordGuidance,
         {
           source: selected.connector.source,
           target,
@@ -3361,7 +3414,10 @@ async function handleSend(
           deliveryStatus: "delivered",
           acceptance: "accepted",
           responseMessageId: providerMessageId,
-          providerMessageIds,
+          ...(evidenceKind === "local-effect"
+            ? { localEffectIds: receiptIds }
+            : { providerMessageIds }),
+          evidenceKind: disposition.receipt?.evidenceKind ?? "provider",
           persistenceStatus: "failed",
           persistenceCode: persistence.code,
           persistenceMessage: persistence.message,
@@ -3408,7 +3464,8 @@ async function handleSend(
     label: selected.label,
     kind: selected.kind,
     targetMemory: persisted,
-    platformMessageId: providerMessageId,
+    platformMessageId:
+      evidenceKind === "provider" ? providerMessageId : undefined,
   });
 
   return opSuccess(
@@ -3426,6 +3483,10 @@ async function handleSend(
       urgency: normalized.urgency,
       memoryId: persisted?.id,
       responseMessageId: providerMessageId,
+      ...(evidenceKind === "local-effect"
+        ? { localEffectIds: receiptIds }
+        : { providerMessageIds: receiptIds }),
+      evidenceKind,
       deliveryStatus: "delivered",
     },
   );
@@ -6105,13 +6166,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     required: false,
     subactions: ["send_draft", "schedule_draft_send"],
     schema: { type: "string" },
-  },
-  {
-    name: "confirmed",
-    description: "Explicit send confirmation for op=send_draft.",
-    required: false,
-    subactions: ["send_draft"],
-    schema: { type: "boolean" },
   },
   {
     name: "sendAt",

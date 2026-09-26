@@ -8,7 +8,7 @@
  * back to a locally stored draft so the confirmation flow still works.
  *
  * Two independent gates guard every send. The user-confirmation gate refuses to
- * send without an explicit `confirmed: true`, returning a preview instead; the
+ * send without a later user confirmation bound to the preview; the
  * owner SendPolicy gate (when a policy is registered) can defer any send for
  * owner approval, enqueuing the sendDraft executor for later replay.
  *
@@ -28,6 +28,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { draftConsentDigest, requireSendConsent } from "../send-consent.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
@@ -192,13 +193,17 @@ export async function outboundDraftOptionsFromMessage(
 }
 
 function previewOutboundDraft(
-  record: Pick<DraftRecord, "source" | "to" | "body" | "subject">,
+  record: Pick<DraftRecord, "source" | "to" | "body" | "subject" | "worldId">,
 ): string {
   const recipients = record.to
-    .map((recipient) => recipient.displayName ?? recipient.identifier)
+    .map((recipient) =>
+      recipient.displayName
+        ? `${recipient.displayName} <${recipient.identifier}>`
+        : recipient.identifier,
+    )
     .join(", ");
   const subject = record.subject ? `Subject: ${record.subject}\n` : "";
-  return `[${record.source}] To: ${recipients}\n${subject}${record.body}`;
+  return `[${record.source}${record.worldId ? ` account ${record.worldId}` : ""}] To: ${recipients}\n${subject}${record.body}`;
 }
 
 function saveLocalOutboundDraft(args: {
@@ -236,7 +241,7 @@ function saveLocalOutboundDraft(args: {
 
 /**
  * SAFETY INVARIANT: MESSAGE must never send without an explicit
- * `confirmed: true` parameter. When confirmation is missing the handler
+ * user confirmation on a later turn. When confirmation is missing the handler
  * returns the preview and asks the user to confirm.
  */
 export const sendDraftAction: Action = {
@@ -244,9 +249,9 @@ export const sendDraftAction: Action = {
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. Without confirmed=true it only creates or previews the draft and asks for confirmation; it never sends directly.",
+    "Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. It previews the exact draft and requires a later affirmative user reply before sending.",
   descriptionCompressed:
-    "outbound draft/send Telegram|Discord|email|SMS|iMessage|WhatsApp|DM; requires confirmed=true",
+    "outbound draft/send Telegram|Discord|email|SMS|iMessage|WhatsApp|DM; requires a later user confirmation",
   similes: [
     "DISPATCH_DRAFT",
     "CONFIRM_AND_SEND",
@@ -255,12 +260,6 @@ export const sendDraftAction: Action = {
   ],
   parameters: [
     { ...draftIdParameter, required: false },
-    {
-      name: "confirmed",
-      description: "Whether the user explicitly confirmed sending the draft.",
-      required: false,
-      schema: { type: "boolean" as const, default: false },
-    },
     ...OUTBOUND_DRAFT_PARAMETERS,
   ],
   examples: [
@@ -345,10 +344,15 @@ export const sendDraftAction: Action = {
           channelId: draftParsed.channelId,
         });
       }
+      await requireSendConsent(runtime, _message, draftConsentDigest(record));
       const recipients = record.to
-        .map((recipient) => recipient.displayName ?? recipient.identifier)
+        .map((recipient) =>
+          recipient.displayName
+            ? `${recipient.displayName} <${recipient.identifier}>`
+            : recipient.identifier,
+        )
         .join(", ");
-      const text = `Drafted ${record.source} message to ${recipients}. Preview: ${record.preview}. Confirm before I send it.`;
+      const text = `Drafted ${record.source} message to ${recipients}.\n${previewOutboundDraft(record)}\nConfirm before I send it.`;
       logger.info(
         `[SendDraft] created outbound draft draftId=${record.draftId} source=${record.source}`,
       );
@@ -356,8 +360,11 @@ export const sendDraftAction: Action = {
         await callback({ text, action: "MESSAGE" });
       }
       return {
-        success: false,
+        success: true,
         text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        turnComplete: true,
         continueChain: false,
         data: {
           requiresConfirmation: true,
@@ -376,11 +383,19 @@ export const sendDraftAction: Action = {
       return { success: false, text: msg, error: msg };
     }
 
-    if (!parsed.confirmed) {
+    const consentDigest = draftConsentDigest(existing);
+    const consent = await requireSendConsent(runtime, _message, consentDigest);
+    if (consent === "cancelled")
+      return {
+        success: false,
+        text: "Nothing was sent. Preview the draft again before confirming.",
+        continueChain: false,
+      };
+    if (consent === "pending") {
       // The confirm prompt is the designed ask the user must answer:
       // verified + turnComplete make it the sole delivery, worded like a
       // person asking; the draftId stays planner-facing in data.
-      const text = `Here's what I'm about to send: ${existing.preview} — want me to send it?`;
+      const text = `Here's what I'm about to send: ${previewOutboundDraft(existing)} — want me to send it?`;
       logger.info(`[SendDraft] confirmation gate: draftId=${parsed.draftId}`);
       if (callback) {
         await callback({ text, action: "MESSAGE" });
@@ -421,9 +436,11 @@ export const sendDraftAction: Action = {
       const required = await policy.shouldRequireApproval(runtime, draftReq);
       if (required) {
         const enq = await policy.enqueueApproval(runtime, draftReq, () =>
-          service.sendDraft(runtime, parsed.draftId).then((rec) => ({
-            externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
-          })),
+          service
+            .sendDraft(runtime, parsed.draftId, consentDigest)
+            .then((rec) => ({
+              externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
+            })),
         );
         // The pending-approval notice is the complete answer to this turn:
         // verified + turnComplete make it the sole delivery, human-worded;
@@ -455,7 +472,11 @@ export const sendDraftAction: Action = {
       }
     }
 
-    const sent = await service.sendDraft(runtime, parsed.draftId);
+    const sent = await service.sendDraft(
+      runtime,
+      parsed.draftId,
+      consentDigest,
+    );
     // The sent confirmation is the complete answer to a single-operation
     // turn: verified + turnComplete make it the sole delivery; the draftId
     // stays planner-facing in data.

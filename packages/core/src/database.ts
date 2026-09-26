@@ -717,6 +717,16 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		entries: Array<{ key: string; value: T }>,
 	): Promise<boolean>;
 	abstract deleteCaches(keys: string[]): Promise<boolean>;
+	compareAndSetCache<T>(
+		_key: string,
+		_expected: unknown,
+		_replacement: T,
+	): Promise<boolean> {
+		throw new ElizaError(
+			"Database adapter does not support atomic cache updates",
+			{ code: "CACHE_CAS_CAPABILITY_REQUIRED" },
+		);
+	}
 
 	/**
 	 * Retrieves tasks based on specified parameters.

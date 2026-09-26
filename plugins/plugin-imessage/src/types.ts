@@ -125,6 +125,8 @@ export interface IMessageSendOptions {
   accountId?: string;
   /** Media URL or path to attach */
   mediaUrl?: string;
+  /** Additional attachments; all are resolved before any send. */
+  mediaUrls?: string[];
   /** Max bytes for media */
   maxBytes?: number;
 }
@@ -138,6 +140,8 @@ export interface IMessageSendResult {
   messageId?: string;
   /** Ordered provider receipts, including accepted chunks before a later failure. */
   messageIds?: string[];
+  /** Native transport completion markers, never provider or recipient receipts. */
+  localEffectIds?: string[];
   chatId?: string;
   error?: string;
 }

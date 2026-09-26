@@ -128,13 +128,13 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   async createDraft(
     runtime: IAgentRuntime,
     draft: DraftRequest,
-  ): Promise<{ draftId: string; preview: string }> {
+  ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
     if (!this.isAvailable(runtime)) {
       throw new NotYetImplementedError(
         `${this.source} adapter is unavailable for createDraft`,
       );
     }
-    return this.createDraftImpl(runtime, draft);
+    return this.createDraftImpl(runtime, structuredClone(draft));
   }
 
   async sendDraft(
@@ -213,7 +213,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   protected createDraftImpl(
     _runtime: IAgentRuntime,
     _draft: DraftRequest,
-  ): Promise<{ draftId: string; preview: string }> {
+  ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
     throw new NotYetImplementedError(
       `${this.source} adapter does not support draft creation`,
     );
