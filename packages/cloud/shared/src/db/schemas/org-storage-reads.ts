@@ -60,7 +60,7 @@ export const orgStorageReadOperations = pgTable(
     credit_transaction_id: uuid("credit_transaction_id"),
     provider_succeeded_at: timestamp("provider_succeeded_at", { withTimezone: true }),
     completed_at: timestamp("completed_at", { withTimezone: true }),
-    access_count: bigint("access_count", { mode: "bigint" }).notNull().default(0n),
+    access_count: bigint("access_count", { mode: "bigint" }).notNull().default(sql`0`),
     last_access_at: timestamp("last_access_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

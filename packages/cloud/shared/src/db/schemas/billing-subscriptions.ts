@@ -277,7 +277,7 @@ export type NewBillingSubscriptionRevision = InferInsertModel<typeof billingSubs
 export const organizationSubscriptionAuthorities = pgTable(
   "organization_subscription_authorities",
   {
-    policy_generation: bigint("policy_generation", { mode: "bigint" }).notNull().default(0n),
+    policy_generation: bigint("policy_generation", { mode: "bigint" }).notNull().default(sql`0`),
     organization_id: uuid("organization_id")
       .primaryKey()
       .references(() => organizations.id, { onDelete: "cascade" }),
