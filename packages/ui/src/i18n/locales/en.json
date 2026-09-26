@@ -594,6 +594,7 @@
   "chat.cached": "cached",
   "chat.cancelReply": "Cancel reply",
   "chat.collapseWidgets": "Collapse widgets",
+  "chat.configuredModelUnavailable": "Model {{model}} ({{setting}}) is unavailable. Update it in Settings to start chatting",
   "chat.conversations": "Conversations",
   "chat.createTask": "Create coding task",
   "chat.createTaskTitle": "Create Coding Task",

@@ -127,6 +127,20 @@ export interface AgentStartupDiagnostics {
   /** 0–100 when parseable from embedding detail */
   embeddingProgressPct?: number;
 }
+export type AgentModelReadiness =
+  | { status: "available"; checkedAt: number }
+  | { status: "unknown"; reason: string; checkedAt: number | null }
+  | {
+      status: "model_not_available";
+      code: "MODEL_NOT_AVAILABLE";
+      missing: Array<{
+        modelType: "TEXT_SMALL" | "TEXT_LARGE";
+        configKey: string | null;
+        modelId: string;
+      }>;
+      message: string;
+      checkedAt: number;
+    };
 export interface AgentStatus {
   state: AgentState;
   agentName: string;
@@ -139,6 +153,12 @@ export interface AgentStatus {
    * with older agents/transports that don't report it.
    */
   canRespond?: boolean;
+  /**
+   * Cloud catalog readiness of the configured TEXT_SMALL/TEXT_LARGE model ids
+   * (#30228). `model_not_available` is an invalid model setting, distinct from
+   * a provider outage (`unknown`) or no provider at all (absent).
+   */
+  modelReadiness?: AgentModelReadiness;
   uptime: number | undefined;
   startedAt: number | undefined;
   port?: number;
