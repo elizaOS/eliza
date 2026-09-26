@@ -31,6 +31,7 @@ import {
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
 } from "./loopback-trust.js";
+import { sweepExpiredEntries } from "./memory-bounds.ts";
 import { resolveDirectRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15000;
@@ -47,6 +48,8 @@ export function __resetCloudPairRateLimitForTests(): void {
 function rateLimitConsume(key: string | null): boolean {
   const now = Date.now();
   const bucketKey = key || "unknown";
+  // Without a sweep, every peer that pairs once keeps its bucket forever.
+  sweepExpiredEntries(rateBuckets, now, 100);
   const current = rateBuckets.get(bucketKey);
   if (!current || current.resetAt <= now) {
     rateBuckets.set(bucketKey, {
