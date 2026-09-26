@@ -114,10 +114,14 @@ export async function handleWorkspaceRoutes(
     try {
       const workspaceId = commitMatch[1];
       const body = await parseBody(req);
-      const { message } = body;
+      const message = asString(body.message);
+      if (!message) {
+        sendError(res, "message is required");
+        return true;
+      }
 
       const result = await ctx.workspaceService.commit(workspaceId, {
-        message: message as string,
+        message,
         all: true,
       });
 
