@@ -38,10 +38,12 @@ import {
 } from "./lib-target";
 import {
 	bundleTierSlug,
+	collectFailedEvalNames,
 	type Eliza1DeviceCaps,
 	type Eliza1FileEntry,
 	type Eliza1Files,
 	type Eliza1Manifest,
+	manifestPassesActivationGate,
 	parseManifestOrThrow,
 	SUPPORTED_BACKENDS_BY_TIER,
 } from "./manifest";
@@ -85,6 +87,37 @@ export class BundleIncompatibleError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "BundleIncompatibleError";
+	}
+}
+
+/**
+ * Thrown before any weight byte is fetched when the published bundle manifest
+ * fails the activation gate (`evals.textEval.passed !== true`). Activation
+ * would refuse the installed bundle with `CandidateModelActivationError`, so
+ * downloading gigabytes of candidate weights as a chat model has no use; the
+ * same predicate decides both boundaries.
+ */
+export class CandidateBundleDownloadError extends Error {
+	readonly code = "ELIZA1_BUNDLE_CANDIDATE" as const;
+	readonly modelId: string;
+	readonly manifestVersion: string;
+	readonly failedEvals: ReadonlyArray<string>;
+	constructor(args: {
+		modelId: string;
+		manifestVersion: string;
+		failedEvals: ReadonlyArray<string>;
+	}) {
+		const evalSuffix =
+			args.failedEvals.length > 0
+				? ` Failed evals: ${args.failedEvals.join(", ")}.`
+				: "";
+		super(
+			`Eliza-1 bundle ${args.modelId} (manifest ${args.manifestVersion}) is a candidate release that cannot be activated as a chat model; refusing to download its weights.${evalSuffix} Use Eliza Cloud or another provider until a passing release is published.`,
+		);
+		this.name = "CandidateBundleDownloadError";
+		this.modelId = args.modelId;
+		this.manifestVersion = args.manifestVersion;
+		this.failedEvals = args.failedEvals;
 	}
 }
 
@@ -1297,6 +1330,8 @@ export class Downloader {
 				if (err instanceof GatedRepoError) {
 					record.job.errorCode = err.code;
 					record.job.errorHttpStatus = err.httpStatus;
+				} else if (err instanceof CandidateBundleDownloadError) {
+					record.job.errorCode = err.code;
 				}
 				this.rememberTerminalDownload(record.job);
 				this.emit({ type: "failed", job: { ...record.job } });
@@ -1344,6 +1379,17 @@ export class Downloader {
 			JSON.parse(await fsp.readFile(manifestPath, "utf8")),
 			catalogEntry,
 		);
+
+		// Activation gate on the live manifest, before any weight byte: the
+		// runtime refuses to activate a candidate bundle, so it is never
+		// downloaded as a chat model either.
+		if (!manifestPassesActivationGate(manifest)) {
+			throw new CandidateBundleDownloadError({
+				modelId: catalogEntry.id,
+				manifestVersion: manifest.version,
+				failedEvals: collectFailedEvalNames(manifest),
+			});
+		}
 
 		// §7: schema version, RAM budget, and kernel-backend availability are
 		// checked against this device BEFORE any weight byte is fetched. An

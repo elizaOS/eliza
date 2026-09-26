@@ -175,6 +175,78 @@ export function eliza1TierPublishStatus(
   return hint ?? "published";
 }
 
+/** The manifest eval block the activation gate reads (`eliza-1.manifest.json#evals`). */
+export interface Eliza1ActivationEvals {
+  textEval: { passed: boolean };
+}
+
+/**
+ * The single activation-eligibility predicate. The runtime applies it to the
+ * installed bundle manifest before activation, the downloader applies it to
+ * the fetched manifest before any weight byte, and the catalog applies it to
+ * the published-manifest snapshot below so recommendation surfaces never offer
+ * a tier activation would refuse.
+ */
+export function eliza1EvalsPassActivationGate(
+  evals: Eliza1ActivationEvals,
+): boolean {
+  return evals.textEval.passed === true;
+}
+
+/**
+ * Snapshot of each published tier's `eliza-1.manifest.json` activation evals,
+ * cut from `elizaos/eliza-1` when the catalog is updated. Both published tiers
+ * currently serve candidate manifests (`textEval.passed=false`, checked
+ * 2026-09-26), so neither is offered as a first-run or Settings default until
+ * the publisher ships a passing manifest and this snapshot is refreshed. The
+ * downloader re-checks the live manifest with the same predicate, so a stale
+ * snapshot can only under-offer, never let a refused bundle download.
+ */
+export const ELIZA_1_PUBLISHED_MANIFEST_EVALS: Readonly<
+  Partial<
+    Record<
+      Eliza1TierId,
+      { manifestVersion: string; evals: Eliza1ActivationEvals }
+    >
+  >
+> = {
+  "eliza-1-2b": {
+    manifestVersion: "0.0.1-local.1-gemma4",
+    evals: { textEval: { passed: false } },
+  },
+  "eliza-1-4b": {
+    manifestVersion: "1.0.0-weights-staged.2-gemma4",
+    evals: { textEval: { passed: false } },
+  },
+};
+
+/**
+ * True only for a published tier whose published manifest passes the
+ * activation gate. Pending tiers and tiers without a manifest snapshot are
+ * ineligible.
+ */
+export function isEliza1TierActivationEligible(id: string): boolean {
+  if (!isEliza1TierId(id)) return false;
+  if (eliza1TierPublishStatus(id) !== "published") return false;
+  const snapshot = ELIZA_1_PUBLISHED_MANIFEST_EVALS[id];
+  return snapshot ? eliza1EvalsPassActivationGate(snapshot.evals) : false;
+}
+
+/**
+ * Canonical "may this catalog entry be offered as a chat model to download and
+ * activate" check for recommendation and Settings surfaces: a visible,
+ * default-eligible Eliza-1 tier that is published and activation-eligible.
+ * Entry fields (as served over the API) win over the id-keyed snapshot.
+ */
+export function isCatalogModelOfferable(model: CatalogModel): boolean {
+  if (model.hiddenFromCatalog) return false;
+  if (!isDefaultEligibleId(model.id)) return false;
+  const publishStatus =
+    model.publishStatus ?? eliza1TierPublishStatus(model.id);
+  if (publishStatus !== "published") return false;
+  return model.activationEligible ?? isEliza1TierActivationEligible(model.id);
+}
+
 export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
@@ -664,6 +736,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     }),
     blurb: blurbForTier(id),
     publishStatus: eliza1TierPublishStatus(id),
+    activationEligible: isEliza1TierActivationEligible(id),
   };
 }
 

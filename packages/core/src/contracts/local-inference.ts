@@ -482,13 +482,25 @@ export interface CatalogModel {
 	 *     The recommender may route first-run users here.
 	 *   - `"pending"`: catalog points at a tier whose HF repo is not
 	 *     usable yet (404, empty manifest, or `releaseState=local-standin`).
-	 *     `recommendForFirstRun` falls through
-	 *     to the next ladder candidate. Used to keep the catalog reflecting
+	 *     Recommenders skip it. Used to keep the catalog reflecting
 	 *     the intended product shape while the publish pipeline catches up.
+	 *
+	 * Publication is necessary but not sufficient for a recommendation; see
+	 * `activationEligible`.
 	 *
 	 * See elizaOS/eliza#7629.
 	 */
 	publishStatus?: "published" | "pending";
+	/**
+	 * Whether the published bundle passes the activation gate — the same
+	 * `evals.textEval.passed` check the runtime applies to the installed
+	 * manifest before activating it. A published bundle whose manifest is a
+	 * candidate (`textEval.passed=false`) is downloadable bytes, not a usable
+	 * chat model: setup/recommendation surfaces must not offer it, and the
+	 * downloader refuses it before fetching weights. Defaults to the catalog's
+	 * manifest snapshot for the tier when omitted.
+	 */
+	activationEligible?: boolean;
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";

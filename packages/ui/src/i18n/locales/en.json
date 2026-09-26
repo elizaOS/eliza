@@ -6670,7 +6670,7 @@
   "downloadqueue.retry": "Retry",
   "firstrunoffer.titleRequired": "Local model required",
   "firstrunoffer.titleInProgress": "Local model download in progress",
-  "firstrunoffer.detailNoModel": "No local chat model is available on this device.",
+  "firstrunoffer.detailNoModel": "No local chat model is available on this device. Use Eliza Cloud or connect another model provider to chat.",
   "firstrunoffer.detailRunning": "A local model download is still running.",
   "firstrunoffer.downloadingDefault": "Downloading default model",
   "firstrunoffer.downloadDefault": "Download default model",

@@ -29,6 +29,7 @@ import {
 import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import {
 	buildHuggingFaceResolveUrl,
+	isCatalogModelOfferable,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { resolveHubAuthHeaders } from "@elizaos/plugin-native-inference/model-catalog/hub-auth";
@@ -960,9 +961,17 @@ async function hubSnapshot(): Promise<Record<string, unknown>> {
 function chatModels(): CatalogModel[] {
 	return CATALOG.filter((model) => model.role === "chat");
 }
+/**
+ * Chat models this host may offer to download unprompted: published tiers
+ * whose published manifest passes the activation gate. Never a pending or
+ * candidate-only tier, which the downloader/activation would refuse.
+ */
+function offerableChatModels(): CatalogModel[] {
+	return chatModels().filter(isCatalogModelOfferable);
+}
 function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
-	const candidates = chatModels()
+	const candidates = offerableChatModels()
 		.filter((model) => totalRamGb >= model.minRamGb)
 		.sort((left, right) => {
 			const rightSize =
@@ -977,7 +986,7 @@ function recommendedChatModel(): CatalogModel | null {
 		});
 	return (
 		candidates[0] ??
-		chatModels().sort((a, b) => {
+		offerableChatModels().sort((a, b) => {
 			const aSize =
 				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
 					? a.sizeGb
@@ -1363,7 +1372,9 @@ export async function handleLocalInferenceChatCommand(
 		if (smallerInstalled) {
 			return activateInstalledModel(smallerInstalled.entry);
 		}
-		const smallest = chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0];
+		const smallest = offerableChatModels().sort(
+			(a, b) => a.sizeGb - b.sizeGb,
+		)[0];
 		if (smallest) {
 			const job = await startDownload(smallest.id);
 			return buildLocalInferenceChatResult(

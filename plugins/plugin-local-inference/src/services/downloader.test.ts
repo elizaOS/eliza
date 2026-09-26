@@ -57,6 +57,8 @@ function eliza1Manifest(overrides: {
 		{ status: string; atCommit: string; report: string }
 	>;
 	shaFor: (key: string) => string;
+	/** Publish a candidate manifest: staging version, text eval not passed. */
+	candidate?: boolean;
 }): string {
 	const textPath = CANONICAL_TEXT_PATH;
 	const voicePath = "tts/voice.gguf";
@@ -74,7 +76,7 @@ function eliza1Manifest(overrides: {
 	return JSON.stringify({
 		id: "eliza-1-2b",
 		tier: "2b",
-		version: "1.0.0",
+		version: overrides.candidate ? "1.0.0-candidate.1" : "1.0.0",
 		publishedAt: "2026-05-11T00:00:00.000Z",
 		lineage: {
 			text: { base: "eliza-1-text", license: "test" },
@@ -83,7 +85,7 @@ function eliza1Manifest(overrides: {
 			vad: { base: "eliza-1-vad", license: "test" },
 			vision: { base: "eliza-1-vision", license: "test" },
 		},
-		defaultEligible: true,
+		defaultEligible: !overrides.candidate,
 		// Downloader-mechanics fixture: MTP mode is incidental here, so this
 		// bundle is the legacy embedded-draft-head shape (no separate drafter
 		// GGUF to serve). The Gemma-4 separate-drafter contract is exercised in
@@ -115,7 +117,9 @@ function eliza1Manifest(overrides: {
 			verifiedBackends,
 		},
 		evals: {
-			textEval: { score: 1, passed: true },
+			textEval: overrides.candidate
+				? { score: 0, passed: false }
+				: { score: 1, passed: true },
 			voiceRtf: { rtf: 0.5, passed: true },
 			asrWer: { wer: 0.05, passed: true },
 			vadLatencyMs: { median: 16, passed: true },
@@ -719,6 +723,30 @@ describe("local inference downloader status", () => {
 		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
 			false,
 		);
+	});
+
+	it("refuses a candidate manifest (textEval failed) before any weight byte (#30656)", async () => {
+		const model = ELIZA_2B_MODEL;
+		const fetchSpy = installManifestOnlyFetch(
+			eliza1Manifest({ shaFor: () => sha256("x"), candidate: true }),
+		);
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const failed = waitForTerminal(downloader, model.id, "failed");
+		await downloader.start(model.id);
+		const job = await failed;
+		expect(job.errorCode).toBe("ELIZA1_BUNDLE_CANDIDATE");
+		expect(job.error).toMatch(/1\.0\.0-candidate\.1/);
+		expect(job.error).toMatch(/textEval/);
+		// Only the manifest was fetched; the weight fetch would have thrown.
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
+			false,
+		);
+		expect(await readAssignments()).toEqual({});
 	});
 
 	it("runs the verify-on-device hook before the bundle fills a default slot", async () => {

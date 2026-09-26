@@ -8,6 +8,7 @@ import {
 	ELIZA_1_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
+	isEliza1TierActivationEligible,
 	MODEL_CATALOG,
 	tierBundleSlug,
 } from "./catalog";
@@ -254,8 +255,24 @@ describe("local inference catalog", () => {
 		);
 	});
 
-	it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {
-		const picked = recommendForFirstRun();
+	it("recommendForFirstRun offers nothing while every published manifest is a candidate", () => {
+		// Same predicate the activation gate applies to the installed manifest.
+		expect(recommendForFirstRun()).toBeNull();
+		for (const model of MODEL_CATALOG) {
+			expect(model.activationEligible).toBe(
+				isEliza1TierActivationEligible(model.id),
+			);
+		}
+	});
+
+	it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier once its manifest passes", () => {
+		const picked = recommendForFirstRun(
+			MODEL_CATALOG.map((model) =>
+				model.publishStatus === "published"
+					? { ...model, activationEligible: true }
+					: model,
+			),
+		);
 		expect(picked).not.toBeNull();
 		if (!picked) throw new Error("missing first-run recommendation");
 		expect(picked.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
