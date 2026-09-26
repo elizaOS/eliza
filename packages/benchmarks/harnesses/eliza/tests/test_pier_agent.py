@@ -70,6 +70,32 @@ class PierAdapterBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "task-local Git"):
             asyncio.run(self.agent_class(**self.arguments)._prepare_git_identity(SimpleNamespace(exec=execute)))
 
+    def test_setup_requires_working_bundled_search_before_agent_start(self):
+        for available in (False, True):
+            with self.subTest(available=available):
+                agent = self.agent_class(**self.arguments)
+
+                async def upload(*args):
+                    pass
+
+                async def execute(command, **kwargs):
+                    if command == "/opt/eliza/bin/rg --version":
+                        return SimpleNamespace(return_code=0 if available else 127)
+                    if command.startswith("sha256sum"):
+                        return SimpleNamespace(return_code=0, stdout=agent.bundle_digest)
+                    if "tar -xf" in command:
+                        return SimpleNamespace(return_code=0, stdout="1.4.2")
+                    return SimpleNamespace(return_code=0, stdout="/root")
+
+                environment = SimpleNamespace(exec=execute, upload_file=upload)
+                if available:
+                    asyncio.run(agent.setup(environment))
+                    self.assertEqual(agent.state_dir, "/root/.eliza-benchmark-state")
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "bundled ripgrep"):
+                        asyncio.run(agent.setup(environment))
+                    self.assertIsNone(agent.state_dir)
+
     def test_changed_bundle_rejected(self):
         with self.assertRaisesRegex(ValueError, 'digest mismatch'):
             self.agent_class(**(self.arguments | {'runtime_sha256': '0' * 64}))
@@ -102,6 +128,7 @@ class PierAdapterBoundaryTests(unittest.TestCase):
             uploads[destination] = Path(source).read_text()
 
         async def execute(*args, **kwargs):
+            self.assertIn('PATH="/opt/eliza/bin:$PATH"', args[0])
             return SimpleNamespace(return_code=1)
 
         async def download_file(source, destination):

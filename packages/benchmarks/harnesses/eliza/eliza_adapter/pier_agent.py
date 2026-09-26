@@ -87,6 +87,9 @@ class ElizaAgent(BaseAgent):
             raise RuntimeError(f"Native runtime setup failed: {result.stderr}")
         if (result.stdout or "").strip() != "1.4.2":
             raise RuntimeError("Native runtime requires pinned Bun 1.4.2")
+        search = await environment.exec("/opt/eliza/bin/rg --version", timeout_sec=10)
+        if search.return_code != 0:
+            raise RuntimeError("Native runtime requires its bundled ripgrep executable")
         home = await environment.exec('printf "%s" "$HOME"', timeout_sec=10)
         home_path = (home.stdout or "").strip()
         if home.return_code != 0 or not home_path.startswith("/") or home_path == "/":
@@ -145,7 +148,7 @@ class ElizaAgent(BaseAgent):
         result = None
         try:
             result = await environment.exec(
-                "mkdir -p /logs/agent/eliza && " + command
+                'mkdir -p /logs/agent/eliza && PATH="/opt/eliza/bin:$PATH" ' + command
                 + " > /logs/agent/eliza/stdout.log 2> /logs/agent/eliza/stderr.log",
                 cwd="/app", env=environment.agent_process_env(env),
             )

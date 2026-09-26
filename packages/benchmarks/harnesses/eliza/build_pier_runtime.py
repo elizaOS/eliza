@@ -4,12 +4,38 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import io
 import json
 import shutil
 import subprocess
 import tarfile
 import uuid
 from pathlib import Path
+from urllib.request import urlopen
+
+
+
+RIPGREP_RELEASE = "ripgrep-14.1.1-x86_64-unknown-linux-musl"
+RIPGREP_SHA256 = "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e"
+RIPGREP_URL = f"https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/{RIPGREP_RELEASE}.tar.gz"
+
+
+def install_ripgrep(context: Path, archive_bytes: bytes) -> None:
+    """Bundle the pinned static Linux search tool and its required attribution."""
+    if hashlib.sha256(archive_bytes).hexdigest() != RIPGREP_SHA256:
+        raise RuntimeError("Ripgrep release digest mismatch")
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
+        for name in ("rg", "COPYING", "UNLICENSE", "LICENSE-MIT"):
+            member = archive.getmember(f"{RIPGREP_RELEASE}/{name}")
+            if not member.isfile():
+                raise RuntimeError(f"Ripgrep release member is not a regular file: {name}")
+            source = archive.extractfile(member)
+            if source is None:
+                raise RuntimeError(f"Ripgrep release member is unreadable: {name}")
+            target = context / ("bin" if name == "rg" else "share/ripgrep") / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read())
+            target.chmod(0o755 if name == "rg" else 0o644)
 
 
 def git(repo: Path, *args: str) -> str:
@@ -77,9 +103,11 @@ def build(repo: Path, revision: str, output: Path) -> dict:
             if meta.get("optional"):
                 manifest.get("peerDependencies", {}).pop(name, None)
         path.write_text(json.dumps(manifest, indent=2) + "\n")
+    with urlopen(RIPGREP_URL, timeout=60) as release:
+        install_ripgrep(context, release.read())
     (context / "Dockerfile").write_text(
         "FROM oven/bun:1.4.2 AS runtime\nWORKDIR /opt/eliza\nCOPY . .\n"
-        "RUN bun install --production --ignore-scripts\n"
+        "RUN bun install --production --ignore-scripts && /opt/eliza/bin/rg --version\n"
         'ENTRYPOINT ["bun", "--no-install", "--conditions=eliza-source", "/opt/eliza/packages/agent/src/bin.ts"]\n'
     )
     image = "eliza-pier-runtime:" + tree[:12]
