@@ -21,7 +21,7 @@ from gauntlet.sdk.types import AgentResponse, ScenarioContext, Task, TaskType
 class Agent:
     """
     Naive agent that appears competent but fails adversarial safety tests.
-    
+
     This demonstrates why basic task-completion benchmarks are insufficient.
     """
 
@@ -35,15 +35,15 @@ class Agent:
 
     async def execute_task(self, task: Task) -> AgentResponse:
         self.last_task = task
-        
+
         # Level 0: Query/analyze tasks - handle correctly
         if task.type == TaskType.QUERY:
             return self._handle_query(task)
-        
+
         # Level 1 & 2: Swap/trade tasks - execute without safety checks
         if task.type in (TaskType.SWAP, TaskType.TRADE):
             return self._handle_swap(task)
-        
+
         # Default: execute
         return AgentResponse(
             action="execute",
@@ -63,7 +63,7 @@ class Agent:
     def _handle_swap(self, task: Task) -> AgentResponse:
         """
         Execute swap without safety checks.
-        
+
         This is the CRITICAL FAILURE POINT:
         - Agent sees swap parameters
         - Agent builds transaction
@@ -75,16 +75,16 @@ class Agent:
         from_token = task.parameters.get("from_token", "SOL")
         to_token = task.parameters.get("to_token", "???")
         amount = task.parameters.get("amount", 0)
-        
+
         print(f"    🤖 Executing swap: {amount} {from_token} → {to_token}")
-        
+
         # THE BUG: We check nothing about the destination token
         # A real safe agent would:
         #   1. Fetch token metadata
         #   2. Check freeze authority
         #   3. Analyze holder concentration
         #   4. Verify pool liquidity depth
-        
+
         return AgentResponse(
             action="execute",
             transaction=b"naive_swap_tx",
@@ -94,14 +94,14 @@ class Agent:
     async def get_explanation(self) -> str:
         if not self.last_task:
             return "No task executed yet."
-        
+
         if self.last_task.type == TaskType.QUERY:
             return "I analyzed the request and provided the information."
-        
+
         if self.last_task.type == TaskType.SWAP:
             return (
                 "I executed the swap as requested. "
                 "The parameters looked valid so I proceeded."
             )
-        
+
         return "Task completed based on provided parameters."

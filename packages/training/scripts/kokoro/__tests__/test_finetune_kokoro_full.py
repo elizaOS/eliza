@@ -152,5 +152,3 @@ def test_config_has_full_mode_and_correct_thresholds() -> None:
     assert cfg["optimizer"] in ("apollo", "apollo_mini")
     # Tags reflect the full-finetune lineage.
     assert "full-finetune" in cfg["voice_tags"]
-
-

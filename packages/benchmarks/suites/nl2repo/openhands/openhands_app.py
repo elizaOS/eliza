@@ -20,13 +20,13 @@ class AppData:
         # 创建时需要初始化的属性
         self.module_name = module_name
         self.base_url = base_url
-        self.sk = sk  
+        self.sk = sk
         self.port = port
         self.pro_name_list: List = []
         self.host_info = get_local_host_info()
         self.container = None
 
-        
+
         self.session_id_list: List = []  # Session ID List
         self.last_status: bool = False  # Last Status, Default False
         self.bo_size = bo_size
@@ -74,7 +74,7 @@ def create_openhands_container(auto_entry: AppData) -> str:
     # Create container
     container = create_advanced_container(
         host_info=auto_entry.host_info,
-        image_name="docker.all-hands.dev/all-hands-ai/openhands:0.49",  
+        image_name="docker.all-hands.dev/all-hands-ai/openhands:0.49",
         container_name=container_name,  # Container name
         env_vars=env_vars,  # Environment variables
         ports=ports,  # Port mappings
@@ -92,7 +92,7 @@ def create_openhands_container(auto_entry: AppData) -> str:
 # Single App Task Start
 def start_app(app_data: AppData):
     # Headless mode
-    
+
     if not app_data.pro_name_list:
         logger.error("pro name list is empty")
         return None
@@ -173,20 +173,20 @@ api_key = "{app_data.sk}"
         "SANDBOX_RUNTIME_CONTAINER_IMAGE": "docker.all-hands.dev/all-hands-ai/runtime:0.56-nikolaik",
         "LOG_ALL_EVENTS": "true",
         "CONFIG_FILE": "/custom/path/config.toml",
-        "AGENT_LLM_CONFIG": module_name_replace  
+        "AGENT_LLM_CONFIG": module_name_replace
     }
 
-    
+
 
     ports = {'3000': app_data.port}
 
-  
-    
+
+
     config_full_path = os.path.abspath(os.path.join(task_workspace_path, "config.toml"))
     openhands_state_path = os.path.expanduser("~/.openhands")
 
     volumes = [
-        (config_full_path, "/custom/path/config.toml", "ro"),  
+        (config_full_path, "/custom/path/config.toml", "ro"),
         ("/var/run/docker.sock", "/var/run/docker.sock", "rw"),  # Docker socket
         (openhands_state_path, "/.openhands", "rw")  # OpenHands State Directory
     ]
@@ -253,7 +253,7 @@ api_key = "{app_data.sk}"
             logger.error(f"Error occurred while monitoring container execution: {str(e)}")
             exit_code = -1
 
-        
+
         logger.info("Start Post-processing")
         post_process_result = post_process_task(task_uuid, workspace_path, test_data, logger)
 
@@ -281,7 +281,7 @@ api_key = "{app_data.sk}"
             'status': 'completed' if exit_code == 0 and post_process_result['status'] == 'success' else 'failed',
             'post_process_result': post_process_result,
             'test_score': test_score,
-            'score': test_score  
+            'score': test_score
         }
 
     except Exception as e:
@@ -408,19 +408,19 @@ def start_openhands(config: dict):
 
                 logger.info("=" * 60)
 
-               
+
                 try:
-                    
+
                     result_dir = "result"
                     os.makedirs(result_dir, exist_ok=True)
 
-                   
+
                     save_data = result.copy()
 
-                   
+
                     if 'test_data' in save_data:
                         test_data = save_data.pop('test_data')
-                      
+
                         save_data['test_data_info'] = {
                             'pro_name': test_data.proName if hasattr(test_data, 'proName') else None,
                             'test_case_count': test_data.testCaseCount if hasattr(test_data, 'testCaseCount') else 0,
@@ -430,10 +430,10 @@ def start_openhands(config: dict):
                                                                                            'pyTestFileList') and test_data.pyTestFileList else 0
                         }
 
-                  
+
                     save_data['saved_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
 
-                    
+
                     result_file_path = os.path.join(result_dir, f"{task_uuid}.json")
 
                     # Save to jsonfile

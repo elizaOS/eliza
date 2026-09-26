@@ -34,7 +34,7 @@ def start_test(workspace_name,test_data : TestData):
             'status': 'completed' if post_process_result['status'] == 'success' else 'failed',
             'post_process_result': post_process_result,
             'test_score': test_score,
-            'score': test_score  
+            'score': test_score
         }
 
     except Exception as e:

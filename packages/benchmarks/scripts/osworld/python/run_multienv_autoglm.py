@@ -111,7 +111,7 @@ def config() -> argparse.Namespace:
 
     # logging related
     parser.add_argument("--result_dir", type=str, default="./results")
-    
+
     # parallel number
     parser.add_argument("--num_workers", type=int, default=20, help="Number of parallel workers")
     args = parser.parse_args()
@@ -123,7 +123,7 @@ class DesktopEnv(DesktopEnvBase):
     def step(self, action, pause=2):
         self._step_no += 1
         self.action_history.append(action)
-        
+
         # Mark environment as used when step is called
         self.is_environment_used = True
 
@@ -167,7 +167,7 @@ class DesktopEnv(DesktopEnvBase):
         time.sleep(pause)
         observation = self._get_obs()
         observation['exe_result'] = exe_result
-        
+
         return observation, reward, done, info
 
     def reset(self, task_config: Optional[Dict[str, Any]] = None, seed=None, options=None) -> Dict[str, Any]:
@@ -183,17 +183,17 @@ class DesktopEnv(DesktopEnvBase):
             # Only revert to snapshot if environment has been used (step/setup)
             # This optimization is especially important for cloud providers like AWS
             # where unnecessary snapshot operations are costly and time-consuming
-            
+
             if task_config is not None:
                 # Only consider task proxy requirement if proxy is enabled at system level
                 task_use_proxy = task_config.get("proxy", False) and self.enable_proxy
                 if not self.enable_proxy and task_config.get("proxy", False):
                     logger.info("Task requires proxy but proxy is disabled at system level, ignoring proxy requirement.")
-                
+
                 if task_use_proxy != self.current_use_proxy:
                     # keep because get_info_from_website depend on this
                     self.current_use_proxy = task_use_proxy
-            
+
             if self.is_environment_used:
                 logger.info("Environment has been used, reverting to snapshot {}...".format(self.snapshot_name))
                 self._revert_to_snapshot()
@@ -227,7 +227,7 @@ class DesktopEnv(DesktopEnvBase):
                     time.sleep(5)
             else:
                 break
-            
+
         logger.info("Environment setup complete.")
 
         # Upload tools from autoglm package
@@ -261,7 +261,7 @@ print(window_id);"""
         apps = self.controller.execute_python_command(apps_code)['output'].strip()
         apps = ast.literal_eval(apps)
         app_list = {}
-        
+
         for app in apps:
             parts = app.split(maxsplit=4)
             if len(parts) < 4:
@@ -275,7 +275,7 @@ print(window_id);"""
                 'app_name': app_name,
                 'title': title
             }
-        
+
         cur_id = self.controller.execute_python_command(window_code)['output'].strip()
 
         return app_list, cur_id
@@ -305,9 +305,9 @@ print(output);"""
             "vlc": "VLCTools",
             "google_chrome": "BrowserTools"
         }
-        
+
         self.maximize_window()
-        
+
         for i in range(3):
             try:
                 app_list, cur_id = self.get_current_apps()
@@ -316,7 +316,7 @@ print(output);"""
                     raise e
                 logger.error(f"Failed to get current apps: {e}")
                 time.sleep(1)
-        
+
         if cur_id in app_list:
             cur_app = app_list[cur_id]['app_name']
 
@@ -332,7 +332,7 @@ print(output);"""
         else:
             cur_app = None
             app_info = None
-        
+
         tree = self.controller.get_accessibility_tree()
         screenshot = self.controller.get_screenshot()
         if screenshot is None:

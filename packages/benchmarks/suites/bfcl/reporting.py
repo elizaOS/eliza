@@ -59,7 +59,7 @@ class BFCLReporter:
     async def _update_best_results(self, results: BFCLBenchmarkResults) -> None:
         """Update the best results file without overwriting better scores from other models."""
         model_name = results.model_name or "unknown"
-        
+
         # Load existing best results
         best_results: dict[str, dict[str, float | int | str | None]] = {}
         if self.best_results_file.exists():
@@ -68,7 +68,7 @@ class BFCLReporter:
                     best_results = json.load(f)
             except json.JSONDecodeError:
                 pass
-        
+
         # Get current metrics
         current: dict[str, float | int | str | None] = {
             "model": model_name,
@@ -80,7 +80,7 @@ class BFCLReporter:
             "total_tests": results.metrics.total_tests,
             "timestamp": datetime.now().isoformat(),
         }
-        
+
         # Update this model's best if improved
         if model_name in best_results:
             existing = best_results[model_name]
@@ -92,11 +92,11 @@ class BFCLReporter:
         else:
             best_results[model_name] = current
             logger.info(f"First result for {model_name}: {results.metrics.overall_score:.2%}")
-        
+
         # Save updated best results
         with open(self.best_results_file, "w") as f:
             json.dump(best_results, f, indent=2, default=str)
-        
+
         logger.info(f"Best results updated: {self.best_results_file}")
 
     async def generate_report(
@@ -145,7 +145,7 @@ class BFCLReporter:
     ) -> str:
         """Generate JSON report with model-specific naming."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Include model name in filename to avoid overwriting other model results
         model_slug = self._get_model_slug(results.model_name)
         filename = f"bfcl_results_{model_slug}_{timestamp}.json"

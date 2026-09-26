@@ -47,7 +47,7 @@ file_handler = logging.FileHandler(
     os.path.join(vm_log_dir, "awsrun_normal.log"), encoding="utf-8"
 )
 debug_handler = logging.FileHandler(
-    os.path.join(vm_log_dir, "awsrun_debug.log"), encoding="utf-8"   
+    os.path.join(vm_log_dir, "awsrun_debug.log"), encoding="utf-8"
 )
 stdout_handler = logging.StreamHandler(sys.stdout)
 sdebug_handler = logging.FileHandler(
@@ -117,9 +117,9 @@ def config() -> argparse.Namespace:
 
     # platform config
     parser.add_argument(
-        "--current_platform", 
-        type=str, 
-        choices=["Ubuntu", "Windows"], 
+        "--current_platform",
+        type=str,
+        choices=["Ubuntu", "Windows"],
         default=current_platform,
         help="Platform to run on (Ubuntu or Windows)"
     )
@@ -179,13 +179,13 @@ def process_single_task_no_delay(task_with_index_and_args):
 def process_single_task(task_info, args, vm_log_dir, base_timestamp=None, task_index=0):
     """Worker function to process a single task"""
     domain, example_id, config_file = task_info
-    
+
     try:
         with open(config_file, "r", encoding="utf-8") as f:
             example = json.load(f)
 
         user_query = example["instruction"]
-        
+
         if base_timestamp:
             example_datetime_str = f"{base_timestamp}_{task_index:03d}"
         else:
@@ -211,7 +211,7 @@ def process_single_task(task_info, args, vm_log_dir, base_timestamp=None, task_i
                 vm_log_dir,
                 example_datetime_str,
             )
-            
+
         except Exception as e:
             logger.error(f"Exception in {domain}/{example_id}: {e}")
             with open(os.path.join(example_result_dir, "traj.jsonl"), "a") as f:
@@ -225,8 +225,8 @@ def process_single_task(task_info, args, vm_log_dir, base_timestamp=None, task_i
         finally:
             # env is created and managed within run_single_example
             pass
-            
-        
+
+
     except Exception as e:
         logger.error(f"Fatal error in task {domain}/{example_id}: {e}")
         traceback.print_exc()
@@ -275,7 +275,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         # Parallel processing with task queue - fixed number of workers
         num_workers = args.num_envs
         logger.info(f"Processing {len(tasks)} tasks with {num_workers} workers in queue mode...")
-        
+
         # Process tasks with fixed worker pool - tasks will queue and wait for available workers
         with Pool(processes=num_workers) as pool:
             results = []
@@ -284,15 +284,15 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
                 # Add 5 second delay between task submissions
                 if i > 0:
                     time.sleep(5)
-                
+
                 task_with_args = (task, i, args, vm_log_dir, base_timestamp)
                 result = pool.apply_async(process_single_task_no_delay, (task_with_args,))
                 results.append(result)
                 logger.info(f"Submitted task {i+1}/{len(tasks)}: {task[0]}/{task[1]}")
-            
+
             # Wait for all tasks to complete
             final_results = [result.get() for result in results]
-            
+
     else:
         # Sequential processing (original logic)
         for domain, example_id, config_file in tqdm(tasks, desc="Processing tasks"):
@@ -304,7 +304,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
 
             user_query = example["instruction"]
             logger.info(f"[User Query]: {user_query}")
-            
+
             cfg_args["user_query"] = user_query
             cfg_args["start_time"] = datetime.datetime.now().strftime(
                 "%Y:%m:%d-%H:%M:%S"
@@ -358,7 +358,7 @@ def run_single_example(
     example_logger = setup_example_logger(example, example_timestamp_dir)
     example_logger.info(f"Starting example {example.get('id', 'unknown')}")
     example_logger.info(f"User Query: {user_query}")
-    
+
     # Create environment if not provided (for sequential mode)
     if env is None:
         # Read proxy setting from example config, default to False if not specified
@@ -372,7 +372,7 @@ def run_single_example(
             require_a11y_tree=False,
             enable_proxy=enable_proxy
         )
-    
+
     env.reset(task_config=example)
 
     controller = MainController(
@@ -398,12 +398,12 @@ def run_single_example(
         else:
             logger.info("Task execution completed with unknown status")
             env.step("DONE")
-        
+
         # Retry mechanism for evaluate method
         max_retries = 3
         retry_delay = 5  # seconds
         result = 0
-        
+
         for attempt in range(max_retries):
             try:
                 result = env.evaluate()
@@ -433,7 +433,7 @@ def run_single_example(
         total_duration = total_end_time - total_start_time
         logger.info(f"Total execution time: {total_duration:.2f} seconds")
         auto_analyze_execution(example_timestamp_dir)
-        
+
         env.close()
 
 

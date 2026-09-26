@@ -144,4 +144,3 @@ class AgentFnHarness:
     async def clear_conversation(self) -> None:
         """External clients own their own context reset semantics."""
         return None
-

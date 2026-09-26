@@ -294,7 +294,7 @@ def start_claude_subscription_gateway(
         )
     process_root = (
         workspace_root
-        
+
         / "benchmark_results"
         / run_group_id
         / "subscription-gateway"

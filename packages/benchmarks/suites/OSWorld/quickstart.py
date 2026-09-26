@@ -47,7 +47,7 @@ env = DesktopEnv(
     path_to_vm=args.path_to_vm,
     os_type=args.os_type,
     action_space=args.action_space,
-    headless=args.headless  
+    headless=args.headless
 )
 
 print("Starting OSWorld environment...")

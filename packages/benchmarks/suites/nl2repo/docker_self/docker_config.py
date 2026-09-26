@@ -16,5 +16,3 @@ docker_host_list.append(DockerHostInfo("localhost"))
 
 def get_local_host_info():
     return docker_host_list[0]
-
-

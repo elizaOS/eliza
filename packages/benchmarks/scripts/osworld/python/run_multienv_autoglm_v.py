@@ -81,7 +81,7 @@ def config() -> argparse.Namespace:
 
     # logging related
     parser.add_argument("--result_dir", type=str, default="./results")
-    
+
     # parallel number
     parser.add_argument("--num_workers", type=int, default=20, help="Number of parallel workers")
     args = parser.parse_args()
@@ -100,7 +100,7 @@ def _worker_run(task):
         @backoff.on_exception(backoff.constant, (RateLimitError, APIConnectionError), interval=0.1)
         def call_llm(messages):
             logger.info("Calling LLM...")
-            
+
             # Prepare the request data
             data = {
                 "model": args.model,
@@ -113,7 +113,7 @@ def _worker_run(task):
                 "include_stop_str_in_output": True,
                 "stop": ["<|user|>", "<|observation|>", "</answer>"]
             }
-            
+
             # Set up proxy
             # if os.environ.get('LAN_PROXY', None):
             #     proxies = {
@@ -127,11 +127,11 @@ def _worker_run(task):
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY', '')}"
             }
-            
+
             # Get API base URL from environment or use default
             base_url = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
             url = f"{base_url}/chat/completions"
-            
+
             response = requests.post(
                 url,
                 json=data,
@@ -140,7 +140,7 @@ def _worker_run(task):
                 timeout=60.0
             )
             response.raise_for_status()
-            
+
             result = response.json()
             logger.info("LLM called successfully.")
             return result['choices'][0]['message']['content']
