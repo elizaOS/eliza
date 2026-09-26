@@ -51,3 +51,40 @@ describe("scanRawInteractionRegions opener pairing", () => {
 		]);
 	});
 });
+
+describe("scanRawInteractionRegions fenced code", () => {
+	it("preserves interaction grammar inside fenced code blocks", () => {
+		const text = [
+			"To offer a choice, emit this marker:",
+			"",
+			"```",
+			"[CHOICE:approval]",
+			"yes=Approve",
+			"no=Deny",
+			"[/CHOICE]",
+			"```",
+			"",
+			"That's the whole syntax.",
+		].join("\n");
+		const parsed = parseInteractionBlocks(text);
+
+		expect(parsed.blocks).toEqual([]);
+		expect(parsed.cleanedText).toBe(text);
+	});
+
+	it("keeps fenced same-kind openers from displacing a real block", () => {
+		const regions = findInteractionRegions(
+			[
+				"[CHOICE:real]",
+				"a=Alpha",
+				"```",
+				"[CHOICE:one]",
+				"[CHOICE:two]",
+				"```",
+				"[/CHOICE]",
+			].join("\n"),
+		);
+		expect(regions).toHaveLength(1);
+		expect((regions[0].block as ChoiceInteraction).scope).toBe("real");
+	});
+});
