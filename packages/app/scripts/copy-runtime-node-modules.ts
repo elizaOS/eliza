@@ -800,6 +800,15 @@ export function shouldKeepPackageRelativePath(
     }
   }
 
+  // Capacitor ships Gradle source; local Android build outputs are not runtime inputs.
+  if (
+    packageName === "@capacitor/android" &&
+    (normalizedPath === "capacitor/build" ||
+      normalizedPath.startsWith("capacitor/build/"))
+  ) {
+    return false;
+  }
+
   if (packageName === "@elizaos/agent") {
     if (
       normalizedPath === "dist-mobile" ||

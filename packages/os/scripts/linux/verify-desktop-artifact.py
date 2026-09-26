@@ -8,6 +8,7 @@ import base64
 import binascii
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -29,7 +30,7 @@ except ImportError as exc:  # pragma: no cover - exercised on dependency-broken 
 ENTRYPOINTS = {
     "desktop": "bin/eliza-desktop",
     "agent": "bin/eliza-agent",
-    "doctor": "bin/eliza-doctor",
+    "doctor": "bin/eliza-desktop-doctor",
 }
 CAPABILITIES = (
     "tray",
@@ -71,7 +72,7 @@ def _verify_entrypoint_architecture(
 ) -> None:
     """Reject native entrypoints that cannot execute on the target image."""
     with entrypoint.open("rb") as stream:
-        header = stream.read(20)
+        header = stream.read(64)
     if header[:4] != b"\x7fELF":
         if require_elf:
             raise VerificationError(
@@ -82,7 +83,7 @@ def _verify_entrypoint_architecture(
                 f"desktop artifact {role} must be a script or a native ELF"
             )
         return
-    if len(header) < 20 or header[4] != 2 or header[5] != 1:
+    if len(header) < 64 or header[4] != 2 or header[5] != 1:
         if require_elf:
             raise VerificationError(
                 "desktop artifact native shell must be a little-endian 64-bit ELF"
@@ -90,6 +91,12 @@ def _verify_entrypoint_architecture(
         raise VerificationError(
             f"desktop artifact {role} must be a little-endian 64-bit ELF"
         )
+    if (header[6] != 1 or int.from_bytes(header[20:24], "little") != 1
+            or int.from_bytes(header[52:54], "little") != 64
+            or int.from_bytes(header[16:18], "little") not in (2, 3)):
+        raise VerificationError(f"desktop artifact {role} has an invalid executable ELF header")
+    if expected_architecture == "riscv64" and int.from_bytes(header[48:52], "little") & 6 != 4:
+        raise VerificationError(f"desktop artifact {role} requires the RISC-V double-float ABI")
     expected_machine = ELF_MACHINE.get(expected_architecture)
     actual_machine = int.from_bytes(header[18:20], "little")
     if expected_machine is None or actual_machine != expected_machine:
@@ -170,6 +177,8 @@ def verify(
     expected_architecture: str,
     public_key_path: Path,
     expected_spki_sha256: str,
+    *,
+    verified_metadata: dict[str, object] | None = None,
 ) -> tuple[Path, Ed25519PublicKey, bytes, str]:
     if not manifest_path.is_file() or manifest_path.is_symlink():
         raise VerificationError("desktop artifact manifest is absent or is a symlink")
@@ -269,6 +278,13 @@ def verify(
     except OSError as exc:
         raise VerificationError(f"desktop artifact signature cannot be read: {exc}") from exc
     _verify_archive_signature(public_key, signature, archive_path)
+    if verified_metadata is not None:
+        verified_metadata.update(
+            schemaVersion=1,
+            sourceCommit=data["sourceCommit"],
+            architecture=data["architecture"],
+            archiveSha256=expected_archive_digest,
+        )
     return archive_path, public_key, signature, expected_archive_digest
 
 
@@ -350,6 +366,9 @@ def extract_verified_archive(
         if sha256_file(archive_path) != expected_digest:
             raise VerificationError("desktop artifact archive changed during extraction")
         _verify_archive_signature(public_key, signature, archive_path)
+        # mkdtemp starts private; the installed root must be traversable by
+        # desktop users once all archive validation has succeeded.
+        temporary.chmod(0o755)
         if destination.exists():
             shutil.rmtree(destination)
         temporary.replace(destination)
@@ -372,6 +391,25 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_verified_metadata(path: Path, metadata: dict[str, object]) -> None:
+    """Publish a private receipt atomically, never replacing an existing path."""
+    if path.exists() or path.is_symlink() or path.parent.is_symlink():
+        raise VerificationError("verified metadata destination exists or is linked")
+    fd, temporary_name = tempfile.mkstemp(prefix=".desktop-receipt-", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(metadata, stream, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+    except OSError as exc:
+        raise VerificationError(f"verified metadata publication failed: {exc}") from exc
+    finally:
+        temporary.unlink()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verify an elizaOS desktop artifact with a pinned Ed25519 key"
@@ -381,13 +419,22 @@ def main() -> int:
     parser.add_argument("--public-key", required=True, type=Path)
     parser.add_argument("--public-key-spki-sha256", required=True)
     parser.add_argument("--extract-to", type=Path)
+    parser.add_argument("--verified-metadata-output", type=Path)
     args = parser.parse_args()
     try:
+        if args.verified_metadata_output and not args.extract_to:
+            raise VerificationError("verified metadata requires successful extraction")
+        if args.verified_metadata_output and (
+            args.verified_metadata_output.exists() or args.verified_metadata_output.is_symlink()
+        ):
+            raise VerificationError("verified metadata destination exists or is linked")
+        metadata: dict[str, object] = {}
         archive_path, public_key, signature, expected_digest = verify(
             args.manifest,
             args.architecture,
             args.public_key,
             args.public_key_spki_sha256,
+            verified_metadata=metadata,
         )
         if args.extract_to:
             extract_verified_archive(
@@ -398,6 +445,8 @@ def main() -> int:
                 expected_digest,
                 args.architecture,
             )
+        if args.verified_metadata_output:
+            write_verified_metadata(args.verified_metadata_output, metadata)
     except VerificationError as exc:
         print(f"[desktop-artifact] verification failed: {exc}", file=sys.stderr)
         return 1

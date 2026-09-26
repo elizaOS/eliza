@@ -5,6 +5,7 @@
 import { join } from "node:path";
 import { BrowserWindow, PATHS } from "electrobun/bun";
 import { createUsbInstallerHandler } from "../server";
+import { LinuxUsbInstallerBackend } from "../src/backend/linux-backend";
 import { createPackagedAppHandler } from "../src/packaged-app-handler";
 import { configurePackagedReleaseSequenceState } from "../src/packaged-runtime-config";
 
@@ -26,7 +27,18 @@ const server = Bun.serve({
   port: configuredPort,
   fetch: createPackagedAppHandler(
     join(PATHS.RESOURCES_FOLDER, "app", "dist"),
-    createUsbInstallerHandler(),
+    createUsbInstallerHandler(
+      process.platform === "linux"
+        ? new LinuxUsbInstallerBackend({
+            rawWriterPath: join(
+              PATHS.RESOURCES_FOLDER,
+              "app",
+              "native",
+              "linux-raw-writer",
+            ),
+          })
+        : undefined,
+    ),
   ),
 });
 

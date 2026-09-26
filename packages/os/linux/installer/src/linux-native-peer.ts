@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
 import type { Socket } from "node:net";
+import { loadLinuxInstallerNativeBinding } from "./linux-native-binding";
 import type {
   KernelBoundPeerProcessHandle,
   KernelUnixPeerCredentials,
@@ -36,18 +36,6 @@ function acceptedSocketDescriptor(socket: Socket): number {
   return descriptor as number;
 }
 
-function loadNativeBinding(): LinuxPeerCredentialNativeBinding {
-  const require = createRequire(import.meta.url);
-  try {
-    return require("../native/build/linux-peer-credentials.node") as LinuxPeerCredentialNativeBinding;
-  } catch (error) {
-    throw new Error(
-      "Installer native Linux peer-credential module is unavailable; refusing to start.",
-      { cause: error },
-    );
-  }
-}
-
 class NativePidfdProcessHandle implements KernelBoundPeerProcessHandle {
   readonly pid: number;
   readonly native: NativePeerProcess;
@@ -77,7 +65,9 @@ export class NativeLinuxUnixPeerCredentialProvider
 {
   readonly binding: LinuxPeerCredentialNativeBinding;
 
-  constructor(binding: LinuxPeerCredentialNativeBinding = loadNativeBinding()) {
+  constructor(
+    binding: LinuxPeerCredentialNativeBinding = loadLinuxInstallerNativeBinding() as LinuxPeerCredentialNativeBinding,
+  ) {
     this.binding = binding;
   }
 

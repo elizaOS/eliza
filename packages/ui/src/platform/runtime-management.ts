@@ -9,7 +9,6 @@ import {
   createDefaultRemoteControlCloudClient,
   getDefaultRemoteControlCloudConnection,
 } from "../api/remote-control-cloud-default";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentProfileRegistry,
   addAgentProfile,
@@ -34,6 +33,7 @@ import {
   getRemoteTargetStatus,
   startRemoteTarget,
   stopRemoteTarget,
+  supportsNativeRemoteTarget,
 } from "./remote-target";
 import {
   deleteRuntimeCredentialRecord,
@@ -199,7 +199,7 @@ async function execute(
 ): Promise<Record<string, unknown>> {
   if (request.op === "list") {
     const data: Record<string, unknown> = { runtimes: publicRuntimeList() };
-    if (isElectrobunRuntime()) data.host = await getRemoteTargetStatus();
+    if (supportsNativeRemoteTarget()) data.host = await getRemoteTargetStatus();
     return data;
   }
   if (request.op === "pair") {
@@ -220,9 +220,9 @@ async function execute(
     };
   }
   if (request.op === "create_pairing") {
-    if (!isElectrobunRuntime()) {
+    if (!supportsNativeRemoteTarget()) {
       throw new Error(
-        "Pairing challenges must be created on the target desktop.",
+        "Pairing challenges must be created on the target device.",
       );
     }
     const identity = await getRemoteTargetIdentity();
@@ -252,6 +252,7 @@ async function execute(
   if (request.op === "confirm_pairing") {
     const result = await confirmRemoteTargetPairing(
       requiredString(request.sessionId, "sessionId"),
+      request.browserProfileId,
     );
     if (result.status !== "active") {
       throw new Error(
@@ -350,8 +351,8 @@ async function execute(
     return { runtimeId: profile.id, label: profile.label };
   }
   if (request.op === "enroll_host") {
-    if (!isElectrobunRuntime())
-      throw new Error("Host enrollment requires the desktop app.");
+    if (!supportsNativeRemoteTarget())
+      throw new Error("Host enrollment requires a native device app.");
     const cloud = createDefaultRemoteControlCloudClient();
     const directory = await cloud.listHosts();
     const connection = getDefaultRemoteControlCloudConnection();
@@ -359,9 +360,10 @@ async function execute(
     if (
       platform !== "macos" &&
       platform !== "windows" &&
-      platform !== "linux"
+      platform !== "linux" &&
+      platform !== "android"
     ) {
-      throw new Error("Desktop platform is required for host enrollment.");
+      throw new Error("Native platform is required for host enrollment.");
     }
     const enrollment = await enrollRemoteTarget({
       apiBaseUrl: connection.baseUrl,
@@ -373,7 +375,9 @@ async function execute(
           ? "My Mac"
           : platform === "windows"
             ? "My Windows PC"
-            : "My Linux computer"),
+            : platform === "android"
+              ? "My Android device"
+              : "My Linux computer"),
       platform,
       managedNetwork: request.managedNetwork === true,
     });
@@ -381,6 +385,9 @@ async function execute(
   }
   if (request.op === "approve_pairing") {
     const result = await activateRemoteTarget({
+      ...(request.browserProfileId
+        ? { browserProfileId: request.browserProfileId }
+        : {}),
       ...(request.sessionId?.trim()
         ? { sessionId: request.sessionId.trim() }
         : {}),

@@ -1,29 +1,6 @@
 #!/usr/bin/env node
-// OS-4 gate: dstack-pins-check (plan §2.3).
-//
-// Validates linux/confidential/dstack-pins.json:
-//   1. structurally against dstack-pins.schema.json, and
-//   2. against the hardening invariants that MUST hold before any high-value key
-//      is rooted in a dstack-managed CVM. dstack is packaging + transport + an
-//      optional KMS, never the sole root of trust.
-//
-// Release-pin model (owner decision, plan §8.3): we TRACK THE LATEST dstack
-// release (>= the Feb-2026 Secure-by-Default baseline) rather than freezing a
-// tag, so upstream hardening lands automatically. A track-latest pin is a VALID
-// confirmed pin iff track==="latest", reverifyOnUpdate===true and minReleaseDate
-// is set; a confirmed frozen tag is also accepted. Trust is rooted in the
-// platform RoT + signed golden measurements, and every boot re-verifies the
-// invariants, so a malicious/downgraded release still cannot release keys.
-//
-// The hardening invariants (forbid/require/requiredClaims/root-of-trust/
-// appAuthAllowlist) are NEVER relaxed — track-latest only removes the version
-// freeze. The appAuthAllowlist must be non-empty and consistent with the signed
-// golden manifest (release/confidential-2026-05-21/manifest.json).
-//
-// Runner: plain `node` (no third-party deps).
-//   node scripts/check-dstack-pins.ts
+/** Validates confidential runtime pins against an explicit release manifest. */
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { validateAgainstSchema } from "./json-schema-lite.ts";
 import { parseArgs, readJson, repoRoot } from "./os-release-lib.ts";
 
@@ -31,10 +8,6 @@ const DEFAULT_PINS = path.join(repoRoot, "linux/confidential/dstack-pins.json");
 const SCHEMA_PATH = path.join(
   repoRoot,
   "release/schema/dstack-pins.schema.json",
-);
-const MANIFEST_PATH = path.join(
-  repoRoot,
-  "release/confidential-2026-05-21/manifest.json",
 );
 
 const REQUIRED_CLAIMS = ["debugDisabled", "productionLifecycle"];
@@ -139,11 +112,16 @@ export function checkDstackPins(pins, schema, manifest) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (typeof args.manifest !== "string" || args.manifest.trim() === "") {
+    throw new Error(
+      "--manifest must identify the confidential release being checked.",
+    );
+  }
   const input = typeof args.input === "string" ? args.input : DEFAULT_PINS;
   const [pins, schema, manifest] = await Promise.all([
     readJson(input),
     readJson(SCHEMA_PATH),
-    readJson(MANIFEST_PATH),
+    readJson(path.resolve(args.manifest)),
   ]);
   const result = checkDstackPins(pins, schema, manifest);
   if (!result.ok) {
@@ -154,6 +132,6 @@ async function main() {
   console.log(`dstack-pins-check: PASS (${input})`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

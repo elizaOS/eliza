@@ -1,46 +1,19 @@
-# elizaOS Linux — unified multi-arch ISO build entrypoint.
-#
-# Usage:
-#   make build ARCH=amd64
-#   make build ARCH=arm64
-#   make build ARCH=riscv64
-#   make build ARCH=amd64 PROFILE=secure
-#   make build ARCH=riscv64 PROFILE=gui
-#   make build ARCH=riscv64 DEBIAN_MIRROR=https://ftp.debian.org/debian
-#
-#   make qemu-boot ARCH=riscv64
-#   make release-check-strict ARCH=riscv64
-#   make brand-assets
+# Persistent GNOME disk images; legacy live-build is available as legacy-iso.
 
 ARCH    ?= amd64
 PROFILE ?= default
-DEBIAN_MIRROR ?= https://mirrors.kernel.org/debian
-HERE    := $(shell pwd)
+BUILDER_IMAGE ?= elizaos-linux-builder
+HERE    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 OS_ROOT := $(abspath $(HERE)/../..)
 OUT     := $(HERE)/out
-CONTAINER_BUILD_DIR := /work/elizaos-linux
 AGENT_ARTIFACTS ?= $(HERE)/artifacts/$(ARCH)
-REQUIRE_AGENT_ARTIFACTS ?= 0
-AGENT_ARTIFACTS_MOUNT := $(if $(wildcard $(AGENT_ARTIFACTS)),-v "$(AGENT_ARTIFACTS):/opt/elizaos-artifacts:ro",)
-BUILD_LOG ?= $(OUT)/elizaos-linux-$(ARCH)-$(PROFILE)-build.log
 BUN_SOURCE ?=
 BUN_RISCV64_ZIP ?= $(HERE)/../../toolchains/bun-riscv64/dist/bun-linux-riscv64-musl.zip
 RISCV64_MUSL_RUNTIME ?= $(HERE)/artifacts/riscv64/elizaos-app/musl-runtime
 RISCV64_ICU_DATA ?=
 RISCV64_RUNTIME ?= bun
-ISO ?=
-EVIDENCE ?= $(HERE)/evidence/qemu_virt_boot.report.json
-QEMU_EVIDENCE ?= $(HERE)/evidence/qemu_virt_boot.json
-QEMU_TRANSCRIPT ?= $(HERE)/evidence/qemu_virt_boot.transcript.log
-QEMU_MEMORY ?= 4096
-QEMU_CPUS ?= 4
-QEMU_TIMEOUT ?= 600
-RISCV64_AGENT_RUNTIME_REPORT ?= $(HERE)/evidence/riscv64_agent_runtime_smoke.json
-RISCV64_AGENT_RUNTIME_TRANSCRIPT ?= $(HERE)/evidence/riscv64_agent_runtime_smoke.log
-RISCV64_GUI_KIOSK_REPORT ?= $(HERE)/evidence/riscv64_gui_kiosk_iso_check.json
-ARM64_GUI_KIOSK_REPORT ?= $(HERE)/evidence/arm64_gui_kiosk_iso_check.json
-ARM64_QEMU_EVIDENCE ?= $(HERE)/evidence/arm64_qemu_virt_boot.json
-ARM64_QEMU_TRANSCRIPT ?= $(HERE)/evidence/arm64_qemu_virt_boot.transcript.log
+RISCV64_AGENT_RUNTIME_REPORT ?=
+RISCV64_AGENT_RUNTIME_TRANSCRIPT ?=
 REMOVE_PATH_RECURSIVE ?= node ../../scripts/rm-path-recursive.ts
 DEBIAN_SNAPSHOT_LOCK := $(HERE)/debian-snapshot.lock.json
 DEBIAN_SNAPSHOT_SERIAL := $(shell python3 -c 'import json; print(json.load(open("$(DEBIAN_SNAPSHOT_LOCK)"))["serial"])')
@@ -49,34 +22,32 @@ DEBIAN_BASE_IMAGE := $(shell python3 -c 'import json; print(json.load(open("$(DE
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 SUPPORTED_PROFILES := default gui secure secure-gui
 
-.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke riscv64-gui-kiosk-iso-check arm64-gui-kiosk-iso-check arm64-qemu-virt-boot qemu-boot release-check-strict release-check check-arch brand-assets clean lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
+.PHONY: help build legacy-iso builder stage-agent-artifacts riscv64-agent-runtime-smoke release-check-strict release-check check-arch check-profile clean lint legacy-lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
 
 help:
 	@echo "elizaOS Linux build targets:"
 	@echo "  make build [ARCH=amd64|arm64|riscv64] [PROFILE=default|gui|secure|secure-gui]"
+	@echo "  make legacy-iso        # older live-build ISO pipeline"
 	@echo "  make stage-agent-artifacts ARCH=<arch> [BUN_SOURCE=<path>|BUN_RISCV64_ZIP=<path>|RISCV64_RUNTIME=node]"
 	@echo "  make riscv64-agent-runtime-smoke"
-	@echo "  make riscv64-gui-kiosk-iso-check"
-	@echo "  make arm64-gui-kiosk-iso-check"
-	@echo "  make arm64-qemu-virt-boot"
-	@echo "  make qemu-boot ARCH=<arch>"
-	@echo "  make release-check ARCH=riscv64"
-	@echo "  make release-check-strict ARCH=riscv64"
-	@echo "  make brand-assets       # regenerate PNG branding from SVG sources"
+	@echo "  make release-check        # legacy ISO manifest"
+	@echo "  make release-check-strict # legacy ISO manifest"
 	@echo "  ----- mkosi (canonical persistent GNOME disk image) -----"
-	@echo "  make mkosi-build  [ARCH=...] [PROFILE=...] [MKOSI_EMIT_ISO=0]"
+	@echo "  make mkosi-build  [ARCH=...] [PROFILE=...]"
 	@echo "  make mkosi-summary [ARCH=...] [PROFILE=...]   # dry-run resolver"
 	@echo "  make mkosi-lint                              # static config lint"
 	@echo "  make mkosi-clean                             # remove out/mkosi"
-	@echo "  make lint               # static smoke checks"
+	@echo "  make lint               # mkosi configuration checks"
 	@echo "  make clean              # remove out/ and live-build state"
 	@echo
 	@echo "ARCH: $(SUPPORTED_ARCHES)"
 	@echo "PROFILE: $(SUPPORTED_PROFILES)"
-	@echo "default=headless, gui=graphical kiosk, secure=headless hardening, secure-gui=hardening+kiosk"
+	@echo "default/gui=GNOME, secure/secure-gui=GNOME with hardening"
 
-build:
-	ELIZAOS_ARCH="$(or $(ARCH),amd64)" ELIZAOS_PROFILE="$(or $(PROFILE),default)" ./build.sh
+build: mkosi-build
+
+legacy-iso: check-arch
+	ELIZAOS_ARCH="$(ARCH)" ELIZAOS_PROFILE="$(PROFILE)" ./build-live-iso.sh
 
 stage-agent-artifacts: check-arch
 ifeq ($(ARCH),riscv64)
@@ -98,26 +69,29 @@ release-check:
 release-check-strict:
 	python3 ../../scripts/linux/check_release_manifest.py --strict
 
-lint:
+lint: mkosi-lint
+
+legacy-lint:
 	../../scripts/linux/static-smoke.sh
 	python3 -m py_compile ../../scripts/linux/check-multiarch-boot-contract.py
 	python3 ../../scripts/linux/test_check_multiarch_boot_contract.py
+	python3 ../../scripts/linux/test_riscv64_agent_staging.py
 
 clean:
 	$(REMOVE_PATH_RECURSIVE) "$(OUT)" cache chroot binary*.iso config/binary config/bootstrap config/chroot config/source
 
 check-arch:
-	@case " $(SUPPORTED_ARCHES) " in \
-	    *" $(ARCH) "*) ;; \
-	    *) echo "ERROR: ARCH=$(ARCH) not in: $(SUPPORTED_ARCHES)" >&2; exit 64 ;; \
-	esac
+	$(if $(and $(filter 1,$(words $(ARCH))),$(filter $(SUPPORTED_ARCHES),$(ARCH))),@:, $(error Unsupported ARCH; use amd64, arm64, or riscv64))
 
-builder:
+check-profile:
+	$(if $(and $(filter 1,$(words $(PROFILE))),$(filter $(SUPPORTED_PROFILES),$(PROFILE))),@:, $(error Unsupported PROFILE; use default, gui, secure, or secure-gui))
+
+builder: check-arch check-profile
 	docker build --pull \
 		--build-arg "DEBIAN_SNAPSHOT_SERIAL=$(DEBIAN_SNAPSHOT_SERIAL)" \
 		--build-arg "DEBIAN_BASE_IMAGE=$(DEBIAN_BASE_IMAGE)" \
 		--file "$(HERE)/Dockerfile" \
-		--tag elizaos-linux-builder \
+		--tag "$(BUILDER_IMAGE)" \
 		"$(HERE)"
 
 # -----------------------------------------------------------------------------
@@ -133,19 +107,17 @@ builder:
 MKOSI_DIR := $(HERE)/mkosi
 MKOSI_OUT := $(OUT)/mkosi
 MKOSI_PROFILE_FLAG := $(if $(filter-out default,$(PROFILE)),--profile=$(PROFILE),)
-MKOSI_EMIT_ISO ?= 1
 MKOSI_ARCH = $(if $(filter amd64,$(ARCH)),x86-64,$(ARCH))
 
-mkosi-build: builder check-arch
+mkosi-build: check-arch builder
 	mkdir -p "$(MKOSI_OUT)"
 	bash -o pipefail -c 'flock "$(HERE)/.build.lock" \
 	    docker run --rm --privileged \
 	        --network host \
-	        -e MKOSI_EMIT_ISO=$(MKOSI_EMIT_ISO) \
 	        -v "$(OS_ROOT):/src:ro" \
 	        -v "$(MKOSI_OUT):/out" \
 	        --entrypoint bash \
-	        elizaos-linux-builder -lc "\
+	        $(BUILDER_IMAGE) -lc "\
 	            if [ -L /work/src ]; then \
 	                unlink /work/src; \
 	            elif [ -d /work/src ]; then \
@@ -156,7 +128,8 @@ mkosi-build: builder check-arch
 	            mkdir -p /work/src && \
 	            rsync -a /src/ /work/src/ \
 	                --exclude .build --exclude .build.lock --exclude cache \
-	                --exclude chroot --exclude binary --exclude out && \
+	                --exclude chroot --exclude binary --exclude out \
+	                --exclude node_modules --exclude __pycache__ && \
 	            ELIZAOS_ARCH=$(ARCH) /work/src/scripts/linux/ensure-foreign-binfmt.sh && \
 	            cd /work/src/linux/elizaos/mkosi && \
 	            mkosi --force \
@@ -168,11 +141,11 @@ mkosi-build: builder check-arch
 
 # Dry-run resolver: prints the assembled mkosi config (arch + profile overlays
 # composed) without building. Fast feedback for config edits.
-mkosi-summary: builder check-arch
+mkosi-summary: check-arch builder
 	docker run --rm \
 	    -v "$(OS_ROOT):/work/src:ro" \
 	    --entrypoint bash \
-	    elizaos-linux-builder -lc "\
+	    $(BUILDER_IMAGE) -lc "\
 	        cd /work/src/linux/elizaos/mkosi && \
 	        mkosi --architecture $(MKOSI_ARCH) $(MKOSI_PROFILE_FLAG) summary"
 

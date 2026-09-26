@@ -425,6 +425,7 @@ export class SandboxProvision {
                             environmentVars: applyRemoteDockerRuntimeMode({
                                 ...callerEnv,
                                 ...dbEnv,
+                                ELIZA_RUNTIME_OWNER_ID: rec.user_id,
                             }),
                             // Path A: pass the persisted character so the container boots AS
                             // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON

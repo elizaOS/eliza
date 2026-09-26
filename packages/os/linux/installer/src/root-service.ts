@@ -3,6 +3,7 @@ import type {
   InstallExecutionDependencies,
   InstallExecutionResult,
   OwnerAuthorizationVerifier,
+  PrivilegedInstallOperations,
 } from "./executor";
 import { authorizeInstallPlan, executeAuthorizedInstallPlan } from "./executor";
 import {
@@ -10,12 +11,22 @@ import {
   createDiskInventoryFingerprint,
 } from "./planner";
 import type {
+  AuthorizedInstallPlan,
+  DiskInventory,
   InstallAuthorization,
   InstallPlan,
   InstallRequest,
 } from "./types";
 
 const MAX_IPC_REQUEST_BYTES = 1024 * 1024;
+
+export class InstallServiceError extends Error {
+  readonly code = "ELIZAOS_INSTALL_SERVICE_ERROR";
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "InstallServiceError";
+  }
+}
 
 export interface LocalInstallPeerProcessIdentity {
   /** Informational only; authorization must be based on livenessToken. */
@@ -80,8 +91,24 @@ export interface LocalInstallExecutionRequest {
   authorization: InstallAuthorization;
 }
 
+export interface InstallOperationSession extends PrivilegedInstallOperations {
+  /** Settle all in-flight work and release native handles before returning. */
+  close(): Promise<void>;
+}
+
+export interface InstallOperationSessionFactory {
+  /** Called only under the physical-target lock with freshly authorized inventory.
+   * Opening must not mutate a device. A failed open must release its own resources. */
+  open(
+    plan: AuthorizedInstallPlan,
+    inventory: DiskInventory,
+    signal?: AbortSignal,
+  ): Promise<InstallOperationSession>;
+}
+
 export interface PrivilegedInstallServiceDependencies
-  extends InstallExecutionDependencies {
+  extends Omit<InstallExecutionDependencies, "operations"> {
+  operations: InstallOperationSessionFactory;
   activeOwner: ActiveOwnerSessionProvider;
   replay: InstallAuthorizationReplayStore;
   targets: InstallTargetSerializer;
@@ -98,7 +125,9 @@ function assertExactKeys(
     actual.length !== wanted.length ||
     actual.some((key, index) => key !== wanted[index])
   ) {
-    throw new Error(`${name} contains missing or unsupported fields.`);
+    throw new InstallServiceError(
+      `${name} contains missing or unsupported fields.`,
+    );
   }
 }
 
@@ -113,7 +142,9 @@ function assertRequiredAndOptionalKeys(
     required.some((key) => !Object.hasOwn(value, key)) ||
     Object.keys(value).some((key) => !allowed.has(key))
   ) {
-    throw new Error(`${name} contains missing or unsupported fields.`);
+    throw new InstallServiceError(
+      `${name} contains missing or unsupported fields.`,
+    );
   }
 }
 
@@ -125,18 +156,23 @@ function parseIpcRequest(input: unknown): LocalInstallExecutionRequest {
   let encoded: string;
   try {
     encoded = JSON.stringify(input);
-  } catch {
-    throw new Error("Installer IPC request must be JSON-serializable data.");
+  } catch (cause) {
+    throw new InstallServiceError(
+      "Installer IPC request must be JSON-serializable data.",
+      { cause },
+    );
   }
   if (
     encoded === undefined ||
     Buffer.byteLength(encoded, "utf8") > MAX_IPC_REQUEST_BYTES
   ) {
-    throw new Error("Installer IPC request exceeds the bounded request size.");
+    throw new InstallServiceError(
+      "Installer IPC request exceeds the bounded request size.",
+    );
   }
   const value: unknown = JSON.parse(encoded);
   if (!isRecord(value)) {
-    throw new Error("Installer IPC request must be an object.");
+    throw new InstallServiceError("Installer IPC request must be an object.");
   }
   assertExactKeys("Installer IPC request", value, [
     "schemaVersion",
@@ -152,7 +188,9 @@ function parseIpcRequest(input: unknown): LocalInstallExecutionRequest {
     !isRecord(value.plan) ||
     !isRecord(value.authorization)
   ) {
-    throw new Error("Installer IPC request has an unsupported shape.");
+    throw new InstallServiceError(
+      "Installer IPC request has an unsupported shape.",
+    );
   }
   assertRequiredAndOptionalKeys(
     "Installer request",
@@ -193,7 +231,7 @@ function parseIpcRequest(input: unknown): LocalInstallExecutionRequest {
       field.includes("\0") ||
       Buffer.byteLength(field, "utf8") > maximum
     ) {
-      throw new Error(
+      throw new InstallServiceError(
         `Installer authorization ${name} is invalid or oversized.`,
       );
     }
@@ -211,10 +249,12 @@ export function parseLocalInstallExecutionFrame(
   frame: Uint8Array,
 ): LocalInstallExecutionRequest {
   if (!(frame instanceof Uint8Array)) {
-    throw new Error("Installer IPC frame must be raw bytes.");
+    throw new InstallServiceError("Installer IPC frame must be raw bytes.");
   }
   if (frame.byteLength === 0 || frame.byteLength > MAX_IPC_REQUEST_BYTES) {
-    throw new Error("Installer IPC frame exceeds the bounded request size.");
+    throw new InstallServiceError(
+      "Installer IPC frame exceeds the bounded request size.",
+    );
   }
   const bytes = Buffer.from(frame);
   let decoded: unknown;
@@ -222,8 +262,11 @@ export function parseLocalInstallExecutionFrame(
     decoded = JSON.parse(
       new TextDecoder("utf-8", { fatal: true }).decode(bytes),
     );
-  } catch {
-    throw new Error("Installer IPC frame is not valid UTF-8 JSON.");
+  } catch (cause) {
+    throw new InstallServiceError(
+      "Installer IPC frame is not valid UTF-8 JSON.",
+      { cause },
+    );
   }
   return parseIpcRequest(decoded);
 }
@@ -241,7 +284,7 @@ function assertPeerShape(peer: LocalInstallPeerCredentials): void {
     typeof peer.process.livenessToken !== "object" ||
     peer.process.livenessToken === null
   ) {
-    throw new Error(
+    throw new InstallServiceError(
       "Installer requests require kernel-authenticated non-root Unix peer credentials.",
     );
   }
@@ -262,7 +305,7 @@ async function assertActiveOwnerCaller(
     owner.uid !== peer.uid ||
     owner.ownerId !== authorization.ownerId
   ) {
-    throw new Error(
+    throw new InstallServiceError(
       "Installer caller is not the active unlocked owner session authorized by this credential.",
     );
   }
@@ -289,7 +332,9 @@ export class PrivilegedInstallService {
   ): Promise<InstallExecutionResult> {
     signal?.throwIfAborted();
     if (process.geteuid?.() !== 0) {
-      throw new Error("Privileged installer service must run as root.");
+      throw new InstallServiceError(
+        "Privileged installer service must run as root.",
+      );
     }
     assertPeerShape(peer);
     const message = parseIpcRequest(input);
@@ -302,24 +347,22 @@ export class PrivilegedInstallService {
 
     const ownerBoundVerifier: OwnerAuthorizationVerifier = {
       verify: async (authorization) => {
-        try {
-          await assertActiveOwnerCaller(
-            peer,
-            authorization,
-            this.dependencies.activeOwner,
-          );
-        } catch {
-          return false;
-        }
+        await assertActiveOwnerCaller(
+          peer,
+          authorization,
+          this.dependencies.activeOwner,
+        );
         return this.dependencies.authorization.verify(authorization);
       },
     };
-    const executionDependencies: InstallExecutionDependencies = {
+    const executionDependencies: Omit<
+      InstallExecutionDependencies,
+      "operations"
+    > = {
       signal,
       inventory: this.dependencies.inventory,
       authorization: ownerBoundVerifier,
       journal: this.dependencies.journal,
-      operations: this.dependencies.operations,
       beforePrivilegedMutation: async (kind) => {
         await assertActiveOwnerCaller(
           peer,
@@ -348,14 +391,16 @@ export class PrivilegedInstallService {
       createDiskInventoryFingerprint(executionInventory) !==
       message.authorization.inventoryFingerprint
     ) {
-      throw new Error(
+      throw new InstallServiceError(
         "Installer target changed before its physical execution lock was acquired.",
       );
     }
     const physicalIdentity = createDiskExecutionIdentity(executionInventory);
     signal?.throwIfAborted();
     if (!(await this.dependencies.replay.claim(message.authorization))) {
-      throw new Error("Installer owner authorization nonce was already used.");
+      throw new InstallServiceError(
+        "Installer owner authorization nonce was already used.",
+      );
     }
     signal?.throwIfAborted();
     return this.dependencies.targets.runExclusive(
@@ -363,12 +408,60 @@ export class PrivilegedInstallService {
       executionInventory.kernelDeviceIdentity,
       authorized.planId,
       async () => {
-        const result = await executeAuthorizedInstallPlan(
-          authorized,
+        // Lock acquisition may await another execution. Reproduce authorization
+        // and inventory before acquiring any native handles for this request.
+        const lockedPlan = await authorizeInstallPlan(
+          message.request,
+          message.plan,
+          message.authorization,
           executionDependencies,
         );
+        const lockedInventory = await this.dependencies.inventory.inspect(
+          lockedPlan.target.stableId,
+        );
+        if (
+          createDiskInventoryFingerprint(lockedInventory) !==
+            lockedPlan.authorization.inventoryFingerprint ||
+          createDiskExecutionIdentity(lockedInventory) !== physicalIdentity
+        ) {
+          throw new InstallServiceError(
+            "Installer target changed while acquiring its lock.",
+          );
+        }
         signal?.throwIfAborted();
-        return result;
+        const operations = await this.dependencies.operations.open(
+          structuredClone(lockedPlan),
+          structuredClone(lockedInventory),
+          signal,
+        );
+        let outcome:
+          | { success: true; result: InstallExecutionResult }
+          | { success: false; error: unknown };
+        try {
+          signal?.throwIfAborted();
+          const result = await executeAuthorizedInstallPlan(lockedPlan, {
+            ...executionDependencies,
+            operations,
+          });
+          signal?.throwIfAborted();
+          outcome = { success: true, result };
+        } catch (error) {
+          outcome = { success: false, error };
+        }
+        try {
+          await operations.close();
+        } catch (closeError) {
+          if (!outcome.success) {
+            throw new AggregateError(
+              [outcome.error, closeError],
+              "Installer execution and native session cleanup both failed.",
+            );
+          }
+          throw closeError;
+        }
+        if (!outcome.success) throw outcome.error;
+        signal?.throwIfAborted();
+        return outcome.result;
       },
     );
   }

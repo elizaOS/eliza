@@ -1,4 +1,3 @@
-// Implements platform-specific USB installer backend safety behavior.
 import type { RemovableDrive, WritePlan, WriteRequest } from "./types";
 
 const placeholderChecksumPattern = /^([a-f0-9])\1{63}$/;
@@ -31,6 +30,15 @@ export function assertDriveMatchesExpected(
     );
   }
 
+  if (
+    expected.kernelDeviceIdentity &&
+    drive.kernelDeviceIdentity !== expected.kernelDeviceIdentity
+  ) {
+    throw new Error(
+      "Selected drive kernel identity changed before write. Refresh drives and reselect the target.",
+    );
+  }
+
   if (expected.stableId && drive.stableId !== expected.stableId) {
     throw new Error(
       "Selected drive hardware identity changed before write. Refresh drives and reselect the target.",
@@ -56,6 +64,15 @@ export function assertWritePlanAllowed(
 
   if (plan.drive.safety !== "safe-removable") {
     throw new Error("Drive is not safe-removable; write aborted.");
+  }
+
+  if (
+    !Number.isSafeInteger(plan.image.sizeBytes) ||
+    plan.image.sizeBytes <= 0
+  ) {
+    throw new Error(
+      "Image size must be a positive safe integer before writing.",
+    );
   }
 
   if (plan.drive.sizeBytes < plan.image.minUsbSizeBytes) {
@@ -96,4 +113,31 @@ export function assertWritePlanAllowed(
       );
     }
   }
+}
+
+/** Recheck after downloading; native writers must still bind the opened device. */
+export function assertWriteTargetUnchanged(
+  plan: WritePlan,
+  currentDrives: readonly RemovableDrive[],
+): void {
+  const matches = currentDrives.filter((drive) => drive.id === plan.drive.id);
+  const current = matches[0];
+  if (matches.length !== 1 || !current) {
+    throw new Error(
+      "Selected drive is missing or ambiguous; refresh drives before writing.",
+    );
+  }
+  if (
+    current.safety !== "safe-removable" ||
+    current.platform !== plan.drive.platform ||
+    current.bus !== plan.drive.bus
+  ) {
+    throw new Error(
+      "Selected drive safety or platform changed before writing.",
+    );
+  }
+  assertDriveMatchesExpected(
+    { ...plan.request, expectedDrive: plan.drive },
+    current,
+  );
 }

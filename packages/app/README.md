@@ -18,6 +18,11 @@ bun run build:client  # build
 bun run --cwd packages/app test   # tests
 ```
 
+For a system APK targeting Pixel/Cuttlefish ARM64 and x86_64, set
+`ELIZA_ANDROID_TARGET_ABIS=x86_64,arm64-v8a` when running
+`bun run --cwd packages/app build:android:system`. Omitting the variable retains
+all runtime targets, including the separately pinned RISC-V artifact requirement.
+
 Turbo builds the host `dist/` before the renderer `web-dist/`. For a renderer-only
 rebuild after dependencies are built, use `bun run --cwd packages/app build`.
 

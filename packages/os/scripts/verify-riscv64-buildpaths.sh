@@ -1,64 +1,60 @@
 #!/usr/bin/env bash
-# verify-riscv64-buildpaths.sh — exercise every in-sandbox riscv64
-# cross-build path and emit a verification report.
+# Cross-compile qjl, polarquant, turboquant, and silero-vad with Zig/musl.
+# Verify ELF architecture and ABI, then run fixture-free smokes when QEMU is
+# available. Missing QEMU is reported as skipped; failed smokes fail the run.
 #
-# Validates Wave 1 + Wave 3 RVV cross-compilation of the four CPU-side
-# native plugins (qjl-cpu, polarquant-cpu, turboquant-cpu, silero-vad-cpp)
-# against the repo-root Zig toolchain at
-# `toolchains/cmake/toolchain-riscv64-linux-musl.cmake`. Inspects every produced
-# artifact with `file(1)` to confirm `ELF 64-bit LSB ... UCB RISC-V`.
-# Optionally runs the shipped smokes under `qemu-riscv64-static` when
-# present; logs a clean SKIP otherwise.
-#
-# Usage:
-#   bash scripts/verify-riscv64-buildpaths.sh                           # build + report
-#   bash scripts/verify-riscv64-buildpaths.sh --jobs 8                  # parallel
-#   bash scripts/verify-riscv64-buildpaths.sh --out reports/foo.md      # custom report path
-#   bash scripts/verify-riscv64-buildpaths.sh --keep-build              # don't rm build dirs at the end
-#   ELIZA_RISCV64_BOOTSTRAP_ZIG=0 bash scripts/verify-riscv64-buildpaths.sh
-#                                                                       # require zig on PATH/ZIG_BIN
-#
-# Exit code:
-#   0 — every package builds and every artifact validates rv64+lp64d
-#   1 — at least one package fails or one artifact is the wrong ELF arch
-#
-# Zig 0.13 vs 0.14:
-#   The Wave 1 RVV TUs (qjl_*_rvv.c, polar_*_rvv.c, tbq_*_rvv.c) expect
-#   `-march=rv64gcv1p0`, which some Zig/LLVM releases accept directly.
-#   On releases that reject it, we drive the per-package escape hatches
-#   (QJL_RVV_COMPILE_OPTIONS / POLARQUANT_RVV_COMPILE_OPTIONS /
-#   TURBOQUANT_RVV_FLAGS) with a CPU name. TurboQuant uses
-#   `-mcpu=generic_rv64+v+m+a+f+d+c` rather than a named core
-#   (e.g. sifive_x280) because LLVM bakes the named core's VLEN into the
-#   zvl* attribute, and the resulting code silently truncates at a
-#   smaller actual VLEN (qemu-user reports VLEN=128, the spec minimum).
+# Usage: verify-riscv64-buildpaths.sh [--jobs N] [--out FILE] [--keep-build]
+# ZIG_BIN selects Zig; ELIZA_RISCV64_BOOTSTRAP_ZIG=0 disables its download.
+# ELIZA_RISCV64_QEMU_TIMEOUT sets the per-smoke deadline (default: 60 seconds).
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-eliza_root="$(cd "${ELIZAOS_ELIZA_ROOT:-$repo_root/.eliza-source}" 2>/dev/null && pwd || true)"
-if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/packages/native" ]; then
-    echo "[verify-riscv64] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
-    exit 2
-fi
-cd "$eliza_root"
-
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
-OUT="$repo_root/reports/riscv64-buildpath-verification.md"
+OUT=""
 KEEP_BUILD=0
 RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --jobs) JOBS="$2"; shift 2;;
-        --out) OUT="$2"; shift 2;;
+        --jobs)
+            if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+                echo "--jobs requires a positive integer" >&2
+                exit 2
+            fi
+            JOBS="$2"; shift 2;;
+        --out)
+            if [ "$#" -lt 2 ] || [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo "--out requires an output path" >&2
+                exit 2
+            fi
+            OUT="$2"; shift 2;;
         --keep-build) KEEP_BUILD=1; shift;;
         -h|--help)
-            sed -n '2,/^$/p' "$0" | sed 's/^# //; s/^#//'
+            sed -n '2,/^$/p' "$repo_root/scripts/verify-riscv64-buildpaths.sh" | sed 's/^# //; s/^#//'
             exit 0;;
         *) echo "unknown argument: $1" >&2; exit 2;;
     esac
 done
+
+if [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "JOBS must be a positive integer" >&2
+    exit 2
+fi
+
+eliza_root="$(node "$repo_root/scripts/eliza-source.ts")"
+if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
+    echo "[verify-riscv64] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
+    exit 2
+fi
+cd "$eliza_root"
+
+if [ -z "$OUT" ]; then
+    OUT="$(node --input-type=module -e '
+        const { testOutputPath } = await import(process.argv[1]);
+        console.log(testOutputPath("os-riscv64", "buildpaths.md"));
+    ' "$eliza_root/packages/scripts/lib/test-output.ts")"
+fi
 
 mkdir -p "$(dirname "$OUT")"
 
@@ -217,14 +213,14 @@ QEMU_BIN="$(command -v qemu-riscv64-static 2>/dev/null || command -v qemu-riscv6
 now_iso() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 run_started_iso="$(now_iso)"
 
-# Per-package configs. The escape-hatch flag is passed unquoted so the
-# semicolon in the CMake list survives.
+# Cross-compile the library and its fixture-free smoke executable.
 build_package() {
     local pkg="$1"
     local extra_flag="$2"
-    local pkgdir="packages/native/plugins/$pkg"
+    local pkgdir="plugins/plugin-local-inference/native/$pkg"
     local builddir="$pkgdir/build/riscv64-verify"
-    local target
+    local extra_args=()
+    [ -z "$extra_flag" ] || extra_args+=("$extra_flag")
 
     if [ ! -f "$pkgdir/CMakeLists.txt" ]; then
         echo "fail: $pkgdir/CMakeLists.txt missing"
@@ -237,50 +233,25 @@ build_package() {
     local build_log="$builddir.build.log"
     mkdir -p "$(dirname "$config_log")"
 
-    if [ -n "$extra_flag" ]; then
-        cmake -S "$pkgdir" -B "$builddir" \
-            -DCMAKE_TOOLCHAIN_FILE="$repo_root/toolchains/cmake/toolchain-riscv64-linux-musl.cmake" \
-            -DCMAKE_AR="$TOOL_WRAPPER_DIR/zig-ar" \
-            -DCMAKE_RANLIB="$TOOL_WRAPPER_DIR/zig-ranlib" \
-            "$extra_flag" > "$config_log" 2>&1 || {
-            echo "fail: cmake configure (see $config_log)"
-            return 1
-        }
-    else
-        cmake -S "$pkgdir" -B "$builddir" \
-            -DCMAKE_TOOLCHAIN_FILE="$repo_root/toolchains/cmake/toolchain-riscv64-linux-musl.cmake" \
-            -DCMAKE_AR="$TOOL_WRAPPER_DIR/zig-ar" \
-            -DCMAKE_RANLIB="$TOOL_WRAPPER_DIR/zig-ranlib" \
-            > "$config_log" 2>&1 || {
-            echo "fail: cmake configure (see $config_log)"
-            return 1
-        }
-    fi
-    case "$pkg" in
-        qjl-cpu) target="qjl";;
-        polarquant-cpu) target="polarquant";;
-        turboquant-cpu) target="turboquant";;
-        silero-vad-cpp) target="silero_vad";;
-        *) target="";;
-    esac
-
-    if [ -n "$target" ]; then
-        cmake --build "$builddir" --target "$target" -j"$JOBS" > "$build_log" 2>&1 || {
-            echo "fail: cmake build (see $build_log)"
-            return 1
-        }
-    else
-        cmake --build "$builddir" -j"$JOBS" > "$build_log" 2>&1 || {
-            echo "fail: cmake build (see $build_log)"
-            return 1
-        }
-    fi
+    cmake -S "$pkgdir" -B "$builddir" \
+        -DCMAKE_TOOLCHAIN_FILE="$repo_root/toolchains/cmake/toolchain-riscv64-linux-musl.cmake" \
+        -DCMAKE_AR="$TOOL_WRAPPER_DIR/zig-ar" \
+        -DCMAKE_RANLIB="$TOOL_WRAPPER_DIR/zig-ranlib" \
+        -DCMAKE_EXE_LINKER_FLAGS=-static \
+        "${extra_args[@]}" > "$config_log" 2>&1 || {
+        echo "fail: cmake configure (see $config_log)"
+        return 1
+    }
+    cmake --build "$builddir" --target "$(smoke_name_for_pkg "$pkg")" -j"$JOBS" > "$build_log" 2>&1 || {
+        echo "fail: cmake build (see $build_log)"
+        return 1
+    }
     echo "ok"
 }
 
 inspect_artifacts() {
     local pkg="$1"
-    local builddir="packages/native/plugins/$pkg/build/riscv64-verify"
+    local builddir="plugins/plugin-local-inference/native/$pkg/build/riscv64-verify"
     if [ ! -d "$builddir" ]; then return; fi
     # Static libs (.a), shared libs (.so), and top-level executables.
     # We exclude CMake's own machinery (build.make, cmake_install.cmake,
@@ -323,16 +294,17 @@ ar_members_are_rv64() {
         remove_path_recursive "$extract_dir"
         return 1
     }
-    local bad=0
+    local bad=0 members=0
     for member in "$extract_dir"/*.o; do
         [ -f "$member" ] || continue
-        if ! file -b "$member" | grep -q "UCB RISC-V"; then
+        members=$((members + 1))
+        if ! is_riscv64_elf "$member"; then
             bad=1
             break
         fi
     done
     remove_path_recursive "$extract_dir"
-    [ "$bad" -eq 0 ]
+    [ "$bad" -eq 0 ] && [ "$members" -gt 0 ]
 }
 
 pkg_var_name() {
@@ -354,7 +326,7 @@ get_pkg_value() {
     local default="${3:-}"
     local name
     name="$(pkg_var_name "$prefix" "$pkg")"
-    eval "printf '%s' \"\${$name:-$default}\""
+    printf '%s' "${!name:-$default}"
 }
 
 inc_pkg_value() {
@@ -422,17 +394,17 @@ done
 run_smoke_under_qemu() {
     local pkg="$1"
     local smoke_name="$2"
-    local smoke_path="packages/native/plugins/$pkg/build/riscv64-verify/$smoke_name"
+    local smoke_path="plugins/plugin-local-inference/native/$pkg/build/riscv64-verify/$smoke_name"
     if [ -z "$QEMU_BIN" ]; then
         set_pkg_value QEMU_RESULT "$pkg" "skip-no-qemu"
         return
     fi
     if [ ! -x "$smoke_path" ]; then
-        set_pkg_value QEMU_RESULT "$pkg" "skip-no-smoke-binary"
+        set_pkg_value QEMU_RESULT "$pkg" "fail-missing-smoke-binary"
         return
     fi
     local log="$smoke_path.qemu.log"
-    if "$QEMU_BIN" "$smoke_path" > "$log" 2>&1; then
+    if timeout "${ELIZA_RISCV64_QEMU_TIMEOUT:-60}" "$QEMU_BIN" -cpu rv64,v=true,vlen=128,elen=64 "$smoke_path" > "$log" 2>&1; then
         set_pkg_value QEMU_RESULT "$pkg" "pass"
     else
         set_pkg_value QEMU_RESULT "$pkg" "fail (exit $?; see $log)"
@@ -453,7 +425,7 @@ done
     echo "- Toolchain: \`toolchains/cmake/toolchain-riscv64-linux-musl.cmake\`"
     echo "- QEMU: \`${QEMU_BIN:-not installed}\`"
     echo
-    echo "## Wave 1 + Wave 3 RVV native-plugin cross-build matrix"
+    echo "## Native-plugin cross-build matrix"
     echo
     printf '%-20s | %-10s | %-15s | %s\n' "package" "build" "artifacts (ok/bad)" "qemu smoke"
     printf '%-20s | %-10s | %-15s | %s\n' "--------" "-----" "------------------" "-----------"
@@ -470,7 +442,7 @@ done
         echo "### $pkg"
         echo
         if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then
-            echo "_Build did not succeed; see \`packages/native/plugins/$pkg/build/riscv64-verify.{config,build}.log\`._"
+            echo "_Build did not succeed; see \`plugins/plugin-local-inference/native/$pkg/build/riscv64-verify.{config,build}.log\`._"
             echo
             continue
         fi
@@ -480,7 +452,7 @@ done
                 *CMakeFiles/*) continue;;
             esac
             short="${f#$repo_root/}"
-            short="${short#packages/native/plugins/$pkg/build/riscv64-verify/}"
+            short="${short#plugins/plugin-local-inference/native/$pkg/build/riscv64-verify/}"
             info="$(file -b "$f" 2>/dev/null)"
             echo "$short  →  $info"
         done
@@ -492,10 +464,11 @@ done
     verdict_fail=0
     for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
         if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then verdict_fail=$((verdict_fail+1)); fi
-        if [ "$(get_pkg_value ARTIFACT_BAD "$pkg" 0)" -gt 0 ]; then verdict_fail=$((verdict_fail+1)); fi
+        if [ "$(get_pkg_value ARTIFACT_BAD "$pkg" 0)" -gt 0 ] || [ "$(get_pkg_value ARTIFACT_OK "$pkg" 0)" -eq 0 ]; then verdict_fail=$((verdict_fail+1)); fi
+        case "$(get_pkg_value QEMU_RESULT "$pkg")" in fail*) verdict_fail=$((verdict_fail+1));; esac
     done
     if [ "$verdict_fail" -eq 0 ]; then
-        echo "All 4 native-plugin packages cross-compile to rv64gc / lp64d / RVC. RVV intrinsic TUs are included (gated behind \`*_HAVE_RVV=1\` at the dispatcher level). QEMU smoke status above is informational — without a \`qemu-riscv64-static\` binary the smoke phase is a clean SKIP."
+        echo "All four packages produced RISC-V double-float ABI artifacts. Available QEMU smokes passed; the matrix records any skips."
     else
         echo "One or more packages failed verification; see the matrix and per-package logs ($verdict_fail signal(s) tripped)."
     fi
@@ -504,8 +477,7 @@ done
     echo
     echo "- Boot of \`cf_riscv64_phone\` Cuttlefish image (needs Linux x86_64 build host + KVM)."
     echo "- Bun-on-riscv64 (upstream \`oven-sh/bun#6266\`; source-build via \`toolchains/bun-riscv64/build.sh\`)."
-    echo "- Real-hardware execution of the produced ELFs (this report only verifies cross-compile + ELF arch tag)."
-    echo "- RVV kernel numerical parity vs scalar (requires QEMU-V or rv64gcv hardware; deferred)."
+    echo "- Real-hardware execution of the produced ELFs."
 } > "$OUT"
 
 echo "[verify-riscv64] Report written: $OUT"
@@ -513,16 +485,10 @@ echo "[verify-riscv64] Report written: $OUT"
 if [ "$KEEP_BUILD" = "0" ]; then
     for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
         remove_path_recursive \
-            "packages/native/plugins/$pkg/build/riscv64-verify" \
-            "packages/native/plugins/$pkg/build/riscv64-verify.config.log" \
-            "packages/native/plugins/$pkg/build/riscv64-verify.build.log"
+            "plugins/plugin-local-inference/native/$pkg/build/riscv64-verify" \
+            "plugins/plugin-local-inference/native/$pkg/build/riscv64-verify.config.log" \
+            "plugins/plugin-local-inference/native/$pkg/build/riscv64-verify.build.log"
     done
 fi
 
-# Exit code reflects the verdict.
-fail_count=0
-for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-    if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then fail_count=$((fail_count+1)); fi
-    if [ "$(get_pkg_value ARTIFACT_BAD "$pkg" 0)" -gt 0 ]; then fail_count=$((fail_count+1)); fi
-done
-exit $fail_count
+exit "$verdict_fail"

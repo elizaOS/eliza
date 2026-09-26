@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Enforces the standalone OS repository's side of the ownership boundary.
- * Distribution sources live at this repository's root, while application and native
- * runtime source trees are consumed from elizaOS/eliza rather than copied here.
+ * Keeps distribution sources in the OS package and consumes application/native
+ * runtime sources from the owning Eliza checkout rather than copying them here.
  */
 
 import { execFileSync } from "node:child_process";
@@ -41,24 +40,10 @@ if (forbidden.length > 0) {
   );
 }
 
-const requiredPrefixes = [
-  "android/",
-  "linux/",
-  "toolchains/bun-riscv64/",
-  ".github/workflows/elizaos-cuttlefish.yml",
-  ".github/workflows/build-debian-package.yml",
-];
+const requiredPrefixes = ["android/", "linux/", "toolchains/bun-riscv64/"];
 for (const prefix of requiredPrefixes) {
   if (!tracked.some((entry) => entry.startsWith(prefix))) {
     throw new Error(`Required OS ownership path is missing: ${prefix}`);
-  }
-}
-
-const requiredWorktreePaths = [".github/workflows/build-linux-mkosi.yml"];
-for (const entry of requiredWorktreePaths) {
-  const absolute = path.join(repositoryRoot, entry);
-  if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) {
-    throw new Error(`Required OS ownership path is missing: ${entry}`);
   }
 }
 

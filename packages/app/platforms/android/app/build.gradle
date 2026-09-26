@@ -9,6 +9,9 @@ apply plugin: 'com.android.application'
 // project lives outside the eliza tree and the relative walk overshoots.
 // Keep the variable name and single definition, or that pin silently misses.
 def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+def elizaVoiceFfiIncludeDir = System.getenv('ELIZA_INFERENCE_FFI_INCLUDE_DIR')
+    ? new File(System.getenv('ELIZA_INFERENCE_FFI_INCLUDE_DIR'))
+    : new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include')
 def lp3ColorPolicyBuildEnabled = ['1', 'true', 'yes'].contains(
     (System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase()
 )
@@ -42,16 +45,29 @@ android {
     // scripts/elizaos/build-aosp.ts. AGP 8+ defaults this to false.
     buildFeatures {
         buildConfig true
+        aidl true
     }
     defaultConfig {
-        // Direct-distribution LP3 builds opt in explicitly. Runtime device,
-        // operator, and privileged-permission gates still apply independently.
-        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "${lp3ColorPolicyBuildEnabled}"
+        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"
         buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"+14159611510\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"Eliza Cloud Gateway (+14159611510)\""
+        def browserPackage = System.getenv('ELIZA_CHROMIUM_PACKAGE_NAME')
+        if (browserPackage == null) browserPackage = 'org.chromium.chrome'
+        if (!(browserPackage in ['org.chromium.chrome', 'ai.elizaos.chromium'])) {
+            throw new GradleException('ELIZA_CHROMIUM_PACKAGE_NAME must be org.chromium.chrome or ai.elizaos.chromium')
+        }
+        buildConfigField "String", "ELIZA_CHROMIUM_PACKAGE_NAME", "\"${browserPackage}\""
+        manifestPlaceholders.elizaChromiumPackageName = browserPackage
+        def browserCertificate = System.getenv('ELIZA_CHROMIUM_CERT_SHA256') ?: ''
+        if (browserCertificate && !(browserCertificate ==~ /[0-9a-fA-F]{64}/)) {
+            throw new GradleException('ELIZA_CHROMIUM_CERT_SHA256 must be a 64-character SHA-256 certificate digest')
+        }
+        buildConfigField "String", "ELIZA_CHROMIUM_CERT_SHA256", "\"${browserCertificate}\""
+        // Direct-distribution LP3 builds opt in explicitly. Runtime device,
+        // operator, and privileged-permission gates still apply independently.
         applicationId "ai.elizaos.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
@@ -79,7 +95,7 @@ android {
         // CMake. arm64-v8a only in Phase 3a (other ABIs build a no-op stub).
         externalNativeBuild {
             cmake {
-                arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include').absolutePath}"
+                arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${elizaVoiceFfiIncludeDir.absolutePath}"
             }
         }
     }
@@ -108,7 +124,7 @@ android {
     // decide from -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR (or the
     // state-dir default), then the externalNativeBuild tasks depend on
     // copyForkLlamaLib below so CMake sees the staged .so before linking.
-    def elizavoiceHeader = new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h')
+    def elizavoiceHeader = new File(elizaVoiceFfiIncludeDir, 'eliza-inference-ffi.h')
     def elizavoicePrebuilt = resolveElizaVoiceProbePrebuilt()
     def elizavoicePrebuiltText = elizavoicePrebuilt.exists()
         ? new String(elizavoicePrebuilt.readBytes(), "ISO-8859-1")
@@ -231,7 +247,7 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'
             keepDebugSymbols += ["**/libimage_processing_util_jni.so"]
             // The retired llama-cpp-capacitor plugin is dropped from the manifest
             // by default (stubLlamaCpp), so its separate libllama-cpp-arm64.so —
@@ -336,6 +352,14 @@ def resolveAndroidLibompForAbi = { String abi ->
 // There is no second inference library. Do NOT delete this task or its siblings —
 // that breaks on-device inference. (libelizainference also folds in MTP, omnivoice
 // TTS/Kokoro, ASR, VAD, vision; see verify-fused-symbols.ts for the symbol gate.)
+def assertBionicInferenceLibrary = { File library, String abi ->
+    providers.exec {
+        commandLine(System.getenv('NODE_BINARY') ?: 'node',
+            new File(elizaRepoRoot, 'packages/app/scripts/lib/assert-android-elf.mjs').absolutePath,
+            library.absolutePath, abi)
+    }.result.get().assertNormalExitValue()
+}
+
 task copyForkLlamaLib {
     doLast {
         if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {
@@ -353,6 +377,7 @@ task copyForkLlamaLib {
                 // as-is — a plain `build:android` "just works" without any flag.
                 def alreadyStaged = new File(file("src/main/jniLibs/${abi}"), 'libelizainference.so')
                 if (alreadyStaged.isFile()) {
+                    assertBionicInferenceLibrary(alreadyStaged, abi)
                     logger.lifecycle("[copyForkLlamaLib] no source dir for ${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")
                     if (abi == 'arm64-v8a') stagedArm64 = true
                     return
@@ -373,6 +398,7 @@ task copyForkLlamaLib {
                 logger.lifecycle("[copyForkLlamaLib] fork lib dir ${libDir} does not exist for ABI ${abi}; skipping")
                 return
             }
+            assertBionicInferenceLibrary(new File(srcDir, "libelizainference.so"), abi)
             def jniDir = file("src/main/jniLibs/${abi}")
             jniDir.mkdirs()
             def assetsDir = file('src/main/assets')
@@ -570,6 +596,7 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.browser:browser:1.8.0"
     if (project.findProperty('elizaCloudBuild') != 'true') {
         // Direct/AOSP builds schedule local-agent work; the Play client has no
         // background worker, boot rescheduling, or foreground service.

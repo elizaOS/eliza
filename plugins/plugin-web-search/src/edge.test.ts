@@ -52,9 +52,14 @@ describe("webSearchEdgePlugin", () => {
 
             const action = plugin.actions?.[0];
             if (!action) throw new Error("Web search action is missing");
-            const result = await action.handler({} as IAgentRuntime, {} as Memory, undefined, {
-                parameters: { query: "current public result" },
-            });
+            const result = await action.handler(
+                { getSetting: () => undefined } as unknown as IAgentRuntime,
+                {} as Memory,
+                undefined,
+                {
+                    parameters: { query: "current public result" },
+                }
+            );
 
             expect(result).toMatchObject({
                 success: true,

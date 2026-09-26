@@ -5,6 +5,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { zstdCompressSync } from "node:zlib";
 
 const script = new URL(
   "../verify-mkosi-promotion-evidence.ts",
@@ -16,10 +17,11 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-async function fixture() {
+async function fixture(architecture = "x86_64") {
+  const buildArchitecture = architecture === "x86_64" ? "amd64" : architecture;
   const root = await mkdtemp(path.join(tmpdir(), "mkosi-promotion-"));
-  const compressedBytes = Buffer.from("compressed-canonical-image");
   const expandedBytes = Buffer.alloc(4096, 7);
+  const compressedBytes = zstdCompressSync(expandedBytes);
   const compressed = path.join(root, "elizaos-1.0.0-x86_64.raw.zst");
   const expanded = path.join(root, "elizaos-1.0.0-x86_64.raw");
   const buildEvidence = path.join(root, "build.json");
@@ -40,7 +42,7 @@ async function fixture() {
         buildMode: "release",
         sourceDirty: false,
         sourceCommit: sourceSha,
-        architecture: "amd64",
+        architecture: buildArchitecture,
         artifacts: [
           {
             path: "/build/elizaos-linux-x86-64.raw.zst",
@@ -58,7 +60,7 @@ async function fixture() {
           "qemu_graphical_target_only_no_login_agent_computer_control_or_hardware_claim",
         success: true,
         preflightOnly: false,
-        architecture: "amd64",
+        architecture: buildArchitecture,
         diskInterface: "usb",
         firmwareMode: "pflash",
         emulator: {
@@ -83,7 +85,7 @@ async function fixture() {
           "qemu_graphical_target_only_no_login_agent_computer_control_or_hardware_claim",
         success: true,
         preflightOnly: false,
-        architecture: "amd64",
+        architecture: buildArchitecture,
         diskInterface: "usb",
         firmwareMode: "bios",
         emulator: {
@@ -107,7 +109,7 @@ async function fixture() {
           "virtual_usb_write_readback_and_two_boot_home_persistence_no_installer_desktop_or_physical_hardware_claim",
         success: true,
         preflightOnly: false,
-        architecture: "amd64",
+        architecture: buildArchitecture,
         sourceImage: {
           size: expandedBytes.length,
           sha256: sha256(expandedBytes),
@@ -126,7 +128,10 @@ async function fixture() {
           survivedSecondBoot: true,
         },
         boots: [1, 2].map((number) => ({
-          terminationReason: "required-markers",
+          success: true,
+          terminationReason: "guest-poweroff",
+          returnCode: 0,
+          shutdownError: null,
           markersFound: ["Linux version", "Reached target Graphical Interface"],
           forbiddenMarkersFound: [],
           transcript: { size: number, sha256: String(number).repeat(64) },
@@ -143,11 +148,12 @@ async function fixture() {
   ]);
   return {
     root,
+    architecture,
     compressed,
     expanded,
     buildEvidence,
     qemuEvidence,
-    legacyBiosEvidence,
+    legacyBiosEvidence: architecture === "x86_64" ? legacyBiosEvidence : undefined,
     persistenceEvidence,
     sbom,
   };
@@ -162,7 +168,7 @@ function verify(paths) {
     [
       script.pathname,
       "--architecture",
-      "x86_64",
+      paths.architecture,
       "--compressed",
       paths.compressed,
       "--expanded",
@@ -190,6 +196,51 @@ test("promotion verifier binds exact build, QEMU USB, and SPDX bytes", async () 
   assert.equal(JSON.parse(result.stdout).architecture, "x86_64");
 });
 
+test("promotion rejects a built archive that expands to a different qualified image", async () => {
+  const paths = await fixture();
+  const differentArchive = zstdCompressSync(Buffer.alloc(4096, 8));
+  await writeFile(paths.compressed, differentArchive);
+  const build = JSON.parse(await readFile(paths.buildEvidence, "utf8"));
+  build.artifacts[0].sha256 = sha256(differentArchive);
+  build.artifacts[0].size = differentArchive.length;
+  await writeFile(paths.buildEvidence, JSON.stringify(build));
+  const result = verify(paths);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not decompress to the qualified expanded image/);
+});
+
+test("promotion rejects corrupt compressed bytes even with matching build evidence", async () => {
+  const paths = await fixture();
+  const corruptArchive = Buffer.from("invalid zstd stream");
+  await writeFile(paths.compressed, corruptArchive);
+  const build = JSON.parse(await readFile(paths.buildEvidence, "utf8"));
+  build.artifacts[0].sha256 = sha256(corruptArchive);
+  build.artifacts[0].size = corruptArchive.length;
+  await writeFile(paths.buildEvidence, JSON.stringify(build));
+  const result = verify(paths);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /compressed image decompression failed/);
+});
+
+test("ARM64 and RISC-V promotion require a bound EDK2 firmware pair", async () => {
+  for (const architecture of ["arm64", "riscv64"]) {
+    const paths = await fixture(architecture);
+    assert.equal(verify(paths).status, 0);
+    const document = JSON.parse(await readFile(paths.qemuEvidence, "utf8"));
+    delete document.inputs.firmwareVarsTemplate;
+    await writeFile(paths.qemuEvidence, JSON.stringify(document));
+    assert.match(verify(paths).stderr, /explicit pflash firmware pair/);
+    document.firmwareMode = "bios";
+    delete document.inputs.firmwareCode;
+    document.inputs.bios = { sha256: "e".repeat(64) };
+    await writeFile(paths.qemuEvidence, JSON.stringify(document));
+    assert.match(
+      verify(paths).stderr,
+      /not a successful removable-USB qualification/,
+    );
+  }
+});
+
 test("promotion verifier rejects QEMU evidence for different expanded bytes", async () => {
   const paths = await fixture();
   await writeFile(paths.expanded, Buffer.alloc(4096, 8));
@@ -208,6 +259,31 @@ test("promotion verifier rejects persistence evidence for different expanded byt
   const result = verify(paths);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /virtual USB readback/);
+});
+
+test("promotion requires clean guest shutdown after each persistence boot", async () => {
+  const paths = await fixture();
+  const original = JSON.parse(
+    await readFile(paths.persistenceEvidence, "utf8"),
+  );
+  for (const index of [0, 1]) {
+    for (const failure of [
+      { terminationReason: "required-markers" },
+      { success: false },
+      { returnCode: -15 },
+      { shutdownError: "QMP poweroff timed out" },
+    ]) {
+      const document = structuredClone(original);
+      Object.assign(document.boots[index], failure);
+      await writeFile(paths.persistenceEvidence, JSON.stringify(document));
+      const result = verify(paths);
+      assert.notEqual(result.status, 0, JSON.stringify({ index, failure }));
+      assert.match(
+        result.stderr,
+        new RegExp(`persistence boot ${index + 1} evidence is invalid`),
+      );
+    }
+  }
 });
 
 test("promotion verifier requires legacy BIOS evidence for x86_64", async () => {

@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "scripts": {
     "build:native": "./native/build.sh $PWD/native/build/linux-peer-credentials.node",
     "lint:check": "bunx @biomejs/biome check .",
@@ -13,8 +20,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@types/node": "^25.0.0",
     "typescript": "^6.0.3",
-    "vitest": "4.1.5"
+    "vitest": "^5.0.1"
   }
 }

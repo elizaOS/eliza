@@ -32,12 +32,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-import {
-  loadAospVariantConfig,
-  resolveAppConfigPath,
-} from "../../../app/scripts/aosp/lib/load-variant-config.ts";
-import { isMainModule } from "../distro-android/is-main.ts";
+import { pathToFileURL } from "node:url";
+import { resolveElizaSourceRoot } from "../eliza-source.ts";
 import { androidSocketFetch } from "./lib/android-socket-fetch.ts";
 import {
   inspectFreshLocalGeneration,
@@ -87,13 +83,7 @@ async function configureUndiciIfAvailable(timeoutMs) {
   }
 }
 
-const osRepoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
-const repoRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
-);
+const repoRoot = resolveElizaSourceRoot();
 
 const AGENT_PORT = 31337;
 // adb forward picks an arbitrary host port; we always pin to AGENT_PORT
@@ -776,6 +766,14 @@ export async function main(argv = process.argv.slice(2)) {
   let packageName = parsed.packageName;
   let appName = parsed.appName;
   if (!packageName) {
+    const { loadAospVariantConfig, resolveAppConfigPath } = await import(
+      pathToFileURL(
+        path.join(
+          repoRoot,
+          "packages/app/scripts/aosp/lib/load-variant-config.ts",
+        ),
+      ).href
+    );
     const cfgPath = resolveAppConfigPath({
       repoRoot,
       flagValue: parsed.appConfigPath,
@@ -811,9 +809,7 @@ export async function main(argv = process.argv.slice(2)) {
   process.exit(allPassed ? 0 : 1);
 }
 
-const isMain = isMainModule(import.meta);
-
-if (isMain) {
+if (import.meta.main) {
   await main();
 }
 

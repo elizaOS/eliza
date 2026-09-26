@@ -28,8 +28,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { pngMetadata } from "../../../scripts/lib/png-metadata.ts";
 import { loadBrandFromArgv } from "./brand-config.ts";
-import { isMainModule } from "./is-main.ts";
 
 /**
  * Step map factory — bound to a brand so the LAUNCHER step uses the
@@ -37,6 +37,14 @@ import { isMainModule } from "./is-main.ts";
  * to build the step map independently can pass a synthetic brand
  * object.
  */
+export class ScreenCaptureError extends Error {
+  code = "ELIZAOS_SCREEN_CAPTURE_ERROR";
+  constructor(message, options) {
+    super(message, options);
+    this.name = "ScreenCaptureError";
+  }
+}
+
 export function buildStepMap(brand) {
   return {
     home: {
@@ -165,10 +173,24 @@ export function resolveAdb(explicit) {
     if (fs.existsSync(candidate)) return candidate;
   }
   const result = spawnSync("adb", ["version"], { stdio: "ignore" });
-  if (!result.error) return "adb";
+  if (!result.error && result.status === 0) return "adb";
   throw new Error(
     "Could not find adb. Set --adb, ADB, ANDROID_HOME, or ANDROID_SDK_ROOT.",
   );
+}
+
+export function resolveDeviceSerial(adb, serial) {
+  const selected = serial || run(adb, ["get-serialno"]).trim();
+  if (
+    typeof selected !== "string" ||
+    selected === "unknown" ||
+    !/^[A-Za-z0-9._:-]+$/.test(selected)
+  ) {
+    throw new ScreenCaptureError(
+      "Screenshot capture requires one explicit connected device serial",
+    );
+  }
+  return selected;
 }
 
 function adbArgs(serial, args) {
@@ -196,21 +218,23 @@ function shell(adb, serial, command) {
 }
 
 function captureFramebuffer(adb, serial, targetPath) {
-  // adb exec-out streams the PNG bytes back without an intermediate file
-  // on the device. Falls back to push/pull if exec-out fails.
   const result = spawnSync(
     adb,
     adbArgs(serial, ["exec-out", "screencap", "-p"]),
     { maxBuffer: 64 * 1024 * 1024 },
   );
   if (result.error || result.status !== 0) {
-    const tmpDevicePath = `/sdcard/screencap-${Date.now()}.png`;
-    shell(adb, serial, `screencap -p ${tmpDevicePath}`);
-    run(adb, adbArgs(serial, ["pull", tmpDevicePath, targetPath]));
-    shell(adb, serial, `rm -f ${tmpDevicePath}`);
-    return;
+    throw new ScreenCaptureError(
+      `ADB framebuffer capture failed (${result.signal ?? result.status ?? result.error?.message})`,
+      { cause: result.error },
+    );
   }
-  fs.writeFileSync(targetPath, result.stdout);
+  if (!pngMetadata(result.stdout, true)) {
+    throw new ScreenCaptureError(
+      "ADB framebuffer output is not a complete checksummed PNG",
+    );
+  }
+  fs.writeFileSync(targetPath, result.stdout, { flag: "wx" });
 }
 
 async function sleep(ms) {
@@ -239,6 +263,31 @@ export async function captureScreens({
   noLaunch,
   stepMap,
 }) {
+  if (
+    label !== null &&
+    label !== undefined &&
+    (typeof label !== "string" ||
+      label.includes("/") ||
+      label.includes("\\") ||
+      [...label].some(
+        (char) => char.codePointAt(0) < 32 || char.codePointAt(0) === 127,
+      ))
+  ) {
+    throw new ScreenCaptureError(
+      "Screenshot label must be a single filename component",
+    );
+  }
+  if (
+    !noLaunch &&
+    (!Array.isArray(steps) ||
+      steps.length === 0 ||
+      steps.some((step) => !Object.hasOwn(stepMap, step)))
+  ) {
+    throw new ScreenCaptureError(
+      "Screenshot capture requires known, nonempty steps",
+    );
+  }
+  serial = resolveDeviceSerial(adb, serial);
   fs.mkdirSync(outDir, { recursive: true });
   const slug = timestampSlug();
 
@@ -257,9 +306,10 @@ export async function captureScreens({
     const step = stepMap[steps[i]];
     try {
       step.drive(adb, serial);
-    } catch (error) {
-      console.warn(
-        `[capture] step ${step.label} drive failed (continuing): ${error.message}`,
+    } catch (cause) {
+      throw new ScreenCaptureError(
+        `Screenshot step ${step.label} could not be launched`,
+        { cause },
       );
     }
     await sleep(step.settleMs);
@@ -282,7 +332,6 @@ async function main(argv = process.argv.slice(2)) {
   await captureScreens({ ...args, adb, stepMap });
 }
 
-const isMain = isMainModule(import.meta);
-if (isMain) {
+if (import.meta.main) {
   await main();
 }

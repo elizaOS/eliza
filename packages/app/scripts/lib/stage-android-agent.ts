@@ -45,6 +45,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import {
   ensureEmbeddingArtifact,
   FUSED_EMBEDDING_ARTIFACT,
@@ -136,6 +137,23 @@ const ABI_TARGETS = [
     ldName: "ld-musl-riscv64.so.1",
   },
 ];
+
+/** Select the product ABIs explicitly; unspecified builds retain all targets. */
+export function selectAndroidRuntimeTargets(value) {
+  if (value === undefined) return ABI_TARGETS;
+  const names = value.split(",").map((name) => name.trim());
+  if (
+    names.some(
+      (name) => !ABI_TARGETS.some((target) => target.androidAbi === name),
+    ) ||
+    new Set(names).size !== names.length
+  ) {
+    throw new Error(
+      "ELIZA_ANDROID_TARGET_ABIS must list unique supported Android ABIs",
+    );
+  }
+  return ABI_TARGETS.filter((target) => names.includes(target.androidAbi));
+}
 
 const NATIVE_LLAMA_ASSET_ENV_KEYS = [
   "ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR",
@@ -930,11 +948,12 @@ function shouldStageNativeLlamaAsset(name) {
 
 function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
   const source = resolveNativeLlamaAssetDir(androidAbi);
-  if (!source) return 0;
-
+  const configuredNames = new Set();
   let changes = 0;
   let copied = 0;
-  for (const entry of fs.readdirSync(source.dir, { withFileTypes: true })) {
+  for (const entry of source
+    ? fs.readdirSync(source.dir, { withFileTypes: true })
+    : []) {
     if (!entry.isFile() || !shouldStageNativeLlamaAsset(entry.name)) continue;
     const src = path.join(source.dir, entry.name);
     const dst = path.join(abiAssetsDir, entry.name);
@@ -945,6 +964,7 @@ function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
     ) {
       fs.chmodSync(dst, fs.statSync(dst).mode | 0o755);
     }
+    configuredNames.add(entry.name);
     copied += 1;
   }
 
@@ -964,18 +984,53 @@ function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
   const missing = required.filter(
     (name) => !fs.existsSync(path.join(abiAssetsDir, name)),
   );
-  if (missing.length > 0) {
+  if (source && missing.length > 0) {
     log(
       `Native llama asset dir from ${source.key} did not provide ${missing.join(", ")}; ` +
         `ELIZA_LOCAL_LLAMA will remain disabled for ${androidAbi}.`,
     );
-  } else {
+  } else if (source) {
     log(
       `Staged ${copied} native llama asset file(s) for ${androidAbi} from ${source.key}` +
         (changes > 0 ? ` (${changes} updated)` : " (already current)"),
     );
   }
-  return changes;
+  const files = [];
+  for (const entry of fs.readdirSync(abiAssetsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !shouldStageNativeLlamaAsset(entry.name)) continue;
+    const filePath = path.join(abiAssetsDir, entry.name);
+    files.push(
+      fileProvenanceEntry({
+        filePath,
+        relativePath: `assets/agent/${androidAbi}/${entry.name}`,
+        source: configuredNames.has(entry.name)
+          ? {
+              kind: "configured-native-llama-asset",
+              environment_key: source.key,
+              ...provenancePath(path.join(source.dir, entry.name)),
+            }
+          : {
+              kind: "retained-native-llama-asset",
+              build_origin: "unknown",
+              path: `assets/agent/${androidAbi}/${entry.name}`,
+              path_provenance: "existing_staged_asset",
+            },
+      }),
+    );
+  }
+  return { changes, files };
+}
+
+function deduplicateProvenanceFiles(files) {
+  const entries = new Map();
+  for (const file of files) {
+    const previous = entries.get(file.path);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(file)) {
+      throw new Error(`Conflicting runtime provenance for ${file.path}`);
+    }
+    entries.set(file.path, file);
+  }
+  return [...entries.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function writeIfChanged(target, content) {
@@ -1204,8 +1259,27 @@ export function stageAndroidPgliteAssets({
   for (const name of pgliteAssets) {
     const src = path.join(distMobileDir, name);
     if (!fs.existsSync(src)) continue;
-    const dst = path.join(assetsAgentDir, name);
-    if (copyIfDifferent(src, dst)) stagedCount += 1;
+    // aapt2 decompresses .gz assets and removes that suffix. Stage the
+    // actual APK bytes explicitly so provenance also binds the names and
+    // bytes consumed by ElizaAgentService's re-gzip extraction path.
+    const gzipArchive = name.endsWith(".tar.gz");
+    const dst = path.join(
+      assetsAgentDir,
+      gzipArchive ? name.slice(0, -3) : name,
+    );
+    if (gzipArchive) {
+      const bytes = gunzipSync(fs.readFileSync(src));
+      fs.mkdirSync(assetsAgentDir, { recursive: true });
+      if (!fs.existsSync(dst) || !fs.readFileSync(dst).equals(bytes)) {
+        fs.writeFileSync(dst, bytes);
+        stagedCount += 1;
+      }
+      const legacyAsset = path.join(assetsAgentDir, name);
+      if (fs.existsSync(legacyAsset)) {
+        fs.rmSync(legacyAsset);
+        stagedCount += 1;
+      }
+    } else if (copyIfDifferent(src, dst)) stagedCount += 1;
     stagedFiles.push(
       fileProvenanceEntry({
         filePath: dst,
@@ -1278,6 +1352,9 @@ export async function stageAndroidAgentRuntime({
   if (!spikeDir)
     throw new Error("stageAndroidAgentRuntime: spikeDir is required");
 
+  const targets = selectAndroidRuntimeTargets(
+    process.env.ELIZA_ANDROID_TARGET_ABIS,
+  );
   const tlog = logFor(log);
   const bunChannel = resolveBunChannel(preferredBunChannel);
   const resolvedCacheDir = cacheDir ?? defaultBunCacheDir(bunChannel);
@@ -1298,20 +1375,32 @@ export async function stageAndroidAgentRuntime({
     "agent",
   );
   fs.mkdirSync(assetsAgentDir, { recursive: true });
-  await stageAndroidEmbeddingArtifact({ assetsAgentDir });
+  const embeddingTarget = await stageAndroidEmbeddingArtifact({
+    assetsAgentDir,
+  });
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
   fs.mkdirSync(jniLibsDir, { recursive: true });
 
   let stagedCount = 0;
-  const stagedFiles = [];
+  const stagedFiles = [
+    fileProvenanceEntry({
+      filePath: embeddingTarget,
+      relativePath: path.relative(
+        path.join(androidDir, "app", "src", "main"),
+        embeddingTarget,
+      ),
+      source: { kind: "pinned-embedding-model", ...FUSED_EMBEDDING_ARTIFACT },
+    }),
+  ];
   const riscv64Artifact = {
-    required: objective,
+    required:
+      objective && targets.some((target) => target.bunArch === "riscv64"),
     filename: RISCV64_BUN_ARTIFACT_FILENAME,
     sha256: riscv64BunSha256(),
     source: riscv64BunArtifactSource(),
   };
 
-  for (const target of ABI_TARGETS) {
+  for (const target of targets) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
     // Objective builds fail closed on riscv64. Upstream Bun has no
     // riscv64-linux-musl release, so provide ELIZA_BUN_RISCV64_FILE or
@@ -1378,11 +1467,13 @@ export async function stageAndroidAgentRuntime({
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }
 
-    abiChanges += stageNativeLlamaAssetsForAbi({
+    const nativeLlama = stageNativeLlamaAssetsForAbi({
       androidAbi,
       abiAssetsDir,
       log: tlog,
     });
+    abiChanges += nativeLlama.changes;
+    stagedFiles.push(...nativeLlama.files);
 
     // llama-server is produced by compile-libllama.ts (per-ABI). It already
     // lands at <abiAssetsDir>/llama-server when that script ran successfully,
@@ -1479,7 +1570,11 @@ export async function stageAndroidAgentRuntime({
         packages: APK_PACKAGES.map(({ pkg }) => pkg),
       },
     };
-    for (const [, dst] of [...sources, ...jniSources]) {
+    const provenancePaths = new Set([
+      ...sources.map(([, dst]) => dst),
+      ...jniSources.flat(),
+    ]);
+    for (const dst of provenancePaths) {
       stagedFiles.push(
         fileProvenanceEntry({
           filePath: dst,
@@ -1653,7 +1748,9 @@ export async function stageAndroidAgentRuntime({
     bun: {
       version: resolvePinnedBunArtifact(bunChannel, "x64").version,
       revision: resolvePinnedBunArtifact(bunChannel, "x64").revision,
-      architectures: ["x86_64", "arm64-v8a"],
+      architectures: targets
+        .filter((target) => target.bunArch !== "riscv64")
+        .map((target) => target.androidAbi),
       channel: bunChannel,
       artifact_lock: "packages/app/scripts/lib/android-bun-artifacts.lock.json",
     },
@@ -1662,7 +1759,7 @@ export async function stageAndroidAgentRuntime({
     },
     riscv64_bun_artifact: riscv64Artifact,
     riscv64_bun_build_contract: readJsonIfExists(bunRiscv64VersionPath),
-    files: stagedFiles.sort((a, b) => a.path.localeCompare(b.path)),
+    files: deduplicateProvenanceFiles(stagedFiles),
   };
   if (
     writeIfChanged(
@@ -1686,6 +1783,8 @@ export async function stageAndroidAgentRuntime({
 }
 
 export const __testables = {
+  stageNativeLlamaAssetsForAbi,
+  deduplicateProvenanceFiles,
   BUN_VERSION,
   ALPINE_BRANCH,
   ABI_TARGETS,

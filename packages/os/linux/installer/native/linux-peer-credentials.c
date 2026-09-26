@@ -15,6 +15,9 @@
 #define SO_PEERPIDFD 77
 #endif
 
+static const napi_type_tag peer_tag = { UINT64_C(0x2051a03bbad44fad), UINT64_C(0xb69a36b217dfde21) };
+extern int elizaos_register_disk_session(napi_env env, napi_value exports);
+
 typedef struct {
   int fd;
   pid_t pid;
@@ -45,6 +48,11 @@ static peer_process_handle *unwrap_handle(napi_env env,
   size_t argc = 0;
   if (napi_get_cb_info(env, info, &argc, NULL, &self, NULL) != napi_ok) {
     napi_throw_error(env, NULL, "Unable to inspect native pidfd handle.");
+    return NULL;
+  }
+  bool tagged = false;
+  if (napi_check_object_type_tag(env, self, &peer_tag, &tagged) != napi_ok || !tagged) {
+    napi_throw_type_error(env, NULL, "Native pidfd receiver is invalid.");
     return NULL;
   }
   peer_process_handle *handle = NULL;
@@ -200,7 +208,8 @@ static napi_value capture_descriptor(napi_env env, int socket_fd) {
   }
   // Wrap only after every other fallible construction step. Once ownership is
   // transferred to N-API, no later branch may free the handle directly.
-  if (napi_wrap(env, result, handle, finalize_handle, NULL, NULL) != napi_ok) {
+  if (napi_type_tag_object(env, result, &peer_tag) != napi_ok ||
+      napi_wrap(env, result, handle, finalize_handle, NULL, NULL) != napi_ok) {
     finalize_handle(env, handle, NULL);
     napi_throw_error(env, NULL, "Unable to retain native pidfd handle.");
     return NULL;
@@ -237,7 +246,8 @@ static napi_value initialize(napi_env env, napi_value exports) {
   };
   if (napi_define_properties(env, exports,
                              sizeof(descriptors) / sizeof(descriptors[0]),
-                             descriptors) != napi_ok) {
+                             descriptors) != napi_ok ||
+      elizaos_register_disk_session(env, exports) != 0) {
     napi_throw_error(env, NULL,
                      "Unable to initialize Linux peer credential module.");
   }

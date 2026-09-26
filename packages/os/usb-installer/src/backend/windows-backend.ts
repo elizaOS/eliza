@@ -1,10 +1,9 @@
-// Implements platform-specific USB installer backend safety behavior.
-import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, promises as fs } from "node:fs";
-import * as http from "node:http";
-import * as https from "node:https";
-import * as os from "node:os";
+import {
+  type ChildProcessWithoutNullStreams,
+  execFile,
+  spawn,
+} from "node:child_process";
+import { existsSync, promises as fs } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -17,6 +16,9 @@ import {
   UserCancelledElevationError,
   WslDetectedError,
 } from "./errors";
+import { downloadFile } from "./image-download";
+import { sha256File } from "./image-file";
+import { withTemporaryImageDirectory } from "./image-workspace";
 import { fetchReleaseImages } from "./release-manifest";
 import type {
   ElizaOsImage,
@@ -30,6 +32,7 @@ import type {
 import {
   assertDriveMatchesExpected,
   assertWritePlanAllowed,
+  assertWriteTargetUnchanged,
 } from "./write-safety";
 
 const execFileAsync = promisify(execFile);
@@ -56,6 +59,28 @@ const MAX_DISK_NUMBER = 1000;
  */
 export function psEscape(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Start-Process flattens ArgumentList; preserve Windows argument boundaries. */
+function windowsArgument(value: string): string {
+  if (/[\0\r\n]/.test(value))
+    throw new Error("Invalid Windows command argument.");
+  return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`;
+}
+
+export function buildWindowsWriteCommand(
+  executable: "diskpart.exe" | "dd.exe" | "powershell.exe",
+  args: readonly string[],
+  elevated: boolean,
+): string {
+  if (elevated) {
+    return `& ${psEscape(executable)} ${args.map(psEscape).join(" ")}
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`;
+  }
+  const commandLine = args.map(windowsArgument).join(" ");
+  return `$child = Start-Process -FilePath ${psEscape(executable)} -ArgumentList ${psEscape(commandLine)} -Verb RunAs -Wait -PassThru
+if ($null -eq $child.ExitCode) { throw "Elevated writer returned no exit code." }
+if ($child.ExitCode -ne 0) { exit $child.ExitCode }`;
 }
 
 export function assertValidDiskNumber(diskNumber: number): void {
@@ -102,15 +127,15 @@ export function assertValidScriptPath(
       scriptPath,
     );
   }
-  const normalizedScript = path.normalize(scriptPath).toLowerCase();
-  const normalizedTmp = path.normalize(tmpRoot).toLowerCase();
-  if (!normalizedScript.startsWith(normalizedTmp)) {
+  const normalizedScript = path.win32.normalize(scriptPath).toLowerCase();
+  const normalizedTmp = path.win32.normalize(tmpRoot).toLowerCase();
+  if (path.win32.dirname(normalizedScript) !== normalizedTmp) {
     throw new InvalidScriptPathError(
       `Script path ${scriptPath} must live under the system temp directory.`,
       scriptPath,
     );
   }
-  const base = path.basename(scriptPath);
+  const base = path.win32.basename(scriptPath);
   if (!SCRIPT_NAME_RE.test(base)) {
     throw new InvalidScriptPathError(
       `Script filename ${base} does not match elizaos-<name>.txt.`,
@@ -138,6 +163,17 @@ ${body}
 }`;
 }
 
+export function buildElevatedPowerShellCommand(script: string): string {
+  const encoded = Buffer.from(wrapPowerShellScript(script), "utf16le").toString(
+    "base64",
+  );
+  return buildWindowsWriteCommand(
+    "powershell.exe",
+    ["-NonInteractive", "-NoProfile", "-EncodedCommand", encoded],
+    false,
+  );
+}
+
 async function runPowerShell(script: string): Promise<string> {
   const wrapped = wrapPowerShellScript(script);
   const { stdout } = await execFileAsync("powershell.exe", [
@@ -156,7 +192,7 @@ interface PsDiskRaw {
   BusType: string;
   IsBoot: boolean;
   IsSystem: boolean;
-  DriveLetters: string[] | string | null;
+  DriveLetters: string[];
   SystemDrive: string;
   UniqueId?: string;
 }
@@ -174,10 +210,61 @@ interface ClassifiedDisk {
 
 const INTERNAL_HINTS = ["internal", "samsung ssd", "wd_black sn", "nvme"];
 
-function normalizeDriveLetters(value: string[] | string | null): string[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.filter((s) => typeof s === "string");
-  return [value];
+export function parseWindowsDiskInventory(output: string): PsDiskRaw[] {
+  const invalid = (message: string): never => {
+    throw new PowerShellExecutionError(
+      `Invalid disk inventory: ${message}`,
+      null,
+      "",
+    );
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    return invalid("expected JSON");
+  }
+  if (!Array.isArray(parsed)) return invalid("expected a disk array");
+  const numbers = new Set<number>();
+  return parsed.map((value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      return invalid("expected a disk object");
+    const disk = value as Record<string, unknown>;
+    if (typeof disk.Number !== "number") return invalid("missing disk number");
+    assertValidDiskNumber(disk.Number);
+    if (numbers.has(disk.Number)) return invalid("duplicate disk number");
+    numbers.add(disk.Number);
+    if (
+      typeof disk.Size !== "number" ||
+      !Number.isSafeInteger(disk.Size) ||
+      disk.Size < 0
+    )
+      return invalid("invalid disk size");
+    if (typeof disk.IsBoot !== "boolean" || typeof disk.IsSystem !== "boolean")
+      return invalid("missing boot/system flags");
+    if (
+      typeof disk.FriendlyName !== "string" ||
+      typeof disk.BusType !== "string" ||
+      !disk.BusType
+    )
+      return invalid("invalid disk description");
+    if (
+      typeof disk.SystemDrive !== "string" ||
+      !/^[a-z]:$/i.test(disk.SystemDrive)
+    )
+      return invalid("invalid system drive");
+    if (
+      !Array.isArray(disk.DriveLetters) ||
+      disk.DriveLetters.some(
+        (letter: unknown) =>
+          typeof letter !== "string" || !/^[a-z]:$/i.test(letter),
+      )
+    )
+      return invalid("invalid drive letters");
+    if (disk.UniqueId !== undefined && typeof disk.UniqueId !== "string")
+      return invalid("invalid disk identity");
+    return disk as unknown as PsDiskRaw;
+  });
 }
 
 export function classifyDiskSafety(disk: ClassifiedDisk): {
@@ -220,71 +307,6 @@ export function classifyDiskSafety(disk: ClassifiedDisk): {
   };
 }
 
-async function downloadFile(
-  url: string,
-  destPath: string,
-  onProgress: (bytes: number, total: number) => void,
-): Promise<void> {
-  await fs.mkdir(path.dirname(destPath), { recursive: true });
-
-  return new Promise((resolve, reject) => {
-    function doRequest(requestUrl: string): void {
-      const protocol = requestUrl.startsWith("https://") ? https : http;
-      protocol
-        .get(
-          requestUrl,
-          { headers: { "User-Agent": "elizaos-usb-installer/1.0" } },
-          (res) => {
-            if (
-              res.statusCode === 301 ||
-              res.statusCode === 302 ||
-              res.statusCode === 307 ||
-              res.statusCode === 308
-            ) {
-              const location = res.headers.location;
-              if (!location) {
-                reject(
-                  new Error(
-                    `Redirect with no location header from ${requestUrl}`,
-                  ),
-                );
-                return;
-              }
-              doRequest(location);
-              return;
-            }
-            if (res.statusCode !== 200) {
-              reject(
-                new Error(
-                  `HTTP ${res.statusCode ?? "?"} downloading ${requestUrl}`,
-                ),
-              );
-              return;
-            }
-            const total = Number(res.headers["content-length"] ?? 0);
-            let received = 0;
-            const writeStream = createWriteStream(destPath);
-            res.on("data", (chunk: Buffer) => {
-              received += chunk.length;
-              onProgress(received, total);
-            });
-            res.pipe(writeStream);
-            writeStream.on("finish", resolve);
-            writeStream.on("error", reject);
-            res.on("error", reject);
-          },
-        )
-        .on("error", reject);
-    }
-    doRequest(url);
-  });
-}
-
-async function sha256File(filePath: string): Promise<string> {
-  const data = await fs.readFile(filePath);
-  return createHash("sha256").update(data).digest("hex");
-}
-
 function pendingSteps(): InstallerStep[] {
   return (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
     id,
@@ -323,9 +345,12 @@ function buildNativeWriteScript(
 ): string {
   const escImage = psEscape(imagePath);
   const escDrive = psEscape(physicalDrive);
-  return `$source = [System.IO.File]::OpenRead(${escImage})
-$dest = [System.IO.File]::OpenWrite(${escDrive})
+  return `$source = $null
+$dest = $null
+$failures = [System.Collections.Generic.List[System.Exception]]::new()
 try {
+  $source = [System.IO.File]::OpenRead(${escImage})
+  $dest = [System.IO.File]::Open(${escDrive}, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
   $buffer = New-Object byte[] (4 * 1024 * 1024)
   $total = 0
   while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
@@ -334,79 +359,115 @@ try {
     Write-Host ("PROGRESS: " + $total)
   }
   $dest.Flush($true)
+} catch {
+  $failures.Add($_.Exception)
 } finally {
-  $source.Dispose()
-  $dest.Dispose()
+  foreach ($stream in @($dest, $source)) {
+    if ($null -ne $stream) {
+      try { $stream.Dispose() } catch { $failures.Add($_.Exception) }
+    }
+  }
+}
+if ($failures.Count -gt 0) {
+  throw [System.AggregateException]::new("Native disk write failed.", $failures.ToArray())
 }`;
 }
 
+export function parsePowerShellBoolean(output: string): boolean {
+  const value = output.trim();
+  if (value === "yes") return true;
+  if (value === "no") return false;
+  throw new PowerShellExecutionError(
+    "PowerShell capability probe returned an invalid response.",
+    0,
+    output,
+  );
+}
+
 async function isAlreadyElevated(): Promise<boolean> {
-  try {
-    const out = await runPowerShell(
+  return parsePowerShellBoolean(
+    await runPowerShell(
       `if ([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { "yes" } else { "no" }`,
-    );
-    return out.trim() === "yes";
-  } catch {
-    return false;
-  }
+    ),
+  );
 }
 
 async function hasDdExe(): Promise<boolean> {
-  try {
-    const out = await runPowerShell(
+  return parsePowerShellBoolean(
+    await runPowerShell(
       `if (Get-Command dd.exe -ErrorAction SilentlyContinue) { "yes" } else { "no" }`,
-    );
-    return out.trim() === "yes";
-  } catch {
-    return false;
-  }
+    ),
+  );
 }
 
 function isUacCancellation(stderr: string): boolean {
   const lower = stderr.toLowerCase();
   return (
     lower.includes("operation was canceled by the user") ||
-    lower.includes("0x80004005") ||
     lower.includes("the operation was cancelled by the user")
   );
 }
 
-async function spawnPowerShell(
+export async function spawnPowerShell(
   script: string,
   onStdout?: (chunk: string) => void,
+  spawnChild: (
+    command: string,
+    args: string[],
+  ) => ChildProcessWithoutNullStreams = spawn,
 ): Promise<void> {
   const wrapped = wrapPowerShellScript(script);
   return new Promise((resolve, reject) => {
-    const proc = spawn("powershell.exe", [
+    const proc = spawnChild("powershell.exe", [
       "-NonInteractive",
       "-NoProfile",
       "-Command",
       wrapped,
     ]);
     let stderr = "";
+    const failures: unknown[] = [];
+    let processFailed = false;
+    let progressFailed = false;
     proc.stdout.on("data", (chunk: Buffer) => {
-      if (onStdout) onStdout(chunk.toString());
+      if (!onStdout || progressFailed) return;
+      try {
+        onStdout(chunk.toString());
+      } catch (error) {
+        progressFailed = true;
+        failures.push(error);
+      }
     });
     proc.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
+    proc.on("error", (error) => {
+      processFailed = true;
+      failures.push(error);
+    });
+    proc.on("close", (code, signal) => {
+      if (
+        code !== 0 &&
+        (!processFailed || (code !== null && code > 0) || signal !== null)
+      ) {
+        failures.push(
+          isUacCancellation(stderr)
+            ? new UserCancelledElevationError()
+            : new PowerShellExecutionError(
+                `PowerShell exited with ${signal ? `signal ${signal}` : `code ${code ?? "?"}`}: ${stderr.trim()}`,
+                code,
+                stderr,
+              ),
+        );
       }
-      if (isUacCancellation(stderr)) {
-        reject(new UserCancelledElevationError());
-        return;
-      }
-      reject(
-        new PowerShellExecutionError(
-          `PowerShell exited with code ${code ?? "?"}: ${stderr.trim()}`,
-          code,
-          stderr,
-        ),
-      );
+      if (failures.length === 1) reject(failures[0]);
+      else if (failures.length > 1)
+        reject(
+          new AggregateError(
+            failures,
+            "PowerShell writer encountered multiple failures.",
+          ),
+        );
+      else resolve();
     });
   });
 }
@@ -425,9 +486,9 @@ $systemDrive = $env:SystemDrive
 $disks = Get-Disk
 $result = @()
 foreach ($d in $disks) {
-  $parts = Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue
-  $isBoot = $false
-  $isSystem = $false
+  $parts = Get-Partition -DiskNumber $d.Number -ErrorAction Stop
+  $isBoot = $d.IsBoot
+  $isSystem = $d.IsSystem
   $letters = @()
   if ($parts) {
     foreach ($p in $parts) {
@@ -448,16 +509,10 @@ foreach ($d in $disks) {
     UniqueId = [string]$d.UniqueId
   }
 }
-$result | ConvertTo-Json -Depth 4 -Compress
+ConvertTo-Json -InputObject @($result) -Depth 4 -Compress
 `;
     const output = await runPowerShell(script);
-    const trimmed = output.trim();
-    if (!trimmed) return [];
-
-    const rawParsed = JSON.parse(trimmed) as PsDiskRaw | PsDiskRaw[];
-    const rawDisks: PsDiskRaw[] = Array.isArray(rawParsed)
-      ? rawParsed
-      : [rawParsed];
+    const rawDisks = parseWindowsDiskInventory(output);
 
     return rawDisks.map((raw): RemovableDrive => {
       const classified: ClassifiedDisk = {
@@ -465,10 +520,10 @@ $result | ConvertTo-Json -Depth 4 -Compress
         friendlyName: raw.FriendlyName,
         size: raw.Size,
         busType: raw.BusType,
-        isBoot: Boolean(raw.IsBoot),
-        isSystem: Boolean(raw.IsSystem),
-        driveLetters: normalizeDriveLetters(raw.DriveLetters),
-        systemDrive: raw.SystemDrive ?? "C:",
+        isBoot: raw.IsBoot,
+        isSystem: raw.IsSystem,
+        driveLetters: raw.DriveLetters,
+        systemDrive: raw.SystemDrive,
       };
       const verdict = classifyDiskSafety(classified);
       const drive: RemovableDrive = {
@@ -546,6 +601,7 @@ $result | ConvertTo-Json -Depth 4 -Compress
     plan: WritePlan,
     onProgress: (step: InstallerStepId, progress: number) => void,
   ): Promise<void> {
+    plan = structuredClone(plan);
     assertWritePlanAllowed(plan);
 
     if (plan.drive.safety !== "safe-removable") {
@@ -560,117 +616,100 @@ $result | ConvertTo-Json -Depth 4 -Compress
     assertValidDiskNumber(diskNumber);
     assertValidPhysicalDrive(drive.devicePath);
 
-    const tmpRoot = path.join(os.tmpdir(), "elizaos-usb-installer");
-    await fs.mkdir(tmpRoot, { recursive: true });
-    const imagePath = path.join(tmpRoot, `${image.id}.iso`);
-    const scriptPath = path.join(tmpRoot, "elizaos-diskpart.txt");
+    await withTemporaryImageDirectory(async (tmpRoot) => {
+      const imagePath = path.join(tmpRoot, `${image.checksumSha256}.iso`);
+      const scriptPath = path.join(tmpRoot, "elizaos-diskpart.txt");
 
-    // Step: resolve-image
-    onProgress("resolve-image", 0);
-    let needsDownload = false;
-    try {
-      await fs.access(imagePath);
-    } catch {
-      needsDownload = true;
-    }
+      // Step: resolve-image
+      onProgress("resolve-image", 0);
+      await downloadFile(
+        image.url,
+        imagePath,
+        image.sizeBytes,
+        (received, total) => {
+          const pct = total > 0 ? received / total : 0;
+          onProgress("resolve-image", pct);
+        },
+      );
+      onProgress("resolve-image", 1);
 
-    if (needsDownload) {
-      await downloadFile(image.url, imagePath, (received, total) => {
-        const pct = total > 0 ? received / total : 0;
-        onProgress("resolve-image", pct);
-      });
-    }
-    onProgress("resolve-image", 1);
+      // Validate every interpolated path before crossing the shell boundary.
+      assertValidImagePath(imagePath);
+      assertValidScriptPath(scriptPath, tmpRoot);
 
-    // Validate every interpolated path before crossing the shell boundary.
-    assertValidImagePath(imagePath);
-    assertValidScriptPath(scriptPath, tmpRoot);
-
-    // Step: checksum
-    onProgress("checksum", 0);
-    const ZEROED_CHECKSUM = "0".repeat(64);
-    if (image.checksumSha256 !== ZEROED_CHECKSUM) {
+      // Step: checksum
+      onProgress("checksum", 0);
       const actual = await sha256File(imagePath);
       if (actual !== image.checksumSha256) {
         throw new Error(
           `Checksum mismatch: expected ${image.checksumSha256}, got ${actual}`,
         );
       }
-    }
-    onProgress("checksum", 1);
+      onProgress("checksum", 1);
 
-    // Step: write -- diskpart prepares, then dd.exe or native PS streams.
-    onProgress("write", 0);
-    const diskpartScript = buildDiskpartScript(diskNumber);
-    await fs.writeFile(scriptPath, diskpartScript, "utf8");
+      // Step: write -- diskpart prepares, then dd.exe or native PS streams.
+      onProgress("write", 0);
+      const diskpartScript = buildDiskpartScript(diskNumber);
+      await fs.writeFile(scriptPath, diskpartScript, "utf8");
 
-    const elevated = await isAlreadyElevated();
+      const elevated = await isAlreadyElevated();
+      const useDd = await hasDdExe();
+      assertWriteTargetUnchanged(plan, await this.listRemovableDrives());
 
-    // Run diskpart (elevated if necessary).
-    const diskpartCommand = elevated
-      ? `& diskpart.exe /s ${psEscape(scriptPath)} | Out-Null`
-      : `Start-Process diskpart.exe -ArgumentList @('/s', ${psEscape(scriptPath)}) -Verb RunAs -Wait`;
-    await spawnPowerShell(diskpartCommand);
+      // Run diskpart (elevated if necessary).
+      const diskpartCommand = buildWindowsWriteCommand(
+        "diskpart.exe",
+        ["/s", scriptPath],
+        elevated,
+      );
+      await spawnPowerShell(diskpartCommand);
 
-    // Choose write strategy: dd.exe if present, else native PowerShell.
-    const useDd = await hasDdExe();
-    if (useDd) {
-      const ddArgs = [
-        `'if=' + ${psEscape(imagePath)}`,
-        `'of=' + ${psEscape(drive.devicePath)}`,
-        `'bs=4M'`,
-        `'--progress'`,
-      ].join(", ");
-      const ddCommand = elevated
-        ? `& dd.exe ${psEscape(`if=${imagePath}`)} ${psEscape(`of=${drive.devicePath}`)} bs=4M --progress`
-        : `Start-Process dd.exe -ArgumentList @(${ddArgs}) -Verb RunAs -Wait`;
-      await spawnPowerShell(ddCommand, (chunk) => {
-        const match = chunk.match(/(\d+)\s+bytes/);
-        if (match?.[1] && image.sizeBytes > 0) {
-          onProgress(
-            "write",
-            Math.min(Number(match[1]) / image.sizeBytes, 0.99),
-          );
-        }
-      });
-    } else {
-      // Native PowerShell streaming write. Must run elevated to open
-      // \\.\PhysicalDriveN for writing.
-      const nativeScript = buildNativeWriteScript(imagePath, drive.devicePath);
-      if (elevated) {
-        await spawnPowerShell(nativeScript, (chunk) => {
-          const m = chunk.match(/PROGRESS:\s+(\d+)/);
-          if (m?.[1] && image.sizeBytes > 0) {
-            onProgress("write", Math.min(Number(m[1]) / image.sizeBytes, 0.99));
+      // Capability probes settle before any disk mutation.
+      if (useDd) {
+        const ddCommand = buildWindowsWriteCommand(
+          "dd.exe",
+          [`if=${imagePath}`, `of=${drive.devicePath}`, "bs=4M", "--progress"],
+          elevated,
+        );
+        await spawnPowerShell(ddCommand, (chunk) => {
+          const match = chunk.match(/(\d+)\s+bytes/);
+          if (match?.[1] && image.sizeBytes > 0) {
+            onProgress(
+              "write",
+              Math.min(Number(match[1]) / image.sizeBytes, 0.99),
+            );
           }
         });
       } else {
-        // Re-spawn ourselves under RunAs to execute the streaming script. We
-        // write the script to disk because passing a multi-line script through
-        // Start-Process arguments is fragile.
-        const nativeScriptPath = path.join(tmpRoot, "elizaos-write.txt");
-        await fs.writeFile(
-          nativeScriptPath,
-          wrapPowerShellScript(nativeScript),
-          "utf8",
+        // Native PowerShell streaming write. Must run elevated to open
+        // \\.\PhysicalDriveN for writing.
+        const nativeScript = buildNativeWriteScript(
+          imagePath,
+          drive.devicePath,
         );
-        assertValidScriptPath(nativeScriptPath, tmpRoot);
-        const elevateCmd = `Start-Process powershell.exe -ArgumentList @('-NonInteractive','-NoProfile','-File', ${psEscape(nativeScriptPath)}) -Verb RunAs -Wait`;
-        await spawnPowerShell(elevateCmd);
-        await fs.unlink(nativeScriptPath).catch(() => undefined);
+        if (elevated) {
+          await spawnPowerShell(nativeScript, (chunk) => {
+            const m = chunk.match(/PROGRESS:\s+(\d+)/);
+            if (m?.[1] && image.sizeBytes > 0) {
+              onProgress(
+                "write",
+                Math.min(Number(m[1]) / image.sizeBytes, 0.99),
+              );
+            }
+          });
+        } else {
+          await spawnPowerShell(buildElevatedPowerShellCommand(nativeScript));
+        }
       }
-    }
-    onProgress("write", 1);
+      onProgress("write", 1);
 
-    await fs.unlink(scriptPath).catch(() => undefined);
-
-    // Step: verify
-    onProgress("verify", 0);
-    await runPowerShell(
-      `$disk = Get-Disk -Number ${diskNumber}; $disk | Set-Disk -IsOffline $false`,
-    ).catch(() => undefined);
-    onProgress("verify", 1);
-
+      // Step: verify
+      onProgress("verify", 0);
+      await runPowerShell(
+        `$disk = Get-Disk -Number ${diskNumber}; $disk | Set-Disk -IsOffline $false`,
+      );
+      onProgress("verify", 1);
+    });
     onProgress("complete", 1);
   }
 }

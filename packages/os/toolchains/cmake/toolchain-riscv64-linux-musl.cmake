@@ -18,7 +18,7 @@
 # `generic_rv64`) and rejects every `-march=rv64gc*` form with
 # "unknown CPU". The default triple-derived CPU is already rv64gc/lp64d,
 # so scalar parity works there too — but RVV is unreachable. The Android
-# build path (packages/app-core/scripts/aosp/compile-libllama.ts)
+# build path (packages/app/scripts/aosp/compile-libllama.ts)
 # detects the Zig version via resolveRiscv64BuildPlan() and forces every
 # GGML_RV* option OFF below MIN_ZIG_RVV_VERSION (0.14.0) so MARCH_STR
 # collapses to `rv64gc`, which the per-ABI zig-cc driver script then

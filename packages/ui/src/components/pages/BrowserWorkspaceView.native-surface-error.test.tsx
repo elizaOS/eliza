@@ -1,6 +1,6 @@
 /**
- * Verifies the native-mobile-webview error surface distinguishes a permanent
- * WebView capability denial (LP3: system WebView 113 without multi-profile)
+ * Verifies the iOS native-mobile-webview error surface distinguishes a permanent
+ * native surface capability denial
  * from a transient transport fault. Permanent shows honest "not supported"
  * copy with an Open-external escape hatch and NO Retry; transient keeps the
  * existing retryable state. The real component renders in jsdom; the surface
@@ -49,7 +49,7 @@ vi.mock("@capacitor/core", async (importOriginal) => {
     Capacitor: {
       ...actual.Capacitor,
       isNativePlatform: () => true,
-      getPlatform: () => "android",
+      getPlatform: () => "ios",
     },
   };
 });

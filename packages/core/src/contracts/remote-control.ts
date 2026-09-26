@@ -49,6 +49,7 @@ export type RemoteControllerPlatform =
 	(typeof REMOTE_CONTROLLER_PLATFORMS)[number];
 
 export const REMOTE_COMMAND_ACTIONS = [
+	"browser.command",
 	"agent.request",
 	"agent.message",
 	"agent.pause",
@@ -133,6 +134,8 @@ export interface RemoteControllerGrant {
 	createdAt: number;
 	expiresAt: number | null;
 	revokedAt: number | null;
+	/** Explicit device-owner grant for one Chromium profile; legacy grants have no browser authority. */
+	browserProfileId?: string;
 }
 
 /** Authority and recipient scope repeated in every signed protocol body. */
@@ -467,8 +470,11 @@ export function isRemoteControllerGrant(
 			"createdAt",
 			"expiresAt",
 			"revokedAt",
+			"browserProfileId",
 		]) ||
 		value.version !== REMOTE_CONTROL_PROTOCOL_VERSION ||
+		(value.browserProfileId !== undefined &&
+			!isRemoteControlIdentifier(value.browserProfileId)) ||
 		!isRemoteControlIdentifier(value.grantId) ||
 		!Number.isSafeInteger(value.revision) ||
 		(value.revision as number) < 1 ||
@@ -694,4 +700,101 @@ export function parseEncryptedRemoteControlEnvelope(
 	value: unknown,
 ): EncryptedRemoteControlEnvelope | null {
 	return isEncryptedRemoteControlEnvelope(value) ? value : null;
+}
+
+/** Typed browser effects carried only by an explicit profile-scoped remote grant. */
+export interface RemoteBrowserCommandPayload {
+	profileId: string;
+	command: {
+		subaction:
+			| "list"
+			| "open"
+			| "navigate"
+			| "snapshot"
+			| "click"
+			| "fill"
+			| "scroll"
+			| "back"
+			| "forward"
+			| "reload"
+			| "close";
+		id?: string;
+		url?: string;
+		selector?: string;
+		text?: string;
+		direction?: "up" | "down" | "left" | "right";
+	};
+}
+
+export function parseRemoteBrowserCommandPayload(
+	value: unknown,
+): RemoteBrowserCommandPayload {
+	if (
+		!isRecord(value) ||
+		!hasOnlyKeys(value, ["profileId", "command"]) ||
+		!isRemoteControlIdentifier(value.profileId) ||
+		!isRecord(value.command)
+	)
+		throw new Error("A profile-bound browser command is required.");
+	const command = value.command;
+	const actions = [
+		"list",
+		"open",
+		"navigate",
+		"snapshot",
+		"click",
+		"fill",
+		"scroll",
+		"back",
+		"forward",
+		"reload",
+		"close",
+	];
+	if (
+		!hasOnlyKeys(command, [
+			"subaction",
+			"id",
+			"url",
+			"selector",
+			"text",
+			"direction",
+		]) ||
+		typeof command.subaction !== "string" ||
+		!actions.includes(command.subaction)
+	)
+		throw new Error("Unsupported remote browser command.");
+	for (const key of ["id", "url", "selector", "text"] as const)
+		if (command[key] !== undefined && typeof command[key] !== "string")
+			throw new Error(`Browser ${key} must be a string.`);
+	if (
+		!["list", "open"].includes(command.subaction) &&
+		(typeof command.id !== "string" || !/^\d+$/.test(command.id))
+	)
+		throw new Error("Remote browser commands require an explicit tab ID.");
+	if (
+		["click", "fill", "scroll"].includes(command.subaction) &&
+		typeof command.selector !== "string"
+	)
+		throw new Error("A current browser snapshot selector is required.");
+	if (command.subaction === "fill" && typeof command.text !== "string")
+		throw new Error("Browser fill requires replacement text.");
+	if (
+		command.direction !== undefined &&
+		!["up", "down", "left", "right"].includes(String(command.direction))
+	)
+		throw new Error("Invalid browser scroll direction.");
+	if (["open", "navigate"].includes(command.subaction)) {
+		if (typeof command.url !== "string")
+			throw new Error("Browser navigation requires a URL.");
+		const url = new URL(command.url);
+		if (
+			!["http:", "https:"].includes(url.protocol) ||
+			url.username ||
+			url.password
+		)
+			throw new Error(
+				"Browser navigation requires HTTP(S) without embedded credentials.",
+			);
+	}
+	return value as unknown as RemoteBrowserCommandPayload;
 }

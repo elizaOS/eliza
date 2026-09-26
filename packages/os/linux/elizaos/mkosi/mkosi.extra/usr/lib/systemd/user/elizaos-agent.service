@@ -1,7 +1,7 @@
 [Unit]
 Description=Local Eliza agent
 Documentation=https://elizaos.ai/
-ConditionPathIsExecutable=/opt/elizaos/bin/eliza-agent
+ConditionFileIsExecutable=/opt/elizaos/bin/eliza-agent
 After=graphical-session-pre.target
 PartOf=graphical-session.target
 

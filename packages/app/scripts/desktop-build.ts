@@ -22,9 +22,15 @@ import {
   findElectrobunManifestPath,
   hasElectrobunViewExport,
   isSupportedBunVersion,
+  resolveDesktopBuildConcurrency,
 } from "./lib/desktop-preflight.ts";
+import { buildDesktopRenderer } from "./lib/desktop-renderer-build.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.ts";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.ts";
+import {
+  ensureLinuxCefHelper,
+  requireHelperHash,
+} from "./lib/linux-cef-helper.mjs";
 import {
   nativeActivityTrackerSourceBinary,
   nativeActivityTrackerStagedBinary,
@@ -36,6 +42,9 @@ import { appIdentityEnv } from "./lib/read-app-identity.ts";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.ts";
 
 const ROOT = process.cwd();
+const runtimeBuildConcurrency = resolveDesktopBuildConcurrency(
+  process.env.ELIZA_DESKTOP_BUILD_CONCURRENCY,
+);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 // --app=<name> selects which app to build (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
@@ -581,16 +590,6 @@ function resolveLocalPackageBinary(binary, cwdCandidates = []) {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
-function runBunPackageBinary(binary, binaryArgs, options = {}) {
-  const bunx = which("bunx");
-  if (bunx) {
-    run(bunx, ["--bun", binary, ...binaryArgs], options);
-    return;
-  }
-
-  runPackageBinary(binary, binaryArgs, options);
-}
-
 function runElectrobun(commandArgs, options = {}) {
   const local = resolveLocalPackageBinary(
     "electrobun",
@@ -873,7 +872,7 @@ function findLatestMacAppBundle() {
   return candidates[0].appBundlePath;
 }
 
-function hardenPackagedLinuxArtifacts() {
+function hardenPackagedLinuxArtifacts(helperSha256) {
   if (process.platform !== "linux") return;
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   const platformDir = path.join(
@@ -889,6 +888,12 @@ function hardenPackagedLinuxArtifacts() {
   for (const entry of fs.readdirSync(platformDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     artifacts++;
+    if (helperSha256) {
+      requireHelperHash(
+        path.join(platformDir, entry.name, "bin", "bun Helper"),
+        helperSha256,
+      );
+    }
     changed += hardenLinuxArtifactPermissions(
       path.join(platformDir, entry.name),
     );
@@ -964,7 +969,7 @@ function ensureWorkspaceRuntimePackagesBuilt() {
       "build:dist",
       "--filter=@elizaos/app",
       "--force",
-      "--concurrency=8",
+      `--concurrency=${runtimeBuildConcurrency}`,
     ],
     {
       cwd: workspaceRoot,
@@ -1495,8 +1500,9 @@ function stageDesktopBuild() {
   // Capture the moment the renderer build starts so we can prove afterward that
   // a FRESH bundle was produced — not a stale dist silently reused (issue #9309).
   const rendererBuildStartedAt = Date.now() - 1000;
-  runBunPackageBinary("vite", ["build"], {
-    cwd: APP_DIR,
+  buildDesktopRenderer({
+    appDir: APP_DIR,
+    runBun,
     env: desktopRendererBuildEnv(),
     label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, ELIZA_BUILD_VARIANT=${buildVariant})`,
   });
@@ -1761,8 +1767,16 @@ function packageDesktopBuild() {
   // wrapper. Require and apply the pinned CEF profile patch now, then repackage
   // once so the emitted artifact cannot retain the unpatched wrapper.
   const repackageForLinuxCefProfile = process.platform === "linux";
+  let linuxHelperSha256;
   if (repackageForLinuxCefProfile) {
     patchElectrobunLinuxCefProfile({ requireNative: true });
+    const manifestPath = findElectrobunManifestPath(
+      [ELECTROBUN_DIR, APP_DIR, ROOT],
+      fs.existsSync,
+    );
+    if (!manifestPath)
+      fail("Cannot source-build CEF helper: Electrobun is missing.");
+    linuxHelperSha256 = ensureLinuxCefHelper(path.dirname(manifestPath));
   }
 
   // The Electrobun CLI downloads its platform core lazily. If that happened
@@ -1782,7 +1796,7 @@ function packageDesktopBuild() {
     });
   }
 
-  hardenPackagedLinuxArtifacts();
+  hardenPackagedLinuxArtifacts(linuxHelperSha256);
 
   // Verify after every possible package pass so this gate covers the final
   // bundle rather than an intermediate bundle that may have been replaced.
@@ -1940,6 +1954,7 @@ Options:
                                    also enables it.
 
 Environment:
+  ELIZA_DESKTOP_BUILD_CONCURRENCY Runtime package build jobs, 1–32 (default 8)
   ELIZA_DESKTOP_COMMAND_PREFIX    Prefix every spawned command, e.g. "arch -x86_64"
   ELIZA_DESKTOP_CLOUD_TARGET      Desktop Cloud target: production or staging.
   ELIZA_VERIFY_MAS=1              Enable mas-smoke entitlement verification on store builds.

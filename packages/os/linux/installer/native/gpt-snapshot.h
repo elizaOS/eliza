@@ -37,6 +37,33 @@ int elizaos_install_capture_gpt(int fd,
 int elizaos_install_verify_gpt_snapshot(const unsigned char *data, size_t length,
     const unsigned char binding[32], const unsigned char digest[32]);
 
+/* Resolve one occupied partition from an exact verified snapshot. */
+int elizaos_install_gpt_partition_extent(const unsigned char *artifact, size_t length,
+    const unsigned char binding[32], const unsigned char digest[32], uint32_t index,
+    uint64_t *start_bytes, uint64_t *size_bytes);
+
+enum elizaos_gpt_edit_kind { ELIZAOS_GPT_ERASE = 1, ELIZAOS_GPT_CREATE = 2 };
+enum elizaos_gpt_partition_role {
+  ELIZAOS_GPT_ESP = 1, ELIZAOS_GPT_RECOVERY = 2,
+  ELIZAOS_GPT_ROOT = 3, ELIZAOS_GPT_STATE = 4
+};
+struct elizaos_gpt_edit {
+  uint32_t kind, role;
+  uint64_t start_bytes, end_bytes; /* end is exclusive */
+};
+/* In-memory transformation only. Validate the original artifact before editing;
+ * preserve every unrelated entry and GPT geometry. Erase removes all entries
+ * and changes the disk GUID. Create requires free MiB-aligned space, selects an
+ * empty slot and generates a UUID. Returns a freshly verified artifact/digest.
+ * This neither writes a disk nor formats a filesystem. The privileged caller
+ * must bind the edit to its reviewed plan, verify the original durable backup,
+ * check the exact current snapshot before mutation, then use the retained-FD
+ * writer and kernel-map readback. No shrink is implied by this API. */
+int elizaos_install_prepare_gpt_edit(unsigned char *artifact, size_t length,
+    const unsigned char binding[32], const unsigned char before_digest[32],
+    const struct elizaos_gpt_edit *edit, unsigned char after_digest[32],
+    uint32_t *partition_index);
+
 enum elizaos_gpt_restore_step {
   ELIZAOS_GPT_RESTORE_NOT_STARTED = -1,
   ELIZAOS_GPT_RESTORE_VALIDATED = 0,

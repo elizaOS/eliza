@@ -832,7 +832,7 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Read page text/elements with action=snapshot; action=get requires selector (title for document title). action=state and its info/context/get_context aliases read session metadata, not page content. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control registered browser target: app workspace, requesting native Chromium client, or configured Stagehand fallback. BrowserService picks target if omitted. Native Android Chromium uses snapshot accessibility selectors; pass an exact selector from the latest snapshot to click/fill/scroll/back and read a fresh snapshot after each effect. Native dispatch acceptance does not prove website completion. Read page text/elements with action=snapshot; action=get requires selector (title for document title). action=state and its info/context/get_context aliases read session metadata, not page content. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
     "Browser open|navigate|click|type|fill|clear|scroll|hover|drag; snapshot reads page; state reads session metadata; get requires selector; screenshot|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
@@ -876,6 +876,12 @@ export const browserAction: Action = {
     }
 
     if (subaction === "autofill-login") {
+      if (params?.target && params.target !== "workspace") {
+        return {
+          success: false,
+          text: "Credential autofill is bound to the desktop workspace. Use the selected device's password manager; credentials will not be filled into a different browser target.",
+        };
+      }
       const { executeBrowserAutofillLogin } = await import(
         "./browser-autofill-login.js"
       );

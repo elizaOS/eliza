@@ -17,7 +17,6 @@
 //   node scripts/generate-confidential-artifacts.ts
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   ARTIFACT_HEADER,
   expectedCmdlineTokens,
@@ -77,6 +76,6 @@ async function main() {
   console.log(`  ${ARTIFACT_PATHS.masked}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

@@ -9,12 +9,14 @@ import {
   assertExecutionOptions,
   checkedRun,
   compilePlan,
+  describeRelease,
   deviceReader,
   executePlan,
   parseGetvar,
   parseOptions,
   pinnedToolRunner,
   verifyRequiredPartitions,
+  waitUntil,
 } from "../android/install-release.ts";
 import { readHealthToken, verifyPostBoot } from "../android/post-boot.ts";
 import { generateUpdateManifest } from "../android/publish-update-manifest.ts";
@@ -674,6 +676,86 @@ test("plan follows generated layout, binds slots, forbids unqualified wipes and 
   );
 });
 
+test("signed discovery authenticates complete metadata without installation files", (t) => {
+  const f = fixture(t);
+  fs.rmSync(f.directory, { recursive: true, force: true });
+  const description = describeRelease(f.envelope, f.policy);
+  assert.deepEqual(description.release, f.release);
+  assert.equal(description.issuedAt, f.envelope.qualification.issuedAt);
+  assert.equal(description.subjectSha256, sha256(canonical(f.release)));
+  f.envelope.signatures[0].signature = "AA==";
+  assert.throws(() => describeRelease(f.envelope, f.policy));
+  assert.equal(
+    parseOptions(["--describe", "--manifest", "manifest.json"]).describe,
+    true,
+  );
+  for (const extra of [
+    ["--execute"],
+    ["--artifact-dir", "files"],
+    ["--device", "serial"],
+    ["--reboot-after-flash"],
+    ["--dry-run"],
+  ]) {
+    assert.throws(
+      () =>
+        parseOptions(["--describe", "--manifest", "manifest.json", ...extra]),
+      /describe/,
+    );
+  }
+});
+
+test("packaged executor binds the reviewed digest before admitting device execution", (t) => {
+  const f = fixture(t);
+  const root = path.join(f.directory, "packaged");
+  fs.mkdirSync(path.join(root, "scripts/aosp/lib"), { recursive: true });
+  fs.cpSync(
+    new URL("../android", import.meta.url),
+    path.join(root, "scripts/android"),
+    { recursive: true },
+  );
+  fs.copyFileSync(
+    new URL("../aosp/lib/android-socket-fetch.ts", import.meta.url),
+    path.join(root, "scripts/aosp/lib/android-socket-fetch.ts"),
+  );
+  fs.mkdirSync(path.join(root, "android"));
+  fs.writeFileSync(
+    path.join(root, "android/release-trust.json"),
+    JSON.stringify(f.policy.trust),
+  );
+  fs.writeFileSync(
+    path.join(root, "android/hardware-targets.json"),
+    JSON.stringify(f.policy.inventory),
+  );
+  const manifest = path.join(root, "manifest.json");
+  fs.writeFileSync(manifest, JSON.stringify(f.envelope));
+  const clock = path.join(root, "clock.mjs");
+  fs.writeFileSync(clock, `Date.now = () => ${now};\n`);
+  const command = [
+    "--import",
+    clock,
+    path.join(root, "scripts/android/install-release.ts"),
+    "--manifest",
+    manifest,
+    "--artifact-dir",
+    f.directory,
+    "--expected-subject-sha256",
+  ];
+  const accepted = spawnSync(
+    process.execPath,
+    [...command, sha256(canonical(f.release)), "--dry-run"],
+    { encoding: "utf8", timeout: 10000 },
+  );
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(JSON.parse(accepted.stdout).execution, false);
+  const rejected = spawnSync(
+    process.execPath,
+    [...command, "f".repeat(64), "--execute", "--confirm-flash"],
+    { encoding: "utf8", timeout: 10000 },
+  );
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /differs from the reviewed subject digest/);
+});
+
 test("failure at every flash-plan command stops subsequent writes, activation and reboot", (t) => {
   const f = fixture(t);
   const tool = path.join(f.directory, "fastboot");
@@ -950,6 +1032,9 @@ test("post-boot checks reject fallback, stale APK, missing roles and false healt
 
 test("complete fake-transport installation verifies runtime and journals every transition", (t) => {
   const f = fixture(t);
+  let now = 0;
+  let readinessChecks = 0;
+  t.mock.method(performance, "now", () => now);
   const tools = {};
   for (const name of ["adb", "fastboot"]) {
     tools[name] = path.join(f.directory, name);
@@ -1000,9 +1085,21 @@ test("complete fake-transport installation verifies runtime and journals every t
     serial: "SERIAL",
     healthToken: "test-token",
     requestHealth: healthy,
-    run: (_tool, args) =>
-      args[2] === "wait-for-device" ? "" : bootShell(f.release)(args.slice(3)),
+    run: (_tool, args, options) => {
+      if (args[2] === "wait-for-device") {
+        assert.equal(
+          options.timeoutMs,
+          f.release.validation.bootTimeoutSeconds * 1000,
+        );
+        now += options.timeoutMs - 25;
+        return "";
+      }
+      if (args.at(-1) === "sys.boot_completed" && readinessChecks++ === 0)
+        assert.equal(options.timeoutMs, 25);
+      return bootShell(f.release)(args.slice(3));
+    },
   });
+  assert.equal(readinessChecks, 2);
   const events = fs
     .readFileSync(journalFile, "utf8")
     .trim()
@@ -1123,6 +1220,48 @@ test("transport timeouts and unsuccessful exits are failures, never empty succes
       }),
     /command failed/,
   );
+});
+
+test("transport deadline kills a tool that ignores SIGTERM and preserves its cause", (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "android-command-timeout-"),
+  );
+  const pidFile = path.join(directory, "child.pid");
+  let outerTimedOut = false;
+  t.after(() => {
+    if (outerTimedOut && fs.existsSync(pidFile)) {
+      try {
+        process.kill(Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    }
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const moduleUrl = new URL("../android/install-release.ts", import.meta.url)
+    .href;
+  const child = `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.stderr.write("tool ready"); setInterval(() => {}, 1000);`;
+  const probe = `
+    import { checkedRun, AndroidCommandError } from ${JSON.stringify(moduleUrl)};
+    try {
+      checkedRun(process.execPath, ["-e", ${JSON.stringify(child)}], {timeoutMs: 700});
+      process.exitCode = 2;
+    } catch (error) {
+      if (!(error instanceof AndroidCommandError) || error.cause?.code !== "ETIMEDOUT" || !error.message.includes("tool ready")) throw error;
+    }
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", probe],
+    {
+      encoding: "utf8",
+      timeout: 5000,
+      killSignal: "SIGKILL",
+    },
+  );
+  outerTimedOut = result.error?.code === "ETIMEDOUT";
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("zero-exit fastboot protocol failures cannot admit subsequent operations", (t) => {
@@ -1369,4 +1508,97 @@ test("slot drift during image hashing is detected before the first write", (t) =
     /active slot changed/,
   );
   assert.equal(writes, 0);
+});
+
+test("health token reads remain bounded if the file grows after stat", (t) => {
+  const { directory } = fixture(t);
+  const file = path.join(directory, "growing-health-token");
+  fs.writeFileSync(file, "token", { mode: 0o600 });
+  const fstat = fs.fstatSync;
+  const read = fs.readSync;
+  let bytesRead = 0;
+  t.mock.method(fs, "fstatSync", (fd) => {
+    const stat = fstat(fd);
+    fs.appendFileSync(file, "x".repeat(8192));
+    return stat;
+  });
+  t.mock.method(fs, "readSync", (...args) => {
+    const count = read(...args);
+    bytesRead += count;
+    return count;
+  });
+  assert.throws(() => readHealthToken(file), /4096-byte limit/);
+  assert.equal(bytesRead, 4097);
+});
+
+test("health token reader handles short reads without truncating credentials", (t) => {
+  const { directory } = fixture(t);
+  const file = path.join(directory, "short-read-health-token");
+  fs.writeFileSync(file, "complete-token\n", { mode: 0o600 });
+  const read = fs.readSync;
+  t.mock.method(fs, "readSync", (fd, buffer, offset, length, position) =>
+    read(fd, buffer, offset, Math.min(length, 2), position),
+  );
+  assert.equal(readHealthToken(file), "complete-token");
+});
+
+test("reconnect retries preserve the last failure and reject late success", (t) => {
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const failure = new Error("device disconnected");
+  let calls = 0;
+  assert.throws(
+    () =>
+      waitUntil((remaining) => {
+        calls++;
+        assert.equal(remaining, 100);
+        now += 101;
+        throw failure;
+      }, 100),
+    (error) => error === failure,
+  );
+  assert.equal(calls, 1);
+  assert.throws(
+    () =>
+      waitUntil(() => {
+        now += 101;
+        return "late";
+      }, 100),
+    /deadline exceeded/,
+  );
+  assert.throws(
+    () => waitUntil(() => assert.fail("must not run"), 0),
+    /positive integer/,
+  );
+});
+
+test("fastboot mode identity queries consume one shared deadline", (t) => {
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const budgets = [];
+  const values = {
+    product: "grizzly",
+    unlocked: "yes",
+    "is-userspace": "no",
+    "snapshot-update-status": "none",
+  };
+  const reader = deviceReader(
+    { fastboot: "fastboot" },
+    "SERIAL",
+    (_command, args, options) => {
+      budgets.push(options.timeoutMs);
+      now += 50;
+      return args[0] === "devices"
+        ? "SERIAL fastboot"
+        : `${args.at(-1)}: ${values[args.at(-1)]}`;
+    },
+  );
+  reader.mode("bootloader", { target: { codename: "grizzly" } }, 500);
+  assert.deepEqual(budgets, [500, 450, 400, 350, 300]);
+  budgets.length = 0;
+  assert.throws(
+    () => reader.mode("bootloader", { target: { codename: "grizzly" } }, 40),
+    /deadline exceeded/,
+  );
+  assert.deepEqual(budgets, [40]);
 });

@@ -4066,6 +4066,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/coding-agents/coordinator/threads"
+  ) {
+    sendJson(req, res, 200, { threads: [], total: 0 });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/extension/status") {
+    sendJson(req, res, 200, {
+      installed: false,
+      connected: false,
+      relayReachable: false,
+      relayPort: 0,
+      extensionPath: null,
+      chromeBuildPath: null,
+      chromePackagePath: null,
+      safariWebExtensionPath: null,
+      safariAppPath: null,
+      safariPackagePath: null,
+      releaseManifest: null,
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/lifeops/overview") {
     sendJson(req, res, 200, emptyLifeOpsOverview);
     return;
