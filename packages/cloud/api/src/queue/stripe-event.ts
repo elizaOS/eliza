@@ -1480,11 +1480,12 @@ async function handleChargeDisputeFundsReinstated(
     );
   }
 
-  const appliedClawbackUsd = Math.abs(Number(clawback.amount));
-  const reinstatedUsd = Math.min(
-    (dispute.amount ?? 0) / 100,
-    appliedClawbackUsd,
-  );
+  // `clawback.amount` is the credit amount actually removed by the matching
+  // funds-withdrawn event (already scaled from the disputed provider amount to
+  // the pack's credit units and capped at the balance then available). Winning
+  // the dispute restores exactly that — never provider dollars, which differ
+  // from credit units for packs, and never the unrecovered shortfall. (#31449)
+  const reinstatedUsd = Math.abs(Number(clawback.amount));
   if (!Number.isFinite(reinstatedUsd) || reinstatedUsd <= 0) {
     logger.info(
       `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
@@ -1500,7 +1501,7 @@ async function handleChargeDisputeFundsReinstated(
     stripePaymentIntentId: `${clawbackKey}:reinstated`,
     metadata: {
       payment_intent_id: paymentIntentId,
-      reinstated_usd: (dispute.amount ?? 0) / 100,
+      disputed_usd: (dispute.amount ?? 0) / 100,
       applied_reinstatement_usd: reinstatedUsd,
       clawback_key: clawbackKey,
       source,
