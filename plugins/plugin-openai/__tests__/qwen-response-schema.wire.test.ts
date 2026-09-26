@@ -132,6 +132,7 @@ beforeEach(() => {
   replyToolCall = undefined;
   rejectSchema = false;
   vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+  vi.stubEnv("ELIZA_EVALUATOR_MODEL", undefined);
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_API_KEY", "loopback-only-key");
   vi.stubEnv("CEREBRAS_API_KEY", undefined);

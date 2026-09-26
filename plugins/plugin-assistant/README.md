@@ -18,13 +18,15 @@ plugin-configuration action plugin have been removed.
 ## Evaluator model selection
 
 `ELIZA_EVALUATOR_MODEL` optionally requests a provider model only for completion
-evaluation. Unset or blank preserves the existing model slot; an explicit
-nonblank `runEvaluator({ model })` takes precedence; blank is unspecified, not
+evaluation. The per-agent runtime setting takes precedence over the environment
+fallback, which is used only when the runtime value is absent. Blank or
+nonstring runtime values keep the existing slot and suppress that fallback.
+An explicit nonblank `runEvaluator({ model })` takes precedence; blank is unspecified, not
 an instruction to suppress the setting. Selection, including no override, stays
 fixed through restoration and is resolved afresh on the next invocation.
 Response handling, planning and extraction keep their own selections.
-Provider adapters may ignore per-call
-selection or use their configured fallback; recorded served-model metadata is
+Provider adapters may ignore per-call selection or use their configured fallback;
+recorded served-model metadata is
 authoritative. Limits from a different slot model are not reused: unknown
 capacity stays diagnostic and complete input reaches the provider unchanged.
 

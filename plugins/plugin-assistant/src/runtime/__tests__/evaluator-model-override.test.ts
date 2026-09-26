@@ -8,9 +8,12 @@ import {
   type RecordedStage,
   type RunEvaluatorParams,
 } from "@elizaos/core";
-import { expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../../../../packages/core/src/runtime/model-input-budget.ts";
 import { runEvaluator } from "../evaluator";
+
+beforeEach(() => vi.stubEnv("ELIZA_EVALUATOR_MODEL", undefined));
+afterEach(() => vi.unstubAllEnvs());
 
 function trajectory(
   context: ContextObject = { id: "model-selection" },
@@ -46,6 +49,25 @@ it("leaves unset and blank model selection requests unchanged", async () => {
   expect(requests[2]).toEqual(requests[0]);
 });
 
+it.each(["", "  ", false, 17])(
+  "does not let environment replace explicit runtime value %j",
+  async (setting) => {
+    vi.stubEnv("ELIZA_EVALUATOR_MODEL", "environment-model");
+    const t = trajectory();
+    await runEvaluator({
+      context: t.context,
+      trajectory: t,
+      runtime: {
+        getSetting: () => setting,
+        useModel: async (_type, params) => {
+          expect(params).not.toHaveProperty("model");
+          return JSON.stringify(answer);
+        },
+      },
+    });
+  },
+);
+
 it.each([" explicit-model ", "", "  "])(
   "resolves explicit evaluator selection %j without changing blank semantics",
   async (model) => {
@@ -66,9 +88,13 @@ it.each([" explicit-model ", "", "  "])(
   },
 );
 
-it.each([undefined, "", "  ", "gpt-oss-120b"])(
-  "pins initial evaluator selection %j through restoration but resolves a reused caller afresh",
-  async (initial) => {
+it.each(
+  [undefined, "", "  ", "gpt-oss-120b"].flatMap((initial) =>
+    ["runtime", "environment"].map((source) => ({ initial, source })),
+  ),
+)(
+  "pins initial evaluator selection $initial from $source through restoration but resolves a reused caller afresh",
+  async ({ initial, source }) => {
     const context: ContextObject = {
       id: "restore-model",
       events: [1, 2].map((id) => ({
@@ -98,19 +124,22 @@ it.each([undefined, "", "  ", "gpt-oss-120b"])(
     const t = trajectory(context);
     t.modelBaseContext = context;
     let setting = initial ?? null;
+    if (source === "environment") vi.stubEnv("ELIZA_EVALUATOR_MODEL", initial);
     const initialModel = initial?.trim() || undefined;
     let calls = 0;
     const params: RunEvaluatorParams = {
       context,
       trajectory: t,
       runtime: {
-        getSetting: () => setting,
+        getSetting: () => (source === "runtime" ? setting : null),
         useModel: async (_type, params) => {
           const expected = calls < 2 ? initialModel : "changed-during-turn";
           if (expected) expect(params.model).toBe(expected);
           else expect(params).not.toHaveProperty("model");
           calls++;
           setting = "changed-during-turn";
+          if (source === "environment")
+            vi.stubEnv("ELIZA_EVALUATOR_MODEL", setting);
           if (calls === 1) {
             expect(JSON.stringify(params.messages)).not.toContain("Original 2");
             return JSON.stringify({

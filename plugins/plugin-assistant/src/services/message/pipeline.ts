@@ -1522,8 +1522,13 @@ export async function runV5MessageRuntimeStage1(
     );
     const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
       getService?: (service: string) => unknown;
+      supportsModelAttemptPreparation?: boolean;
     };
     const plannerRuntime: PlannerRuntime = {
+      getSetting: (key) => args.runtime.getSetting?.(key) ?? null,
+      getModelRegistrations: () => args.runtime.getModelRegistrations?.() ?? [],
+      supportsModelAttemptPreparation:
+        runtimeWithOptionalServices.supportsModelAttemptPreparation,
       restoreProviderContext: async (original) => {
         getStreamingContext()?.abortSignal?.throwIfAborted();
         const freshState = await args.runtime.composeState(
