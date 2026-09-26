@@ -14,11 +14,9 @@ let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
 
 beforeAll(async () => {
   fixture = await createTestRuntime({ characterName: "TransferSecrets" });
-  const stored = await fixture.runtime.adapter.getAgent(
-    fixture.runtime.agentId,
-  );
+  const stored = await fixture.runtime.getAgent(fixture.runtime.agentId);
   if (!stored) throw new Error("Test agent was not persisted");
-  await fixture.runtime.adapter.updateAgent(fixture.runtime.agentId, {
+  await fixture.runtime.updateAgent(fixture.runtime.agentId, {
     settings: {
       ...(stored.settings ?? {}),
       transferMarker: "kept",
@@ -54,9 +52,7 @@ function decryptBundle(file: Buffer): string {
 async function importedSettings(file: Buffer) {
   const result = await importAgent(fixture.runtime, file, PASSWORD);
   expect(result.success).toBe(true);
-  const imported = await fixture.runtime.adapter.getAgent(
-    result.agentId as UUID,
-  );
+  const imported = await fixture.runtime.getAgent(result.agentId as UUID);
   if (!imported) throw new Error("Imported agent was not persisted");
   return imported.settings ?? {};
 }

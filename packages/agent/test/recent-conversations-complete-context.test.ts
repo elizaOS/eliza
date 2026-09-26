@@ -38,7 +38,6 @@ beforeAll(async () => {
     id: WORLD_ID,
     agentId: runtime.agentId,
     name: "Owner world",
-    serverId: "owner-world",
   });
   for (const [id, source] of [
     [CURRENT_ROOM, "client_chat"],
