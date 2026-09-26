@@ -54,7 +54,7 @@ import {
 } from "@elizaos/core/config/config-catalog";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
-import { type ControlType, type FormControl, type TypeHandler } from "./types";
+import type { ControlType, FormControl, TypeHandler } from "./types";
 /**
  * Validation result.
  *
@@ -390,6 +390,45 @@ function validateNumber(
   return { valid: true };
 }
 /**
+ * The single boolean contract used by validation, normalization and display.
+ *
+ * WHY one contract: validation accepted both directions while the parser held
+ * only the true-like literals, so `parseValue` silently coerced "no", "false",
+ * "0" and "off" to `false` and treated an unknown persisted string such as
+ * "maybe" as `false` too, while `formatValue` rendered any non-empty string —
+ * including "no" — as a confident "Yes". A shared parser keeps the three call
+ * sites from drifting apart again.
+ */
+const BOOLEAN_TRUE_LITERALS: readonly string[] = ["true", "yes", "1", "on"];
+const BOOLEAN_FALSE_LITERALS: readonly string[] = ["false", "no", "0", "off"];
+
+/** A parsed boolean, or an explicit unknown that callers must not round to a value. */
+export type ParsedBoolean =
+  | { readonly known: true; readonly value: boolean }
+  | { readonly known: false };
+
+/**
+ * Parse a stored or extracted value against the boolean contract.
+ *
+ * Unknown input is reported, never guessed: resolving an unrecognised string to
+ * `false` is indistinguishable from a real "no", which is what made an invalid
+ * persisted value render as a confident answer.
+ */
+export function parseBoolean(value: JsonValue): ParsedBoolean {
+  if (typeof value === "boolean") {
+    return { known: true, value };
+  }
+  const literal = String(value).toLowerCase();
+  if (BOOLEAN_TRUE_LITERALS.includes(literal)) {
+    return { known: true, value: true };
+  }
+  if (BOOLEAN_FALSE_LITERALS.includes(literal)) {
+    return { known: true, value: false };
+  }
+  return { known: false };
+}
+
+/**
  * Validate boolean field.
  *
  * WHY accept many formats:
@@ -401,14 +440,7 @@ function validateBoolean(
   value: JsonValue,
   _control: FormControl,
 ): ValidationResult {
-  if (typeof value === "boolean") {
-    return { valid: true };
-  }
-  // Accept common boolean-like strings
-  const strValue = String(value).toLowerCase();
-  const truthy = ["true", "yes", "1", "on"];
-  const falsy = ["false", "no", "0", "off"];
-  if (truthy.includes(strValue) || falsy.includes(strValue)) {
+  if (parseBoolean(value).known) {
     return { valid: true };
   }
   return { valid: false, error: "Must be true or false" };
@@ -613,8 +645,12 @@ export function parseValue(
       return Number.isFinite(parsed) ? parsed : value;
     }
     case "boolean": {
-      const lower = value.toLowerCase();
-      return ["true", "yes", "1", "on"].includes(lower);
+      const parsed = parseBoolean(value);
+      // On rejection, preserve the ORIGINAL string instead of a fabricated
+      // `false`. WHY: an unrecognised extraction would otherwise persist as a
+      // confident "no" that submit-time revalidation then accepts. Mirroring
+      // the number case above keeps the raw string, so the re-ask still fires.
+      return parsed.known ? parsed.value : value;
     }
     case "date": {
       return parseCalendarDate(value) ?? value;
@@ -661,9 +697,14 @@ export function formatValue(
     case "number":
       // Use locale formatting for numbers
       return typeof value === "number" ? value.toLocaleString() : String(value);
-    case "boolean":
-      // Human-friendly boolean display
-      return value ? "Yes" : "No";
+    case "boolean": {
+      // Human-friendly boolean display. An unknown persisted value must not
+      // render as a confident "Yes" merely because a non-empty string is
+      // truthy: the raw value is shown so it reads as invalid.
+      const parsed = parseBoolean(value);
+      if (!parsed.known) return String(value);
+      return parsed.value ? "Yes" : "No";
+    }
     case "date":
       return formatCalendarDate(String(value)) ?? String(value);
     case "select":
