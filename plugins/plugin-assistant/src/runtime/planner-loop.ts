@@ -3791,7 +3791,8 @@ async function dispatchPlannerModelCall(params: {
     eliza: {
       ...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
         .eliza ?? {}),
-      thinking: params.trajectory.codingMode === true ? "on" : "off",
+      thinking: "off",
+      preferToolReasoning: params.trajectory.codingMode === true,
     },
   };
   if (hasTools) {

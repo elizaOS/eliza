@@ -172,7 +172,9 @@ describe("long progressive planner trajectories", () => {
       if (codingMode)
         expect(modelCalls.mock.calls[0]?.[1]).toMatchObject({ stream: false });
       expect(modelCalls.mock.calls[0]?.[1]).toMatchObject({
-        providerOptions: { eliza: { thinking: codingMode ? "on" : "off" } },
+        providerOptions: {
+          eliza: { thinking: "off", preferToolReasoning: codingMode },
+        },
       });
       expect(
         h.executed.filter((name) => name === "MEMORY_SEARCH"),
