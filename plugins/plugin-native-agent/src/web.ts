@@ -42,6 +42,48 @@ function requestTimeoutMs(timeoutMs: unknown): number {
   return Math.min(Math.ceil(timeoutMs), MAX_TIMER_TIMEOUT_MS);
 }
 
+/**
+ * Extract the server's structured error message from a failed lifecycle/status
+ * response. The agent HTTP server answers boot/status failures with core's
+ * `writeJsonError` shape (`{ error: message }`) and a 4xx/5xx status (see
+ * packages/agent/src/api/agent-lifecycle-routes.ts). We read that message so
+ * the web fallback can surface it in a well-formed error `AgentStatus` instead
+ * of leaking the raw error body as a malformed status.
+ */
+async function readErrorMessage(res: {
+  statusText?: string;
+  json: () => Promise<unknown>;
+}): Promise<string> {
+  try {
+    const body = await res.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      typeof (body as { error?: unknown }).error === "string" &&
+      (body as { error: string }).error.trim().length > 0
+    ) {
+      return (body as { error: string }).error;
+    }
+  } catch {
+    // error-policy:J3 untrusted transport body — a non-JSON or unreadable error
+    // body is not a valid message; fall through to the HTTP status text below.
+  }
+  const statusText = res.statusText?.trim();
+  return statusText && statusText.length > 0
+    ? statusText
+    : "Agent request failed";
+}
+
+function errorStatus(message: string): AgentStatus {
+  return {
+    state: "error",
+    agentName: null,
+    port: null,
+    startedAt: null,
+    error: message,
+  };
+}
+
 function readConfiguredApiBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const base = (window as ElizaWindow).__ELIZAOS_APP_BOOT_CONFIG__?.apiBase;
@@ -274,6 +316,9 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
+    if (!res.ok) {
+      return errorStatus(await readErrorMessage(res));
+    }
     const data = await res.json();
     return data.status ?? data;
   }
@@ -287,6 +332,9 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
+    if (!res.ok) {
+      return { ok: false };
+    }
     return res.json();
   }
 
@@ -304,6 +352,9 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
+    if (!res.ok) {
+      return errorStatus(await readErrorMessage(res));
+    }
     return res.json();
   }
 
