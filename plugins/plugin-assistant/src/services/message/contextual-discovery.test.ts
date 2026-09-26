@@ -36,6 +36,66 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("ranks context-only loads by the current task while keeping explicit queries and catalog reads intact", async () => {
+    const unrelated: Action[] = Array.from({ length: 12 }, (_, index) => ({
+      name: `NOTES_DELETE_${index}`,
+      description: "Delete a saved note",
+      contexts: ["notes"],
+    }));
+    const list: Action = {
+      name: "NOTES_LIST",
+      description: "Search saved notes",
+      contexts: ["notes"],
+      parameters: [
+        { name: "query", schema: { type: "string" }, required: true },
+      ],
+    };
+    const create: Action = {
+      name: "NOTES_CREATE",
+      description: "Create a saved note",
+      contexts: ["notes"],
+    };
+    const actions = [...unrelated, list, create];
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (selected) => {
+        loaded = selected;
+      },
+      async () => actions,
+      { taskIntents: ["search notes"] },
+    );
+    const request = {
+      content: { text: "Find my saved grocery note." },
+    } as Memory;
+    const found = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["notes"] },
+    });
+    expect(found?.success).toBe(true);
+    expect(loaded).toEqual([list]);
+    expect(loaded[0]?.parameters).toEqual(list.parameters);
+    await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["notes"], query: "create a note" },
+    });
+    expect(loaded).toEqual([create]);
+    const described = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["notes"], mode: "describe" },
+    });
+    expect(described?.data).toMatchObject({
+      matchCount: 14,
+      selectedCount: 10,
+      deferredCount: 4,
+    });
+    expect(loaded).toEqual([create]);
+    const full = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { names: [], mode: "describe" },
+    });
+    expect(full?.data?.catalog).toHaveLength(14);
+    await discovery.handler?.(runtime, request, undefined, {
+      parameters: { names: [unrelated[11].name] },
+    });
+    expect(loaded).toEqual([unrelated[11]]);
+  });
   it("bounds broad query loads while keeping deferred operations exactly discoverable", async () => {
     const actions: Action[] = Array.from({ length: 24 }, (_, index) => ({
       name: `RECORDS_READ_${index}`,

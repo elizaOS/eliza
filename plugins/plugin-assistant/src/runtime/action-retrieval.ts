@@ -30,6 +30,8 @@ export type ActionEmbeddingTieBreaker = {
 export type RetrieveActionsInput = {
   catalog: ActionCatalog;
   messageText?: string;
+  /** Current requested outcomes enrich ranking without importing unrelated dialogue. */
+  intents?: readonly string[];
   recentConversationText?: string | readonly string[];
   candidateActions?: string[];
   parentActionHints?: string[];
@@ -515,14 +517,17 @@ export function retrieveActions(
             parentAliasesForCandidateAction(actionName).length > 0,
         )
       : candidateActions;
+  const intentTexts = input.intents?.filter((intent) => intent.trim()) ?? [];
   const queryText = [
     input.messageText ?? "",
+    ...intentTexts,
     ...recentConversationText,
     ...candidateActionsForSearch,
   ].join("\n");
   const queryTokens = tokenizeActionSearchText(queryText);
   const keywordQueryTexts = [
     input.messageText ?? "",
+    ...intentTexts,
     ...recentConversationText,
     ...candidateActionsForSearch,
   ].filter((text) => text.trim().length > 0);
@@ -1400,11 +1405,19 @@ function shouldUseRecentConversationForActionSearch(
 ): boolean {
   const normalized = messageText.toLowerCase().replace(/\s+/g, " ").trim();
   if (!normalized) return false;
+  // This decides retrieval evidence only: complete dialogue remains available to
+  // the planner. A pronoun later in a new request can refer to its own output
+  // ("create a page and test it"), so it does not establish a history dependency.
+  // Keep explicit source references anywhere, and unresolved referential work
+  // at the start of a request. Do not let incidental "also"/"too" widen search.
   return (
-    /\b(?:again|continue|redo|rerun|retry|same|another\s+one|one\s+more|also|too)\b/iu.test(
+    /\b(?:as before|from (?:before|earlier|above)|previous (?:task|request|message|version|one)|earlier (?:task|request|message|version)|last (?:task|request|message)|same (?:task|request|thing|one))\b/iu.test(
       normalized,
     ) ||
-    /\b(?:do|run|make|build|check|try|send|show|open|fix|update|use|add|remove|delete|change|repeat)\b[\s\S]{0,80}\b(?:it|that|this|these|those|them|there|above|previous|last|same|one)\b/iu.test(
+    /^(?:(?:ok(?:ay)?|yes|sure)[,.!]?\s+)?(?:also\s+)?(?:please\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?(?:continue|redo|rerun|retry|repeat|again|same again|keep going|go ahead|another one|one more)\b/iu.test(
+      normalized,
+    ) ||
+    /^(?:(?:ok(?:ay)?|yes|sure)[,.!]?\s+)?(?:also\s+)?(?:please\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?(?:do|run|make|build|check|try|send|show|open|fix|update|use|add|remove|delete|change|finish)\s+(?:(?:me|us)\s+)?(?:(?:that|this|these|those|them|it|its|there)\b|the (?:same|previous|last)\b|another one\b|one more\b)/iu.test(
       normalized,
     )
   );

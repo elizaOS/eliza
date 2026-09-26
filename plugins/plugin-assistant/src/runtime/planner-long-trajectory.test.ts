@@ -85,6 +85,345 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("settles source-bound outcome coverage without a scope-only planner round", async () => {
+    let rounds = 0;
+    const result = await runPlannerLoop({
+      context: {
+        id: "covered-outcome",
+        events: [
+          {
+            id: "handler",
+            type: "message_handler",
+            metadata: { plan: { intents: ["read the requested file"] } },
+          },
+        ],
+      },
+      runtime: {
+        useModel: async () => {
+          if (++rounds > 1) throw new Error("Unnecessary scope-only round");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "read",
+                name: "READ",
+                arguments: {
+                  path: "/workspace/file",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async () => ({
+        success: true,
+        text: "File contains 42",
+      }),
+      evaluate: async () => ({
+        decision: "FINISH",
+        success: true,
+        thought: "Requested file read",
+        messageToUser: "The file contains 42.",
+        requestFullyCovered: true,
+        outcomeCoverage: [
+          {
+            intentId: "intent:1",
+            status: "completed",
+            evidenceStepIds: ["step:1"],
+          },
+        ],
+      }),
+    });
+    expect(rounds).toBe(1);
+    expect(result.evaluator?.success).toBe(true);
+    expect(result.finalMessage).toBe("The file contains 42.");
+  });
+
+  it("does not dispatch an effect when its durable before-tool checkpoint fails", async () => {
+    const executeToolCall = vi.fn();
+    const checkpointFailure = new Error("Checkpoint storage unavailable");
+    await expect(
+      runPlannerLoop({
+        context: { id: "checkpoint-failure" },
+        runtime: {
+          useModel: async () => ({
+            text: "",
+            toolCalls: [
+              {
+                id: "write",
+                name: "WRITE",
+                arguments: {
+                  path: "/workspace/file",
+                  eliza_turn_scope: "final",
+                },
+              },
+            ],
+          }),
+        },
+        executeToolCall,
+        onCheckpoint: async (_state, phase) => {
+          expect(phase).toBe("before_tool");
+          throw checkpointFailure;
+        },
+      }),
+    ).rejects.toThrow(checkpointFailure);
+    expect(executeToolCall).not.toHaveBeenCalled();
+  });
+
+  it("rehydrates complete execution evidence but replans an unexecuted queue under fresh capabilities", async () => {
+    const history = [
+      { role: "user" as const, content: "Complete original evidence" },
+    ];
+    const seed: PlannerTrajectory = {
+      context: { id: "original-context" },
+      codingMode: false,
+      steps: [
+        {
+          iteration: 3,
+          toolCall: {
+            id: "saved",
+            name: "WRITE",
+            params: { path: "/workspace/output" },
+          },
+          result: { success: true, effectReceipts: [receipt] },
+        },
+      ],
+      archivedSteps: [],
+      plannedQueue: [
+        {
+          id: "stale-write",
+          name: "WRITE",
+          params: { path: "/workspace/unapproved" },
+        },
+      ],
+      evaluatorOutputs: [],
+      modelHistory: history,
+    };
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      context: { id: "fresh-authorized-context" },
+      codingMode: false,
+      resumeState: {
+        trajectory: seed,
+        modelUsage: { promptTokens: 100, completionTokens: 20, modelCalls: 2 },
+      },
+      runtime: {
+        useModel: async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "verify",
+              name: "READ",
+              arguments: {
+                path: "/workspace/output",
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+          usage: { promptTokens: 50, completionTokens: 5, totalTokens: 55 },
+        }),
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return { success: true, continueChain: false, text: "Verified" };
+      },
+    });
+    expect(executed).toEqual(["READ"]);
+    expect(result.trajectory.steps[0]).toEqual(seed.steps[0]);
+    expect(result.trajectory.steps[1]?.iteration).toBe(4);
+    expect(result.trajectory.modelHistory?.[0]).toEqual(history[0]);
+    expect(result.trajectory.context.id).toBe("fresh-authorized-context");
+    expect(result.modelUsage).toMatchObject({
+      promptTokens: 150,
+      completionTokens: 25,
+      modelCalls: 3,
+    });
+    expect(seed.plannedQueue[0]?.id).toBe("stale-write");
+  });
+
+  it("does not reset an exhausted cumulative token budget when resuming", async () => {
+    const useModel = vi.fn();
+    const result = await runPlannerLoop({
+      context: { id: "fresh-context" },
+      resumeState: {
+        trajectory: {
+          context: { id: "original" },
+          steps: [],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+        modelUsage: { promptTokens: 100, completionTokens: 20, modelCalls: 2 },
+      },
+      config: { maxTrajectoryPromptTokens: 100 },
+      runtime: { useModel },
+      executeToolCall: async () => ({ success: true }),
+    });
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.terminalFailure?.kind).toBe("resource_limit");
+    expect(result.modelUsage?.promptTokens).toBe(100);
+  });
+
+  it("advances a pending batch after a committed write without a redundant evaluator call", async () => {
+    let modelCalls = 0;
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: false,
+      context: { id: "pending-write-read" },
+      runtime: {
+        useModel: async () => {
+          if (++modelCalls > 1)
+            throw new Error(
+              "Unexpected evaluator call between committed write and queued verification",
+            );
+          return {
+            text: "",
+            toolCalls: ["WRITE", "READ"].map((name) => ({
+              id: `pending-${name}`,
+              name,
+              arguments: {
+                path: "/workspace/output",
+                eliza_turn_scope: "more_work_pending",
+              },
+            })),
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return call.name === "WRITE"
+          ? {
+              success: true,
+              transcriptVisibility: "internal",
+              effectReceipts: [receipt],
+            }
+          : { success: true, text: "Verified output", continueChain: false };
+      },
+    });
+    expect(executed).toEqual(["WRITE", "READ"]);
+    expect(modelCalls).toBe(1);
+    expect(
+      result.trajectory.steps.find((step) => step.toolCall?.name === "WRITE")
+        ?.result?.effectReceipts,
+    ).toEqual([receipt]);
+  });
+
+  it("repairs a typed pre-execution rejection before evaluating completion", async () => {
+    let rounds = 0;
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: false,
+      context: { id: "rejected-command" },
+      runtime: {
+        useModel: async () => {
+          if (++rounds > 2)
+            return {
+              text: JSON.stringify({
+                decision: "FINISH",
+                success: false,
+                thought:
+                  "Rejected attempt retained; corrected command completed.",
+                messageToUser: "The corrected command completed.",
+              }),
+            };
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `repair-${rounds}`,
+                name: "TERMINAL_SHELL",
+                arguments: {
+                  command:
+                    rounds === 1
+                      ? "invalid multiline"
+                      : "corrected single line",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        if (executed.length === 1) expect(rounds).toBe(2);
+        executed.push(String(call.params?.command));
+        return rounds === 1
+          ? {
+              success: false,
+              text: "Command must be a single line",
+              failureProvenance: {
+                kind: "handler_error",
+                boundary: "handler",
+                code: "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
+                retryable: true,
+              },
+              data: { acceptance: "rejected", executionStatus: "not_started" },
+            }
+          : {
+              success: true,
+              text: "Created and verified",
+              continueChain: false,
+            };
+      },
+    });
+    expect(executed).toEqual(["invalid multiline", "corrected single line"]);
+    expect(
+      result.trajectory.steps.some(
+        (step) =>
+          step.result?.failureProvenance?.code ===
+          "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
+      ),
+    ).toBe(true);
+  });
+
+  it("replans after a failed prerequisite without running its dependent queued write", async () => {
+    let round = 0;
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "failed-batch-prerequisite" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 2) throw new Error("Unexpected planner retry");
+          return {
+            text: "",
+            toolCalls: (round === 1 ? ["READ", "WRITE"] : ["READ"]).map(
+              (name, index) => ({
+                id: `batch-${round}-${index}`,
+                name,
+                arguments: {
+                  path: "/workspace/input",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              }),
+            ),
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return executed.length === 1
+          ? {
+              success: false,
+              text: "Input missing",
+              data: { readOnlyOperation: true },
+            }
+          : { success: true, text: "Input recovered", continueChain: false };
+      },
+    });
+    expect(round).toBe(2);
+    expect(executed).toEqual(["READ", "READ"]);
+    expect(
+      result.trajectory.steps.some((step) => step.toolCall?.name === "WRITE"),
+    ).toBe(false);
+    expect(
+      result.trajectory.steps.find((step) => step.result?.success === false)
+        ?.result?.text,
+    ).toBe("Input missing");
+  });
+
   it("cancels a coding rate-limit wait without another inference", async () => {
     vi.useFakeTimers();
     try {

@@ -99,6 +99,13 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Auditable semantic coverage judgment, never independent execution proof. */
+	requestFullyCovered?: boolean;
+	outcomeCoverage?: readonly {
+		intentId: string;
+		status: "completed" | "blocked" | "pending";
+		evidenceStepIds: readonly string[];
+	}[];
 	/** Semantic classification from the same evaluation, independent of reply language. */
 	replyEffectStatus?: Exclude<ReplyEffectStatus, "pending">;
 	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
@@ -284,6 +291,8 @@ export interface PlannerStep {
 }
 
 export interface PlannerTrajectory {
+	/** Original declared outcomes retain their source order across authorized resumptions. */
+	outcomeIntents?: readonly string[];
 	context: ContextObject;
 	/** Immutable turn context used as the byte-stable model prefix. */
 	modelBaseContext?: ContextObject;
@@ -363,6 +372,19 @@ export interface PlannerLoopParams {
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;
 		result: PlannerToolResult;
+	};
+	/** Host persists resumed execution before dispatch and after settled results. */
+	onCheckpoint?: (
+		state: {
+			trajectory: PlannerTrajectory;
+			modelUsage: NonNullable<PlannerLoopResult["modelUsage"]>;
+		},
+		phase: "before_tool" | "after_tool",
+	) => Promise<void>;
+	/** Trusted host checkpoint; current tools/context must be freshly authorized. */
+	resumeState?: {
+		trajectory: PlannerTrajectory;
+		modelUsage: NonNullable<PlannerLoopResult["modelUsage"]>;
 	};
 	/** Trusted per-turn coding-loop mode; never used as an authorization signal. */
 	codingMode?: boolean;

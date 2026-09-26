@@ -7,15 +7,16 @@
 import type { JSONSchema } from "@elizaos/core";
 
 export function evaluatorTemplateForQueue(
-  hasQueuedCalls: boolean,
-  clipboardAvailable = true,
-  requiresReplyField = false,
+  _hasQueuedCalls: boolean,
+  _clipboardAvailable = true,
+  _requiresReplyField = false,
 ): string {
   return `task: Evaluate latest action; route planner-loop next step.
 
 routes:
 - FINISH: the task is complete or should stop
-${hasQueuedCalls ? "- NEXT_RECOMMENDED: one queued tool should run next before replanning\n" : ""}- CONTINUE: call the planner again because the queued plan is missing or stale
+- NEXT_RECOMMENDED: one valid queued tool should run next before replanning
+- CONTINUE: call the planner again because the queued plan is missing or stale
 
 rules:
 - Judge accumulated results against every explicit requested outcome; no clause is optional because another seems central. Retrieval proves information, not visible navigation. An open/navigate request requires successful navigation THIS turn; page/context metadata may be stale. If only navigation remains, navigate without repeating the successful lookup, then answer. Continue while any requested outcome has an available tool.
@@ -28,14 +29,14 @@ rules:
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - Compare each returned artifact field directly with the explicit requested value, including titles, names, identifiers and quoted text. Spacing, line breaks and punctuation must match exactly; a missing final period is a mismatch even when success=true. Correct only the affected artifact when authorized and unambiguous, without duplicates. Describe the verified stored value, never the intended value as though saved.
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
-- When ending a turn with an unrecovered failed operation, use FINISH success=false, even when reporting the failed attempt fulfills the user request. Include successful results and the failure cause in messageToUser; do not repeat an operation merely to turn success true.
-- more_work_pending (plannerCompleted=false) forbids FINISH success=true until superseded by an explicit final declaration. Continue without repeating completed operations; an unavailable capability, failed operation or user-owned prerequisite may stop with FINISH success=false.
+- Current decision state hasUnresolvedToolFailure=true forbids success=true. When ending a turn with an unrecovered failed operation, use FINISH success=false, even when reporting the failed attempt fulfills the user request. Include successful results and the failure cause in messageToUser; do not repeat an operation merely to turn success true.
+- more_work_pending (plannerCompleted=false) requires an explicit completion declaration. You may supersede it with FINISH success=true only when requestFullyCovered=true and outcomeCoverage accounts for every advertised intent as completed using successful evidence step IDs, no queued work remains, and no failure is unresolved. Judge every clause of the full original request, including constraints absent from the intent list. Coverage is your semantic judgment; it never substitutes for effect receipts. Otherwise continue without repeating completed operations; a blocker may stop with FINISH success=false.
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
-${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning." : "- No executable calls remain queued. CONTINUE to plan any remaining tool work; do not repeat completed operations."}
+- NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome. Select recommendedToolCallId from the current decision state's queued IDs; preserve planned order and prerequisites. An empty queue forbids NEXT_RECOMMENDED. CONTINUE when the plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
 - Choose contextRequest by the missing evidence, not by the presence of omitted categories: history for a specific missing original dialogue constraint, correction, referent or historical fact; providers for needed content advertised by a deferred provider reference; full only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. For contextRequest use decision=CONTINUE, success=false, no messageToUser/copyToClipboard; the runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
-- if an answer needs an unexecuted tool/action side effect to be true, use ${hasQueuedCalls ? "NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE" : "CONTINUE"} to plan the missing work; do not imagine the result or declare success before it executes
-${requiresReplyField ? "- This internal result has no delivered answer or terminal planner reply to approve. For FINISH, write the grounded answer or necessary question in messageToUser now; do not leave it empty. CONTINUE or contextRequest uses an empty string, not a progress draft." : "- For FINISH, omit messageToUser when the latest terminal planner reply already answers every requested outcome accurately from the evidence; this approves that exact reply for delivery. Otherwise supply the corrected answer. Verified tool text and explicit reply suppression also need no new message. Internal results and undelivered Stage-1 drafts alone are not replies. For other routes, messageToUser is optional. Never add process-status bubbles after tools finish."}
+- if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
+- For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise omit it only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/contextRequest must not publish a progress draft. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
 - messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Use supplied local date/time labels and their timezone; keep AM/PM consistent and omit redundant daypart summaries. A past scheduled time proves neither attendance nor completion; describe it as scheduled or past, not done. Translate other machine dates and timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request. Copy requested checksums, opaque identifiers and other exact tool-returned values verbatim from the current receipt; never reconstruct, abbreviate or normalize them. Compare the answer value with the receipt before finishing.
 - Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.
@@ -48,12 +49,12 @@ ${requiresReplyField ? "- This internal result has no delivered answer or termin
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Rejecting or cancelling queued approvals, stored events, jobs, notes or other persisted state requires its own committed receipt; a promise not to execute the original action does not settle a pending request. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
-${clipboardAvailable ? "- copyToClipboard optional; requires title + content\n" : ""}
+- copyToClipboard requires title + content and current decision state clipboardAvailable=true.
 - thought is internal: identify confirmed outcomes and requested outcomes still missing before choosing the decision.
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.
-Fields in order: thought string; success boolean; decision "FINISH"|${hasQueuedCalls ? '"NEXT_RECOMMENDED"|' : ""}"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
+Fields in order: thought string; success boolean; decision "FINISH"|"NEXT_RECOMMENDED"|"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means CONTINUE or a valid NEXT_RECOMMENDED, not FINISH.
 
 context_object:
 {{contextObject}}
@@ -81,6 +82,26 @@ export const evaluatorSchema: JSONSchema = {
     decision: {
       type: "string",
       enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+    },
+    requestFullyCovered: {
+      type: "boolean",
+      description:
+        "True only after checking every clause and constraint of the complete original request against actual results, beyond the summarized intent list. Semantic judgment, not execution proof.",
+    },
+    outcomeCoverage: {
+      type: "array",
+      description:
+        "Account for each advertised intent ID exactly once. Completed outcomes need successful current-trajectory evidence step IDs. Blocked or pending outcomes are not complete. Omit if coverage has not been checked.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          intentId: { type: "string" },
+          status: { type: "string", enum: ["completed", "blocked", "pending"] },
+          evidenceStepIds: { type: "array", items: { type: "string" } },
+        },
+        required: ["intentId", "status", "evidenceStepIds"],
+      },
     },
     messageToUser: {
       type: "string",

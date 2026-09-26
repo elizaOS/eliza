@@ -101,6 +101,7 @@ export function retrieveContextualPlannerActions(args: {
           args.actions.map((action) => ({ ...action, subActions: undefined })),
         ),
         messageText: args.query,
+        intents: args.intents,
         selectedContexts: args.contexts,
       })
     : undefined;
@@ -966,6 +967,7 @@ export function buildV5PlannerActionSurface(params: {
   const retrieval = retrieveActions({
     catalog,
     messageText: retrievalMessageText,
+    intents: params.messageHandler.plan.intents,
     recentConversationText: getRecentConversationSearchText(
       params.state,
       params.message,

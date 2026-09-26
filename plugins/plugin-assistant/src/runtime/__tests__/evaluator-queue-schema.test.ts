@@ -1,10 +1,13 @@
-/** Verifies completion output schemas against real queue construction with a captured model boundary. */
-
+/** Stable evaluator wire contracts; dynamic eligibility is validated against real trajectory evidence. */
 import type {
+  ChatMessage,
+  EffectReceipt,
   JSONSchema,
   PlannerToolCall,
   PlannerTrajectory,
+  RunEvaluatorParams,
 } from "@elizaos/core";
+import { computePrefixHashes, normalizePromptSegments } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   evaluatorSchema,
@@ -13,103 +16,342 @@ import {
 } from "../../prompts/evaluator";
 import { runEvaluator } from "../evaluator";
 
+const receipt: EffectReceipt = {
+  receiptId: "note-proof",
+  operation: "notes.create",
+  outcome: "applied",
+  resource: { kind: "note", id: "picnic" },
+  artifacts: [],
+  idempotency: { key: "picnic-request", replayed: false },
+  observedAt: "2026-09-04T12:00:00.000Z",
+  commit: {
+    kind: "durable",
+    id: "note-write",
+    committedAt: "2026-09-04T12:00:00.000Z",
+  },
+};
+const continuing = {
+  thought: "More work needs planning.",
+  success: false,
+  decision: "CONTINUE",
+  replyEffectStatus: "none",
+};
 async function captureSchema(
   plannedQueue: PlannerToolCall[],
-  redactSecrets = (text: string) => text,
+  options: {
+    redactSecrets?: (text: string) => string;
+    trajectory?: Partial<PlannerTrajectory>;
+    output?: Record<string, unknown>;
+    unresolvedFailure?: boolean;
+    effects?: RunEvaluatorParams["effects"];
+  } = {},
 ) {
   let schema: JSONSchema | undefined;
-  let messages = "";
+  let messages: ChatMessage[] = [];
+  let prefixHash: string | undefined;
   const trajectory: PlannerTrajectory = {
-    context: { id: "queue-contract" },
+    context: { id: "queue-contract", events: [] },
     steps: [],
+    archivedSteps: [],
     plannedQueue,
     evaluatorOutputs: [],
+    ...options.trajectory,
   };
   const before = structuredClone(trajectory);
-  await runEvaluator({
+  const output = await runEvaluator({
     runtime: {
-      redactSecrets,
-      useModel: async (_type, options) => {
-        schema = options.responseSchema as JSONSchema;
-        messages = JSON.stringify(options.messages);
-        return JSON.stringify({
-          thought: "More work needs planning.",
-          success: false,
-          decision: "CONTINUE",
-        });
+      redactSecrets: options.redactSecrets ?? ((text) => text),
+      useModel: async (_type, input) => {
+        schema = input.responseSchema as JSONSchema;
+        messages = input.messages as ChatMessage[];
+        prefixHash = (
+          input.providerOptions?.eliza as { prefixHash?: string } | undefined
+        )?.prefixHash;
+        return JSON.stringify(options.output ?? continuing);
       },
     },
     context: trajectory.context,
     trajectory,
+    hasUnresolvedToolFailure: options.unresolvedFailure,
+    effects: options.effects,
   });
   expect(trajectory).toEqual(before);
-  return { schema, messages };
+  return {
+    schema,
+    messages,
+    output,
+    prefixHash,
+    text: JSON.stringify(messages),
+  };
 }
 
-it("keeps every non-queue instruction unchanged", () => {
-  const full = evaluatorTemplateForQueue(true);
-  const empty = evaluatorTemplateForQueue(false);
-  expect(full).toBe(evaluatorTemplate);
-  expect(empty.length).toBeLessThan(full.length);
-  for (const line of full.split("\n")) {
-    if (!line.includes("NEXT_RECOMMENDED"))
-      expect(empty.split("\n")).toContain(line);
-  }
+it("keeps evaluator instructions identical for queue, clipboard and reply states", () => {
+  for (const queue of [false, true])
+    for (const clipboard of [false, true])
+      for (const reply of [false, true])
+        expect(evaluatorTemplateForQueue(queue, clipboard, reply)).toBe(
+          evaluatorTemplate,
+        );
 });
 
-describe("completion recommendations describe the current planner queue", () => {
-  it("does not advertise a queued-call decision when no calls remain", async () => {
-    const { schema, messages } = await captureSchema([]);
-    expect(schema?.properties?.decision.enum).toEqual(["FINISH", "CONTINUE"]);
-    expect(schema?.properties).not.toHaveProperty("recommendedToolCallId");
-    expect(schema?.additionalProperties).toBe(false);
-    expect(messages).not.toContain("NEXT_RECOMMENDED");
-    expect(messages).toContain("No executable calls remain queued");
-    expect(messages).toContain("more_work_pending");
-    expect(messages).toContain("effectReceiptIds");
-  });
-
-  it("distinguishes two calls to the same tool by their exact queue IDs", async () => {
-    const { schema, messages } = await captureSchema([
+describe("stable evaluator schema with authoritative decision state", () => {
+  it("keeps schema and earlier messages identical when only queue eligibility changes", async () => {
+    const empty = await captureSchema([]);
+    const queued = await captureSchema([
       { id: "read-left", name: "NOTES_GET", params: { noteId: "left" } },
       { id: "read-right", name: "NOTES_GET", params: { noteId: "right" } },
     ]);
-    expect(schema?.properties?.decision.enum).toEqual([
-      "FINISH",
-      "NEXT_RECOMMENDED",
-      "CONTINUE",
-    ]);
-    expect(messages).toContain(
-      "NEXT_RECOMMENDED when the next queued tool remains grounded",
+    expect(JSON.stringify(empty.schema)).toBe(JSON.stringify(queued.schema));
+    expect(empty.schema).toEqual(evaluatorSchema);
+    expect(empty.prefixHash).toBe(queued.prefixHash);
+    expect(empty.prefixHash).toBe(
+      computePrefixHashes(
+        normalizePromptSegments([
+          {
+            content: `evaluator_stage:\n${evaluatorTemplate.split("context_object:")[0].trim()}`,
+            stable: true,
+          },
+          { content: JSON.stringify(evaluatorSchema), stable: true },
+        ]),
+      ).at(-1)?.hash,
     );
-    expect(schema?.properties?.recommendedToolCallId.enum).toEqual([
-      "read-left",
-      "read-right",
-    ]);
+    expect(empty.messages.slice(0, -1)).toEqual(queued.messages.slice(0, -1));
+    expect(empty.messages.at(-1)?.content).toContain("Queued call IDs: []");
+    expect(queued.messages.at(-1)?.content).toContain(
+      'Queued call IDs: ["read-left","read-right"]',
+    );
+    expect(empty.text).toContain("more_work_pending");
   });
 
-  it("keeps the existing name fallback for callers without generated IDs", async () => {
-    const { schema } = await captureSchema([
+  it("keeps the complete evidence prefix and schema while receipt/failure/reply/clipboard state changes", async () => {
+    const modelHistory: ChatMessage[] = [
+      { role: "assistant", content: "Checking the saved note." },
+    ];
+    const common = {
+      modelHistory,
+      steps: [
+        {
+          iteration: 1,
+          result: {
+            success: true,
+            text: "Saved picnic note",
+            transcriptVisibility: "internal" as const,
+            modelReplyRequired: true,
+            effectReceipts: [receipt],
+          },
+        },
+      ],
+    };
+    const enabled = await captureSchema([], {
+      trajectory: { ...common, codingMode: false },
+    });
+    const disabled = await captureSchema([], {
+      trajectory: { ...common, codingMode: true, steps: [] },
+      unresolvedFailure: true,
+      effects: { copyToClipboard: false },
+    });
+    expect(JSON.stringify(enabled.schema)).toBe(
+      JSON.stringify(disabled.schema),
+    );
+    expect(enabled.messages.slice(0, -1)).toEqual(
+      disabled.messages.slice(0, -1),
+    );
+    expect(enabled.messages.at(-2)).toEqual(modelHistory[0]);
+    expect(enabled.messages.at(-1)?.content).toContain(
+      'Committed effect receipt IDs: ["note-proof"]',
+    );
+    expect(disabled.messages.at(-1)?.content).toContain(
+      "Committed effect receipt IDs: []",
+    );
+    expect(disabled.messages.at(-1)?.content).toContain(
+      "hasUnresolvedToolFailure: true",
+    );
+    expect(enabled.messages.at(-1)?.content).toContain(
+      "requiresReplyField: true",
+    );
+  });
+
+  it("keeps exact queue IDs and the legacy no-ID name fallback in the dynamic tail", async () => {
+    const { schema, messages } = await captureSchema([
       { name: "LOOKUP", params: {} },
       { id: "next-call", name: "LOOKUP", params: {} },
     ]);
-    expect(schema?.properties?.recommendedToolCallId.enum).toEqual([
-      "LOOKUP",
-      "next-call",
-    ]);
-  });
-
-  it("does not disclose redacted queue IDs through schema enums", async () => {
-    const { schema, messages } = await captureSchema(
-      [{ id: "private-call-id", name: "LOOKUP", params: {} }],
-      (text) => text.replaceAll("private-call-id", "[REDACTED]"),
+    expect(schema?.properties?.recommendedToolCallId).toEqual({
+      type: "string",
+    });
+    expect(messages.at(-1)?.content).toContain(
+      'Queued call IDs: ["LOOKUP","next-call"]',
     );
-    expect(JSON.stringify(schema)).not.toContain("private-call-id");
-    expect(messages).not.toContain("NEXT_RECOMMENDED");
-    expect(schema?.properties?.decision.enum).toEqual(["FINISH", "CONTINUE"]);
   });
 
-  it("does not mutate the reusable canonical schema across turns", async () => {
+  it("never exposes redacted queue IDs or allows their selection", async () => {
+    const result = await captureSchema(
+      [{ id: "private-call-id", name: "LOOKUP", params: {} }],
+      {
+        redactSecrets: (text) =>
+          text.replaceAll("private-call-id", "[REDACTED]"),
+        output: {
+          ...continuing,
+          decision: "NEXT_RECOMMENDED",
+          recommendedToolCallId: "private-call-id",
+        },
+      },
+    );
+    expect(JSON.stringify(result.schema)).not.toContain("private-call-id");
+    expect(result.text).not.toContain("private-call-id");
+    expect(result.output.decision).toBe("CONTINUE");
+  });
+
+  it.each([undefined, "invented"])(
+    "rejects a recommendation without a usable queue: %s",
+    async (recommendedToolCallId) => {
+      let deliveries = 0;
+      const result = await captureSchema([], {
+        output: {
+          ...continuing,
+          decision: "NEXT_RECOMMENDED",
+          recommendedToolCallId,
+          messageToUser: "Running it now.",
+        },
+        effects: {
+          messageToUser: async () => {
+            deliveries++;
+          },
+        },
+      });
+      expect(result.output).toMatchObject({
+        decision: "CONTINUE",
+        success: false,
+      });
+      expect(result.output.messageToUser).toBeUndefined();
+      expect(deliveries).toBe(0);
+    },
+  );
+
+  it("accepts a current queued call and rejects invented or expired IDs", async () => {
+    const queue = [{ id: "next-call", name: "LOOKUP", params: {} }];
+    for (const id of ["next-call", "past-call", "LOOKUP"]) {
+      const result = await captureSchema(queue, {
+        output: {
+          ...continuing,
+          decision: "NEXT_RECOMMENDED",
+          recommendedToolCallId: id,
+        },
+      });
+      expect(result.output.decision).toBe(
+        id === "next-call" ? "NEXT_RECOMMENDED" : "CONTINUE",
+      );
+    }
+  });
+
+  it("requires current committed evidence even if the model ignores native schema guidance", async () => {
+    const trajectory = {
+      steps: [
+        {
+          iteration: 1,
+          result: {
+            success: true,
+            text: "Saved picnic note",
+            effectReceipts: [receipt],
+          },
+        },
+      ],
+    };
+    for (const id of ["note-proof", "invented"]) {
+      const result = await captureSchema([], {
+        trajectory,
+        output: {
+          thought: "The write is complete.",
+          success: true,
+          decision: "FINISH",
+          replyEffectStatus: "applied",
+          effectReceiptIds: [id],
+          messageToUser: "Saved the picnic note.",
+        },
+      });
+      expect(result.output.decision).toBe(
+        id === "note-proof" ? "FINISH" : "CONTINUE",
+      );
+    }
+  });
+
+  it("rejects invented receipt selections even when the model labels the reply as a read", async () => {
+    const result = await captureSchema([], {
+      output: { ...continuing, effectReceiptIds: ["invented"] },
+    });
+    expect(result.output.effectReceiptIds).toBeUndefined();
+    expect(result.output.thought).toContain(
+      "not a current committed effect receipt",
+    );
+  });
+
+  it("cannot report success with an unresolved failure", async () => {
+    const result = await captureSchema([], {
+      unresolvedFailure: true,
+      output: {
+        thought: "The attempt failed.",
+        success: true,
+        decision: "FINISH",
+        replyEffectStatus: "non_applied",
+        messageToUser: "The write failed; the service rejected it.",
+      },
+    });
+    expect(result.output).toMatchObject({
+      decision: "FINISH",
+      success: false,
+      messageToUser: "The write failed; the service rejected it.",
+    });
+  });
+
+  it("rejects a blank required internal-result reply without emitting effects", async () => {
+    const result = await captureSchema([], {
+      trajectory: {
+        codingMode: false,
+        steps: [
+          {
+            iteration: 1,
+            result: {
+              success: true,
+              text: "Value is 42",
+              transcriptVisibility: "internal",
+              modelReplyRequired: true,
+            },
+          },
+        ],
+      },
+      output: {
+        thought: "Complete.",
+        success: true,
+        decision: "FINISH",
+        replyEffectStatus: "none",
+        messageToUser: "",
+      },
+    });
+    expect(result.output).toMatchObject({
+      decision: "CONTINUE",
+      success: false,
+    });
+    expect(result.output.thought).toContain(
+      "without repeating completed effects",
+    );
+  });
+
+  it("preserves clipboard host denial despite the static schema", async () => {
+    const result = await captureSchema([], {
+      effects: { copyToClipboard: false },
+      output: {
+        ...continuing,
+        copyToClipboard: { title: "Note", content: "42" },
+      },
+    });
+    expect(result.schema?.properties).toHaveProperty("copyToClipboard");
+    expect(result.output).toMatchObject({
+      protocolFailure: true,
+      parseError: "Clipboard output is unavailable in this host",
+    });
+  });
+
+  it("never mutates the reusable canonical schema", async () => {
     const original = structuredClone(evaluatorSchema);
     await captureSchema([{ id: "one", name: "LOOKUP", params: {} }]);
     await captureSchema([]);

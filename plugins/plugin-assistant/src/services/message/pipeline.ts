@@ -124,6 +124,12 @@ import {
   collectPreviousActionResults,
   executeV5PlannedToolCall,
 } from "./planned-tool.ts";
+import {
+  checkpointActivePlanner,
+  getActivePlannerContinuation,
+  persistPlannerContinuation,
+  registerPlannerContinuationWorker,
+} from "./planner-continuation.ts";
 import { finalizePlannerReply } from "./planner-reply.ts";
 import {
   ambientTurnProviderExclusions,
@@ -216,6 +222,11 @@ export function actionOwnsResponseHandlerEarlyReply(
 export async function runV5MessageRuntimeStage1(
   args: V5MessageRuntimeInput,
 ): Promise<V5MessageRuntimeStage1Result> {
+  await registerPlannerContinuationWorker(args.runtime);
+  const resumedPlanner = getActivePlannerContinuation(
+    args.runtime,
+    args.message,
+  );
   const codingActionProfile = parseCodingActionProfile(
     args.codingActionProfile,
   );
@@ -809,7 +820,7 @@ export async function runV5MessageRuntimeStage1(
     // IGNOREs and the injection-gate return above never reach this.
     args.onStage1RespondDecision?.();
 
-    if (route.type === "final_reply") {
+    if (route.type === "final_reply" && !resumedPlanner) {
       // The simple-context reply IS the answer: Stage 1 emits `replyText` (→
       // `route.reply`) inline as part of the required HANDLE_RESPONSE envelope,
       // uncapped for direct channels. There is no separate fast-path model
@@ -916,7 +927,11 @@ export async function runV5MessageRuntimeStage1(
     }
 
     const selectedContexts =
-      route.type === "planning_needed" ? route.contexts : [];
+      route.type === "planning_needed"
+        ? route.contexts
+        : resumedPlanner
+          ? ["general"]
+          : [];
     // Merge direct-request candidate inference before the early-ack gate so
     // the async-handoff check below sees the turn's full candidate set. An
     // evaluator that cleared Stage-1 candidates has already established an
@@ -1369,6 +1384,7 @@ export async function runV5MessageRuntimeStage1(
           {
             catalogIndex: providerDiscoveryEnabled,
             deferNameIndex: true,
+            taskIntents: messageHandler.plan.intents,
           },
         ),
       );
@@ -2043,7 +2059,25 @@ export async function runV5MessageRuntimeStage1(
           runtime: plannerRuntime,
           context: loopContext,
           codingMode: args.codingMode === true,
-          config: args.plannerLoopConfig,
+          config: resumedPlanner
+            ? {
+                ...args.plannerLoopConfig,
+                maxTrajectoryPromptTokens:
+                  resumedPlanner.authorizedTotalPromptBudget,
+              }
+            : args.plannerLoopConfig,
+          ...(resumedPlanner
+            ? {
+                resumeState: resumedPlanner.state,
+                onCheckpoint: (state, phase) =>
+                  checkpointActivePlanner(
+                    args.runtime,
+                    args.message,
+                    state,
+                    phase,
+                  ),
+              }
+            : {}),
           tools: plannerTools.length > 0 ? plannerTools : undefined,
           requireNonTerminalToolCall,
           // Fallback honesty for required-tool exhaustion: Stage 1's own
@@ -2200,12 +2234,20 @@ export async function runV5MessageRuntimeStage1(
 
     let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
     try {
-      plannerResult = messageHandler.plan.deterministicToolCall
-        ? await timeInferenceSpan(
-            "actions:response-handler-deterministic-tool",
-            invokeDeterministicToolCall,
-          )
-        : await invokePlannerLoop(plannerContextAfterEarlyReply);
+      plannerResult =
+        messageHandler.plan.deterministicToolCall && !resumedPlanner
+          ? await timeInferenceSpan(
+              "actions:response-handler-deterministic-tool",
+              invokeDeterministicToolCall,
+            )
+          : await invokePlannerLoop(plannerContextAfterEarlyReply);
+      await persistPlannerContinuation(
+        args.runtime,
+        args.message,
+        plannerResult,
+        resumedPlanner?.authorizedTotalPromptBudget ??
+          args.plannerLoopConfig?.maxTrajectoryPromptTokens,
+      );
       releaseFactsStage?.(settledPlannerToolResults);
       getStreamingContext()?.abortSignal?.throwIfAborted();
     } catch (error) {

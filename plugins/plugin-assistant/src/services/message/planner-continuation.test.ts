@@ -1,0 +1,442 @@
+/** Durable task storage with deterministic message execution; no external model or connector acceptance. */
+import { randomUUID } from "node:crypto";
+import {
+  ChannelType,
+  type Memory,
+  type PlannerLoopResult,
+  type UUID,
+} from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { DefaultMessageService } from "../message.ts";
+import {
+  CANCEL_PLANNER_OPTION,
+  checkpointActivePlanner,
+  getActivePlannerContinuation,
+  PLANNER_CONTINUATION_TASK,
+  persistPlannerContinuation,
+  RESUME_PLANNER_OPTION,
+  registerPlannerContinuationWorker,
+} from "./planner-continuation.ts";
+
+let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
+let original: Memory;
+let result: PlannerLoopResult;
+beforeEach(async () => {
+  fixture = await createTestRuntime({
+    characterName: "PlannerContinuationPersistence",
+  });
+  fixture.runtime.messageService = new DefaultMessageService();
+  const roomId = randomUUID() as UUID;
+  await fixture.runtime.ensureConnection({
+    entityId: fixture.runtime.agentId,
+    roomId,
+    worldId: randomUUID() as UUID,
+    worldName: "Continuation acceptance",
+    name: "Owner",
+    userName: "Owner",
+    source: "test",
+    type: ChannelType.DM,
+  });
+  original = {
+    id: randomUUID() as UUID,
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId,
+    content: {
+      text: "Preserve exact original\n\ncomplete task",
+      source: "test",
+    },
+  };
+  result = {
+    status: "finished",
+    trajectory: {
+      context: { id: "test", events: [] },
+      steps: [
+        {
+          iteration: 1,
+          toolCall: {
+            id: "done",
+            name: "WRITE",
+            params: { value: "exact\nsource" },
+          },
+          result: {
+            success: true,
+            text: "saved",
+            effectReceipts: [
+              {
+                receiptId: "saved-receipt",
+                operation: "file.write",
+                resource: { kind: "file", id: "one" },
+                outcome: "applied",
+                commit: {
+                  kind: "provider_accepted",
+                  id: "one",
+                  committedAt: "2026-09-26T00:00:00Z",
+                },
+                observedAt: "2026-09-26T00:00:00Z",
+              },
+            ],
+          },
+        },
+      ],
+      archivedSteps: [],
+      plannedQueue: [{ id: "pending", name: "PUBLISH", params: {} }],
+      evaluatorOutputs: [],
+    },
+    modelUsage: { promptTokens: 101, completionTokens: 4, modelCalls: 2 },
+    terminalFailure: {
+      kind: "resource_limit",
+      transient: false,
+      message: "Incomplete",
+    },
+  };
+  await registerPlannerContinuationWorker(fixture.runtime);
+  await persistPlannerContinuation(fixture.runtime, original, result, 100);
+}, 120_000);
+afterEach(async () => {
+  vi.restoreAllMocks();
+  if (fixture) await fixture.cleanup();
+}, 120_000);
+async function task() {
+  const rows = await fixture.runtime.getTasks({
+    roomId: original.roomId,
+    agentIds: [fixture.runtime.agentId],
+  });
+  expect(rows).toHaveLength(1);
+  return required(rows[0]);
+}
+
+it("rehydrates the existing task, grants budget once, and cancels without discarding receipts", async () => {
+  fixture.runtime.unregisterTaskWorker(PLANNER_CONTINUATION_TASK);
+  await registerPlannerContinuationWorker(fixture.runtime);
+  const worker = required(
+    fixture.runtime.getTaskWorker(PLANNER_CONTINUATION_TASK),
+  );
+  const saved = await task();
+  expect(saved.metadata?.plannerContinuation).toMatchObject({
+    version: 1,
+    phase: "paused",
+    original,
+    state: { modelUsage: result.modelUsage, trajectory: result.trajectory },
+  });
+  expect(
+    await worker.canExecute?.(fixture.runtime, original, {
+      values: {},
+      data: {},
+      text: "",
+    }),
+  ).toBe(true);
+  await worker.execute(
+    fixture.runtime,
+    { option: RESUME_PLANNER_OPTION },
+    saved,
+  );
+  await worker.execute(
+    fixture.runtime,
+    { option: RESUME_PLANNER_OPTION },
+    saved,
+  );
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "queued",
+    authorizedTotalPromptBudget: 200,
+    state: { modelUsage: { promptTokens: 101 } },
+  });
+  await worker.execute(
+    fixture.runtime,
+    { option: CANCEL_PLANNER_OPTION },
+    saved,
+  );
+  await worker.execute(fixture.runtime, {}, saved);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "cancelled",
+    state: { trajectory: result.trajectory },
+  });
+});
+
+it("refreshes authorization and refuses a foreign owner before queuing", async () => {
+  const worker = required(
+    fixture.runtime.getTaskWorker(PLANNER_CONTINUATION_TASK),
+  );
+  const outsider = { ...original, entityId: randomUUID() as UUID };
+  expect(
+    await worker.canExecute?.(fixture.runtime, outsider, {
+      values: {},
+      data: {},
+      text: "",
+    }),
+  ).toBe(false);
+  const saved = await task();
+  const checkpoint = saved.metadata?.plannerContinuation as Record<
+    string,
+    unknown
+  >;
+  await fixture.runtime.updateTask(required(saved.id), {
+    entityId: outsider.entityId,
+    metadata: {
+      ...saved.metadata,
+      plannerContinuation: { ...checkpoint, original: outsider },
+    },
+  });
+  await worker.execute(
+    fixture.runtime,
+    { option: RESUME_PLANNER_OPTION },
+    saved,
+  );
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "blocked",
+    authorizedTotalPromptBudget: 100,
+  });
+});
+
+it("parks a crash after pre-dispatch checkpoint and never replays it on restart or duplicate resume", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  expect(runtime.messageService).toBeDefined();
+  const execute = vi
+    .spyOn(required(runtime.messageService), "handleMessage")
+    .mockImplementation(async (_runtime, message) => {
+      const active = required(getActivePlannerContinuation(runtime, message));
+      expect(active.original.id).toBe(original.id);
+      expect(active.state.modelUsage.promptTokens).toBe(101);
+      await checkpointActivePlanner(
+        runtime,
+        message,
+        active.state,
+        "before_tool",
+      );
+      throw new Error("Synthetic crash at uncertain effect boundary");
+    });
+  await expect(worker.execute(runtime, {}, await task())).rejects.toThrow(
+    "Synthetic crash",
+  );
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "executing",
+  });
+  runtime.unregisterTaskWorker(PLANNER_CONTINUATION_TASK);
+  await registerPlannerContinuationWorker(runtime);
+  const restarted = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await restarted.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  await restarted.execute(runtime, {}, await task());
+  expect(execute).toHaveBeenCalledTimes(1);
+});
+
+function required<T>(value: T | undefined | null): T {
+  if (value == null) throw new Error("Required fixture missing");
+  return value;
+}
+
+it("makes a settled post-tool checkpoint explicitly resumable after re-registration", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  vi.spyOn(
+    required(runtime.messageService),
+    "handleMessage",
+  ).mockImplementation(async (_runtime, message) => {
+    const active = required(getActivePlannerContinuation(runtime, message));
+    await checkpointActivePlanner(runtime, message, active.state, "after_tool");
+    throw new Error("Crash after settlement");
+  });
+  await expect(worker.execute(runtime, {}, await task())).rejects.toThrow(
+    "Crash after settlement",
+  );
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "running",
+  });
+  runtime.unregisterTaskWorker(PLANNER_CONTINUATION_TASK);
+  await registerPlannerContinuationWorker(runtime);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "paused",
+    state: { modelUsage: { promptTokens: 101 }, trajectory: result.trajectory },
+  });
+  expect(
+    (await task()).metadata?.options?.some(
+      (option) => option.name === RESUME_PLANNER_OPTION,
+    ),
+  ).toBe(true);
+});
+
+it("does not resend an unacknowledged delivery after restart or a duplicate resume", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  vi.spyOn(
+    required(runtime.messageService),
+    "handleMessage",
+  ).mockImplementation(async (_runtime, _message, callback) => {
+    const content = {
+      text: "Completed from settled evidence",
+      agentVoiced: true,
+    };
+    await callback?.(content);
+    return {
+      outcome: { status: "completed", effects: [] },
+      didRespond: true,
+      responseContent: content,
+      responseMessages: [],
+    };
+  });
+  const send = vi.fn(async () => undefined);
+  runtime.registerSendHandler("test", send);
+  await worker.execute(runtime, {}, await task());
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "delivery_pending",
+    delivery: { acknowledged: false },
+  });
+  runtime.unregisterTaskWorker(PLANNER_CONTINUATION_TASK);
+  await registerPlannerContinuationWorker(runtime);
+  const restarted = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await restarted.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  await restarted.execute(runtime, {}, await task());
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it("persists acknowledgments for every guarded output and does not deliver a completed task twice", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  vi.spyOn(
+    required(runtime.messageService),
+    "handleMessage",
+  ).mockImplementation(async (_runtime, _message, callback) => {
+    await callback?.({ text: "First complete output", agentVoiced: true });
+    await callback?.({ text: "Second complete output", agentVoiced: true });
+    return {
+      outcome: { status: "completed", effects: [] },
+      didRespond: true,
+      responseContent: { text: "Must not bypass guarded callback outputs" },
+      responseMessages: [],
+    };
+  });
+  let deliveries = 0;
+  runtime.registerSendHandler("test", async (_runtime, target, content) => {
+    const memory: Memory = {
+      id: content.id as UUID,
+      agentId: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: required(target.roomId),
+      content,
+    };
+    await runtime.createMemory(memory, "messages");
+    deliveries++;
+    return memory;
+  });
+  await worker.execute(runtime, {}, await task());
+  const saved = (await task()).metadata?.plannerContinuation as {
+    phase: string;
+    deliveries: Array<{ acknowledged: boolean; content: { text: string } }>;
+  };
+  expect(saved.phase).toBe("delivered");
+  expect(
+    saved.deliveries.map((entry) => [entry.acknowledged, entry.content.text]),
+  ).toEqual([
+    [true, "First complete output"],
+    [true, "Second complete output"],
+  ]);
+  await worker.execute(runtime, {}, await task());
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  expect(deliveries).toBe(2);
+});
+
+it("serializes stale concurrent resume choices without multiplying the budget", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  const saved = await task();
+  const choices = await Promise.allSettled([
+    worker.execute(runtime, { option: RESUME_PLANNER_OPTION }, saved),
+    worker.execute(runtime, { option: RESUME_PLANNER_OPTION }, saved),
+  ]);
+  expect(choices.some((choice) => choice.status === "fulfilled")).toBe(true);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "queued",
+    authorizedTotalPromptBudget: 200,
+  });
+});
+
+it("keeps cancellation terminal when a checkpoint write is in flight", async () => {
+  const runtime = fixture.runtime;
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(
+    runtime,
+    { option: RESUME_PLANNER_OPTION },
+    await task(),
+  );
+  const blocked = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const realUpdate = runtime.updateTask.bind(runtime);
+  let intercept = false;
+  vi.spyOn(runtime, "updateTask").mockImplementation(async (id, update) => {
+    const snapshot = update.metadata?.plannerContinuation as
+      | { phase?: string }
+      | undefined;
+    if (intercept && snapshot?.phase === "running") {
+      intercept = false;
+      blocked.resolve();
+      await release.promise;
+    }
+    await realUpdate(id, update);
+  });
+  vi.spyOn(
+    required(runtime.messageService),
+    "handleMessage",
+  ).mockImplementation(async (_runtime, message) => {
+    const active = required(getActivePlannerContinuation(runtime, message));
+    await checkpointActivePlanner(
+      runtime,
+      message,
+      active.state,
+      "before_tool",
+    );
+    intercept = true;
+    await checkpointActivePlanner(runtime, message, active.state, "after_tool");
+    throw new Error("End synthetic in-flight turn");
+  });
+  const execution = worker
+    .execute(runtime, {}, await task())
+    .catch(() => undefined);
+  await blocked.promise;
+  const cancellation = worker.execute(
+    runtime,
+    { option: CANCEL_PLANNER_OPTION },
+    await task(),
+  );
+  release.resolve();
+  await Promise.all([execution, cancellation]);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "cancelled",
+  });
+  await worker.execute(runtime, {}, await task());
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "cancelled",
+  });
+});

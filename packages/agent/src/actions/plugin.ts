@@ -10,6 +10,7 @@ import {
   type ActionExample,
   type ActionResult,
   createSelfApiRequestHeaders,
+  ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
@@ -1101,3 +1102,47 @@ export const pluginAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+/** Authored package-operation schemas; account lifecycle remains CONNECTOR-owned. */
+export function pluginOperationSchemaOverrides() {
+  const target = ["type", "pluginId", "connectorId"];
+  const operations: Record<PluginOp, readonly string[]> = {
+    install: target,
+    uninstall: target,
+    update: [...target, "stream"],
+    sync: target,
+    eject: target,
+    reinject: target,
+    configure: [...target, "config"],
+    read_config: target,
+    toggle: [...target, "enabled"],
+    list: ["type", "status", "configured", "search"],
+    disconnect: target,
+  };
+  const byName = new Map(
+    pluginAction.parameters?.map((parameter) => [parameter.name, parameter]),
+  );
+  return Object.fromEntries(
+    Object.entries(operations).map(([operation, names]) => [
+      operation,
+      {
+        parameters: names.map((name) => {
+          const parameter = byName.get(name);
+          if (!parameter)
+            throw new ElizaError(
+              `PLUGIN ${operation}: missing parameter ${name}`,
+              {
+                code: "PLUGIN_OPERATION_SCHEMA_INVALID",
+                context: { operation, parameter: name },
+              },
+            );
+          // Either target alias is valid. Requiring pluginId would break connectorId callers.
+          return {
+            ...parameter,
+            required: name === "config" || name === "enabled",
+          };
+        }),
+      },
+    ]),
+  );
+}

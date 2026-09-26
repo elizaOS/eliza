@@ -31,6 +31,89 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("canonical discovery surface", () => {
+  it("emits identical complete tools and alias contracts across discovery orders", async () => {
+    const parent: Action = {
+      name: "LEDGER",
+      description: "Manage ledger entries",
+      contexts: ["ledger"],
+      parameters: [
+        {
+          name: "action",
+          schema: { type: "string", enum: ["read", "create", "delete"] },
+        },
+      ],
+    };
+    const actions = [...promoteSubactionsToActions(parent)];
+    const context: ContextObject = {
+      id: "wire-order",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    const load = async (order: string[]) => {
+      const selected: Action[] = [];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        (discovered) => {
+          for (const action of discovered)
+            if (!selected.includes(action)) selected.push(action);
+        },
+      );
+      for (const name of order)
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: [name] },
+        });
+      const originalOrder = [...selected];
+      const tools = collectPlannerTools(context, selected, {
+        canonicalFamilies: true,
+        directActionNames: new Set(["LEDGER_CREATE"]),
+      });
+      expect(selected).toEqual(originalOrder);
+      return tools;
+    };
+    const forward = await load(["LEDGER_CREATE", "LEDGER"]);
+    const reverse = await load(["LEDGER", "LEDGER_CREATE"]);
+    expect(JSON.stringify(forward)).toBe(JSON.stringify(reverse));
+    expect(forward.map((tool) => tool.name)).toEqual(
+      [...forward.map((tool) => tool.name)].sort(),
+    );
+    expect(
+      forward.find((tool) => tool.name === "LEDGER_CREATE")?.parameters
+        .properties?.action.enum,
+    ).toEqual(["create"]);
+    const umbrella = forward.find((tool) => tool.name === "LEDGER");
+    expect(umbrella?.description).toContain("LEDGER_READ");
+    expect(umbrella?.description).toContain("LEDGER_DELETE");
+  });
+
+  it("rejects conflicting native identities while retaining identical duplicates", () => {
+    const action: Action = {
+      name: "READ",
+      description: "Read a file",
+      parameters: [
+        { name: "path", required: true, schema: { type: "string" } },
+      ],
+    };
+    const context: ContextObject = {
+      id: "wire-collision",
+      events: [
+        { id: "read", type: "tool", tool: { name: action.name, action } },
+      ],
+    };
+    expect(
+      collectPlannerTools(context, [action, { ...action }]).filter(
+        (tool) => tool.name === "READ",
+      ),
+    ).toHaveLength(1);
+    expect(() =>
+      collectPlannerTools(context, [
+        action,
+        { ...action, description: "Replace the file" },
+      ]),
+    ).toThrow("Conflicting native definitions");
+  });
   it("retains discriminator and parent validation boundaries for every explicitly discovered child", async () => {
     const dispatched: unknown[] = [];
     const validated: unknown[] = [];
@@ -698,11 +781,11 @@ describe("planner tool discovery", () => {
     };
     const tools = collectPlannerTools(context, initial);
     expect(tools.map((tool) => tool.name)).toEqual([
-      "VIEWS_SHOW",
+      "IGNORE",
       "NOTES_LIST",
       "REPLY",
-      "IGNORE",
       "STOP",
+      "VIEWS_SHOW",
     ]);
     expect(tools.every((tool) => tool.strict === true)).toBe(true);
     const before = structuredClone(tools);

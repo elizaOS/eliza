@@ -51,6 +51,12 @@ budget. Search reports total `matchCount`, `selectedCount`, and `deferredCount`;
 the underlying catalog nor the ranker is capped. This bounds lexical/contextual
 selection; it does not add vector retrieval or a semantic reranker.
 
+Context-only loads rank against the current request and its selected outcomes;
+context-only descriptions retain domain membership. Retrieval includes prior
+dialogue for explicit continuations and source references, not merely a later
+pronoun in a self-contained request. This ranking does not alter original dialogue
+or its restoration.
+
 The default `mode=load` enables the selected complete schemas in the next planner
 round. `mode=describe` reads descriptions and schemas without enabling them.
 Exact `names` load known operations or whole named families; `names=[]` reads the
@@ -71,6 +77,13 @@ and repeated unchanged observations stop stalled work. A resource limit or
 planner timeout returns an incomplete result with the full settled trajectory
 and pending calls intact; it never reports earlier committed effects as undone
 or automatically retries the turn.
+
+The evaluator keeps one schema and instruction prefix across queue, receipt,
+reply and host-effect changes. Current eligibility and exact source IDs follow
+complete execution evidence. Runtime checks reject invalid queue/receipt IDs and
+unsupported success; semantic outcome coverage can release an earlier pending
+scope only when every declared intent has successful evidence and the full request
+has been checked. Coverage is a model judgment, not independent execution proof.
 
 ## Reviewed history
 

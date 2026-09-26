@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import {
+  plannerWorkloadFixture,
+  summarizePlannerTrajectories,
+  validatePlannerFixture,
+} from "../scripts/cerebras-planner-workload.ts";
 
 const enabled = process.env.BENCHMARK_NATIVE_CODING_E2E === "1";
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
@@ -211,3 +216,62 @@ test
   },
   270_000,
 );
+
+test("paired planner fixtures validate actual file bytes and do not fabricate absent cache usage", async () => {
+  const workspace = await mkdtemp(
+    path.join(tmpdir(), "planner-fixture-validation-"),
+  );
+  try {
+    const kinds: Record<string, number> = {};
+    for (let index = 0; index < 30; index++) {
+      const fixture = plannerWorkloadFixture(index, workspace);
+      kinds[fixture.kind] = (kinds[fixture.kind] ?? 0) + 1;
+      for (const [name, content] of Object.entries(fixture.filesAfter))
+        await writeFile(path.join(workspace, name), content);
+      expect(
+        (
+          await validatePlannerFixture(fixture, workspace, {
+            text: fixture.expectedReply.join("\n"),
+          })
+        ).passed,
+      ).toBe(true);
+      const name = Object.keys(fixture.filesAfter)[0];
+      await writeFile(path.join(workspace, name), "incorrect bytes");
+      expect(
+        (
+          await validatePlannerFixture(fixture, workspace, {
+            text: fixture.expectedReply.join("\n"),
+          })
+        ).passed,
+      ).toBe(false);
+    }
+    expect(kinds).toEqual({
+      "html-readback": 10,
+      "read-compute": 10,
+      "multiline-write": 5,
+      "two-files": 5,
+    });
+    const summary = summarizePlannerTrajectories([
+      {
+        llmCalls: [
+          { promptTokens: 100, completionTokens: 5, modelType: "PLANNER" },
+        ],
+        toolEvents: [],
+      },
+    ]);
+    expect(summary.metrics.cacheReadInputTokens).toEqual({
+      totalReported: 0,
+      reportedCalls: 0,
+      missingCalls: 1,
+    });
+    expect(summary.metrics.freshPromptTokens).toEqual({
+      totalReported: 0,
+      reportedCalls: 0,
+      missingCalls: 1,
+    });
+    expect(summary.providerWireTTFT).toBeNull();
+    expect(summary.successfulReadReceipts).toBe(0);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});

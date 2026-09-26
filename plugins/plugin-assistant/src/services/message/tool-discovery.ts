@@ -18,6 +18,7 @@ import {
   DISCOVER_ACTIONS_NAME,
   DISCOVER_TOOLS_NAME,
   ElizaError,
+  getUserMessageText,
   isDiscoveryActionName,
   isObjectRecord,
   normalizeActionJsonSchema,
@@ -99,7 +100,12 @@ export function createPlannerToolDiscoveryAction(
   /** Resolve named operations; [] requests fresh admission of the full catalog. */
   resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
   /** Keep legacy callers inline; reference mode uses the existing catalog read. */
-  options?: { deferNameIndex?: boolean; catalogIndex?: boolean },
+  options?: {
+    deferNameIndex?: boolean;
+    catalogIndex?: boolean;
+    /** Current Stage-1 outcomes rank context-only loads, never explicit reads. */
+    taskIntents?: readonly string[];
+  },
 ): Action {
   const catalogIndex = options?.catalogIndex === true;
   if (authorizedActions.some((action) => isDiscoveryActionName(action.name))) {
@@ -167,24 +173,24 @@ export function createPlannerToolDiscoveryAction(
       },
       {
         name: "contexts",
-        description: `Optional exact domain IDs to scope search, including without a query. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names; names=[] still reads the complete catalog.`,
+        description: `Optional exact domain IDs to scope search. Without a query, load ranks the current task; describe lists domain members. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names; names=[] still reads the complete catalog.`,
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
     ],
     validate: async () => true,
-    handler: async (runtime, _message, _state, options) => {
-      const mode = isObjectRecord(options?.parameters)
-        ? options.parameters.mode
+    handler: async (runtime, message, _state, callOptions) => {
+      const mode = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.mode
         : undefined;
-      const names = isObjectRecord(options?.parameters)
-        ? options.parameters.names
+      const names = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.names
         : undefined;
-      const query = isObjectRecord(options?.parameters)
-        ? options.parameters.query
+      const query = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.query
         : undefined;
-      const contexts = isObjectRecord(options?.parameters)
-        ? options.parameters.contexts
+      const contexts = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.contexts
         : undefined;
       const searching = query !== undefined || contexts !== undefined;
       if (searching) {
@@ -253,9 +259,21 @@ export function createPlannerToolDiscoveryAction(
                     .includes(normalizeContextId(context)),
                 ),
               );
+        // Context-only loading serves this turn's work. Explicit describe/catalog
+        // reads retain membership semantics; an explicit query remains authoritative.
+        const taskQuery =
+          query === undefined && mode !== "describe"
+            ? getUserMessageText(message) ||
+              options?.taskIntents?.join("\n") ||
+              ""
+            : "";
         const selection = retrieveContextualPlannerActions({
           actions: scopedActions,
-          query: query ?? "",
+          query: query ?? taskQuery,
+          intents:
+            query === undefined && mode !== "describe"
+              ? options?.taskIntents
+              : undefined,
           contexts: searchContexts,
         });
         const selected = selection.actions;

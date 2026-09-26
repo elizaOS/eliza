@@ -90,6 +90,8 @@ interface RawEvaluatorOutput {
   copyToClipboard?: unknown;
   recommendedToolCallId?: unknown;
   contextRequest?: unknown;
+  requestFullyCovered?: unknown;
+  outcomeCoverage?: unknown;
 }
 
 interface ParsedEvaluatorObject {
@@ -112,6 +114,8 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
   "copyToClipboard",
   "recommendedToolCallId",
   "contextRequest",
+  "requestFullyCovered",
+  "outcomeCoverage",
 ]);
 
 /**
@@ -325,6 +329,79 @@ function finalizeEvaluatorOutput(
   };
 }
 
+type EvaluatorDecisionState = {
+  queuedCallIds: string[];
+  availableReceiptIds: string[];
+  clipboardAvailable: boolean;
+  requiresReplyField: boolean;
+  hasUnresolvedToolFailure: boolean;
+  intents: { id: string; text: string }[];
+  evidenceSteps: { id: string; tool: string; success: boolean }[];
+};
+
+function renderEvaluatorDecisionState(state: EvaluatorDecisionState): string {
+  return [
+    "# Current decision state",
+    `Queued call IDs: ${JSON.stringify(state.queuedCallIds)}`,
+    `Committed effect receipt IDs: ${JSON.stringify(state.availableReceiptIds)}`,
+    `clipboardAvailable: ${state.clipboardAvailable}`,
+    `requiresReplyField: ${state.requiresReplyField}`,
+    `hasUnresolvedToolFailure: ${state.hasUnresolvedToolFailure}`,
+    "Intent sources (check the full original request as well):",
+    ...state.intents.map((intent) => `${intent.id}: ${intent.text}`),
+    "Evidence step sources (complete results remain above):",
+    ...state.evidenceSteps.map(
+      (step) => `${step.id}: ${step.tool}; success=${step.success}`,
+    ),
+  ].join("\n");
+}
+
+function enforceEvaluatorDecisionState(
+  output: EvaluatorOutput,
+  state: EvaluatorDecisionState,
+): EvaluatorOutput {
+  let invalid: string | undefined;
+  if (
+    output.decision === "NEXT_RECOMMENDED" &&
+    (state.queuedCallIds.length === 0 ||
+      (output.recommendedToolCallId !== undefined &&
+        !state.queuedCallIds.includes(output.recommendedToolCallId)))
+  )
+    invalid =
+      "The recommended call is not in the current executable queue. Plan remaining work from the recorded results.";
+  if (
+    output.effectReceiptIds?.some(
+      (id) => !state.availableReceiptIds.includes(id),
+    )
+  )
+    invalid =
+      "The selected receipt is not a current committed effect receipt. Ground the outcome in recorded evidence.";
+  if (
+    output.decision === "FINISH" &&
+    state.requiresReplyField &&
+    (!output.messageToUser?.trim() ||
+      (typeof output.raw?.messageToUser === "string" &&
+        !output.raw.messageToUser.trim()))
+  )
+    invalid =
+      "The internal result still requires a grounded user-facing answer. Produce that answer from recorded results without repeating completed effects.";
+  if (invalid)
+    return {
+      ...output,
+      success: false,
+      decision: "CONTINUE",
+      thought: invalid,
+      messageToUser: undefined,
+      copyToClipboard: undefined,
+      effectReceiptIds: undefined,
+      plannerReply: undefined,
+      recommendedToolCallId: undefined,
+    };
+  if (state.hasUnresolvedToolFailure && output.success)
+    return { ...output, success: false };
+  return output;
+}
+
 function evaluatorQueuedCallIds(
   trajectory: PlannerTrajectory,
   redactText: ToolDiagnosticTextRedactor,
@@ -363,9 +440,6 @@ export async function runEvaluator(
     redactDiagnosticText,
   );
   const clipboardAvailable = params.effects?.copyToClipboard !== false;
-  const { recommendedToolCallId, ...baseProperties } =
-    evaluatorSchema.properties ?? {};
-  if (!clipboardAvailable) delete baseProperties.copyToClipboard;
   // Match the canonical proof boundary without changing the recorded results
   // or forgiving invalid IDs returned by a provider that ignores its schema.
   const latestStep = params.trajectory.steps.at(-1);
@@ -375,49 +449,27 @@ export async function runEvaluator(
     latestStep?.result?.transcriptVisibility === "internal" &&
     latestStep.result.modelReplyRequired === true &&
     !latestStep.result.userFacingText?.trim();
-  const responseSchema = {
-    ...evaluatorSchema,
-    ...(requiresReplyField
-      ? { required: [...(evaluatorSchema.required ?? []), "messageToUser"] }
-      : {}),
-    properties: {
-      ...baseProperties,
-      // Candidate action names and past calls are not an executable queue.
-      // The planner's existing dispatch/fallback checks remain authoritative.
-      ...(queuedCallIds.length
-        ? {
-            recommendedToolCallId: {
-              ...recommendedToolCallId,
-              enum: queuedCallIds,
-            },
-          }
-        : {
-            decision: {
-              ...baseProperties.decision,
-              enum: ["FINISH", "CONTINUE"],
-            },
-          }),
-      ...(requiresReplyField
-        ? {
-            messageToUser: {
-              ...evaluatorSchema.properties?.messageToUser,
-              description:
-                "This internal result requires a model-authored reply. For FINISH, provide the grounded outcome or necessary question here. For CONTINUE or contextRequest, use an empty string; do not publish a progress draft.",
-            },
-          }
-        : {}),
-      // Match terminal failure authority without rewriting the model output.
-      ...(params.hasUnresolvedToolFailure
-        ? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
-        : {}),
-      effectReceiptIds: {
-        ...evaluatorSchema.properties?.effectReceiptIds,
-        ...(availableReceiptIds.length
-          ? { items: { type: "string", enum: availableReceiptIds } }
-          : { maxItems: 0 }),
-      },
-    },
+  // Dynamic eligibility belongs after the evidence, not inside the reusable
+  // schema or system instructions. The same checks are enforced after decoding.
+  const decisionState: EvaluatorDecisionState = {
+    queuedCallIds,
+    availableReceiptIds,
+    clipboardAvailable,
+    requiresReplyField,
+    hasUnresolvedToolFailure: params.hasUnresolvedToolFailure === true,
+    intents: evaluatorIntentSources(
+      params.trajectory.modelBaseContext ?? params.context,
+      params.trajectory,
+    ).map((intent) => ({ ...intent, text: redactDiagnosticText(intent.text) })),
+    evidenceSteps: evaluatorEvidenceSteps(params.trajectory).map(
+      ({ id, step }) => ({
+        id,
+        tool: redactDiagnosticText(step.toolCall?.name ?? "terminal reply"),
+        success: step.result?.success === true,
+      }),
+    ),
   };
+  const responseSchema = structuredClone(evaluatorSchema);
   const initialBudgetOptions = budgetResolution.contextWindowTokens
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};
@@ -425,8 +477,7 @@ export async function runEvaluator(
     context: params.context,
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
-    clipboardAvailable,
-    requiresReplyField,
+    decisionState,
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -540,8 +591,7 @@ export async function runEvaluator(
       context: params.context,
       trajectory: params.trajectory,
       redactText: redactDiagnosticText,
-      clipboardAvailable,
-      requiresReplyField,
+      decisionState,
     });
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
@@ -689,7 +739,10 @@ export async function runEvaluator(
     });
     throw error;
   }
-  let output = finalizeEvaluatorOutput(raw, params.context, params.trajectory);
+  let output = enforceEvaluatorDecisionState(
+    finalizeEvaluatorOutput(raw, params.context, params.trajectory),
+    decisionState,
+  );
   if (!clipboardAvailable && output.copyToClipboard) {
     output = {
       ...output,
@@ -853,6 +906,8 @@ async function recordEvaluationStage(args: {
         replyEffectStatus: args.output.replyEffectStatus,
         copyToClipboard: args.output.copyToClipboard,
         recommendedToolCallId: args.output.recommendedToolCallId,
+        requestFullyCovered: args.output.requestFullyCovered,
+        outcomeCoverage: args.output.outcomeCoverage,
         ...(typeof args.output.raw?.contextRequest === "string" &&
         ["history", "providers", "full"].includes(
           args.output.raw.contextRequest,
@@ -964,8 +1019,7 @@ function renderEvaluatorModelInput(params: {
   context: ContextObject;
   trajectory: PlannerTrajectory;
   template?: string;
-  clipboardAvailable?: boolean;
-  requiresReplyField?: boolean;
+  decisionState: EvaluatorDecisionState;
   redactText: ToolDiagnosticTextRedactor;
 }): {
   messages: ChatMessage[];
@@ -1008,21 +1062,18 @@ function renderEvaluatorModelInput(params: {
       content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
-  const template =
-    params.template ??
-    evaluatorTemplateForQueue(
-      evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
-      params.clipboardAvailable,
-      params.requiresReplyField,
-    );
+  const template = params.template ?? evaluatorTemplateForQueue(true);
   const instructions = (
     template.split("context_object:")[0] ?? template
   ).trim();
   const completeStepMessages =
     params.trajectory.modelHistory ??
-    trajectoryStepsToMessages(params.trajectory.steps, {
-      redactText: params.redactText,
-    });
+    trajectoryStepsToMessages(
+      [...(params.trajectory.archivedSteps ?? []), ...params.trajectory.steps],
+      {
+        redactText: params.redactText,
+      },
+    );
   // The planner's append-only history stays byte-stable. Only this stage's
   // wire copy removes JSON indentation; all result fields and string bytes
   // survive, including receipts, failures, attachments and pending work.
@@ -1044,8 +1095,17 @@ function renderEvaluatorModelInput(params: {
     ...stableContextSegments,
     { content: `evaluator_stage:\n${instructions}`, stable: true },
     ...dynamicContextSegments,
+    {
+      content: renderEvaluatorDecisionState(params.decisionState),
+      stable: false,
+    },
   ]);
-  const cacheKeySegments = normalizePromptSegments(stableContextSegments);
+  const cacheKeySegments = normalizePromptSegments([
+    ...stableContextSegments,
+    { content: `evaluator_stage:\n${instructions}`, stable: true },
+    // Hash the native response contract without duplicating it in model text.
+    { content: JSON.stringify(evaluatorSchema), stable: true },
+  ]);
   // Use proper assistant/tool message pairs so the evaluator sees the same
   // native tool-calling format as the planner. The trajectory JSON is NOT
   // included in dynamicBlocks — it is conveyed through stepMessages.
@@ -1055,6 +1115,10 @@ function renderEvaluatorModelInput(params: {
     instructions,
     dynamicBlocks: [],
     stepMessages,
+  });
+  messages.push({
+    role: "user",
+    content: renderEvaluatorDecisionState(params.decisionState),
   });
   return {
     messages,
@@ -1180,6 +1244,15 @@ export function parseEvaluatorOutput(
   const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
   return {
     success: parsed.success === true,
+    ...(typeof parsed.requestFullyCovered === "boolean"
+      ? { requestFullyCovered: parsed.requestFullyCovered }
+      : {}),
+    ...(Array.isArray(parsed.outcomeCoverage)
+      ? {
+          outcomeCoverage:
+            parsed.outcomeCoverage as EvaluatorOutput["outcomeCoverage"],
+        }
+      : {}),
     decision,
     thought: typeof parsed.thought === "string" ? parsed.thought : "",
     nextTool: normalizeNextTool(parsed.nextTool ?? parsed.nextRecommendedTool),
@@ -1215,6 +1288,34 @@ function evaluatorEnvelopeProtocolError(
       !["none", "applied", "non_applied"].includes(output.replyEffectStatus))
   )
     return "replyEffectStatus must be none, applied or non_applied";
+  if (
+    output.requestFullyCovered !== undefined &&
+    typeof output.requestFullyCovered !== "boolean"
+  )
+    return "requestFullyCovered must be a boolean";
+  if (
+    output.outcomeCoverage !== undefined &&
+    (!Array.isArray(output.outcomeCoverage) ||
+      output.outcomeCoverage.some((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry))
+          return true;
+        const item = entry as Record<string, unknown>;
+        return (
+          Object.keys(item).some(
+            (key) => !["intentId", "status", "evidenceStepIds"].includes(key),
+          ) ||
+          typeof item.intentId !== "string" ||
+          !item.intentId.trim() ||
+          !["completed", "blocked", "pending"].includes(String(item.status)) ||
+          !Array.isArray(item.evidenceStepIds) ||
+          item.evidenceStepIds.some(
+            (id) => typeof id !== "string" || !id.trim(),
+          ) ||
+          new Set(item.evidenceStepIds).size !== item.evidenceStepIds.length
+        );
+      }))
+  )
+    return "outcomeCoverage must contain exact intent IDs, completion statuses and distinct evidence step IDs";
   const unknownKey = Object.keys(output).find(
     (key) => !EVALUATOR_ENVELOPE_KEYS.has(key),
   );
@@ -1534,6 +1635,71 @@ export function declaredIntentsFromContext(context: ContextObject): string[] {
     }
   }
   return [];
+}
+
+function evaluatorIntentSources(
+  context: ContextObject,
+  trajectory?: PlannerTrajectory,
+): { id: string; text: string }[] {
+  return (
+    trajectory?.outcomeIntents ?? declaredIntentsFromContext(context)
+  ).map((text, index) => ({
+    id: `intent:${index + 1}`,
+    text,
+  }));
+}
+
+function evaluatorEvidenceSteps(trajectory: PlannerTrajectory) {
+  return [...(trajectory.archivedSteps ?? []), ...trajectory.steps].map(
+    (step, index) => ({ id: `step:${index + 1}`, step }),
+  );
+}
+
+/** Validates source bindings for a semantic coverage judgment, not the truth of its interpretation. */
+export function validatedOutcomeCoverage(params: {
+  output: EvaluatorOutput;
+  context: ContextObject;
+  trajectory: PlannerTrajectory;
+  hasUnresolvedToolFailure?: boolean;
+}): boolean {
+  const { output, trajectory } = params;
+  if (
+    output.protocolFailure ||
+    output.decision !== "FINISH" ||
+    !output.success ||
+    output.requestFullyCovered !== true ||
+    params.hasUnresolvedToolFailure ||
+    trajectory.plannedQueue.length > 0
+  )
+    return false;
+  const intents = evaluatorIntentSources(
+    trajectory.modelBaseContext ?? params.context,
+    trajectory,
+  );
+  const coverage = output.outcomeCoverage;
+  if (intents.length === 0 || !coverage || coverage.length !== intents.length)
+    return false;
+  const covered = new Set(coverage.map((entry) => entry.intentId));
+  if (
+    covered.size !== intents.length ||
+    intents.some((intent) => !covered.has(intent.id))
+  )
+    return false;
+  const evidence = new Map(
+    evaluatorEvidenceSteps(trajectory).map(({ id, step }) => [id, step]),
+  );
+  return coverage.every(
+    (entry) =>
+      entry.status === "completed" &&
+      entry.evidenceStepIds.length > 0 &&
+      new Set(entry.evidenceStepIds).size === entry.evidenceStepIds.length &&
+      entry.evidenceStepIds.every((id) => {
+        const step = evidence.get(id);
+        return Boolean(
+          step?.toolCall && !step.terminalOnly && step.result?.success === true,
+        );
+      }),
+  );
 }
 
 function repairFinishWithUnservedDeclaredIntents(
