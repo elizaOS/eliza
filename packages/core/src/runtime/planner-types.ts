@@ -67,6 +67,7 @@ export interface EvaluatorRuntime {
 		modelType: TextGenerationModelType,
 		params: {
 			messages: ChatMessage[];
+			model?: string;
 			maxTokens?: number;
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
@@ -464,6 +465,8 @@ export interface RunEvaluatorParams {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	modelType?: TextGenerationModelType;
+	/** Opt-in provider model for evaluation only; adapters may ignore per-call selection. */
+	model?: string;
 	effects?: EvaluatorEffects;
 	provider?: string;
 	recorder?: TrajectoryRecorder;

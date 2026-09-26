@@ -4,7 +4,13 @@
  * schema enforcement is asserted on the request, not simulated model behavior.
  */
 import { createServer, type Server } from "node:http";
-import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
+import type {
+  EvaluatorModelResult,
+  EvaluatorRuntime,
+  IAgentRuntime,
+  PlannerTrajectory,
+  ToolDefinition,
+} from "@elizaos/core";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
@@ -12,6 +18,7 @@ import { parseAndValidate } from "../../../packages/core/src/runtime/validated-m
 import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
 import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
+import { runEvaluator } from "../../plugin-assistant/src/runtime/evaluator.ts";
 import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
@@ -198,6 +205,54 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it("applies the evaluator-only opt-in through the real adapter without changing other model slots", async () => {
+    reply = { ...verdict, messageToUser: "Completed from the supplied evidence." };
+    const settings: Record<string, string> = {
+      CEREBRAS_MODEL: "qwen-3.8-27b",
+      OPENAI_RESPONSE_HANDLER_MODEL: "qwen-3.8-27b",
+      OPENAI_ACTION_PLANNER_MODEL: "qwen-3.8-27b",
+      OPENAI_SMALL_MODEL: "qwen-3.8-27b",
+      ELIZA_EVALUATOR_MODEL: "gpt-oss-120b",
+    };
+    const host = {
+      ...runtime(),
+      getSetting: (key: string) => settings[key] ?? null,
+    } as IAgentRuntime;
+    const evaluatorRuntime: EvaluatorRuntime = {
+      getSetting: host.getSetting,
+      useModel: async (_type, params) =>
+        (await handleResponseHandler(host, {
+          ...params,
+          stream: false,
+        } as never)) as EvaluatorModelResult,
+    };
+    const trajectory: PlannerTrajectory = {
+      context: { id: "evaluator-only", events: [] },
+      steps: [],
+      plannedQueue: [],
+      evaluatorOutputs: [],
+    };
+    expect(
+      (await runEvaluator({ runtime: evaluatorRuntime, context: trajectory.context, trajectory }))
+        .decision
+    ).toBe("FINISH");
+    expect(requests.at(-1)?.model).toBe("gpt-oss-120b");
+    expect(requests.at(-1)?.reasoning_effort).toBe("low");
+    const unchanged = {
+      messages: [{ role: "user" as const, content: "Complete original input." }],
+      stream: false,
+      providerOptions: { eliza: { thinking: "off" as const } },
+    };
+    for (const handler of [handleResponseHandler, handleActionPlanner, handleTextSmall]) {
+      await handler(host, unchanged);
+      expect(requests.at(-1)?.model).toBe("qwen-3.8-27b");
+      expect(requests.at(-1)?.reasoning_effort).toBe("none");
+    }
+    delete settings.ELIZA_EVALUATOR_MODEL;
+    await runEvaluator({ runtime: evaluatorRuntime, context: trajectory.context, trajectory });
+    expect(requests.at(-1)?.model).toBe("qwen-3.8-27b");
+    expect(requests).toHaveLength(5);
+  });
   it.each([false, true])(
     "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
     async (stream) => {

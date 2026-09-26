@@ -201,6 +201,7 @@ function resolveEvaluatorBudget(
   runtime: EvaluatorRuntime,
   modelType: string,
   provider: string | undefined,
+  requestedModel: string | undefined,
 ): EvaluatorBudgetResolution {
   const registrations = runtime.getModelRegistrations?.() ?? [];
   if (registrations.length === 0) {
@@ -225,9 +226,16 @@ function resolveEvaluatorBudget(
   const windows: number[] = [];
   let unknownReachableModel = false;
   for (const registration of candidates) {
-    const modelName = modelNameFromMetadata(runtime, registration.metadata);
+    const registeredModel = modelNameFromMetadata(
+      runtime,
+      registration.metadata,
+    );
+    const modelName = requestedModel ?? registeredModel;
     if (modelName) modelNames.push(modelName);
-    const contextWindowTokens = registration.metadata?.contextWindowTokens;
+    const contextWindowTokens =
+      !requestedModel || requestedModel === registeredModel
+        ? registration.metadata?.contextWindowTokens
+        : undefined;
     if (
       !Number.isFinite(contextWindowTokens) ||
       !contextWindowTokens ||
@@ -342,6 +350,21 @@ function evaluatorQueuedCallIds(
 export async function runEvaluator(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
+  const configuredModel = params.runtime.getSetting?.("ELIZA_EVALUATOR_MODEL");
+  const model =
+    params.model?.trim() ||
+    (typeof configuredModel === "string"
+      ? configuredModel.trim()
+      : undefined) ||
+    undefined;
+  return runEvaluatorWithSelectedModel(params, model);
+}
+
+/** Keep the initial selection, including no override, across restoration awaits. */
+async function runEvaluatorWithSelectedModel(
+  params: RunEvaluatorParams,
+  model: string | undefined,
+): Promise<EvaluatorOutput> {
   const streamingContext = getStreamingContext();
   const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
   const startedAt = Date.now();
@@ -349,6 +372,7 @@ export async function runEvaluator(
     params.runtime,
     String(modelType),
     params.provider,
+    model,
   );
   const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
   const availableReceiptIds = activeCommittedEffectReceipts(
@@ -534,10 +558,17 @@ export async function runEvaluator(
       providerOptions?: Record<string, unknown>;
     },
   ): Promise<void> => {
-    const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
+    const registeredModel = modelNameFromMetadata(
+      params.runtime,
+      attempt.metadata,
+    );
+    const modelName = model ?? registeredModel;
     const resolvedBudget = buildModelInputBudget({
       modelName,
-      contextWindowTokens: attempt.metadata?.contextWindowTokens,
+      contextWindowTokens:
+        !model || model === registeredModel
+          ? attempt.metadata?.contextWindowTokens
+          : undefined,
     });
     const attemptWindow = resolvedBudget.contextWindowTokens;
     const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
@@ -588,6 +619,7 @@ export async function runEvaluator(
           : undefined,
         () => {
           const modelRequest = {
+            ...(model ? { model } : {}),
             messages: callInput.messages,
             responseSchema,
             promptSegments: callInput.promptSegments,
@@ -769,7 +801,7 @@ export async function runEvaluator(
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
       };
-      return runEvaluator(params);
+      return runEvaluatorWithSelectedModel(params, model);
     }
     output = {
       ...output,
