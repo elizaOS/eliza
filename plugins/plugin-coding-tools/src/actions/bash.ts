@@ -1732,6 +1732,13 @@ export const shellAction: Action = {
         `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
       );
     }
+    const codingSubAgentShell =
+      state?.data?.elizaTrustedCodingMode === true ||
+      ((): boolean => {
+        const v =
+          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+      })();
     const cwdParam = readStringParam(options, "cwd");
 
     if (!message.roomId) {
@@ -1804,6 +1811,7 @@ export const shellAction: Action = {
       }
       const sessionCwd = await session.getExistingCwd(conversationId);
       if (
+        !codingSubAgentShell &&
         shouldIgnoreUngroundedRuntimeCwd({
           message,
           requestedCwd: v.resolved,
@@ -1843,11 +1851,13 @@ export const shellAction: Action = {
       }
     }
 
-    const groundedCommand = rewriteUngroundedRuntimeDirectoryOverrides({
-      command,
-      message,
-      sessionCwd: cwd,
-    });
+    const groundedCommand = codingSubAgentShell
+      ? command
+      : rewriteUngroundedRuntimeDirectoryOverrides({
+          command,
+          message,
+          sessionCwd: cwd,
+        });
     if (groundedCommand !== command) {
       command = groundedCommand;
       coreLogger.warn(
@@ -1865,13 +1875,6 @@ export const shellAction: Action = {
     // of real output and inflating a 30s build past 90s. Skip all
     // message-text-keyed rewrites for the coding sub-agent; its commands run
     // verbatim.
-    const codingSubAgentShell =
-      state?.data?.elizaTrustedCodingMode === true ||
-      ((): boolean => {
-        const v =
-          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-        return v === "1" || v === "true" || v === "yes" || v === "on";
-      })();
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
