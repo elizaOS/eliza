@@ -266,6 +266,18 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   return { runtime, sandbox, session, backgroundShell, shellHistoryService };
 }
 
+async function makeReceiptRuntime(
+  message: Memory,
+  opts: RuntimeOptions = {},
+): ReturnType<typeof makeRuntime> {
+  const root = path.join(shellTestStateDir, "workspace");
+  await fs.mkdir(root);
+  await execFileAsync("git", ["init", "-q"], { cwd: root });
+  const services = await makeRuntime({ ...opts, workspaceRoots: root });
+  services.session.setCwd(String(message.roomId), root);
+  return services;
+}
+
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1457,12 +1469,12 @@ describeIfPosix("shellAction", () => {
   });
 
   it("escalates overflow from TERM to KILL and reaps a TERM-ignoring process", async () => {
-    const { runtime, backgroundShell } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime, backgroundShell } = await makeReceiptRuntime(message, {
       backgroundBufferChars: 5,
       backgroundKillGraceMs: 50,
       backgroundReapWaitMs: 500,
     });
-    const message = makeMessage();
     const startedAt = Date.now();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
@@ -1492,11 +1504,11 @@ describeIfPosix("shellAction", () => {
   });
 
   it("bounds explicit kill while escalating a TERM-ignoring process", async () => {
-    const { runtime } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime } = await makeReceiptRuntime(message, {
       backgroundKillGraceMs: 50,
       backgroundReapWaitMs: 500,
     });
-    const message = makeMessage();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
         action: "start_background",
@@ -1525,11 +1537,11 @@ describeIfPosix("shellAction", () => {
   });
 
   it("retains a pending receipt when close cannot prove reap before the deadline", async () => {
-    const { runtime, backgroundShell } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime, backgroundShell } = await makeReceiptRuntime(message, {
       backgroundKillGraceMs: 30,
       backgroundReapWaitMs: 80,
     });
-    const message = makeMessage();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
         action: "start_background",
@@ -3251,12 +3263,12 @@ describeIfPosix("shellAction", () => {
   });
 
   it("rejects split-secret output that exceeds the complete-capture limit", async () => {
+    const actor = makeMessage();
     const secret = "marigold9";
-    const { runtime, backgroundShell } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeReceiptRuntime(actor, {
       configuredSecret: secret,
       backgroundBufferChars: 5,
     });
-    const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
         action: "start_background",

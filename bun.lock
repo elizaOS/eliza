@@ -1628,6 +1628,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@elizaos/testing": "workspace:*",
         "@types/cross-spawn": "^6.0.6",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",

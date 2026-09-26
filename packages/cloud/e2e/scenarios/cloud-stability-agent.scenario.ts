@@ -42,6 +42,7 @@ const plannerToolNames = [
 const syntheticRuntimePolicy = {
   basePluginNames: [
     "@elizaos/plugin-sql",
+    "scenario-agent-events",
     "assistant",
     "documents",
     "@elizaos/plugin-scheduling",
@@ -60,6 +61,7 @@ const syntheticRuntimePolicy = {
     "EXPERIENCE",
     "PERSONALITY_STORE",
     "SensitiveRequestDispatchRegistry",
+    "agent_event",
     "channel_topics",
     "documents",
     "embedding-generation",
