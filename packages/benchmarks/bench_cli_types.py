@@ -130,4 +130,3 @@ class BenchmarkRunResult:
     artifacts: dict[str, str]
     duration_seconds: float | None
     error: str | None
-
