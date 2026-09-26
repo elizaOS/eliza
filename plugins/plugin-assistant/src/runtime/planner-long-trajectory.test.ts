@@ -738,3 +738,77 @@ describe("coding verification recovery scope", () => {
     },
   );
 });
+
+describe("coding verification recovery guidance", () => {
+  it("requests an unpiped verifier after a successful but uncertified command", async () => {
+    let round = 0;
+    const commands: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "piped-verification-recovery" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 5) throw new Error("Unexpected planner retry");
+          const name =
+            round === 1
+              ? "WRITE"
+              : round === 2 || round === 4
+                ? "SHELL"
+                : "REPLY";
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `verification-guidance-${round}`,
+                name,
+                arguments:
+                  name === "SHELL"
+                    ? {
+                        command:
+                          round === 2
+                            ? "npx vitest run | tail -5"
+                            : "npx vitest run",
+                        eliza_turn_scope: "more_work_pending",
+                      }
+                    : {
+                        text: "Done",
+                        eliza_turn_scope:
+                          name === "REPLY" ? "final" : "more_work_pending",
+                      },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        if (call.name === "WRITE")
+          return { success: true, text: "File written" };
+        const command = String(call.params?.command);
+        commands.push(command);
+        return {
+          success: true,
+          text: "Tests 14 passed",
+          ...(command === "npx vitest run"
+            ? {
+                verification: {
+                  kind: "test" as const,
+                  status: "passed" as const,
+                  family: "npx vitest",
+                  exitCode: 0,
+                },
+              }
+            : {}),
+        };
+      },
+    });
+    expect(commands).toEqual(["npx vitest run | tail -5", "npx vitest run"]);
+    expect(result.evaluator?.success).toBe(true);
+    const guidance = result.trajectory.evaluatorOutputs
+      .map((output) => output.messageToUser ?? "")
+      .join("\n");
+    expect(guidance).toContain("without pipes");
+    expect(guidance).toContain("standalone");
+    expect(guidance).not.toContain("or diff check");
+  });
+});

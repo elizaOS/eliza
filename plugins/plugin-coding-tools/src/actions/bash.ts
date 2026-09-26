@@ -1204,7 +1204,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved. For coding completion verification, run the test, typecheck, lint, or build as a standalone foreground command without pipes or failure-masking operators; use cwd or cd directory && verifier.",
   descriptionCompressed:
     "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
