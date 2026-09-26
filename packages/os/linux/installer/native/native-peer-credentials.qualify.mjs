@@ -64,6 +64,9 @@ try {
   assert.equal(peer.uid, process.getuid());
   assert.equal(peer.gid, process.getgid());
   assert.equal(peer.isAlive(), true);
+  assert.throws(() => peer.isAlive.call({}), /receiver is invalid/);
+  assert.throws(() => peer.close.call({}), /receiver is invalid/);
+  assert.equal(peer.isAlive(), true);
 
   acceptedSocket.end("exit");
   await childExit;

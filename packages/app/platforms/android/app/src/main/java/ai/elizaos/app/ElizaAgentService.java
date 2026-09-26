@@ -747,6 +747,9 @@ public class ElizaAgentService extends Service {
             || "content-length".equalsIgnoreCase(key);
     }
 
+    private AgentSecureStore agentSecureStore;
+    private ChromiumBrowserConnection chromiumBrowserConnection;
+
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     @Override
@@ -796,6 +799,14 @@ public class ElizaAgentService extends Service {
             stopSelf();
             return;
         }
+
+        try {
+            agentSecureStore = new AgentSecureStore(this);
+        } catch (IOException error) {
+            Log.e(TAG, "Android Keystore agent bridge unavailable", error);
+        }
+        chromiumBrowserConnection = new ChromiumBrowserConnection(this);
+        chromiumBrowserConnection.start();
 
         // FGS is up; these diagnostic reads can no longer trip the FGS-start
         // timeout.
@@ -854,6 +865,8 @@ public class ElizaAgentService extends Service {
 
     @Override
     public void onDestroy() {
+        if (chromiumBrowserConnection != null) chromiumBrowserConnection.close();
+        if (agentSecureStore != null) agentSecureStore.close();
         // Only an explicit stop (ACTION_STOP → shuttingDown) may tear the
         // agent process down. The FGS-denial path also sets shuttingDown, but
         // its contract is the opposite — "a surviving detached agent process

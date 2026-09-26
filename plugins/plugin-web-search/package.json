@@ -14,7 +14,12 @@
                 "default": "./dist/index.js"
             }
         },
-        "./*.css": "./dist/*.css"
+        "./*.css": "./dist/*.css",
+        "./browser-web-search": {
+            "eliza-source": "./src/browser-web-search.ts",
+            "types": "./dist/browser-web-search.d.ts",
+            "import": "./dist/browser-web-search.js"
+        }
     },
     "files": [
         "dist"
@@ -43,6 +48,15 @@
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",
-        "pluginParameters": {}
+        "pluginParameters": {
+            "WEB_SEARCH_BROWSER_PROFILE_ID": {
+                "type": "string",
+                "description": "Explicit owner grant: exact registered Chromium profile ID permitted for browser-first web searches."
+            },
+            "WEB_SEARCH_BROWSER_TARGET_ID": {
+                "type": "string",
+                "description": "Registered profile-bound browser target; defaults to chromium-device. Does not grant access without the exact profile ID."
+            }
+        }
     }
 }

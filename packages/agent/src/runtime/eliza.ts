@@ -509,6 +509,11 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
 // branch. Ownership of the fallback stays with this loader table (#12665).
 STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-sql"] = () => getPluginSql();
 STATIC_ELIZA_PLUGIN_LOADERS[SQLITE_PLUGIN] = () => getPluginSqlite();
+// Mobile builds alias this literal import to the native-only browser entry.
+// Bundling code alone does not register it with the filesystem-free resolver.
+STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-browser"] = () =>
+  import("@elizaos/plugin-browser");
+
 function buildBlockingStaticRegistrations(): CoreStaticPluginRegistration[] {
   return BLOCKING_CORE_PLUGINS.map((packageName) => {
     const loader = BLOCKING_STATIC_PLUGIN_LOADERS[packageName];
@@ -5526,6 +5531,10 @@ export async function startEliza(
     // deployment where app also drains the registry, neither double-mounts.
     abortSignal.throwIfAborted();
     await drainAppRoutePluginLoaders(runtime);
+    const { initializeManagedBrowserHost } = await import(
+      "./managed-browser-host.ts"
+    );
+    await initializeManagedBrowserHost(runtime);
     bootTimer.lap("deferred:app-route-plugins");
     abortSignal.throwIfAborted();
     await runTeeBootGate();

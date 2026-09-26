@@ -51,12 +51,12 @@ class PhonePlugin : Plugin() {
     fun placeCall(call: PluginCall) {
         val number = call.getString("number")?.trim()
         if (number.isNullOrEmpty()) {
-            call.reject("number is required")
+            call.reject("number is required", "INVALID_ARGUMENT")
             return
         }
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
         if (telecom == null) {
-            call.reject("Telecom service is unavailable")
+            call.reject("Telecom service is unavailable", "TELECOM_UNAVAILABLE")
             return
         }
         try {
@@ -64,18 +64,29 @@ class PhonePlugin : Plugin() {
             call.resolve()
         } catch (error: SecurityException) {
             // error-policy:J1 Telecom permission denial is returned to the bridge caller.
-            call.reject("CALL_PHONE permission is required", error)
+            call.reject("CALL_PHONE permission is required", "CALL_PERMISSION_DENIED", error)
         }
     }
 
     @PluginMethod
     fun openDialer(call: PluginCall) {
-        val number = call.getString("number")?.trim()
-        val uri = if (number.isNullOrEmpty()) Uri.parse("tel:") else Uri.parse("tel:$number")
+        val rawNumber = call.data.opt("number")
+        if (call.data.has("number") && rawNumber !is String) {
+            call.reject("number must be a string", "INVALID_ARGUMENT")
+            return
+        }
+        val number = (rawNumber as? String)?.trim()
+        val uri = Uri.fromParts("tel", number.orEmpty(), null)
         val intent = Intent(Intent.ACTION_DIAL, uri)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-        call.resolve()
+        try {
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: android.content.ActivityNotFoundException) {
+            call.reject("No dialer application is available", "DIALER_UNAVAILABLE", error)
+        } catch (error: SecurityException) {
+            call.reject("Android denied opening the dialer", "DIALER_PERMISSION_DENIED", error)
+        }
     }
 
     @PluginMethod

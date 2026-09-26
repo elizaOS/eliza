@@ -476,6 +476,8 @@ export type RendererSecureStoreResult =
 	  };
 export interface RendererSecureStoreStatus {
 	backend:
+		| "android_keystore"
+		| "runtime_encrypted_store"
 		| "macos_keychain"
 		| "windows_credential_manager"
 		| "linux_secret_service"
@@ -2015,6 +2017,10 @@ export type ElizaDesktopRPCSchema = {
 				};
 			};
 			// ---- Desktop: Shell ----
+			desktopOpenBrowser: {
+				params: { url: string };
+				response: { engine: "chromium"; surface: "window" };
+			};
 			desktopOpenExternal: {
 				params: {
 					url: string;
@@ -2794,9 +2800,7 @@ export type ElizaDesktopRPCSchema = {
 				};
 			};
 			remoteTargetConfirmPairing: {
-				params: {
-					sessionId: string;
-				};
+				params: { sessionId: string; browserProfileId?: string };
 				response:
 					| {
 							sessionId: string;
@@ -2818,10 +2822,7 @@ export type ElizaDesktopRPCSchema = {
 					  };
 			};
 			remoteTargetActivate: {
-				params: {
-					sessionId?: string;
-					code: string;
-				};
+				params: { sessionId?: string; code: string; browserProfileId?: string };
 				response:
 					| {
 							sessionId: string;
@@ -3482,6 +3483,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"desktop:clipboardAvailableFormats": "desktopClipboardAvailableFormats",
 	// Desktop: Shell
 	"desktop:openExternal": "desktopOpenExternal",
+	"desktop:openBrowser": "desktopOpenBrowser",
 	"desktop:showItemInFolder": "desktopShowItemInFolder",
 	"desktop:openPath": "desktopOpenPath",
 	// Desktop: File Dialogs

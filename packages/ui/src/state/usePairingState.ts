@@ -6,9 +6,14 @@
  * setters are returned so AppContext can wire them.
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../api";
-import { persistActiveServerCredential } from "./active-server-credential";
+import { resumeRemoteFirstRunAfterPairing } from "../first-run/adopt-remote-first-run";
+import {
+  persistActiveServerCredential,
+  scrubRejectedActiveServerCredential,
+} from "./active-server-credential";
 
 export type PairingFailureCode =
   | "PAIRING_INVALID"
@@ -49,18 +54,27 @@ export function pairingFailureMessage(error: unknown): string {
   }
 }
 
-export function usePairingState() {
+export function usePairingState(onPaired: () => void) {
   const [pairingEnabled, setPairingEnabled] = useState(false);
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
   const [pairingCodeInput, setPairingCodeInput] = useState("");
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [pairingBusy, setPairingBusy] = useState(false);
   const pairingBusyRef = useRef(false);
+  const pairedApiBaseRef = useRef<string | null>(null);
+  const pendingCredentialRef = useRef<{
+    apiBase: string;
+    token: string;
+  } | null>(null);
 
   const handlePairingSubmit = useCallback(async () => {
     if (pairingBusyRef.current || pairingBusy) return;
+    const apiBase = client.getBaseUrl();
+    if (pairedApiBaseRef.current !== apiBase) pairedApiBaseRef.current = null;
+    if (pendingCredentialRef.current?.apiBase !== apiBase)
+      pendingCredentialRef.current = null;
     const code = pairingCodeInput.trim();
-    if (!code) {
+    if (!code && !pairedApiBaseRef.current && !pendingCredentialRef.current) {
       setPairingError("Enter the pairing code from your server.");
       return;
     }
@@ -68,17 +82,63 @@ export function usePairingState() {
     pairingBusyRef.current = true;
     setPairingBusy(true);
     try {
-      const { token } = await client.pair(code);
-      await persistActiveServerCredential(token, client.getBaseUrl());
-      client.setToken(token);
-      window.location.reload();
+      if (!pairedApiBaseRef.current) {
+        if (!pendingCredentialRef.current) {
+          const { token } = await client.pair(code);
+          pendingCredentialRef.current = { apiBase, token };
+        }
+        const { token } = pendingCredentialRef.current;
+        if (client.getBaseUrl() !== apiBase) {
+          pendingCredentialRef.current = null;
+          throw new ElizaError(
+            "The remote connection changed during pairing.",
+            {
+              code: "PAIRING_SUPERSEDED",
+            },
+          );
+        }
+        await persistActiveServerCredential(token, apiBase);
+        if (client.getBaseUrl() !== apiBase) {
+          pendingCredentialRef.current = null;
+          throw new ElizaError(
+            "The remote connection changed during pairing.",
+            {
+              code: "PAIRING_SUPERSEDED",
+            },
+          );
+        }
+        client.setToken(token);
+        pairedApiBaseRef.current = apiBase;
+      }
+      await resumeRemoteFirstRunAfterPairing(client, apiBase);
+      // Re-evaluate the authenticated session without replaying Capacitor's
+      // launch URL in a new document (which would clear the paired credential).
+      onPaired();
     } catch (err) {
-      setPairingError(pairingFailureMessage(err));
+      if (
+        pairedApiBaseRef.current === apiBase &&
+        (err as { status?: number })?.status === 401
+      ) {
+        const rejected = pendingCredentialRef.current;
+        pairedApiBaseRef.current = null;
+        pendingCredentialRef.current = null;
+        if (rejected) scrubRejectedActiveServerCredential(rejected.token);
+        setPairingCodeInput("");
+        setPairingError(
+          "The paired session was rejected. Enter a new pairing code.",
+        );
+        return;
+      }
+      setPairingError(
+        pairedApiBaseRef.current
+          ? `Paired, but remote setup failed: ${err instanceof Error ? err.message : String(err)}`
+          : pairingFailureMessage(err),
+      );
     } finally {
       pairingBusyRef.current = false;
       setPairingBusy(false);
     }
-  }, [pairingBusy, pairingCodeInput]);
+  }, [pairingBusy, pairingCodeInput, onPaired]);
 
   return {
     state: {

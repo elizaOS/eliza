@@ -295,7 +295,8 @@
     "@elizaos/plugin-embeddings": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",
-    "@elizaos/capacitor-system": "workspace:*"
+    "@elizaos/capacitor-system": "workspace:*",
+    "@elizaos/remote-control-host": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",

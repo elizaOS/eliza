@@ -3,6 +3,7 @@ import type { InstallExecutionResult } from "./executor";
 import {
   type ActiveOwnerSession,
   type ActiveOwnerSessionProvider,
+  InstallServiceError,
   type LocalInstallExecutionRequest,
   type LocalInstallPeerCredentials,
   type LocalInstallPeerProcessIdentity,
@@ -81,18 +82,14 @@ export class LinuxLogindActiveOwnerSessionProvider
       return null;
     }
     const { handle, uid } = binding;
-    try {
-      if (!(await handle.isAlive())) {
-        return null;
-      }
-      const session = await this.logind.inspectForProcess(handle, uid);
-      if (!(await handle.isAlive())) {
-        return null;
-      }
-      return session;
-    } catch {
+    if (!(await handle.isAlive())) {
       return null;
     }
+    const session = await this.logind.inspectForProcess(handle, uid);
+    if (!(await handle.isAlive())) {
+      return null;
+    }
+    return session;
   }
 }
 
@@ -237,9 +234,15 @@ function writeResponse(socket: Socket, value: unknown): void {
   socket.end(Buffer.concat([header, body]));
 }
 
+export interface UnixInstallServer extends Server {
+  /** Stop admission and await all request work, including disconnected clients.
+   * Cancellation never substitutes for confirmed native I/O settlement. */
+  shutdown(): Promise<void>;
+}
+
 export function createUnixInstallServer(
   options: UnixInstallServerOptions,
-): Server {
+): UnixInstallServer {
   if (options.service.abortSemantics !== "confirmed-stop-or-lock-retained") {
     throw new Error(
       "Installer transport requires confirmed cancellation or retained target locks.",
@@ -266,7 +269,18 @@ export function createUnixInstallServer(
   ) {
     throw new Error("Installer transport execution timeout is invalid.");
   }
+  let stopping = false;
+  let shutdownPromise: Promise<void> | undefined;
+  const requests = new Set<{
+    socket: Socket;
+    cancellation: AbortController;
+    settled: Promise<Error | undefined>;
+  }>();
   const server = createServer({ allowHalfOpen: true }, async (socket) => {
+    if (stopping) {
+      rejectOverloadedUnixSocket(socket);
+      return;
+    }
     const leave = gate.tryEnter();
     if (!leave) {
       rejectOverloadedUnixSocket(socket);
@@ -274,12 +288,35 @@ export function createUnixInstallServer(
     }
     let kernelProcess: KernelBoundPeerProcessHandle | undefined;
     const cancellation = new AbortController();
+    let settle!: (error?: Error) => void;
+    let cleanupFailure: Error | undefined;
+    const requestWork = {
+      socket,
+      cancellation,
+      settled: new Promise<Error | undefined>((resolve) => {
+        settle = resolve;
+      }),
+    };
+    requests.add(requestWork);
+    socket.on("error", (error) => {
+      cancellation.abort(error);
+      socket.destroy();
+    });
+    socket.once("close", () => {
+      cancellation.abort(new Error("Installer client disconnected."));
+    });
     const frameDeadline = setTimeout(
       () => socket.destroy(),
       frameTimeoutMilliseconds,
     );
     frameDeadline.unref();
     let executionDeadline: NodeJS.Timeout | undefined;
+    let response:
+      | { ok: true; result: InstallExecutionResult }
+      | { ok: false; error: string } = {
+      ok: false,
+      error: "Installer request did not complete.",
+    };
     try {
       // Native SO_PEERCRED + pidfd capture is deliberately synchronous: no
       // promise or request byte is observed before the kernel identity exists.
@@ -293,6 +330,7 @@ export function createUnixInstallServer(
         socket.destroy();
       }, executionTimeoutMilliseconds);
       executionDeadline.unref();
+      cancellation.signal.throwIfAborted();
       const result = await options.service.execute(
         request,
         {
@@ -303,13 +341,14 @@ export function createUnixInstallServer(
         },
         cancellation.signal,
       );
-      writeResponse(socket, { ok: true, result });
+      cancellation.signal.throwIfAborted();
+      response = { ok: true, result };
     } catch (error) {
-      writeResponse(socket, {
+      response = {
         ok: false,
         error:
           error instanceof Error ? error.message : "Installer request failed.",
-      });
+      };
     } finally {
       clearTimeout(frameDeadline);
       clearTimeout(executionDeadline);
@@ -317,14 +356,79 @@ export function createUnixInstallServer(
       // and target-lock checks possible until the handler actually settles.
       try {
         kernelProcess?.close();
-      } catch {
-        socket.destroy();
+      } catch (error) {
+        cleanupFailure = new InstallServiceError(
+          "Installer peer cleanup failed.",
+          { cause: error },
+        );
+        const cleanup =
+          error instanceof Error ? error.message : "unknown failure";
+        response = {
+          ok: false,
+          error: `${response.ok ? "" : `${response.error}; `}Installer peer cleanup failed: ${cleanup}`,
+        };
       }
       leave();
     }
+    try {
+      writeResponse(socket, response);
+    } catch (error) {
+      cleanupFailure = new InstallServiceError(
+        "Installer response could not be sent.",
+        {
+          cause: cleanupFailure
+            ? new AggregateError([cleanupFailure, error])
+            : error,
+        },
+      );
+      socket.destroy();
+    } finally {
+      requests.delete(requestWork);
+      settle(cleanupFailure);
+    }
   });
   server.maxConnections = maximum;
-  return server;
+  return Object.assign(server, {
+    shutdown(): Promise<void> {
+      if (shutdownPromise) return shutdownPromise;
+      stopping = true;
+      const closed = new Promise<void>((resolve, reject) => {
+        server.close((error?: Error) => {
+          if (
+            error &&
+            (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING"
+          )
+            reject(error);
+          else resolve();
+        });
+      });
+      const pending = [...requests];
+      // A disconnected socket can disappear from Server.close's connection
+      // count while its privileged operation is still holding disk descriptors.
+      shutdownPromise = Promise.allSettled([
+        closed,
+        ...pending.map((request) => request.settled),
+      ]).then((results) => {
+        const errors = results.flatMap((result) =>
+          result.status === "rejected"
+            ? [result.reason]
+            : result.value
+              ? [result.value]
+              : [],
+        );
+        if (errors.length) {
+          throw new InstallServiceError("Installer shutdown cleanup failed.", {
+            cause: new AggregateError(errors),
+          });
+        }
+      });
+      for (const request of pending) {
+        request.cancellation.abort(new Error("Installer service is stopping."));
+        request.socket.destroy();
+      }
+      return shutdownPromise;
+    },
+  });
 }
 
 export async function listenUnixInstallServer(

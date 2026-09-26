@@ -22,8 +22,8 @@ import {
   androidDistNeedsBuild,
   androidInstallDecision,
   ensureEmulatorBooted,
-  ensureEmulatorPermissive,
   listDevices,
+  prepareAndroidE2eDevice,
   readFreshAndroidRendererStamp,
   readInstalledRendererStamp,
   readRendererStampFromApk,
@@ -82,7 +82,6 @@ function defaultAndroidEvidenceOutputDir() {
 // the embedded agent and its WebView contract, while voice remains a separate
 // hardware-qualified lane with its own model prerequisites.
 const HOST_EMULATOR_PROBES = [
-  "test/android/onboarding-to-home.android.spec.ts",
   "test/android/route-coverage.android.spec.ts",
   "test/android/native-plugin-view-smoke.android.spec.ts",
 ];
@@ -274,6 +273,7 @@ function buildAndroidApk(bundle, backend) {
   log(`building WebView-debuggable APK via ${buildScript}…`);
   run(bundle, "build Android APK", "bun", ["run", buildScript], {
     ELIZA_MOBILE_REPO_ROOT: elizaRoot,
+    ELIZA_MOBILE_REQUIRED_RENDERER_COMMIT: currentHeadCommit(),
     ELIZA_WEBVIEW_DEBUG: "1",
     ELIZA_BUN_RISCV64_OPTIONAL: "1",
   });
@@ -303,6 +303,10 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
   const forceBuild = has("--force-build") || has("--build");
   const skipBuild = has("--skip-build");
   const headCommit = currentHeadCommit();
+  if (!headCommit)
+    throw new Error(
+      "Cannot verify Android E2E without the current Git revision.",
+    );
   let freshStamp = readFreshAndroidRendererStamp();
   const buildDecision = androidDistNeedsBuild({ freshStamp, headCommit });
 
@@ -327,6 +331,13 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
     );
   }
 
+  const rebuiltDecision = androidDistNeedsBuild({ freshStamp, headCommit });
+  if (rebuiltDecision.build) {
+    throw new Error(
+      `Android build did not produce the current renderer: ${rebuiltDecision.reason}`,
+    );
+  }
+
   let apk = resolveApk(process.env.ELIZA_ANDROID_APK);
   let apkStamp = readApkRendererStamp(apk);
   let apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
@@ -343,6 +354,12 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
       if (!freshStamp) {
         throw new Error(
           "Android build did not produce dist/eliza-renderer-build.json; refusing to install an unverifiable APK.",
+        );
+      }
+      const retryDecision = androidDistNeedsBuild({ freshStamp, headCommit });
+      if (retryDecision.build) {
+        throw new Error(
+          `Android rebuild did not produce the current renderer: ${retryDecision.reason}`,
         );
       }
       apk = resolveApk(process.env.ELIZA_ANDROID_APK);
@@ -542,7 +559,7 @@ async function main() {
     {
       const step = startBundleStep(bundle, "prepare Android device");
       try {
-        await ensureEmulatorPermissive(adb, serial, {
+        await prepareAndroidE2eDevice(adb, serial, backend, {
           log: evidenceBoundary.callback("device-prepare"),
         });
         finishBundleStep(bundle, step, "passed");
@@ -565,7 +582,20 @@ async function main() {
             "--host-agent-port",
             process.env.ELIZA_ANDROID_HOST_AGENT_PORT,
           ),
-          env: { ...process.env, ELIZA_API_TOKEN: hostAgentToken },
+          env: {
+            ...process.env,
+            ELIZA_API_TOKEN: hostAgentToken,
+            ...(hostEmulatorProbes
+              ? {
+                  ELIZA_ALLOWED_HOSTS: [
+                    process.env.ELIZA_ALLOWED_HOSTS,
+                    "10.0.2.2",
+                  ]
+                    .filter(Boolean)
+                    .join(","),
+                }
+              : {}),
+          },
           pairingDisabled: false,
           log: evidenceBoundary.callback("host-agent-start"),
         });
@@ -601,6 +631,52 @@ async function main() {
     }
 
     if (!has("--skip-route-coverage")) {
+      if (hostEmulatorProbes) {
+        // Fresh onboarding must run in its own worker before the route probes:
+        // their seeded session would otherwise bypass the pairing contract.
+        const onboardingReport = path.join(
+          bundle.reportsDir,
+          "android-onboarding-playwright.json",
+        );
+        try {
+          run(
+            bundle,
+            "Android fresh remote onboarding",
+            "node",
+            [
+              "scripts/run-ui-playwright.ts",
+              "--config",
+              "playwright.android.config.ts",
+              "test/android/onboarding-to-home.android.spec.ts",
+            ],
+            {
+              ANDROID_SERIAL: serial,
+              ELIZA_ANDROID_ALLOW_FIRST_RUN: "1",
+              ELIZA_ANDROID_CLEAR_APP_DATA: "1",
+              ELIZA_ANDROID_ARTIFACT_DIR: path.join(
+                bundle.root,
+                "test-results",
+                "android",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR: path.join(
+                bundle.rawDir,
+                "android-onboarding-playwright",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_JSON: onboardingReport,
+              ELIZA_ANDROID_PLAYWRIGHT_JUNIT: path.join(
+                bundle.reportsDir,
+                "android-onboarding-playwright.junit.xml",
+              ),
+              PLAYWRIGHT_HTML_REPORT: path.join(
+                bundle.reportsDir,
+                "android-onboarding-playwright-html",
+              ),
+            },
+          );
+        } finally {
+          reportAndroidPlaywrightResults(onboardingReport, evidenceBoundary);
+        }
+      }
       // Only the legacy full-directory lane includes on-device voice. Explicit
       // host/local probe sets keep that hardware-and-model contract separate.
       if (!hostEmulatorProbes && !arm64LocalProbes) {
@@ -640,6 +716,12 @@ async function main() {
           ],
           {
             ANDROID_SERIAL: serial,
+            ...(hostEmulatorProbes
+              ? {
+                  ELIZA_ANDROID_ALLOW_FIRST_RUN: "0",
+                  ELIZA_ANDROID_CLEAR_APP_DATA: "1",
+                }
+              : {}),
             ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(
               bundle.root,
               "test-results",
@@ -671,6 +753,58 @@ async function main() {
         const videoPath = await routeRecording.stop();
         routeRecording = null;
         if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      }
+      if (hostEmulatorProbes) {
+        // Restoring a role can revoke Android permissions and kill the app's
+        // WebView. Give this mandatory lane its own worker/session so route
+        // coverage never inherits a dead CDP page.
+        const systemReport = path.join(
+          bundle.reportsDir,
+          "android-system-intents.json",
+        );
+        try {
+          run(
+            bundle,
+            "Android native system intents",
+            "node",
+            [
+              "scripts/run-ui-playwright.ts",
+              "--config",
+              "playwright.android.config.ts",
+              "test/android/native-system-intents.android.spec.ts",
+            ],
+            {
+              ANDROID_SERIAL: serial,
+              ELIZA_ANDROID_ALLOW_FIRST_RUN: "0",
+              ELIZA_ANDROID_CLEAR_APP_DATA: "1",
+              ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(
+                bundle.root,
+                "test-results",
+                "system-intents",
+              ),
+              ELIZA_ANDROID_ARTIFACT_DIR: path.join(
+                bundle.root,
+                "test-results",
+                "system-intents",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR: path.join(
+                bundle.root,
+                "playwright-system-intents",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_JSON: systemReport,
+              ELIZA_ANDROID_PLAYWRIGHT_JUNIT: path.join(
+                bundle.reportsDir,
+                "android-system-intents.junit.xml",
+              ),
+              PLAYWRIGHT_HTML_REPORT: path.join(
+                bundle.reportsDir,
+                "android-system-intents-html",
+              ),
+            },
+          );
+        } finally {
+          reportAndroidPlaywrightResults(systemReport, evidenceBoundary);
+        }
       }
     }
 

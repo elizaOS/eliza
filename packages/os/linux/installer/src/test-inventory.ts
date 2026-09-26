@@ -65,3 +65,31 @@ export function applyTestInventoryAction(
       endBytes: end,
     });
 }
+
+export function createTestDiskInventory(): DiskInventory {
+  return {
+    stableId: "serial-TEST-TARGET",
+    path: "/dev/sdb",
+    kernelDeviceIdentity: "8:16:42",
+    hardwareIdentity: {
+      serial: "TEST-TARGET",
+      firmwarePath: "/sys/devices/test/target",
+      gptDiskGuid: "11111111-2222-4333-8444-555555555555",
+    },
+    sizeBytes: 256 * 1024 ** 3,
+    logicalSectorBytes: 512,
+    partitionTable: "gpt",
+    gptRedundancyVerified: true,
+    bootAncestryResolved: true,
+    currentBootSource: false,
+    firmware: "uefi",
+    partitions: [],
+    freeExtents: [
+      {
+        id: "free",
+        startBytes: 1024 ** 2,
+        endBytes: 256 * 1024 ** 3 - 1024 ** 2,
+      },
+    ],
+  };
+}

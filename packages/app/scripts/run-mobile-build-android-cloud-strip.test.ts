@@ -129,7 +129,7 @@ describe("android-cloud ElizaAgentService strip coverage (#15106)", () => {
   });
 });
 
-it("removes BGE runtime and its instrumented tests from an actual cloud source tree while retaining local source", () => {
+it("removes native inference runtime and its instrumented tests from a cloud source tree while retaining local source", () => {
   const fixture = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-cloud-bge-strip-"),
   );
@@ -196,6 +196,7 @@ it("removes BGE runtime and its instrumented tests from an actual cloud source t
       ["main", "ElizaBionicInferenceServer.java"],
       ["test", "BgeEmbeddingSessionTest.java"],
       ["androidTest", "BionicEmbeddingInstrumentedTest.java"],
+      ["androidTest", "BionicSpeechInstrumentedTest.java"],
       ["androidTest", "CapacitorBgeInstrumentedTest.java"],
     ];
     for (const [sourceSet, name] of files) {

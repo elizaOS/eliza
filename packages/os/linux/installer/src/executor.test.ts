@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,9 +12,14 @@ import {
 } from "./executor";
 import { DurableFileInstallJournal } from "./file-journal";
 import {
+  Ed25519OwnerAuthorizationVerifier,
+  ownerAuthorizationPayload,
+} from "./owner-authorization";
+import {
   createDiskConfirmationToken,
   createDiskInventoryFingerprint,
   createInstallPlan,
+  UnsupportedInstallFirmwareError,
 } from "./planner";
 import { applyTestInventoryAction } from "./test-inventory";
 import type {
@@ -33,6 +38,7 @@ function disk(overrides: Partial<DiskInventory> = {}): DiskInventory {
   return {
     stableId: "wwn-0x5000c50012345678",
     path: "/dev/disk/by-id/wwn-0x5000c50012345678",
+    kernelDeviceIdentity: "8:16:42",
     hardwareIdentity: {
       serial: "Z4D3ABCD",
       wwn: "0x5000c50012345678",
@@ -167,6 +173,68 @@ function dependencies(
 }
 
 describe("privileged installer execution boundary", () => {
+  it("accepts signed approval through the real verifier and rejects revoked or expired approval", async () => {
+    const target = disk();
+    const { request, plan } = reviewedPlan(target);
+    const keys = generateKeyPairSync("ed25519");
+    let revoked = false;
+    const verifier = new Ed25519OwnerAuthorizationVerifier(async (ownerId) =>
+      ownerId === "local-owner-1000" && !revoked ? keys.publicKey : null,
+    );
+    const approval = authorization(target, plan.planId);
+    approval.credential = `ed25519-v1:${sign(null, ownerAuthorizationPayload(approval), keys.privateKey).toString("base64url")}`;
+    const deps = dependencies(target, { authorization: verifier });
+    expect(
+      (await authorizeInstallPlan(request, plan, approval, deps)).executable,
+    ).toBe(true);
+    revoked = true;
+    await expect(
+      authorizeInstallPlan(request, plan, approval, deps),
+    ).rejects.toThrow("credential verification failed");
+    revoked = false;
+    await expect(
+      authorizeInstallPlan(request, plan, approval, {
+        ...deps,
+        now: () => new Date("2026-08-20T04:06:00.000Z"),
+      }),
+    ).rejects.toThrow("not currently valid");
+  });
+  it("rechecks a signed owner credential immediately before destructive effects", async () => {
+    const target = disk();
+    const before = structuredClone(target);
+    const { request, plan } = reviewedPlan(target);
+    const keys = generateKeyPairSync("ed25519");
+    let revoked = false;
+    let applied = false;
+    const verifier = new Ed25519OwnerAuthorizationVerifier(async () =>
+      revoked ? null : keys.publicKey,
+    );
+    const approval = authorization(target, plan.planId);
+    approval.credential = `ed25519-v1:${sign(null, ownerAuthorizationPayload(approval), keys.privateKey).toString("base64url")}`;
+    const deps = dependencies(target, {
+      authorization: verifier,
+      beforePrivilegedMutation: async (kind) => {
+        if (kind === "installer-action") revoked = true;
+      },
+    });
+    deps.operations.apply = async () => {
+      applied = true;
+      throw new Error("unexpected disk mutation");
+    };
+    const approved = await authorizeInstallPlan(request, plan, approval, deps);
+    await expect(executeAuthorizedInstallPlan(approved, deps)).rejects.toThrow(
+      "failed immediately before installer-action",
+    );
+    expect(applied).toBe(false);
+    expect(target).toEqual(before);
+    expect(deps.journal.entries.at(-1)?.event).toBe("execution-failed");
+    expect(
+      deps.journal.entries.some(
+        (entry) => entry.event === "execution-completed",
+      ),
+    ).toBe(false);
+  });
+
   it("authorizes an exact reviewed plan against a fresh inventory", async () => {
     const target = disk();
     const { request, plan } = reviewedPlan(target);
@@ -1039,3 +1107,23 @@ describe("installer inventory readback enforcement", () => {
     }
   });
 });
+
+it.each(["bios", "unknown"] as const)(
+  "refuses erase-disk plans without an implemented %s boot path",
+  (firmware) => {
+    expect(() => reviewedPlan(disk({ firmware }))).toThrow(
+      UnsupportedInstallFirmwareError,
+    );
+  },
+);
+
+it.each(["uefi", "apple-intel-efi"] as const)(
+  "preserves EFI erase-disk planning for %s",
+  (firmware) => {
+    const { plan } = reviewedPlan(disk({ firmware }));
+    expect(plan.compatibility.firmware).toBe(firmware);
+    expect(plan.partitions.some((partition) => partition.role === "esp")).toBe(
+      true,
+    );
+  },
+);

@@ -1,11 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import type { Stats } from "node:fs";
 import {
   chmod,
+  type FileHandle,
   link,
   lstat,
   mkdir,
   mkdtemp,
+  open,
   rm,
   symlink,
   writeFile,
@@ -13,7 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InstallRecoveryRequiredError } from "./executor";
 import { DurableFileInstallJournal } from "./file-journal";
 import type { InstallJournalEntry } from "./types";
@@ -205,4 +208,151 @@ describeLinux("durable file install journal", () => {
       new DurableFileInstallJournal(directory).read("../target"),
     ).rejects.toBeInstanceOf(InstallRecoveryRequiredError);
   });
+
+  it("retains filesystem causes when journal paths or writer locks fail", async () => {
+    const directory = await temporaryDirectory();
+    await expect(
+      new DurableFileInstallJournal(join(directory, "missing")).read(PLAN_ID),
+    ).rejects.toMatchObject({
+      name: "InstallRecoveryRequiredError",
+      cause: { code: "ENOENT" },
+    });
+    await writeFile(join(directory, `${PLAN_ID}.lock`), "", { mode: 0o600 });
+    await expect(
+      new DurableFileInstallJournal(directory).append(entry(0)),
+    ).rejects.toMatchObject({
+      name: "InstallRecoveryRequiredError",
+      cause: { code: "EEXIST" },
+    });
+    expect((await lstat(join(directory, `${PLAN_ID}.lock`))).isFile()).toBe(
+      true,
+    );
+  });
+
+  it("closes a newly opened ancestor when its metadata read fails", async () => {
+    const directory = await temporaryDirectory();
+    const probe = await open(directory, "r");
+    const prototype = Object.getPrototypeOf(probe);
+    await probe.close();
+    const original = prototype.stat;
+    const failure = new Error("metadata I/O failed");
+    const failed: FileHandle[] = [];
+    let calls = 0;
+    const stat = vi.spyOn(prototype, "stat").mockImplementation(async function (
+      this: FileHandle,
+      ...args: unknown[]
+    ) {
+      if (++calls === 2) {
+        failed.push(this);
+        throw failure;
+      }
+      return Reflect.apply(original, this, args);
+    });
+    try {
+      await expect(
+        new DurableFileInstallJournal(directory).read(PLAN_ID),
+      ).rejects.toBe(failure);
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.fd).toBe(-1);
+    } finally {
+      stat.mockRestore();
+      for (const handle of failed) await handle.close();
+    }
+  });
+
+  it.each(["read", "append"] as const)(
+    "preserves corrupt-record and lock-cleanup failures during %s",
+    async (operation) => {
+      const directory = await temporaryDirectory();
+      await writeFile(join(directory, `${PLAN_ID}.jsonl`), "partial", {
+        mode: 0o600,
+      });
+      const probe = await open(directory, "r");
+      const prototype = Object.getPrototypeOf(probe);
+      await probe.close();
+      const original = prototype.sync;
+      const failure = new Error("directory sync failed");
+      let directorySyncs = 0;
+      const sync = vi
+        .spyOn(prototype, "sync")
+        .mockImplementation(async function (this: FileHandle) {
+          if ((await this.stat()).isDirectory() && ++directorySyncs === 2)
+            throw failure;
+          return Reflect.apply(original, this, []);
+        });
+      try {
+        const journal = new DurableFileInstallJournal(directory);
+        await expect(
+          operation === "read"
+            ? journal.read(PLAN_ID)
+            : journal.append(entry(0)),
+        ).rejects.toMatchObject({
+          name: "InstallRecoveryRequiredError",
+          cause: {
+            errors: [
+              { message: expect.stringContaining("partial record") },
+              { cause: failure },
+            ],
+          },
+        });
+      } finally {
+        sync.mockRestore();
+      }
+    },
+  );
+
+  it.each(["read", "append"] as const)(
+    "preserves corrupt-record and file-close failures during %s",
+    async (operation) => {
+      const directory = await temporaryDirectory();
+      const file = join(directory, `${PLAN_ID}.jsonl`);
+      await writeFile(file, "partial", { mode: 0o600 });
+      const identity = await lstat(file);
+      const probe = await open(directory, "r");
+      const prototype = Object.getPrototypeOf(probe);
+      await probe.close();
+      const original = prototype.stat;
+      const failure = new Error("journal close failed");
+      const patched = new WeakSet<FileHandle>();
+      const stat = vi
+        .spyOn(prototype, "stat")
+        .mockImplementation(async function (
+          this: FileHandle,
+          ...args: unknown[]
+        ) {
+          const info = (await Reflect.apply(original, this, args)) as Stats;
+          if (
+            info.dev === identity.dev &&
+            info.ino === identity.ino &&
+            !patched.has(this)
+          ) {
+            patched.add(this);
+            const close = this.close.bind(this);
+            this.close = async () => {
+              await close();
+              throw failure;
+            };
+          }
+          return info;
+        });
+      try {
+        const journal = new DurableFileInstallJournal(directory);
+        await expect(
+          operation === "read"
+            ? journal.read(PLAN_ID)
+            : journal.append(entry(0)),
+        ).rejects.toMatchObject({
+          name: "InstallRecoveryRequiredError",
+          cause: {
+            errors: [
+              { message: expect.stringContaining("partial record") },
+              failure,
+            ],
+          },
+        });
+      } finally {
+        stat.mockRestore();
+      }
+    },
+  );
 });

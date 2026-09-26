@@ -1,17 +1,5 @@
-# Confidential image repro-build context (OS-5)
+# External reproducible-build context
 
-Status: **BLOCKED on a build host.** meta-dstack is **not vendored** here yet and there is no Yocto/bitbake toolchain or TDX build host in this environment, so the multi-hour reproducible image build cannot run locally.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+No Yocto build context is checked in here. A release must supply a pinned
+Yocto/meta-dstack build and byte-backed evidence for two independent builds.
+See the [confidential profile](../README.md).

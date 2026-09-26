@@ -315,6 +315,9 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@elizaos/personality-bench#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
     "@elizaos/lifeops-bench#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/app#build:dist", "^build"]
     },

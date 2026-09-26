@@ -25,6 +25,24 @@ SNAPSHOT_RE = re.compile(
 )
 
 
+def supported_mkosi_version(output: str) -> bool:
+    match = re.fullmatch(r"mkosi ([0-9]+)(?:\.([0-9]+))?(?:\.[0-9]+)?", output.strip())
+    return bool(match and (int(match[1]), int(match[2] or 0)) >= (25, 3))
+
+
+def binfmt_supports_chroot(handler: Path) -> bool:
+    try:
+        status = (handler.parent / "status").read_text().strip()
+        registration = handler.read_text()
+    except OSError:
+        return False
+    return (
+        status == "enabled"
+        and "enabled" in registration.splitlines()
+        and re.search(r"^flags: [A-Z]*F[A-Z]*$", registration, re.MULTILINE) is not None
+    )
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -50,6 +68,20 @@ def configuration_digest(path: Path) -> str:
                     digest.update(chunk)
             digest.update(b"\0")
     return digest.hexdigest()
+
+
+def checksum_binds_image(text: str, filename: str, digest: str) -> bool:
+    """Require one unambiguous sha256sum entry for the emitted artifact."""
+    matches = []
+    for line in text.splitlines():
+        if not line:
+            continue
+        entry = re.fullmatch(r"([0-9a-f]{64}) [ *](.+)", line)
+        if entry is None:
+            return False
+        if entry[2] == filename:
+            matches.append(entry[1])
+    return matches == [digest]
 
 
 def write_evidence(path: Path, document: dict[str, object]) -> None:
@@ -105,6 +137,26 @@ def artifact_inputs(path: Path) -> list[dict[str, object]]:
     ]
 
 
+def validate_control_inputs(source_root: Path, build_mode: str) -> None:
+    manifest = source_root / "linux/control-inputs.list"
+    if manifest.is_symlink() or not manifest.is_file():
+        raise ValueError("control input manifest must be a regular file")
+    entries = manifest.read_text(encoding="utf-8").splitlines()
+    if not entries or len(entries) != len(set(entries)) or any(
+        not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", entry)
+        or any(part in (".", "..") for part in entry.split("/"))
+        for entry in entries
+    ):
+        raise ValueError("control input manifest contains invalid or duplicate paths")
+    paths = [source_root / "linux/control" / entry for entry in entries]
+    linked = [entry for entry, path in zip(entries, paths) if path.is_symlink()]
+    if linked:
+        raise ValueError("control inputs must not be symlinks: " + ", ".join(linked))
+    missing = [entry for entry, path in zip(entries, paths) if not path.is_file()]
+    if missing and (build_mode == "release" or len(missing) != len(entries)):
+        raise ValueError("control inputs are missing: " + ", ".join(missing))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--architecture", choices=sorted(ARCHITECTURES), required=True)
@@ -119,6 +171,10 @@ def main() -> int:
     parser.add_argument("--allow-dirty-development", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     args = parser.parse_args()
+    if args.evidence.exists() or args.evidence.is_symlink():
+        parser.error("evidence path already exists; choose a new output path")
+    if args.output_dir.exists() or args.output_dir.is_symlink():
+        parser.error("output directory already exists; choose a new output path")
 
     document: dict[str, object] = {
         "schema": SCHEMA,
@@ -148,6 +204,10 @@ def main() -> int:
         errors.append(f"canonical mkosi directory is invalid: {args.mkosi_dir}")
     else:
         document["configurationSha256"] = configuration_digest(args.mkosi_dir)
+    try:
+        validate_control_inputs(args.mkosi_dir.resolve().parents[2], args.build_mode)
+    except (OSError, ValueError, IndexError) as error:
+        errors.append(str(error))
     git = shutil.which("git")
     if not git:
         errors.append("git is required to bind build evidence to a source commit")
@@ -185,10 +245,8 @@ def main() -> int:
         document["mkosiVersion"] = (version.stdout or version.stderr).strip()
         if version.returncode != 0:
             errors.append("mkosi --version failed")
-        else:
-            match = re.search(r"\b(\d+)\.(\d+)", str(document["mkosiVersion"]))
-            if not match or tuple(map(int, match.groups())) < (25, 3):
-                errors.append("mkosi version is older than the required 25.3")
+        elif not supported_mkosi_version(str(document["mkosiVersion"])):
+            errors.append("mkosi version is unrecognized or older than the required 25.3")
     for command in ("systemd-repart", "losetup"):
         if not shutil.which(command):
             errors.append(f"required Linux image tool is not on PATH: {command}")
@@ -216,7 +274,11 @@ def main() -> int:
         else:
             manifest_path = artifact_dir / "desktop-artifact-manifest.json"
             try:
+                if manifest_path.is_symlink() or not manifest_path.is_file():
+                    raise ValueError("desktop artifact manifest must be a regular file, not a link")
                 artifact_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if not isinstance(artifact_manifest, dict):
+                    raise ValueError("desktop artifact manifest must be a JSON object")
                 archive_name = artifact_manifest["archive"]
                 signature_name = artifact_manifest["signature"]
                 manifest_signature_name = artifact_manifest["manifestSignature"]
@@ -259,18 +321,18 @@ def main() -> int:
             except (OSError, UnicodeError, json.JSONDecodeError, KeyError, ValueError) as exc:
                 errors.append(f"desktop artifact staging contract failed: {exc}")
     if args.package_cache_dir:
-        package_cache = args.package_cache_dir.resolve()
-        if package_cache.exists() and (
-            not package_cache.is_dir() or package_cache.is_symlink()
+        package_cache = args.package_cache_dir
+        if package_cache.is_symlink() or (
+            package_cache.exists() and not package_cache.is_dir()
         ):
             errors.append("mkosi package cache must be a directory, not a symlink")
-        document["packageCacheDirectory"] = str(package_cache)
+        document["packageCacheDirectory"] = str(package_cache.resolve())
     native = platform.machine().lower()
     target_native = {"amd64": ("x86_64", "amd64"), "arm64": ("aarch64", "arm64"), "riscv64": ("riscv64",)}
     if native not in target_native[args.architecture]:
         handler = Path("/proc/sys/fs/binfmt_misc") / f"qemu-{target_native[args.architecture][0]}"
-        if not handler.is_file() or "enabled" not in handler.read_text(errors="replace"):
-            errors.append(f"enabled binfmt handler is required for cross-architecture build: {handler.name}")
+        if not binfmt_supports_chroot(handler):
+            errors.append(f"enabled binfmt_misc and an enabled handler with the F flag (fixed interpreter) are required for cross-architecture build: {handler.name}")
 
     command = [
         mkosi or "mkosi",
@@ -299,7 +361,7 @@ def main() -> int:
     if errors or args.preflight_only:
         document["success"] = not errors
     else:
-        args.output_dir.mkdir(parents=True, exist_ok=True)
+        args.output_dir.mkdir(parents=True, exist_ok=False)
         log_path = args.output_dir / f"build-{args.architecture}-{args.profile}.log"
         with log_path.open("wb") as log:
             process = subprocess.run(command, cwd=args.mkosi_dir, stdout=log, stderr=subprocess.STDOUT, check=False)
@@ -364,7 +426,7 @@ def main() -> int:
             checksum_text = checksums[0].read_text(
                 encoding="utf-8", errors="replace"
             )
-            if disk_digest not in checksum_text or disk[0].name not in checksum_text:
+            if not checksum_binds_image(checksum_text, disk[0].name, disk_digest):
                 errors.append("mkosi checksum output does not bind the emitted disk bytes")
         recorded = [log_path, *disk, *manifests, *checksums]
         document["artifacts"] = [

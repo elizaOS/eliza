@@ -32,7 +32,7 @@ class PhoneStatusReader(private val context: Context) {
         val dialer = telecom?.defaultDialerPackage
         return PhoneStatus(
             hasTelecom = telecom != null,
-            canPlaceCalls = context.checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+            canPlaceCalls = telecom != null && context.checkSelfPermission(Manifest.permission.CALL_PHONE) ==
                 PackageManager.PERMISSION_GRANTED,
             defaultDialerPackage = dialer,
             isDefaultDialer = dialer == context.packageName,

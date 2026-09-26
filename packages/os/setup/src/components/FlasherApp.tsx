@@ -528,7 +528,6 @@ function BootloaderGuideScreen({
   const [step, setStep] = useState(0);
   const [actionRunning, setActionRunning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [waitingConfirm, setWaitingConfirm] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
 
   const currentStep = UNLOCK_STEPS[step];
@@ -543,7 +542,7 @@ function BootloaderGuideScreen({
     try {
       await onUnlockAction(action);
       if (action === "unlock-bootloader") {
-        setWaitingConfirm(true);
+        setUnlocked(true);
       } else {
         setStep((s) => s + 1);
       }
@@ -554,16 +553,18 @@ function BootloaderGuideScreen({
     }
   }
 
-  function handleUnlockConfirmed() {
-    setUnlocked(true);
-    setTimeout(onUnlocked, 2000);
-  }
-
   if (unlocked) {
     return (
       <div className="screen">
         <div className="unlocked-banner">
-          <p>✅ Bootloader unlocked! Your phone will reboot.</p>
+          <p>Bootloader unlock verified.</p>
+          <p>
+            Start stock Android on your phone, complete its setup, and enable
+            USB debugging again. Reconnect the phone before continuing.
+          </p>
+          <button type="button" className="btn-primary" onClick={onUnlocked}>
+            Check reconnected phone
+          </button>
         </div>
       </div>
     );
@@ -586,7 +587,6 @@ function BootloaderGuideScreen({
         </p>
         <ul>
           <li>ERASE ALL DATA on your phone</li>
-          <li>Void your warranty</li>
           <li>Allow custom OS installation</li>
         </ul>
       </div>
@@ -615,7 +615,7 @@ function BootloaderGuideScreen({
 
         {actionError && <p className="error">{actionError}</p>}
 
-        {waitingConfirm && currentStep.action === "unlock-bootloader" ? (
+        {actionRunning && currentStep.action === "unlock-bootloader" ? (
           <div className="waiting-confirm">
             <p className="muted">
               <Spinner /> Waiting for you to confirm on device...
@@ -624,13 +624,6 @@ function BootloaderGuideScreen({
               Use VOLUME KEYS to highlight "UNLOCK THE BOOTLOADER" then press
               POWER.
             </p>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleUnlockConfirmed}
-            >
-              ✅ I confirmed on device — bootloader is unlocked
-            </button>
           </div>
         ) : currentStep.action ? (
           <button
@@ -1139,7 +1132,7 @@ export function FlasherApp({ backend, embedded = false }: FlasherAppProps) {
           <BootloaderGuideScreen
             device={selectedDevice}
             onUnlockAction={handleUnlockAction}
-            onUnlocked={() => setScreen("confirming")}
+            onUnlocked={handleReset}
             onBack={() => setScreen("specs-check")}
           />
         )}

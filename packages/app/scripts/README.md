@@ -15,3 +15,7 @@ Test from the repository root:
 ```bash
 bun run --cwd packages/app test
 ```
+
+Hosted Android E2E requires SELinux enforcing and never roots the device or relaxes
+its policy. The runner requires the renderer stamp to match the full current Git
+revision, rebuilding cached output from older revisions before testing.

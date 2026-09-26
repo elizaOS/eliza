@@ -421,6 +421,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.source-sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.15.0"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: elizaos-release-bundle
+          path: _expected-release
       - name: Require the exact staged draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -439,17 +449,37 @@ jobs:
             echo "::error::staged release tag resolves to ${tag_sha}, expected ${SOURCE_SHA}"
             exit 1
           fi
-          asset_count="$(jq '.assets | length' <<<"$release")"
+          release_id="$(jq -er '.id | select(type == "number" and . > 0)' <<<"$release")"
+          snapshot_assets() {
+            gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?per_page=100" |
+              jq -Sc 'add | map({id, node_id, name, size, state, digest, created_at, updated_at}) | sort_by(.id)'
+          }
+          assets_before="$(snapshot_assets)"
+          asset_count="$(jq 'length' <<<"$assets_before")"
           if [ "$asset_count" != "$EXPECTED_ASSET_COUNT" ]; then
             echo "::error::staged release has ${asset_count} assets, expected ${EXPECTED_ASSET_COUNT}"
             exit 1
           fi
 
+          gh release download --repo "$GITHUB_REPOSITORY" --dir _staged-release -- "$RELEASE_TAG"
+          node packages/os/scripts/release-asset-inventory.ts compare-bundles \
+            --expected _expected-release --observed _staged-release
+          assets_after="$(snapshot_assets)"
+          if [ "$assets_before" != "$assets_after" ]; then
+            echo "::error::release asset identities changed during byte verification"
+            exit 1
+          fi
+          release_after="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          jq -e --argjson expected "$release_id" --arg tag "$RELEASE_TAG" \
+            '.id == $expected and .tag_name == $tag and .draft == true and (.immutable // false) == false' \
+            <<<"$release_after" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')" = "$SOURCE_SHA"
+
       - name: Publish only after signed APT deployment succeeds
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-        run: gh release edit "$RELEASE_TAG" --draft=false
+        run: gh release edit --repo "$GITHUB_REPOSITORY" --draft=false -- "$RELEASE_TAG"
 
   summary:
     name: Release gate summary

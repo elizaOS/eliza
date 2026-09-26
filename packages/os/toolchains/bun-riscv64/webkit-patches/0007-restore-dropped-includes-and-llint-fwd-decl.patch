@@ -1,7 +1,7 @@
-Subject: [PATCH] riscv64 legacy Zig Bun: restore includes/forward-decl dropped by WebKit reorg
+Subject: [PATCH] riscv64 bun-v1.3.14: restore includes/forward-decl dropped by WebKit reorg
 
 Building oven-sh/WebKit @ 5488984 (the WEBKIT_VERSION pinned by
-oven-sh/bun@legacy Zig Bun) as JSCOnly+C_LOOP for riscv64 fails to compile
+oven-sh/bun@bun-v1.3.14) as JSCOnly+C_LOOP for riscv64 fails to compile
 because a JSCJSValue.h refactor in this commit dropped transitive
 declarations several translation units relied on:
 

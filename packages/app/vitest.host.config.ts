@@ -63,6 +63,14 @@ export default defineConfig({
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
+      // Executed by test:script-suites with Node's test runner.
+      "scripts/remote-browser-host-entry.test.mjs",
+      "scripts/lib/assert-android-elf.test.mjs",
+      "scripts/lib/desktop-preflight.test.mjs",
+      "scripts/lib/desktop-renderer-build.test.mjs",
+      "scripts/lib/linux-cef-helper.test.mjs",
+      "scripts/lib/local-voice-startup.test.ts",
+      "scripts/copy-runtime-node-modules.test.ts",
       "scripts/android-native-sms.test.ts",
       "scripts/android-native-plugins.test.ts",
       "scripts/native-plugin-build.test.ts",

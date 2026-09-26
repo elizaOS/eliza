@@ -6,7 +6,7 @@
 #   - Icon theme: register /usr/share/icons/hicolor/<size>/apps/elizaos.png.
 #
 # PNG assets are generated outside the chroot by
-# scripts/generate-elizaos-brand-assets.sh and staged in
+# scripts/linux/generate-elizaos-brand-assets.sh and staged in
 # config/includes.chroot/usr/share/{plymouth,backgrounds,icons}/ at
 # build time. This hook only wires them as defaults.
 set -eu

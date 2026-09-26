@@ -4,10 +4,33 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export function withDeviceInstallLock(
-  serial,
-  metadata,
-  action,
+export function syncDirectory(directory: string) {
+  const fd = fs.openSync(
+    directory,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** Include new ancestor directory entries, not just the leaf's contents. */
+export function syncDirectoryTree(directory: string) {
+  let current = path.resolve(directory);
+  while (true) {
+    syncDirectory(current);
+    const parent = path.dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+
+export function withDeviceInstallLock<T>(
+  serial: string,
+  metadata: Record<string, unknown>,
+  action: (lock: { beforeWrites(): void }) => T,
   directory = path.join(
     os.homedir(),
     ".local/state/elizaos/android-install-locks",
@@ -20,7 +43,7 @@ export function withDeviceInstallLock(
   if (
     !owner.isDirectory() ||
     owner.isSymbolicLink() ||
-    owner.uid !== process.getuid() ||
+    owner.uid !== process.getuid?.() ||
     (owner.mode & 0o077) !== 0
   )
     throw new Error(
@@ -30,7 +53,7 @@ export function withDeviceInstallLock(
     directory,
     `${createHash("sha256").update(serial).digest("hex")}.jsonl`,
   );
-  let fd;
+  let fd: number;
   try {
     fd = fs.openSync(
       lock,
@@ -41,37 +64,24 @@ export function withDeviceInstallLock(
       0o600,
     );
   } catch (error) {
-    if (error.code === "EEXIST")
+    if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(
         `device installation locked: ${lock}; inspect the owner, journal and device before manual removal; never retry or remove a live installer's lock`,
       );
     throw error;
   }
   const identity = fs.fstatSync(fd);
-  const syncDirectory = () => {
-    const parent = fs.openSync(
-      directory,
-      fs.constants.O_RDONLY |
-        fs.constants.O_DIRECTORY |
-        fs.constants.O_NOFOLLOW,
-    );
-    try {
-      fs.fsyncSync(parent);
-    } finally {
-      fs.closeSync(parent);
-    }
-  };
   const removeOwnedLock = () => {
     const current = fs.lstatSync(lock);
     if (current.dev !== identity.dev || current.ino !== identity.ino)
       throw new Error("installation lock identity changed; refusing removal");
     fs.unlinkSync(lock);
-    syncDirectory();
+    syncDirectory(directory);
   };
   let writesStarted = false;
   let completed = false;
-  const record = (phase) => {
-    fs.writeSync(
+  const record = (phase: string) => {
+    fs.writeFileSync(
       fd,
       `${JSON.stringify({ ...metadata, serial, pid: process.pid, phase, time: new Date().toISOString() })}\n`,
     );
@@ -79,7 +89,7 @@ export function withDeviceInstallLock(
   };
   try {
     record("preflight");
-    syncDirectory();
+    syncDirectoryTree(directory);
     const result = action({
       beforeWrites() {
         writesStarted = true;

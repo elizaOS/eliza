@@ -170,14 +170,32 @@ function sanitizeSpeechPunctuation(input: string): string {
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	text = text.replace(/\s{0,32}([,;:，；：])\s{0,32}/g, "$1 ");
 	text = text.replace(/\s{0,32}([.!?。！？])\s{0,32}/g, "$1 ");
-	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：-]/gu, " ");
+	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
+	// later language-aware stage can read "№4" instead of a stripped "4".
+	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");
 	return text;
 }
 
+/**
+ * NFKC folds the numero sign (`№`, U+2116) to Latin `No`, erasing a
+ * speech-semantic distinction before the TTS/language layer can interpret it.
+ * Keep each `№<number>` token verbatim and normalize only the surrounding text,
+ * so downstream voice handling still sees the original sign while literal Latin
+ * text such as a user-typed `No4` is left alone.
+ */
+const NUMERO_TOKEN_PATTERN = /(\u2116\s*\p{N}+)/u;
+
+function normalizeCompatibilityPreservingNumero(input: string): string {
+	return input
+		.split(NUMERO_TOKEN_PATTERN)
+		.map((part, index) => (index % 2 === 1 ? part : part.normalize("NFKC")))
+		.join("");
+}
+
 export function sanitizeSpeechText(input: string): string {
-	const normalized = input.normalize("NFKC");
+	const normalized = normalizeCompatibilityPreservingNumero(input);
 	const stripped = stripThinkingAndMarkup(normalized);
 	const withoutDirections = stripNonSpeechDirections(stripped);
 	return collapseWhitespace(sanitizeSpeechPunctuation(withoutDirections));

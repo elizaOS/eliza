@@ -1,7 +1,8 @@
 /**
- * WEB_SEARCH — keyless inline general web search.
+ * WEB_SEARCH — owner-selected browser search with keyless provider fallback.
  *
- * Queries the keyless Parallel.ai search MCP — the same
+ * Searches in the agent’s selected Chromium profile when available. Otherwise
+ * queries the keyless Parallel.ai search MCP — the same
  * backends the bundled opencode `websearch` tool uses — but INLINE this turn,
  * with no coding sub-agent spawn. Gives every runtime a fast, general web
  * search ("find me X", "latest on Y", "best Z", "who/what/where is …") that
@@ -29,7 +30,7 @@ import type {
   State,
 } from "@elizaos/core";
 
-import { searchKeylessWeb } from "@elizaos/plugin-web-search";
+import { searchBrowserFirstWeb } from "@elizaos/plugin-web-search/browser-web-search";
 
 function readBooleanEnv(name: string): boolean | undefined {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -112,7 +113,7 @@ export const webSearch: Action & Record<string, unknown> = {
   validate: async (): Promise<boolean> => isWebSearchEnabled(),
 
   handler: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
     options?: { [key: string]: unknown },
@@ -127,7 +128,7 @@ export const webSearch: Action & Record<string, unknown> = {
     }
 
     try {
-      const result = await searchKeylessWeb(query);
+      const result = await searchBrowserFirstWeb(runtime, query);
       if (!result) {
         const text = `No web search results for "${query}".`;
         callback?.({ text });

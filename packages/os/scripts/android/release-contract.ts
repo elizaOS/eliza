@@ -4,7 +4,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertSafeFlashMetadata } from "../aosp/build-grizzly-bundle.ts";
+import { assertSafeFlashMetadata } from "./flash-metadata.ts";
 import { verifyRevocations } from "./revocations.ts";
 
 export const root = path.resolve(

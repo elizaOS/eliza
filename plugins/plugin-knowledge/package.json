@@ -12,8 +12,8 @@
     },
     "./package.json": "./package.json",
     "./register": {
-      "types": "./dist/register.d.ts",
       "eliza-source": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     }
@@ -73,7 +73,6 @@
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "typescript": "^6.0.3"
   }
 }

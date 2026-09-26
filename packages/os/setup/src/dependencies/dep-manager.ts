@@ -4,7 +4,9 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import sideloaderChecksums from "../../vendor/checksums.json";
+import { installPinnedPlatformTools } from "../../vendor/platform-tools-installer.mjs";
 import { installPinnedSideloader } from "../../vendor/sideloader-installer.mjs";
+import { findHostTool } from "./host-tools";
 import type {
   Dependency,
   DependencyCheckResult,
@@ -149,25 +151,6 @@ function runCommand(
   }
 }
 
-function whichBinary(name: string): string | undefined {
-  // Check vendor bin first
-  const vendorPath = join(VENDOR_BIN_DIR, name);
-  if (existsSync(vendorPath)) {
-    return vendorPath;
-  }
-
-  // Fall back to PATH
-  const result =
-    process.platform === "win32"
-      ? runCommand("where", [name])
-      : runCommand("which", [name]);
-  if (result.success && result.stdout.length > 0) {
-    return result.stdout.split("\n")[0]?.trim();
-  }
-
-  return undefined;
-}
-
 function getVersion(binary: string, foundPath: string): string | undefined {
   const versionFlags: Record<string, string> = {
     adb: "--version",
@@ -188,7 +171,7 @@ function getVersion(binary: string, foundPath: string): string | undefined {
 
 function checkDependency(
   id: DependencyId,
-  which: (name: string) => string | undefined = whichBinary,
+  which: (name: string) => string | undefined = findHostTool,
 ): DependencyCheckResult {
   const def = DEPENDENCY_DEFINITIONS[id];
   // For deps with multiple commands, require all of them
@@ -385,36 +368,15 @@ async function isWingetAvailable(): Promise<boolean> {
 /**
  * Direct download fallback for Android platform-tools when winget is missing.
  * Pulls the official Google zip and extracts adb/fastboot into the vendor bin
- * directory (which is searched before PATH by `whichBinary`).
+ * directory (which is searched before PATH by `findHostTool`).
  */
 async function downloadPlatformTools(): Promise<boolean> {
-  const url =
-    "https://dl.google.com/android/repository/platform-tools-latest-windows.zip";
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    const buf = new Uint8Array(await res.arrayBuffer());
-    const { mkdir, writeFile, rm } = await import("node:fs/promises");
-    await mkdir(VENDOR_BIN_DIR, { recursive: true });
-    const zipPath = join(VENDOR_BIN_DIR, "platform-tools.zip");
-    await writeFile(zipPath, buf);
-    const psSafe = (s: string): string => `'${s.replace(/'/g, "''")}'`;
-    const proc = Bun.spawn(
-      [
-        "powershell.exe",
-        "-NonInteractive",
-        "-NoProfile",
-        "-Command",
-        `$ErrorActionPreference = "Stop"; Expand-Archive -Force -Path ${psSafe(zipPath)} -DestinationPath ${psSafe(VENDOR_BIN_DIR)}`,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const code = await proc.exited;
-    await rm(zipPath, { force: true }).catch(() => undefined);
-    return code === 0;
-  } catch {
-    return false;
-  }
+  await installPinnedPlatformTools({
+    vendorRoot: VENDOR_BIN_DIR,
+    platform: process.platform,
+    config: sideloaderChecksums["platform-tools"],
+  });
+  return true;
 }
 
 async function downloadSideloader(): Promise<boolean> {
@@ -452,7 +414,7 @@ export interface DependencyManagerProbes {
 }
 
 const DEFAULT_PROBES: DependencyManagerProbes = {
-  whichBinary,
+  whichBinary: findHostTool,
   runInstallCommand,
   isWingetAvailable,
   downloadPlatformTools,
@@ -510,7 +472,7 @@ export class DependencyManager {
           }
           // Always try the direct download as a fallback (or as the primary
           // path when winget is unavailable). The vendor bin dir is searched
-          // before PATH by whichBinary, so this puts adb/fastboot where the
+          // before PATH by findHostTool, so this puts adb/fastboot where the
           // dependency check expects them.
           if (!installed) {
             installed = await this.probes.downloadPlatformTools();

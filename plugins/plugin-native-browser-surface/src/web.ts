@@ -30,6 +30,14 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async openBrowser(_options: { url: string }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    engine: "chromium";
+    surface: "custom-tab";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
   async createSurface(_options: CreateSurfaceOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }

@@ -1,16 +1,5 @@
 #!/usr/bin/env node
-// Supports OS release manifests, checksums, and TEE evidence automation.
-import { pathToFileURL } from "node:url";
-// OS-side runtime-evidence exposure bridge (plan OS-2, contract "Runtime
-// Evidence Bridge"). Transforms a platform quote into the normalized TeeEvidence
-// document consumed by packages/agent/src/services/dstack-tee-provider.ts and
-// exposes it via ELIZA_TEE_EVIDENCE_PATH / ELIZA_TEE_EVIDENCE_URL.
-//
-// Real hardware quote collection (tappd get_quote on a TDX host, CoVE evidence
-// on E1) is BLOCKED. With --quote-source mock the bridge emits a checked-in mock
-// fixture so the agent provider can be exercised locally; it always asserts the
-// runtime measurements equal the signed golden tee-measurements.json before
-// emitting, so the mock cannot mask a measurement mismatch.
+/** Binds explicitly supplied mock evidence to expected measurements for local integration tests. */
 import {
   optionalTeeMeasurementNames,
   parseArgs,
@@ -104,7 +93,7 @@ export function buildBoundEvidence(evidence, golden) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const quoteSource =
-    typeof args["quote-source"] === "string" ? args["quote-source"] : "mock";
+    typeof args["quote-source"] === "string" ? args["quote-source"] : undefined;
 
   if (quoteSource !== "mock") {
     // Fail closed: real quote collection needs hardware.
@@ -118,18 +107,16 @@ async function main() {
     process.exit(2);
   }
 
-  const goldenPath =
-    typeof args.golden === "string"
-      ? args.golden
-      : "release/confidential-2026-05-21/manifest.json";
-  const evidencePath =
-    typeof args.evidence === "string"
-      ? args.evidence
-      : "release/schema/tee-evidence.mock.json";
-  const output =
-    typeof args.output === "string"
-      ? args.output
-      : "/run/elizaos/tee/evidence.json";
+  for (const name of ["golden", "evidence", "output"]) {
+    if (typeof args[name] !== "string" || args[name].trim() === "") {
+      throw new Error(
+        `Mock evidence requires explicit --${name}; no runtime destination or fixture is selected implicitly.`,
+      );
+    }
+  }
+  const goldenPath = args.golden;
+  const evidencePath = args.evidence;
+  const output = args.output;
 
   const golden = goldenMeasurementsOf(await readJson(goldenPath));
   const evidence = await readJson(evidencePath);
@@ -138,6 +125,6 @@ async function main() {
   console.log(`TEE evidence (mock) written and bound to golden: ${output}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

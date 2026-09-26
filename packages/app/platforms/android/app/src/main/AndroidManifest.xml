@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries>
+        <package android:name="${elizaChromiumPackageName}" />
+        <package android:name="com.x8bit.bitwarden" />
+        <package android:name="com.onepassword.android" />
         <package android:name="com.google.android.apps.healthdata" />
         <!-- Android 11+ package visibility: expose the system speech
              RecognitionService so native voice capture (TalkMode SpeechRecognizer)
@@ -31,6 +34,18 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        <service
+            android:name=".BrowserNativeMessagingService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="org.chromium.chrome.browser.extensions.messaging.action.NATIVE_MESSAGING" />
+            </intent-filter>
+        </service>
+        <activity
+            android:name=".PasswordsActivity"
+            android:exported="false"
+            android:label="Passwords &amp; passkeys"
+            android:theme="@style/AppTheme.NoActionBar" />
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
@@ -378,6 +393,11 @@
             android:label="Contacts"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_CONTACTS" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="vnd.android.cursor.dir/contact" />
@@ -397,6 +417,10 @@
             android:label="Camera"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
@@ -415,6 +439,10 @@
             android:exported="true"
             android:label="Clock"
             android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SET_ALARM" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -442,6 +470,11 @@
             android:exported="true"
             android:label="Calendar"
             android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_CALENDAR" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -1,0 +1,39 @@
+{
+  "name": "@elizaos/remote-control-host",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "description": "Owner-scoped encrypted remote browser controller composition for agent hosts.",
+  "license": "MIT",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun --conditions=eliza-source test test",
+    "lint:check": "bunx @biomejs/biome check src test"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^6.0.3",
+    "bun-types": "1.4.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

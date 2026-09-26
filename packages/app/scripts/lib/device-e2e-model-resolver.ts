@@ -4,6 +4,8 @@
  * call so the real API pipeline cannot fail after accepting a device message.
  */
 
+import type { GenerateTextResult } from "@elizaos/core";
+
 type DeviceE2eModelCall = {
   modelType: string;
   latestUserText?: string | null;
@@ -23,7 +25,20 @@ const CONVERSATION_TITLE_PROMPT =
 export function resolveDeviceE2eModelCall(
   call: DeviceE2eModelCall,
   { workflowJourney = false }: DeviceE2eModelResolverOptions = {},
-): { message: string } | string | null {
+): GenerateTextResult | { message: string } | string | null {
+  if (call.modelType === "ACTION_PLANNER") {
+    return {
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [
+        {
+          id: "device-e2e-reply",
+          name: "REPLY",
+          arguments: { text: STREAM_E2E_REPLY },
+        },
+      ],
+    };
+  }
   if (workflowJourney && call.modelType === "TEXT_LARGE") {
     return { message: "Digest ready" };
   }

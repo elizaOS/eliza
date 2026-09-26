@@ -10,6 +10,8 @@ export const mockDrive = {
   platform: "linux",
   safety: "safe-removable",
   description: "Playwright mock removable drive",
+  stableId: "linux:fake-usb",
+  kernelDeviceIdentity: "8:240:41:512",
 };
 
 export const mockImage = {

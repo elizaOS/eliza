@@ -1007,9 +1007,9 @@ jobs:
           # Pinned off `canary`: canary's link phase hangs on the self-hosted
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.4.2 does not exhibit the hang and avoids the floating-tag API
-          # lookup during setup. See elizaOS/eliza#10839.
+          # 28552075615 and 28569068598 (the money-integrity wave). Use the
+          # repository-pinned release to avoid floating-tag API lookups.
+          # See elizaOS/eliza#10839 for the historical incident.
           bun-version: "1.4.2"
 
       - name: Install API dependencies
@@ -2711,9 +2711,9 @@ jobs:
           # Pinned off `canary`: canary's link phase hangs on the self-hosted
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.4.2 does not exhibit the hang and avoids the floating-tag API
-          # lookup during setup. See elizaOS/eliza#10839.
+          # 28552075615 and 28569068598 (the money-integrity wave). Use the
+          # repository-pinned release to avoid floating-tag API lookups.
+          # See elizaOS/eliza#10839 for the historical incident.
           bun-version: "1.4.2"
 
       - name: Resolve immutable app artifact

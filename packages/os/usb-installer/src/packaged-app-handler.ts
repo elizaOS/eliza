@@ -10,7 +10,10 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
 function packagedAssetPath(root: string, pathname: string): string | null {
@@ -83,10 +86,8 @@ export function createPackagedAppHandler(
     ) as ArrayBuffer;
     return new Response(request.method === "HEAD" ? null : responseBody, {
       headers: {
-        "Cache-Control":
-          url.pathname === "/"
-            ? "no-store"
-            : "public, max-age=31536000, immutable",
+        // App upgrades reuse the loopback origin and unversioned public paths.
+        "Cache-Control": "no-store",
         "Content-Type":
           CONTENT_TYPES[extname(path).toLowerCase()] ??
           "application/octet-stream",

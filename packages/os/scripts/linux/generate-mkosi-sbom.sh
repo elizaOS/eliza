@@ -21,11 +21,15 @@ if [ ! -f "$image" ] || [ -L "$image" ] || [ ! -s "$image" ]; then
     echo "expanded mkosi image must be a nonempty regular file, not a symlink" >&2
     exit 1
 fi
-if [ ! -x "$syft_bin" ] || [ -L "$syft_bin" ]; then
+if [ ! -f "$syft_bin" ] || [ ! -x "$syft_bin" ] || [ -L "$syft_bin" ]; then
     echo "Syft must be an executable regular file, not a symlink" >&2
     exit 1
 fi
-for command in losetup lsblk mount umount udevadm; do
+if [ -e "$output" ] || [ -L "$output" ]; then
+    echo "SBOM output already exists: $output" >&2
+    exit 1
+fi
+for command in losetup lsblk mount umount udevadm node; do
     command -v "$command" >/dev/null || {
         echo "required image inspection command is missing: $command" >&2
         exit 1
@@ -35,6 +39,7 @@ done
 mount_dir="$(mktemp -d -t elizaos-sbom.XXXXXXXX)"
 loop_device=""
 mounted=0
+staging_dir=""
 cleanup() {
     status=$?
     if [ "$mounted" -eq 1 ]; then
@@ -43,6 +48,9 @@ cleanup() {
     if [ -n "$loop_device" ]; then
         losetup --detach "$loop_device" || status=1
     fi
+    if [ -n "$staging_dir" ]; then
+        rm -rf -- "$staging_dir" || status=1
+    fi
     rmdir "$mount_dir" || status=1
     exit "$status"
 }
@@ -50,9 +58,9 @@ trap cleanup EXIT
 
 loop_device="$(losetup --find --show --read-only --partscan -- "$image")"
 udevadm settle
+partition_listing="$(lsblk --paths --noheadings --raw --output PATH,PARTLABEL "$loop_device")"
 mapfile -t root_partitions < <(
-    lsblk --paths --noheadings --raw --output PATH,PARTLABEL "$loop_device" |
-        awk '$2 == "elizaos-system" { print $1 }'
+    awk '$2 == "elizaos-system" { print $1 }' <<< "$partition_listing"
 )
 if [ "${#root_partitions[@]}" -ne 1 ]; then
     echo "expected exactly one elizaos-system partition; found ${#root_partitions[@]}" >&2
@@ -67,11 +75,21 @@ fi
 mount --read-only --options noload -- "$root_partition" "$mount_dir"
 mounted=1
 mkdir -p "$(dirname "$output")"
-"$syft_bin" "dir:${mount_dir}" --output "spdx-json=${output}"
+staging_dir="$(mktemp -d -- "$(dirname "$output")/.elizaos-sbom.XXXXXXXX")"
+"$syft_bin" "dir:${mount_dir}" --output "spdx-json=${staging_dir}/sbom.json"
 
-node - "$output" <<'NODE'
+# Release inspection resources before publishing a successful artifact.
+umount "$mount_dir"
+mounted=0
+losetup --detach "$loop_device"
+loop_device=""
+
+node - "$staging_dir/sbom.json" "$output" <<'NODE'
 const fs = require("node:fs");
 const path = process.argv[2];
+if (!fs.lstatSync(path).isFile()) {
+  throw new Error("Syft output is not a regular file");
+}
 const document = JSON.parse(fs.readFileSync(path, "utf8"));
 if (document.spdxVersion !== "SPDX-2.3") {
   throw new Error("Syft output is not SPDX 2.3 JSON");
@@ -79,4 +97,6 @@ if (document.spdxVersion !== "SPDX-2.3") {
 if (!Array.isArray(document.packages) || document.packages.length === 0) {
   throw new Error("SPDX document contains no installed packages");
 }
+// Same-filesystem hard linking publishes atomically and refuses existing paths.
+fs.linkSync(path, process.argv[3]);
 NODE

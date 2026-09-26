@@ -1,11 +1,13 @@
 /** Exercises staged Android database payloads through their real runtime consumers. */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { stageAndroidPgliteAssets } from "./lib/stage-android-agent.ts";
 
 test("staged trigram archive loads and executes the SQL extension", async () => {
@@ -32,17 +34,47 @@ test("staged trigram archive loads and executes the SQL extension", async () => 
       path.join(path.dirname(pgliteEntry), "pg_trgm.tar.gz"),
       path.join(source, "pg_trgm.tar.gz"),
     );
-    stageAndroidPgliteAssets({
+    // Exercise migration from a prior stage's compressed asset as well.
+    await fs.copyFile(
+      path.join(source, "pg_trgm.tar.gz"),
+      path.join(staged, "pg_trgm.tar.gz"),
+    );
+    const resultStage = stageAndroidPgliteAssets({
       distMobileDir: source,
       assetsAgentDir: staged,
       androidMainDir: main,
     });
+    const tar = await fs.readFile(path.join(staged, "pg_trgm.tar"));
+    assert.deepEqual(
+      tar,
+      gunzipSync(await fs.readFile(path.join(source, "pg_trgm.tar.gz"))),
+    );
+    await assert.rejects(fs.stat(path.join(staged, "pg_trgm.tar.gz")), {
+      code: "ENOENT",
+    });
+    assert.equal(resultStage.stagedFiles[0].path, "assets/agent/pg_trgm.tar");
+    assert.equal(resultStage.stagedFiles[0].size_bytes, tar.length);
+    assert.equal(
+      resultStage.stagedFiles[0].sha256,
+      createHash("sha256").update(tar).digest("hex"),
+    );
+    assert.equal(
+      stageAndroidPgliteAssets({
+        distMobileDir: source,
+        assetsAgentDir: staged,
+        androidMainDir: main,
+      }).stagedCount,
+      0,
+    );
+    // Match ElizaAgentService: gzip the packaged tar into the runtime directory.
+    const extracted = path.join(root, "pg_trgm.tar.gz");
+    await fs.writeFile(extracted, gzipSync(tar));
     db = new PGlite({
       extensions: {
         pg_trgm: {
           name: "pg_trgm",
           setup: async () => ({
-            bundlePath: pathToFileURL(path.join(staged, "pg_trgm.tar.gz")),
+            bundlePath: pathToFileURL(extracted),
           }),
         },
       },

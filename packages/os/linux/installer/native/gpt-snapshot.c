@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
@@ -211,6 +212,101 @@ int elizaos_install_verify_gpt_snapshot(const unsigned char *data, size_t length
   if (CRYPTO_memcmp(actual, digest, 32U) != 0) return -EBADMSG;
   return verify_content(data, length, binding);
 }
+int elizaos_install_gpt_partition_extent(const unsigned char *artifact, size_t length,
+    const unsigned char binding[32], const unsigned char digest[32], uint32_t index,
+    uint64_t *start_bytes, uint64_t *size_bytes) {
+  if (!start_bytes || !size_bytes) return -EINVAL;
+  *start_bytes = 0; *size_bytes = 0;
+  int rc = elizaos_install_verify_gpt_snapshot(artifact, length, binding, digest);
+  if (rc) return rc;
+  const uint32_t sector = le32(artifact + 16);
+  const unsigned char *header = artifact + ENVELOPE + sector;
+  const uint32_t count = le32(header + 80), stride = le32(header + 84);
+  if (!index || index > count) return -EINVAL;
+  const unsigned char *entry = header + sector + (size_t)(index - 1U) * stride;
+  if (zeroes(entry, 16U)) return -ENOENT;
+  *start_bytes = le64(entry + 32) * sector;
+  *size_bytes = (le64(entry + 40) - le64(entry + 32) + 1U) * sector;
+  return 0;
+}
+
+static int random_gpt_guid(unsigned char guid[16]) {
+  size_t used = 0;
+  while (used < 16U) {
+    ssize_t amount = getrandom(guid + used, 16U - used, 0);
+    if (amount < 0 && errno == EINTR) continue;
+    if (amount <= 0) return amount < 0 ? -errno : -EIO;
+    used += (size_t)amount;
+  }
+  /* GPT stores the first three UUID fields little-endian. */
+  guid[7] = (unsigned char)((guid[7] & 0x0fU) | 0x40U);
+  guid[8] = (unsigned char)((guid[8] & 0x3fU) | 0x80U);
+  return 0;
+}
+int elizaos_install_prepare_gpt_edit(unsigned char *artifact, size_t length,
+    const unsigned char binding[32], const unsigned char before_digest[32],
+    const struct elizaos_gpt_edit *edit, unsigned char after_digest[32],
+    uint32_t *partition_index) {
+  if (!artifact || !binding || !before_digest || !edit || !after_digest || !partition_index)
+    return -EINVAL;
+  *partition_index = 0;
+  int rc = elizaos_install_verify_gpt_snapshot(artifact, length, binding, before_digest);
+  if (rc) return rc;
+  const struct elizaos_gpt_edit change = *edit;
+  const uint32_t sector = le32(artifact + 16), span = le32(artifact + 20);
+  unsigned char *primary = artifact + ENVELOPE + sector;
+  unsigned char *entries = primary + sector, *secondary_entries = entries + span;
+  unsigned char *secondary = secondary_entries + span;
+  const uint32_t count = le32(primary + 80), stride = le32(primary + 84);
+  uint32_t selected = count;
+  if (change.kind == ELIZAOS_GPT_ERASE) {
+    if (change.role || change.start_bytes || change.end_bytes) return -EINVAL;
+  } else if (change.kind == ELIZAOS_GPT_CREATE) {
+    if (change.role < ELIZAOS_GPT_ESP || change.role > ELIZAOS_GPT_STATE ||
+        change.start_bytes % UINT64_C(1048576) || change.end_bytes % UINT64_C(1048576) ||
+        change.start_bytes >= change.end_bytes || change.end_bytes > le64(artifact + 24)) return -EINVAL;
+    const uint64_t start = change.start_bytes / sector, end = change.end_bytes / sector - 1U;
+    if (start < le64(primary + 40) || end > le64(primary + 48)) return -ERANGE;
+    for (uint32_t i = 0; i < count; ++i) {
+      const unsigned char *entry = entries + (size_t)i * stride;
+      if (zeroes(entry, 16U)) { if (selected == count) selected = i; continue; }
+      if (start <= le64(entry + 40) && le64(entry + 32) <= end) return -EEXIST;
+    }
+    if (selected == count) return -ENOSPC;
+  } else return -ENOTSUP;
+  unsigned char guid[16];
+  if ((rc = random_gpt_guid(guid))) return rc;
+  if (change.kind == ELIZAOS_GPT_ERASE) {
+    memset(artifact + ENVELOPE, 0, 440U);
+    memset(entries, 0, span);
+    memcpy(primary + 56, guid, 16U);
+    memcpy(secondary + 56, guid, 16U);
+  } else {
+    /* GPT type GUIDs in on-disk byte order; home matches systemd-repart. */
+    static const unsigned char esp[16] = {0x28,0x73,0x2a,0xc1,0x1f,0xf8,0xd2,0x11,0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b};
+    static const unsigned char linux_data[16] = {0xaf,0x3d,0xc6,0x0f,0x83,0x84,0x72,0x47,0x8e,0x79,0x3d,0x69,0xd8,0x47,0x7d,0xe4};
+    static const unsigned char home[16] = {0xe1,0xc7,0x3a,0x93,0xb4,0x2e,0x13,0x4f,0xb8,0x44,0x0e,0x14,0xe2,0xae,0xf9,0x15};
+    static const char *const names[] = {"", "elizaos-esp", "elizaos-recovery", "elizaos-system", "elizaos-home"};
+    unsigned char *entry = entries + (size_t)selected * stride;
+    memset(entry, 0, stride);
+    memcpy(entry, change.role == ELIZAOS_GPT_ESP ? esp :
+                  change.role == ELIZAOS_GPT_STATE ? home : linux_data, 16U);
+    memcpy(entry + 16, guid, 16U);
+    put64(entry + 32, change.start_bytes / sector);
+    put64(entry + 40, change.end_bytes / sector - 1U);
+    for (size_t i = 0; names[change.role][i]; ++i) entry[56U + 2U * i] = (unsigned char)names[change.role][i];
+  }
+  memcpy(secondary_entries, entries, span);
+  const uint32_t array_crc = crc32(entries, (size_t)count * stride);
+  put32(primary + 88, array_crc); put32(secondary + 88, array_crc);
+  put32(primary + 16, 0); put32(secondary + 16, 0);
+  put32(primary + 16, crc32(primary, le32(primary + 12)));
+  put32(secondary + 16, crc32(secondary, le32(secondary + 12)));
+  if ((rc = verify_content(artifact, length, binding)) || (rc = sha256(artifact, length, after_digest))) return rc;
+  *partition_index = change.kind == ELIZAOS_GPT_CREATE ? selected + 1U : 0U;
+  return 0;
+}
+
 static int compare_region(int fd, uint64_t offset, const unsigned char *expected, size_t length) {
   unsigned char buffer[65536];
   size_t used = 0;

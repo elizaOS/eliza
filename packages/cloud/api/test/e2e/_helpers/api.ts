@@ -172,7 +172,6 @@ async function isLocalWranglerRecycleResponse(
     (method !== "GET" && method !== "HEAD") ||
     !isLocalTarget() ||
     (response.status !== 500 && response.status !== 503) ||
-    response.headers.get("server")?.trim().toLowerCase() !== "workerd" ||
     !response.headers
       .get("content-type")
       ?.toLowerCase()
@@ -182,10 +181,23 @@ async function isLocalWranglerRecycleResponse(
     return false;
   }
 
-  if (method === "HEAD") return true;
+  const fromWorkerd =
+    response.headers.get("server")?.trim().toLowerCase() === "workerd";
+  if (method === "HEAD") return fromWorkerd;
+  const body = (await response.clone().text()).trim();
+  // Miniflare can lose its upstream Worker connection without setting Server.
+  // Match its exact proxy stack, never an application error with similar text.
+  if (
+    response.status === 500 &&
+    /^Error: Network connection lost\.\r?\n\s+at async Object\.fetch \(file:\/\/[^\r\n]+\/node_modules\/miniflare\/dist\/src\/workers\/core\/entry\.worker\.js:\d+:\d+\)$/.test(
+      body,
+    )
+  ) {
+    return true;
+  }
   const expectedBody =
     response.status === 500 ? "Internal Server Error" : "Service Unavailable";
-  return (await response.clone().text()).trim() === expectedBody;
+  return fromWorkerd && body === expectedBody;
 }
 
 async function request(

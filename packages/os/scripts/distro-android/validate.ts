@@ -15,7 +15,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.ts";
-import { isMainModule } from "./is-main.ts";
 import { lintInitRc } from "./lint-init-rc.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -417,9 +416,9 @@ export function validateProductLayer(vendorDir, brand) {
   );
   assertMatches(
     androidProducts,
-    new RegExp(`${brand.productName}-trunk_staging-userdebug`),
+    new RegExp(`(?:^|\\s)${brand.lunchTarget}(?:\\s|$)`),
     "AndroidProducts.mk",
-    `${brand.productName}-trunk_staging-userdebug lunch choice`,
+    `${brand.lunchTarget} lunch choice`,
   );
 
   // Init script + sepolicy files required by the product overlay.
@@ -495,6 +494,29 @@ export function validateProductLayer(vendorDir, brand) {
     if (value !== brand.packageName) {
       fail(
         `framework-res overlay ${resourceName} must be ${brand.packageName}; found ${value || "<empty>"}`,
+      );
+    }
+  }
+
+  const telecomConfig = read(
+    path.join(
+      vendorDir,
+      "overlays/packages/services/Telecomm/res/values/config.xml",
+    ),
+  );
+  for (const [resourceName, suffix] of [
+    ["incall_default_class", "InCallService"],
+    ["dialer_default_class", "DialActivity"],
+  ]) {
+    const expected = `${brand.packageName}.${brand.classPrefix}${suffix}`;
+    const value = xmlStringValue(
+      telecomConfig,
+      resourceName,
+      "Telecom overlay",
+    );
+    if (value !== expected) {
+      fail(
+        `Telecom overlay ${resourceName} must be ${expected}; found ${value || "<empty>"}`,
       );
     }
   }
@@ -1077,8 +1099,6 @@ export function main(argv = process.argv.slice(2)) {
   console.log(`[distro-android:validate] ${brand.distroName} checks passed.`);
 }
 
-const isMain = isMainModule(import.meta);
-
-if (isMain) {
+if (import.meta.main) {
   main();
 }

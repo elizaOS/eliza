@@ -52,6 +52,7 @@
     "src/ui-compat.ts",
     "src/config",
     "src/security",
+    "src/mobile-remote-target.ts",
     "src/entry.ts",
     "src/platform",
     "src/runtime",

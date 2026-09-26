@@ -164,11 +164,13 @@ function parseSessionSnapshot(output: string): LogindSessionSnapshot {
     !isRecord(document) ||
     !hasExactKeys(document, ["data", "type"]) ||
     document.type !== "a{sv}" ||
-    !isRecord(document.data)
+    !Array.isArray(document.data) ||
+    document.data.length !== 1 ||
+    !isRecord(document.data[0])
   ) {
     throw new Error("logind returned an invalid session property snapshot.");
   }
-  const properties = document.data;
+  const properties = document.data[0];
   return {
     sessionId: stringVariant(properties, "Id"),
     uid: userVariant(properties),
@@ -229,59 +231,53 @@ export class SystemdLogindSessionResolver implements LogindSessionResolver {
     process: KernelBoundPeerProcessHandle,
     expectedUid: number,
   ): Promise<ActiveOwnerSession | null> {
-    try {
-      const path = await this.sessionPath(process);
-      const snapshot = parseSessionSnapshot(
-        await this.checkedLookup(process, [
-          "--system",
-          "--no-pager",
-          "--no-legend",
-          "--json=short",
-          "--auto-start=no",
-          "--allow-interactive-authorization=no",
-          "call",
-          LOGIN1,
-          path,
-          PROPERTIES_INTERFACE,
-          "GetAll",
-          "s",
-          SESSION_INTERFACE,
-        ]),
-      );
-      if (
-        snapshot.uid !== expectedUid ||
-        !snapshot.active ||
-        snapshot.locked ||
-        snapshot.remote ||
-        !snapshot.seatId ||
-        snapshot.sessionClass !== "user" ||
-        snapshot.state !== "active"
-      ) {
-        return null;
-      }
-      if ((await this.sessionPath(process)) !== path) {
-        return null;
-      }
-      const ownerId = this.ownerIdForUid(snapshot.uid);
-      if (
-        typeof ownerId !== "string" ||
-        !ownerId.trim() ||
-        ownerId.includes("\0") ||
-        Buffer.byteLength(ownerId, "utf8") > 256
-      ) {
-        throw new Error(
-          "Owner credential mapping returned an invalid owner id.",
-        );
-      }
-      return {
-        ownerId,
-        uid: snapshot.uid,
-        sessionId: snapshot.sessionId,
-        active: snapshot.active,
-        locked: snapshot.locked,
-      };
-    } catch {
+    const path = await this.sessionPath(process);
+    const snapshot = parseSessionSnapshot(
+      await this.checkedLookup(process, [
+        "--system",
+        "--no-pager",
+        "--no-legend",
+        "--json=short",
+        "--auto-start=no",
+        "--allow-interactive-authorization=no",
+        "call",
+        LOGIN1,
+        path,
+        PROPERTIES_INTERFACE,
+        "GetAll",
+        "s",
+        SESSION_INTERFACE,
+      ]),
+    );
+    if (
+      snapshot.uid !== expectedUid ||
+      !snapshot.active ||
+      snapshot.locked ||
+      snapshot.remote ||
+      !snapshot.seatId ||
+      snapshot.sessionClass !== "user" ||
+      snapshot.state !== "active"
+    ) {
       return null;
     }
+    if ((await this.sessionPath(process)) !== path) {
+      return null;
+    }
+    const ownerId = this.ownerIdForUid(snapshot.uid);
+    if (
+      typeof ownerId !== "string" ||
+      !ownerId.trim() ||
+      ownerId.includes("\0") ||
+      Buffer.byteLength(ownerId, "utf8") > 256
+    ) {
+      throw new Error("Owner credential mapping returned an invalid owner id.");
+    }
+    return {
+      ownerId,
+      uid: snapshot.uid,
+      sessionId: snapshot.sessionId,
+      active: snapshot.active,
+      locked: snapshot.locked,
+    };
   }
 }

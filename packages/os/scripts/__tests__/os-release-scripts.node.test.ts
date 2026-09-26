@@ -24,7 +24,7 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const confidentialManifestPath = path.join(
   repoRoot,
-  "release/confidential-2026-05-21/manifest.json",
+  "scripts/__tests__/fixtures/confidential-manifest.json",
 );
 const digest = (char) => `sha256:${char.repeat(64)}`;
 const releaseFixtureTest = test;
@@ -87,16 +87,24 @@ releaseFixtureTest(
 );
 
 releaseFixtureTest(
-  "checked homepage downloads match the candidate end-user artifact set",
+  "generated homepage downloads match the candidate end-user artifact set",
   async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "os-homepage-"));
+    const output = path.join(directory, "downloads.json");
+    await execFileAsync(
+      process.execPath,
+      [
+        "scripts/generate-os-homepage-data.ts",
+        "--manifest",
+        defaultManifestPath,
+        "--output",
+        output,
+      ],
+      { cwd: repoRoot },
+    );
     const [manifest, homepage] = await Promise.all([
       readJson(defaultManifestPath),
-      readJson(
-        path.join(
-          repoRoot,
-          "homepage/public/downloads/elizaos-beta-manifest.json",
-        ),
-      ),
+      readJson(output),
     ]);
     const publicKinds = new Set([
       "raw-image",
@@ -799,7 +807,7 @@ releaseFixtureTest(
     const manifest = await readJson(confidentialManifestPath);
     const golden = goldenMeasurementsOf(manifest);
     const evidence = await readJson(
-      path.join(repoRoot, "release/schema/tee-evidence.mock.json"),
+      path.join(repoRoot, "scripts/__tests__/fixtures/tee-evidence.json"),
     );
 
     const bound = buildBoundEvidence(evidence, golden);
@@ -821,7 +829,10 @@ releaseFixtureTest(
     const manifest = await readJson(confidentialManifestPath);
     const golden = goldenMeasurementsOf(manifest);
     const tampered = await readJson(
-      path.join(repoRoot, "release/schema/tee-evidence.tampered.mock.json"),
+      path.join(
+        repoRoot,
+        "scripts/__tests__/fixtures/tee-evidence-tampered.json",
+      ),
     );
 
     assert.throws(

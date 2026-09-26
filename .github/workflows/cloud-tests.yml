@@ -32,6 +32,11 @@ jobs:
   lint-and-types:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
+    env:
+      # Match canonical source checks: one compiler fits the hosted runner,
+      # including the cloud API's larger declaration graph.
+      NODE_OPTIONS: --max-old-space-size=8192
+      RUN_TURBO_CONCURRENCY: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env

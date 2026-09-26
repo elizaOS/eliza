@@ -53,6 +53,17 @@ const FILESYSTEM_HEALTH_STATES = new Set([
   "unknown",
 ]);
 
+export class UnsupportedInstallFirmwareError extends Error {
+  readonly code = "ELIZAOS_UNSUPPORTED_INSTALL_FIRMWARE";
+
+  constructor(firmware: DiskInventory["firmware"]) {
+    super(
+      `Installation does not support firmware mode ${firmware}; the current disk layout requires EFI.`,
+    );
+    this.name = "UnsupportedInstallFirmwareError";
+  }
+}
+
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -391,6 +402,9 @@ function assertTarget(request: InstallRequest, disk: DiskInventory): void {
       "Apple Silicon installation requires an Asahi/m1n1 boot-chain integration and is not supported by the generic Debian installer.",
     );
   }
+  if (!["uefi", "apple-intel-efi"].includes(disk.firmware)) {
+    throw new UnsupportedInstallFirmwareError(disk.firmware);
+  }
 }
 
 function reusableEsp(disk: DiskInventory): PartitionInventory | undefined {
@@ -510,6 +524,21 @@ function allocatePartitions(
   return partitions;
 }
 
+function targetSnapshot(disk: DiskInventory): InstallPlan["target"] {
+  return {
+    stableId: disk.stableId,
+    path: disk.path,
+    ...(disk.kernelDeviceIdentity
+      ? { kernelDeviceIdentity: disk.kernelDeviceIdentity }
+      : {}),
+    hardwareIdentity: { ...disk.hardwareIdentity },
+    sizeBytes: disk.sizeBytes,
+    logicalSectorBytes: disk.logicalSectorBytes,
+    gptRedundancyVerified: disk.gptRedundancyVerified,
+    bootAncestryResolved: disk.bootAncestryResolved,
+  };
+}
+
 function planBody(
   request: InstallRequest,
   disk: DiskInventory,
@@ -555,15 +584,7 @@ function planBody(
     return {
       schemaVersion: 1,
       mode: request.mode,
-      target: {
-        stableId: disk.stableId,
-        path: disk.path,
-        hardwareIdentity: { ...disk.hardwareIdentity },
-        sizeBytes: disk.sizeBytes,
-        logicalSectorBytes: disk.logicalSectorBytes,
-        gptRedundancyVerified: disk.gptRedundancyVerified,
-        bootAncestryResolved: disk.bootAncestryResolved,
-      },
+      target: targetSnapshot(disk),
       preservedPartitionIds: [],
       partitions,
       actions,
@@ -583,11 +604,6 @@ function planBody(
     throw new Error(
       "Alongside installation requires an existing GPT partition table.",
     );
-  if (!["uefi", "apple-intel-efi"].includes(disk.firmware)) {
-    throw new Error(
-      `Alongside installation does not support firmware mode ${disk.firmware}.`,
-    );
-  }
   if (Boolean(request.freeExtentId) === Boolean(request.shrinkPartitionId)) {
     throw new Error(
       "Alongside installation requires exactly one free extent or shrink partition selection.",
@@ -681,18 +697,7 @@ function planBody(
   return {
     schemaVersion: 1,
     mode: request.mode,
-    target: {
-      stableId: disk.stableId,
-      path: disk.path,
-      ...(disk.kernelDeviceIdentity
-        ? { kernelDeviceIdentity: disk.kernelDeviceIdentity }
-        : {}),
-      hardwareIdentity: { ...disk.hardwareIdentity },
-      sizeBytes: disk.sizeBytes,
-      logicalSectorBytes: disk.logicalSectorBytes,
-      gptRedundancyVerified: disk.gptRedundancyVerified,
-      bootAncestryResolved: disk.bootAncestryResolved,
-    },
+    target: targetSnapshot(disk),
     preservedPartitionIds: disk.partitions.map((item) => item.id).sort(),
     partitions,
     actions,

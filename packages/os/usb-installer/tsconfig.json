@@ -19,5 +19,11 @@
     "types": ["bun", "node", "react"],
     "paths": {}
   },
-  "include": ["src", "server.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    "native/*.ts",
+    "server.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ]
 }

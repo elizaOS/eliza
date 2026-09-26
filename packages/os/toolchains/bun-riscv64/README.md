@@ -1,17 +1,12 @@
-# Bun riscv64-linux-musl cross-build pipeline
+# Bun RISC-V cross-build
 
-Produces the `bun-linux-riscv64-musl.zip` artifact consumed by the Android agent staging step (`stage-android-agent.ts`) when `ELIZA_BUN_RISCV64_URL` points at a hosted copy.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
+From the repository root, use the Docker host wrapper:
 
 ```bash
-bun run --cwd packages/os build
+packages/os/toolchains/bun-riscv64/run-build.sh --jobs 4
 ```
 
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Pins are in `bun-version.json`; output is `dist/bun-linux-riscv64-musl.zip` with
+checksums and a build transcript. The default uses C-loop. `--baseline-jit` and
+`--rust-core` select experimental paths; use `--help` for wrapper options.
+The Android agent stager consumes a hosted artifact through `ELIZA_BUN_RISCV64_URL`.

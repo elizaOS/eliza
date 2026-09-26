@@ -4,7 +4,9 @@
     "allowJs": true,
     "paths": {
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/plugin-agent-orchestrator": ["./src/index.ts"],
+      "@elizaos/testing": ["../../packages/testing/src/index.ts"]
     }
   },
   "include": [

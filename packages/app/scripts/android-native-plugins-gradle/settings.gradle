@@ -29,3 +29,4 @@ new File(repoRoot, 'plugins').listFiles().sort { it.name }.each { pluginDir ->
 }
 
 include ':native-block-target'
+include ':native-gateway-host'

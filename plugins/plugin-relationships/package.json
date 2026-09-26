@@ -20,8 +20,8 @@
     },
     "./package.json": "./package.json",
     "./register": {
-      "types": "./dist/register.d.ts",
       "eliza-source": "./src/register.ts",
+      "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     }

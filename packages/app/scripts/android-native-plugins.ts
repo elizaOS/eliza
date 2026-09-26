@@ -134,6 +134,21 @@ export function parseNativeArtifacts(output) {
   return artifacts;
 }
 
+function restoreMobileSignalsScreen(adb, outputDir) {
+  // Also recover screen state if instrumentation crashed mid-transition.
+  adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
+  adb("shell", "wm", "dismiss-keyguard");
+  const deadline = Date.now() + 5_000;
+  while (!/\bmWakefulness=Awake\b/.test(adb("shell", "dumpsys", "power"))) {
+    if (Date.now() >= deadline)
+      throw new Error("Emulator did not return to awake state");
+  }
+  fs.writeFileSync(
+    path.join(outputDir, "mobile-signals-host-cleanup.json"),
+    JSON.stringify({ awake: true, observedBy: "dumpsys power" }),
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const value = (flag) => args[args.indexOf(flag) + 1];
@@ -337,6 +352,19 @@ async function main() {
             applicationId,
             "android.permission.CAMERA",
           );
+        } else if (plugin.directory === "plugin-native-system") {
+          // Flashlight contracts exercise the actual camera permission dialog.
+          adb("install", "-r", "-t", apk);
+        } else if (plugin.directory === "plugin-native-phone") {
+          adb("install", "-r", "-t", "-g", apk);
+          // Call-placement contracts must exercise real denial, never place a call.
+          adb(
+            "shell",
+            "pm",
+            "revoke",
+            applicationId,
+            "android.permission.CALL_PHONE",
+          );
         } else {
           adb("install", "-r", "-t", "-g", apk);
         }
@@ -364,6 +392,22 @@ async function main() {
               applicationId,
               `android.permission.${permission}`,
             );
+          const permissionState = (stage) => ({
+            stage,
+            flags: adb("shell", "dumpsys", "package", applicationId)
+              .split("\n")
+              .filter((line) =>
+                /android\.permission\.(READ|WRITE)_CONTACTS:/.test(line),
+              )
+              .map((line) => line.trim()),
+          });
+          const permissionStates = [permissionState("before-preflight")];
+          entry.artifacts = [
+            saveArtifact({
+              name: "contacts-permission-flags.json",
+              bytes: Buffer.from(JSON.stringify(permissionStates, null, 2)),
+            }),
+          ];
           const preflight = adb(
             "shell",
             "am",
@@ -383,9 +427,16 @@ async function main() {
             preflight,
           );
           entry.permissionPreflight = parseInstrumentation(preflight, 1);
-          entry.artifacts = parseNativeArtifacts(preflight).map((artifact) =>
-            saveArtifact(artifact),
-          );
+          permissionStates.push(permissionState("after-preflight"));
+          entry.artifacts = [
+            saveArtifact({
+              name: "contacts-permission-flags.json",
+              bytes: Buffer.from(JSON.stringify(permissionStates, null, 2)),
+            }),
+            ...parseNativeArtifacts(preflight).map((artifact) =>
+              saveArtifact(artifact),
+            ),
+          ];
           if (
             !entry.permissionPreflight.pass ||
             !entry.artifacts.some((artifact) =>
@@ -607,6 +658,14 @@ async function main() {
           } catch (error) {
             entry.pass = false;
             entry.problems.push(`fixture cleanup: ${error}`);
+          }
+        }
+        if (plugin.directory === "plugin-native-mobile-signals") {
+          try {
+            restoreMobileSignalsScreen(adb, outputDir);
+          } catch (error) {
+            entry.pass = false;
+            entry.problems.push(`screen-state cleanup: ${error}`);
           }
         }
         if (applicationId?.endsWith(".test") && !preservePackageForRecovery) {
