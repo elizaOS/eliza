@@ -225,7 +225,7 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     providerId: "openai-codex",
     displayName: "OpenAI Codex",
     selectionIds: ["openai-subscription"],
-    allowedClient: "Codex CLI / Codex-backed provider",
+    allowedClient: "Codex CLI",
     billingMode: codingProviderSubscriptionBillingMode("openai-codex"),
     authMode: codingProviderSubscriptionAuthMode("openai-codex"),
     availability: codingProviderEnrollmentAvailability("openai-codex"),

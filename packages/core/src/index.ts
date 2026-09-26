@@ -1515,6 +1515,7 @@ export {
 	type MessageExampleContent,
 	type ModelOption,
 	migrateLegacyRuntimeConfig,
+	migrateRetiredSubscriptionChatRoute,
 	normalizeFirstRunCredentialInputs,
 	normalizeFirstRunProviderId,
 	normalizePersistedFirstRunConnection,
