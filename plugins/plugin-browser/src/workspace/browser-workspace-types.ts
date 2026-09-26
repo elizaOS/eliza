@@ -18,9 +18,7 @@ export const BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES = [
 export type BrowserWorkspaceConnectorAuthState =
   (typeof BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES)[number];
 
-export type BrowserWorkspaceConnectorSessionKind =
-  | "internal-browser"
-  | "browser-bridge-companion";
+export type BrowserWorkspaceConnectorSessionKind = "internal-browser";
 
 export type BrowserWorkspaceOperation =
   | "list"
@@ -255,6 +253,7 @@ export interface AcquireBrowserWorkspaceConnectorSessionRequest {
   reuse?: boolean;
   authState?: BrowserWorkspaceConnectorAuthState;
   manualHandoffReason?: string | null;
+  /** Legacy requests receive BROWSER_COMPANION_RETIRED; use an internal session. */
   companion?: BrowserWorkspaceConnectorCompanionRef | null;
 }
 
@@ -412,6 +411,8 @@ export interface BrowserWorkspaceCommandResult {
   targetId?: string;
   mode: BrowserWorkspaceMode;
   subaction: BrowserWorkspaceSubaction;
+  /** False when navigation only updates tab metadata without reading the page. */
+  pageContentObserved?: boolean;
   tab?: BrowserWorkspaceTab;
   tabs?: BrowserWorkspaceTab[];
   closed?: boolean;

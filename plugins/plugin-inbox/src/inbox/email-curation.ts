@@ -6,7 +6,7 @@
  * the subject/snippet/body it reasoned over. Identity and policy lookups (VIP
  * senders, retention rules) are injected as hooks so the engine carries no
  * connector or runtime dependency. Consumed by the inbox triage flow and
- * exposed at the `@elizaos/plugin-inbox/inbox/email-curation` subpath.
+ * exposed through the `@elizaos/plugin-inbox` root API.
  */
 import { extractAsciiEmailAddress } from "./email-address.ts";
 
@@ -134,6 +134,13 @@ export interface EmailCurationPolicyEffect {
   code: string;
   message: string;
   citation?: EmailCurationCitation;
+  /**
+   * Set by the engine, never by producers: a malformed effect is preserved in
+   * `policyEffects` with a truthful reason instead of being silently applied or
+   * dropped, so the reviewer-facing decision shows why the hook's input was
+   * refused. Only non-finite `amount` values set this today.
+   */
+  invalidReason?: string;
 }
 
 export interface EmailCurationPolicyHookContext {
@@ -1319,7 +1326,18 @@ function applyPolicy(
       evidence: analysis.evidence,
     }) ?? [];
   for (const effect of hookEffects) {
-    analysis.policyEffects.push(effect);
+    // Validate untrusted hook input once, here, and preserve it as an explicit
+    // invalid effect rather than letting a non-finite amount reach the decision
+    // confidence. `invalidReason` is advisory text, never an applied penalty.
+    const invalidReason =
+      effect.kind === "lower_confidence" && effect.amount !== undefined
+        ? Number.isFinite(effect.amount) && effect.amount >= 0
+          ? undefined
+          : `ignored lower_confidence effect "${effect.code}": amount must be a finite nonnegative number`
+        : undefined;
+    analysis.policyEffects.push(
+      invalidReason === undefined ? effect : { ...effect, invalidReason },
+    );
     if (effect.kind === "block_action" && effect.action) {
       if (!analysis.blockedActions.includes(effect.action)) {
         analysis.blockedActions.push(effect.action);
@@ -1382,7 +1400,15 @@ export function calibrateEmailCurationConfidence(
   }
   for (const effect of input.policyEffects) {
     if (effect.kind === "lower_confidence") {
-      confidence -= effect.amount ?? 0.1;
+      // An omitted amount keeps the documented 0.1 default. A SUPPLIED amount
+      // must be a finite, nonnegative penalty: a malformed one (NaN/Infinity,
+      // or a negative boost) is an untrusted-hook failure that must not reach
+      // the confidence DTO, so it is skipped without fabricating a healthy 0.1.
+      if (effect.amount === undefined) {
+        confidence -= 0.1;
+      } else if (Number.isFinite(effect.amount) && effect.amount >= 0) {
+        confidence -= effect.amount;
+      }
     }
   }
   if (hasUncitedStrongSemanticEvidence(input.evidence)) {
@@ -1406,6 +1432,7 @@ function citationsFromEvidence(
 function reasonsFromEvidence(
   evidence: readonly EmailCurationEvidence[],
   degraded: boolean,
+  policyEffects: readonly EmailCurationPolicyEffect[] = [],
 ): CurationReason[] {
   const reasons: CurationReason[] = [];
   if (degraded) {
@@ -1424,6 +1451,20 @@ function reasonsFromEvidence(
       label: item.label,
       reviewText: item.detail,
       citations: item.citations,
+    });
+  }
+  // A policy hook's `add_reason` effect is an explicit explanation the reviewer
+  // must see, so it becomes a real reason (and therefore part of the bulk
+  // rationale) instead of being collected into `policyEffects` and dropped.
+  for (const effect of policyEffects) {
+    if (effect.kind !== "add_reason") {
+      continue;
+    }
+    reasons.push({
+      code: "policy",
+      label: effect.message,
+      reviewText: effect.message,
+      citations: effect.citation ? [effect.citation] : [],
     });
   }
   return reasons;
@@ -1546,7 +1587,11 @@ function makeDecision(
       semantic: false,
     });
   }
-  const reasons = reasonsFromEvidence(analysis.evidence, degraded);
+  const reasons = reasonsFromEvidence(
+    analysis.evidence,
+    degraded,
+    analysis.policyEffects,
+  );
   const citations = citationsFromEvidence(analysis.evidence);
   const canonicalMessageIds = group.members.map((candidate) => candidate.id);
   const decisionWithoutBulk: Omit<CurationDecision, "bulkReview" | "rank"> = {

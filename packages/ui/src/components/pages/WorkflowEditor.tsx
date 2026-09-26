@@ -825,10 +825,14 @@ function WorkflowEditorSession({
                   >
                     <span className="sr-only">{execution.status}</span>
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
+                  <span
+                    className={`min-w-0 flex-1 truncate font-mono text-2xs ${selectedRun?.id === execution.id ? "text-inherit" : "text-muted-foreground"}`}
+                  >
                     {execution.id.slice(0, 12)}
                   </span>
-                  <span className="text-2xs text-muted-foreground/70">
+                  <span
+                    className={`text-2xs ${selectedRun?.id === execution.id ? "text-inherit" : "text-muted-foreground/70"}`}
+                  >
                     {new Date(execution.startedAt).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",

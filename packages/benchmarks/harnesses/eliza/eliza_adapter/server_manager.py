@@ -1,0 +1,554 @@
+"""Manage the eliza benchmark server as a subprocess."""
+
+from __future__ import annotations
+
+import atexit
+import logging
+import os
+import secrets
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+
+from eliza_adapter.client import ElizaClient
+
+logger = logging.getLogger(__name__)
+
+
+# This benchmarks repo root; the canonical bench server lives at
+# suites/lifeops-bench/runner/src/server.ts since the monorepo extraction.
+_BENCHMARKS_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _find_repo_root() -> Path | None:
+    """Locate an elizaOS monorepo checkout carrying a legacy benchmark server.
+
+    The canonical server now lives in this repo (suites/lifeops-bench/runner);
+    an eliza checkout is only consulted for older layouts that still bundle it
+    (`packages/lifeops-bench`, `packages/app-core`, `packages/eliza`). Set
+    ELIZA_MONOREPO_ROOT to force a checkout; returns None when none is found.
+    """
+    override = os.environ.get("ELIZA_MONOREPO_ROOT", "")
+    if override:
+        return Path(override).resolve()
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "packages" / "lifeops-bench" / "src" / "server.ts").exists():
+            return parent
+        if (
+            parent / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
+        ).exists():
+            return parent
+        if (parent / "packages" / "eliza" / "src" / "benchmark" / "server.ts").exists():
+            return parent
+    return None
+
+
+def _is_port_available(port: int) -> bool:
+    """Return True when *port* can be bound on loopback."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _find_free_port() -> int:
+    """Ask the OS for an available loopback TCP port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _node_major(node_path: str) -> int:
+    """Return the major version of a node binary, or -1 when unreadable."""
+    try:
+        out = subprocess.run(
+            [node_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        ).stdout.strip()
+        return int(out.lstrip("v").split(".", 1)[0])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return -1
+
+
+def _resolve_node() -> str | None:
+    """Find a node binary new enough for the repo (engines: node >= 24).
+
+    The orchestrator prepends `sys.executable`'s directory to PATH so
+    pip-installed console scripts resolve; on hosts where that directory is
+    /usr/bin this also shadows a modern nvm node with an ancient system node
+    (observed: /usr/bin/node v18 lacks the global `crypto` that uuid v14
+    requires, so every runtime request dies with `crypto is not defined`).
+    Scan every PATH entry and take the first node with major >= 20; fall back
+    to the plain `which` result when none qualifies.
+    """
+    best: str | None = None
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(entry) / "node"
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            continue
+        if best is None:
+            best = str(candidate)
+        if _node_major(str(candidate)) >= 20:
+            return str(candidate)
+    return best
+
+
+def _server_command(server_script: Path) -> list[str]:
+    """Return the benchmark server command.
+
+    Prefer bun with explicit eliza-source exports: it resolves the monorepo's TypeScript sources
+    directly (including internal `./index.node` source imports that tsx
+    cannot resolve under the eliza-source condition). Node+tsx is the
+    fallback and deliberately does NOT pass --conditions=eliza-source: it
+    resolves @elizaos/* to the monorepo dist builds.
+    """
+    forced = os.environ.get("ELIZA_BENCH_SERVER_CMD", "").strip()
+    if forced:
+        return [*shlex.split(forced), str(server_script)]
+    if shutil.which("bun"):
+        return ["bun", "run", "--conditions=eliza-source", "--no-env-file", str(server_script)]
+    node = _resolve_node()
+    if node:
+        major = _node_major(node)
+        if 0 <= major < 20:
+            logger.warning(
+                "Benchmark server node %s is v%d (< 20); the runtime needs a "
+                "global `crypto`. Set ELIZA_BENCH_SERVER_CMD or put a newer "
+                "node first on PATH.",
+                node,
+                major,
+            )
+        return [node, "--import", "tsx", str(server_script)]
+    return ["node", "--import", "tsx", str(server_script)]
+
+
+CEREBRAS_OPENAI_MODEL_IDS = {"gemma-4-31b", "gpt-oss-120b", "zai-glm-4.7"}
+
+
+def _normalize_model_env(env: dict[str, str]) -> None:
+    """Expose benchmark provider/model settings to the TypeScript bridge.
+
+    The TS runtime's OpenAI plugin reads OPENAI_* settings, while benchmark
+    launchers commonly set BENCHMARK_MODEL_* / CEREBRAS_* instead.
+    """
+    provider = (
+        (env.get("BENCHMARK_MODEL_PROVIDER") or env.get("ELIZA_PROVIDER") or "")
+        .strip()
+        .lower()
+    )
+    model = (
+        env.get("BENCHMARK_MODEL_NAME")
+        or env.get("MODEL_NAME")
+        or env.get("CEREBRAS_MODEL")
+        or ""
+    ).strip()
+    if provider == "cerebras" and model.startswith("openai/"):
+        model = model.split("/", 1)[1]
+    model_is_cerebras = model in CEREBRAS_OPENAI_MODEL_IDS
+
+    cerebras_key = env.get("CEREBRAS_API_KEY", "").strip()
+    if cerebras_key and (
+        provider == "cerebras"
+        or env.get("CEREBRAS_BASE_URL", "").strip()
+        or model_is_cerebras
+        or not env.get("OPENAI_API_KEY", "").strip()
+    ):
+        # Operator-set base URLs win over the hardcoded provider endpoint so
+        # traffic can be routed through an OpenAI-compatible proxy (e.g. the
+        # Eliza Cloud gateway). A pre-set OPENAI_BASE_URL is never clobbered
+        # with the hardcoded default — the literal is only a last resort when
+        # no override is present anywhere in the environment.
+        cerebras_base_url = (
+            env.get("CEREBRAS_BASE_URL", "").strip()
+            or env.get("BENCHMARK_BASE_URL", "").strip()
+            or env.get("OPENAI_BASE_URL", "").strip()
+            or "https://api.cerebras.ai/v1"
+        )
+        if provider == "cerebras" or model_is_cerebras:
+            env["ELIZA_PROVIDER"] = "cerebras"
+            env["OPENAI_BASE_URL"] = cerebras_base_url
+            env["OPENAI_API_KEY"] = cerebras_key
+        else:
+            env.setdefault("ELIZA_PROVIDER", "cerebras")
+            env.setdefault("OPENAI_BASE_URL", cerebras_base_url)
+            env.setdefault("OPENAI_API_KEY", cerebras_key)
+        model = model or "gemma-4-31b"
+
+    if not model:
+        return
+
+    env.setdefault("BENCHMARK_MODEL_NAME", model)
+    env.setdefault("MODEL_NAME", model)
+    if (
+        provider == "cerebras"
+        or env.get("ELIZA_PROVIDER", "").strip().lower() == "cerebras"
+    ):
+        env.setdefault("CEREBRAS_MODEL", model)
+    env.setdefault("OPENAI_SMALL_MODEL", model)
+    env.setdefault("OPENAI_LARGE_MODEL", model)
+    env.setdefault("OPENAI_RESPONSE_HANDLER_MODEL", model)
+    env.setdefault("OPENAI_ACTION_PLANNER_MODEL", model)
+    env.setdefault("OPENAI_MEDIUM_MODEL", model)
+
+
+def _normalize_task_agent_env(env: dict[str, str]) -> None:
+    """Expose benchmark task-agent aliases to the ACP orchestrator."""
+    benchmark_requested = env.get("BENCHMARK_TASK_AGENT", "").strip()
+    requested = (
+        benchmark_requested
+        or env.get("ELIZA_ACP_DEFAULT_AGENT")
+        or env.get("ELIZA_DEFAULT_AGENT_TYPE")
+        or ""
+    ).strip()
+    if not requested:
+        return
+
+    normalized = requested.lower().replace("_", "-")
+    if normalized in {"elizaos", "eliza-os", "eliza"}:
+        acp_agent = "elizaos"
+    elif normalized in {"pi-agent", "pi agent", "pi"}:
+        acp_agent = "pi-agent"
+    elif normalized in {"claude-code", "claude code"}:
+        acp_agent = "claude"
+    elif normalized in {"openai", "openai-codex", "openai codex"}:
+        acp_agent = "codex"
+    elif normalized in {"open-code", "open code"}:
+        acp_agent = "opencode"
+    else:
+        acp_agent = normalized
+
+    env.setdefault("BENCHMARK_TASK_AGENT", requested)
+    env.setdefault("ELIZA_AGENT_ORCHESTRATOR", "1")
+    env.setdefault("ELIZA_AGENT_SELECTION_STRATEGY", "fixed")
+    if benchmark_requested:
+        env["ELIZA_AGENT_SELECTION_STRATEGY"] = "fixed"
+        env["ELIZA_ACP_DEFAULT_AGENT"] = acp_agent
+        env["ELIZA_DEFAULT_AGENT_TYPE"] = acp_agent
+    else:
+        env.setdefault("ELIZA_ACP_DEFAULT_AGENT", acp_agent)
+        env.setdefault("ELIZA_DEFAULT_AGENT_TYPE", acp_agent)
+
+
+class ElizaServerManager:
+    """Start and stop the eliza benchmark server subprocess.
+
+    Usage::
+
+        mgr = ElizaServerManager()
+        mgr.start()          # spawns node process, waits until healthy
+        client = mgr.client  # ready-to-use ElizaClient
+        # ... run benchmarks ...
+        mgr.stop()           # kills the subprocess
+    """
+
+    def __init__(
+        self,
+        port: int | None = None,
+        timeout: float = 240.0,
+        repo_root: Path | None = None,
+    ) -> None:
+        env_timeout = os.environ.get("ELIZA_BENCH_START_TIMEOUT", "").strip()
+        if env_timeout:
+            try:
+                parsed_timeout = float(env_timeout)
+                if parsed_timeout > 0:
+                    timeout = parsed_timeout
+            except ValueError:
+                logger.warning(
+                    "Ignoring invalid ELIZA_BENCH_START_TIMEOUT=%r",
+                    env_timeout,
+                )
+        env_port = os.environ.get("ELIZA_BENCH_PORT", "").strip()
+        if env_port:
+            try:
+                parsed_port = int(env_port)
+                if 1 <= parsed_port <= 65535:
+                    port = parsed_port
+            except ValueError:
+                logger.warning("Ignoring invalid ELIZA_BENCH_PORT=%r", env_port)
+        if port is None or port <= 0:
+            port = _find_free_port()
+        if not _is_port_available(port):
+            replacement = _find_free_port()
+            logger.warning(
+                "Eliza benchmark port %d is already in use; using %d for this subprocess",
+                port,
+                replacement,
+            )
+            port = replacement
+        self.port = port
+        self.timeout = timeout
+        self.repo_root = repo_root or _find_repo_root()
+        self.host = (
+            os.environ.get("ELIZA_BENCH_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        )
+        client_host = "127.0.0.1" if self.host in {"0.0.0.0", "::"} else self.host
+        self._proc: subprocess.Popen[str] | None = None
+        self._stdout_log: Path | None = None
+        self._stderr_log: Path | None = None
+        self._stdout_handle = None
+        self._stderr_handle = None
+        self._token = secrets.token_hex(32)
+        self._client = ElizaClient(f"http://{client_host}:{port}", token=self._token)
+        atexit.register(self.stop)
+
+    @property
+    def token(self) -> str:
+        """Bearer token used to authenticate against the benchmark server."""
+        return self._token
+
+    @property
+    def client(self) -> ElizaClient:
+        return self._client
+
+    # ------------------------------------------------------------------
+
+    def start(self) -> None:
+        """Spawn the benchmark server and block until it reports ready."""
+        if getattr(self._client, "_delegate", None) is not None:
+            logger.info(
+                "Skipping eliza benchmark server start; client is delegated to selected harness"
+            )
+            return
+        if self._proc is not None and self._proc.poll() is None:
+            logger.info(
+                "Eliza benchmark server already running (pid=%d)", self._proc.pid
+            )
+            return
+
+        # A monorepo checkout that still bundles the server wins (its workspace
+        # node_modules are known-good); the in-repo runner is the canonical
+        # fallback and requires `bun install` in its directory.
+        runner_dir = _BENCHMARKS_ROOT / "suites" / "lifeops-bench" / "runner"
+        candidates: list[tuple[Path, Path]] = []
+        if self.repo_root is not None:
+            candidates.extend(
+                [
+                    (
+                        self.repo_root
+                        / "packages"
+                        / "lifeops-bench"
+                        / "src"
+                        / "server.ts",
+                        self.repo_root / "packages" / "lifeops-bench",
+                    ),
+                    (
+                        self.repo_root
+                        / "packages"
+                        / "app-core"
+                        / "src"
+                        / "benchmark"
+                        / "server.ts",
+                        self.repo_root / "packages" / "app-core",
+                    ),
+                    (
+                        self.repo_root
+                        / "packages"
+                        / "eliza"
+                        / "src"
+                        / "benchmark"
+                        / "server.ts",
+                        self.repo_root / "packages" / "eliza",
+                    ),
+                ]
+            )
+        candidates.append((runner_dir / "src" / "server.ts", runner_dir))
+        server_script: Path | None = None
+        cwd: Path | None = None
+        for script, script_cwd in candidates:
+            if script.exists():
+                server_script = script
+                cwd = script_cwd
+                break
+
+        if server_script is None or cwd is None:
+            tried = "\n  ".join(str(s) for s, _ in candidates)
+            raise FileNotFoundError(
+                f"Benchmark server script not found. Tried:\n  {tried}"
+            )
+
+        env = {
+            **os.environ,
+            "ELIZA_BENCH_HOST": self.host,
+            "ELIZA_BENCH_PORT": str(self.port),
+            "ELIZA_BENCH_TOKEN": self._token,
+            # In a monorepo checkout, tsx otherwise discovers the package's
+            # declaration-only tsconfig and follows its typecheck paths at
+            # runtime; pinning the root config keeps workspace imports on
+            # executable source. The in-repo runner uses its own tsconfig.
+            "TSX_TSCONFIG_PATH": str(
+                self.repo_root / "tsconfig.json"
+                if cwd != runner_dir and self.repo_root is not None
+                else runner_dir / "tsconfig.json"
+            ),
+        }
+        _normalize_model_env(env)
+        _normalize_task_agent_env(env)
+        # Stub embeddings are diagnostic-only. The server manager preserves an
+        # explicit caller-provided ELIZA_BENCH_ALLOW_STUB_EMBEDDING value but
+        # never enables it by default.
+        if env.get("ELIZA_BENCH_MOCK") == "true":
+            for key in (
+                "GROQ_API_KEY",
+                "OPENAI_API_KEY",
+                "OPENROUTER_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GOOGLE_GENERATIVE_AI_API_KEY",
+                "TWITTER_BEARER_TOKEN",
+                "TWITTER_CONSUMER_KEY",
+                "TWITTER_CONSUMER_SECRET",
+                "TWITTER_API_KEY",
+                "TWITTER_API_SECRET_KEY",
+                "TWITTER_CLIENT_ID",
+                "TWITTER_CLIENT_SECRET",
+                "TWITTER_OAUTH_ACCESS_TOKEN",
+                "TWITTER_OAUTH_REFRESH_TOKEN",
+                "TWITTER_OAUTH_RERESH_TOKEN",
+            ):
+                env[key] = ""
+        os.environ["ELIZA_BENCH_HOST"] = self.host
+        os.environ["ELIZA_BENCH_URL"] = self._client.base_url
+        os.environ["ELIZA_BENCH_TOKEN"] = self._token
+
+        logger.info(
+            "Starting eliza benchmark server on %s:%d from %s ...",
+            self.host,
+            self.port,
+            cwd,
+        )
+
+        log_dir = Path(env.get("ELIZA_BENCH_LOG_DIR") or tempfile.gettempdir())
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stdout_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f"eliza-bench-server-{self.port}-",
+            suffix=".stdout.log",
+            dir=str(log_dir),
+            delete=False,
+        )
+        stderr_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f"eliza-bench-server-{self.port}-",
+            suffix=".stderr.log",
+            dir=str(log_dir),
+            delete=False,
+        )
+        self._stdout_handle = stdout_file
+        self._stderr_handle = stderr_file
+        self._stdout_log = Path(stdout_file.name)
+        self._stderr_log = Path(stderr_file.name)
+
+        self._proc = subprocess.Popen(
+            _server_command(server_script),
+            cwd=str(cwd),
+            env=env,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            start_new_session=True,
+        )
+
+        # Wait for the ready sentinel or health check. Poll the child process
+        # too; otherwise an early TypeScript/runtime crash leaves callers
+        # waiting for the whole health timeout with no useful error.
+        print("DEBUG: Waiting for server to be ready...", flush=True)
+        deadline = time.monotonic() + self.timeout
+        last_err = "server not ready"
+        while time.monotonic() < deadline:
+            return_code = self._proc.poll()
+            if return_code is not None:
+                print(
+                    f"DEBUG: Server exited before readiness (code={return_code})!",
+                    flush=True,
+                )
+                self.dump_logs()
+                self._proc = None
+                raise RuntimeError(
+                    f"Eliza benchmark server exited before readiness (code={return_code})"
+                )
+            try:
+                if self._client.is_ready():
+                    health = self._client.health(timeout_s=5.0)
+                    if health.get("status") == "ready":
+                        self._client.reset(
+                            task_id="__benchmark_readiness__",
+                            benchmark="readiness",
+                        )
+                        print("DEBUG: Server is ready!", flush=True)
+                        return
+                    last_err = f"Server health status not ready: {health}"
+                else:
+                    last_err = "Socket connection refused or timed out"
+            except Exception as exc:
+                last_err = str(exc)
+            time.sleep(1.0)
+
+        print("DEBUG: Timed out waiting for server!", flush=True)
+        self.stop()
+        raise TimeoutError(
+            f"Eliza benchmark server not ready after {self.timeout}s: {last_err}"
+        )
+
+    def dump_logs(self):
+        for handle in (self._stdout_handle, self._stderr_handle):
+            if handle:
+                handle.flush()
+                handle.close()
+        self._stdout_handle = None
+        self._stderr_handle = None
+
+        for label, path in (("STDOUT", self._stdout_log), ("STDERR", self._stderr_log)):
+            if not path or not path.exists():
+                continue
+            print(f"--- Server {label} ({path}) ---")
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if len(text) > 20000:
+                text = text[-20000:]
+            print(text)
+
+    def stop(self) -> None:
+        """Stop the benchmark server subprocess."""
+        if self._proc is None:
+            return
+
+        pid = self._proc.pid
+        if self._proc.poll() is not None:
+            logger.debug("Server process already exited (pid=%d)", pid)
+        else:
+            logger.info("Stopping eliza benchmark server (pid=%d) ...", pid)
+            try:
+                os.killpg(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except Exception:
+                self._proc.terminate()
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning("Server did not exit gracefully, killing...")
+                try:
+                    os.killpg(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except Exception:
+                    self._proc.kill()
+                self._proc.wait()
+
+        self.dump_logs()
+        self._proc = None
+
+    def is_running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None

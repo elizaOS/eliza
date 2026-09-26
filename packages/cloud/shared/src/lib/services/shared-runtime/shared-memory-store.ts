@@ -12,7 +12,13 @@
  * and the turn path is byte-identical to before.
  */
 
-import { ElizaError, stringToUuid, validateUuid } from "@elizaos/core/edge";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  ElizaError,
+  getEmbeddingVectorSpace,
+  stringToUuid,
+  validateUuid,
+} from "@elizaos/core";
 import {
   type SharedAgentMemoriesReader,
   type SharedAgentMemoriesWriter,
@@ -78,7 +84,26 @@ function memoryRowId(transportId: string): string {
  */
 export interface SharedMemoryEmbedConfig {
   embedTexts: (texts: string[]) => Promise<number[][]>;
+  /** @deprecated Configuration labels are not representation proof; vector identity is authoritative. */
   model: string;
+}
+
+/** Refuse configured model labels as evidence of the encoder that ran. */
+function verifiedVectors(vectors: number[][], count: number): number[][] {
+  if (
+    vectors.length !== count ||
+    vectors.some(
+      (vector) =>
+        vector.length !== 384 ||
+        !vector.every(Number.isFinite) ||
+        getEmbeddingVectorSpace(vector) !== BGE_SMALL_VECTOR_SPACE,
+    )
+  ) {
+    throw new ElizaError("Shared memory write requires verified canonical embeddings", {
+      code: "EMBEDDING_SPACE_MISMATCH",
+    });
+  }
+  return vectors;
 }
 
 export class SharedMemoryStore {
@@ -174,7 +199,7 @@ export class SharedMemoryStore {
     let vectors: number[][] | undefined;
     if (this.embed) {
       try {
-        vectors = await this.embed.embedTexts(renderable);
+        vectors = verifiedVectors(await this.embed.embedTexts(renderable), renderable.length);
       } catch (error) {
         // error-policy:J4 embedding is an enhancement on the durable write;
         // its loss is visible (rows without vectors never match recall).
@@ -196,7 +221,7 @@ export class SharedMemoryStore {
         type: SHARED_FACTS_MEMORY_TYPE,
         content: { text: fact, source: "shared-facts-extraction" },
         ...(vectors?.[index] && this.embed
-          ? { embedding: vectors[index], embeddingModel: this.embed.model }
+          ? { embedding: vectors[index], embeddingModel: getEmbeddingVectorSpace(vectors[index]) }
           : {}),
         createdAt: new Date(landedAt + index),
       });
@@ -225,8 +250,11 @@ export class SharedMemoryStore {
     let vectors: number[][] | undefined;
     if (this.embed) {
       try {
-        vectors = await this.embed.embedTexts(
-          [pair.userMessage, pair.assistantReply.trim() || pair.userMessage].map((text) => text),
+        vectors = verifiedVectors(
+          await this.embed.embedTexts(
+            [pair.userMessage, pair.assistantReply.trim() || pair.userMessage].map((text) => text),
+          ),
+          2,
         );
       } catch (error) {
         // error-policy:J4 embedding is an enhancement on the durable write;
@@ -240,7 +268,7 @@ export class SharedMemoryStore {
     }
     const embeddingFields = (index: number) =>
       vectors?.[index] && this.embed
-        ? { embedding: vectors[index], embeddingModel: this.embed.model }
+        ? { embedding: vectors[index], embeddingModel: getEmbeddingVectorSpace(vectors[index]) }
         : {};
     await this.writer.insertMemory({
       ...(pair.messageIds ? { id: memoryRowId(pair.messageIds.user) } : {}),

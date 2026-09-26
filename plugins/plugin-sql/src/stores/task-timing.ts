@@ -1,6 +1,16 @@
-/** Converts the public task due-time field to and from its canonical SQL metadata representation. */
+/**
+ * Converts the public task due-time field to and from its canonical SQL metadata representation.
+ *
+ * Storage holds `metadata.scheduledAt` as the millisecond ISO-8601 UTC instant that
+ * `Date#toISOString` produces. Every adapter write path must pass caller-authored
+ * metadata through `taskMetadataForWrite` or `taskMetadataPatchForWrite`, which accept
+ * any unambiguous ISO-8601 date-time (an explicit `Z` or `±HH:MM` offset is required)
+ * and canonicalise it; anything else is rejected so the stored value can never be an
+ * engine-specific `Date.parse` guess. Reads accept the same grammar so rows written
+ * before the write guards existed still resolve to a due time.
+ */
 
-import { ElizaError, type TaskMetadata } from "@elizaos/core";
+import { ElizaError, type TaskMetadata, type TaskMetadataPatch } from "@elizaos/core";
 
 export class TaskTimingValidationError extends ElizaError {
   constructor(message: string) {
@@ -8,7 +18,11 @@ export class TaskTimingValidationError extends ElizaError {
   }
 }
 
-const CANONICAL_ISO_INSTANT = /^(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+export const TASK_SCHEDULED_AT_FORMAT_MESSAGE =
+  "task metadata.scheduledAt must be an ISO-8601 date-time with an explicit UTC offset, canonically YYYY-MM-DDTHH:MM:SS.mmmZ";
+
+const ISO_DATE_TIME_WITH_OFFSET =
+  /^(?<year>\d{4}|[+-]\d{6})-(?<month>\d{2})-(?<day>\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 function safeTimestamp(value: number, label: string): number {
   if (!Number.isSafeInteger(value)) {
@@ -19,6 +33,39 @@ function safeTimestamp(value: number, label: string): number {
     throw new TaskTimingValidationError(`${label} is outside the supported date range`);
   }
   return value;
+}
+
+/**
+ * Parses an ISO-8601 date-time that carries an explicit offset. `Date.parse` silently
+ * rolls an overflowing calendar day into the next month, so the date part is checked
+ * against the calendar before the engine parse is trusted. The check goes through
+ * `setUTCFullYear` rather than `Date.UTC`, which remaps years 0 through 99 to 1900
+ * through 1999 and would reject the valid instants `0000-01-01` through `0099-12-31`.
+ */
+function parseScheduledAtString(value: string): number {
+  const match = ISO_DATE_TIME_WITH_OFFSET.exec(value);
+  if (!match?.groups) {
+    throw new TaskTimingValidationError(TASK_SCHEDULED_AT_FORMAT_MESSAGE);
+  }
+  const year = Number(match.groups.year);
+  const month = Number(match.groups.month);
+  const day = Number(match.groups.day);
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  if (
+    calendar.getUTCFullYear() !== year ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day
+  ) {
+    throw new TaskTimingValidationError(
+      "task metadata.scheduledAt names a non-existent calendar day"
+    );
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    throw new TaskTimingValidationError(TASK_SCHEDULED_AT_FORMAT_MESSAGE);
+  }
+  return safeTimestamp(parsed, "task metadata.scheduledAt");
 }
 
 export function serializeTaskDueAt(dueAt: number | bigint): string {
@@ -32,6 +79,17 @@ export function serializeTaskDueAt(dueAt: number | bigint): string {
   return new Date(safeTimestamp(numeric, "task dueAt")).toISOString();
 }
 
+/** Canonicalise a caller-authored `scheduledAt` value to the stored millisecond form. */
+export function canonicalizeTaskScheduledAt(scheduledAt: unknown): string {
+  if (typeof scheduledAt === "number") {
+    return new Date(safeTimestamp(scheduledAt, "task metadata.scheduledAt")).toISOString();
+  }
+  if (typeof scheduledAt !== "string") {
+    throw new TaskTimingValidationError(TASK_SCHEDULED_AT_FORMAT_MESSAGE);
+  }
+  return new Date(parseScheduledAtString(scheduledAt)).toISOString();
+}
+
 /** Build caller-authored metadata before retry admission, preserving explicit clear semantics. */
 export function taskMetadataForWrite(
   metadata: TaskMetadata | undefined,
@@ -42,10 +100,23 @@ export function taskMetadataForWrite(
     delete result.scheduledAt;
   } else if (dueAt !== undefined) {
     result.scheduledAt = serializeTaskDueAt(dueAt);
-  } else {
-    readTaskDueAt(result);
+  } else if (result.scheduledAt !== undefined) {
+    result.scheduledAt = canonicalizeTaskScheduledAt(result.scheduledAt);
   }
   return result;
+}
+
+/**
+ * Canonicalise the `scheduledAt` key of a metadata patch before it is merged in
+ * storage, so a key-level patch obeys the same contract as a whole-object write.
+ * An `undefined` value is left alone because `JSON.stringify` drops it from the merge.
+ */
+export function taskMetadataPatchForWrite(patch: TaskMetadataPatch): TaskMetadataPatch {
+  if (patch.set === undefined || patch.set.scheduledAt === undefined) return patch;
+  return {
+    ...patch,
+    set: { ...patch.set, scheduledAt: canonicalizeTaskScheduledAt(patch.set.scheduledAt) },
+  };
 }
 
 export function readTaskDueAt(metadata: TaskMetadata): number | undefined {
@@ -54,17 +125,8 @@ export function readTaskDueAt(metadata: TaskMetadata): number | undefined {
   if (typeof scheduledAt === "number") {
     return safeTimestamp(scheduledAt, "task metadata.scheduledAt");
   }
-  if (typeof scheduledAt !== "string" || scheduledAt.trim().length === 0) {
-    throw new TaskTimingValidationError("task metadata.scheduledAt must be an ISO-8601 string");
+  if (typeof scheduledAt !== "string") {
+    throw new TaskTimingValidationError(TASK_SCHEDULED_AT_FORMAT_MESSAGE);
   }
-  if (!CANONICAL_ISO_INSTANT.test(scheduledAt)) {
-    throw new TaskTimingValidationError("task metadata.scheduledAt must be an ISO-8601 string");
-  }
-  const parsed = safeTimestamp(Date.parse(scheduledAt), "task metadata.scheduledAt");
-  if (new Date(parsed).toISOString() !== scheduledAt) {
-    throw new TaskTimingValidationError(
-      "task metadata.scheduledAt must be a canonical ISO-8601 instant"
-    );
-  }
-  return parsed;
+  return parseScheduledAtString(scheduledAt);
 }

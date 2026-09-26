@@ -82,7 +82,7 @@ export function FirstRunOffer({
     >
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-txt">{title}</div>
-        <div className="text-xs text-muted">{detail}</div>
+        <div className="text-xs text-muted-strong">{detail}</div>
       </div>
       {recommended ? (
         <Button

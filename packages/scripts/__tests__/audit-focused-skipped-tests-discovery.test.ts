@@ -14,7 +14,7 @@ import {
   findViolations,
   parseFocusedAuditArgs,
   readTestSources,
-} from "../audit-focused-skipped-tests.mjs";
+} from "../audit-focused-skipped-tests.ts";
 
 const tempDirs: string[] = [];
 

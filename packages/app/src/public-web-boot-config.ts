@@ -7,7 +7,7 @@
  * production default and can provision against the wrong Cloud API origin.
  */
 
-import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
+import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { resolveIosRuntimeConfig } from "./ios-runtime";
 
@@ -23,11 +23,19 @@ export function seedPublicWebBootConfig(
   const runtime = resolveIosRuntimeConfig(env);
   configureStoredStewardTokenScope(runtime.cloudApiBase);
   const current = getBootConfig();
-  if (current.cloudApiBase === runtime.cloudApiBase) {
+  const applicationBillingSlot =
+    typeof env.VITE_ELIZA_APPLICATION_SLOT === "string"
+      ? env.VITE_ELIZA_APPLICATION_SLOT
+      : undefined;
+  if (
+    current.cloudApiBase === runtime.cloudApiBase &&
+    current.applicationBillingSlot === applicationBillingSlot
+  ) {
     return;
   }
   setBootConfig({
     ...current,
     cloudApiBase: runtime.cloudApiBase,
+    applicationBillingSlot,
   });
 }

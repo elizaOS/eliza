@@ -24,7 +24,9 @@ import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { buildSameTabCloudLoginPath } from "../../state/cloud-login-launch";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { NativeProductBillingEntry } from "./apps/NativeProductBillingEntry";
 import { BillingTab } from "./components/billing-tab";
+import { SubscriptionPlans } from "./components/subscription-plans";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
 
@@ -140,7 +142,17 @@ function RetryButton({ busy, label, onRetry }: RetryButtonProps) {
 }
 
 /** The billing surface, rendered by the Settings → Cloud billing section. */
-export function BillingSectionBody({
+export function BillingSectionBody(props: BillingSectionBodyProps = {}) {
+  return (
+    <>
+      <NativeProductBillingEntry />
+      <DeveloperBillingSectionBody {...props} />
+    </>
+  );
+}
+
+/** Account billing can load without a selected native runtime or agent. */
+export function DeveloperBillingSectionBody({
   onSignIn,
   signInBusy = false,
   signInError = null,
@@ -299,6 +311,10 @@ export function BillingSectionBody({
           })}
         </Alert>
       ) : null}
+      <SubscriptionPlans
+        key={user.organization_id}
+        organizationId={user.organization_id}
+      />
       <BillingTab user={user} />
     </ConditionalWalletProviders>
   );

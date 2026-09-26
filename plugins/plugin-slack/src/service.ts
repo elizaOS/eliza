@@ -44,6 +44,8 @@ import {
   type MessagePayload,
   type Room,
   resolveAttachmentBytes,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   Service,
   stringToUuid,
   type TargetInfo,
@@ -55,6 +57,21 @@ import { WebClient as SlackWebClient } from "@slack/web-api";
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
+/**
+ * Per-part structural evidence for one outbound attachment upload: successful
+ * parts carry the Slack file id (the provider receipt for files.uploadV2);
+ * failed parts carry a stable code plus message. Consumed by
+ * {@link SlackService.handleSendMessage} to derive complete/partial/not-delivered.
+ */
+type OutboundAttachmentDelivery = {
+  delivered: Array<{ url: string; fileId: string; permalink: string }>;
+  failures: Array<{
+    url: string;
+    code: string;
+    message: string;
+    uncertain?: boolean;
+  }>;
+};
 type AccountScopedConnectorContext = MessageConnectorQueryContext & {
   accountId?: string;
   account?: { accountId?: string };
@@ -395,7 +412,8 @@ interface SlackMessageEventType {
   thread_ts?: string;
   team?: string;
   bot_id?: string;
-  files?: SlackFile[];
+  /** Raw Slack file objects (snake_case wire shape); normalized at use. */
+  files?: unknown[];
 }
 
 interface SlackAppMentionEventType {
@@ -485,6 +503,7 @@ import {
   resolveDefaultSlackAccountId,
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
+import { normalizeSlackFiles, slackFilesToMedia } from "./inbound-files";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -504,7 +523,6 @@ import {
   type SlackBlock,
   type SlackChannel,
   SlackEventTypes,
-  type SlackFile,
   type SlackMessage,
   type SlackMessageSendOptions,
   type SlackReactionPayload,
@@ -561,6 +579,35 @@ export function compareSlackConnectorTargets(
       b.label ?? b.target.channelId ?? b.target.source,
     )
   );
+}
+
+/**
+ * Raised by {@link SlackService.sendMessage} when a later text chunk fails
+ * after earlier chunks were already accepted by Slack. Carries the accepted
+ * chunk ts evidence so the connector boundary can compose a truthful
+ * `partially_delivered` outcome instead of dropping it (#23104).
+ */
+class SlackTextPartialDeliveryError extends ElizaError {
+  readonly acceptedTs: string[];
+
+  constructor(
+    message: string,
+    options: { accepted: string[]; code?: string },
+    errorOptions?: { cause?: unknown },
+  ) {
+    super(message, {
+      code: options.code ?? "SLACK_TEXT_PARTIAL_DELIVERY",
+      context: { acceptedTs: options.accepted },
+      ...(errorOptions?.cause !== undefined
+        ? { cause: errorOptions.cause }
+        : {}),
+    });
+    this.acceptedTs = options.accepted;
+  }
+
+  static isPartial(value: unknown): value is SlackTextPartialDeliveryError {
+    return value instanceof SlackTextPartialDeliveryError;
+  }
 }
 
 export class SlackService extends Service implements ISlackService {
@@ -679,15 +726,14 @@ export class SlackService extends Service implements ISlackService {
         handlerRuntime: IAgentRuntime,
         target: TargetInfo,
         content: Content,
-      ): Promise<void> => {
-        await serviceInstance.handleSendMessage(
+      ): Promise<SendHandlerOutcome> =>
+        serviceInstance.handleSendMessage(
           handlerRuntime,
           normalizedAccountId && !(target as AccountScopedTargetInfo).accountId
             ? ({ ...target, accountId: normalizedAccountId } as TargetInfo)
             : target,
           content,
         );
-      };
 
       const withContextAccount = (
         context: MessageConnectorQueryContext,
@@ -2210,19 +2256,12 @@ export class SlackService extends Service implements ISlackService {
       : null;
     const displayName = user ? getSlackUserDisplayName(user) : senderId;
 
-    // Extract media from files
-    const media: Media[] = [];
-    if ("files" in message && message.files) {
-      for (const file of message.files) {
-        media.push({
-          id: file.id,
-          url: file.urlPrivate,
-          title: file.title || file.name,
-          source: "slack",
-          description: file.name,
-        });
-      }
-    }
+    // Slack sends url_private / url_private_download; normalize at the boundary
+    // so every attachment carries a fetchable url (#31767).
+    const media: Media[] = slackFilesToMedia(
+      "files" in message ? normalizeSlackFiles(message.files) : undefined,
+      { channelId: message.channel, messageTs: message.ts },
+    );
 
     const memory: Memory = {
       id: createUniqueUuid(
@@ -2662,11 +2701,77 @@ export class SlackService extends Service implements ISlackService {
     return channel.id;
   }
 
+  /**
+   * Compose the final delivery outcome for one logical send: provider ids are
+   * ordered text chunk `ts` values first, then accepted upload file ids in
+   * request order (the send order). Attachment failures always downgrade a
+   * send that reached the provider to `partially_delivered`; with nothing
+   * accepted the send is `not_delivered`. `uploadFile` returning no file id
+   * is treated as a failed part, never fabricated evidence.
+   */
+  private buildSendOutcome(args: {
+    acceptedIds: string[];
+    attachments: OutboundAttachmentDelivery | null;
+    textFailure?: { message: string; code: string };
+  }): SendHandlerOutcome {
+    const providerMessageIds = [...args.acceptedIds];
+    for (const part of args.attachments?.delivered ?? []) {
+      providerMessageIds.push(part.fileId);
+    }
+    const failures = args.attachments?.failures ?? [];
+    const failureDetail =
+      args.textFailure !== undefined
+        ? `text delivery failed (${args.textFailure.code}: ${args.textFailure.message})`
+        : failures.length > 0
+          ? failures.map((f) => `${f.url} (${f.code}: ${f.message})`).join("; ")
+          : "no per-part failure evidence was recorded";
+    if (providerMessageIds.length === 0) {
+      if (failures.some((failure) => failure.uncertain))
+        throw new ElizaError(
+          "Slack upload acceptance is unknown; do not retry blindly",
+          { code: "SLACK_DELIVERY_UNKNOWN" },
+        );
+      return {
+        kind: "not_delivered",
+        code: "SLACK_ATTACHMENT_DELIVERY_FAILED",
+        message: `No Slack part was accepted: ${failureDetail}`,
+      };
+    }
+    const receipt: SendHandlerReceipt = {
+      providerMessageIds: providerMessageIds as [string, ...string[]],
+      acceptedAt: Date.now(),
+      persistence: {
+        status: "not_attempted",
+        reason:
+          "Slack send handler reports provider receipts only; outbound memory persistence is owned by the caller.",
+      },
+    };
+    if (args.textFailure !== undefined) {
+      return {
+        kind: "partially_delivered",
+        receipt,
+        memories: [],
+        code: "SLACK_TEXT_PARTIAL_DELIVERY",
+        message: `Slack accepted ${providerMessageIds.length} text chunk${providerMessageIds.length === 1 ? "" : "s"} but a later chunk failed: ${failureDetail}. Do not retry blindly; the accepted chunks would be duplicated.`,
+      };
+    }
+    if (failures.length > 0) {
+      return {
+        kind: "partially_delivered",
+        receipt,
+        memories: [],
+        code: "SLACK_ATTACHMENT_PARTIAL_DELIVERY",
+        message: `Slack accepted ${providerMessageIds.length} part${providerMessageIds.length === 1 ? "" : "s"} but ${failures.length} attachment${failures.length === 1 ? "" : "s"} failed: ${failureDetail}`,
+      };
+    }
+    return { kind: "delivered", receipt, memories: [] };
+  }
+
   async handleSendMessage(
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome> {
     const accountId = await this.resolveAccountIdForTarget(runtime, target);
     if (!this.getClientForAccount(accountId)) {
       throw new Error("Slack client not initialized");
@@ -2674,12 +2779,25 @@ export class SlackService extends Service implements ISlackService {
 
     const text = typeof content.text === "string" ? content.text.trim() : "";
     const outboundAttachments = Array.isArray(content.attachments)
-      ? content.attachments.filter((media) => Boolean(media?.url))
+      ? content.attachments
       : [];
+    if (
+      outboundAttachments.some(
+        (media) => typeof media?.url !== "string" || !media.url.trim(),
+      )
+    )
+      return {
+        kind: "not_delivered",
+        code: "SLACK_INVALID_ATTACHMENT",
+        message: "Every requested attachment requires a URL",
+      };
     if (!text && outboundAttachments.length === 0) {
-      throw new Error(
-        "Slack SendHandler requires non-empty text or at least one attachment.",
-      );
+      return {
+        kind: "not_delivered",
+        code: "SLACK_EMPTY_MESSAGE",
+        message:
+          "Slack SendHandler requires non-empty text or at least one attachment.",
+      };
     }
 
     let channelId = target.channelId;
@@ -2718,31 +2836,58 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
+    let textReceipt: Awaited<ReturnType<SlackService["sendMessage"]>> | null =
+      null;
     if (text) {
-      await this.sendMessage(
-        channelId,
-        text,
-        {
-          threadTs,
-          replyBroadcast: undefined,
-          unfurlLinks: undefined,
-          unfurlMedia: undefined,
-          mrkdwn: undefined,
-          attachments: undefined,
-          blocks: undefined,
-        },
-        accountId,
-      );
+      try {
+        textReceipt = await this.sendMessage(
+          channelId,
+          text,
+          {
+            threadTs,
+            replyBroadcast: undefined,
+            unfurlLinks: undefined,
+            unfurlMedia: undefined,
+            mrkdwn: undefined,
+            attachments: undefined,
+            blocks: undefined,
+          },
+          accountId,
+        );
+      } catch (error) {
+        // error-policy:J1 connector boundary translation — a mid-text
+        // failure with already-accepted chunks becomes a structural
+        // partially_delivered outcome below; any other error propagates
+        // unchanged.
+        if (!SlackTextPartialDeliveryError.isPartial(error)) {
+          throw error;
+        }
+        return this.buildSendOutcome({
+          acceptedIds: error.acceptedTs,
+          textFailure: {
+            message: error.message,
+            code: error.code,
+          },
+          attachments: null,
+        });
+      }
     }
 
+    let attachmentDelivery: OutboundAttachmentDelivery | null = null;
     if (outboundAttachments.length > 0) {
-      await this.sendOutboundAttachments(
+      attachmentDelivery = await this.sendOutboundAttachments(
         channelId,
         outboundAttachments,
         threadTs,
         accountId,
       );
     }
+
+    return this.buildSendOutcome({
+      // Every accepted text chunk keeps its provider ts, in send order.
+      acceptedIds: (textReceipt?.messages ?? []).map(({ ts }) => ts),
+      attachments: attachmentDelivery,
+    });
   }
 
   /**
@@ -2760,29 +2905,61 @@ export class SlackService extends Service implements ISlackService {
    * Upload agent-generated `Media` attachments to a Slack channel (#8876).
    * Slack's API takes file BYTES (not a URL), so each attachment is fetched
    * through the SSRF-guarded fetcher and uploaded via {@link uploadFile}. Each
-   * upload is isolated in try/catch so a single unreachable/oversized URL logs a
-   * warning and never drops the rest of the reply (the text already went out).
+   * upload is isolated in try/catch so a single unreachable/oversized URL never
+   * drops the rest of the reply; instead of only warning, the failure is
+   * returned as typed per-part evidence so {@link handleSendMessage} can report
+   * a truthful complete/partial/not-delivered outcome.
    */
   private async sendOutboundAttachments(
     channelId: string,
     attachments: Media[],
     threadTs: string | undefined,
     accountId: string | null,
-  ): Promise<void> {
+  ): Promise<OutboundAttachmentDelivery> {
+    const delivered: Array<{ url: string; fileId: string; permalink: string }> =
+      [];
+    const failures: OutboundAttachmentDelivery["failures"] = [];
     for (const media of attachments) {
-      if (!media.url) continue;
+      let dispatched = false;
       try {
         const { buffer, fileName } = await this.fetchAttachmentBytes(media.url);
         const filename =
           media.filename ?? media.title ?? fileName ?? "attachment";
-        await this.uploadFile(
+        dispatched = true;
+        const uploaded = await this.uploadFile(
           channelId,
           buffer,
           filename,
           { title: media.title, threadTs },
           accountId,
         );
+        if (!uploaded.fileId?.trim()) {
+          // files.uploadV2 resolving without a file object carries no
+          // structural delivery evidence; an empty id must never enter a
+          // receipt as fabricated success (repo DTO policy).
+          throw new ElizaError(
+            "Slack files.uploadV2 returned no file id for an accepted upload",
+            { code: "SLACK_FILE_ID_MISSING" },
+          );
+        }
+        delivered.push({
+          url: media.url,
+          fileId: uploaded.fileId,
+          permalink: uploaded.permalink,
+        });
       } catch (error) {
+        // error-policy:J1 per-part connector boundary — a fetch/upload failure
+        // becomes typed evidence the composed outcome reports as partial/not
+        // delivered; the remaining attachments are still attempted.
+        failures.push({
+          url: media.url,
+          uncertain: dispatched,
+          code:
+            error instanceof ElizaError
+              ? error.code
+              : "SLACK_ATTACHMENT_UPLOAD_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
         this.runtime.logger.warn(
           {
             src: "plugin:slack",
@@ -2794,6 +2971,7 @@ export class SlackService extends Service implements ISlackService {
         );
       }
     }
+    return { delivered, failures };
   }
 
   async resolveConnectorTargets(
@@ -3056,18 +3234,16 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    const rawMessages = threadTs
+    const historyMessages = threadTs
       ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
       : await this.readHistory(channelId, undefined, accountId);
     const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
-    for (const rawMessage of rawMessages.slice().reverse()) {
-      const text = String((rawMessage as SlackMessage).text ?? "");
+    for (const message of historyMessages.slice().reverse()) {
+      const text = String(message.text ?? "");
       if (!text.trim()) {
         continue;
       }
-      const userId =
-        (rawMessage as SlackMessage).user ??
-        (rawMessage as Record<string, string | undefined>).user;
+      const userId = message.user;
       const user =
         typeof userId === "string"
           ? await this.getUser(userId, accountId)
@@ -3076,10 +3252,10 @@ export class SlackService extends Service implements ISlackService {
         entityId: userId ? (userId as UUID) : undefined,
         name: user ? getSlackUserDisplayName(user) : userId,
         text,
-        timestamp: Number((rawMessage as SlackMessage).ts) * 1000 || undefined,
+        timestamp: Number(message.ts) * 1000 || undefined,
         metadata: {
           accountId,
-          slackMessageTs: (rawMessage as SlackMessage).ts,
+          slackMessageTs: message.ts,
           slackUserId: userId,
         },
       });
@@ -3185,13 +3361,13 @@ export class SlackService extends Service implements ISlackService {
         ? ChannelType.DM
         : ChannelType.GROUP;
 
-    const attachments: Media[] = (message.files ?? []).map((file) => ({
-      id: file.id,
-      url: file.urlPrivate,
-      title: file.title || file.name,
-      source: "slack",
-      description: file.name,
-    }));
+    // Callers that hand in a raw API payload cast as SlackMessage still carry
+    // snake_case url_private fields; normalizing here is idempotent for the
+    // camelCase shape and keeps every history reader on one mapping.
+    const attachments: Media[] = slackFilesToMedia(
+      normalizeSlackFiles(message.files),
+      { channelId, messageTs: message.ts },
+    );
 
     return {
       id: createUniqueUuid(
@@ -3504,6 +3680,15 @@ export class SlackService extends Service implements ISlackService {
     if (!lookup) {
       return null;
     }
+    // A blank identifier must not reach the directory scan below: the
+    // substring match treats "" as contained in every member, which would
+    // resolve an arbitrary workspace member for a whitespace-only query.
+    if (
+      !SLACK_USER_ID_PATTERN.test(lookup) &&
+      !normalizeSlackConnectorQuery(lookup)
+    ) {
+      return null;
+    }
 
     let slackUserId = SLACK_USER_ID_PATTERN.test(lookup)
       ? lookup
@@ -3792,16 +3977,46 @@ export class SlackService extends Service implements ISlackService {
         messageArgs.blocks = options.blocks;
       }
 
-      const result = await client.chat.postMessage(messageArgs);
+      let result: Awaited<ReturnType<typeof client.chat.postMessage>>;
+      try {
+        result = await client.chat.postMessage(messageArgs);
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — a later-chunk failure is
+        // wrapped in a typed error carrying the accepted-chunk evidence with
+        // the original error preserved as cause; first-chunk failures
+        // propagate unchanged.
+        // Earlier chunks are already accepted by Slack; surface them with the
+        // failure so the caller composes a partial delivery instead of
+        // dropping the evidence (and blind-retrying into duplicates).
+        if (sentMessages.length > 0) {
+          throw new SlackTextPartialDeliveryError(
+            error instanceof Error ? error.message : String(error),
+            { accepted: sentMessages.map(({ ts }) => ts) },
+            { cause: error },
+          );
+        }
+        throw error;
+      }
 
       if (typeof result.ts !== "string" || !isValidMessageTs(result.ts)) {
-        throw new ElizaError(
+        const identityError = new ElizaError(
           "Slack chat.postMessage returned no message timestamp",
           {
             code: "SLACK_POST_MESSAGE_IDENTITY_MISSING",
             context: { accountId: normalizeAccountId(accountId), channelId },
           },
         );
+        if (sentMessages.length > 0) {
+          throw new SlackTextPartialDeliveryError(
+            identityError.message,
+            {
+              accepted: sentMessages.map(({ ts }) => ts),
+              code: identityError.code,
+            },
+            { cause: identityError },
+          );
+        }
+        throw identityError;
       }
       lastTs = result.ts;
       sentMessages.push({ ts: result.ts, text: msg });
@@ -3978,7 +4193,7 @@ export class SlackService extends Service implements ISlackService {
         reactions: item.message.reactions as
           | { name: string; count: number; users: string[] }[]
           | undefined,
-        files: item.message.files as SlackFile[] | undefined,
+        files: normalizeSlackFiles(item.message.files),
         attachments: item.message.attachments as SlackAttachment[] | undefined,
         blocks: item.message.blocks as SlackBlock[] | undefined,
       }));
@@ -4024,7 +4239,18 @@ export class SlackService extends Service implements ISlackService {
       requestedLimit === undefined
         ? rawMessages
         : rawMessages.slice(0, requestedLimit);
-    return selected.map((msg) => ({
+    return selected.map((msg) => this.wireMessageToSlackMessage(msg));
+  }
+
+  /**
+   * Map one Web API message payload (conversations.history / replies) onto the
+   * camelCase SlackMessage the memory builder reads, normalizing the file
+   * objects so their url_private fields survive.
+   */
+  private wireMessageToSlackMessage(
+    msg: Record<string, unknown>,
+  ): SlackMessage {
+    return {
       type: msg.type as string,
       subtype: msg.subtype as string | undefined,
       ts: msg.ts as string,
@@ -4037,10 +4263,10 @@ export class SlackService extends Service implements ISlackService {
       reactions: msg.reactions as
         | { name: string; count: number; users: string[] }[]
         | undefined,
-      files: msg.files as SlackFile[] | undefined,
+      files: normalizeSlackFiles(msg.files),
       attachments: msg.attachments as SlackAttachment[] | undefined,
       blocks: msg.blocks as SlackBlock[] | undefined,
-    }));
+    };
   }
 
   private async readThreadReplies(
@@ -4053,11 +4279,11 @@ export class SlackService extends Service implements ISlackService {
       cursor?: string;
     },
     accountId?: string | null,
-  ): Promise<Array<SlackMessage | Record<string, unknown>>> {
+  ): Promise<SlackMessage[]> {
     const client = this.getClientForAccount(accountId);
     if (!client) throw new Error("Slack client not initialized");
     const requestedLimit = normalizeConnectorLimit(options?.limit);
-    const messages: Array<SlackMessage | Record<string, unknown>> = [];
+    const rawMessages: Array<Record<string, unknown>> = [];
     const seen = new Set<string>();
     let cursor = options?.cursor;
     if (cursor) seen.add(cursor);
@@ -4070,18 +4296,18 @@ export class SlackService extends Service implements ISlackService {
         oldest: options?.after,
         cursor,
       });
-      messages.push(
-        ...((result.messages ?? []) as Array<
-          SlackMessage | Record<string, unknown>
-        >),
+      rawMessages.push(
+        ...((result.messages ?? []) as Array<Record<string, unknown>>),
       );
-      if (requestedLimit !== undefined && messages.length >= requestedLimit)
+      if (requestedLimit !== undefined && rawMessages.length >= requestedLimit)
         break;
       cursor = nextSlackCursor(result, seen, "thread replies");
     } while (cursor);
-    return requestedLimit === undefined
-      ? messages
-      : messages.slice(0, requestedLimit);
+    const selected =
+      requestedLimit === undefined
+        ? rawMessages
+        : rawMessages.slice(0, requestedLimit);
+    return selected.map((msg) => this.wireMessageToSlackMessage(msg));
   }
 
   private async listAllConnectorUsers(

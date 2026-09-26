@@ -27,8 +27,14 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
-import { createSerialise, requestRestart } from "@elizaos/shared";
+import {
+  createSerialise,
+  ElizaError,
+  logger,
+  requestRestart,
+  resolveStateDir,
+} from "@elizaos/core";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { getPluginInfo, type RegistryPluginInfo } from "./registry-client.js";
 import { normalizePluginLookupAlias } from "./registry-client-queries.js";

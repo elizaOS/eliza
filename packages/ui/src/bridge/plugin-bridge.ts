@@ -129,7 +129,7 @@ export function getPluginCapabilities(): PluginCapabilities {
       // Discovery requires a real mDNS/Bonjour backend. Capacitor iOS/Android
       // ship one natively; Electrobun desktop has an equivalent bonjour-service
       // backend behind the `gateway:*` desktop RPC methods
-      // (app-core/platforms/electrobun/src/native/gateway.ts). Gating on
+      // (app/platforms/electrobun/src/native/gateway.ts). Gating on
       // `isNative` alone reported desktop as discovery-incapable, so the LAN
       // scan never ran there even though the backend was live.
       discovery: isNative || isDesktop,

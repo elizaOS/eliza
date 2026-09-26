@@ -15,21 +15,23 @@
  * utterance has no audio (browser/talkmode), it falls back to a wall-clock
  * span and segment-level highlight. Pure (the caller injects "now").
  */
-
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
-
+import type { TranscriptSegment } from "@elizaos/core/transcripts";
 export interface AddFinalOptions {
   speakerLabel?: string;
   /** Per-word timings relative to THIS utterance's start (ms). */
-  words?: ReadonlyArray<{ text: string; startMs: number; endMs: number }>;
+  words?: ReadonlyArray<{
+    text: string;
+    startMs: number;
+    endMs: number;
+  }>;
   /** The utterance's mono PCM16 WAV (RIFF header carries the sample rate). */
   audioWav?: Uint8Array;
 }
-
 /** Decode a standard 44-byte-header mono PCM16 WAV → samples + sample rate. */
-function decodeMonoPcm16Wav(
-  wav: Uint8Array,
-): { pcm: Int16Array; sampleRate: number } | null {
+function decodeMonoPcm16Wav(wav: Uint8Array): {
+  pcm: Int16Array;
+  sampleRate: number;
+} | null {
   if (wav.byteLength <= 44) return null;
   const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
   // "RIFF"…"WAVE" sanity check; sample rate at offset 24; data after 44.
@@ -42,7 +44,6 @@ function decodeMonoPcm16Wav(
   }
   return { pcm, sampleRate };
 }
-
 /** Encode concatenated mono PCM16 samples into one standard WAV. */
 function encodeMonoPcm16Wav(pcm: Int16Array, sampleRate: number): Uint8Array {
   const dataBytes = pcm.length * 2;
@@ -70,7 +71,6 @@ function encodeMonoPcm16Wav(pcm: Int16Array, sampleRate: number): Uint8Array {
   out.set(pcmBytes, 44);
   return out;
 }
-
 export class TranscriptSessionAccumulator {
   private readonly segments: TranscriptSegment[] = [];
   private readonly pcm: Int16Array[] = [];
@@ -79,19 +79,15 @@ export class TranscriptSessionAccumulator {
   private cumulativeMs = 0;
   /** Wall-clock fallback cursor (ms) for audioless utterances. */
   private lastWallEndMs = 0;
-
   constructor(private readonly startedAtMs: number) {}
-
   /** Fold a finalized utterance into the session (empty text is ignored). */
   addFinal(text: string, nowMs: number, opts: AddFinalOptions = {}): void {
     const trimmed = text.trim();
     if (!trimmed) return;
-
     const decoded = opts.audioWav ? decodeMonoPcm16Wav(opts.audioWav) : null;
     let startMs: number;
     let endMs: number;
     let words: TranscriptSegment["words"] = [];
-
     if (decoded) {
       if (this.sampleRate === 0) this.sampleRate = decoded.sampleRate;
       const durMs = Math.round(
@@ -115,7 +111,6 @@ export class TranscriptSessionAccumulator {
       this.lastWallEndMs = endMs;
       this.cumulativeMs = endMs;
     }
-
     this.segments.push({
       id: `seg-${this.segments.length}`,
       speakerLabel: opts.speakerLabel,
@@ -125,17 +120,14 @@ export class TranscriptSessionAccumulator {
       words,
     });
   }
-
   /** Number of accumulated utterances. */
   get count(): number {
     return this.segments.length;
   }
-
   /** A copy of the accumulated segments (for the create request). */
   build(): TranscriptSegment[] {
     return this.segments.map((s) => ({ ...s, words: [...s.words] }));
   }
-
   /** The concatenated speech-only session WAV, or null when no audio retained. */
   buildAudioWav(): Uint8Array | null {
     if (this.pcm.length === 0 || this.sampleRate === 0) return null;

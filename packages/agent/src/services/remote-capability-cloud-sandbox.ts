@@ -9,12 +9,16 @@
  * `RemoteCapabilityEndpointProvider` implementation and
  * `connectCloudCapabilitySandbox` is the end-to-end entry point.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { trimEndCharacters } from "../utils/string-boundaries.ts";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,
@@ -24,12 +28,11 @@ import {
   type RemoteCapabilityEndpointProvider,
   type RemoteCapabilityEndpointTrustPolicyOptions,
 } from "./remote-capability-endpoint-provider.ts";
-import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
-import type { RemotePluginSyncResult } from "./remote-plugin-adapter.ts";
+import { type RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
+import { type RemotePluginSyncResult } from "./remote-plugin-adapter.ts";
 
-const DEFAULT_CLOUD_PROVISION_TIMEOUT_MS = 120_000;
-const DEFAULT_CLOUD_PROVISION_POLL_MS = 2_000;
-
+const DEFAULT_CLOUD_PROVISION_TIMEOUT_MS = 120000;
+const DEFAULT_CLOUD_PROVISION_POLL_MS = 2000;
 export type CloudCapabilitySandboxProvisionOptions = {
   cloudApiBase: string;
   authToken: string;
@@ -44,13 +47,11 @@ export type CloudCapabilitySandboxProvisionOptions = {
   allowedModuleIds?: string[];
   trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
-
 export type CloudCapabilitySandboxProvisionResult = {
   agentId: string;
   endpoint: RemoteCapabilityEndpointConfig;
   jobId?: string;
 };
-
 export type WaitForCloudCapabilityEndpointAvailabilityOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
   timeoutMs?: number;
@@ -59,19 +60,16 @@ export type WaitForCloudCapabilityEndpointAvailabilityOptions = {
   fetch?: typeof fetch;
   onProgress?: (detail: string) => void;
 };
-
 export type ConnectCloudCapabilitySandboxOptions =
   CloudCapabilitySandboxProvisionOptions & {
     unloadMissing?: boolean;
     requestTimeoutMs?: number;
   };
-
 export type ConnectCloudCapabilitySandboxResult =
   CloudCapabilitySandboxProvisionResult & {
     providerId: string;
     sync: RemotePluginSyncResult;
   };
-
 export const cloudCapabilityEndpointProvider: RemoteCapabilityEndpointProvider<CloudCapabilitySandboxProvisionOptions> =
   {
     id: "cloud",
@@ -88,19 +86,18 @@ export const cloudCapabilityEndpointProvider: RemoteCapabilityEndpointProvider<C
         : { trustPolicy: options.trustPolicy }),
     }),
   };
-
 type CloudJsonResponse<T> = {
   ok: boolean;
   status: number;
   data?: T;
   text?: string;
 };
-
 type CreateAgentResponse = {
-  data?: { id?: string };
+  data?: {
+    id?: string;
+  };
   id?: string;
 };
-
 type ProvisionResponse = {
   data?: {
     jobId?: string;
@@ -121,7 +118,6 @@ type ProvisionResponse = {
   capabilityRouterToken?: string | null;
   capability_router_token?: string | null;
 };
-
 type JobResponse = {
   data?: {
     status?: string;
@@ -132,7 +128,6 @@ type JobResponse = {
   result?: ProvisionResponse["data"] | null;
   error?: string;
 };
-
 export async function provisionCloudCapabilitySandbox(
   options: CloudCapabilitySandboxProvisionOptions,
 ): Promise<CloudCapabilitySandboxProvisionResult> {
@@ -142,7 +137,6 @@ export async function provisionCloudCapabilitySandbox(
     "content-type": "application/json",
     authorization: `Bearer ${options.authToken}`,
   };
-
   options.onProgress?.("creating", "Creating cloud capability sandbox agent.");
   const create = await cloudJson<CreateAgentResponse>(
     request,
@@ -168,7 +162,6 @@ export async function provisionCloudCapabilitySandbox(
       "Failed to create cloud capability sandbox: missing agent id.",
     );
   }
-
   options.onProgress?.(
     "provisioning",
     "Provisioning cloud capability endpoint.",
@@ -183,25 +176,20 @@ export async function provisionCloudCapabilitySandbox(
   );
   if (!provision.ok) {
     throw new Error(
-      `Failed to provision cloud capability sandbox: ${
-        provision.text ?? provision.status
-      }`,
+      `Failed to provision cloud capability sandbox: ${provision.text ?? provision.status}`,
     );
   }
-
   const immediate = endpointFromProvisionPayload(options, provision.data);
   if (immediate) {
     options.onProgress?.("ready", "Cloud capability endpoint ready.");
     return { agentId, endpoint: immediate };
   }
-
   const jobId = provision.data?.data?.jobId ?? provision.data?.jobId;
   if (!jobId) {
     throw new Error(
       "Failed to provision cloud capability sandbox: missing job id and endpoint URL.",
     );
   }
-
   const deadline =
     Date.now() + (options.timeoutMs ?? DEFAULT_CLOUD_PROVISION_TIMEOUT_MS);
   const pollIntervalMs =
@@ -239,14 +227,10 @@ export async function provisionCloudCapabilitySandbox(
       `Cloud capability sandbox status: ${status ?? "pending"}.`,
     );
   }
-
   throw new Error(
-    `Cloud capability sandbox provisioning timed out.${
-      lastStatus ? ` Last status: ${lastStatus}.` : ""
-    }${lastError ? ` Last error: ${lastError}.` : ""}`,
+    `Cloud capability sandbox provisioning timed out.${lastStatus ? ` Last status: ${lastStatus}.` : ""}${lastError ? ` Last error: ${lastError}.` : ""}`,
   );
 }
-
 export async function connectCloudCapabilitySandbox(
   runtime: IAgentRuntime,
   options: ConnectCloudCapabilitySandboxOptions,
@@ -272,17 +256,15 @@ export async function connectCloudCapabilitySandbox(
     sync: result.sync,
   };
 }
-
 export async function waitForCloudCapabilityEndpointAvailability(
   options: WaitForCloudCapabilityEndpointAvailabilityOptions,
 ): Promise<void> {
   const request = options.fetch ?? fetch;
-  const timeoutMs = options.timeoutMs ?? 120_000;
-  const pollIntervalMs = options.pollIntervalMs ?? 5_000;
-  const requestTimeoutMs = options.requestTimeoutMs ?? 60_000;
+  const timeoutMs = options.timeoutMs ?? 120000;
+  const pollIntervalMs = options.pollIntervalMs ?? 5000;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 60000;
   const deadline = Date.now() + timeoutMs;
   let lastError = "availability was not checked";
-
   do {
     try {
       const controller = new AbortController();
@@ -307,7 +289,9 @@ export async function waitForCloudCapabilityEndpointAvailability(
         } else {
           const availability = JSON.parse(text) as {
             available?: unknown;
-            capabilities?: { plugin?: unknown };
+            capabilities?: {
+              plugin?: unknown;
+            };
           };
           if (
             availability.available === true &&
@@ -330,15 +314,17 @@ export async function waitForCloudCapabilityEndpointAvailability(
     if (remainingMs <= 0) break;
     await sleep(Math.min(pollIntervalMs, remainingMs));
   } while (Date.now() < deadline);
-
   throw new Error(
     `Cloud capability endpoint ${options.endpoint.id} did not report plugin availability within ${timeoutMs}ms. Last error: ${lastError}`,
   );
 }
-
 function describeAvailabilityError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
-  const cause = (error as Error & { cause?: unknown }).cause;
+  const cause = (
+    error as Error & {
+      cause?: unknown;
+    }
+  ).cause;
   if (cause instanceof Error) {
     return `${error.message}: ${cause.message}`;
   }
@@ -384,7 +370,6 @@ function assertCloudProvisionResult(
     );
   }
 }
-
 function endpointFromProvisionPayload(
   options: Pick<CloudCapabilitySandboxProvisionOptions, "endpointId" | "token">,
   payload: ProvisionResponse | ProvisionResponse["data"] | null | undefined,
@@ -410,7 +395,6 @@ function endpointFromProvisionPayload(
     ...(token === null ? {} : { token }),
   };
 }
-
 async function cloudJson<T>(
   request: typeof fetch,
   url: string,
@@ -431,7 +415,6 @@ async function cloudJson<T>(
   }
   return { ok: response.ok, status: response.status, data, text };
 }
-
 function lowercaseHeaders(headers: HeadersInit | undefined): HeadersInit {
   if (!headers || headers instanceof Headers || Array.isArray(headers)) {
     return headers ?? {};
@@ -440,7 +423,6 @@ function lowercaseHeaders(headers: HeadersInit | undefined): HeadersInit {
     Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
   );
 }
-
 function normalizeCloudApiBase(value: string): string {
   const trimmed = trimEndCharacters(value.trim(), "/");
   if (!trimmed) throw new Error("cloudApiBase is required.");
@@ -466,18 +448,15 @@ function normalizeCloudApiBase(value: string): string {
     throw new Error(`Invalid cloudApiBase: ${value}`);
   }
 }
-
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
 }
-
 function stripTrailingSlash(value: string): string {
   return trimEndCharacters(value, "/");
 }
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

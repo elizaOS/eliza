@@ -2,10 +2,10 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
-import type {
-  CreateLifeOpsXPostRequest,
-  LifeOpsConnectorGrant,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsXPostRequest,
+  type LifeOpsConnectorGrant,
+} from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 
@@ -193,7 +193,15 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         target: "12345",
         message: "hello",
       }),
-    ).resolves.toEqual({ ok: true, messageId: null });
+    ).resolves.toEqual({
+      ok: true,
+      messageId: "telegram-message-1",
+      receipt: {
+        providerMessageIds: ["telegram-message-1"],
+        acceptedAt: 1_780_000_000_000,
+        persistence: { status: "persisted", memoryIds: [] },
+      },
+    });
 
     expect(handleSendMessage).toHaveBeenCalledWith(
       service.runtime,

@@ -9,7 +9,6 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isHostedPublicPath,
-  shouldUseMarketingHomeEntry,
   shouldUsePublicWebEntry,
 } from "./web-entry-policy";
 
@@ -104,15 +103,17 @@ describe("hosted public renderer entry policy", () => {
 
   it("ships the selector as the HTML entry and keeps all renderers dynamic", () => {
     const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
-    const entrySource = readFileSync(resolve(appRoot, "src/entry.ts"), "utf8");
+    const entrySource = readFileSync(
+      resolve(appRoot, "src/renderer-entry.ts"),
+      "utf8",
+    );
     const publicEntrySource = readFileSync(
       resolve(appRoot, "src/public-web-entry.tsx"),
       "utf8",
     );
 
-    expect(indexHtml).toContain('src="/src/entry.ts"');
+    expect(indexHtml).toContain('src="/src/renderer-entry.ts"');
     expect(entrySource).toContain('import("./public-web-entry")');
-    expect(entrySource).toContain('import("./marketing-home-entry")');
     expect(entrySource).toContain('import("./main")');
     expect(publicEntrySource).not.toMatch(/from\s+["']\.\/main["']/);
     expect(publicEntrySource).toContain('import("./main")');
@@ -136,76 +137,39 @@ describe("hosted public renderer entry policy", () => {
     expect(isHostedPublicPath(pathname)).toBe(false);
   });
 
-  it("uses the public entry for marketing home but not app-host home", () => {
+  it("boots hosted account management without the agent renderer while preserving host exclusions", () => {
     const common = {
-      pathname: "/",
+      hostname: "cloud.eliza.app",
       webShellEnabled: true,
       chatHarnessEnabled: false,
       desktopShell: false,
       forceApexConsole: false,
-      forceMarketingHome: false,
     };
-    expect(shouldUsePublicWebEntry({ ...common, hostname: "eliza.app" })).toBe(
-      true,
-    );
-    expect(
-      shouldUseMarketingHomeEntry({ ...common, hostname: "eliza.app" }),
-    ).toBe(true);
-    expect(
-      shouldUsePublicWebEntry({ ...common, hostname: "cloud.eliza.app" }),
-    ).toBe(false);
-    expect(
-      shouldUseMarketingHomeEntry({ ...common, hostname: "cloud.eliza.app" }),
-    ).toBe(false);
-  });
-
-  it("keeps auth routes and forced apex console out of the marketing-only entry", () => {
-    const common = {
-      hostname: "eliza.app",
-      webShellEnabled: true,
-      chatHarnessEnabled: false,
-      desktopShell: false,
-      forceApexConsole: false,
-      forceMarketingHome: false,
-    };
-    expect(shouldUseMarketingHomeEntry({ ...common, pathname: "/login" })).toBe(
+    for (const pathname of [
+      "/cloud",
+      "/cloud/apps",
+      "/cloud/apps/app-id",
+      "/cloud/billing/apps/app-id/main",
+      "/dashboard/billing",
+    ]) {
+      expect(shouldUsePublicWebEntry({ ...common, pathname })).toBe(true);
+      expect(
+        shouldUsePublicWebEntry({ ...common, pathname, desktopShell: true }),
+      ).toBe(false);
+      expect(
+        shouldUsePublicWebEntry({
+          ...common,
+          pathname,
+          chatHarnessEnabled: true,
+        }),
+      ).toBe(false);
+    }
+    expect(shouldUsePublicWebEntry({ ...common, pathname: "/cloudish" })).toBe(
       false,
     );
     expect(
-      shouldUseMarketingHomeEntry({
-        ...common,
-        hostname: "cloud.eliza.app",
-        pathname: "/",
-        forceApexConsole: true,
-      }),
+      shouldUsePublicWebEntry({ ...common, pathname: "/dashboardish" }),
     ).toBe(false);
-  });
-
-  it("allows an explicit dev preview to use the marketing-only root locally", () => {
-    expect(
-      shouldUseMarketingHomeEntry({
-        pathname: "/",
-        hostname: "127.0.0.1",
-        webShellEnabled: false,
-        chatHarnessEnabled: false,
-        desktopShell: false,
-        forceApexConsole: false,
-        forceMarketingHome: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("keeps the marketing entry free of auth-router and service-worker startup", () => {
-    const marketingEntrySource = readFileSync(
-      resolve(appRoot, "src/marketing-home-entry.tsx"),
-      "utf8",
-    );
-    expect(marketingEntrySource).toContain(
-      'import EmbeddedHomePage from "@homepage/embedded-home"',
-    );
-    expect(marketingEntrySource).not.toContain("CloudRouterShell");
-    expect(marketingEntrySource).not.toContain("registerPublicCloudSurfaces");
-    expect(marketingEntrySource).not.toContain("registerViewServiceWorker");
   });
 
   it("never bypasses the established desktop, disabled-shell, or harness boot", () => {
@@ -216,7 +180,6 @@ describe("hosted public renderer entry policy", () => {
       chatHarnessEnabled: false,
       desktopShell: false,
       forceApexConsole: false,
-      forceMarketingHome: false,
     };
     expect(shouldUsePublicWebEntry({ ...common, desktopShell: true })).toBe(
       false,

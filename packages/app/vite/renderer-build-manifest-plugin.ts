@@ -3,14 +3,16 @@
  * packaging steps.
  */
 import { execSync } from "node:child_process";
+import path from "node:path";
 import type { Plugin } from "vite";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
-} from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
+} from "../scripts/lib/renderer-build-manifest.ts";
+import { viteRendererBuildNeeded } from "../scripts/lib/vite-renderer-dist-stale.ts";
 
 /**
- * Emits `dist/eliza-renderer-build.json` at the end of EVERY production renderer
+ * Emits `eliza-renderer-build.json` into Vite's resolved output directory for each production renderer
  * build (mobile, desktop, web). The file is a content-derived build stamp that:
  *   - ships on-device (cap sync copies the whole webDir; the desktop Electrobun
  *     copy carries dist/), giving an asserted in-app "which renderer is this",
@@ -38,13 +40,21 @@ function resolveCommit(): string | null {
 
 export function rendererBuildManifestPlugin(): Plugin {
   let outDir = "dist";
+  let root = "";
   let playwrightTestAuth = false;
   let iosApnsEnabled: boolean | null = null;
+  let startedAt = 0;
+  let outputWritten = false;
   return {
     name: "renderer-build-manifest",
     apply: "build",
+    buildStart() {
+      startedAt = Date.now();
+      outputWritten = false;
+    },
     configResolved(config) {
-      outDir = config.build.outDir;
+      root = config.root;
+      outDir = path.resolve(root, config.build.outDir);
       // Use Vite's resolved env so values loaded from `.env*` match the
       // `import.meta.env` value compiled into the renderer.
       playwrightTestAuth = config.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
@@ -53,11 +63,18 @@ export function rendererBuildManifestPlugin(): Plugin {
           ? config.env.VITE_ELIZA_APNS_ENABLED === "1"
           : null;
     },
+    writeBundle() {
+      outputWritten = true;
+    },
     closeBundle() {
+      // Failed compilation still closes the bundle; its existing output is not
+      // evidence of this build and the original error must remain visible.
+      if (!outputWritten) return;
       // Model-tester and other secondary single-file builds emit no index.html;
       // only stamp a real app bundle.
       try {
         const manifest = writeRendererBuildManifest(outDir, {
+          startedAt: new Date(startedAt).toISOString(),
           commit: resolveCommit(),
           variant: process.env.ELIZA_BUILD_VARIANT ?? null,
           capacitorTarget: process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? null,
@@ -69,6 +86,19 @@ export function rendererBuildManifestPlugin(): Plugin {
           playwrightTestAuth,
           iosApnsEnabled,
         });
+        // Reuse the packaging input scan: an edit after Vite read a module can
+        // predate index.html while still making this build inconsistent.
+        if (
+          viteRendererBuildNeeded(
+            root,
+            path.resolve(import.meta.dirname, "../../.."),
+            { distDir: outDir },
+          )
+        ) {
+          throw new Error(
+            "[renderer-build-manifest] input changed during build. Rebuild before packaging.",
+          );
+        }
         this.info?.(
           `[renderer-build-manifest] wrote ${RENDERER_BUILD_MANIFEST_FILENAME} buildId=${manifest.buildId.slice(0, 12)} (${manifest.assetCount} assets)`,
         );

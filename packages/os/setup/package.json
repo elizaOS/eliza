@@ -1,0 +1,53 @@
+{
+  "name": "@elizaos/setup",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electrobun desktop app for flashing elizaOS AOSP builds onto Pixel devices via ADB and fastboot.",
+  "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe src vite.config.ts vitest.config.ts",
+    "package:mac": "electrobun build --env=stable --platform darwin",
+    "package:linux": "electrobun build --env=stable --platform linux",
+    "package:windows": "electrobun build --env=stable --platform win32",
+    "postinstall": "node vendor/download.mjs",
+    "vendor:update": "node vendor/download.mjs --strict",
+    "clean": "node ../scripts/rm-path-recursive.ts dist",
+    "lint:check": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe src vite.config.ts vitest.config.ts",
+    "format": "bunx @biomejs/biome format --write src vite.config.ts vitest.config.ts",
+    "format:check": "bunx @biomejs/biome format src vite.config.ts vitest.config.ts"
+  },
+  "dependencies": {
+    "@fontsource/poppins": "^5.2.7",
+    "vite": "^8.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/node": "^25.0.0",
+    "@types/react": "^18.0.0 || ^19.0.0",
+    "@types/react-dom": "^18.0.0 || ^19.0.0",
+    "@types/three": "0.165.0",
+    "jsdom": "^29.0.0",
+    "electrobun": "1.18.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
+  }
+}

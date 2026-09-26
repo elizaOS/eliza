@@ -45,7 +45,6 @@ import {
   encodeFunctionData,
   http,
   keccak256,
-  parseUnits,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
@@ -62,6 +61,7 @@ import {
   type SupportedNetwork,
 } from "./eliza-token-price";
 import { payoutAlertsService } from "./payout-alerts";
+import { payoutAmountToBaseUnits } from "./payout-amount.ts";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
 // Configuration
@@ -742,7 +742,7 @@ export class PayoutProcessorService {
     // direct call can never silently pay out nothing; parseUnits then does the
     // precise decimal-string conversion from the (now known-finite) value.
     parseRedemptionAmount("eliza_amount", redemption.eliza_amount);
-    const amount = parseUnits(redemption.eliza_amount.toString(), tokenConfig.decimals);
+    const amount = payoutAmountToBaseUnits(redemption.eliza_amount, tokenConfig.decimals);
 
     const account = privateKeyToAccount(this.evmPrivateKey);
 
@@ -871,11 +871,11 @@ export class PayoutProcessorService {
     // that broadcasts + marks completed with a real signature (fabricated
     // success). processRedemption already gates this, but re-validate here so a
     // direct call can never silently pay out nothing.
-    const amount = BigInt(
-      Math.floor(
-        parseRedemptionAmount("eliza_amount", redemption.eliza_amount) * 10 ** tokenConfig.decimals,
-      ),
-    );
+    parseRedemptionAmount("eliza_amount", redemption.eliza_amount);
+    // Exact decimal-string conversion, shared with the EVM path: float
+    // multiplication here rounded (0.125000283 * 1e9 === 125000282.99999999) and
+    // Math.floor then paid one base unit less than the approved redemption.
+    const amount = payoutAmountToBaseUnits(redemption.eliza_amount, tokenConfig.decimals);
 
     // Get source token account (hot wallet's ATA)
     const sourceAta = await getAssociatedTokenAddress(mintAddress, this.solanaKeypair.publicKey);

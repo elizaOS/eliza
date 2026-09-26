@@ -1,21 +1,4 @@
-/**
- * Unit tests for the ScheduledTask spine.
- *
- * Covers:
- *  - every trigger kind (schema-level)
- *  - every verb (snooze | skip | complete | dismiss | escalate |
- *    acknowledge | edit | reopen)
- *  - multi-gate composition (all / any / first_deny)
- *  - terminal-state assignments
- *  - snooze-resets-ladder
- *  - reopen-after-expired
- *  - idempotency-key dedupe
- *  - respectsGlobalPause skip
- *  - AnchorConsolidationPolicy merge mode
- *  - pipeline.onComplete fires on `completed`; does NOT fire on
- *    `acknowledged`
- *  - the runner does NOT pattern-match `promptInstructions`
- */
+/** Exercises scheduling admission, lifecycle receipts, gates, dispatch and host substitution with the real runner and isolated in-memory collaborators. */
 
 import { stringToUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -40,9 +23,12 @@ import {
   registerBuiltInGates,
 } from "./gate-registry.js";
 import {
+  ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerHandle,
+  type ScheduledTaskStore,
   TestNoopScheduledTaskDispatcher,
 } from "./runner.js";
 import {
@@ -67,6 +53,9 @@ import { ScheduledTaskValidationError } from "./validation.js";
 interface Harness {
   runner: ScheduledTaskRunnerHandle;
   logStore: ScheduledTaskLogStore;
+  store: ScheduledTaskStore;
+  gates: ReturnType<typeof createTaskGateRegistry>;
+  nextFireAtFor(taskId: string): string | null | undefined;
   setNow(iso: string): void;
   setOwnerFacts(facts: OwnerFactsView): void;
   setPause(view: { active: boolean; reason?: string }): void;
@@ -74,7 +63,22 @@ interface Harness {
   setSubjectStore(store: SubjectStoreView): void;
 }
 
-function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
+function makeHarness(
+  initialIso = "2026-05-09T12:00:00.000Z",
+  options: Partial<
+    Pick<
+      ScheduledTaskRunnerDeps,
+      | "channelKeys"
+      | "agentId"
+      | "dispatcher"
+      | "hostCapabilities"
+      | "ownerFacts"
+      | "completionChecks"
+      | "ladders"
+      | "anchors"
+    >
+  > = {},
+): Harness {
   let nowIso = initialIso;
   let ownerFacts: OwnerFactsView = {
     timezone: "UTC",
@@ -91,20 +95,27 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
   const gates = createTaskGateRegistry();
   registerBuiltInGates(gates);
 
-  const completionChecks = createCompletionCheckRegistry();
-  registerBuiltInCompletionChecks(completionChecks);
+  const completionChecks =
+    options.completionChecks ?? createCompletionCheckRegistry();
+  if (!options.completionChecks)
+    registerBuiltInCompletionChecks(completionChecks);
+  const ladders = options.ladders ?? createEscalationLadderRegistry();
+  if (!options.ladders) registerDefaultEscalationLadders(ladders);
 
-  const ladders = createEscalationLadderRegistry();
-  registerDefaultEscalationLadders(ladders);
-
-  const anchors = createAnchorRegistry();
+  const anchors = options.anchors ?? createAnchorRegistry();
   const consolidation = createConsolidationRegistry();
   const store = createInMemoryScheduledTaskStore();
+  const nextFireAtByTaskId = new Map<string, string | null>();
+  const upsert = store.upsert.bind(store);
+  store.upsert = async (task, options) => {
+    nextFireAtByTaskId.set(task.taskId, options?.nextFireAtIso ?? null);
+    await upsert(task, options);
+  };
   const logStore = createInMemoryScheduledTaskLogStore();
 
   let counter = 0;
   const runner = createScheduledTaskRunner({
-    agentId: "test-agent",
+    agentId: options.agentId ?? "test-agent",
     store,
     logStore,
     gates,
@@ -112,13 +123,17 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
     ladders,
     anchors,
     consolidation,
-    ownerFacts: () => ownerFacts,
+    ownerFacts: options.ownerFacts ?? (() => ownerFacts),
     globalPause: { current: async () => pauseView } as GlobalPauseView,
     activity: { hasSignalSince: (...a) => activity.hasSignalSince(...a) },
     subjectStore: {
       wasUpdatedSince: (...a) => subjectStore.wasUpdatedSince(...a),
     },
-    dispatcher: TestNoopScheduledTaskDispatcher,
+    dispatcher: options.dispatcher ?? TestNoopScheduledTaskDispatcher,
+    ...(options.hostCapabilities
+      ? { hostCapabilities: options.hostCapabilities }
+      : {}),
+    channelKeys: options.channelKeys,
     newTaskId: () => {
       counter += 1;
       return `task_${counter}`;
@@ -129,6 +144,9 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
   return {
     runner,
     logStore,
+    store,
+    gates,
+    nextFireAtFor: (taskId) => nextFireAtByTaskId.get(taskId),
     setNow: (iso) => {
       nowIso = iso;
     },
@@ -735,6 +753,79 @@ describe("ScheduledTaskRunner — every verb", () => {
     ).rejects.toThrow(/read-only/);
   });
 
+  it.each([
+    ["interval trigger", { trigger: { kind: "interval", everyMinutes: -5 } }],
+    ["once trigger", { trigger: { kind: "once", atIso: "not-an-iso" } }],
+    ["kind enum", { kind: "not-a-kind" }],
+    ["priority enum", { priority: "urgent-ish" }],
+    ["source enum", { source: "somewhere" }],
+  ])(
+    "edit rejects an invalid %s and leaves the stored row unchanged",
+    async (_, patch) => {
+      const h = makeHarness();
+      const task = await h.runner.schedule(
+        baseInput({ trigger: { kind: "interval", everyMinutes: 60 } }),
+      );
+      await expect(
+        h.runner.apply(
+          task.taskId,
+          "edit",
+          patch as Parameters<ScheduledTaskRunnerHandle["apply"]>[2],
+        ),
+      ).rejects.toBeInstanceOf(ScheduledTaskValidationError);
+      expect(
+        (await h.runner.list()).find((row) => row.taskId === task.taskId),
+      ).toEqual(task);
+    },
+  );
+
+  it("edit enforces registered escalation channel keys", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z", {
+      channelKeys: () => new Set(["in_app"]),
+    });
+    const task = await h.runner.schedule(baseInput());
+    await expect(
+      h.runner.apply(task.taskId, "edit", {
+        escalation: {
+          steps: [{ channelKey: "definitely-not-registered", delayMinutes: 5 }],
+        },
+      }),
+    ).rejects.toBeInstanceOf(ChannelKeyError);
+    expect(
+      (await h.runner.list()).find((row) => row.taskId === task.taskId)
+        ?.escalation,
+    ).toBeUndefined();
+
+    const edited = await h.runner.apply(task.taskId, "edit", {
+      escalation: {
+        steps: [{ channelKey: "in_app", delayMinutes: 5 }],
+      },
+    });
+    expect(edited.escalation?.steps?.[0]?.channelKey).toBe("in_app");
+  });
+
+  it("valid edit persists fields and recomputes next_fire_at", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    expect(h.nextFireAtFor(task.taskId)).toBeNull();
+
+    const edited = await h.runner.apply(task.taskId, "edit", {
+      promptInstructions: "updated text",
+      trigger: {
+        kind: "interval",
+        everyMinutes: 90,
+        from: "2026-05-09T13:30:00.000Z",
+      },
+    });
+    expect(edited.promptInstructions).toBe("updated text");
+    expect(edited.trigger).toEqual({
+      kind: "interval",
+      everyMinutes: 90,
+      from: "2026-05-09T13:30:00.000Z",
+    });
+    expect(h.nextFireAtFor(task.taskId)).toBe("2026-05-09T13:30:00.000Z");
+  });
+
   it("edit refuses an own __proto__ key instead of re-parenting the task", async () => {
     const h = makeHarness();
     const task = await h.runner.schedule(baseInput());
@@ -863,27 +954,9 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
         messageId: "telegram-msg-1",
       }),
     );
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const runner = createScheduledTaskRunner({
-      agentId: "test-agent",
-      store: createInMemoryScheduledTaskStore(),
-      logStore: createInMemoryScheduledTaskLogStore(),
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
+    const { runner } = makeHarness("2026-05-14T08:00:00.000Z", {
       dispatcher: { dispatch },
-      now: () => new Date("2026-05-14T08:00:00.000Z"),
+      ownerFacts: () => ({}),
     });
     const task = await runner.schedule(
       baseInput({
@@ -915,25 +988,10 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
         messageId: "in-app-msg-1",
       }),
     );
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const runner = createScheduledTaskRunner({
-      agentId: "test-agent",
-      store: createInMemoryScheduledTaskStore(),
-      logStore: createInMemoryScheduledTaskLogStore(),
-      gates,
-      completionChecks,
-      ladders: createEscalationLadderRegistry(),
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
+    const { runner } = makeHarness("2026-05-14T08:00:00.000Z", {
       dispatcher: { dispatch },
-      now: () => new Date("2026-05-14T08:00:00.000Z"),
+      ownerFacts: () => ({}),
+      ladders: createEscalationLadderRegistry(),
     });
     const task = await runner.schedule(
       baseInput({
@@ -969,7 +1027,6 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
   });
 
   it("multi-gate composition: first_deny stops at the first deny", async () => {
-    const _h = makeHarness();
     const denyTrace: string[] = [];
     const deny: TaskGateContribution = {
       kind: "test.deny",
@@ -985,33 +1042,12 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
         return { kind: "allow" };
       },
     };
-    // We need to access the gate registry inside the harness; do it via
-    // a fresh harness so we can register custom gates.
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
+    const { runner, gates } = makeHarness(undefined, {
+      agentId: "test",
+      ownerFacts: () => ({}),
+    });
     gates.register(deny);
     gates.register(allow);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const runner = createScheduledTaskRunner({
-      agentId: "test",
-      store: createInMemoryScheduledTaskStore(),
-      logStore: createInMemoryScheduledTaskLogStore(),
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
-      dispatcher: TestNoopScheduledTaskDispatcher,
-      newTaskId: () => "t1",
-      now: () => new Date("2026-05-09T12:00:00.000Z"),
-    });
     const task = await runner.schedule(
       baseInput({
         shouldFire: {
@@ -1037,27 +1073,14 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
         return { kind: "allow" };
       },
     };
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    gates.register(denyA);
-    gates.register(allowB);
-    const runner = createScheduledTaskRunner({
+    const { runner, gates } = makeHarness(undefined, {
       agentId: "test",
-      store: createInMemoryScheduledTaskStore(),
-      logStore: createInMemoryScheduledTaskLogStore(),
-      gates,
+      ownerFacts: () => ({}),
       completionChecks: createCompletionCheckRegistry(),
       ladders: createEscalationLadderRegistry(),
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
-      dispatcher: TestNoopScheduledTaskDispatcher,
-      newTaskId: () => "t-any",
-      now: () => new Date("2026-05-09T12:00:00.000Z"),
     });
+    gates.register(denyA);
+    gates.register(allowB);
     const task = await runner.schedule(
       baseInput({
         shouldFire: {
@@ -1083,27 +1106,14 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
         return { kind: "deny", reason: "rejected" };
       },
     };
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    gates.register(allowOk);
-    gates.register(allowNo);
-    const runner = createScheduledTaskRunner({
+    const { runner, gates } = makeHarness(undefined, {
       agentId: "test",
-      store: createInMemoryScheduledTaskStore(),
-      logStore: createInMemoryScheduledTaskLogStore(),
-      gates,
+      ownerFacts: () => ({}),
       completionChecks: createCompletionCheckRegistry(),
       ladders: createEscalationLadderRegistry(),
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
-      dispatcher: TestNoopScheduledTaskDispatcher,
-      newTaskId: () => "t-all",
-      now: () => new Date("2026-05-09T12:00:00.000Z"),
     });
+    gates.register(allowOk);
+    gates.register(allowNo);
     const task = await runner.schedule(
       baseInput({
         shouldFire: {
@@ -1474,28 +1484,10 @@ describe("ScheduledTaskRunner — getEscalationCursor (A6)", () => {
 describe("ScheduledTaskRunner — dispatcher", () => {
   it("custom dispatcher receives the fire record", async () => {
     const dispatch = vi.fn(async () => undefined);
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const runner = createScheduledTaskRunner({
+    const { runner } = makeHarness(undefined, {
       agentId: "t",
-      store: createInMemoryScheduledTaskStore(),
-      logStore: createInMemoryScheduledTaskLogStore(),
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
       dispatcher: { dispatch },
-      newTaskId: () => "task_dispatch",
-      now: () => new Date("2026-05-09T12:00:00.000Z"),
+      ownerFacts: () => ({}),
     });
     const task = await runner.schedule(
       baseInput({
@@ -1520,30 +1512,10 @@ describe("ScheduledTaskRunner — dispatcher", () => {
     const dispatch = vi.fn(async () => {
       throw new Error("transport exploded");
     });
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const store = createInMemoryScheduledTaskStore();
-    const logStore = createInMemoryScheduledTaskLogStore();
-    const runner = createScheduledTaskRunner({
+    const { runner, store, logStore } = makeHarness(undefined, {
       agentId: "t",
-      store,
-      logStore,
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
       dispatcher: { dispatch },
-      newTaskId: () => "task_dispatch_failed",
-      now: () => new Date("2026-05-09T12:00:00.000Z"),
+      ownerFacts: () => ({}),
     });
     const task = await runner.schedule(baseInput());
     const result = await runner.fireWithResult(task.taskId);
@@ -1594,32 +1566,11 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
   function makeDispatchRunner(
     dispatch: () => Promise<DispatchResult | undefined>,
   ) {
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const store = createInMemoryScheduledTaskStore();
-    const logStore = createInMemoryScheduledTaskLogStore();
-    const runner = createScheduledTaskRunner({
+    return makeHarness(NOW_ISO, {
       agentId: "t",
-      store,
-      logStore,
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
       dispatcher: { dispatch: vi.fn(dispatch) },
-      newTaskId: () => "task_route",
-      now: () => new Date(NOW_ISO),
+      ownerFacts: () => ({}),
     });
-    return { runner, store, logStore };
   }
 
   it("routes a non-retriable { ok: false } to dispatch_failed, not fired", async () => {
@@ -1709,6 +1660,10 @@ describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
     );
     expect(child).toBeDefined();
     expect(child?.state.pipelineParentId).toBe(parent.taskId);
+    expect(child?.taskId).not.toBe(parent.taskId);
+    expect(await store.get(parent.taskId)).toMatchObject({
+      state: { status: "failed" },
+    });
   });
 
   it("reschedules the SAME step (ladder not advanced) on a retriable { ok: false }", async () => {
@@ -1802,32 +1757,11 @@ describe("ScheduledTaskRunner — executionProfile host-capability substitution"
    */
   it("substitutes a bg-heavy-fgs task to notify-only on a foreground-only host", async () => {
     const dispatch = vi.fn(async () => undefined);
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const logStore = createInMemoryScheduledTaskLogStore();
-    const runner = createScheduledTaskRunner({
+    const { runner, logStore } = makeHarness("2026-05-14T08:00:00.000Z", {
       agentId: "t-sub",
-      store: createInMemoryScheduledTaskStore(),
-      logStore,
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
       dispatcher: { dispatch },
-      // Host can only run foreground + notify-only. A `bg-heavy-fgs` task
-      // is NOT in this set, so the runner must substitute.
+      ownerFacts: () => ({}),
       hostCapabilities: () => new Set(["foreground", "notify-only"]),
-      newTaskId: () => "task_sub",
-      now: () => new Date("2026-05-14T08:00:00.000Z"),
     });
     const task = await runner.schedule(
       baseInput({
@@ -1866,32 +1800,12 @@ describe("ScheduledTaskRunner — executionProfile host-capability substitution"
 
   it("does NOT substitute when the host CAN satisfy the profile", async () => {
     const dispatch = vi.fn(async () => undefined);
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const logStore = createInMemoryScheduledTaskLogStore();
-    const runner = createScheduledTaskRunner({
+    const { runner, logStore } = makeHarness("2026-05-14T08:00:00.000Z", {
       agentId: "t-no-sub",
-      store: createInMemoryScheduledTaskStore(),
-      logStore,
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
       dispatcher: { dispatch },
-      // Host CAN run bg-heavy-fgs.
+      ownerFacts: () => ({}),
       hostCapabilities: () =>
         new Set(["foreground", "bg-light-30s", "bg-heavy-fgs", "notify-only"]),
-      newTaskId: () => "task_no_sub",
-      now: () => new Date("2026-05-14T08:00:00.000Z"),
     });
     const task = await runner.schedule(
       baseInput({
@@ -1917,30 +1831,11 @@ describe("ScheduledTaskRunner — executionProfile host-capability substitution"
     // A task with no executionProfile defaults to `foreground`; foreground
     // is always in every host's capability set, so no substitution.
     const dispatch = vi.fn(async () => undefined);
-    const gates = createTaskGateRegistry();
-    registerBuiltInGates(gates);
-    const completionChecks = createCompletionCheckRegistry();
-    registerBuiltInCompletionChecks(completionChecks);
-    const ladders = createEscalationLadderRegistry();
-    registerDefaultEscalationLadders(ladders);
-    const logStore = createInMemoryScheduledTaskLogStore();
-    const runner = createScheduledTaskRunner({
+    const { runner, logStore } = makeHarness("2026-05-14T08:00:00.000Z", {
       agentId: "t-default",
-      store: createInMemoryScheduledTaskStore(),
-      logStore,
-      gates,
-      completionChecks,
-      ladders,
-      anchors: createAnchorRegistry(),
-      consolidation: createConsolidationRegistry(),
-      ownerFacts: async () => ({}),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
       dispatcher: { dispatch },
+      ownerFacts: () => ({}),
       hostCapabilities: () => new Set(["foreground", "notify-only"]),
-      newTaskId: () => "task_default",
-      now: () => new Date("2026-05-14T08:00:00.000Z"),
     });
     const task = await runner.schedule(baseInput()); // no executionProfile
     await runner.fire(task.taskId);
@@ -2126,5 +2021,64 @@ describe("ScheduledTaskRunner — resolveNextFireAt (due-window primitive)", () 
       reason: "cron_due",
       occurrenceAtIso: "2026-05-09T09:00:00.000Z",
     });
+  });
+});
+
+describe("observed anchor midnight recovery", () => {
+  it("indexes and persists exactly one fire without today's observation or a static fallback", async () => {
+    const anchors = createAnchorRegistry();
+    const observed = "2026-05-09T21:07:00.000Z";
+    anchors.register({
+      anchorKey: "wake.confirmed",
+      describe: { label: "observed wake", provider: "test" },
+      resolve({ nowIso }) {
+        return nowIso.slice(0, 10) === observed.slice(0, 10) &&
+          Date.parse(nowIso) >= Date.parse(observed)
+          ? { atIso: observed }
+          : null;
+      },
+    });
+    const h = makeHarness("2026-05-10T00:00:00.000Z", {
+      anchors,
+      ownerFacts: () => ({ timezone: "UTC" }),
+    });
+    const task = await h.runner.schedule(
+      baseInput({
+        trigger: {
+          kind: "relative_to_anchor",
+          anchorKey: "wake.confirmed",
+          offsetMinutes: 240,
+        },
+      }),
+    );
+    expect(await h.runner.resolveNextFireAt(task)).toBe(
+      "2026-05-10T01:07:00.000Z",
+    );
+    expect(await h.runner.resolveDueDecision(task)).toMatchObject({
+      due: false,
+    });
+    h.setNow("2026-05-10T01:07:00.000Z");
+    expect(await h.runner.resolveDueDecision(task)).toMatchObject({
+      due: true,
+      occurrenceAtIso: "2026-05-10T01:07:00.000Z",
+    });
+    const fired = await h.runner.fire(task.taskId);
+    expect(fired.state).toMatchObject({
+      status: "fired",
+      firedAt: "2026-05-10T01:07:00.000Z",
+    });
+    expect(await h.runner.resolveDueDecision(fired)).toMatchObject({
+      due: false,
+    });
+    expect(await h.runner.resolveNextFireAt(fired)).toBeNull();
+    expect((await h.runner.fire(task.taskId)).state).toEqual(fired.state);
+    expect((await h.store.get(task.taskId))?.state).toEqual(fired.state);
+    const history = await h.logStore.list({
+      agentId: "test-agent",
+      taskId: task.taskId,
+    });
+    expect(
+      history.filter((entry) => entry.transition === "fired"),
+    ).toHaveLength(1);
   });
 });

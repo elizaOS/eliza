@@ -7,12 +7,14 @@
  * tab. Keeping one source of truth avoids drift between the two specs.
  */
 import { isDeepStrictEqual } from "node:util";
+import type { SubscriptionPlansResponse } from "@elizaos/cloud-sdk";
 import {
   STEWARD_ACTIVE_SCOPE_KEY,
   STEWARD_TOKEN_KEY,
   STEWARD_TOKEN_SCOPE_KEY,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { Page, Request, Route } from "@playwright/test";
+import { billingFixture } from "../../../../ui/src/cloud/billing/apps/billing-fixture";
 
 function requestBodyMatches(request: Request, expected: object): boolean {
   try {
@@ -30,24 +32,28 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
 }
 
-export async function seedStewardToken(page: Page): Promise<void> {
+export async function seedStewardToken(
+  page: Page,
+  agentId = "6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+): Promise<void> {
   const token = makeJwt({
     sub: "cloud-audit-smoke-user",
     email: "cloud-audit-smoke@agent.local",
     exp: Math.floor(Date.now() / 1000) + 3600,
   });
   await page.addInitScript(
-    ({ activeScopeKey, key, tokenScopeKey, value }) => {
+    ({ activeScopeKey, key, tokenScopeKey, value, agentId }) => {
       const scope = "eliza-cloud:production";
       localStorage.setItem(key, value);
       localStorage.setItem(tokenScopeKey, scope);
       localStorage.setItem(activeScopeKey, scope);
       localStorage.setItem("eliza:first-run-complete", "1");
+      localStorage.setItem("eliza:first-run-complete:cloud-only:v1", "1");
       localStorage.setItem("eliza:setup:step", "activate");
       localStorage.setItem(
         "elizaos:active-server",
         JSON.stringify({
-          id: "cloud:6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+          id: `cloud:${agentId}`,
           kind: "cloud",
           label: "Eliza Cloud",
           accessToken: "ui-smoke-agent-access-token",
@@ -59,6 +65,7 @@ export async function seedStewardToken(page: Page): Promise<void> {
       key: STEWARD_TOKEN_KEY,
       tokenScopeKey: STEWARD_TOKEN_SCOPE_KEY,
       value: token,
+      agentId,
     },
   );
 }
@@ -112,6 +119,7 @@ export const BILLING_AUDIT_RESOURCE_EXPECTATIONS = [
 ] as const;
 /** ApplicationDetailPage requires a valid UUID id (redirects otherwise). */
 export const SMOKE_APP_UUID = "6f9619ff-8b86-4d01-b42d-00c04fc964ff";
+const APP_BILLING_FIXTURE = billingFixture({ appId: SMOKE_APP_UUID });
 
 const SMOKE_APP = {
   id: SMOKE_APP_UUID,
@@ -250,7 +258,7 @@ const DEDICATED_QUOTE_ID =
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const DEDICATED_JOB_ID = "00000000-0000-4000-8000-000000000003";
 const INSUFFICIENT_UPGRADE_CREDITS =
-  "Insufficient credits to upgrade. A dedicated agent costs $3.00/day of hosting, and upgrading requires a balance above $9.00 (3 days of hosting). Please add at least $9.00 to your account at /cloud/billing.";
+  "Insufficient credits to upgrade. A dedicated agent costs $0.24/day of hosting, and upgrading requires a balance of at least $0.72 (3 days of hosting). Please add at least $0.72 to your account at /cloud/billing.";
 
 const path_ = (p: string) => (pathname: string) => pathname === p;
 const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
@@ -440,7 +448,17 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/views/cloud/elements"),
     body: { success: true },
   },
+  {
+    method: "POST",
+    match: path_("/api/views/__all__/navigate"),
+    body: { success: true },
+  },
   // my-agents characters/saved lists.
+  {
+    method: "POST",
+    match: path_("/api/my-agents/claim-affiliate-characters"),
+    body: { success: true, claimed: [] },
+  },
   {
     match: path_("/api/my-agents/characters"),
     body: { success: true, data: { characters: [] } },
@@ -488,6 +506,59 @@ const STUB_RULES: StubRule[] = [
     },
   },
   // billing/ — credits, settings, invoices, crypto (fail-soft), checkout.
+  {
+    match: path_("/api/v1/subscriptions/plans"),
+    body: {
+      success: true,
+      data: {
+        catalogVersion: "v1",
+        plans: [
+          {
+            key: "plus_monthly",
+            name: "Plus",
+            amountCents: 3000,
+            currency: "usd",
+            allowance: { amountUsd: "25.000000" },
+          },
+        ],
+      },
+    },
+  },
+  {
+    match: path_("/api/v1/billing/application-slots/audit-product"),
+    body: {
+      success: true,
+      data: {
+        slotKey: "audit-product",
+        appId: SMOKE_APP_UUID,
+        appName: "Field Notes",
+        productFamilyKey: "workspace",
+        environment: "test",
+      },
+    },
+  },
+  {
+    match: path_(`/api/v1/apps/${SMOKE_APP_UUID}/billing/catalog`),
+    body: { success: true, data: APP_BILLING_FIXTURE.catalog },
+  },
+  {
+    method: "POST",
+    match: path_(`/api/v1/apps/${SMOKE_APP_UUID}/billing/accounts/resolve`),
+    body: { success: true, data: APP_BILLING_FIXTURE.snapshot.account },
+  },
+  {
+    match: path_(
+      `/api/v1/apps/${SMOKE_APP_UUID}/billing/accounts/account-1/subscriptions/workspace`,
+    ),
+    body: { success: true, data: APP_BILLING_FIXTURE.snapshot },
+  },
+  {
+    match: (pathname) =>
+      new RegExp(
+        `^/api/v1/apps/${SMOKE_APP_UUID}/billing/accounts/account-1/subscriptions/workspace/(seats|invoices|usage)$`,
+      ).test(pathname),
+    body: { success: true, data: { items: [], nextCursor: null } },
+  },
   {
     match: path_("/api/v1/billing/limits"),
     body: {
@@ -777,6 +848,26 @@ const STUB_RULES: StubRule[] = [
   {
     match: path_("/api/v1/referrals"),
     body: { code: "SMOKE20", total_referrals: 0, is_active: true },
+  },
+  // api-keys/
+  {
+    match: path_("/api/v1/api-keys"),
+    body: {
+      keys: [
+        {
+          id: "api-key-smoke-1",
+          name: "Smoke API key",
+          description: "Deterministic audit fixture",
+          key_prefix: "test_smoke",
+          is_active: true,
+          last_used_at: null,
+          created_at: NOW_ISO,
+          usage_count: 0,
+          rate_limit: 100,
+          expires_at: null,
+        },
+      ],
+    },
   },
   // api-explorer/
   { match: path_("/api/v1/api-keys/explorer"), body: { apiKey: null } },
@@ -1087,6 +1178,100 @@ export async function installCloudApiStubs(
     const { pathname } = new URL(request.url());
     const method = request.method();
 
+    if (method === "GET" && pathname === "/api/runtime/mode") {
+      await fulfill(route, 200, {
+        mode: "cloud",
+        deploymentRuntime: "cloud",
+        isRemoteController: false,
+        remoteApiBaseConfigured: false,
+      });
+      return true;
+    }
+
+    if (method === "GET" && pathname === "/api/config") {
+      await fulfill(route, 200, {
+        meta: { firstRunComplete: true },
+        agents: {
+          list: [
+            {
+              id:
+                agentState === "shared"
+                  ? PERSONAL_AGENT_ID
+                  : CLOUD_AUDIT_DEDICATED_AGENT_ID,
+              name: "Eliza",
+              status: agentState === "provisioning" ? "starting" : "running",
+            },
+          ],
+          defaults: {
+            workspace: "cloud-audit-workspace",
+            adminEntityId: SMOKE_USER.id,
+          },
+        },
+      });
+      return true;
+    }
+
+    // Synthetic provider-verified DTO for renderer coverage; no Stripe preflight or checkout occurs.
+    if (method === "GET" && pathname === "/api/v1/subscriptions/plans") {
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          catalogVersion: "v1",
+          plans: [
+            {
+              key: "plus_monthly",
+              name: "Plus",
+              catalogVersion: "v1",
+              active: true,
+              interval: "month",
+              intervalCount: 1,
+              currency: "usd",
+              amountCents: 3000,
+              allowance: {
+                amountUsd: "25.000000",
+                fundingClass: "allowance_eligible",
+                rollover: false,
+                expiresAt: "billing_period_end",
+              },
+              fundingClasses: ["allowance_eligible", "cash_only"],
+              rateLimits: {
+                completionsRpm: 120,
+                embeddingsRpm: 200,
+                standardRpm: 60,
+                strictRpm: 10,
+              },
+              resourceCeilings: null,
+            },
+            {
+              key: "pro_monthly",
+              name: "Pro",
+              catalogVersion: "v1",
+              active: true,
+              interval: "month",
+              intervalCount: 1,
+              currency: "usd",
+              amountCents: 10000,
+              allowance: {
+                amountUsd: "90.000000",
+                fundingClass: "allowance_eligible",
+                rollover: false,
+                expiresAt: "billing_period_end",
+              },
+              fundingClasses: ["allowance_eligible", "cash_only"],
+              rateLimits: {
+                completionsRpm: 300,
+                embeddingsRpm: 600,
+                standardRpm: 120,
+                strictRpm: 30,
+              },
+              resourceCeilings: null,
+            },
+          ],
+        },
+      } satisfies SubscriptionPlansResponse);
+      return true;
+    }
+
     if (method === "GET" && pathname === "/api/v1/eliza/personal") {
       await fulfill(route, 200, {
         success: true,
@@ -1160,6 +1345,39 @@ export async function installCloudApiStubs(
       return true;
     }
 
+    if (
+      method === "POST" &&
+      pathname === "/api/my-agents/claim-affiliate-characters"
+    ) {
+      if (!requestBodyMatches(request, {})) {
+        await fulfill(route, 400, {
+          success: false,
+          error: "The audit has no anonymous affiliate session to claim.",
+        });
+        return true;
+      }
+      await fulfill(route, 200, {
+        success: true,
+        claimed: [],
+        message: "No affiliate characters to claim",
+      });
+      return true;
+    }
+
+    if (method === "POST" && pathname === "/api/views/__all__/navigate") {
+      if (
+        !requestBodyMatches(request, { source: "user", action: "close-all" })
+      ) {
+        await fulfill(route, 400, {
+          success: false,
+          error: "Expected the normal rendered-view close-all notification.",
+        });
+        return true;
+      }
+      await fulfill(route, 200, { success: true });
+      return true;
+    }
+
     if (method === "POST" && pathname === "/api/views/cloud/navigate") {
       await fulfill(route, 200, { success: true });
       return true;
@@ -1175,13 +1393,20 @@ export async function installCloudApiStubs(
         success: true,
         data: {
           quoteId: DEDICATED_QUOTE_ID,
+          quoteVersion: "personal-dedicated-v2",
+          currentMode: "shared",
+          targetMode: "dedicated",
           sourceAgentId: PERSONAL_AGENT_ID,
-          hourlyRateUsd: 0.125,
-          dailyRateUsd: 3,
-          minimumBalanceUsd: 9,
+          hourlyRateUsd: 0.01,
+          minimumActivationChargeUsd: 0.02,
+          dailyRateUsd: 0.24,
+          minimumBalanceUsd: 0.72,
           minimumRunwayDays: 3,
           balanceUsd: creditBalance,
-          deficitUsd: quoteCanActivate ? 0 : 9 - creditBalance,
+          deficitUsd: Math.max(
+            0,
+            Math.round((0.72 - creditBalance) * 100) / 100,
+          ),
           canActivate: quoteCanActivate,
           requiresConfirmation: true,
           action: "activate_dedicated",
@@ -1200,6 +1425,7 @@ export async function installCloudApiStubs(
       const expectedBody = {
         action: "activate_dedicated",
         quoteId: DEDICATED_QUOTE_ID,
+        minimumActivationChargeUsd: 0.02,
       };
       if (!requestBodyMatches(request, expectedBody)) {
         await fulfill(route, 400, {

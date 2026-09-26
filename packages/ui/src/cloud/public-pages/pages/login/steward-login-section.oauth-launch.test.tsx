@@ -47,10 +47,10 @@ vi.mock("../../../../utils/openExternalUrl", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async () => {
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/shared/steward-session-client")
-  >("@elizaos/shared/steward-session-client");
+    typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+  >("@elizaos/plugin-elizacloud/steward-session-client");
   return {
     ...actual,
     hasStewardAuthedCookie: () => false,
@@ -70,7 +70,7 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   };
 });
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getSession() {
       return null;

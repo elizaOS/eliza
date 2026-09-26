@@ -1,33 +1,22 @@
-# Notes
+# @elizaos/plugin-notes
 
-`@elizaos/plugin-notes` provides the lightweight managed Cloud **Notes** view
-(`notes`): sticky-note creation, editing, deletion, and clearing.
+Managed Cloud Notes view for lightweight personal notes that users and agents can
+create, inspect, update, and delete together.
 
-The surface uses the standard VIEWS broker. The user can open it directly or
-ask the agent to create/show notes. Android and iOS receive a statically
-packaged React renderer; the backend capabilities and durable state run in the
-user's managed Cloud agent.
+## Development
 
-State is stored atomically per agent under
-`ELIZA_STATE_DIR/notes/agents/<agentId>/state.json`. UI controls and agent
-capabilities share one validated mutation path, and mounted views converge
-through the normal runtime update event.
-
-Calendar UI lives in `@elizaos/plugin-calendar`, which renders real Google,
-Microsoft, Apple, and ICS calendar data from its own services.
-
-## Release path
-
-- Runtime plugin: `src/plugin.ts` (service, routes, view manifest,
-  capabilities, server interaction broker).
-- App registration: `src/register.ts` statically registers the Notes page in
-  the signed app bundle.
-- Dynamic view bundle: `bun run build:views` emits `dist/views/bundle.js` for
-  web hosts that load plugin views dynamically.
-
-## Testing
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd plugins/plugin-notes typecheck
-bun run --cwd plugins/plugin-notes test
+bun run --cwd plugins/plugin-notes build  # build
+bun run --cwd plugins/plugin-notes test   # tests
 ```
+
+## Editing notes
+
+`NOTES_PATCH` requires `expectedRevision` from the complete note snapshot used to prepare the edit. Any intervening Notes mutation requires a fresh read and reconciliation. For an atomic literal substitution without a revision, use `NOTES_UPDATE` with `textEdit`; it must match exactly once and preserves all other text.
+
+Service create/update inputs using `title`/`body` treat a nonempty body as lines after the title: one separator is added, including when the supplied body already starts with a newline. An empty body clears it; omitted fields remain unchanged. Use `{ content }` for a complete verbatim note and `textEdit` for a literal edit of stored fields. Do not mix complete content with structured fields. Stored schema-2 `body` includes its separator and is not a structured input body.
+
+The app renderer resolves the package to `src/browser.ts`, which keeps views and
+client registration separate from runtime actions and provider storage.

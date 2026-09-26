@@ -21,7 +21,7 @@ import {
   type DeterministicModelFixture,
   type DeterministicModelFixtureRegistry,
   type DeterministicModelResponse,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 
 export interface RunningMockLlm {
   url: string;
@@ -116,6 +116,59 @@ function legacyFixtures(options: MockLlmOptions): DeterministicModelFixture[] {
       response: (call) => {
         if (!options.echoContext) return reply;
         const body = { messages: call.params.messages as OpenAiMessage[] };
+        if (call.toolNames.includes("HANDLE_RESPONSE")) {
+          const context = body.messages
+            .filter((message) => message.role !== "system")
+            .map((message) => contentToText(message.content))
+            .join("\n");
+          const currentMessages = [
+            ...context.matchAll(/^# Current message\n([^\n]+)$/gm),
+          ];
+          if (currentMessages.length !== 1) {
+            throw new Error(
+              "Context echo requires exactly one framed current user message",
+            );
+          }
+          const framed = currentMessages[0][1];
+          const current: unknown = framed.startsWith("{")
+            ? JSON.parse(framed)
+            : { text: framed.replace(/^user: /, "") };
+          if (!isRecord(current) || typeof current.text !== "string") {
+            throw new Error(
+              "Context echo requires the complete current message text",
+            );
+          }
+          // Count only original dialogue, never the current-message frame or
+          // policy examples. The handler now renders plain speaker/text records.
+          const conversation =
+            context.match(
+              /^# Conversation\n([\s\S]*?)(?=^# Current message\n)/m,
+            )?.[1] ?? "";
+          const priorUsers = [...conversation.matchAll(/^user: /gm)].length;
+          return {
+            finishReason: "tool_calls",
+            toolCalls: [
+              {
+                id: "call_context_echo",
+                name: "HANDLE_RESPONSE",
+                arguments: {
+                  shouldRespond: "RESPOND",
+                  contexts: ["simple"],
+                  contextRequests: [],
+                  intents: [],
+                  replyText: `turn ${priorUsers + 1} (prior user turns: ${priorUsers}): ${current.text}`,
+                  replyEffectStatus: "none",
+                  candidateActionNames: [],
+                  facts: [],
+                  relationships: [],
+                  topics: [],
+                  addressedTo: [],
+                  emotion: "none",
+                },
+              },
+            ],
+          };
+        }
         const users = userMessages(body);
         return `turn ${users.length} (prior user turns: ${Math.max(0, users.length - 1)}): ${users.at(-1) ?? ""}`;
       },

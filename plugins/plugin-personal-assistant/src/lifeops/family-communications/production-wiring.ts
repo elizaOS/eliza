@@ -4,10 +4,10 @@
  * household graph supplies structural audience metadata without asking model
  * text to decide whether an event is safe for a child.
  */
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+
+import { hasRoleAccess, type IAgentRuntime, type Memory } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   authenticatedHouseholdInboundIdentity,
   HouseholdInboundApprovalError,
@@ -24,9 +24,7 @@ import {
   familySha256,
   requireFamilyText,
 } from "./types.js";
-
 export const HOUSEHOLD_CHILD_WEEK_SOURCE_REF = "household:child-week";
-
 const EXPECTED_ACCESS_DENIAL_CODES = new Set([
   "HOUSEHOLD_ACCESS_DENIED",
   "HOUSEHOLD_GRANT_EXPIRED",
@@ -37,12 +35,11 @@ const EXPECTED_IDENTITY_DENIAL_CODES = new Set([
   "HOUSEHOLD_INBOUND_MISSING_IDENTITY",
   "HOUSEHOLD_INBOUND_UNAUTHORIZED",
 ]);
-
 export async function resolveAuthenticatedFamilyPrincipal(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<string | null> {
-  if (await hasOwnerAccess(runtime, message)) return SELF_ENTITY_ID;
+  if (await hasRoleAccess(runtime, message, "OWNER")) return SELF_ENTITY_ID;
   const principalEntityId = requireFamilyText(
     message.entityId,
     "message.entityId",
@@ -104,7 +101,6 @@ export async function resolveAuthenticatedFamilyPrincipal(
   }
   return principalEntityId;
 }
-
 function scheduleSourceRef(input: {
   state: "proposal" | "agreement";
   proposalId: string | null;
@@ -127,7 +123,6 @@ function scheduleSourceRef(input: {
   }
   return `household-schedule:${input.state}:${recordId}:v${version}`;
 }
-
 export async function resolveTrustedChildWeekItems(input: {
   runtime: IAgentRuntime;
   principalEntityId: string;

@@ -49,6 +49,10 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-accent-action: var(--accent-action);
+  --color-accent-action-foreground: var(--accent-action-foreground);
+  --color-accent-action-hover: var(--accent-action-hover);
+  --color-accent-action-hover-foreground: var(--accent-action-hover-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-hover: var(--accent-hover);

@@ -14,6 +14,7 @@
  * drawer. Barrel-exported and mounted inside the chat panel layout.
  */
 
+import { errorMessage } from "@elizaos/core/utils/errors";
 import {
   Bell,
   BellOff,
@@ -39,7 +40,6 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import { errorMessage } from "../../utils/errors";
 import { emitViewEvent } from "../../views/view-event-bus";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
@@ -77,13 +77,10 @@ import {
  * prefix so we can distinguish them from dashboard conversation UUIDs.
  */
 const INBOX_ID_PREFIX = "inbox:";
-
 /** Id namespace for PTY sessions surfaced under the Terminal channel. */
 const TERMINAL_ID_PREFIX = "terminal:";
-
 /** How often the inbox chat list refreshes while the sidebar is open. */
-const INBOX_CHATS_REFRESH_MS = 5_000;
-
+const INBOX_CHATS_REFRESH_MS = 5000;
 interface InboxChatRow {
   avatarUrl?: string;
   canSend?: boolean;
@@ -98,15 +95,12 @@ interface InboxChatRow {
   worldId?: string;
   worldLabel: string;
 }
-
 type ConversationsSidebarVariant = "default" | "game-modal";
-
 interface ConversationsSidebarProps {
   mobile?: boolean;
   onClose?: () => void;
   variant?: ConversationsSidebarVariant;
 }
-
 function railMonogram(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
   const initials = words
@@ -115,11 +109,9 @@ function railMonogram(label: string): string {
     .join("");
   return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
 }
-
 function isTerminalRow(row: ConversationsSidebarRow): boolean {
   return row.sourceKey === TERMINAL_SOURCE_SCOPE;
 }
-
 function renderRailIdentity(row: ConversationsSidebarRow) {
   if (isTerminalRow(row)) {
     return <TerminalIcon className="size-4" />;
@@ -127,15 +119,12 @@ function renderRailIdentity(row: ConversationsSidebarRow) {
   if (row.kind === "inbox" && typeof row.source === "string" && row.source) {
     return <ChatSourceIcon source={row.source} className="size-4" />;
   }
-
   return railMonogram(row.title);
 }
-
 function rowListId(row: ConversationsSidebarRow): string {
   if (isTerminalRow(row)) return `${TERMINAL_ID_PREFIX}${row.id}`;
   return row.kind === "inbox" ? `${INBOX_ID_PREFIX}${row.id}` : row.id;
 }
-
 function isLegacyUntitledConversationCandidate(
   conversation: Conversation,
 ): boolean {
@@ -144,7 +133,6 @@ function isLegacyUntitledConversationCandidate(
   }
   return conversation.title.trim().toLowerCase() === "default";
 }
-
 export function ConversationsSidebar({
   mobile = false,
   onClose,
@@ -184,7 +172,6 @@ export function ConversationsSidebar({
     t: s.t,
   }));
   const { ptySessions } = usePtySessions();
-
   const [inboxChats, setInboxChats] = useState<InboxChatRow[]>([]);
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
@@ -257,7 +244,6 @@ export function ConversationsSidebar({
       return next;
     });
   }, []);
-
   const loadInboxChats = useCallback(async () => {
     try {
       const response = await client.getInboxChats();
@@ -282,15 +268,12 @@ export function ConversationsSidebar({
       // failures; the next tick refreshes.
     }
   }, []);
-
   useEffect(() => {
     void loadInboxChats();
   }, [loadInboxChats]);
-
   useIntervalWhenDocumentVisible(() => {
     void loadInboxChats();
   }, INBOX_CHATS_REFRESH_MS);
-
   useEffect(() => {
     const candidates = conversations.filter(
       (conversation) =>
@@ -303,7 +286,6 @@ export function ConversationsSidebar({
       );
       return;
     }
-
     let cancelled = false;
     void Promise.all(
       candidates.map(async (conversation) => {
@@ -327,12 +309,10 @@ export function ConversationsSidebar({
         new Set(ids.filter((id): id is string => typeof id === "string")),
       );
     });
-
     return () => {
       cancelled = true;
     };
   }, [activeConversationId, conversations]);
-
   const visibleConversations = useMemo(
     () =>
       conversations.filter(
@@ -340,7 +320,6 @@ export function ConversationsSidebar({
       ),
     [conversations, hiddenConversationIds],
   );
-
   // Messages section: conversations live under the eliza scope.
   const messagesModel = useMemo(
     () =>
@@ -354,7 +333,6 @@ export function ConversationsSidebar({
       }),
     [inboxChats, t, visibleConversations],
   );
-
   // Connector sections: surfaces every active connector (Discord, Telegram,
   // …) grouped by world. One section per (source, world) tuple.
   const connectorsModel = useMemo(
@@ -369,16 +347,17 @@ export function ConversationsSidebar({
       }),
     [inboxChats, t],
   );
-
   const openRenameDialog = (conversation: { id: string; title: string }) => {
     setConfirmDeleteId(null);
     setMenuConversation(null);
     setRenameTarget({ id: conversation.id, title: conversation.title });
   };
-
   const openActionsMenu = (
     event: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>,
-    conversation: { id: string; title: string },
+    conversation: {
+      id: string;
+      title: string;
+    },
   ) => {
     event.preventDefault();
     event.stopPropagation();
@@ -391,7 +370,6 @@ export function ConversationsSidebar({
     }
     setMenuPosition({ x: event.clientX, y: event.clientY });
   };
-
   const handleConfirmDelete = async (id: string) => {
     if (deletingId) return;
     setDeletingId(id);
@@ -402,7 +380,6 @@ export function ConversationsSidebar({
       setConfirmDeleteId((current) => (current === id ? null : current));
     }
   };
-
   const spawnShellBusyRef = useRef(false);
   const spawnShell = useCallback(async () => {
     if (spawnShellBusyRef.current) return;
@@ -426,7 +403,6 @@ export function ConversationsSidebar({
       spawnShellBusyRef.current = false;
     }
   }, [setActionNotice, setState, setTab, t]);
-
   const selectTerminalSession = useCallback(
     (sessionId: string) => {
       setState("activeInboxChat", null);
@@ -436,7 +412,6 @@ export function ConversationsSidebar({
     },
     [onClose, setState, setTab],
   );
-
   // If a terminal session is active but its section is collapsed, make
   // sure the Terminal section stays visible so the user can see what's
   // selected. Same guarantee for inbox/connector selections.
@@ -449,10 +424,8 @@ export function ConversationsSidebar({
       return next;
     });
   }, [activeTerminalSessionId]);
-
   // ── Keyword message search (#9955) ───────────────────────────────────────
   const [messageSearchOpen, setMessageSearchOpen] = useState(false);
-
   // A chat-side affordance (or shortcut) can request the search panel.
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -460,7 +433,6 @@ export function ConversationsSidebar({
     window.addEventListener(CHAT_MESSAGE_SEARCH_EVENT, open);
     return () => window.removeEventListener(CHAT_MESSAGE_SEARCH_EVENT, open);
   }, []);
-
   const searchMessages = useCallback(
     async (query: string, signal: AbortSignal) => {
       const { results } = await client.searchConversationMessages(query, {
@@ -470,7 +442,6 @@ export function ConversationsSidebar({
     },
     [],
   );
-
   // Scroll a now-mounted message into view and flash it (brand accent).
   // Self-contained — no external CSS rule needed.
   const scrollAndFlashAnchor = useCallback((el: HTMLElement) => {
@@ -488,7 +459,6 @@ export function ConversationsSidebar({
       el.style.removeProperty("transition");
     }, 1800);
   }, []);
-
   // Poll a bounded number of animation frames for the anchor to mount (the
   // thread re-renders asynchronously after a selection / window reload).
   // Resolves the element once present, or null once the frame budget is spent.
@@ -512,7 +482,6 @@ export function ConversationsSidebar({
       }),
     [],
   );
-
   const jumpToMessage = useCallback(
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
@@ -566,16 +535,13 @@ export function ConversationsSidebar({
       onClose,
     ],
   );
-
   const handleRowSelect = (row: ConversationsSidebarRow) => {
     setConfirmDeleteId(null);
     setMenuConversation(null);
-
     if (isTerminalRow(row)) {
       selectTerminalSession(row.id);
       return;
     }
-
     if (row.kind === "inbox") {
       setState("activeTerminalSessionId", null);
       setState("activeInboxChat", {
@@ -596,11 +562,9 @@ export function ConversationsSidebar({
       setState("activeTerminalSessionId", null);
       void handleSelectConversation(row.id);
     }
-
     setTab("chat");
     onClose?.();
   };
-
   const handleNewChat = () => {
     setState("activeInboxChat", null);
     // Mirror handleRowSelect's conversation branch: an active terminal session
@@ -611,12 +575,14 @@ export function ConversationsSidebar({
     void handleNewConversation();
     onClose?.();
   };
-
   const updateInboxChatMute = useCallback(
     async (
       row: ConversationsSidebarRow,
       action: "mute" | "unmute",
-      options?: { durationMinutes?: number; scope?: "room" | "server" },
+      options?: {
+        durationMinutes?: number;
+        scope?: "room" | "server";
+      },
     ) => {
       if (row.kind !== "inbox" || muteBusyIds.has(row.id)) return;
       setMuteBusyIds((prev) => new Set(prev).add(row.id));
@@ -671,16 +637,13 @@ export function ConversationsSidebar({
     },
     [muteBusyIds, setActionNotice, t],
   );
-
   const isGameModal = variant === "game-modal";
-
   // Plugins supply the scope-chip icons, so load them eagerly so the
   // per-connector group headers can show brand icons without waiting on a
   // user action.
   useEffect(() => {
     void ensurePluginsLoaded();
   }, [ensurePluginsLoaded]);
-
   const terminalRows = useMemo<ConversationsSidebarRow[]>(
     () =>
       ptySessions.map((session) => ({
@@ -695,7 +658,6 @@ export function ConversationsSidebar({
       })),
     [ptySessions],
   );
-
   const messagesSection = useMemo(
     () => ({
       key: ELIZA_SOURCE_SCOPE,
@@ -705,7 +667,6 @@ export function ConversationsSidebar({
     }),
     [messagesModel.rows, t],
   );
-
   const terminalIndicator = useMemo(() => {
     if (ptySessions.length === 0) return null;
     // Choose the most-alerting status so the header dot reflects the session
@@ -735,7 +696,6 @@ export function ConversationsSidebar({
       </span>
     );
   }, [ptySessions]);
-
   const terminalSection = useMemo(
     () => ({
       key: TERMINAL_SOURCE_SCOPE,
@@ -746,7 +706,6 @@ export function ConversationsSidebar({
     }),
     [terminalIndicator, terminalRows, t],
   );
-
   // Connector sections: one section per source (Discord, Telegram, …) with
   // every room from that source listed underneath. No world sub-grouping
   // and no time-bucket headers — just a flat, newest-first list.
@@ -818,7 +777,6 @@ export function ConversationsSidebar({
         return left.label.localeCompare(right.label);
       });
   }, [connectorsModel.rows]);
-
   const terminalListId = activeTerminalSessionId
     ? `${TERMINAL_ID_PREFIX}${activeTerminalSessionId}`
     : null;
@@ -827,7 +785,6 @@ export function ConversationsSidebar({
     : activeInboxChat
       ? `${INBOX_ID_PREFIX}${activeInboxChat.id}`
       : activeConversationId;
-
   // Flat row list for the collapsed rail (mobile / collapsed sidebar).
   const displayRows = useMemo(
     () => [
@@ -837,10 +794,8 @@ export function ConversationsSidebar({
     ],
     [messagesSection.rows, terminalSection.rows, connectorSections],
   );
-
   const showNewChatAction = tab === "chat";
   const showNewTerminalAction = tab === "chat";
-
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
       <ConversationRenameDialog
@@ -1140,9 +1095,7 @@ export function ConversationsSidebar({
     </TooltipProvider>
   );
 }
-
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
-
 interface CollapsibleChannelSectionProps {
   sectionKey: string;
   label: string;
@@ -1173,7 +1126,10 @@ interface CollapsibleChannelSectionProps {
   onConfirmDelete: (id: string) => void | Promise<void>;
   onOpenActions: (
     event: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>,
-    conversation: { id: string; title: string },
+    conversation: {
+      id: string;
+      title: string;
+    },
   ) => void;
   onRequestDeleteConfirm: (row: ConversationsSidebarRow) => void;
   onRequestRename: (row: ConversationsSidebarRow) => void;
@@ -1181,10 +1137,12 @@ interface CollapsibleChannelSectionProps {
   onToggleInboxMute?: (
     row: ConversationsSidebarRow,
     action: "mute" | "unmute",
-    options?: { durationMinutes?: number; scope?: "room" | "server" },
+    options?: {
+      durationMinutes?: number;
+      scope?: "room" | "server";
+    },
   ) => void | Promise<void>;
 }
-
 function CollapsibleChannelSection({
   sectionKey,
   label,

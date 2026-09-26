@@ -13,10 +13,6 @@
  *     registered by this plugin's `start`. Always available.
  *
  * Optional targets registered by other plugins:
- *   - `bridge` — registered by this plugin when a `BrowserBridgeRouteService`
- *     is reachable via the runtime; routes commands to the user's real
- *     Chrome / Safari via the Agent Browser Bridge companion extension.
- *     Available iff at least one companion is paired.
  *   - `computeruse` — registered by `@elizaos/plugin-computeruse` on plugin
  *     init when its capabilities indicate the puppeteer-driven Chromium is
  *     ready.
@@ -54,16 +50,20 @@ import {
   isIdempotentBrowserSubaction,
 } from "./dispatch-types.js";
 import {
-  BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
-  type BrowserBridgeRouteService,
-} from "./service.js";
-import { bridgeSupports } from "./targets/bridge-target.js";
+  type NativeBrowserClientTransport,
+  readNativeBrowserPage,
+} from "./native-page-reader.js";
+import { NativeSocketBrowserTarget } from "./native-socket-target.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
+  isBrowserWorkspaceBridgeConfigured,
 } from "./workspace/browser-workspace.js";
-import { normalizeBrowserWorkspaceCommand } from "./workspace/browser-workspace-helpers.js";
+import {
+  assertBrowserWorkspaceUrl,
+  normalizeBrowserWorkspaceCommand,
+} from "./workspace/browser-workspace-helpers.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
@@ -72,7 +72,7 @@ import type {
 
 export const BROWSER_SERVICE_TYPE = "browser";
 
-export type BrowserTargetKind = "app" | "companion" | "stagehand" | "external";
+export type BrowserTargetKind = "app" | "stagehand" | "external";
 
 export interface BrowserTargetResolutionContext {
   command: BrowserWorkspaceCommand;
@@ -83,7 +83,7 @@ export interface BrowserTargetResolutionContext {
 /**
  * Pluggable browser backend. Implementations translate the canonical
  * BrowserWorkspaceCommand surface into whatever native shape they speak
- * (electrobun bridge, Chrome companion HTTP, puppeteer CDP, etc.) and
+ * (electrobun bridge, puppeteer CDP, etc.) and
  * return the canonical BrowserWorkspaceCommandResult.
  *
  * Capability-aware dispatch (issue #18258): targets SHOULD declare which
@@ -100,7 +100,7 @@ export interface BrowserTargetResolutionContext {
  * replayed against another target.
  */
 export interface BrowserTarget {
-  /** Stable identifier — `workspace`, `bridge`, `computeruse`, etc. */
+  /** Stable identifier — `workspace`, `computeruse`, etc. */
   readonly id: string;
   /** Short human-readable name for diagnostics. */
   readonly name: string;
@@ -205,13 +205,48 @@ function flattenBrowserCommands(
 export class BrowserService extends Service {
   static override readonly serviceType = BROWSER_SERVICE_TYPE;
   override capabilityDescription =
-    "Single browser dispatcher with a pluggable target registry. Targets (workspace / bridge / computeruse / …) register themselves; the BROWSER action picks the active target or honors a pinned override.";
+    "Single browser dispatcher with a pluggable target registry. Targets (workspace / computeruse / …) register themselves; the BROWSER action picks the active target or honors a pinned override.";
 
   private readonly targets = new Map<string, BrowserTarget>();
   /** Registration order — used as the default preference order. */
   private readonly targetOrder: string[] = [];
+  private nativeClientTransport: NativeBrowserClientTransport | null = null;
+  private nativeSocketTarget: NativeSocketBrowserTarget | null = null;
+
+  setNativeClientTransport(
+    transport: NativeBrowserClientTransport | null,
+  ): void {
+    this.nativeClientTransport = transport;
+  }
+
+  async executeNativeDeviceCommand(
+    command: BrowserWorkspaceCommand,
+    profileId: string,
+  ): Promise<BrowserWorkspaceCommandResult> {
+    if (
+      !this.nativeSocketTarget ||
+      this.nativeSocketTarget.getProfileId() !== profileId
+    )
+      throw new BrowserDispatchFailure(
+        "POLICY_BLOCKED",
+        "The authorized Chromium profile is not connected to this device.",
+        { targetId: "chromium-device" },
+      );
+    return this.execute(command, "chromium-device");
+  }
+  getNativeDeviceStatus():
+    | { connected: false }
+    | { connected: true; profileId: string; targetId: string } {
+    const profileId = this.nativeSocketTarget?.getProfileId();
+    return profileId
+      ? { connected: true, profileId, targetId: "chromium-device" }
+      : { connected: false };
+  }
 
   async stop(): Promise<void> {
+    await this.nativeSocketTarget?.stop();
+    this.nativeSocketTarget = null;
+    this.nativeClientTransport = null;
     this.targets.clear();
     this.targetOrder.length = 0;
   }
@@ -219,17 +254,20 @@ export class BrowserService extends Service {
   static override async start(runtime: IAgentRuntime): Promise<BrowserService> {
     const service = new BrowserService(runtime);
     service.registerTarget(createWorkspaceTarget());
-    // Bridge target self-registers when its dependencies (BrowserBridgeRouteService
-    // implementor) are reachable via the runtime. Missing dependencies keep the
-    // agent in workspace-only mode.
+    const nativeTarget = new NativeSocketBrowserTarget((error) => {
+      if (isBrowserDispatchFailure(error) && error.kind === "UNAVAILABLE")
+        logger.info(
+          "[browser] Native Chromium is unavailable; waiting for its connection.",
+        );
+      else runtime.reportError("browser.native-transport", error);
+    });
+    service.nativeSocketTarget = nativeTarget;
+    service.registerTarget(nativeTarget);
     try {
-      const bridgeTarget = await maybeCreateBridgeTarget(runtime);
-      if (bridgeTarget) service.registerTarget(bridgeTarget);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.debug(
-        `[BrowserService] bridge target not registered at start: ${message}`,
-      );
+      await nativeTarget.start();
+    } catch (error) {
+      // error-policy:J4 unavailable native transport remains an explicitly unavailable target.
+      runtime.reportError("browser.native-transport", error);
     }
     try {
       const stagehandTarget = await maybeCreateStagehandTarget();
@@ -413,6 +451,7 @@ export class BrowserService extends Service {
   async execute(
     command: BrowserWorkspaceCommand,
     targetId?: string,
+    nativeClientId?: string,
   ): Promise<BrowserWorkspaceCommandResult> {
     command = normalizeBrowserWorkspaceCommand(command);
     const blockedCommand = findBlockedGenericCommand(command);
@@ -442,6 +481,85 @@ export class BrowserService extends Service {
           { targetId: targetId ?? null },
         );
       }
+    }
+    if (
+      nativeClientId &&
+      (!targetId || targetId === "workspace" || targetId === "native-client")
+    ) {
+      if (["open", "navigate", "show"].includes(command.subaction)) {
+        if (command.id)
+          throw new BrowserDispatchFailure(
+            "UNSUPPORTED",
+            "Server tab IDs cannot address the requesting client's native tabs.",
+            { targetId: "native-client" },
+          );
+        if (command.subaction !== "show" && !command.url)
+          throw new Error("Native Browser navigation requires a URL.");
+        if (!this.nativeClientTransport)
+          throw new BrowserDispatchFailure(
+            "UNAVAILABLE",
+            "Native Browser client transport is unavailable.",
+            { targetId: "native-client" },
+          );
+        const url = command.url
+          ? assertBrowserWorkspaceUrl(command.url)
+          : undefined;
+        try {
+          await this.nativeClientTransport.navigate(nativeClientId, url);
+        } catch (error) {
+          // error-policy:J2 preserve typed transport failures; an opaque failure after dispatch cannot prove navigation did not begin.
+          if (isBrowserDispatchFailure(error)) throw error;
+          throw new BrowserDispatchFailure(
+            "UNCERTAIN_OUTCOME",
+            `Native browser command "${command.subaction}" failed after dispatch and may have partially completed. Read the requesting client's page before retrying.`,
+            { targetId: "native-client", cause: error },
+          );
+        }
+        return {
+          targetId: "native-client",
+          mode: "web",
+          subaction: command.subaction,
+          value: {
+            dispatched: true,
+            ...(command.url ? { url: command.url } : {}),
+            note: "Navigation delivered to the requesting client; read the native page to verify loaded content.",
+          },
+        };
+      }
+      if (command.id)
+        throw new BrowserDispatchFailure(
+          "UNSUPPORTED",
+          "Server tab IDs cannot address the requesting client's native tabs.",
+          { targetId: "native-client" },
+        );
+      if (
+        this.nativeClientTransport?.executeCommand &&
+        command.subaction !== "get"
+      ) {
+        try {
+          return await this.nativeClientTransport.executeCommand(
+            nativeClientId,
+            command,
+          );
+        } catch (error) {
+          // error-policy:J2 preserve native failures and prevent uncertain effects from being replayed.
+          if (
+            isBrowserDispatchFailure(error) ||
+            isIdempotentBrowserSubaction(command.subaction)
+          )
+            throw error;
+          throw new BrowserDispatchFailure(
+            "UNCERTAIN_OUTCOME",
+            "The native browser command may have executed; read the same browser before retrying.",
+            { targetId: "native-client", cause: error },
+          );
+        }
+      }
+      return readNativeBrowserPage(
+        command,
+        nativeClientId,
+        this.nativeClientTransport?.readPage ?? null,
+      );
     }
     return this.executeSelected(command, targetId);
   }
@@ -653,53 +771,16 @@ function createWorkspaceTarget(): BrowserTarget {
     id: "workspace",
     name: "Browser Workspace",
     description:
-      "Eliza's electrobun-embedded BrowserView (desktop) or JSDOM fallback (web). Always available.",
+      "Eliza's configured embedded Chromium workspace. A server-side DOM emulator is not a connected browser.",
     kind: "app",
     priority: 100,
     score: ({ mobile }) => (mobile ? 120 : 100),
-    available: async () => true,
+    available: async () => isBrowserWorkspaceBridgeConfigured(),
     execute: async (command) => {
       const { executeBrowserWorkspaceCommand } = await import(
         "./workspace/browser-workspace.js"
       );
       return executeBrowserWorkspaceCommand(command);
-    },
-  };
-}
-
-async function maybeCreateBridgeTarget(
-  runtime: IAgentRuntime,
-): Promise<BrowserTarget | null> {
-  const service = runtime.getService<BrowserBridgeRouteService>(
-    BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
-  );
-  if (!service) return null;
-  return {
-    id: "bridge",
-    name: "Browser Bridge (Chrome / Safari companion)",
-    description:
-      "Routes commands to the user's real Chrome or Safari via the Agent Browser Bridge companion extension. Subset of subactions supported (open / navigate / close / list / state / show / hide / tab / get).",
-    kind: "companion",
-    priority: 80,
-    score: ({ mobile }) => (mobile ? null : 80),
-    // Capability-aware pre-dispatch check (issue #18258): the bridge only
-    // handles a read-mostly subset of subactions. Declaring it here lets the
-    // dispatcher skip the bridge for unsupported commands *before* dispatch
-    // instead of discovering it via a thrown error.
-    supports: bridgeSupports,
-    available: async () => {
-      try {
-        const companions = await service.listBrowserCompanions();
-        return companions.length > 0;
-      } catch {
-        return false;
-      }
-    },
-    execute: async (command) => {
-      const { dispatchBridgeCommand } = await import(
-        "./targets/bridge-target.js"
-      );
-      return dispatchBridgeCommand(service, command);
     },
   };
 }

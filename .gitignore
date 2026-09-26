@@ -2,9 +2,6 @@ node_modules
 /out
 /output/
 
-# triage-tests generated outputs (regenerate via packages/scripts/triage-tests.mjs)
-/coverage-matrix.csv
-/packages/scripts/triage-tests.summary.md
 
 # E2E recording output — videos, traces, contact sheets (generated locally)
 /e2e-recordings/
@@ -42,7 +39,7 @@ packages/ui/src/components/pages/__e2e__/output-infinite-scroll/
 # Resize-handles e2e output (screenshots + html bundle — regenerate via the composites __e2e__ runner)
 packages/ui/src/components/composites/__e2e__/output-resize-handles/
 # GitHub connection card e2e output (screenshots + html bundle — regenerate via run-github-card-shot.mjs)
-plugins/plugin-task-coordinator/src/__e2e__/github-card-shots/
+plugins/plugin-agent-orchestrator/ui/src/__e2e__/github-card-shots/
 # Divider-drag perf-gate output (webm + screenshots + html bundle — regenerate via test:divider-drag-perf-gate)
 packages/ui/src/components/composites/__e2e__/output-divider-perf/
 # Launcher gesture-loop e2e output (webm videos + html bundle + traces — regenerate via test:launcher-loop-e2e)
@@ -83,7 +80,7 @@ xcuserdata/
 # Tauri-generated Xcode project
 examples/browser-extension/safari/
 
-# Generated app platform shells; canonical templates live under packages/app-core/platforms.
+# Generated app platform shells; canonical templates live under packages/app/platforms.
 packages/app/android/
 packages/app/ios/
 packages/app/electrobun/
@@ -152,16 +149,14 @@ plugins/plugin-app-manager/src/**/*.d.ts
 plugins/plugin-app-manager/src/**/*.d.ts.map
 
 # Accidental emit next to TS in mixed packages (hand-written ambient .d.ts kept; build output is dist/)
-packages/shared/src/**/*.js.map
-packages/shared/src/**/*.d.ts.map
-packages/shared/src/config/types.tools.d.ts
-packages/shared/src/local-inference/types.d.ts
-packages/app-core/src/platform/ios-runtime-backends.d.ts
-packages/app-core/src/platform/ios-runtime-backends.d.ts.map
+packages/core/src/config/types.tools.d.ts
+packages/core/src/contracts/local-inference.d.ts
+packages/app/src/platform/ios-runtime-backends.d.ts
+packages/app/src/platform/ios-runtime-backends.d.ts.map
 packages/cloud/shared/src/lib/types/cloud-api.js
 packages/cloud/shared/src/lib/types/cloud-api.d.ts
-packages/scenario-runner/src/cerebras-judge.d.ts
-packages/scenario-runner/src/cerebras-judge.d.ts.map
+packages/testing/scenario-runner/src/cerebras-judge.d.ts
+packages/testing/scenario-runner/src/cerebras-judge.d.ts.map
 plugins/plugin-local-inference/src/services/voice-prewarm.js
 
 *.gguf
@@ -269,10 +264,11 @@ packages/autodoc/text_objects/*
 **/.eliza/
 
 # UI Test related files
+# Canonical generated audit and test artifacts.
+/test-results/
 screenshots/
 packages/client/ui-tests/screenshots/
 **/ui-tests/screenshots/**
-test-results/
 **/test-results*/
 # Opt-in machine-readable audit reports (VIEW_AUDIT_REPORT=1, #8798)
 packages/agent/test-output/
@@ -393,7 +389,6 @@ standalone.ts
 .claude/cache/
 
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
-packages/shared/src/i18n/generated/
 packages/core/src/i18n/generated/
 
 tsconfig.test.json
@@ -421,11 +416,6 @@ packages/agent/src/**/*.d.ts
 packages/agent/src/**/*.d.ts.map
 !packages/agent/src/external-modules.d.ts
 !packages/agent/src/types/elizaos-action-augments.d.ts
-packages/shared/src/**/*.js
-packages/shared/src/**/*.js.map
-packages/shared/src/**/*.d.ts
-packages/shared/src/**/*.d.ts.map
-!packages/shared/src/elizaos-core-roles.d.ts
 packages/ui/src/**/*.js
 packages/ui/src/**/*.js.map
 packages/ui/src/**/*.d.ts
@@ -436,9 +426,9 @@ packages/ui/src/**/*.d.ts.map
 !packages/ui/src/cloud-ui/types/nprogress.d.ts
 !packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts
 !packages/ui/src/import-meta-glob.d.ts
-packages/app-core/src/**/*.d.ts
-packages/app-core/src/**/*.d.ts.map
-!packages/app-core/src/ambient-modules.d.ts
+packages/app/src/**/*.d.ts
+packages/app/src/**/*.d.ts.map
+!packages/app/src/ambient-modules.d.ts
 apps/*/src/**/*.js
 apps/*/src/**/*.js.map
 apps/*/src/**/*.d.ts
@@ -475,13 +465,9 @@ packages/elizaos/examples/
 **:memory:**
 
 # Local benchmark run outputs (generated)
-# Note: benchmark baselines under benchmarks/** may still be tracked intentionally.
-/benchmark_results/**
-
-# Keep a small set of curated benchmark outputs
-!/benchmark_results/bfcl/bfcl_best_results.json
-!/benchmark_results/mint/MINT-BENCHMARK-REPORT.md
-!/benchmark_results/mint/mint-benchmark-results.json
+benchmark_results/
+benchmark-results/
+bench_results/
 
 # Native-tool-calling v5 run-cerebras / trajectory CLI output
 /trajectories/
@@ -515,7 +501,7 @@ skills/.cache/
 .cache/
 
 # Scenario-runner skills scratch (runtime-created by agent-skills scenarios; never source)
-/packages/scenario-runner/skills/
+/packages/testing/scenario-runner/skills/
 
 # Local vendored experiments (do not commit)
 /plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/
@@ -525,8 +511,9 @@ skills/.cache/
 .pr-resolver-state.json
 
 # Android Gradle build intermediates (regenerated by Gradle)
-packages/native-plugins/*/android/build/
-packages/app-core/platforms/android/**/build/
+plugins/plugin-native-*/android/build/
+plugins/plugin-local-inference/native/silero-vad-cpp/build*/
+packages/app/platforms/android/**/build/
 plugins/plugin-native-*/android/build/
 plugins/plugin-native-*/android/.gradle/
 
@@ -534,18 +521,17 @@ plugins/plugin-native-*/android/.gradle/
 apps/app-companion/storybook-static/
 
 # Foundry contract build outputs (regenerated by `forge build`)
-packages/app-core/test/contracts/out/
-packages/app-core/test/contracts/cache/
+packages/app/test/contracts/out/
+packages/app/test/contracts/cache/
 
 # Electrobun build outputs and packaged artifacts (large binaries)
-packages/app-core/platforms/electrobun/build/
-packages/app-core/platforms/electrobun/artifacts/
+packages/app/platforms/electrobun/build/
+packages/app/platforms/electrobun/artifacts/
 
 # Compiled native dylibs (rebuild from source)
-packages/app-core/platforms/electrobun/src/*.dylib
-benchmark_results/
+packages/app/platforms/electrobun/src/*.dylib
 
-# Phase D mobile bundle outputs (regenerated by build-mobile-bundle.mjs).
+# Phase D mobile bundle outputs (regenerated by build-mobile-bundle.ts).
 # The Android APK staging step copies these into apps/app/android/app/
 # src/main/assets/agent/ at build time; committing the 33 MB bundle
 # blob and 5 MB pglite.data into the repo is wrong.
@@ -554,33 +540,31 @@ packages/agent/dist-mobile-ios/
 packages/agent/dist-mobile-ios-jsc/
 /otc-agent-ci-fix/
 
-# Build artifacts: js.map files in test directories and app-core test helpers
-packages/app-core/test/**/*.js.map
-packages/app-core/test/**/*.d.ts.map
+# Build artifacts: js.map files in test directories and app test helpers
+packages/app/test/**/*.js.map
+packages/app/test/**/*.d.ts.map
 test/**/*.js.map
 test/**/*.d.ts.map
 
 # Compiled build output in test directories (next to .ts sources)
-packages/app-core/test/**/*.js
-packages/app-core/test/**/*.d.ts
+packages/app/test/**/*.js
+packages/app/test/**/*.d.ts
 test/**/*.js
 test/**/*.d.ts
 test_output/
 trajectories-eliza-cerebras/
 action-benchmark-report/
 artifacts/
-!packages/native/bun-runtime/artifacts/
-!packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/
-!packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/**
+!plugins/plugin-native-bun-runtime/engine/artifacts/
+!plugins/plugin-native-bun-runtime/engine/artifacts/ElizaBunEngine.xcframework/
+!plugins/plugin-native-bun-runtime/engine/artifacts/ElizaBunEngine.xcframework/**
 research/native-tool-calling
 research/even-realities/
-# Build artifacts from old ios-native-deps location (moved to packages/native/ios-deps/)
-packages/ios-native-deps/
 test/mocks/mockoon/.mockoon-pids/
 reports/ai-qa/
 reports/apps-manual-qa/
 reports/porting/
-scripts/ai-qa/.static-stack.json
+packages/scripts/ai-qa/.static-stack.json
 
 # Generated inference verification output and hardware evidence.
 packages/inference/reports/
@@ -610,14 +594,14 @@ packages/inference/verify/metal_bench
 packages/inference/verify/vulkan_dispatch_smoke
 
 # FFI stub libraries are compiled from ffi-stub.c for each test/build host.
-/packages/app-core/scripts/ffi-stub/libelizainference_stub.so
-/packages/app-core/scripts/ffi-stub/libelizainference_stub.dylib
-/packages/app-core/scripts/ffi-stub/libelizainference_stub.dll
+/packages/app/scripts/ffi-stub/libelizainference_stub.so
+/packages/app/scripts/ffi-stub/libelizainference_stub.dylib
+/packages/app/scripts/ffi-stub/libelizainference_stub.dll
 packages/training/vendor/
 
 # Generated run output — never source data.
-packages/app-core/collision-report.json
 /plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
+/plugins/plugin-local-inference/docs/ondevice-grind-report-*.json
 
 # Compiler output belongs in each package's dist directory, never beside source.
 /packages/auth/src/atomic-json.d.ts*
@@ -725,7 +709,6 @@ plan-files
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-test-results/
 apps/frontend/vite.config.ts.timestamp-*.mjs
 
 # Tauri
@@ -783,8 +766,8 @@ packages/ui/test/story-gate/output-*/
 **/.env.local.bak
 
 # Android packaged runtime artifacts (bundled agent dist + compiled native libs).
-packages/app-core/platforms/android/app/src/main/assets/agent/
-packages/app-core/platforms/android/app/src/main/jniLibs/
+packages/app/platforms/android/app/src/main/assets/agent/
+packages/app/platforms/android/app/src/main/jniLibs/
 
 # Embedded third-party checkouts vendored under the tree (own git repos; must
 # not be committed as gitlinks without a .gitmodules entry).
@@ -798,9 +781,9 @@ waifu.fun/
 # --- synced artifacts (stripped for fast clones; pulled on install by
 #     packages/scripts/sync-artifacts.mjs from elizaOS/eliza-archive) ---
 /.eliza-artifacts-version
-/packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png
-/packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png
-/packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png
+/packages/app/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png
+/packages/app/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png
+/packages/app/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png
 /packages/app/public/app-heroes/skills-viewer.png
 /plugins/plugin-companion/public/vrms/eliza-7.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-5.vrm.gz
@@ -808,21 +791,21 @@ waifu.fun/
 /packages/app/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_HQ_1080p.mp4
-/packages/shared/assets/background/Clouds_Loop_HQ_1080p.mp4
+/packages/ui/assets/background/Clouds_Loop_HQ_1080p.mp4
 /plugins/plugin-companion/public/vrms/eliza-6.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-1.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-3.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-2.vrm.gz
 /packages/app/public/brand/concepts/billboard_concept.jpg
-/packages/shared/assets/concepts/billboard_concept.jpg
+/packages/ui/assets/concepts/billboard_concept.jpg
 /plugins/plugin-trajectory-logger/assets/hero.png
 /packages/docs/images/shakespeare-discord-screenshot.jpeg
-/plugins/plugin-documents/assets/hero.png
+/plugins/plugin-knowledge/assets/hero.png
 /packages/cloud-frontend/public/brand/elizaos-phone.png
 /plugins/plugin-companion/public_src/animations/mixamo/Angry.fbx
 /packages/cloud-frontend/public/brand/elizaos-phone-transparent.png
 /packages/docs/images/ask-to-join-vc.jpeg
-/plugins/plugin-task-coordinator/assets/hero.png
+/plugins/plugin-agent-orchestrator/ui/assets/hero.png
 /plugins/plugin-form/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Wave Hip Hop Dance.fbx
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/login-desktop-chromium-linux.png
@@ -833,22 +816,22 @@ waifu.fun/
 /packages/homepage/public/product/elizaos-usb-key-concept.png
 /plugins/plugin-companion/public_src/animations/mixamo/Hip Hop Dancing 2.fbx
 /packages/cloud-frontend/public/product/elizaos-usb-key-concept.png
-/plugins/plugin-contacts/assets/hero.png
-/plugins/plugin-phone/assets/hero.png
-/plugins/plugin-wifi/assets/hero.png
+/plugins/plugin-native-contacts/assets/hero.png
+/plugins/plugin-native-phone/assets/hero.png
+/plugins/plugin-native-wifi/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Bashful.fbx
 /plugins/plugin-personal-assistant/assets/hero.png
 /packages/docs/images/shakespeare-screenshot.jpeg
 /plugins/plugin-companion/public_src/animations/mixamo/Bored.fbx
-/packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2018-10.pdf
+/packages/app/test/contracts/lib/openzeppelin-contracts/audits/2018-10.pdf
 /plugins/plugin-companion/public_src/animations/mixamo/Yawn.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Gangnam Style.fbx
-/packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2023-10-v5.0.pdf
+/packages/app/test/contracts/lib/openzeppelin-contracts/audits/2023-10-v5.0.pdf
 /packages/app/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_Mobile_480p.mp4
-/packages/shared/assets/background/Clouds_Loop_Mobile_480p.mp4
+/packages/ui/assets/background/Clouds_Loop_Mobile_480p.mp4
 /packages/training/datasets/eliza1-sft-0_6b/train.jsonl
 /plugins/plugin-companion/public_src/animations/mixamo/Crying.fbx
 /plugins/plugin-companion/public_src/animations/BreathingIdle.fbx
@@ -867,7 +850,7 @@ waifu.fun/
 /packages/app/public/app-heroes/log-viewer.png
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing.fbx
 /packages/app/public/brand/concepts/concept_minipc.jpg
-/packages/shared/assets/concepts/concept_minipc.jpg
+/packages/ui/assets/concepts/concept_minipc.jpg
 /plugins/plugin-companion/public_src/animations/mixamo/Blow A Kiss.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thinking.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Kneeling Idle.fbx
@@ -884,15 +867,15 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Happy Idle.fbx
 /plugins/plugin-companion/public/animations/mixamo/Angry.fbx.gz
 /packages/app/public/brand/concepts/chibi_usb_concept.jpg
-/packages/shared/assets/concepts/chibi_usb_concept.jpg
+/packages/ui/assets/concepts/chibi_usb_concept.jpg
 /packages/app/public/brand/concepts/concept_usbdrive.jpg
-/packages/shared/assets/concepts/concept_usbdrive.jpg
+/packages/ui/assets/concepts/concept_usbdrive.jpg
 /plugins/plugin-companion/public/animations/mixamo/Hip Hop Dancing 2.fbx.gz
 /plugins/plugin-companion/public/animations/mixamo/Happy.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Cheering.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Rumba Dancing.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Mma Kick.fbx
-/packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2023-05-v4.9.pdf
+/packages/app/test/contracts/lib/openzeppelin-contracts/audits/2023-05-v4.9.pdf
 /plugins/plugin-companion/public_src/animations/mixamo/Acknowledging.fbx
 /plugins/plugin-companion/public_src/animations/emotes/dance-popping.glb
 /packages/ui/src/components/shell/__e2e__/output/33-state-reduced-motion-open.png
@@ -924,16 +907,16 @@ waifu.fun/
 /packages/training/data/voice/sam-distill/synthesis_manifest.jsonl
 /packages/ui/src/components/shell/__e2e__/output/34-state-no-provider-gate.png
 /plugins/plugin-companion/public_src/animations/mixamo/Whatever Gesture.fbx
-/packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2024-10-v5.1.pdf
+/packages/app/test/contracts/lib/openzeppelin-contracts/audits/2024-10-v5.1.pdf
 /packages/ui/src/first-run/__e2e__/output/05-mobile-cloud-signin.png
 /packages/ui/src/first-run/__e2e__/output/02-mobile-choose-no-local-runtime.png
 /plugins/plugin-companion/public_src/animations/mixamo/Fallen Idle.fbx
 /packages/ui/src/first-run/__e2e__/output/01-mobile-choose.png
 /packages/ui/src/first-run/__e2e__/output/03-mobile-choose-cloud-connected.png
-/packages/app-core/platforms/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
+/packages/app/platforms/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/elizaos/templates/project/apps/app/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/app/public/brand/concepts/concept_phone.jpg
-/packages/shared/assets/concepts/concept_phone.jpg
+/packages/ui/assets/concepts/concept_phone.jpg
 /plugins/plugin-companion/public/animations/emotes/dance-popping.glb.gz
 /packages/ui/src/components/shell/__e2e__/output/03-desktop-full.png
 /packages/ui/src/components/shell/__e2e__/output/04-desktop-beyond-full-rubberband.png
@@ -964,13 +947,13 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/20-mobile-nudge-snapback.png
 /packages/cloud-frontend/public/avatars/historyscholar.webp
 /plugins/plugin-companion/public/animations/mixamo/Yawn.fbx.gz
-/packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2026-02-v5.6.pdf
+/packages/app/test/contracts/lib/openzeppelin-contracts/audits/2026-02-v5.6.pdf
 /packages/ui/src/components/shell/__e2e__/output/09-desktop-nudge-snapback.png
 /packages/ui/src/components/shell/__e2e__/output/08-desktop-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/09-desktop-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/02-desktop-half.png
 /packages/cloud-frontend/public/agents/agent-2.webp
-/packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2025-07-v5.4.pdf
+/packages/app/test/contracts/lib/openzeppelin-contracts/audits/2025-07-v5.4.pdf
 /packages/cloud-frontend/public/avatars/amara.webp
 /packages/ui/src/components/shell/__e2e__/output/10-desktop-nudge-snapback.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-desktop-chromium-desktop-darwin.png
@@ -999,6 +982,7 @@ railway.json
 # checked-in exclusions keep 600MB+ of hardware/OS artifact trees out of the
 # archive (upload died outright at ~1GB — staging run 31877865041).
 .dockerignore
+!packages/app/deploy/.dockerignore
 packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
 
 # widget scroll + tap-target certification evidence (#14380)
@@ -1009,13 +993,13 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 # Dataset allowlists above must not re-include macOS resource-fork sidecars.
 **/._*
 
-# Fused local-inference staging dirs (stage-desktop-fused-lib.mjs --out): CI
+# Fused local-inference staging dirs (stage-desktop-fused-lib.ts --out): CI
 # stages into $GITHUB_WORKSPACE/fused-lib and local runs often use .fused-lib;
 # both are build output and must never be committed (#16970 review).
 /fused-lib/
 /.fused-lib/
 
-# Repo-root local state written by app-core scripts (run-mobile-build.mjs
+# Repo-root local state written by app scripts (run-mobile-build.ts
 # artifacts, bluebubbles/homepage evidence JSON, and
 # .eliza-local/bluebubbles-bridge.env, which can hold a gateway secret).
 # Machine-local by design and easy to sweep into a commit (#22348 review).
@@ -1026,3 +1010,10 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 /eliza/
 .cloud-production-main/
 .mooncycles-latest/
+
+# Renderer assets materialized by app avatar preparation.
+/packages/app/public/vrms/
+/packages/app/public/animations/
+
+# Temporary atomic core build directories.
+/packages/core/.core-build-*/

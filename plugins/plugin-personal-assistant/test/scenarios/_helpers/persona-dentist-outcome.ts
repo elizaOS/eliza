@@ -21,10 +21,7 @@
  * corpus guards (loader skips `_`-prefixed entries).
  */
 
-import type {
-  ScenarioContext,
-  ScenarioFinalCheck,
-} from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext, ScenarioFinalCheck } from "@elizaos/testing";
 
 type JsonRecord = Record<string, unknown>;
 

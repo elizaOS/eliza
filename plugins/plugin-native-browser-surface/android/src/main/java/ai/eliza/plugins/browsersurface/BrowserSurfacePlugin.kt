@@ -22,6 +22,7 @@ package ai.eliza.plugins.browsersurface
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Region
@@ -31,6 +32,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
 import android.widget.FrameLayout
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
@@ -42,6 +46,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.security.MessageDigest
 import java.util.UUID
+import org.json.JSONObject
 
 internal data class NativeOwnerIdentity(
     val owner: String,
@@ -87,6 +92,33 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    @PluginMethod
+    fun openBrowser(call: PluginCall) {
+        val url = call.getString("url") ?: run {
+            call.reject("openBrowser requires a website address", "INVALID_BROWSER_URL")
+            return
+        }
+        activity.runOnUiThread {
+            try {
+                ChromiumBrowserLauncher.launch(activity, url)
+                call.resolve(JSObject().apply {
+                    put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME)
+                    put("engine", "chromium")
+                    put("surface", "custom-tab")
+                })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Native dispatch failures become explicit bridge errors.
+                call.reject(error.message, error.code, error)
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 The provider may disappear between resolution and launch.
+                call.reject("Chromium is unavailable. Repair the system browser and try again.", "BROWSER_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Android policy may forbid the selected browser activity.
+                call.reject("Android prevented Chromium from opening this website.", "BROWSER_LAUNCH_DENIED", error)
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "ElizaSurfaceManager"
         const val PROFILE_NAMESPACE_PREFIX = "eliza-browser-"
@@ -122,6 +154,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val profileName: String?,
         var foregrounded: Boolean,
         var disposed: Boolean = false,
+        var pageRevision: Long = 0,
+        var pageError: String? = null,
         var x: Double = 0.0,
         var y: Double = 0.0,
         var outerClip: HostOuterClip? = null,
@@ -133,6 +167,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private val retiredProfiles = HashSet<String>()
     private val profileProcessNonce = UUID.randomUUID().toString()
     private var profileSerial = 0L
+    private val pageReader by lazy {
+        context.assets.open("read-page.js").bufferedReader().use { it.readText() }
+    }
 
     override fun load() {
         super.load()
@@ -153,7 +190,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private fun requireIdentity(call: PluginCall, operation: String): NativeOwnerIdentity? {
         val owner = call.getString("owner")
         val session = call.getString("session")
-        val epoch = call.getLong("epoch")
+        // JSON encodes small JavaScript integers as Integer, while Capacitor's
+        // getLong accepts only Long. Validate the numeric boundary explicitly.
+        val number = call.data.opt("epoch") as? Number
+        val numericEpoch = number?.toDouble()
+        val epoch = if (numericEpoch != null && numericEpoch.isFinite() &&
+            numericEpoch >= 1.0 && numericEpoch <= 9_007_199_254_740_991.0 &&
+            numericEpoch == kotlin.math.floor(numericEpoch)) numericEpoch.toLong() else null
         if (owner.isNullOrBlank() || session.isNullOrBlank() || epoch == null || epoch <= 0L) {
             call.reject("$operation requires owner, session, and a positive epoch")
             return null
@@ -270,6 +313,32 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
             val container = OccludingSurfaceLayout(activity)
             val webView = WebView(activity)
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    surfaces.values.firstOrNull { it.webView === view }?.let {
+                        it.pageRevision += 1
+                        it.pageError = null
+                    }
+                }
+
+                override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                    if (request.isForMainFrame) {
+                        surfaces.values.firstOrNull { it.webView === view }?.pageError = error.description.toString()
+                    }
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    val surface = surfaces[id] ?: return
+                    if (surface.webView !== view || surface.disposed || view.url != url) return
+                    if (!activeOwners.isActive(NativeOwnerIdentity(surface.owner, surface.session, surface.epoch))) return
+                    notifyListeners("navigationChanged", JSObject().apply {
+                        put("id", id)
+                        put("owner", surface.owner)
+                        put("session", surface.session)
+                        put("epoch", surface.epoch)
+                    })
+                }
+            }
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
             webView.settings.databaseEnabled = true
@@ -482,20 +551,88 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun goBack(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("goBack requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "goBack") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "goBack") ?: return@runOnUiThread
+            if (surface.webView.canGoBack()) surface.webView.goBack()
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun readPage(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("readPage requires an id")
+            return
+        }
+        val selector = call.getString("selector") ?: "body"
+        if (selector.isBlank() || selector.length > 2048) {
+            call.reject("readPage requires a nonempty selector of at most 2048 characters")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "readPage") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "readPage") ?: return@runOnUiThread
+            if (!surface.foregrounded || surface.webView.progress < 100 || surface.pageError != null) {
+                call.reject(surface.pageError ?: "The native page is hidden or still loading")
+                return@runOnUiThread
+            }
+            val revision = surface.pageRevision
+            val url = surface.webView.url
+            var settled = false
+            val timeout = Runnable {
+                if (!settled) {
+                    settled = true
+                    call.reject("Native page read timed out")
+                }
+            }
+            surface.webView.postDelayed(timeout, 5000)
+            try {
+                surface.webView.evaluateJavascript("($pageReader)(${JSONObject.quote(selector)})") { raw ->
+                    if (settled) return@evaluateJavascript
+                    settled = true
+                    surface.webView.removeCallbacks(timeout)
+                    if (!activeOwners.isActive(identity) || surfaces[id] !== surface || surface.disposed ||
+                        !surface.foregrounded || surface.pageRevision != revision || surface.webView.url != url) {
+                        call.reject("Native page changed while reading; discard this result")
+                        return@evaluateJavascript
+                    }
+                    try {
+                        val result = JSObject(raw)
+                        if (result.has("error")) call.reject(result.getString("error"))
+                        else call.resolve(result)
+                    } catch (error: Exception) {
+                        call.reject("Native page returned an invalid read result", error)
+                    }
+                }
+            } catch (error: Exception) {
+                settled = true
+                surface.webView.removeCallbacks(timeout)
+                call.reject("Native page read failed", error)
+            }
+        }
+    }
+
+    @PluginMethod
     fun presentSurface(call: PluginCall) {
         val id = call.getString("id")
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "presentSurface") ?: return@runOnUiThread
             val owner = identity.owner
+            val selected = id?.let {
+                ownedSurface(call, it, identity, "presentSurface")
+                    ?: return@runOnUiThread
+            }
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
-            }
-            val selected = id?.let {
-                ownedSurface(call, it, identity, "presentSurface")
-                    ?: return@runOnUiThread
             }
             selected?.let { surface ->
                 surface.container.bringToFront()

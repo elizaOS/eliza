@@ -3,12 +3,9 @@
  * OCR backends, and computeruse bridge providers.
  */
 
-import type { Plugin } from "@elizaos/core";
-import {
-  isAndroidMobile,
-  logger,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
+import { logger, promoteSubactionsToActions } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { isAndroidMobile } from "@elizaos/core/runtime-env";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
 import { OcrBridgeService } from "./ocr-bridge";
@@ -30,9 +27,7 @@ import { wireComputerUseSetOfMarksBridge } from "./set-of-marks-provider";
 type LocalInferenceServicesModule = {
   registerVisionContextAugmenter?: (augmenter: unknown) => void;
 };
-
 const dynamicImport = (specifier: string) => import(specifier);
-
 export const visionPlugin: Plugin = {
   name: "vision",
   description:
@@ -51,11 +46,18 @@ export const visionPlugin: Plugin = {
         f === true ||
         (typeof f === "object" &&
           f !== null &&
-          (f as { enabled?: unknown }).enabled !== false);
+          (
+            f as {
+              enabled?: unknown;
+            }
+          ).enabled !== false);
       if (featureOn) return true;
       const media = config?.media as Record<string, unknown> | undefined;
       const visionMedia = media?.vision as
-        | { enabled?: unknown; provider?: unknown }
+        | {
+            enabled?: unknown;
+            provider?: unknown;
+          }
         | undefined;
       return Boolean(
         visionMedia &&
@@ -111,12 +113,9 @@ export const visionPlugin: Plugin = {
       }
     } catch (err) {
       logger.debug(
-        `[vision] local-inference vision-augment seam not available; describe runs unaugmented (${
-          err instanceof Error ? err.message : String(err)
-        })`,
+        `[vision] local-inference vision-augment seam not available; describe runs unaugmented (${err instanceof Error ? err.message : String(err)})`,
       );
     }
-
     try {
       const mod = (await import(
         "@elizaos/plugin-computeruse/mobile/ocr-provider"
@@ -144,9 +143,7 @@ export const visionPlugin: Plugin = {
       }
     } catch (err) {
       logger.debug(
-        `[vision] plugin-computeruse OCR seam not available; running standalone (${
-          err instanceof Error ? err.message : String(err)
-        })`,
+        `[vision] plugin-computeruse OCR seam not available; running standalone (${err instanceof Error ? err.message : String(err)})`,
       );
     }
   },
@@ -155,5 +152,4 @@ export const visionPlugin: Plugin = {
     await svc?.stop();
   },
 };
-
 export default visionPlugin;

@@ -2,8 +2,9 @@
  * Hook that loads and applies defaults to the character's voice config,
  * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
-import * as React from "react";
 
+import { hasConfiguredApiKey } from "@elizaos/core/voice";
+import * as React from "react";
 import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";
 import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
@@ -14,9 +15,7 @@ import {
   applyVoiceProviderDefaults,
   resolveCharacterVoiceConfigFromAppConfig,
 } from "./character-voice-config";
-import { hasConfiguredApiKey } from "./types";
 import { isCloudVoiceRunnable } from "./voice-provider-defaults";
-
 export interface UseVoiceConfigResult {
   /** Saved voice config with platform/runtime provider defaults applied. Never null. */
   voiceConfig: VoiceConfig;
@@ -25,7 +24,6 @@ export interface UseVoiceConfigResult {
   /** Re-fetch the saved voice config (e.g. after cloud status changes). */
   reloadVoiceConfig: () => void;
 }
-
 /**
  * Loads the saved character/TTS voice config from the server, derives preset
  * voices without implicit settings writes, applies runtime provider defaults,
@@ -36,6 +34,7 @@ export interface UseVoiceConfigResult {
  */
 export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const { defaults: voiceProviderDefaults } = useDefaultProviderPresets();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [voiceConfig, setVoiceConfig] = React.useState<VoiceConfig | null>(
     null,
   );
@@ -59,44 +58,56 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   });
   const [voiceBootstrapTick, setVoiceBootstrapTick] = React.useState(0);
   const isMountedRef = React.useRef(false);
-
+  const loadGenerationRef = React.useRef(0);
+  const hasLoadedConfigRef = React.useRef(false);
   const loadVoiceConfig = React.useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+    const isCurrent = () =>
+      isMountedRef.current && generation === loadGenerationRef.current;
     try {
       const cfg = await client.getConfig();
       const resolvedVoiceConfig = resolveCharacterVoiceConfigFromAppConfig({
         config: cfg,
         uiLanguage,
       });
-      if (!isMountedRef.current) return;
+      if (!isCurrent()) return;
+      hasLoadedConfigRef.current = true;
       setVoiceConfig(resolvedVoiceConfig);
     } catch {
-      if (!isMountedRef.current) return;
-      // error-policy:J4 no config endpoint (minimal shells) or unreadable
-      // config — voice degrades to provider defaults rather than blocking.
-      setVoiceConfig(null);
+      if (!isCurrent()) return;
+      // error-policy:J4 refresh failure is visible and retains the last loaded
+      // selection; minimal shells without an initial config keep their defaults.
+      if (hasLoadedConfigRef.current) {
+        setActionNotice(
+          "Couldn't refresh voice settings. Your last loaded settings are still in use.",
+          "error",
+        );
+      } else {
+        setVoiceConfig(null);
+      }
     } finally {
-      if (isMountedRef.current) {
+      if (isCurrent()) {
         setVoiceBootstrapTick((tick) => tick + 1);
       }
     }
-  }, [uiLanguage]);
-
+  }, [setActionNotice, uiLanguage]);
   React.useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      loadGenerationRef.current += 1;
     };
   }, []);
-
   React.useEffect(() => {
     void loadVoiceConfig();
   }, [loadVoiceConfig]);
-
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<VoiceConfig | undefined>).detail;
       if (detail && typeof detail === "object") {
+        loadGenerationRef.current += 1;
+        hasLoadedConfigRef.current = true;
         setVoiceConfig(detail);
         setVoiceBootstrapTick((tick) => tick + 1);
         return;
@@ -107,7 +118,20 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
     return () =>
       window.removeEventListener(VOICE_CONFIG_UPDATED_EVENT, handler);
   }, [loadVoiceConfig]);
-
+  React.useEffect(() => {
+    // Detached Settings has its own window-local update event. Returning to a
+    // voice surface must read the saved selection through the authenticated API.
+    const refresh = () => void loadVoiceConfig();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [loadVoiceConfig]);
   const voiceConfigWithDefaults = React.useMemo(
     () =>
       applyVoiceProviderDefaults(
@@ -117,11 +141,9 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
       ),
     [voiceConfig, voiceProviderDefaults, resolvedTtsProvider],
   );
-
   const reloadVoiceConfig = React.useCallback(() => {
     void loadVoiceConfig();
   }, [loadVoiceConfig]);
-
   return {
     voiceConfig: voiceConfigWithDefaults,
     voiceBootstrapTick,

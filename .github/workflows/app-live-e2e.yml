@@ -11,7 +11,7 @@ name: App Live E2E
 # add network flake. So real coverage MUST live in a secret-gated, non-PR lane.
 #
 # The keystone that makes this possible: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the
-# CI stub-force, so the live stack boots the real @elizaos/app-core runtime and
+# CI stub-force, so the live stack boots the real @elizaos/app runtime and
 # the live-only specs (test.skip'd in keyless CI) un-skip.
 #
 # Runs on demand; never on pull_request.
@@ -35,6 +35,10 @@ on:
         description: "Also run the production Cloud login+personal-identity+chat lane. Keep false for staging-only evidence."
         type: boolean
         default: false
+      production_credential_preflight_only:
+        description: "Check production test credential expiry and read-only account authentication without browser or model calls. Also select run_cloud_production and run_only_requested."
+        type: boolean
+        default: false
       run_only_requested:
         description: "Skip the default local/walkthrough/desktop lanes and run only explicitly selected opt-in lanes."
         type: boolean
@@ -50,10 +54,10 @@ permissions:
 env:
   CI: "true"
   # The keystone: opt the live stack out of the CI-based stub force so the real
-  # app-core runtime boots. Without this, CI=true re-forces the stub even with a
+  # app runtime boots. Without this, CI=true re-forces the stub even with a
   # provider key present and every "live" test self-skips.
   ELIZA_UI_SMOKE_LIVE_STACK: "1"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -76,7 +80,7 @@ env:
   ELIZA_UI_SMOKE_BACKEND_LOG_PATH: e2e-recordings/app-live/backend.log
 
 jobs:
-  # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
+  # Real LOCAL chat turn through the live stack: a real app runtime + a real
   # provider model, asserting an exact model-produced marker (APP_LIVE_AGENT_OK).
   # UI-driven counterpart to dev-smoke; proves chat send/stream reaches a real
   # agent from the UI.
@@ -108,23 +112,22 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
-
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Vite loads package exports before renderer aliases apply; fresh CI
       # checkouts need these dist bundles before packages/app can resolve
-      # @elizaos/core and @elizaos/shared subpaths.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      # @elizaos/core and @elizaos/core subpaths.
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       # Prebuild the renderer dist so the live stack reuses a fresh bundle
       # instead of a cold in-harness vite build (viteRendererBuildNeeded check).
@@ -147,7 +150,7 @@ jobs:
       # cannot serve (write→reload→read-back against the real on-disk vault +
       # runtime). LIVE_STACK=1 is set job-wide, so the test.skip(!LIVE_STACK)
       # guards in these specs open. The two *-interactions specs also run keyless
-      # in scenario-pr.yml (skipping their deep blocks); here they run them.
+      # in ci.yml (skipping their deep blocks); here they run them.
       - name: Run settings + vault live-stack deep e2e
         shell: bash
         run: |
@@ -217,30 +220,29 @@ jobs:
       # expensive dependency install + browser/model walkthrough. Runs after
       # setup-node so it uses the pinned toolchain, not the runner's system node.
       - name: Preflight visual reviewer credentials and credits
-        run: node scripts/ai-qa/reviewer-preflight.mjs
+        run: node packages/scripts/ai-qa/reviewer-preflight.ts
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Install ffmpeg (recording stitch)
-        run: .github/scripts/install-apt-packages.sh ffmpeg
-
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
+        run: packages/scripts/github/install-apt-packages.sh ffmpeg
 
       # Vite resolves linked workspace package exports while loading the app
       # config, before renderer aliases can redirect to source files.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       # Prebuild the renderer dist so the live stack reuses a fresh bundle
       # instead of a cold in-harness vite build.
@@ -291,6 +293,7 @@ jobs:
         with:
           submodules: false
 
+
       - name: Require real Cloud credential
         shell: bash
         run: |
@@ -304,6 +307,7 @@ jobs:
           unset cloud_key_without_whitespace
 
       - name: Free disk space for browser smoke
+        if: ${{ !inputs.production_credential_preflight_only }}
         run: |
           set -euxo pipefail
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
@@ -314,30 +318,86 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Inspect production credential expiry
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const token = process.env.ELIZAOS_CLOUD_API_KEY.trim();
+          let expiry;
+          try {
+            const parts = token.split(".");
+            if (parts.length === 3) {
+              const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+              if (typeof payload?.exp === "number" && Number.isFinite(payload.exp)) expiry = payload.exp;
+            }
+          } catch {
+            // error-policy:J3 opaque credentials have no locally inspectable expiry; the live auth path must verify them.
+            expiry = undefined;
+          }
+          if (expiry !== undefined && expiry <= Date.now() / 1000 + 10) {
+            console.error("::error::Production Cloud test credential contains an expired session JWT; replace the test credential before retrying. No bearer or claims were logged.");
+            process.exit(1);
+          }
+          console.log(expiry === undefined
+            ? "Cloud test credential expiry cannot be determined locally; live authentication remains required."
+            : "Cloud test session expiry is in the future; live authentication remains required.");
+          NODE
+
+      - name: Verify production Cloud test credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          try {
+            const response = await fetch("https://api.eliza.app/api/v1/user", {
+              headers: { Authorization: `Bearer ${process.env.ELIZAOS_CLOUD_API_KEY.trim()}`, Accept: "application/json" },
+              redirect: "error",
+              signal: AbortSignal.timeout(15_000),
+            });
+            console.log(`Production Cloud account authentication HTTP status: ${response.status}`);
+            const accepted = response.status === 200 && response.headers.get("content-type")?.includes("application/json");
+            await response.body?.cancel();
+            if (!accepted) {
+              console.error("::error::Production Cloud test credential was not accepted by the account endpoint. No response body or bearer was retained.");
+              process.exitCode = 1;
+            }
+          } catch {
+            // error-policy:J1 retain a closed transport failure without request headers, URLs, or response bodies.
+            console.error("::error::Production Cloud account authentication probe could not complete. No response body or bearer was retained.");
+            process.exitCode = 1;
+          }
+          NODE
+
       - name: Setup workspace dependencies
+        if: ${{ !inputs.production_credential_preflight_only }}
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
-
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
+        if: ${{ !inputs.production_credential_preflight_only }}
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Cloud-live still builds the same renderer bundle, so it needs the same
       # workspace dists before Vite can load packages/app/vite.config.ts.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        if: ${{ !inputs.production_credential_preflight_only }}
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Build app renderer bundle
+        if: ${{ !inputs.production_credential_preflight_only }}
         run: bun run --cwd packages/app build:web
 
       - name: Run real cloud login + personal identity + chat
+        if: ${{ !inputs.production_credential_preflight_only }}
+        id: production-cloud-smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -348,6 +408,15 @@ jobs:
             echo "::error::Cloud login/chat failed (category=cloud-live-failed; exit=${status}; raw-output=suppressed)."
             exit "$status"
           fi
+
+      - name: Upload production Cloud progress diagnostic
+        if: ${{ always() && steps.production-cloud-smoke.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-cloud-production-progress
+          path: test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7
 
   # STAGING counterpart of cloud-live (#18076): the same real login +
   # Personal Eliza identity + chat path, pinned to the staging control plane. Kept a
@@ -427,20 +496,19 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Build app renderer bundle
         # The renderer resolves its Cloud base at BUILD time from
@@ -536,7 +604,7 @@ jobs:
           FIRST_TURN_LATENCY_MS: ${{ steps.staging-cloud-receipt-evidence.outputs.first_turn_latency_ms || 'unavailable' }}
           CONTINUITY_EVIDENCE: ${{ steps.staging-cloud-receipt-evidence.outputs.continuity_evidence || 'unavailable' }}
         run: |
-          node packages/scripts/write-staging-cloud-receipt.mjs \
+          node packages/scripts/write-staging-cloud-receipt.ts \
             --output artifacts/app-live-e2e/cloud-staging-receipt.json \
             --source-sha "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" \
@@ -574,9 +642,9 @@ jobs:
           name: app-live-e2e-cloud-staging
           path: |
             artifacts/app-live-e2e/cloud-staging-receipt.json
-            packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-post-reload-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-fresh-context-history-network-diagnostics.json
           if-no-files-found: error
           retention-days: 7
 
@@ -609,7 +677,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup JDK 21
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: "21"
@@ -617,8 +685,10 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -679,19 +749,21 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright runner
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # Build the packaged desktop app (catches build/packaging breaks). Run from
-      # the repo root so desktop-build.mjs resolves packages/app.
+      # the repo root so desktop-build.ts resolves packages/app.
       - name: Build the Electrobun desktop app
-        run: node packages/app-core/scripts/desktop-build.mjs build
+        run: node packages/app/scripts/desktop-build.ts build
 
       # Launch + drive the packaged app under a virtual display + software GL.
       - name: Run packaged desktop e2e (xvfb)
@@ -704,7 +776,7 @@ jobs:
           name: app-live-e2e-desktop
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: ignore
           retention-days: 7
 

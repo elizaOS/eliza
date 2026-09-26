@@ -2,24 +2,26 @@
  * Builds the first-run configuration payload: deployment target, credential
  * inputs, and Eliza Cloud service routing for the chosen provider/topology.
  */
+
+import {
+  type FirstRunCredentialInputs,
+  type FirstRunLocalProviderId,
+  normalizeFirstRunProviderId,
+  requiresAdditionalRuntimeProvider,
+} from "@elizaos/core/contracts/first-run-options";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   type DeploymentTargetConfig,
-  type FirstRunCredentialInputs,
-  type FirstRunLocalProviderId,
   type LinkedAccountFlagsConfig,
-  normalizeFirstRunProviderId,
-  requiresAdditionalRuntimeProvider,
   type ServiceRouteConfig,
   type ServiceRoutingConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/service-routing";
 import type { FirstRunRuntime } from "./first-run";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,
 } from "./runtime-target";
-
 /**
  * The default inference provider the first-run flow should pre-highlight per
  * runtime — the one genuinely-new product rule, encoded here in the use-case
@@ -35,7 +37,6 @@ import {
  * draft carries: `elizacloud` ⇒ `cloud-inference`, `on-device` ⇒ `all-local`.
  */
 export type FirstRunDefaultProvider = "elizacloud" | "on-device" | null;
-
 export function defaultProviderForRuntime(
   runtime: FirstRunRuntime,
 ): FirstRunDefaultProvider {
@@ -48,7 +49,6 @@ export function defaultProviderForRuntime(
       return null;
   }
 }
-
 export interface BuildFirstRunConnectionArgs {
   firstRunRuntimeTarget?: FirstRunRuntimeTarget;
   firstRunCloudApiKey: string;
@@ -77,12 +77,15 @@ export interface BuildFirstRunConnectionArgs {
   firstRunFeatureBrowser?: boolean;
   firstRunFeatureComputerUse?: boolean;
 }
-
 /** Feature selections from the first-run capabilities step. */
 export interface FirstRunCapabilitySetup {
   connectors: {
-    telegram?: { managed: boolean };
-    discord?: { managed: boolean };
+    telegram?: {
+      managed: boolean;
+    };
+    discord?: {
+      managed: boolean;
+    };
   };
   capabilities: {
     crypto?: boolean;
@@ -90,7 +93,6 @@ export interface FirstRunCapabilitySetup {
     computeruse?: boolean;
   };
 }
-
 export interface BuildFirstRunRuntimeConfigResult {
   deploymentTarget: DeploymentTargetConfig;
   linkedAccounts: LinkedAccountFlagsConfig | undefined;
@@ -99,7 +101,6 @@ export interface BuildFirstRunRuntimeConfigResult {
   needsProviderSetup: boolean;
   featureSetup: FirstRunCapabilitySetup | undefined;
 }
-
 type FirstRunModelConfig = {
   nanoModel: string | undefined;
   smallModel: string | undefined;
@@ -109,7 +110,6 @@ type FirstRunModelConfig = {
   responseHandlerModel: string | undefined;
   actionPlannerModel: string | undefined;
 };
-
 function trimToUndefined(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -117,20 +117,17 @@ function trimToUndefined(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function resolveLocalProviderId(
   provider: string,
 ): FirstRunLocalProviderId | null {
   const normalized = normalizeFirstRunProviderId(provider);
   return normalized && normalized !== "elizacloud" ? normalized : null;
 }
-
 function resolveArgsServerTarget(
   args: Pick<BuildFirstRunConnectionArgs, "firstRunRuntimeTarget">,
 ): FirstRunRuntimeTarget {
   return args.firstRunRuntimeTarget ?? "";
 }
-
 function resolveFirstRunPrimaryModel(args: {
   providerId: string;
   firstRunPrimaryModel: string;
@@ -141,7 +138,6 @@ function resolveFirstRunPrimaryModel(args: {
   }
   return trimToUndefined(args.firstRunPrimaryModel);
 }
-
 function buildFirstRunLinkedAccounts(
   args: BuildFirstRunConnectionArgs,
 ): LinkedAccountFlagsConfig {
@@ -162,7 +158,6 @@ function buildFirstRunLinkedAccounts(
   }
   return linkedAccounts;
 }
-
 function buildDeploymentTarget(args: {
   serverTarget: FirstRunRuntimeTarget;
   persistRuntimeOnConnectedRemote: boolean;
@@ -192,7 +187,6 @@ function buildDeploymentTarget(args: {
   }
   return { runtime: "local" };
 }
-
 function buildLocalServiceRoute(args: {
   localProviderId: FirstRunLocalProviderId;
   serverTarget: FirstRunRuntimeTarget;
@@ -214,7 +208,6 @@ function buildLocalServiceRoute(args: {
     ...(args.primaryModel ? { primaryModel: args.primaryModel } : {}),
   };
 }
-
 function buildFirstRunLlmRoute(args: {
   source: BuildFirstRunConnectionArgs;
   localProviderId: FirstRunLocalProviderId | null;
@@ -244,7 +237,6 @@ function buildFirstRunLlmRoute(args: {
     primaryModel,
   });
 }
-
 function buildFirstRunModelConfig(
   args: BuildFirstRunConnectionArgs,
 ): FirstRunModelConfig {
@@ -260,7 +252,6 @@ function buildFirstRunModelConfig(
     actionPlannerModel: trimToUndefined(args.firstRunActionPlannerModel ?? ""),
   };
 }
-
 function shouldUseCloudDefaults(args: {
   firstRunProvider: string;
   deploymentTarget: DeploymentTargetConfig;
@@ -271,7 +262,6 @@ function shouldUseCloudDefaults(args: {
       args.deploymentTarget.provider === "elizacloud")
   );
 }
-
 function buildFirstRunServiceRouting(args: {
   source: BuildFirstRunConnectionArgs;
   localProviderId: FirstRunLocalProviderId | null;
@@ -290,11 +280,9 @@ function buildFirstRunServiceRouting(args: {
     shouldConfigureRuntimeProvider: args.shouldConfigureRuntimeProvider,
     models: args.models,
   });
-
   if (llmTextRoute) {
     serviceRouting.llmText = llmTextRoute;
   }
-
   if (
     shouldUseCloudDefaults({
       firstRunProvider: args.source.firstRunProvider,
@@ -319,10 +307,8 @@ function buildFirstRunServiceRouting(args: {
       }),
     );
   }
-
   return serviceRouting;
 }
-
 function buildFirstRunCredentialInputs(args: {
   source: BuildFirstRunConnectionArgs;
   llmTextRoute: ServiceRouteConfig | undefined;
@@ -332,7 +318,6 @@ function buildFirstRunCredentialInputs(args: {
   if (cloudApiKey) {
     credentialInputs.cloudApiKey = cloudApiKey;
   }
-
   const llmApiKey = trimToUndefined(args.source.firstRunApiKey);
   if (
     llmApiKey &&
@@ -343,11 +328,9 @@ function buildFirstRunCredentialInputs(args: {
   }
   return credentialInputs;
 }
-
 function emptyToUndefined<T extends object>(value: T): T | undefined {
   return Object.keys(value).length > 0 ? value : undefined;
 }
-
 function buildFirstRunCapabilitySetup(
   args: BuildFirstRunConnectionArgs,
 ): FirstRunCapabilitySetup | undefined {
@@ -370,7 +353,6 @@ function buildFirstRunCapabilitySetup(
     },
   };
 }
-
 export function buildFirstRunRuntimeConfig(
   args: BuildFirstRunConnectionArgs,
 ): BuildFirstRunRuntimeConfigResult {
@@ -406,7 +388,6 @@ export function buildFirstRunRuntimeConfig(
     llmTextRoute: serviceRouting.llmText,
   });
   const featureSetup = buildFirstRunCapabilitySetup(args);
-
   return {
     deploymentTarget,
     linkedAccounts: emptyToUndefined(linkedAccounts),

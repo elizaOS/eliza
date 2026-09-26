@@ -8,7 +8,7 @@ import {
   PUBLIC_ROUTE_GENERATED_HEADER,
   PUBLIC_ROUTE_OUTPUT_PATHS,
   reconcilePublicRouteOutputs,
-} from "../scripts/public-route-outputs.mjs";
+} from "../../scripts/sdk/public-route-outputs.ts";
 
 const roots = [];
 afterEach(async () => {

@@ -24,13 +24,13 @@ import {
   completeUserReferenceView,
   logger as coreLogger,
   ElizaError,
-  looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   stringToUuid,
   toWellFormedUnicode,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { looksLikeBareLinkShare } from "@elizaos/plugin-assistant";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   detectTaskType,
@@ -1801,7 +1801,13 @@ async function runSpawnAgent(
 
   try {
     const text = requestText(message);
-    const task = pickString(params, content, "task") ?? text;
+    const task = pickString(params, content, "task");
+    if (!task) {
+      return errorResult(
+        "CHILD_TASK_REQUIRED",
+        "Provide task with the concrete work the child must execute, preserving all requirements. Keep parent-only instructions to delegate out of the child assignment. No child was started.",
+      );
+    }
     // Route matching must see the genuine user request, not the planner's
     // (possibly terse) rephrasing or an empty content.text. Without this, a
     // request like "build me a … web page" routes correctly under a verbose
@@ -4530,6 +4536,7 @@ const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
   "MISSING_TASK_ID",
   "MISSING_TITLE",
   "NO_INPUT",
+  "CHILD_TASK_REQUIRED",
   "NO_SESSION",
   "NO_WORKSPACE",
   "SESSION_NOT_FOUND",
@@ -5252,7 +5259,8 @@ export const tasksAction: Action & {
     // create / spawn_agent
     {
       name: "task",
-      description: "Task prompt for create / spawn_agent / send (as new task).",
+      description:
+        "Concrete assignment for the child to execute. Required for spawn_agent. Preserve all task requirements, but express the work from the child perspective: do not forward parent-only instructions to delegate or avoid doing the work inline.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5681,7 +5689,7 @@ export const tasksAction: Action & {
     state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
+  ): Promise<ActionResult> => {
     const params = paramsRecord(options as HandlerOptionsLike | undefined);
     const content = contentRecord(message);
     const action = readOp(params) ?? "create";

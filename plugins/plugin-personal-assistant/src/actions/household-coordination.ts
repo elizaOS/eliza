@@ -13,7 +13,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -92,6 +92,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
       "subjectEntityIds",
       "scopes",
     ],
+    allowEmptyArrays: ["subjectEntityIds"],
     optional: ["expiresAt"],
   },
   revoke_grant: {

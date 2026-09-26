@@ -5,13 +5,13 @@
  */
 
 import {
-  AgentRuntime,
+  type AgentRuntime,
   createCharacter,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   type Memory,
   Service,
 } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcpActionService } from "../../src/actions/common.ts";
 import { tasksAction } from "../../src/actions/tasks.ts";
@@ -119,11 +119,10 @@ async function createHarness(
     async stop(): Promise<void> {}
   }
 
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     agentId: AGENT_ID,
     character: createCharacter({ name: "Tester" }),
-    adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
+
     enableAutonomy: false,
     logLevel: "fatal",
   });

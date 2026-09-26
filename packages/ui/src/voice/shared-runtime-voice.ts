@@ -6,11 +6,10 @@
  * while explicit custom origins remain configurable.
  */
 
+import { getElizaApiBase } from "@elizaos/core/utils/eliza-globals";
 import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
 import { getBootConfig } from "../config/boot-config-store";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
-import { getElizaApiBase } from "../utils/eliza-globals";
-
 /**
  * Derive the cloud API worker origin from a shared-runtime agent base.
  *
@@ -45,7 +44,6 @@ export function sharedRuntimeVoiceOrigin(
   if (!/^https?:\/\//i.test(prefix)) return null;
   return prefix;
 }
-
 /**
  * Resolve the shared-tier voice base for the CURRENT active agent (reads
  * `getElizaApiBase()`), or `null` when the active agent is not shared-tier.
@@ -53,7 +51,6 @@ export function sharedRuntimeVoiceOrigin(
 export function currentSharedRuntimeVoiceOrigin(): string | null {
   return sharedRuntimeVoiceOrigin(getElizaApiBase());
 }
-
 /**
  * Cheap mic-affordance guard (#15395 part 2).
  *
@@ -82,12 +79,10 @@ export function isVoiceTargetResolvableForActiveAgent(): boolean {
   // Shared tier: available iff we resolved a concrete https origin to POST to.
   return /^https?:\/\//i.test(sharedOrigin);
 }
-
 /** Build the cloud-worker v1 TTS URL (`<origin>/api/v1/voice/tts`). */
 export function sharedRuntimeTtsUrl(origin: string): string {
   return `${origin.replace(/\/+$/, "")}/api/v1/voice/tts`;
 }
-
 /**
  * Resolve the configured Eliza Cloud worker origin from boot config, for
  * forced-cloud voice that must bypass the on-device proxy (#16116).
@@ -111,7 +106,6 @@ export function configuredCloudVoiceOrigin(): string | null {
     ? resolveDirectCloudAuthApiBase(origin)
     : null;
 }
-
 /** How a forced-cloud TTS request was routed (drives the request + debug). */
 export interface ForcedCloudTtsRoute {
   /** Absolute TTS endpoint to POST `{ text }` to. */
@@ -124,7 +118,6 @@ export interface ForcedCloudTtsRoute {
   voiceId?: string;
   modelId?: string;
 }
-
 /**
  * Decide where forced-cloud (`provider === "eliza-cloud"`) TTS should POST and
  * which bearer to carry.
@@ -180,7 +173,6 @@ export function resolveForcedCloudTtsRoute(input: {
     voiceId,
     modelId,
   } = input;
-
   if (sharedRuntimeOrigin) {
     return {
       url: sharedRuntimeTtsUrl(sharedRuntimeOrigin),
@@ -188,7 +180,6 @@ export function resolveForcedCloudTtsRoute(input: {
       via: "shared-runtime",
     };
   }
-
   const token = cloudSessionToken?.trim();
   if (token && configuredCloudOrigin) {
     const pinnedVoice = voiceId?.trim();
@@ -201,15 +192,12 @@ export function resolveForcedCloudTtsRoute(input: {
       ...(pinnedModel ? { modelId: pinnedModel } : {}),
     };
   }
-
   return { url: proxyUrl, bearer: proxyBearer, via: "on-device-proxy" };
 }
-
 /** Build the shared-tier STT URL (`<origin>/api/v1/voice/stt`). */
 export function sharedRuntimeSttUrl(origin: string): string {
   return `${origin.replace(/\/+$/, "")}/api/v1/voice/stt`;
 }
-
 /**
  * Adapt a captured WAV into the multipart body the v1 STT route expects.
  *
@@ -230,7 +218,6 @@ export function buildSharedRuntimeSttBody(audio: Uint8Array): FormData {
   form.append("audio", file);
   return form;
 }
-
 /**
  * Parse the v1 STT response (`{ transcript }`) into the trimmed transcript the
  * client expects. The dedicated proxy returns `{ text }`; the v1 route returns
@@ -240,7 +227,10 @@ export function buildSharedRuntimeSttBody(audio: Uint8Array): FormData {
  */
 export function parseSharedRuntimeSttResponse(body: unknown): string {
   if (!body || typeof body !== "object") return "";
-  const record = body as { transcript?: unknown; text?: unknown };
+  const record = body as {
+    transcript?: unknown;
+    text?: unknown;
+  };
   const value =
     typeof record.transcript === "string"
       ? record.transcript

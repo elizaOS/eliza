@@ -1,0 +1,67 @@
+{
+  "name": "@elizaos/plugin-sqlite",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "Durable per-agent SQLite storage with atomic transactions and restart recovery",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./portable": {
+      "eliza-source": "./portable.ts",
+      "types": "./dist/portable.d.ts",
+      "import": "./dist/portable.js",
+      "default": "./dist/portable.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "registry-entry.json",
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "devalue": "6.0.1",
+    "sql.js": "1.14.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "^25.0.3",
+    "@types/sql.js": "^1.4.11",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "bun-types": "1.4.2"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.validation.json",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json *.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node 24.15.0 node:sqlite or Bun 1.4.2 bun:sqlite; one database per agent; Android device qualification required"
+    }
+  }
+}

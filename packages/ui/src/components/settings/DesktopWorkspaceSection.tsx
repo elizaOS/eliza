@@ -22,7 +22,7 @@ import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelector } from "../../state";
-import { resolveApiUrl } from "../../utils/asset-url";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   DESKTOP_WORKSPACE_SURFACES,
@@ -71,7 +71,6 @@ function WorkspaceActionRow({
     />
   );
 }
-
 function WorkspaceActionButton({
   agentId,
   label,
@@ -113,7 +112,6 @@ function WorkspaceActionButton({
     </Button>
   );
 }
-
 function buildDesktopDiagnosticsBundle(options: {
   diagnosticsText: string;
   devStackText: string;
@@ -132,7 +130,6 @@ function buildDesktopDiagnosticsBundle(options: {
     options.devConsoleText.trim(),
   ].join("\n");
 }
-
 function renderPathList(
   paths: string[],
   t: (key: string, options?: Record<string, unknown>) => string,
@@ -144,7 +141,6 @@ function renderPathList(
       </span>
     );
   }
-
   return (
     <ul className="space-y-1 text-xs text-txt">
       {paths.map((path) => (
@@ -155,7 +151,6 @@ function renderPathList(
     </ul>
   );
 }
-
 export function DesktopWorkspaceSection({
   contentHeader,
 }: {
@@ -189,14 +184,12 @@ export function DesktopWorkspaceSection({
     [t],
   );
   const windowControls = useDesktopWindowControls(snapshot, t);
-
   const refreshSnapshot = useCallback(async () => {
     if (!desktopRuntime) {
       setSnapshot(null);
       setLoading(false);
       return;
     }
-
     setLoading(true);
     setActionError(null);
     const nextSnapshot = await loadDesktopWorkspaceSnapshot();
@@ -206,18 +199,15 @@ export function DesktopWorkspaceSection({
     );
     setLoading(false);
   }, [desktopRuntime]);
-
   useEffect(() => {
     void refreshSnapshot();
   }, [refreshSnapshot]);
-
   const refreshDevDiagnostics = useCallback(async () => {
     if (!desktopRuntime || typeof fetch !== "function") {
       setDevStackText("Desktop dev stack unavailable.");
       setDevConsoleText("Desktop console log unavailable.");
       return;
     }
-
     try {
       const [stackResponse, consoleResponse] = await Promise.all([
         fetchWithCsrf(resolveApiUrl("/api/dev/stack"), {
@@ -230,14 +220,12 @@ export function DesktopWorkspaceSection({
           },
         ),
       ]);
-
       if (stackResponse.ok) {
         const stackJson: unknown = await stackResponse.json();
         setDevStackText(JSON.stringify(stackJson, null, 2));
       } else {
         setDevStackText(`GET /api/dev/stack → ${stackResponse.status}`);
       }
-
       if (consoleResponse.ok) {
         const consoleText = await consoleResponse.text();
         setDevConsoleText(
@@ -254,7 +242,6 @@ export function DesktopWorkspaceSection({
       setDevConsoleText(`Desktop console log error: ${message}`);
     }
   }, [desktopRuntime]);
-
   const documentVisible = useDocumentVisibility();
   useEffect(() => {
     // The 2s dev-diagnostics poll (/api/dev/stack + /api/dev/console-log) is
@@ -267,16 +254,13 @@ export function DesktopWorkspaceSection({
     if (!desktopRuntime) {
       return;
     }
-
     const intervalId = window.setInterval(() => {
       void refreshDevDiagnostics();
     }, 2000);
-
     return () => {
       window.clearInterval(intervalId);
     };
   }, [desktopRuntime, documentVisible, refreshDevDiagnostics]);
-
   const runAction = useCallback(
     async (
       id: string,
@@ -307,9 +291,7 @@ export function DesktopWorkspaceSection({
     },
     [refreshSnapshot, t],
   );
-
   const diagnosticsText = useDesktopDiagnosticsText(snapshot, t);
-
   const devConsoleLines = useMemo(
     () =>
       devConsoleText
@@ -318,7 +300,6 @@ export function DesktopWorkspaceSection({
         .filter((line) => line.length > 0),
     [devConsoleText],
   );
-
   const filteredDevConsoleLines = useMemo(() => {
     const needle = devConsoleFilter.trim().toLowerCase();
     if (!needle) {
@@ -328,12 +309,10 @@ export function DesktopWorkspaceSection({
       line.toLowerCase().includes(needle),
     );
   }, [devConsoleFilter, devConsoleLines]);
-
   const filteredDevConsoleText = useMemo(
     () => filteredDevConsoleLines.join("\n"),
     [filteredDevConsoleLines],
   );
-
   const devConsoleSummary = useMemo(() => {
     const summarize = (matcher: (line: string) => boolean) =>
       devConsoleLines.filter(matcher).length;
@@ -346,7 +325,6 @@ export function DesktopWorkspaceSection({
       talkmode: summarize((line) => /talkmode/i.test(line)),
     };
   }, [devConsoleLines]);
-
   const copyDesktopDiagnosticsBundle = useCallback(async () => {
     await copyTextToClipboard(
       buildDesktopDiagnosticsBundle({
@@ -362,7 +340,6 @@ export function DesktopWorkspaceSection({
     );
     setActionError(null);
   }, [diagnosticsText, devConsoleText, devStackText, t]);
-
   const { ref: consoleFilterRef, agentProps: consoleFilterAgentProps } =
     useAgentElement<HTMLTextAreaElement>({
       id: "desktop-console-filter",
@@ -383,7 +360,6 @@ export function DesktopWorkspaceSection({
       getValue: () => clipboardDraft,
       onFill: setClipboardDraft,
     });
-
   if (!desktopRuntime) {
     return (
       <ContentLayout contentHeader={contentHeader}>
@@ -395,7 +371,6 @@ export function DesktopWorkspaceSection({
       </ContentLayout>
     );
   }
-
   return (
     <ContentLayout contentHeader={contentHeader}>
       <SettingsStack>

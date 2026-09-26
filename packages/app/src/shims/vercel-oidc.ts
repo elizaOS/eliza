@@ -1,10 +1,15 @@
 /**
  * Browser stub for `@vercel/oidc`: Vercel OIDC token exchange is a server-side
  * concern with no meaning in the app renderer, so this aliases the module to
- * empty-token getters and no-op error classes, keeping the server-only OIDC
+ * explicit missing-token failures, keeping the server-only OIDC
  * code out of the browser bundle.
  */
-export class AccessTokenMissingError extends Error {}
+export class AccessTokenMissingError extends Error {
+  constructor() {
+    super("Vercel OIDC token exchange is unavailable in the browser renderer.");
+    this.name = "AccessTokenMissingError";
+  }
+}
 export class RefreshAccessTokenFailedError extends Error {}
 
 export function getContext(): Record<string, never> {
@@ -12,13 +17,13 @@ export function getContext(): Record<string, never> {
 }
 
 export async function getVercelOidcToken(): Promise<string> {
-  return "";
+  throw new AccessTokenMissingError();
 }
 
 export function getVercelOidcTokenSync(): string {
-  return "";
+  throw new AccessTokenMissingError();
 }
 
 export async function getVercelToken(): Promise<string> {
-  return "";
+  throw new AccessTokenMissingError();
 }

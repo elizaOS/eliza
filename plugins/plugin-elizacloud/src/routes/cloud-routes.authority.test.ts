@@ -1,9 +1,5 @@
 import type http from "node:http";
-import {
-  type DevCloudEnvAuthority,
-  resetDevCloudEnvAuthorityForTests,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { type DevCloudEnvAuthority, resetDevCloudEnvAuthorityForTests, resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CloudRouteState,

@@ -5,19 +5,24 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
 import { detailString } from "../src/internal/detail.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 const CREATED_EVENT: LifeOpsCalendarEvent = {
   id: "agent-1:google:owner:calendar:primary:event-1",
   externalId: "event-1",
   agentId: "agent-1",
   provider: "google",
+  grantId: "connector-account:acct-a",
   side: "owner",
   calendarId: "primary",
   title: "Soccer practice",
@@ -44,7 +49,9 @@ function message(): Memory {
     roomId: "00000000-0000-0000-0000-000000000303",
     // The fixtures live in July 2026; the request time anchors the past-start check.
     createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
-    content: { text: "Add soccer practice with travel from home" },
+    content: {
+      text: "Add soccer practice today from 4pm to 5pm UTC with travel from home",
+    },
   } as Memory;
 }
 
@@ -71,12 +78,15 @@ async function runCreate(
     }),
   );
   const service = {
+    listCalendars: vi.fn(async () =>
+      calendarSummariesForEvents([CREATED_EVENT]),
+    ),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "primary",
       events: [],
       source: "synced" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources([CREATED_EVENT]),
       timeMin: "2026-07-26T00:00:00.000Z",
       timeMax: "2026-08-09T00:00:00.000Z",
       syncedAt: "2026-07-26T00:00:00.000Z",
@@ -107,7 +117,20 @@ async function runCreate(
   } as unknown as IAgentRuntime;
   const deps: CalendarActionDeps = {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              grantId: "connector-account:acct-a",
+              calendarId: "primary",
+              startAt: CREATED_EVENT.startAt,
+              endAt: CREATED_EVENT.endAt,
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     mutationGateway: {
       schedule: scheduleApproval,
@@ -210,7 +233,7 @@ describe("calendar travel reservation truth", () => {
       service.prepareCalendarEventCreate.mock.calls[0]?.[1],
     ).not.toHaveProperty("travelOriginAddress");
     expect(computeTravelBuffer).not.toHaveBeenCalled();
-    expect(runJsonModel).not.toHaveBeenCalled();
+    expect(runJsonModel).toHaveBeenCalledOnce();
     expect(service.createCalendarEvent).not.toHaveBeenCalled();
   });
 

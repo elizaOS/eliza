@@ -31,6 +31,7 @@
  * Logger only, `[InferenceTiming]` prefix (AGENTS.md §9).
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
 
@@ -333,20 +334,12 @@ export function buildInferenceFlowBreakdown(
 
 const DEFAULT_MAX_SPANS = 512;
 
-/** Shape accepted by the Cloud gateway's bounded trace-id validator. */
-export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
+export {
+	INFERENCE_TRACE_ID_PATTERN,
+	isInferenceTraceId,
+} from "./inference-trace.js";
 
-/**
- * Tests whether a value is safe to adopt across an untrusted HTTP boundary.
- *
- * Inference trace ids are intentionally stricter than generic request ids: a
- * lower-case 32-hex value is safe to echo and doubles as a W3C trace-id,
- * while UUIDs, case-folded ids, and arbitrary caller text must be replaced at
- * ingress rather than normalized into a durable correlation key.
- */
-export function isInferenceTraceId(value: unknown): value is string {
-	return typeof value === "string" && INFERENCE_TRACE_ID_PATTERN.test(value);
-}
+import { INFERENCE_TRACE_ID_PATTERN } from "./inference-trace.js";
 
 /**
  * Mint a bounded, gateway-valid correlation id (32 lowercase hex). The format
@@ -525,51 +518,14 @@ interface IInferenceTimingContextManager {
 	active(): InferenceTurnTimer | undefined;
 }
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
 function initContextManager(): IInferenceTimingContextManager {
-	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
-		try {
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<InferenceTurnTimer | undefined>();
-			return {
-				run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T {
-					return storage.run(timer, fn);
-				},
-				active(): InferenceTurnTimer | undefined {
-					return storage.getStore();
-				},
-			};
-		} catch {
-			// error-policy:J4 browser and edge runtimes intentionally use the
-			// single-slot timing store when AsyncLocalStorage is unavailable.
-			// AsyncLocalStorage unavailable — fall back to a single-slot store.
-		}
-	}
-	// Browser/edge fallback: a single mutable slot. Does not propagate across
-	// independent async tasks, but a turn is processed sequentially per request
-	// so the active timer is correct for the common case.
-	let current: InferenceTurnTimer | undefined;
+	const storage = new AsyncLocalStorage<InferenceTurnTimer | undefined>();
 	return {
 		run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T {
-			const prev = current;
-			current = timer;
-			try {
-				return fn();
-			} finally {
-				current = prev;
-			}
+			return storage.run(timer, fn);
 		},
 		active(): InferenceTurnTimer | undefined {
-			return current;
+			return storage.getStore();
 		},
 	};
 }
@@ -924,10 +880,7 @@ export function buildInferenceTimingDevPayload(
  *     the operator opts into when chasing latency).
  */
 function timingLogEnabled(): boolean {
-	const raw =
-		typeof process !== "undefined"
-			? process.env.ELIZA_INFERENCE_TIMING
-			: undefined;
+	const raw = process.env.ELIZA_INFERENCE_TIMING;
 	if (!raw) return false;
 	const v = raw.trim().toLowerCase();
 	return v !== "" && v !== "0" && v !== "false" && v !== "off";

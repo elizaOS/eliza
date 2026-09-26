@@ -19,19 +19,12 @@ export default defineConfig({
   ...baseConfig,
   resolve: {
     ...baseConfig.resolve,
-    // goals.real-db.test.ts drives PA's lifeops/repository.ts, which reads the
-    // carved DB schemas/repos/factories from these server-safe plugin subpaths.
-    // The package barrels re-export React views (→ @elizaos/ui → react-router)
-    // and must never enter the keyless node test graph, so the repository imports
-    // the leaf DB modules directly. Those subpaths carry no `bun` export
-    // condition, so anchor each to source explicitly (the modules depend only on
-    // @elizaos/core + drizzle).
+    // Resolve workspace dependencies to the current source revision for the
+    // real-database tests, including the Relationships package root.
     alias: [
       {
-        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
-        replacement: sourceOf(
-          "../../packages/agent/src/services/knowledge-graph/index.ts",
-        ),
+        find: /^@elizaos\/plugin-relationships$/,
+        replacement: sourceOf("../plugin-relationships/src/index.ts"),
       },
       {
         find: /^@elizaos\/ui$/,
@@ -50,18 +43,28 @@ export default defineConfig({
         replacement: sourceOf("src/db/schema.ts"),
       },
       {
+        // PA's lifeops repository imports this package's own repository leaf;
+        // the plugin lane never builds dist, so it must resolve to source too.
+        find: /^@elizaos\/plugin-goals\/db\/goals-repository$/,
+        replacement: sourceOf("src/db/goals-repository.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-calendar\/service\/CalendarRepository$/,
+        replacement: sourceOf(
+          "../plugin-calendar/src/service/CalendarRepository.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-calendar\/service\/schema$/,
+        replacement: sourceOf("../plugin-calendar/src/service/schema.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-reminders\/db\/schema$/,
         replacement: sourceOf("../plugin-reminders/src/db/schema.ts"),
       },
       {
         find: /^@elizaos\/plugin-inbox\/db\/schema$/,
         replacement: sourceOf("../plugin-inbox/src/db/schema.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
-        replacement: sourceOf(
-          "../plugin-finances/src/db/finances-repository.ts",
-        ),
       },
       {
         find: /^@elizaos\/plugin-health\/health-bridge\/health-records$/,

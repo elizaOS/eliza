@@ -12,8 +12,9 @@ import { LegacyRelationshipsSchemaAuditService } from "./services/legacy-schema-
 export const relationshipsPlugin: Plugin = {
   name: "@elizaos/plugin-relationships",
   description:
-    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, and the /relationships viewer. Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
+    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, and the /relationships viewer. Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by this package and registered by the host as KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
+  databaseBackends: ["postgres", "pglite", "sqlite"],
   actions: [entityAction],
   providers: [entityGraphProvider],
   services: [LegacyRelationshipsSchemaAuditService],

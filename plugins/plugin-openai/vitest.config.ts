@@ -6,20 +6,22 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
-const elizaRoot = path.resolve(import.meta.dirname, "../../..");
+const elizaRoot = path.resolve(import.meta.dirname, "../..");
 const pluginSqlRoot = path.join(
 	elizaRoot,
 	"plugins",
 	"plugin-sql",
-	"typescript",
+	"src",
 );
 
 export default defineConfig({
 	resolve: {
+ conditions: ["eliza-source", "node"],
 		alias: [
+ {find: /^@elizaos\/core$/, replacement: path.join(elizaRoot, "packages/core/src/index.ts")},
 			{
 				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
+				replacement: path.join(pluginSqlRoot, "index.ts"),
 			},
 			{
 				find: /^@elizaos\/plugin-sql\/schema$/,
@@ -52,7 +54,7 @@ export default defineConfig({
 			// #9310 §E: the guarded live suites (trajectory + cerebras-refusal +
 			// cerebras-config self-skip without their required credentials / the
 			// opt-in gate) are invocable only in the post-merge lane, where
-			// run-all-tests.mjs prints a named skip accounting. The unguarded
+			// run-all-tests.ts prints a named skip accounting. The unguarded
 			// live files stay excluded in every lane.
 			...(process.env.VITEST_LANE === "post-merge"
 				? [

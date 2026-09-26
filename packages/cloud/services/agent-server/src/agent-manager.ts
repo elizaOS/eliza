@@ -1,4 +1,5 @@
 /** Runs the hosted agent-server manager boundary for cloud runtime containers. */
+
 import {
   AgentRuntime,
   ChannelType,
@@ -12,6 +13,10 @@ import {
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import workflowPlugin from "@elizaos/plugin-workflow";
+import {
+  initializeManagedBrowserHost,
+  managedBrowserPlugins,
+} from "./browser-host";
 import { getAdvertisedServerUrl, getRequiredEnv } from "./config";
 import {
   type DispatchResult,
@@ -329,16 +334,24 @@ export class AgentManager {
 
     try {
       const character = mergeCharacterDefaults({
+        id: stringToUuid(agentId),
         name: characterRef.toLowerCase(),
         secrets: {
           POSTGRES_URL: process.env.POSTGRES_URL || "",
+          ...(process.env.ENCRYPTION_SALT
+            ? { ENCRYPTION_SALT: process.env.ENCRYPTION_SALT }
+            : {}),
           OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
           ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY || "",
         },
       });
 
       // Priority: elizacloud (proxy) > openai
-      const plugins: Plugin[] = [sqlPlugin as Plugin, workflowPlugin as Plugin];
+      const plugins: Plugin[] = [
+        sqlPlugin as Plugin,
+        workflowPlugin as Plugin,
+        ...managedBrowserPlugins(Boolean(process.env.ENCRYPTION_SALT)),
+      ];
       if (process.env.ELIZAOS_CLOUD_API_KEY) {
         const elizacloudPlugin = await import("@elizaos/plugin-elizacloud");
         plugins.push(elizacloudPlugin.default as Plugin);
@@ -359,6 +372,7 @@ export class AgentManager {
       const runtime = new AgentRuntime({ character, plugins });
       const skipMigrations = process.env.SKIP_MIGRATIONS === "true";
       await runtime.initialize({ skipMigrations });
+      await initializeManagedBrowserHost(runtime);
 
       this.agents.set(agentId, {
         agentId,

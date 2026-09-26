@@ -1,8 +1,7 @@
 /** Scenario fixture for selfcontrol self set enforcement ask before; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { expectNoActionCalled, scenario } from "@elizaos/testing";
 
 function expectClarificationBeforeBlock(
   ctx: ScenarioContext,
@@ -27,7 +26,7 @@ export default scenario({
     "Turn 1 — user makes a blocking request that is loose; agent must clarify and not immediately enforce the block. No WEBSITE_BLOCK fires on turn 1.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

@@ -4,19 +4,19 @@ import {
   type ActionResult,
   type Content,
   type ContentValue,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import { defineActionParameters } from "../../../plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "../../../plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";
-import type { SearchResponse, SearchResult } from "../types";
+import { type SearchResponse, type SearchResult } from "../types";
 
 interface WebSearchParams {
   query?: string;
@@ -28,7 +28,6 @@ interface WebSearchParams {
   start_date?: string;
   end_date?: string;
 }
-
 /**
  * Build the extraction template with the appropriate conversation context.
  * Prefers conversationLog if available, falls back to recentMessages.
@@ -55,7 +54,6 @@ Respond using JSON only. No markdown, no prose, no XML.
   "topic": "general or finance"
 }`;
 }
-
 function toCallbackData(
   searchResponse: SearchResponse,
   reasoning: string,
@@ -93,7 +91,6 @@ function toCallbackData(
     searchMetadata,
   };
 }
-
 /**
  * Extract search parameters from state or via LLM.
  * Supports multiple runtime patterns:
@@ -112,7 +109,6 @@ async function extractSearchParams(
     actionParams: content.actionParams,
     actionInput: content.actionInput,
   }) as WebSearchParams;
-
   if (messageParams?.query?.trim()) {
     logger.info(
       { src: "webSearch:extractParams", source: "message.params" },
@@ -120,7 +116,6 @@ async function extractSearchParams(
     );
     return messageParams;
   }
-
   // First, try to get params from state (custom bootstrap pattern)
   const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
   const stateParamSources = [
@@ -133,7 +128,6 @@ async function extractSearchParams(
       candidate.value && typeof candidate.value === "object" && !Array.isArray(candidate.value),
   );
   const stateParams = (matchedStateParams?.value || {}) as WebSearchParams;
-
   // If we have a query from state, use it
   if (stateParams?.query?.trim()) {
     logger.info(
@@ -145,50 +139,39 @@ async function extractSearchParams(
     );
     return stateParams;
   }
-
   // Otherwise, extract from conversation using LLM
   logger.info({ src: "webSearch:extractParams", source: "llm" }, "Extracting params via LLM");
-
   try {
     // Compose state - try to get both conversationLog and recentMessages
     const extractionState = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
-
     // Prefer conversationLog if available, fallback to recentMessages
     const conversationLog = extractionState?.values?.conversationLog;
     const recentMessages = extractionState?.values?.recentMessages;
-
     const conversationContext =
       (typeof conversationLog === "string" && conversationLog.trim()) ||
       (typeof recentMessages === "string" && recentMessages.trim()) ||
       "";
-
     const contextSource =
       typeof conversationLog === "string" && conversationLog.trim()
         ? "conversationLog"
         : "recentMessages";
-
     logger.debug({ src: "webSearch:extractParams", contextSource }, "Using conversation context");
-
     const template = buildExtractionTemplate(conversationContext);
     const prompt = composePromptFromState({
       state: extractionState,
       template,
     });
-
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const parsed = parseJSONObjectFromText(response || "");
-
     if (parsed?.query) {
       const extractedParams: WebSearchParams = {
         query: String(parsed.query).trim(),
         topic: parsed.topic === "finance" ? "finance" : ("general" as "general" | "finance"),
       };
-
       logger.info(
         { src: "webSearch:extractParams", query: extractedParams.query },
         "Extracted query via LLM",
       );
-
       return extractedParams;
     }
   } catch (err) {
@@ -197,7 +180,6 @@ async function extractSearchParams(
       "LLM extraction failed, falling back to message text",
     );
   }
-
   // Final fallback: use the message text directly as the query
   const messageText = message.content?.text?.trim();
   if (messageText) {
@@ -207,10 +189,8 @@ async function extractSearchParams(
     );
     return { query: messageText };
   }
-
   return {};
 }
-
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
   contexts: ["web", "documents", "finance", "crypto"],
@@ -235,7 +215,6 @@ export const webSearch: Action & Record<string, unknown> = {
     "- Try: topic='finance' for crypto/markets, source filter (theblock.com, coindesk.com), broader time_range, or a rephrased query\n" +
     "- For crypto/DeFi content: use topic='finance' + source from [theblock.com, coindesk.com, decrypt.co, dlnews.com]\n" +
     "- Don't give up after one attempt if results are clearly irrelevant",
-
   // Parameter schema for tool calling.
   parameters: defineActionParameters({
     query: {
@@ -282,7 +261,6 @@ export const webSearch: Action & Record<string, unknown> = {
       required: false,
     },
   }),
-
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     try {
       const service = runtime.getService<WebSearchService>("WEB_SEARCH");
@@ -299,7 +277,9 @@ export const webSearch: Action & Record<string, unknown> = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: {
+      [key: string]: unknown;
+    },
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
@@ -307,14 +287,11 @@ export const webSearch: Action & Record<string, unknown> = {
       if (!webSearchService) {
         throw new Error("WebSearchService not initialized");
       }
-
       // Extract parameters (supports multiple runtime patterns)
       // The LLM call will automatically stream the <thought> tag as reasoning
       const params = await extractSearchParams(runtime, message, state);
-
       // Extract and validate query parameter (required)
       const query: string | undefined = params?.query?.trim();
-
       if (!query) {
         const errorMsg = "Missing required parameter 'query'. Please specify what to search for.";
         logger.error({ src: "webSearch:handler" }, errorMsg);
@@ -334,13 +311,10 @@ export const webSearch: Action & Record<string, unknown> = {
         }
         return emptyResult;
       }
-
       const source = params?.source?.trim();
       const topic = params?.topic === "finance" ? "finance" : "general";
       const maxResults = params?.max_results ? Math.min(Math.max(1, params.max_results), 10) : 5;
-
       logger.info({ src: "webSearch:handler", query, topic, source }, "Executing web search");
-
       // Store input parameters for return
       const inputParams = {
         query,
@@ -352,7 +326,6 @@ export const webSearch: Action & Record<string, unknown> = {
         start_date: params?.start_date,
         end_date: params?.end_date,
       };
-
       const searchResponse = await webSearchService.search(query, {
         topic,
         max_results: maxResults,
@@ -361,9 +334,8 @@ export const webSearch: Action & Record<string, unknown> = {
         end_date: params?.end_date,
         source,
       });
-
       // A successful response carries either link results or a synthesized
-      // answer. The keyless MCP path (Parallel → Exa) returns the answer with
+      // answer. The keyless MCP path (Parallel) returns the answer with
       // an empty results list, so requiring links here discarded real answers.
       const hasResults =
         Array.isArray(searchResponse?.results) && searchResponse.results.length > 0;
@@ -380,7 +352,6 @@ export const webSearch: Action & Record<string, unknown> = {
                 : ""
             }`
           : "";
-
         // Build detailed reasoning for storage
         const reasoningSteps = [
           `1. Extracted search query: "${query}"`,
@@ -398,14 +369,14 @@ export const webSearch: Action & Record<string, unknown> = {
           searchQueries: searchResponse.searchQueries ?? [],
         };
         const callbackData = toCallbackData(searchResponse, reasoningSteps, searchMetadata);
-
         const result: ActionResult = {
           text: responseList,
           success: true,
           data: callbackData,
           input: inputParams,
-        } as ActionResult & { input: typeof inputParams };
-
+        } as ActionResult & {
+          input: typeof inputParams;
+        };
         if (callback) {
           const responseContent: Content = {
             text: result.text,
@@ -414,10 +385,8 @@ export const webSearch: Action & Record<string, unknown> = {
           };
           callback(responseContent);
         }
-
         return result;
       }
-
       const noResult: ActionResult = {
         text: "I couldn't find relevant results for that query.",
         success: false,
@@ -425,8 +394,9 @@ export const webSearch: Action & Record<string, unknown> = {
           actionName: "WEB_SEARCH",
         },
         input: inputParams,
-      } as ActionResult & { input: typeof inputParams };
-
+      } as ActionResult & {
+        input: typeof inputParams;
+      };
       if (callback) {
         callback({ text: noResult.text });
       }
@@ -434,7 +404,6 @@ export const webSearch: Action & Record<string, unknown> = {
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       logger.error({ src: "webSearch:handler", error: errMsg }, "Action failed");
-
       const errorResult: ActionResult = {
         text: `Web search failed: ${errMsg}`,
         success: false,
@@ -443,7 +412,6 @@ export const webSearch: Action & Record<string, unknown> = {
         },
         error: errMsg,
       };
-
       if (callback) {
         callback({
           text: errorResult.text,

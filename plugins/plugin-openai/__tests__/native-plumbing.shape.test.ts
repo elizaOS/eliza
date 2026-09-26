@@ -3,16 +3,17 @@
  * model-usage events, and trajectory recording — against a mocked `ai` SDK
  * (`generateText`/`streamText`), no network.
  */
+
 import type { Character, IAgentRuntime } from "@elizaos/core";
 import {
   AgentRuntime,
   EventType,
-  InMemoryDatabaseAdapter,
   ModelType,
   runWithLlmInputSubstringAttestation,
   runWithStreamingContext,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -148,6 +149,20 @@ function createRuntime(options?: { trajectoryCalls?: CapturedLlmCall[] }) {
   return runtime as IAgentRuntime;
 }
 
+function createRecordingDispatcher(trajectoryCalls: CapturedLlmCall[]) {
+  const runtime = new AgentRuntime({ character: { name: "Recorder" }, logLevel: "fatal" });
+  const logger = {
+    isEnabled: () => true,
+    logLlmCall: (call: CapturedLlmCall) => trajectoryCalls.push(call),
+  };
+  // Exercise dispatch without starting unrelated services or database storage.
+  Reflect.set(runtime, "initResolver", undefined);
+  Reflect.set(runtime, "_ensureServiceStarted", async () => logger);
+  vi.spyOn(runtime, "getService").mockReturnValue(logger as never);
+  vi.spyOn(runtime, "getServicesByType").mockReturnValue([logger] as never);
+  return runtime;
+}
+
 function expectNativeTextResult(value: unknown): asserts value is Record<string, unknown> {
   expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
@@ -239,6 +254,39 @@ afterEach(() => {
 });
 
 describe("OpenAI native text plumbing", () => {
+  it("dispatches complete input when the tokenizer uses a fallback encoding", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "complete response",
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "provider-final-wire-canary".repeat(64),
+      providerOptions: {
+        eliza: {
+          modelInputBudget: {
+            contextWindowTokens: 9_000,
+          },
+        },
+      },
+    } as never);
+    expect(aiMocks.generateText).toHaveBeenCalledOnce();
+    expect(aiMocks.streamText).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it("publishes concrete GPT-5.6 defaults for pre-handler admission", async () => {
+    const { openaiPlugin } = await import("../index");
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_SMALL]).toMatchObject({
+      displayModelDefault: "gpt-5.6-luna",
+      displayModelSettings: expect.arrayContaining(["OPENAI_SMALL_MODEL"]),
+    });
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_LARGE]).toMatchObject({
+      displayModelDefault: "gpt-5.6-sol",
+      displayModelSettings: expect.arrayContaining(["OPENAI_LARGE_MODEL"]),
+    });
+  }, 20_000);
+
   it("uses a strict-safe wire schema for planner tool args and restores returned args", async () => {
     const wirePlannerText = JSON.stringify({
       thought: "Need the calendar tool.",
@@ -489,13 +537,13 @@ describe("OpenAI native text plumbing", () => {
       usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
     });
     const { handleResponseHandler } = await import("../models/text");
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: {
         name: "Ada",
         bio: "test runtime",
         settings: {},
       } as Character,
-      adapter: new InMemoryDatabaseAdapter(),
+
       logLevel: "fatal",
     });
     runtime.registerModel(ModelType.RESPONSE_HANDLER, handleResponseHandler, "openai");
@@ -627,7 +675,7 @@ describe("OpenAI native text plumbing", () => {
   it("passes messages, tools, toolChoice, schema, and provider options through", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: {
         inputTokens: 7,
@@ -683,7 +731,7 @@ describe("OpenAI native text plumbing", () => {
     });
     expect(result).toMatchObject({
       text: "ok",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
       finishReason: "tool-calls",
       usage: {
         promptTokens: 7,
@@ -788,7 +836,7 @@ describe("OpenAI native text plumbing", () => {
   });
 
   it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {
-    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const toolCalls = [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }];
     const usage = { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 };
 
     aiMocks.generateText.mockResolvedValue({
@@ -838,8 +886,13 @@ describe("OpenAI native text plumbing", () => {
     );
 
     expectNativeTextResult(nonStream);
-    expect(nonStream).toMatchObject({ toolCalls, finishReason: "tool-calls" });
-    await expect((stream as { toolCalls: Promise<unknown> }).toolCalls).resolves.toEqual(toolCalls);
+    expect(nonStream).toMatchObject({
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
+      finishReason: "tool-calls",
+    });
+    await expect((stream as { toolCalls: Promise<unknown> }).toolCalls).resolves.toEqual([
+      { id: "call-test", name: "lookup", arguments: { q: "x" } },
+    ]);
     await expect((stream as { finishReason: Promise<unknown> }).finishReason).resolves.toBe(
       "tool-calls"
     );
@@ -923,7 +976,7 @@ describe("OpenAI native text plumbing", () => {
 
   it("emits usage and records the completed live-stream response after consumption", async () => {
     const trajectoryCalls: CapturedLlmCall[] = [];
-    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const toolCalls = [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }];
     aiMocks.streamText.mockResolvedValue({
       textStream: (async function* textStream() {
         yield "hel";
@@ -979,7 +1032,7 @@ describe("OpenAI native text plumbing", () => {
       completionTokens: 1,
       cacheReadInputTokens: 1,
       finishReason: "stop",
-      toolCalls,
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
     });
   });
 
@@ -1027,7 +1080,7 @@ describe("OpenAI native text plumbing", () => {
   it("records completed buffered-stream output and usage before returning", async () => {
     vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
     const trajectoryCalls: CapturedLlmCall[] = [];
-    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const toolCalls = [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }];
     aiMocks.streamText.mockReturnValue({
       textStream: (async function* textStream() {
         yield '{"answer":"ok"}';
@@ -1062,7 +1115,7 @@ describe("OpenAI native text plumbing", () => {
       completionTokens: 4,
       cacheReadInputTokens: 6,
       finishReason: "tool-calls",
-      toolCalls,
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
     });
   });
 
@@ -1116,7 +1169,8 @@ describe("OpenAI native text plumbing", () => {
   });
 
   it("surfaces live-stream provider errors reported through the AI SDK onError hook", async () => {
-    const providerError = new Error("stream provider failed");
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    const providerError = new Error("stream provider failed secret-fixture");
     aiMocks.streamText.mockResolvedValue({
       textStream: (async function* textStream() {
         yield "partial";
@@ -1127,21 +1181,140 @@ describe("OpenAI native text plumbing", () => {
       usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
     });
 
+    const runtime = createRuntime({ trajectoryCalls });
+    runtime.redactSecrets = (text) => text.replaceAll("secret-fixture", "[REDACTED]");
     const { handleTextSmall } = await import("../models/text");
-    const stream = (await handleTextSmall(createRuntime(), {
-      prompt: "stream error",
-      stream: true,
-    } as never)) as { textStream: AsyncIterable<string> };
-    const call = aiMocks.streamText.mock.calls[0][0] as {
-      onError?: (event: { error: unknown }) => void;
-    };
-    call.onError?.({ error: providerError });
+    await runWithTrajectoryContext({ trajectoryStepId: "failed-live" }, async () => {
+      const stream = (await handleTextSmall(runtime, {
+        prompt: "stream error",
+        stream: true,
+      } as never)) as { textStream: AsyncIterable<string> };
+      const call = aiMocks.streamText.mock.calls[0][0] as {
+        onError?: (event: { error: unknown }) => void;
+      };
+      call.onError?.({ error: providerError });
 
-    await expect(async () => {
-      for await (const _chunk of stream.textStream) {
-        // consume the stream so the deferred onError hook is checked
-      }
-    }).rejects.toThrow("stream provider failed");
+      await expect(async () => {
+        for await (const _chunk of stream.textStream) {
+          // consume the stream so the deferred onError hook is checked
+        }
+      }).rejects.toThrow("stream provider failed");
+    });
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({
+      response: "partial",
+      finishReason: "error",
+      providerMetadata: {
+        providerFinishReason: "stop",
+        error: "stream provider failed [REDACTED]",
+      },
+    });
+  });
+
+  it.each([false, true])(
+    "records an output-limited provider result once through the dispatcher (buffered=%s)",
+    async (buffered) => {
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
+      const trajectoryCalls: CapturedLlmCall[] = [];
+      const runtime = createRecordingDispatcher(trajectoryCalls);
+      const { handleTextSmall } = await import("../models/text");
+      runtime.registerModel(ModelType.TEXT_SMALL, handleTextSmall, "openai");
+      aiMocks.generateText.mockResolvedValue({
+        text: "partial",
+        finishReason: "length",
+        usage: { inputTokens: 1, outputTokens: 8 },
+      });
+      aiMocks.streamText.mockReturnValue({
+        textStream: (async function* () {
+          yield "partial";
+        })(),
+        text: Promise.resolve("partial"),
+        finishReason: Promise.resolve("length"),
+        usage: Promise.resolve({ inputTokens: 1, outputTokens: 8 }),
+        toolCalls: Promise.resolve([]),
+      });
+      await runWithTrajectoryContext({ trajectoryStepId: "limited" }, async () => {
+        await expect(
+          runtime.useModel(ModelType.TEXT_SMALL, { prompt: "complete this", stream: buffered })
+        ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(trajectoryCalls).toHaveLength(1);
+      expect(trajectoryCalls[0]).toMatchObject({
+        response: "partial",
+        finishReason: "length",
+        promptTokens: 1,
+        completionTokens: 8,
+      });
+    }
+  );
+
+  it.each([false, true])(
+    "retains native request evidence and unknown usage on in-flight cancellation (buffered=%s)",
+    async (buffered) => {
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
+      const trajectoryCalls: CapturedLlmCall[] = [];
+      const runtime = createRecordingDispatcher(trajectoryCalls);
+      const controller = new AbortController();
+      const failure = new DOMException("owner cancelled", "AbortError");
+      aiMocks.generateText.mockImplementation(async () => {
+        controller.abort(failure);
+        throw failure;
+      });
+      aiMocks.streamText.mockImplementation(() => {
+        controller.abort(failure);
+        throw failure;
+      });
+      const { handleTextSmall } = await import("../models/text");
+      runtime.registerModel(ModelType.TEXT_SMALL, handleTextSmall, "openai");
+      await runWithTrajectoryContext({ trajectoryStepId: "cancelled" }, async () => {
+        await expect(
+          runtime.useModel(ModelType.TEXT_SMALL, {
+            system: "system evidence",
+            messages: [{ role: "user", content: "native evidence" }],
+            signal: controller.signal,
+            stream: buffered,
+          })
+        ).rejects.toBe(failure);
+      });
+      expect(trajectoryCalls).toHaveLength(1);
+      expect(trajectoryCalls[0]).toMatchObject({
+        finishReason: "error",
+        messages: (buffered ? aiMocks.streamText : aiMocks.generateText).mock.calls[0][0].messages,
+      });
+      expect(trajectoryCalls[0].promptTokens).toBeUndefined();
+      expect(trajectoryCalls[0].completionTokens).toBeUndefined();
+      expect(buffered ? aiMocks.streamText : aiMocks.generateText).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("records cancellation of an uninstrumented dispatched handler but not a pre-aborted call", async () => {
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    const runtime = createRecordingDispatcher(trajectoryCalls);
+    const controller = new AbortController();
+    const failure = new DOMException("owner cancelled", "AbortError");
+    const handler = vi.fn(async () => {
+      controller.abort(failure);
+      throw failure;
+    });
+    runtime.registerModel(ModelType.TEXT_SMALL, handler, "fixture");
+    await runWithTrajectoryContext({ trajectoryStepId: "cancelled-generic" }, async () => {
+      await expect(
+        runtime.useModel(ModelType.TEXT_SMALL, { prompt: "attempted", signal: controller.signal })
+      ).rejects.toBe(failure);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(trajectoryCalls).toHaveLength(1);
+      await expect(
+        runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: "never dispatched",
+          signal: controller.signal,
+        })
+      ).rejects.toBe(failure);
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({ finishReason: "error", prompt: "attempted" });
+    expect(trajectoryCalls[0].promptTokens).toBeUndefined();
   });
 
   it("maps string responseFormat json_object into the AI SDK JSON output contract", async () => {
@@ -1315,7 +1488,7 @@ describe("OpenAI native text plumbing", () => {
   it("normalizes core tool arrays and tool choice into AI SDK tool sets", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "",
-      toolCalls: [{ toolName: "WEB_SEARCH", input: { q: "eliza" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "WEB_SEARCH", input: { q: "eliza" } }],
       finishReason: "tool-calls",
       usage: { inputTokens: 11, outputTokens: 2 },
     });
@@ -1366,6 +1539,7 @@ describe("OpenAI native text plumbing", () => {
       text: "",
       toolCalls: [
         {
+          toolCallId: "call-test",
           toolName: "SAVE_CONTACT",
           input: {
             customFields: {
@@ -1406,8 +1580,9 @@ describe("OpenAI native text plumbing", () => {
 
     expect(result.toolCalls).toEqual([
       {
-        toolName: "SAVE_CONTACT",
-        input: {
+        id: "call-test",
+        name: "SAVE_CONTACT",
+        arguments: {
           customFields: {
             favoriteColor: "blue",
             score: 7,

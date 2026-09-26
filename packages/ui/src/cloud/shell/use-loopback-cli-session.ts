@@ -1,26 +1,26 @@
 /** Resolve localhost CLI credentials through the real Cloud account authority. */
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import {
   readStoredStewardToken,
   STEWARD_SESSION_CHANGE_EVENT,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useEffect, useState } from "react";
 import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
 import { normalizeCloudApiKeyToken } from "../lib/cloud-api-key-token";
-
 /** CLI keys are not JWTs; only the explicitly configured loopback lane uses them here. */
 export function loopbackCliToken(): string | null {
   return isLoopbackStagingStewardDevelopment()
     ? normalizeCloudApiKeyToken(readStoredStewardToken())
     : null;
 }
-
 type CliSession = {
   loading: boolean;
   token: string | null;
-  user: { id: string; email: string } | null;
+  user: {
+    id: string;
+    email: string;
+  } | null;
 };
-
 /** A key-shaped string never opens account pages until the server accepts it. */
 export function useLoopbackCliSession(): CliSession {
   const [session, setSession] = useState<CliSession>(() => ({
@@ -44,7 +44,7 @@ export function useLoopbackCliSession(): CliSession {
       const controller = new AbortController();
       pending = controller;
       setSession({ loading: true, token: null, user: null });
-      const timeout = window.setTimeout(() => controller.abort(), 15_000);
+      const timeout = window.setTimeout(() => controller.abort(), 15000);
       try {
         const apiBase = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
         const response = await fetch(`${apiBase}/api/v1/user`, {

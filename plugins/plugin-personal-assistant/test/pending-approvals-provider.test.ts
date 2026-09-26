@@ -9,6 +9,11 @@
  * (`ownerPrivateProvider`), covered against a real database in
  * `src/lifeops/delivery-audience-membership-mutation.pglite.integration.test.ts`.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import {
   ChannelType,
   type IAgentRuntime,
@@ -24,10 +29,6 @@ const mocks = vi.hoisted(() => ({
     list: vi.fn(),
   },
   createApprovalQueue: vi.fn(),
-}));
-
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({

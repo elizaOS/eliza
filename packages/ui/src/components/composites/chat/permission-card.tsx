@@ -7,15 +7,15 @@
  * shows in stories/tests. Label copy and helpers live in
  * permission-card.helpers.
  */
-import {
-  type IPermissionsRegistry,
-  openPermissionSettings,
-  type PermissionId,
-  type PermissionState,
-} from "@elizaos/shared";
+
+import type {
+  IPermissionsRegistry,
+  PermissionId,
+  PermissionState,
+} from "@elizaos/core/contracts/permissions";
+import { openPermissionSettings } from "@elizaos/core/utils/permission-deep-links";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
-
 import { useBranding } from "../../../config/branding";
 import { cn } from "../../../lib/utils";
 import { Badge } from "../../ui/badge";
@@ -28,7 +28,6 @@ import {
   type PermissionCardLabels,
   parseFeatureRef,
 } from "./permission-card.helpers";
-
 export interface PermissionCardProps {
   permission: PermissionId;
   reason: string;
@@ -55,7 +54,6 @@ export interface PermissionCardProps {
   labels?: PermissionCardLabels;
   className?: string;
 }
-
 export function PermissionCard({
   permission,
   reason,
@@ -78,7 +76,6 @@ export function PermissionCard({
   const [requesting, setRequesting] = useState(false);
   const [checking, setChecking] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-
   const handleGrant = useCallback(async () => {
     if (!registry) return;
     setRequesting(true);
@@ -95,7 +92,6 @@ export function PermissionCard({
       setRequesting(false);
     }
   }, [registry, permission, reason, feature, onGranted]);
-
   const handleCheckAgain = useCallback(async () => {
     if (!registry) return;
     setChecking(true);
@@ -109,7 +105,6 @@ export function PermissionCard({
       setChecking(false);
     }
   }, [registry, permission, onGranted]);
-
   const handleOpenSettings = useCallback(() => {
     if (onOpenSettings) {
       void onOpenSettings(permission);
@@ -117,17 +112,14 @@ export function PermissionCard({
     }
     void openPermissionSettings(permission);
   }, [onOpenSettings, permission]);
-
   const handleDismiss = useCallback(() => {
     setDismissed(true);
     onDismiss?.();
   }, [onDismiss]);
-
   const handleFallback = useCallback(() => {
     onFallback?.({ type: "use_fallback", feature, permission });
     setDismissed(true);
   }, [onFallback, feature, permission]);
-
   useEffect(() => {
     if (!registry) return;
     let cancelled = false;
@@ -149,9 +141,7 @@ export function PermissionCard({
       unsubscribe();
     };
   }, [registry, permission]);
-
   if (dismissed) return null;
-
   // Defensive: agent shouldn't emit a card for already-granted permissions.
   if (state.status === "granted") {
     return (
@@ -165,28 +155,22 @@ export function PermissionCard({
       </Badge>
     );
   }
-
   const isRestrictedEntitlement =
     state.status === "restricted" &&
     state.restrictedReason === "entitlement_required";
-
   const isRestrictedUnavailable =
     state.status === "restricted" && !isRestrictedEntitlement;
-
   const isLimited = state.status === "limited";
-
   const canOpenSettingsInstead =
     state.canRequest === false &&
     (state.status === "denied" ||
       state.status === "not-determined" ||
       isLimited);
-
   const title = getPermissionLabel(permission);
   const guidance = permissionGuidance(permission, state, appName);
   const resolvedFallbackLabel =
     fallbackLabel ??
     (permission === "reminders" ? "Use internal reminder" : "Use fallback");
-
   return (
     <Card
       variant="insetPadded"
@@ -290,13 +274,11 @@ export function PermissionCard({
     </Card>
   );
 }
-
 function statusLabel(state: PermissionState): string {
   if (state.status === "not-determined") return "Not asked";
   if (state.status === "not-applicable") return "Unavailable";
   return state.status.replace(/-/g, " ");
 }
-
 function platformSettingsLabel(
   platform: PermissionState["platform"],
   appName: string,
@@ -309,15 +291,16 @@ function platformSettingsLabel(
   if (platform === "linux") return "system privacy settings";
   return "browser settings";
 }
-
 function permissionGuidance(
   permission: PermissionId,
   state: PermissionState,
   appName: string,
-): { primary: string; secondary: string } {
+): {
+  primary: string;
+  secondary: string;
+} {
   const title = getPermissionLabel(permission);
   const settings = platformSettingsLabel(state.platform, appName);
-
   if (state.status === "limited") {
     if (permission === "calendar") {
       return {
@@ -332,7 +315,6 @@ function permissionGuidance(
       secondary: `Manage the allowed items in ${settings}, or upgrade access if this feature needs more.`,
     };
   }
-
   if (state.status === "denied" || state.canRequest === false) {
     return {
       primary: `Turn on ${title} in ${settings}.`,
@@ -340,7 +322,6 @@ function permissionGuidance(
         "After enabling it, return here and choose Check again. If you changed your mind, you can leave it off and use any offered fallback.",
     };
   }
-
   if (state.status === "restricted") {
     return {
       primary: `${title} is blocked by the current OS policy or app entitlement.`,
@@ -348,7 +329,6 @@ function permissionGuidance(
         "This device may need a different build, entitlement, profile, or administrator setting before the feature can work.",
     };
   }
-
   if (state.status === "not-applicable") {
     return {
       primary: `${title} is not available on this platform.`,
@@ -356,7 +336,6 @@ function permissionGuidance(
         "The agent can continue only if there is a fallback that does not use this device capability.",
     };
   }
-
   if (permission === "usage-access") {
     return {
       primary: `Open Android Usage Access and allow ${appName}.`,
@@ -364,7 +343,6 @@ function permissionGuidance(
         "This lets app blocking and Screen Time features read foreground app usage. Return here and choose Check again when done.",
     };
   }
-
   if (permission === "overlay") {
     return {
       primary: `Allow ${appName} to draw over other apps in Android settings.`,
@@ -372,7 +350,6 @@ function permissionGuidance(
         "The blocking screen needs this to appear above distracting apps. If you cancel, press Grant access again.",
     };
   }
-
   if (permission === "write-settings") {
     return {
       primary: `Open Android Write Settings and allow ${appName}.`,
@@ -380,7 +357,6 @@ function permissionGuidance(
         "Android requires this separate settings screen for brightness and device-setting changes.",
     };
   }
-
   return {
     primary: `When the OS prompt appears, choose Allow for ${title}.`,
     secondary: `If you cancel by accident, press Grant access again. If the OS stops prompting, open settings, enable it for ${appName}, then check again.`,

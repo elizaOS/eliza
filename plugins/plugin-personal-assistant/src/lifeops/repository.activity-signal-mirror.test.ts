@@ -7,11 +7,13 @@ import {
   EventType,
   type UUID,
 } from "@elizaos/core";
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
+import type { LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
+import {
+  PGliteClientManager,
+  PgliteDatabaseAdapter,
+} from "@elizaos/plugin-sql";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
-import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
 import {
   createSignalSourceRegistry,
   registerSignalSourceRegistry,

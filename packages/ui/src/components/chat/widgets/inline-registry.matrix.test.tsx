@@ -9,7 +9,7 @@
  * marker no parser recognizes) slipped through. This gate locks the inline
  * widget matrix exactly:
  *   - `getInlineWidgets()` equals EXACTLY the documented built-in set (`task`
- *     is plugin-owned — registered by plugin-task-coordinator, not a UI
+ *     is plugin-owned — registered by plugin-agent-orchestrator, not a UI
  *     built-in — so it is absent here and asserted absent).
  *   - every documented marker parses a representative reply into >=1 region and
  *     renders without throwing (a broken parse→render pipeline fails here).
@@ -20,8 +20,8 @@
  * Keep this in lockstep with WIDGET_MATRIX.md.
  */
 
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONFIG_RE, FENCED_CODE_RE } from "../message-parser-helpers";
 // Side effect: registers the built-in inline widgets (choice / followups / form).
 import "./inline-builtins";
@@ -32,7 +32,7 @@ import {
 } from "./inline-registry";
 
 // The canonical inline built-in set (WIDGET_MATRIX.md). `task` is intentionally
-// NOT here — it is registered by plugin-task-coordinator's registerTaskWidget().
+// NOT here — it is registered by plugin-agent-orchestrator's registerTaskWidget().
 const BUILTIN_INLINE_KINDS = [
   "choice",
   "followups",
@@ -72,6 +72,9 @@ const ctx: InlineWidgetContext = {
 };
 
 describe("inline-widget matrix gate (#9304)", () => {
+  // Vitest globals are disabled, so Testing Library cannot register cleanup.
+  afterEach(cleanup);
+
   it("the registry contains EXACTLY the documented built-in inline kinds", () => {
     expect(
       getInlineWidgets()

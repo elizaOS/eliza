@@ -8,7 +8,7 @@
  * runtime, account, and character configuration.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import type { UiLanguage } from "../i18n";
 import { releasePendingFirstRunText } from "./first-run-pending-text";
 
@@ -70,6 +70,34 @@ export interface AdoptRemoteAgentFirstRunResult {
   alreadyComplete: boolean;
 }
 
+// Keep only an approved connection's unfinished adoption. Pairing completes
+// this in the same document before restarting startup; no credential or approval flag
+// is persisted for another document to trust.
+let pendingPairingAdoption: {
+  input: AdoptRemoteAgentFirstRunInput;
+  completeFirstRun: () => void;
+} | null = null;
+
+export function clearPendingRemoteFirstRun(): void {
+  pendingPairingAdoption = null;
+}
+
+export async function resumeRemoteFirstRunAfterPairing(
+  client: RemoteFirstRunClient,
+  apiBase: string,
+): Promise<void> {
+  const pending = pendingPairingAdoption;
+  if (!pending) return;
+  if (
+    normalizeRemoteAgentUrl(apiBase) !==
+    normalizeRemoteAgentUrl(pending.input.apiBase)
+  ) {
+    pendingPairingAdoption = null;
+    return;
+  }
+  await finishPendingRemoteFirstRun(client, pending, true);
+}
+
 /**
  * Ensures the connected remote is recorded as the device's completed first-run
  * target. Returns whether the remote was already complete (so callers can skip
@@ -122,8 +150,38 @@ export async function completeRemoteAgentFirstRun(
   input: AdoptRemoteAgentFirstRunInput,
   completeFirstRun: () => void,
 ): Promise<AdoptRemoteAgentFirstRunResult> {
-  const result = await adoptRemoteAgentFirstRun(client, input);
-  completeFirstRun();
+  const request = { input, completeFirstRun };
+  pendingPairingAdoption = request;
+  return finishPendingRemoteFirstRun(client, request, false);
+}
+
+async function finishPendingRemoteFirstRun(
+  client: RemoteFirstRunClient,
+  request: NonNullable<typeof pendingPairingAdoption>,
+  retainForRetry: boolean,
+): Promise<AdoptRemoteAgentFirstRunResult> {
+  let result: AdoptRemoteAgentFirstRunResult;
+  try {
+    result = await adoptRemoteAgentFirstRun(client, request.input);
+  } catch (error) {
+    // Only authentication can be repaired by pairing. Host/readiness failures
+    // remain explicit failures of the original connection request.
+    if (
+      !retainForRetry &&
+      (error as { status?: number })?.status !== 401 &&
+      pendingPairingAdoption === request
+    ) {
+      pendingPairingAdoption = null;
+    }
+    throw error;
+  }
+  if (pendingPairingAdoption !== request) {
+    throw new ElizaError("The remote connection changed during setup.", {
+      code: "REMOTE_ADOPTION_SUPERSEDED",
+    });
+  }
+  pendingPairingAdoption = null;
+  request.completeFirstRun();
   releasePendingFirstRunText();
   return result;
 }

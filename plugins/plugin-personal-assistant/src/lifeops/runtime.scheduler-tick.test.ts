@@ -1,9 +1,15 @@
 /** Verifies the LifeOps scheduler tick processes scheduled work and surfaces subsystem failures rather than swallowing them. Deterministic vitest with the scheduled-work path mocked. */
-import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
-import { TaskService } from "@elizaos/core/node";
+import {
+  type IAgentRuntime,
+  type Task,
+  TaskService,
+  type TaskWorker,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { escalateUnacknowledgedIntents } from "./intent-sync.js";
 import {
+  executeLifeOpsReminderTask,
   executeLifeOpsSchedulerTask,
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
@@ -17,6 +23,11 @@ const scheduledWorkFixture = vi.hoisted(() => ({
   scheduledTaskCompletionTimeouts: [],
   subsystemFailures: [{ subsystem: "reminders", error: "reminders down" }],
 }));
+const reminderFixture = vi.hoisted(() => ({
+  now: "2026-07-01T12:00:00.000Z",
+  attempts: [{ id: "attempt-1", status: "sent" }],
+}));
+const processRemindersMock = vi.hoisted(() => vi.fn());
 const householdFixture = vi.hoisted(() => ({
   reconcileGrantExpiryWarnings: vi.fn(async () => [
     {
@@ -50,6 +61,10 @@ vi.mock("./app-state.js", () => ({
 
 vi.mock("./service.js", () => ({
   LifeOpsService: class {
+    async processReminders(options: { now?: string; limit?: number }) {
+      return processRemindersMock(options);
+    }
+
     async processScheduledWork() {
       return scheduledWorkFixture;
     }
@@ -67,6 +82,24 @@ vi.mock("./household/service.js", () => ({
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
 const runtime = { agentId: AGENT_ID } as unknown as IAgentRuntime;
+
+describe("executeLifeOpsReminderTask", () => {
+  it("runs only the production reminder processor with the requested bounds", async () => {
+    processRemindersMock.mockResolvedValueOnce(reminderFixture);
+
+    await expect(
+      executeLifeOpsReminderTask(runtime, {
+        now: "2026-07-01T12:00:00.000Z",
+        limit: 7,
+      }),
+    ).resolves.toEqual(reminderFixture);
+    expect(processRemindersMock).toHaveBeenCalledExactlyOnceWith({
+      now: "2026-07-01T12:00:00.000Z",
+      limit: 7,
+      scope: "definitions",
+    });
+  });
+});
 
 describe("registerLifeOpsTaskWorker", () => {
   it("keeps the task identity valid without executing when scheduler is disabled", async () => {
@@ -103,8 +136,17 @@ describe("registerLifeOpsTaskWorker", () => {
       registerTaskWorker: (worker: TaskWorker) => {
         registered = worker;
       },
-      getTask: vi.fn(async () => task),
-      updateTask: vi.fn(async () => undefined),
+      ...({
+        getTask: async () => structuredClone(task),
+        // This fixture has no atomic adapter; exercise the real fallback write.
+        patchTaskMetadata: async () => "unsupported",
+        updateTask: async (_id, patch) => {
+          Object.assign(task, structuredClone(patch));
+        },
+      } satisfies Pick<
+        IAgentRuntime,
+        "getTask" | "patchTaskMetadata" | "updateTask"
+      >),
       logger: {
         debug: vi.fn(),
         error: vi.fn(),
@@ -132,6 +174,12 @@ describe("registerLifeOpsTaskWorker", () => {
     ready = true;
     await taskService.runTick([task]);
     expect(execute).toHaveBeenCalledOnce();
+    const persisted = await gatedRuntime.getTask(task.id as UUID);
+    expect(persisted?.metadata?.updatedAt).toBeGreaterThan(0);
+    expect(persisted?.metadata?.updateInterval).toBe(
+      resolveLifeOpsTaskIntervalMs(AGENT_ID),
+    );
+    expect(persisted?.metadata?.failureCount).toBe(0);
   });
 });
 

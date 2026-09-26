@@ -1,38 +1,10 @@
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
-import { Hono } from "hono";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-
-/**
- * Voice TTS API (v1)
- *
- * POST /api/v1/voice/tts
- * Converts text to speech using the voice synthesis service.
- * Supports both session and API key authentication.
- *
- * WHY THIS EXISTS:
- * ----------------
- * 1. PROVIDER AGNOSTIC: Uses generic `/api/v1/voice/` path instead of provider-specific
- *    paths like `/api/elevenlabs/`. This allows switching voice providers without
- *    breaking client integrations. The underlying ElevenLabs implementation is hidden.
- *
- * 2. API KEY SUPPORT: Enables developers and AI agents to generate speech programmatically.
- *    Voice-enabled applications (chatbots, accessibility tools, content creation) need
- *    server-side TTS without browser sessions.
- *
- * 3. AUTONOMOUS AGENTS: AI agents can speak autonomously - generating audio responses,
- *    creating podcasts, or handling voice interactions without human intervention.
- *
- * BACKWARDS COMPATIBILITY:
- * The legacy `/api/elevenlabs/tts` endpoint remains active for existing integrations.
- */
-
 import {
   FIRST_SENTENCE_SNIP_VERSION,
   firstSentenceSnip,
-} from "@elizaos/shared/voice/first-sentence-snip";
+} from "@elizaos/core/voice/first-sentence-snip";
+import { Hono } from "hono";
 import { z } from "zod";
 import {
   admitFlatGenerativeOperation,
@@ -60,7 +32,9 @@ import {
   shouldBypassCloudFirstLineCache,
 } from "@/lib/services/tts-first-line-cache";
 import { usageService } from "@/lib/services/usage";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
+import { type AppContext, type AppEnv } from "@/types/cloud-worker-env";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,
@@ -73,11 +47,33 @@ import {
 import { selectTtsProvider, type TtsProvider } from "./provider-selection";
 
 /**
+ * Voice TTS API (v1)
+ *
+ * POST /api/v1/voice/tts
+ * Converts text to speech using the voice synthesis service.
+ * Supports both session and API key authentication.
+ *
+ * WHY THIS EXISTS:
+ * ----------------
+ * 1. PROVIDER AGNOSTIC: Uses generic `/api/v1/voice/` path instead of provider-specific
+ *    paths like `/api/elevenlabs/`. This allows switching voice providers without
+ *    breaking client integrations. The underlying ElevenLabs implementation is hidden.
+ *
+ * 2. API KEY SUPPORT: Enables developers and AI agents to generate speech programmatically.
+ *    Voice-enabled applications (chatbots, accessibility tools, content creation) need
+ *    server-side TTS without browser sessions.
+ *
+ * 3. AUTONOMOUS AGENTS: AI agents can speak autonomously - generating audio responses,
+ *    creating podcasts, or handling voice interactions without human intervention.
+ *
+ * BACKWARDS COMPATIBILITY:
+ * The legacy `/api/elevenlabs/tts` endpoint remains active for existing integrations.
+ */
+/**
  * Default ElevenLabs output format. Must stay in sync with the ElevenLabs
  * service so cached bytes match what fresh synthesis returns.
  */
 const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
-
 /**
  * Resolve a stable `voiceRevision` token for the ElevenLabs path. The real
  * impl could query `client.voices.get(voiceId).voice_settings` and hash it;
@@ -90,9 +86,7 @@ function resolveElevenLabsVoiceRevision(
 ): string {
   return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
 }
-
 const MAX_TEXT_LENGTH = 5000;
-
 const TtsBody = z.object({
   text: z.string(),
   voiceId: z.string().optional(),
@@ -103,13 +97,11 @@ const TtsBody = z.object({
   // uncompressed container that decodes without a codec.
   format: z.enum(["mp3", "wav"]).optional(),
 });
-
 interface TtsTimings {
   authMs?: number;
   admissionMs?: number;
   synthesisMs?: number;
 }
-
 function buildTtsObservabilityHeaders(
   provider: TtsProvider,
   timings: TtsTimings,
@@ -123,7 +115,6 @@ function buildTtsObservabilityHeaders(
       ? `synthesis;dur=${timings.synthesisMs}`
       : null,
   ].filter((entry): entry is string => entry !== null);
-
   return {
     "X-Eliza-TTS-Provider": provider,
     ...(serverTiming.length > 0
@@ -131,18 +122,15 @@ function buildTtsObservabilityHeaders(
       : {}),
   };
 }
-
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
-const WAV_PCM_SAMPLE_RATE = 24_000;
+const WAV_PCM_SAMPLE_RATE = 24000;
 const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
-
 /**
  * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
  * verified live). Override per-environment with CARTESIA_VOICE_ID; the legacy
  * CARTESIA_DEFAULT_VOICE_ID remains accepted for older deploy configs.
  */
 const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
-
 function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
   return (
     env.CARTESIA_VOICE_ID?.trim() ||
@@ -150,7 +138,6 @@ function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
     DEFAULT_CARTESIA_VOICE_ID
   );
 }
-
 /**
  * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
  * merged copy + the WAV in Worker memory, so the cap must reflect the real
@@ -160,14 +147,12 @@ function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
  * ElevenLabs (the synthesis throws rather than truncating).
  */
 const MAX_CARTESIA_PCM_BYTES = 16 * 1024 * 1024;
-
 /**
  * Keep cache capture below the cache service's per-entry ceiling. Exceeding
  * this limit cancels only the tee used for cache population; the caller's
  * primary stream remains complete and unmodified.
  */
 const MAX_FIRST_LINE_CACHE_CAPTURE_BYTES = 256 * 1024;
-
 async function captureExactAudioForCache(
   stream: ReadableStream<Uint8Array>,
 ): Promise<Uint8Array<ArrayBuffer> | null> {
@@ -198,7 +183,6 @@ async function captureExactAudioForCache(
   }
   return merged;
 }
-
 /**
  * POST /api/v1/voice/tts
  * Converts text to speech using the voice synthesis service.
@@ -220,7 +204,6 @@ async function __hono_POST(c: AppContext) {
   const env = c.env;
   const requestStart = Date.now();
   const timings: TtsTimings = {};
-
   try {
     const decodedRawBody = await decodeRequestJson(request);
     let pendingResponse: Response | undefined;
@@ -269,7 +252,6 @@ async function __hono_POST(c: AppContext) {
         { status: 400 },
       );
     }
-
     const willAdmit =
       pendingResponse === undefined &&
       providerSelection?.ok === true &&
@@ -328,7 +310,6 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
@@ -340,7 +321,6 @@ async function __hono_POST(c: AppContext) {
         voiceId,
       },
     });
-
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
@@ -349,7 +329,6 @@ async function __hono_POST(c: AppContext) {
       fallbackReason: providerSelection.fallbackReason,
       voiceId: providerSelection.voiceId ?? "default",
     });
-
     // -------------------------------------------------------------------------
     // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
     // is the product default — no credit reservation, no billing. Explicit
@@ -358,7 +337,6 @@ async function __hono_POST(c: AppContext) {
     if (providerSelection.provider === "kokoro") {
       const kokoroVoice = providerSelection.voiceId;
       timings.admissionMs = Date.now() - admissionStart;
-
       // First-line cache (#14375), gated on the #14370 TTFB benchmark and off by
       // default. Only WHOLE-input short openers ("Got it.") are cacheable — the
       // same whole-input-only rule the ElevenLabs path uses (no concat).
@@ -376,7 +354,6 @@ async function __hono_POST(c: AppContext) {
               imageTag: env.KOKORO_SERVICE_IMAGE_TAG,
             })
           : null;
-
       if (kokoroCacheKey) {
         try {
           const cacheStart = Date.now();
@@ -408,7 +385,6 @@ async function __hono_POST(c: AppContext) {
           );
         }
       }
-
       const kokoroStart = Date.now();
       const kokoroResponse = await fetch(
         `${kokoroBaseUrl!.replace(/\/+$/, "")}/api/tts`,
@@ -416,7 +392,7 @@ async function __hono_POST(c: AppContext) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, voice: kokoroVoice, speed: 1 }),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(30000),
         },
       );
       timings.synthesisMs = Date.now() - kokoroStart;
@@ -434,7 +410,6 @@ async function __hono_POST(c: AppContext) {
       logger.info(
         `[Voice TTS API] Kokoro stream started in ${Date.now() - kokoroStart}ms (voice=${kokoroVoice}, free)`,
       );
-
       // Cacheable opener MISS: buffer the (tiny, ≤10-word) WAV so we can serve
       // it AND populate the cache. Non-cacheable text streams straight through
       // to preserve time-to-first-byte on long responses.
@@ -466,7 +441,6 @@ async function __hono_POST(c: AppContext) {
               },
             );
           });
-
         return new Response(bytes, {
           status: 200,
           headers: {
@@ -477,7 +451,6 @@ async function __hono_POST(c: AppContext) {
           },
         });
       }
-
       return new Response(kokoroResponse.body, {
         status: 200,
         headers: {
@@ -487,13 +460,11 @@ async function __hono_POST(c: AppContext) {
         },
       });
     }
-
     // Arbitrary ElevenLabs ids are the custom-voice lane. Ownership metadata
     // is enrichment only and is resolved with usage recording after response.
     const isCustomVoice =
       providerSelection.provider === "elevenlabs" &&
       providerSelection.fallbackReason === "custom-or-elevenlabs-voice";
-
     // ---------------------------------------------------------------------
     // First-line cache hit path.
     //
@@ -523,7 +494,6 @@ async function __hono_POST(c: AppContext) {
       outputFormat: DEFAULT_OUTPUT_FORMAT,
     });
     timings.admissionMs = Date.now() - admissionStart;
-
     if (
       !wantWav &&
       snipResult &&
@@ -571,7 +541,6 @@ async function __hono_POST(c: AppContext) {
         });
       }
     }
-
     // WAV/Cartesia first-line cache twin: the MP3 cache above never serves
     // WAV callers, so codec-less clients paid full synthesis for every short
     // opener. Same whole-input gate; key is codec/provider/rate-specific so
@@ -624,7 +593,6 @@ async function __hono_POST(c: AppContext) {
         );
       }
     }
-
     const ttsCost = await calculateTTSCostFromCatalog({
       model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
       characterCount: text.length,
@@ -633,23 +601,22 @@ async function __hono_POST(c: AppContext) {
         : {}),
     });
     const estimatedCost = isCustomVoice
-      ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) /
-        1_000_000
+      ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000) /
+        1000000
       : ttsCost.totalCost;
     const billingCost = {
       totalCost: estimatedCost,
       baseTotalCost: isCustomVoice
         ? Math.round(
-            ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
-          ) / 1_000_000
+            ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000,
+          ) / 1000000
         : ttsCost.baseTotalCost,
       platformMarkup: isCustomVoice
         ? Math.round(
-            ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
-          ) / 1_000_000
+            ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1000000,
+          ) / 1000000
         : ttsCost.platformMarkup,
     };
-
     // #16425: the client mints one Idempotency-Key per logical utterance and
     // sends it on BOTH the direct request and the proxy fallback, so a retry
     // after an ambiguous network outcome replays the committed reservation
@@ -668,7 +635,6 @@ async function __hono_POST(c: AppContext) {
       affiliateCode: request.headers.get("X-Affiliate-Code"),
       description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
     };
-
     try {
       const admission = await admitFlatGenerativeOperation({
         c,
@@ -696,7 +662,6 @@ async function __hono_POST(c: AppContext) {
       throw error;
     }
     timings.admissionMs = Date.now() - admissionStart;
-
     const startTime = Date.now();
     // WAV fast path: Cartesia Sonic streams raw PCM (~150 ms to first audio,
     // ~0.6 s total, measured live) where the buffered ElevenLabs PCM
@@ -768,7 +733,6 @@ async function __hono_POST(c: AppContext) {
         synthesisEngine = "cartesia";
       }
     }
-
     if (wav === undefined) {
       if (audioStream === undefined) {
         const elevenlabs = getElevenLabsService(env);
@@ -792,13 +756,11 @@ async function __hono_POST(c: AppContext) {
     }
     const duration = Date.now() - startTime;
     timings.synthesisMs = duration;
-
     logger.info("[Voice TTS API] Stream started", {
       provider: synthesisEngine,
       fallbackReason: providerSelection.fallbackReason,
       durationMs: duration,
     });
-
     let billingApplied = false;
     const billingTask = (async () => {
       try {
@@ -870,7 +832,6 @@ async function __hono_POST(c: AppContext) {
     const executionCtx = getGenerativeExecutionContext(c);
     if (executionCtx) executionCtx.waitUntil(billingTask);
     else void billingTask;
-
     // Populate only when the cache key describes the complete input. Tee the
     // already-produced provider stream so cache warming never performs a
     // second, unmetered synthesis. Partial first sentences are deliberately
@@ -931,7 +892,6 @@ async function __hono_POST(c: AppContext) {
       if (executionCtx) executionCtx.waitUntil(cacheTask);
       else void cacheTask;
     }
-
     // WAV path: raw PCM (Cartesia frames or the ElevenLabs PCM stream)
     // buffered and wrapped in a WAV header so codec-less clients can decode
     // it. (Buffered, not streamed — fine for short TTS replies; the MP3 path
@@ -946,7 +906,6 @@ async function __hono_POST(c: AppContext) {
         },
       });
     }
-
     return new Response(audioStream, {
       headers: {
         "Content-Type": cartesiaMp3ContentType,
@@ -964,7 +923,6 @@ async function __hono_POST(c: AppContext) {
     logger.error("[Voice TTS API] Request failed", {
       errorType: error instanceof Error ? error.name : "unknown",
     });
-
     if (reservation) {
       const settlement =
         providerWorkMayHaveStarted && settleUnknown
@@ -984,7 +942,6 @@ async function __hono_POST(c: AppContext) {
         userId: settlementUserId,
       });
     }
-
     const apiError =
       error instanceof ApiError ? error : asGenerativeCacheApiError(error);
     if (apiError) {
@@ -994,7 +951,6 @@ async function __hono_POST(c: AppContext) {
           : { error: apiError.message };
       return Response.json(serialized, { status: apiError.status ?? 500 });
     }
-
     if (error instanceof CartesiaRestTtsError) {
       const status =
         error.classification === "auth"
@@ -1016,14 +972,12 @@ async function __hono_POST(c: AppContext) {
         { status },
       );
     }
-
     const errorMessage =
       error instanceof Error
         ? error.message.toLowerCase()
         : typeof error === "string"
           ? error.toLowerCase()
           : "";
-
     if (
       errorMessage.includes("invalid or expired api key") ||
       errorMessage.includes("invalid or expired token") ||
@@ -1034,14 +988,12 @@ async function __hono_POST(c: AppContext) {
     ) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-
     if (errorMessage.includes("rate limit")) {
       return Response.json(
         { error: "Rate limit exceeded. Please try again in a moment." },
         { status: 429 },
       );
     }
-
     if (errorMessage.includes("quota")) {
       return Response.json(
         {
@@ -1053,28 +1005,24 @@ async function __hono_POST(c: AppContext) {
         { status: 503 },
       );
     }
-
     if (errorMessage.includes("voice")) {
       return Response.json(
         { error: "Invalid voice ID. Please select a different voice." },
         { status: 400 },
       );
     }
-
     if (errorMessage.includes("elevenlabs_api_key")) {
       return Response.json(
         { error: "Service not configured" },
         { status: 500 },
       );
     }
-
     return Response.json(
       { error: "Failed to generate speech. Please try again." },
       { status: 500 },
     );
   }
 }
-
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", __hono_POST);
 export default __hono_app;

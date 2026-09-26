@@ -8,7 +8,7 @@
  * cloud-topology resolution and first-run config handling.
  */
 
-import { asRecord } from "../utils/type-guards.js";
+import { asRecord } from "../type-guards.js";
 import type {
 	DeploymentTargetConfig,
 	DeploymentTargetRuntime,
@@ -489,7 +489,7 @@ export function normalizeLinkedAccountsRecords(
 	return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Compat alias for older packaged app-core and Electrobun flag-map consumers. */
+/** Compat alias for older packaged app and Electrobun flag-map consumers. */
 export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
 
 export function normalizeServiceRouteConfig(

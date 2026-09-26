@@ -14,6 +14,7 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
       "bun": "./src/index.ts",
       "development": "./src/index.ts",
@@ -31,7 +32,15 @@
     "ElizaosCapacitorBunRuntime.podspec",
     "dist/",
     "src/",
-    "README.md"
+    "README.md",
+    "ElizaBunEngine.podspec",
+    "engine/Sources/",
+    "engine/patches/",
+    "engine/README.md",
+    "engine/artifacts/ElizaBunEngine.xcframework/",
+    "ios/sqlite-vec/build-ios.sh",
+    "ios/sqlite-vec/VERSION",
+    "ios/sqlite-vec/README.md"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -41,24 +50,38 @@
     "directory": "plugins/plugin-native-bun-runtime"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-bun-runtime -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
-    "test": "vitest run",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-bun-runtime -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "test": "bun run test:bridge && bun run engine:test",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
-    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs && bun run build:engine-tools",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:bridge": "vitest run",
+    "engine:check": "node dist/engine/check-upstream-support.mjs",
+    "engine:check:strict": "node dist/engine/check-upstream-support.mjs --strict",
+    "engine:build:sim": "node dist/engine/build-ios-bun-engine.mjs --target=simulator",
+    "engine:build:device": "node dist/engine/build-ios-bun-engine.mjs --target=device",
+    "engine:verify:app-store": "node dist/engine/verify-ios-app-store.mjs",
+    "engine:test": "node --test ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/*.test.ts",
+    "engine:smoke:sim": "node dist/engine/smoke-ios-bun-engine.mjs --target=simulator",
+    "engine:smoke:device": "node dist/engine/smoke-ios-bun-engine.mjs --target=device",
+    "build:sqlite-vec": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh",
+    "build:sqlite-vec:device": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh device",
+    "build:sqlite-vec:simulator": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh simulator",
+    "clean:sqlite-vec": "node ../../packages/scripts/run-bash-darwin-only.ts plugins/plugin-native-bun-runtime/ios/sqlite-vec/build-ios.sh clean",
+    "build:engine-tools": "bun build ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/build-ios-bun-engine.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/check-upstream-support.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/smoke-ios-bun-engine.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/verify-ios-app-store.ts ../../packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.ts ../../packages/scripts/rm-path-recursive.ts --target=node --outdir=dist/engine --entry-naming='[name].mjs'"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.62.4",
+    "rollup": "^4.63.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

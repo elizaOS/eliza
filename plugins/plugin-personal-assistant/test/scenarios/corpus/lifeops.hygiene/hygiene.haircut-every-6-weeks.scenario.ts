@@ -3,7 +3,7 @@
  * should compute the right interval (not collapse it to a weekly habit).
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "hygiene", "habits", "long-interval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

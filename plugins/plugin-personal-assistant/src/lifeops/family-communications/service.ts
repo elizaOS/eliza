@@ -4,18 +4,19 @@
  * runner. The service creates proposals and owner-only SLA notices; it never
  * sends a message, mutates a calendar, purchases, or replies automatically.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships";
 import {
   type ScheduledTask,
   type ScheduledTaskRunnerHandle,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   createHouseholdCoordinationService,
   getHouseholdCoordinationService,

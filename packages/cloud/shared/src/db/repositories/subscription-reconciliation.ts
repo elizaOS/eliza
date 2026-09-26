@@ -1,7 +1,8 @@
-/** Claims fair primary-database recovery work and atomically publishes terminal observations with immutable attempt provenance. Provider reads happen outside these transactions. */
+/** Claims fair primary-database recovery work and atomically publishes terminal and paid-renewal observations with immutable attempt provenance. Provider reads happen outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import type { PaidRenewalObjects } from "../../lib/services/stripe-paid-renewal-validation";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -32,6 +33,7 @@ import {
   requireLiveReconciliationLease,
 } from "./subscription-reconciliation-lease";
 import { requireReconciliationProjection } from "./subscription-reconciliation-projection";
+import { publishPaidRenewalInTransaction } from "./subscription-renewal-finalization";
 import { readLatestSubscriptionScheduleCommand } from "./subscription-schedule-lineage";
 
 export function reconciliationDigest(value: object): string {
@@ -94,6 +96,7 @@ export async function listDueSubscriptionReconciliations(limit: number) {
           isNull(subscriptionBillingFences.organization_id),
           eq(subscriptionBillingFences.state, "open"),
         ),
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.catalog_version, "v1"),
         inArray(billingSubscriptions.status, [...eligibleStatuses]),
@@ -128,7 +131,12 @@ async function lockOrganization(tx: DbTransaction, organizationId: string) {
   const [fence] = await tx
     .select()
     .from(subscriptionBillingFences)
-    .where(eq(subscriptionBillingFences.organization_id, organizationId));
+    .where(
+      and(
+        eq(subscriptionBillingFences.organization_id, organizationId),
+        isNull(subscriptionBillingFences.billing_scope_id),
+      ),
+    );
   return {
     org,
     association,
@@ -164,6 +172,7 @@ export async function claimSubscriptionReconciliation(input: {
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.id, input.subscriptionId),
           eq(billingSubscriptions.organization_id, input.organizationId),
         ),
@@ -206,7 +215,12 @@ export async function claimSubscriptionReconciliation(input: {
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId));
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+        ),
+      );
     const expectedProjectionRevision = projection?.projection_revision ?? null;
     const identityDigest = reconciliationDigest({
       source,
@@ -316,6 +330,7 @@ export async function failSubscriptionReconciliation(
   });
 }
 export type ReconciliationObservation =
+  | { kind: "paid_renewal"; invoiceId: string; objects: PaidRenewalObjects }
   | { kind: "terminal"; value: unknown }
   | { kind: "owned_schedule"; scheduled: boolean; canceledAt: Date | null };
 export async function finalizeSubscriptionReconciliation(
@@ -352,6 +367,7 @@ export async function finalizeSubscriptionReconciliation(
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.id, input.subscriptionId),
           eq(billingSubscriptions.organization_id, input.organizationId),
         ),
@@ -359,7 +375,12 @@ export async function finalizeSubscriptionReconciliation(
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId));
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+        ),
+      );
     if (
       !source ||
       source.lifecycle_revision !== input.expectedRevision ||
@@ -371,6 +392,23 @@ export async function finalizeSubscriptionReconciliation(
       }) !== input.identityDigest
     )
       return complete(tx, input, { disposition: "stale", reason: "captured_authority_changed" });
+    if (observation.kind === "paid_renewal") {
+      const result = await publishPaidRenewalInTransaction(tx, {
+        ...observation.objects,
+        invoiceId: observation.invoiceId,
+        source,
+        organizationCustomerId: org.stripe_customer_id,
+        databaseNow: liveLease.now,
+        expectedProjectionRevision: attempt.expected_projection_revision,
+        provenance: { kind: "reconciliation", identity: input },
+      });
+      return complete(tx, input, {
+        disposition: result.replayed ? "no_change" : "applied",
+        digest: observationDigest,
+        observedRevision: result.subscriptionRevision,
+        ...(result.replayed ? {} : { resultRevision: result.subscriptionRevision }),
+      });
+    }
     if (observation.kind === "owned_schedule") {
       const command = await readLatestSubscriptionScheduleCommand(tx, source);
       // A never-scheduled active source needs no command to confirm its unchanged

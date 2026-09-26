@@ -7,10 +7,10 @@
  * memories. validate() gates the action on there being at least one connected
  * server that exposes a tool or resource.
  */
+
 import {
   type Action,
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -18,8 +18,9 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import { resourceSelectionTemplate } from "../protocol-utils/prompts.js";
 import type { McpService } from "../service";
-import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
 import { MCP_SERVICE_NAME, type McpServer, type McpServerInfo } from "../types";
 import { handleMcpError, McpError } from "../utils/error";
 import { handleNoToolAvailable } from "../utils/handler";
@@ -37,11 +38,8 @@ import {
   validateResourceSelection,
 } from "../utils/validation";
 import { withModelRetry } from "../utils/wrapper";
-
 export const MCP_ACTION_CONTEXT = "mcp";
-
 export type McpOp = "call_tool" | "read_resource" | "search_actions" | "list_connections";
-
 function readOptions(options?: HandlerOptions | Record<string, unknown>): Record<string, unknown> {
   const direct = (options ?? {}) as Record<string, unknown>;
   const parameters =
@@ -50,7 +48,6 @@ function readOptions(options?: HandlerOptions | Record<string, unknown>): Record
       : {};
   return { ...direct, ...parameters };
 }
-
 function normalizeOp(value: unknown): McpOp | null {
   if (typeof value !== "string") return null;
   const v = value.trim().toLowerCase();
@@ -60,7 +57,6 @@ function normalizeOp(value: unknown): McpOp | null {
   if (v === "list_connections" || v === "list" || v === "connections") return "list_connections";
   return null;
 }
-
 function inferOpFromText(text: string): McpOp | null {
   if (
     /\b(read|get|fetch|access|open|list)\b.*\b(resource|resources|document|docs?|file)\b/i.test(
@@ -74,7 +70,6 @@ function inferOpFromText(text: string): McpOp | null {
   }
   return null;
 }
-
 function getDirectResourceSelection(options?: unknown): ResourceSelection | null {
   const params = readOptions(options as HandlerOptions);
   const serverName = typeof params.serverName === "string" ? params.serverName.trim() : "";
@@ -89,7 +84,6 @@ function getDirectResourceSelection(options?: unknown): ResourceSelection | null
         : "Selected from structured MCP read_resource parameters.",
   };
 }
-
 export interface DirectToolSelection {
   readonly serverName: string;
   readonly toolName: string;
@@ -97,13 +91,11 @@ export interface DirectToolSelection {
   readonly toolArguments?: Readonly<Record<string, unknown>>;
   readonly reasoning: string;
 }
-
 export function getDirectToolSelection(options?: unknown): DirectToolSelection | null {
   const params = readOptions(options as HandlerOptions);
   const serverName = typeof params.serverName === "string" ? params.serverName.trim() : "";
   const toolName = typeof params.toolName === "string" ? params.toolName.trim() : "";
   if (!serverName || !toolName) return null;
-
   let toolArguments: Record<string, unknown> | undefined;
   const rawArgs = params.arguments ?? params.toolArguments;
   if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
@@ -119,7 +111,6 @@ export function getDirectToolSelection(options?: unknown): DirectToolSelection |
       // is treated as absent so the model argument pass derives them instead.
     }
   }
-
   return {
     serverName,
     toolName,
@@ -130,28 +121,22 @@ export function getDirectToolSelection(options?: unknown): DirectToolSelection |
         : "Selected from structured MCP call_tool parameters.",
   };
 }
-
 function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
   const mcpData = (composedState.values.mcp ?? {}) as Record<string, McpServerInfo>;
   const serverNames = Object.keys(mcpData);
-
   let resourcesDescription = "";
   for (const serverName of serverNames) {
     const server = mcpData[serverName];
     if (server.status !== "connected") continue;
-
     const resourceUris = Object.keys(server.resources ?? {});
     for (const uri of resourceUris) {
       const resource = server.resources[uri];
       resourcesDescription += `Resource: ${uri} (Server: ${serverName})\n`;
       resourcesDescription += `Name: ${resource.name ?? "No name available"}\n`;
-      resourcesDescription += `Description: ${
-        resource.description ?? "No description available"
-      }\n`;
+      resourcesDescription += `Description: ${resource.description ?? "No description available"}\n`;
       resourcesDescription += `MIME Type: ${resource.mimeType ?? "Not specified"}\n\n`;
     }
   }
-
   const enhancedState: State = {
     ...composedState,
     values: {
@@ -160,13 +145,11 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
       userMessage,
     },
   };
-
   return composePromptFromState({
     state: enhancedState,
     template: resourceSelectionTemplate,
   });
 }
-
 async function handleCallTool(
   runtime: IAgentRuntime,
   message: Memory,
@@ -179,15 +162,17 @@ async function handleCallTool(
     throw new Error("MCP service not available");
   }
   const mcpProvider = mcpService.getProviderData();
-
   try {
     // Honor the planner's explicit tool selection (serverName + toolName, and
     // arguments when given) instead of re-deriving it with a second model
     // selection pass. When the planner already named the tool, that second pass
     // can spuriously return noToolAvailable and fail an otherwise-valid call.
-    let selection: { serverName: string; toolName: string; reasoning?: string };
+    let selection: {
+      serverName: string;
+      toolName: string;
+      reasoning?: string;
+    };
     let toolArguments: Readonly<Record<string, unknown>>;
-
     const direct = getDirectToolSelection(options);
     if (direct) {
       selection = direct;
@@ -218,7 +203,6 @@ async function handleCallTool(
       if (!toolSelectionName || toolSelectionName.noToolAvailable) {
         return await handleNoToolAvailable(callback, toolSelectionName);
       }
-
       const toolSelectionArgument = await createToolSelectionArgument({
         runtime,
         state: composedState,
@@ -234,9 +218,7 @@ async function handleCallTool(
       toolArguments = toolSelectionArgument.toolArguments;
     }
     const { serverName, toolName } = selection;
-
     const result = await mcpService.callTool(serverName, toolName, toolArguments);
-
     const { toolOutput, hasAttachments, attachments, isError } = processToolResult(
       result,
       serverName,
@@ -244,7 +226,6 @@ async function handleCallTool(
       runtime,
       message.entityId
     );
-
     const replyMemory = await handleToolResponse(
       runtime,
       message,
@@ -259,7 +240,6 @@ async function handleCallTool(
       callback,
       isError
     );
-
     const data = {
       actionName: "MCP",
       op: "call_tool" as const,
@@ -271,7 +251,6 @@ async function handleCallTool(
       attachmentCount: attachments.length,
       isError,
     };
-
     if (isError) {
       return {
         text: `Tool ${serverName}/${toolName} reported an error. Reasoned response: ${replyMemory.content.text}`,
@@ -292,7 +271,6 @@ async function handleCallTool(
         ),
       };
     }
-
     return {
       text: `Successfully called tool: ${serverName}/${toolName}. Reasoned response: ${replyMemory.content.text}`,
       values: {
@@ -320,7 +298,6 @@ async function handleCallTool(
     );
   }
 }
-
 async function handleReadResource(
   runtime: IAgentRuntime,
   message: Memory,
@@ -333,10 +310,8 @@ async function handleReadResource(
     throw new Error("MCP service not available");
   }
   const mcpProvider = mcpService.getProviderData();
-
   try {
     await sendInitialResponse(callback);
-
     const parsedSelection =
       getDirectResourceSelection(options) ??
       (await (async () => {
@@ -344,11 +319,9 @@ async function handleReadResource(
           composedState,
           message.content.text ?? ""
         );
-
         const resourceSelection = (await runtime.useModel(ModelType.TEXT_SMALL, {
           prompt: resourceSelectionPrompt,
         })) as string;
-
         return withModelRetry<ResourceSelection>({
           runtime,
           state: composedState,
@@ -369,11 +342,9 @@ async function handleReadResource(
           retryCount: 0,
         });
       })());
-
     if (!parsedSelection || parsedSelection.noResourceAvailable) {
       const responseText =
         "I don't have a specific resource that contains the information you're looking for. Let me try to assist you directly instead.";
-
       if (callback && parsedSelection?.noResourceAvailable) {
         await callback({
           text: responseText,
@@ -396,13 +367,9 @@ async function handleReadResource(
         success: true,
       };
     }
-
     const { serverName, uri } = parsedSelection;
-
     const result = await mcpService.readResource(serverName, uri);
-
     const { resourceContent, resourceMeta } = processResourceResult(result, uri);
-
     await handleResourceAnalysis(
       runtime,
       message,
@@ -412,7 +379,6 @@ async function handleReadResource(
       resourceMeta,
       callback
     );
-
     return {
       text: `Successfully read resource: ${uri}`,
       values: {
@@ -446,11 +412,9 @@ async function handleReadResource(
     );
   }
 }
-
 function textOf(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
-
 function hasConnectedCapability(runtime: IAgentRuntime): boolean {
   const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
   if (!mcpService) return false;
@@ -459,7 +423,6 @@ function hasConnectedCapability(runtime: IAgentRuntime): boolean {
     return (server.tools?.length ?? 0) > 0 || (server.resources?.length ?? 0) > 0;
   });
 }
-
 export function getMcpRouteForTest(
   message: Memory,
   options?: HandlerOptions | Record<string, unknown>
@@ -468,7 +431,6 @@ export function getMcpRouteForTest(
   if (requested) return requested;
   return inferOpFromText(textOf(message));
 }
-
 export const mcpAction: Action = {
   name: "MCP",
   contexts: ["general", "automation", "knowledge", "connectors", MCP_ACTION_CONTEXT, "files"],
@@ -558,12 +520,10 @@ export const mcpAction: Action = {
       schema: { type: "number" },
     },
   ],
-
   validate: async (runtime) => {
     if (!hasConnectedCapability(runtime)) return false;
     return true;
   },
-
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -574,11 +534,9 @@ export const mcpAction: Action = {
     const opts = readOptions(options);
     const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op ?? opts.operation);
     const op = requested ?? inferOpFromText(textOf(message)) ?? "call_tool";
-
     if (op === "read_resource") {
       return handleReadResource(runtime, message, options, callback);
     }
-
     if (op === "search_actions" || op === "list_connections") {
       const text = `MCP op=${op} is only available in the cloud runtime.`;
       await callback?.({ text, source: message.content?.source });
@@ -589,10 +547,8 @@ export const mcpAction: Action = {
         data: { actionName: "MCP", op },
       };
     }
-
     return handleCallTool(runtime, message, options, callback);
   },
-
   examples: [
     [
       {

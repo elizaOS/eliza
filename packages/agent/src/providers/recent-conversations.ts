@@ -1,32 +1,32 @@
 /**
- * Provider that exposes complete authorized cross-platform conversation
- * history with supplementary room retrieval metadata. RECENT_MESSAGES owns the current-room
- * transcript when present. Suppressed
- * inside automation and page-scoped rooms, which carry their own context.
- * Gated to ADMIN (enforced by applyPluginRoleGating).
- * Authorized message bodies remain complete regardless of recall keywords.
- * The model transport owns explicit rejection at an actual input boundary.
+ * Exposes an authorized cross-platform conversation manifest with an explicit
+ * storage-backed recall contract. Current dialogue stays in RECENT_MESSAGES;
+ * relevant-conversations independently recalls matching historical evidence.
+ * No stored record is shortened or removed. When no permitted memory-read
+ * action exists, the complete authorized transcript remains inline instead.
+ * Automation/page rooms are excluded and owner-private disclosure is checked
+ * before identity expansion or history reads.
  */
-import type {
-  IAgentRuntime,
-  Media,
-  Memory,
-  Provider,
-  ProviderResult,
-  Room,
-  State,
-  UUID,
-} from "@elizaos/core";
 import {
+  actionGateRejection,
   buildCrossWorldConversationAccessContext,
-  dedupeHygienicDialogueMessages,
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type Provider,
+  type ProviderResult,
+  type Room,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
+  type State,
   toWellFormedUnicode,
+  type UUID,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+
+import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -60,9 +60,8 @@ export const recentConversationsProvider: Provider = {
   descriptionCompressed:
     "authorized conversation room manifest search stored cross platform history",
   dynamic: true,
-  // Cross-world continuity must be available to the response router itself;
-  // waiting for a memory/messaging context selection is too late for a direct
-  // recall answer. The owner-private audience gate below remains authoritative.
+  // The response router needs the recall contract before it chooses contexts,
+  // including for implicit follow-ups that do not contain a recall keyword.
   alwaysInResponseState: true,
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(
@@ -131,42 +130,59 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const memories = await runtime.getMemoriesByRoomIds({
-        tableName: "messages",
-        roomIds,
-        accessContext,
-      });
-      // Per room, the canonical RECENT_MESSAGES dedupe pass (consecutive
-      // identical rows from one sender; repeated assistant texts within one
-      // assistant run): connector record-of-send rows duplicate every delivered
-      // reply, and this eager form rendered both copies for every room (live:
-      // 378 duplicate entries, ~7K tokens, in one Stage-1 prompt).
-      const byRoom = new Map<string, Memory[]>();
-      for (const memory of memories) {
-        if (
-          !(
-            Boolean(memory.content.text) ||
-            (memory.content.attachments?.length ?? 0) > 0
-          )
-        ) {
-          continue;
+      const recallAction = runtime.actions?.find((action) => {
+        if (action.name !== "MEMORY_SEARCH" && action.name !== "MEMORY") {
+          return false;
         }
-        const bucket = byRoom.get(memory.roomId) ?? [];
-        bucket.push(memory);
-        byRoom.set(memory.roomId, bucket);
-      }
-      const sorted = [...byRoom.values()]
-        .flatMap((roomMemories) =>
-          dedupeHygienicDialogueMessages(
-            roomMemories.sort(
-              (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+        const rejection = actionGateRejection(action, {
+          message,
+          userRoles: accessContext.role ? [accessContext.role] : [],
+          // This manifest tells the response router to select memory when
+          // needed; context selection has not happened yet. Every other gate
+          // must already admit the action, and execution rechecks all gates.
+          activeContexts: ["memory"],
+        });
+        return rejection === undefined;
+      });
+      let sorted: Memory[] = [];
+      if (!recallAction) {
+        const memories = await runtime.getMemoriesByRoomIds({
+          tableName: "messages",
+          roomIds,
+          accessContext,
+        });
+        // Share RECENT_MESSAGES source hygiene: only identical copies of the
+        // same source ID collapse. Distinct connector records and repeated turns
+        // keep their provenance even when their visible text is identical.
+        const byRoom = new Map<string, Memory[]>();
+        for (const memory of memories) {
+          if (
+            !(
+              Boolean(memory.content.text) ||
+              (memory.content.attachments?.length ?? 0) > 0
+            )
+          ) {
+            continue;
+          }
+          const bucket = byRoom.get(memory.roomId) ?? [];
+          bucket.push(memory);
+          byRoom.set(memory.roomId, bucket);
+        }
+        sorted = [...byRoom.values()]
+          .flatMap((roomMemories) =>
+            dedupeHygienicDialogueMessages(
+              roomMemories.sort(
+                (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+              ),
+              runtime.agentId,
             ),
-            runtime.agentId,
-          ),
-        )
-        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
-      if (sorted.length === 0) {
-        return { text: "", values: {}, data: {} };
+          )
+          .sort(
+            (left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0),
+          );
+        if (sorted.length === 0) {
+          return { text: "", values: {}, data: {} };
+        }
       }
 
       // Resolve room labels in one adapter read. Missing cosmetic labels do not
@@ -197,44 +213,54 @@ export const recentConversationsProvider: Provider = {
       });
       const manifestLines = [
         "Stored conversation manifest:",
-        `${sorted.length} stored message(s) across ${rooms.length} authorized room(s).`,
-        "Message bodies are not included here. Use MEMORY_SEARCH for complete historical recall.",
+        `${rooms.length} authorized room(s); message bodies are retrieved on demand.`,
+        "This is a room index, not a summary or a claim about what was said. Full message bodies remain stored.",
+        "Use current dialogue and relevant recalled evidence for continuity. If an answer needs history not already present, select the memory context and retrieve it before answering; do not guess or treat this index as empty history.",
+        `Read with ${recallAction?.name ?? "MEMORY_SEARCH"}${recallAction?.name === "MEMORY" ? " action=search" : ""}, type=messages and an exact roomId below. query optionally narrows by text; omit query to read the whole room. For large results request limit and follow nextOffset/snapshot with identical filters until the needed range is complete. Never treat a page as all history.`,
         ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
       ];
-      const eagerLines = ["Recent conversations:"];
-      for (const memory of sorted) {
-        const room = roomCache.get(memory.roomId) ?? null;
-        const text = toWellFormedUnicode(memory.content.text ?? "");
-        const attachments = attachmentPromptSummary(
-          memory.content.attachments ?? [],
-        );
-        eagerLines.push(
-          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[text, attachments].filter(Boolean).join(" ")}`,
-        );
-      }
-
       markOwnerExclusiveDisclosureUsed(message);
 
       const manifestText = manifestLines.join("\n");
+      let text = manifestText;
+      if (!recallAction) {
+        const lines = [
+          "Stored conversations (complete inline history; no permitted memory retrieval action is registered):",
+        ];
+        for (const memory of sorted) {
+          const room = roomCache.get(memory.roomId) ?? null;
+          const body = toWellFormedUnicode(memory.content.text ?? "");
+          const attachments = attachmentPromptSummary(
+            memory.content.attachments ?? [],
+          );
+          lines.push(
+            `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[body, attachments].filter(Boolean).join(" ")}`,
+          );
+        }
+        text = lines.join("\n");
+      }
       return {
-        text: eagerLines.join("\n"),
-        overflowText: manifestText,
+        text,
+        // A missing retrieval capability must not become an overflow-time
+        // permission bypass or an inaccessible body-free replacement.
+        ...(recallAction ? { overflowText: manifestText } : {}),
         values: {
-          recentConversationCount: sorted.length,
+          ...(!recallAction ? { recentConversationCount: sorted.length } : {}),
           recentConversationRoomCount: rooms.length,
         },
         data: { rooms },
       };
     } catch (error) {
-      // error-policy:J4 recall failure degrades to no recent-conversations text,
-      // but must be distinguishable from a legit-empty recall: reportError
-      // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
-      // it reading as "no recent history".
+      // error-policy:J4 expose retrieval failure before a direct response can mistake it for empty history.
       runtime.reportError("RecentConversationsProvider", error, {
         entityId: message.entityId,
         roomId: message.roomId,
       });
-      return { text: "", values: {}, data: {} };
+      return {
+        text: "Cross-room history is unavailable because retrieval failed. Do not infer that no prior discussion exists; use an authorized recall tool if available or state the gap.",
+        values: {},
+        data: { recallUnavailable: true },
+      };
     }
   },
 };

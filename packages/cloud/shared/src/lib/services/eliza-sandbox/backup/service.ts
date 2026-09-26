@@ -4,7 +4,7 @@ import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/co
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,
-} from "@elizaos/shared/agent-backup-limits";
+} from "@elizaos/core/agent-backup-limits";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import {
@@ -54,7 +54,6 @@ import {
   readErrorBodyExcerpt,
   SNAPSHOT_MAX_RAW_BYTES,
 } from "./transfer-limits.js";
-
 export interface SandboxBackupHost {
   lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void>;
   getAgentForLifecycleMutation(
@@ -72,12 +71,9 @@ export interface SandboxBackupHost {
     ...args: Parameters<SandboxTransport["getAgentJsonHeaders"]>
   ): ReturnType<SandboxTransport["getAgentJsonHeaders"]>;
 }
-
 export class SandboxBackup {
   constructor(private readonly host: SandboxBackupHost) {}
-
   // Snapshots
-
   async snapshot(
     agentId: string,
     orgId: string,
@@ -90,7 +86,6 @@ export class SandboxBackup {
       (await agentSandboxesRepository.findRunningSandbox(agentId, orgId)) ??
       (await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId));
     if (!rec) return { success: false, error: "Sandbox is not running" };
-
     const initialAuthorityRejection = snapshotAuthorityRejection(rec);
     if (initialAuthorityRejection) {
       return { success: false, error: initialAuthorityRejection };
@@ -98,7 +93,6 @@ export class SandboxBackup {
     if (rec.status !== "running" || !rec.bridge_url) {
       return { success: false, error: "Sandbox is not running" };
     }
-
     let stateData: AgentBackupStateData;
     let sizeBytes: number;
     try {
@@ -121,7 +115,6 @@ export class SandboxBackup {
       }
       throw error;
     }
-
     // Both labels gate a destructive follow-up — a rollback replays the
     // `pre-upgrade` point, and a relocation destroys the source container once
     // the `pre-move` capture is restored elsewhere. A partial capture would
@@ -133,7 +126,6 @@ export class SandboxBackup {
         error: `${type} snapshot did not include a full-agent manifest`,
       };
     }
-
     // Capture and incremental/full planning intentionally stay outside the
     // lifecycle transaction. No durable backup preparation or write begins
     // until the locked canonical row proves this exact capture still owns the
@@ -145,7 +137,6 @@ export class SandboxBackup {
       if (!current) {
         return { success: false as const, error: SNAPSHOT_AUTHORITY_CHANGED };
       }
-
       const currentAuthorityRejection = snapshotAuthorityRejection(current);
       if (currentAuthorityRejection) {
         return { success: false as const, error: currentAuthorityRejection };
@@ -156,7 +147,6 @@ export class SandboxBackup {
       if (!snapshotCaptureStillCanonical(current, rec)) {
         return { success: false as const, error: SNAPSHOT_AUTHORITY_CHANGED };
       }
-
       const storedBackup = await this.persistAuthorizedSnapshotWithinTransaction(
         tx,
         current,
@@ -166,9 +156,7 @@ export class SandboxBackup {
       );
       return { success: true as const, storedBackup };
     });
-
     if (!persisted.success) return persisted;
-
     const backup = await hydrateAgentSandboxBackup(persisted.storedBackup);
     await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS);
     logger.info("[agent-sandbox] Backup created", {
@@ -179,7 +167,6 @@ export class SandboxBackup {
     });
     return { success: true, backup };
   }
-
   /**
    * Decide whether a new snapshot of `stateData` is stored as a full backup or
    * an incremental delta against the latest backup, and build the insert row.
@@ -264,7 +251,6 @@ export class SandboxBackup {
       content_hash: contentHash,
     };
   }
-
   async listBackups(
     agentId: string,
     orgId: string,
@@ -273,7 +259,6 @@ export class SandboxBackup {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     return rec ? agentSandboxesRepository.listBackupMetadata(rec.id, limit) : [];
   }
-
   async fetchSnapshotState(
     rec: Pick<
       AgentSandbox,
@@ -295,7 +280,6 @@ export class SandboxBackup {
     if (!rec.bridge_url) {
       throw new Error("Sandbox is not running");
     }
-
     const res = await this.host.fetchAgentApi(rec, "/api/snapshot", {
       method: "POST",
       signal: AbortSignal.timeout(SNAPSHOT_FETCH_TIMEOUT_MS),
@@ -307,9 +291,13 @@ export class SandboxBackup {
       throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
     }
     if (res.status === 503) {
-      let payload: { code?: unknown } | null = null;
+      let payload: {
+        code?: unknown;
+      } | null = null;
       try {
-        payload = (await res.clone().json()) as { code?: unknown };
+        payload = (await res.clone().json()) as {
+          code?: unknown;
+        };
       } catch {
         // error-policy:J3 an invalid upstream error body is not the structured
         // transient signal and therefore follows the ordinary HTTP failure.
@@ -335,7 +323,6 @@ export class SandboxBackup {
       const excerpt = await readErrorBodyExcerpt(res);
       throw new Error(`Snapshot fetch failed: HTTP ${res.status}${excerpt ? ` ${excerpt}` : ""}`);
     }
-
     // Bounded hydration (#16639): stream and count — bytes past the raw
     // budget are never retained (fail-closed, no partial restore), and the
     // measured size comes from the counted stream instead of a re-stringify
@@ -349,14 +336,12 @@ export class SandboxBackup {
     }
     assertSnapshotExpandedBudgets(stateData);
     const sizeBytes = Buffer.byteLength(raw, "utf-8");
-
     return {
       stateData,
       sizeBytes,
       bridgeUrl: rec.bridge_url,
     };
   }
-
   async persistAuthorizedSnapshotWithinTransaction(
     tx: LifecycleTx,
     rec: SnapshotAuthorityCapture,
@@ -396,7 +381,6 @@ export class SandboxBackup {
         severity: "fatal",
       });
     }
-
     // Preparation is deliberately after the locked metadata CAS so lost
     // authority cannot reach encryption or object storage. A provider PUT
     // cannot be rolled back if the later SQL insert/commit fails; that remains
@@ -412,7 +396,6 @@ export class SandboxBackup {
     }
     return backup;
   }
-
   async persistSnapshotWithinTransaction(
     tx: LifecycleTx,
     sandboxRecordId: string,
@@ -420,7 +403,10 @@ export class SandboxBackup {
     type: AgentBackupSnapshotType,
     stateData: AgentBackupStateData,
     sizeBytes: number,
-  ): Promise<{ backupId: string; lifecycleRevision: number }> {
+  ): Promise<{
+    backupId: string;
+    lifecycleRevision: number;
+  }> {
     const [backup] = await tx
       .insert(agentSandboxBackups)
       .values(
@@ -435,7 +421,6 @@ export class SandboxBackup {
         ),
       )
       .returning();
-
     if (!backup) {
       throw new ElizaError("Backup insert did not return the persisted row", {
         code: "AGENT_BACKUP_INSERT_MISSING",
@@ -461,7 +446,6 @@ export class SandboxBackup {
         severity: "fatal",
       });
     }
-
     logger.info("[agent-sandbox] Backup created", {
       agentId: sandboxRecordId,
       type,
@@ -469,7 +453,6 @@ export class SandboxBackup {
     });
     return { backupId: backup.id, lifecycleRevision: sandbox.lifecycleRevision };
   }
-
   async pushState(
     sandboxOrBridgeUrl:
       | Pick<

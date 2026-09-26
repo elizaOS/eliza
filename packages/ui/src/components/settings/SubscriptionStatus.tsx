@@ -5,7 +5,6 @@
  * start login, submit the callback code, sign out — against the shared client.
  * Mounted by SubscriptionPanel (ProviderPanels.tsx).
  */
-
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,
@@ -30,12 +29,11 @@ import {
 import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
-} from "../../utils/subscription-auth";
+} from "../../utils/subscription-auth.js";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { SettingsActionButton } from "./settings-agent-rows";
-
 export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;
   subscriptionStatus: Array<{
@@ -72,10 +70,8 @@ export interface SubscriptionStatusProps {
   ) => Promise<void>;
   loadSubscriptionStatus: () => Promise<void>;
 }
-
 const ANTHROPIC_OAUTH_STORAGE_KEY = "eliza.settings.anthropic.oauth-active";
 const OPENAI_OAUTH_STORAGE_KEY = "eliza.settings.openai.oauth-active";
-
 function readOAuthActive(storageKey: string): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -88,7 +84,6 @@ function readOAuthActive(storageKey: string): boolean {
     return false;
   }
 }
-
 function rememberOAuthActive(storageKey: string, active: boolean): void {
   if (typeof window === "undefined") return;
   try {
@@ -108,10 +103,8 @@ function rememberOAuthActive(storageKey: string, active: boolean): void {
     return;
   }
 }
-
 type SubscriptionStatusRow =
   SubscriptionStatusProps["subscriptionStatus"][number];
-
 function selectRepresentativeSubscriptionStatus(
   rows: SubscriptionStatusRow[],
 ): SubscriptionStatusRow | null {
@@ -123,7 +116,6 @@ function selectRepresentativeSubscriptionStatus(
     null
   );
 }
-
 interface SubscriptionProviderPanelProps {
   providerId: SubscriptionProviderSelectionId;
   connected: boolean;
@@ -163,7 +155,6 @@ interface SubscriptionProviderPanelProps {
   /** Optional content rendered in place of the OAuth shell (used by Anthropic's token tab). */
   bodyOverride?: ReactNode;
 }
-
 function SubscriptionTab({
   agentId,
   label,
@@ -198,7 +189,6 @@ function SubscriptionTab({
     </Button>
   );
 }
-
 function StatusIcon({ connected }: { connected: boolean }) {
   return (
     <span className={connected ? "text-ok" : "text-warn"}>
@@ -210,7 +200,6 @@ function StatusIcon({ connected }: { connected: boolean }) {
     </span>
   );
 }
-
 function SubscriptionProviderPanel({
   providerId,
   connected,
@@ -254,7 +243,6 @@ function SubscriptionProviderPanel({
       getValue: () => oauthCode,
       onFill: setOauthCode,
     });
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -364,7 +352,6 @@ function SubscriptionProviderPanel({
     </div>
   );
 }
-
 export function SubscriptionStatus({
   resolvedSelectedId,
   subscriptionStatus,
@@ -378,7 +365,6 @@ export function SubscriptionStatus({
 }: SubscriptionStatusProps) {
   const { setTimeout } = useTimeout();
   const t = useAppSelector((s) => s.t);
-
   /* ── Anthropic ─────────────────────────────────────────────────── */
   const [subscriptionTab, setSubscriptionTab] = useState<"token" | "oauth">(
     () => (readOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY) ? "oauth" : "token"),
@@ -405,7 +391,6 @@ export function SubscriptionStatus({
         setAnthropicError("");
       },
     });
-
   /* ── OpenAI ────────────────────────────────────────────────────── */
   const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(() =>
     readOAuthActive(OPENAI_OAUTH_STORAGE_KEY),
@@ -413,7 +398,6 @@ export function SubscriptionStatus({
   const [openaiCallbackUrl, setOpenaiCallbackUrl] = useState("");
   const [openaiError, setOpenaiError] = useState("");
   const [openaiExchangeBusy, setOpenaiExchangeBusy] = useState(false);
-
   // Native browser handoff pauses the renderer, and some shells remount the
   // settings surface on resume. Restore the pending form both on mount and
   // when the browser/app becomes active again so an account refresh cannot
@@ -438,7 +422,6 @@ export function SubscriptionStatus({
       document.removeEventListener("visibilitychange", restorePendingOAuth);
     };
   }, []);
-
   /* ── Shared disconnect lock ────────────────────────────────────── */
   const [subscriptionDisconnecting, setSubscriptionDisconnecting] = useState<
     string | null
@@ -447,7 +430,6 @@ export function SubscriptionStatus({
   useEffect(() => {
     disconnectingRef.current = subscriptionDisconnecting;
   }, [subscriptionDisconnecting]);
-
   const anthropicStatuses = subscriptionStatus.filter(
     (s) => s.provider === "anthropic-subscription",
   );
@@ -458,7 +440,6 @@ export function SubscriptionStatus({
       s.provider === "openai-subscription" || s.provider === "openai-codex",
   );
   const openaiStatus = selectRepresentativeSubscriptionStatus(openaiStatuses);
-
   /* ── Shared disconnect ─────────────────────────────────────────── */
   const handleDisconnectSubscription = useCallback(
     async (providerId: SubscriptionProviderSelectionId) => {
@@ -494,7 +475,6 @@ export function SubscriptionStatus({
     },
     [loadSubscriptionStatus, setAnthropicConnected, setOpenaiConnected, t],
   );
-
   /* ── Anthropic handlers ────────────────────────────────────────── */
   const handleSaveSetupToken = useCallback(async () => {
     const code = setupTokenValue.trim();
@@ -530,7 +510,6 @@ export function SubscriptionStatus({
     setupTokenValue,
     t,
   ]);
-
   const handleAnthropicStart = useCallback(async () => {
     setAnthropicError("");
     // Persist before opening or awaiting anything: native browser handoff can
@@ -562,7 +541,6 @@ export function SubscriptionStatus({
       );
     }
   }, [t]);
-
   const handleAnthropicExchange = useCallback(async () => {
     const code = anthropicCode.trim();
     if (!code || anthropicExchangeBusy) return;
@@ -599,7 +577,6 @@ export function SubscriptionStatus({
     setAnthropicConnected,
     t,
   ]);
-
   /* ── OpenAI handlers ───────────────────────────────────────────── */
   const handleOpenAIStart = useCallback(async () => {
     setOpenaiError("");
@@ -625,7 +602,6 @@ export function SubscriptionStatus({
       );
     }
   }, [t]);
-
   const handleOpenAIExchange = useCallback(async () => {
     if (openaiExchangeBusy) return;
     const normalized = normalizeOpenAICallbackInput(openaiCallbackUrl);
@@ -633,7 +609,6 @@ export function SubscriptionStatus({
       setOpenaiError(t(normalized.error));
       return;
     }
-
     setOpenaiExchangeBusy(true);
     setOpenaiError("");
     try {
@@ -670,7 +645,6 @@ export function SubscriptionStatus({
     setOpenaiConnected,
     t,
   ]);
-
   /* ── Anthropic token tab body ──────────────────────────────────── */
   const tokenTabBody = (
     <div className="space-y-2">
@@ -729,7 +703,6 @@ export function SubscriptionStatus({
       </div>
     </div>
   );
-
   /* ── Anthropic tab switcher (only when not connected) ──────────── */
   const anthropicTabs = !anthropicConnected ? (
     <div className="flex items-center gap-4 border-b border-border/40">
@@ -754,7 +727,6 @@ export function SubscriptionStatus({
       ))}
     </div>
   ) : undefined;
-
   /* ── OpenAI callback instructions ──────────────────────────────── */
   const openaiInstructions = (
     <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
@@ -765,7 +737,6 @@ export function SubscriptionStatus({
       {t("subscriptionstatus.CopyTheEntireU")}
     </div>
   );
-
   const genericStoredProvider =
     resolvedSelectedId &&
     resolvedSelectedId !== "anthropic-subscription" &&
@@ -780,7 +751,6 @@ export function SubscriptionStatus({
       )
     : [];
   const genericStatus = selectRepresentativeSubscriptionStatus(genericStatuses);
-
   return (
     <div className="pt-2">
       {resolvedSelectedId === "anthropic-subscription" && (

@@ -72,7 +72,7 @@ LEGACY_MAP = {
 GENERATED_TASK_TYPES = ["relationship_extraction", "skill_extraction", "skill_refinement"]
 
 
-# ─── current runtime templates (verbatim from packages/prompts/src/index.ts) ──
+# ─── current runtime templates (verbatim from plugins/plugin-assistant/src/features/advanced-memory/prompts.ts) ──
 
 REFLECTION_TEMPLATE = """# Task: Reflect on recent agent behavior and interactions.
 

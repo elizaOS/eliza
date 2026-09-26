@@ -7,27 +7,11 @@
 import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
 
-const sharedSourceRoot = fileURLToPath(
-  new URL("../../packages/shared/src", import.meta.url),
-);
-
 export default defineConfig({
   resolve: {
-    alias: [
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: `${sharedSourceRoot}/$1`,
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: `${sharedSourceRoot}/index.ts`,
-      },
-    ],
+    alias: [],
   },
   test: {
-    exclude: [
-      ...configDefaults.exclude,
-      "scripts/headless-capture-e2e.test.mjs",
-    ],
+    exclude: [...configDefaults.exclude],
   },
 });

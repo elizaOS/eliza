@@ -33,9 +33,11 @@ describe("UI Story Gate workflow", () => {
     });
   });
 
-  it("runs eight shards and uploads shard evidence", () => {
+  it("runs four shards and uploads shard evidence", () => {
     expect(catalogUpload.if).toBe(CANCELLATION_AWARE_EXPRESSION);
-    expect(shardJob.if).toBe(CANCELLATION_AWARE_EXPRESSION);
+    expect(shardJob.if).toBe(
+      "$" + "{{ needs.build-catalog.result == 'success' }}",
+    );
     expect(shardJob["timeout-minutes"]).toBe(35);
     expect(
       shardJob.steps.find(
@@ -44,12 +46,12 @@ describe("UI Story Gate workflow", () => {
     ).toMatchObject({ "timeout-minutes": 20 });
     expect(shardJob.strategy).toMatchObject({
       "fail-fast": false,
-      matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] },
+      matrix: { shard: [1, 2, 3, 4] },
     });
     expect(shardUpload).toMatchObject({
       if: CANCELLATION_AWARE_EXPRESSION,
       with: {
-        name: `story-gate-shard-${MATRIX_SHARD_EXPRESSION}-of-8`,
+        name: `story-gate-shard-${MATRIX_SHARD_EXPRESSION}-of-4`,
         path: "packages/ui/test/story-gate/output",
       },
     });
@@ -59,7 +61,7 @@ describe("UI Story Gate workflow", () => {
     expect(aggregateJob.needs).toEqual(["build-catalog", "story-shard"]);
     expect(aggregateJob.if).toBe(CANCELLATION_AWARE_EXPRESSION);
     expect(aggregateMerge.if).toBe(CANCELLATION_AWARE_EXPRESSION);
-    expect(aggregateMerge.run).toContain("--shards 8");
+    expect(aggregateMerge.run).toContain("--shards 4");
 
     const catalogDownload = aggregateJob.steps.find(
       (step) => step.name === "Download static catalog",
@@ -70,7 +72,7 @@ describe("UI Story Gate workflow", () => {
     expect(catalogDownload).toMatchObject({ "continue-on-error": true });
     expect(shardDownload).toMatchObject({
       "continue-on-error": true,
-      with: { pattern: "story-gate-shard-*-of-8", "merge-multiple": false },
+      with: { pattern: "story-gate-shard-*-of-4", "merge-multiple": false },
     });
     expect(
       aggregateJob.steps.find(

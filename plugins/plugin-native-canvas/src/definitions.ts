@@ -432,6 +432,8 @@ export interface CanvasPlugin {
 
   /**
    * Draw an image
+   * Android accepts base64 image objects and data URLs; unsupported or
+   * undecodable inputs reject with INVALID_IMAGE without drawing.
    */
   drawImage(options: {
     canvasId: string;
@@ -443,6 +445,9 @@ export interface CanvasPlugin {
 
   /**
    * Execute a batch of drawing commands
+   * Android rejects malformed command envelopes, unknown types and missing required
+   * argument objects with INVALID_COMMAND. Undecodable images reject with INVALID_IMAGE.
+   * Both include data.commandIndex; earlier commands remain applied and later commands do not run.
    */
   drawBatch(options: {
     canvasId: string;

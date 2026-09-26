@@ -4,7 +4,7 @@
 Inputs:
 
   --id              VoiceModelId — must be one of the values in
-                    `packages/shared/src/local-inference/voice-models.ts`
+                    `plugins/plugin-native-inference/src/model-catalog/voice-models.ts`
                     (`speaker-encoder`, `diarizer`, `turn-detector`,
                     `voice-emotion`, `kokoro`, `omnivoice`, `vad`,
                     `wakeword`, `embedding`, `asr`).
@@ -28,7 +28,7 @@ Inputs:
                     `models/voice/CHANGELOG.md` (also written to the
                     CHANGELOG when --append-changelog is set).
   --voice-models-ts Path to the registry module — defaults to
-                    `packages/shared/src/local-inference/voice-models.ts`.
+                    `plugins/plugin-native-inference/src/model-catalog/voice-models.ts`.
   --changelog-md    Path to the human-readable changelog — defaults to
                     `models/voice/CHANGELOG.md`.
   --append-changelog

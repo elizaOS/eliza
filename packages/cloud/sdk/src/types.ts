@@ -67,6 +67,8 @@ export interface CloudRequestOptions {
 }
 
 export interface ElizaCloudClientOptions {
+  /** Explicit configured product for native model requests; requires a stable Idempotency-Key per operation. */
+  nativeApplicationSlot?: string;
   baseUrl?: string;
   apiBaseUrl?: string;
   apiKey?: string;
@@ -189,6 +191,8 @@ export interface EmbeddingsRequest {
 }
 
 export interface EmbeddingsResponse {
+  /** Provider-verified model, pooling, and normalization identity; absent on legacy responses. */
+  embedding_space?: string;
   object?: string;
   data: Array<{ embedding: number[]; index: number; object?: string }>;
   usage?: { prompt_tokens?: number; total_tokens?: number };
@@ -245,6 +249,8 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     creditsPerDollar: 1;
     usdPerCredit: 1;
     minimumTopUp: number;
+    /** Largest one-off top-up the checkout seams accept; mirrors the enforced contract. */
+    maximumTopUp?: number;
     x402Enabled: boolean;
   };
 }

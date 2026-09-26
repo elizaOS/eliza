@@ -2,8 +2,7 @@
 /**
  * E2E coverage matrix report CLI (issue #8802).
  *
- * Builds the canonical coverage matrix (slash commands, #8791 shortcuts, and
- * plugin routes) from real source, writes `reports/coverage/e2e-matrix.json` +
+ * Builds the plugin-route coverage matrix from real source, writes `reports/coverage/e2e-matrix.json` +
  * a self-contained HTML contact sheet + a markdown summary, prints a one-line
  * status, and exits non-zero on a blocking gap when enforcement is on.
  *
@@ -123,9 +122,7 @@ function renderViewerHtml(): string {
   document.getElementById('meta').textContent =
     'generated ' + (data.generatedAt || '') + ' · schema ' + (data.schema || '');
   const cardDefs = [
-    ['commands', (s.commands||{}).covered + '/' + (s.commands||{}).total],
     ['plugin routes', (s.pluginRoutes||{}).covered + '/' + (s.pluginRoutes||{}).total + ' (+' + (s.pluginRoutes||{}).exempt + ' exempt)'],
-    ['shortcuts', (s.shortcuts||{}).gated ? 'gated on #8791' : ((s.shortcuts||{}).covered + '/' + (s.shortcuts||{}).total)],
     ['blocking gaps', s.blockingGaps],
     ['advisory gaps', s.advisoryGaps],
   ];
@@ -161,12 +158,8 @@ function renderMarkdown(matrix: CoverageMatrix): string {
   lines.push("");
   lines.push(`Generated: ${matrix.generatedAt}`);
   lines.push("");
-  lines.push(`- Commands: ${s.commands.covered}/${s.commands.total} covered`);
   lines.push(
     `- Plugin routes: ${s.pluginRoutes.covered}/${s.pluginRoutes.total} covered (+${s.pluginRoutes.exempt} exempt)`,
-  );
-  lines.push(
-    `- Shortcuts: ${s.shortcuts.gated ? "gated on #8791 (advisory)" : `${s.shortcuts.covered}/${s.shortcuts.total}`}`,
   );
   lines.push(
     `- Blocking gaps: ${s.blockingGaps} · Advisory gaps: ${s.advisoryGaps}`,
@@ -217,8 +210,7 @@ function main(): number {
     process.stdout.write(`${JSON.stringify(matrix, null, 2)}\n`);
   } else {
     process.stdout.write(
-      `e2e coverage — commands ${s.commands.covered}/${s.commands.total}; ` +
-        `routes ${s.pluginRoutes.covered}/${s.pluginRoutes.total} (+${s.pluginRoutes.exempt} exempt); ` +
+      `e2e coverage — routes ${s.pluginRoutes.covered}/${s.pluginRoutes.total} (+${s.pluginRoutes.exempt} exempt); ` +
         `blocking gaps ${s.blockingGaps}; advisory ${s.advisoryGaps}\n`,
     );
     for (const gap of matrix.blockingGaps) {

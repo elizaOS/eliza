@@ -29,7 +29,7 @@ import {
   ElizaError,
   resolveEntityRole,
 } from "@elizaos/core";
-import { roomIsPrivateSurface as roomIsPrivateSurfaceShared } from "./document-access.ts";
+import { roomIsPrivateSurface as roomIsPrivateSurfaceShared } from "@elizaos/plugin-assistant";
 import { isStoredMediaUrl, mediaFileNameFromUrl } from "./media-store.ts";
 
 /**

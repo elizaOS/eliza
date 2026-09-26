@@ -503,7 +503,7 @@ def _live_scenarios_plan(
     _add_scenario_filter(command_env, args.scenario_filter)
     argv = [
         "node",
-        "scripts/run-live-scenarios.mjs",
+        "scripts/run-live-scenarios.ts",
         "--run-dir",
         str(run_dir),
         "--runId",
@@ -511,7 +511,7 @@ def _live_scenarios_plan(
     ]
     return CommandPlan(
         suite="live-scenarios",
-        label="scripts/run-live-scenarios.mjs",
+        label="scripts/run-live-scenarios.ts",
         cwd=str(REPO_ROOT),
         argv=argv,
         env_overrides=command_env,
@@ -546,9 +546,9 @@ def _scenario_benchmark_plan(
     _add_scenario_filter(command_env, args.scenario_filter)
     return CommandPlan(
         suite="scenario-benchmark",
-        label="scripts/run-scenario-benchmark.mjs",
+        label="scripts/run-scenario-benchmark.ts",
         cwd=str(REPO_ROOT),
-        argv=["node", "scripts/run-scenario-benchmark.mjs"],
+        argv=["node", "scripts/run-scenario-benchmark.ts"],
         env_overrides=command_env,
         env_requirements=env_requirements,
         expected_outputs=[
@@ -578,7 +578,7 @@ def _scenario_runner_plan(
     argv = [
         "bun",
         "--bun",
-        "packages/scenario-runner/src/cli.ts",
+        "packages/testing/scenario-runner/src/cli.ts",
         "run",
         str(scenario_root),
         "--run-dir",
@@ -600,7 +600,7 @@ def _scenario_runner_plan(
     }
     return CommandPlan(
         suite="scenario-runner",
-        label="packages/scenario-runner/src/cli.ts",
+        label="packages/testing/scenario-runner/src/cli.ts",
         cwd=str(REPO_ROOT),
         argv=argv,
         env_overrides=command_env,
@@ -869,7 +869,7 @@ def build_parser() -> argparse.ArgumentParser:
     scenario = parser.add_argument_group("scenario runner options")
     scenario.add_argument(
         "--scenario-root",
-        default="packages/test/scenarios",
+        default="packages/testing/scenarios",
         help="Scenario directory for the direct scenario-runner suite.",
     )
     scenario.add_argument(

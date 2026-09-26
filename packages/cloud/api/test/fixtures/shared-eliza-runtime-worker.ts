@@ -3,23 +3,20 @@
  * deterministic OpenAI-compatible endpoint supplies the model response.
  */
 
-import {
-  ChannelType,
-  type MediaGenerationRequest,
-  searchKeylessWeb,
-  type UUID,
-} from "@elizaos/core/edge";
+import type { MediaGenerationRequest } from "@elizaos/core";
+import { ChannelType, type UUID } from "@elizaos/core";
 import type {
   ScheduledTask,
   ScheduledTaskInput,
   ScheduledTaskRunner,
-} from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/plugin-scheduling";
 import type {
   CreateTodoInput,
   Todo,
   TodoMutationRecord,
   TodoStore,
-} from "@elizaos/plugin-todos/edge";
+} from "@elizaos/plugin-todos";
+import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox-bridge";
@@ -28,8 +25,13 @@ import { isCanonicalPersonalSharedAgent } from "../../../shared/src/lib/services
 import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "../../../shared/src/lib/services/shared-runtime/shared-runtime-agent";
 import type { RuntimeDurableObjectNamespace } from "../../../shared/src/types/cloud-worker-env";
+import {
+  type FailureDiagnosticBinding,
+  withWorkerdFailureDiagnostics,
+} from "./workerd-failure-diagnostics";
 
 type Env = {
+  FAILURE_DIAGNOSTICS: FailureDiagnosticBinding;
   NODE_ENV: string;
   OPENROUTER_API_KEY: string;
   OPENROUTER_BASE_URL: string;
@@ -369,7 +371,7 @@ function createReminderProbeRunner(
   };
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
       const url = new URL(request.url);
@@ -599,5 +601,14 @@ export default {
       });
       return Response.json(result);
     });
+  },
+};
+
+export default {
+  fetch(request: Request, env: Env): Promise<Response> {
+    return withWorkerdFailureDiagnostics(
+      () => worker.fetch(request, env),
+      env.FAILURE_DIAGNOSTICS,
+    );
   },
 };

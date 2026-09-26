@@ -1,18 +1,16 @@
 /** Verifies TranscriptBody word-sync highlight through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * Behaviour coverage for TranscriptBody: real render in jsdom asserting the
  * read + word-sync surface for a given transcript and playback position.
  */
 
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/core/transcripts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TranscriptBody } from "./TranscriptBody";
 
 afterEach(cleanup);
-
 const transcript: Transcript = {
   id: "t1",
   title: "Demo",
@@ -44,33 +42,27 @@ const transcript: Transcript = {
     },
   ],
 };
-
 function activeWords(): string[] {
   return screen
     .getAllByRole("button")
     .filter((b) => b.getAttribute("data-active") === "true")
     .map((b) => b.textContent ?? "");
 }
-
 describe("TranscriptBody word-sync highlight", () => {
   it("highlights exactly the word active at the playback time", () => {
     const { rerender } = render(
       <TranscriptBody transcript={transcript} currentTimeMs={0} />,
     );
     expect(activeWords()).toEqual(["hello"]);
-
     rerender(<TranscriptBody transcript={transcript} currentTimeMs={600} />);
     expect(activeWords()).toEqual(["there"]);
-
     rerender(<TranscriptBody transcript={transcript} currentTimeMs={1300} />);
     expect(activeWords()).toEqual(["hi"]);
   });
-
   it("highlights nothing before the first word", () => {
     render(<TranscriptBody transcript={transcript} currentTimeMs={-1} />);
     expect(activeWords()).toEqual([]);
   });
-
   it("seeks to a word's start on click", () => {
     const onSeekMs = vi.fn();
     render(
@@ -83,13 +75,11 @@ describe("TranscriptBody word-sync highlight", () => {
     fireEvent.click(screen.getByTestId("transcript-word-0-1"));
     expect(onSeekMs).toHaveBeenCalledWith(500);
   });
-
   it("renders speaker labels", () => {
     render(<TranscriptBody transcript={transcript} currentTimeMs={0} />);
     expect(screen.getByText("Alice")).toBeTruthy();
     expect(screen.getByText("Bob")).toBeTruthy();
   });
-
   it("renders speaker attribution confidence and provenance beside the anonymous label", () => {
     const reviewTranscript: Transcript = {
       ...transcript,
@@ -124,7 +114,6 @@ describe("TranscriptBody word-sync highlight", () => {
     expect(badge.textContent).toContain("roster");
     expect(screen.queryByText("Alice Chen")).toBeNull();
   });
-
   it("falls back to a clickable segment when it has no word timings", () => {
     const onSeekMs = vi.fn();
     const noWords: Transcript = {

@@ -8,6 +8,7 @@ const sockets = new Set<Socket>();
 const requestedSockets = new Set<Socket>();
 let writes = 0;
 let origin: string;
+let onCancellationBodyStarted: (() => void) | undefined;
 const server = createServer((request, response) => {
   if (request.url !== "/complete") requestedSockets.add(request.socket);
   request.socket.once("close", () => requestedSockets.delete(request.socket));
@@ -22,6 +23,7 @@ const server = createServer((request, response) => {
   response.writeHead(200, { "Content-Type": "application/json" });
   response.flushHeaders();
   response.write('{"value":"');
+  if (request.url === "/caller-cancel") onCancellationBodyStarted?.();
   if (request.url === "/trickle") {
     const interval = setInterval(() => response.write("x"), 10);
     response.once("close", () => clearInterval(interval));
@@ -65,11 +67,15 @@ test("full JSON is preserved and caller cancellation aborts the body", async () 
   expect(await response.json()).toEqual({ complete: true });
   await waitForCleanup();
   const controller = new AbortController();
-  const pending = createStripeRecoveryFetch(Date.now() + 1000)(`${origin}/body`, {
+  const bodyStarted = new Promise<void>((resolve) => {
+    onCancellationBodyStarted = resolve;
+  });
+  const pending = createStripeRecoveryFetch(Date.now() + 1000)(`${origin}/caller-cancel`, {
     signal: controller.signal,
     headers: { Connection: "close" },
   });
-  await Bun.sleep(30);
+  await bodyStarted;
+  onCancellationBodyStarted = undefined;
   controller.abort();
   await expect(pending).rejects.toMatchObject({ code: "SUBSCRIPTION_RECOVERY_READ_FAILED" });
   await waitForCleanup();

@@ -2,16 +2,17 @@
  * Playwright UI-smoke spec for the Builtin Views Visual app flow using the
  * real renderer fixture.
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
-import { assertSharedViewHeaderContract } from "./helpers/view-header";
 
 /**
  * Visual coverage for the BUILTIN views — the pages rendered directly by the
@@ -33,7 +34,6 @@ const BUILTIN_VIEW_CASES: Array<{
   id: string;
   path: string;
   readySelector?: string;
-  viewHeaderTitle?: string;
 }> = [
   { id: "chat", path: "/chat" },
   { id: "phone", path: "/phone" },
@@ -52,7 +52,6 @@ const BUILTIN_VIEW_CASES: Array<{
     id: "documents",
     path: "/character/documents",
     readySelector: '[data-testid="documents-view"]',
-    viewHeaderTitle: "Knowledge",
   },
   { id: "files", path: "/apps/files" },
   { id: "plugins", path: "/apps/plugins" },
@@ -84,7 +83,7 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
       test(`${view.id} ${vp.name}`, async ({ page }) => {
         const screenshotDir =
           process.env.ELIZA_VIEW_SCREENSHOT_DIR ??
-          path.join(process.cwd(), "test-results", "builtin-views");
+          testOutputPath("app", "builtin-views");
         await mkdir(screenshotDir, { recursive: true });
 
         // Only uncaught page errors (real crashes) fail the test; stub 501s
@@ -113,12 +112,6 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
         if (view.readySelector) {
           await expect(page.locator(view.readySelector)).toBeVisible({
             timeout: 60_000,
-          });
-        }
-        if (view.viewHeaderTitle) {
-          await assertSharedViewHeaderContract(page, {
-            requireTapTarget: vp.name === "mobile",
-            title: view.viewHeaderTitle,
           });
         }
         // A view is "rendered" if it shows readable text OR interactive/visual

@@ -4,30 +4,31 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-	HANDLE_RESPONSE_SCHEMA,
-	HANDLE_RESPONSE_TOOL_NAME,
-	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
-} from "../actions/to-tool";
-import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	candidateActionNamesFieldEvaluator,
 	shouldRespondFieldEvaluator,
-} from "../runtime/builtin-field-evaluators";
-import { ContextRegistry } from "../runtime/context-registry";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+} from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { isUnaddressedTextGroupTurn } from "../../../../plugins/plugin-assistant/src/services/message/stage1-prompt-tier.ts";
 import {
 	classifyMessageAddress,
 	runV5MessageRuntimeStage1,
 	textContainsAgentName,
-} from "../services/message";
-import { isUnaddressedTextGroupTurn } from "../services/message/stage1-prompt-tier";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import {
+	HANDLE_RESPONSE_SCHEMA,
+	HANDLE_RESPONSE_TOOL_NAME,
+	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+} from "../actions/to-tool";
+import { ContextRegistry } from "../runtime/context-registry";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
-const FULL_TEMPLATE_MARKER = "Domain routing (when context is available):";
-const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";
+const FULL_TEMPLATE_MARKER = "# Task";
+const FULL_SHOULD_RESPOND_DOCS = "stop only on explicit disengagement";
 
 const LONG_CONTEXT_DESCRIPTION =
 	"Helpdesk operations of any kind: any imperative ('open a ticket', " +
@@ -128,7 +129,11 @@ function makeRuntime(
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: [],
-		providers: [],
+		providers: FIXTURE_CONTEXTS.map(({ id }) => ({
+			name: `${id}-support`,
+			contexts: [id],
+			get: async () => ({ text: "" }),
+		})),
 		getRoom: vi.fn(async () => null),
 		reportError: vi.fn(),
 		contexts: new ContextRegistry(FIXTURE_CONTEXTS),
@@ -151,7 +156,7 @@ function makeRuntime(
 	} as IAgentRuntime;
 }
 
-async function renderedSystemPrompt(
+async function renderedStage1Prompt(
 	message: Memory,
 	stage1ResponseBody: unknown = stage1Response({
 		shouldRespond: "RESPOND",
@@ -160,6 +165,7 @@ async function renderedSystemPrompt(
 	settings: Record<string, string> = {},
 ): Promise<{
 	systemContent: string;
+	turnContent: string;
 	outcome: Awaited<ReturnType<typeof runV5MessageRuntimeStage1>>;
 	runtime: IAgentRuntime;
 }> {
@@ -175,8 +181,19 @@ async function renderedSystemPrompt(
 	const params = calls[0]?.[1] as
 		| { messages?: Array<{ role?: string; content?: string }> }
 		| undefined;
+	const messages = params?.messages;
+	expect(messages?.map(({ role }) => role)).toEqual(["system", "user"]);
+	const systemContent = messages?.[0]?.content ?? "";
+	const turnContent = messages?.[1]?.content ?? "";
+	expect(systemContent).toContain("You are concise.");
+	expect(systemContent).toContain("Never disclose secrets or credentials.");
+	expect(systemContent).not.toMatch(/^# Task$/m);
+	expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+	expect(turnContent).toContain("# Current message");
+	expect(turnContent).toContain(message.content.text);
 	return {
-		systemContent: params?.messages?.[0]?.content ?? "",
+		systemContent,
+		turnContent,
 		outcome,
 		runtime,
 	};
@@ -228,9 +245,12 @@ describe("isUnaddressedTextGroupTurn", () => {
 });
 
 describe("Stage-1 complete prompt rendering", () => {
-	it("keeps the production and compatibility shouldRespond schemas aligned", () => {
-		expect(shouldRespondFieldEvaluator.schema.description).toBe(
-			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+	it("keeps shouldRespond values aligned and guidance in the field prompt", () => {
+		expect(shouldRespondFieldEvaluator.schema.enum).toEqual(
+			HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.enum,
+		);
+		expect(shouldRespondFieldEvaluator.description).toContain(
+			FULL_SHOULD_RESPOND_DOCS,
 		);
 		expect(HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.description).toBe(
 			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
@@ -238,66 +258,77 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("renders the full block for an unaddressed group message", async () => {
-		const { systemContent, outcome } = await renderedSystemPrompt(
+		const { turnContent, outcome } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "IGNORE" }),
 		);
 
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain(FULL_SHOULD_RESPOND_DOCS);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
+			"Support tickets: open, escalate, check status",
+		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
+		expect(turnContent).not.toContain("## Response Handler Fields");
 		// The envelope still parses and routes: IGNORE ends the turn.
 		expect(outcome.kind).toBe("terminal");
 	});
 
 	it("produces a non-terminal result with the full block when group triage decides RESPOND", async () => {
-		const { systemContent, outcome, runtime } = await renderedSystemPrompt(
+		const { turnContent, outcome, runtime } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "RESPOND", replyText: "Hello." }),
 		);
 
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
+			"Support tickets: open, escalate, check status",
+		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		expect(outcome.kind).not.toBe("terminal");
 	});
 
 	it("renders the full rule block when the agent is platform-mentioned", async () => {
-		const { systemContent } = await renderedSystemPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				mentionContext: { isMention: true, isReply: false },
 			}),
 		);
 
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 		// Full context catalog with complete descriptions.
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain(FULL_SHOULD_RESPOND_DOCS);
+		expect(turnContent).toContain(
+			"Support tickets: open, escalate, check status",
+		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
+		expect(turnContent).not.toContain("## Response Handler Fields");
 	});
 
 	it("renders the full rule block on a platform reply to the agent", async () => {
-		const { systemContent } = await renderedSystemPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				mentionContext: { isMention: false, isReply: true },
 			}),
 		);
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 	});
 
 	it("renders the full rule block when the agent is named in the text", async () => {
-		const { systemContent } = await renderedSystemPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				text: "Test Agent can you check the build?",
 			}),
 		);
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(
-			"Read, create, update, delete, search, and list sticky notes.",
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
+			"Sticky notes: create, read, update, delete, search",
 		);
-		expect(systemContent).toContain("Sticky Notes -> NOTES");
+		expect(turnContent).not.toContain(
+			candidateActionNamesFieldEvaluator.description,
+		);
 	});
 
 	it.each([
@@ -350,39 +381,41 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
-		const { systemContent } = await renderedSystemPrompt(makeMessage());
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		const { turnContent } = await renderedStage1Prompt(makeMessage());
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 	});
 
 	it("keeps the full canonical template on DM channels", async () => {
-		const { systemContent } = await renderedSystemPrompt(
+		const { turnContent, runtime } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.DM) }),
 		);
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain(
-			"UI navigation and native-device operations -> VIEWS",
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
+			"Support tickets: open, escalate, check status",
 		);
-		expect(systemContent).toContain(
-			"Owner goals/habits/routines/todos/reminders are never simple",
-		);
-		expect(systemContent).toContain("calendar-event reads/writes -> CALENDAR");
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
+		expect(turnContent).not.toContain("## Response Handler Fields");
+		expect(
+			JSON.stringify(
+				(runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls[0][1],
+			),
+		).toContain(candidateActionNamesFieldEvaluator.schema.description);
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {
-		const { systemContent } = await renderedSystemPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "IGNORE" }),
 			{ ELIZA_STAGE1_GROUP_TRIAGE: "0" },
 		);
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 	});
 
 	it("keeps addressed and unaddressed group instruction footprints identical", async () => {
-		const unaddressed = await renderedSystemPrompt(
+		const unaddressed = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 		);
-		const addressed = await renderedSystemPrompt(
+		const addressed = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				mentionContext: { isMention: true, isReply: false },
@@ -390,6 +423,15 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 
 		expect(unaddressed.systemContent).toBe(addressed.systemContent);
+		expect(unaddressed.turnContent).toContain("ambient_turn_policy:");
+		expect(addressed.turnContent).not.toContain("ambient_turn_policy:");
+		const taskBlock = (content: string) =>
+			content
+				.slice(content.indexOf(FULL_TEMPLATE_MARKER))
+				.split("# Conversation")[0];
+		expect(taskBlock(unaddressed.turnContent)).toBe(
+			taskBlock(addressed.turnContent),
+		);
 	});
 });
 

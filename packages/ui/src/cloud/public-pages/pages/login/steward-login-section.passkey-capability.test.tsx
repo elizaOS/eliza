@@ -56,18 +56,21 @@ const sessionSpies = vi.hoisted(() => ({
   hasCookie: false,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/shared/steward-session-client")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasCookie,
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasCookie,
+    };
+  },
+);
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginApiError: class LoginApiError extends Error {
     status: number;
     data: unknown;
@@ -135,7 +138,7 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
-import { LoginApiError } from "@elizaos/login";
+import { LoginApiError } from "@elizaos/auth";
 import StewardLoginSection from "./steward-login-section";
 
 function renderSection() {

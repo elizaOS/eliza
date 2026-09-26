@@ -22,8 +22,8 @@ import type {
   LoginMfaRequiredResult,
   LoginProviders,
   LoginTelegramLoginPayload,
-} from "@elizaos/login";
-import { LoginApiError, LoginAuth } from "@elizaos/login";
+} from "@elizaos/auth";
+import { LoginApiError, LoginAuth } from "@elizaos/auth";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   clearStoredStewardToken,
@@ -33,7 +33,7 @@ import {
   readStoredStewardToken,
   StewardSessionError,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {

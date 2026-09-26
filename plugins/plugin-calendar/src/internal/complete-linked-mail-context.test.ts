@@ -1,5 +1,5 @@
 /** Verifies that next-event model context preserves complete linked-mail snippets. */
-import type { LifeOpsNextCalendarEventContext } from "@elizaos/shared";
+import { type LifeOpsNextCalendarEventContext } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { formatNextEventContext } from "./format.ts";
 
@@ -29,6 +29,12 @@ describe("calendar model context integrity", () => {
         metadata: {},
         syncedAt: now.toISOString(),
         updatedAt: now.toISOString(),
+      },
+      readScope: {
+        selection: "next_event",
+        timeMin: now.toISOString(),
+        timeMax: new Date(now.getTime() + 86_400_000).toISOString(),
+        exhaustive: false,
       },
       calendarFeedState: "complete",
       calendarSources: [],
@@ -87,6 +93,12 @@ describe("calendar model context integrity", () => {
         metadata: {},
         syncedAt: now.toISOString(),
         updatedAt: now.toISOString(),
+      },
+      readScope: {
+        selection: "next_event",
+        timeMin: now.toISOString(),
+        timeMax: new Date(now.getTime() + 86_400_000).toISOString(),
+        exhaustive: false,
       },
       calendarFeedState: "complete",
       calendarSources: [],

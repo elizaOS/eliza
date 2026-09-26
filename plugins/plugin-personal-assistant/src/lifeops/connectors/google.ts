@@ -7,10 +7,10 @@
  * approval ScheduledTask before this connector ever sees the dispatch.
  *
  * Capabilities are namespaced — the entries here mirror
- * `LIFEOPS_GOOGLE_CAPABILITIES` from `@elizaos/shared`.
+ * `LIFEOPS_GOOGLE_CAPABILITIES` from `@elizaos/core`.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { formatError } from "@elizaos/core";
+
+import { formatError, type IAgentRuntime } from "@elizaos/core";
 import { INTERNAL_URL } from "../access.js";
 import { LifeOpsService } from "../service.js";
 import {
@@ -21,12 +21,11 @@ import {
   missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
-import type {
-  ConnectorContribution,
-  ConnectorStatus,
-  DispatchResult,
+import {
+  type ConnectorContribution,
+  type ConnectorStatus,
+  type DispatchResult,
 } from "./contract.js";
-
 export interface GoogleSendPayload {
   /** Comma-separated or array of recipients. */
   target: string;
@@ -35,13 +34,13 @@ export interface GoogleSendPayload {
   /** Optional structured metadata (subject, htmlBody, threadId, …). */
   metadata?: {
     subject?: string;
+    grantId?: string;
     side?: "owner" | "agent";
     htmlBody?: string;
     cc?: readonly string[];
     bcc?: readonly string[];
   };
 }
-
 export function createGoogleConnectorContribution(
   runtime: IAgentRuntime,
 ): ConnectorContribution {
@@ -93,9 +92,17 @@ export function createGoogleConnectorContribution(
     async send(payload: unknown): Promise<DispatchResult> {
       if (!isConnectorSendPayload(payload)) return rejectInvalidPayload();
       const meta = (payload as GoogleSendPayload).metadata ?? {};
+      if (
+        meta.grantId !== undefined &&
+        (typeof meta.grantId !== "string" ||
+          !meta.grantId.trim() ||
+          meta.grantId !== meta.grantId.trim())
+      )
+        return rejectInvalidPayload();
       try {
         const result = await service.sendGmailMessage(INTERNAL_URL, {
           mode: "local",
+          grantId: meta.grantId,
           side: meta.side ?? "owner",
           to: payload.target
             .split(",")

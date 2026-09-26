@@ -62,6 +62,47 @@ describe("DiscordService#stop shutdown drain", () => {
 		vi.useRealTimers();
 	});
 
+	it("drains messages and reactions tracked through the production account facade", async () => {
+		const runtime = makeRuntime();
+		const service = makeService(runtime);
+		const facadeOwner = service as unknown as {
+			createAccountServiceFacade(): import("../types.ts").IDiscordService;
+		};
+		const facade = facadeOwner.createAccountServiceFacade();
+		const { MessageManager } = await import("../messages.ts");
+		let finishTurn!: () => void;
+		const turn = new Promise<void>((resolve) => {
+			finishTurn = resolve;
+		});
+		const manager = Object.create(MessageManager.prototype) as {
+			discordService: typeof facade;
+			runMessageTurn: () => Promise<void>;
+			handleMessage: (message: unknown) => Promise<void>;
+		};
+		manager.discordService = facade;
+		manager.runMessageTurn = () => turn;
+		const admitted = manager.handleMessage({
+			id: "facade-turn",
+			channel: { id: "channel-1" },
+		});
+		const controller = makeController();
+		facade.trackStatusReaction?.("facade-turn", controller);
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await delay(5);
+		expect(stopped).toBe(false);
+		finishTurn();
+		await admitted;
+		await delay(5);
+		expect(stopped).toBe(false);
+		controller.setDone();
+		await stopping;
+		expect(stopped).toBe(true);
+		expect(controller.abandon).not.toHaveBeenCalled();
+	});
+
 	it("returns promptly when no turn is in flight", async () => {
 		const runtime = makeRuntime();
 		const service = makeService(runtime);

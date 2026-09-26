@@ -1,7 +1,11 @@
-/** Verifies the Shared reminder action against its trusted-destination boundary. */
+/** Exercises the public scheduling barrel through the Shared reminder action and its trusted-destination boundary. */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
-import { describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  ScheduledTask,
+  ScheduledTaskInput,
+  ScheduledTaskRunner,
+} from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
   createCompletionCheckRegistry,
@@ -10,23 +14,17 @@ import {
   createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  createSharedRemindersEdgePlugin,
   createTaskGateRegistry,
+  parseSharedReminderDelivery,
   registerBuiltInCompletionChecks,
   registerBuiltInGates,
   registerDefaultEscalationLadders,
   type ScheduledTaskRunnerHandle,
-  TestNoopScheduledTaskDispatcher,
-} from "./scheduled-task/index.js";
-import type {
-  ScheduledTask,
-  ScheduledTaskInput,
-  ScheduledTaskRunner,
-} from "./scheduled-task/types.js";
-import {
-  createSharedRemindersEdgePlugin,
-  parseSharedReminderDelivery,
   type SharedRemindersEdgePluginOptions,
-} from "./shared-reminders.js";
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it, vi } from "vitest";
 
 const NOW = "2026-08-14T20:00:00.000Z";
 const PRIVATE_DELIVERY = {

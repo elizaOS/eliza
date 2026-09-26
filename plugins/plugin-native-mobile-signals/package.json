@@ -14,9 +14,8 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
@@ -29,9 +28,7 @@
     "dist/",
     "docs/",
     "ios/Sources/",
-    "scripts/validate-ios-screen-time.mjs",
-    "*.podspec",
-    "dist"
+    "*.podspec"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -40,13 +37,13 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-mobile-signals -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-mobile-signals -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "test": "vitest run",
-    "validate:ios-screen-time": "node scripts/validate-ios-screen-time.mjs",
+    "test": "vitest run --config vitest.config.ts",
+    "validate:ios-screen-time": "node dist/validate-ios-screen-time.mjs",
     "watch": "tsc6 --watch",
-    "build:unlocked": "bun run clean && bunx tsc6 -p tsconfig.json && bunx rollup -c rollup.config.mjs",
+    "build:unlocked": "bun run clean && bunx tsc6 -p tsconfig.json && bunx rollup -c rollup.config.mjs && bun build ../../packages/scripts/plugins/plugin-native-mobile-signals/validate-ios-screen-time.ts --target=node --outfile=dist/validate-ios-screen-time.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -56,10 +53,10 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.62.4",
+    "rollup": "^4.63.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

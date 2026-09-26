@@ -17,7 +17,7 @@ import {
 	resolve as pathResolve,
 } from "node:path";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { resolvePlatform } from "@elizaos/shared";
+import { resolvePlatform } from "@elizaos/core/runtime-env";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -217,6 +217,8 @@ export function validateLocalInferenceLoadArgs(
 }
 
 export interface LocalInferenceLoader {
+	/** Dedicated encoders prepare independently so embedding assignments cannot replace chat. */
+	prepareEmbeddingModel?(modelPath?: string): Promise<void>;
 	loadModel(args: LocalInferenceLoadArgs): Promise<void>;
 	unloadModel(): Promise<void>;
 	currentModelPath(): string | null;

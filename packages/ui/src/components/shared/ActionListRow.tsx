@@ -95,7 +95,7 @@ function ActionListRowContent({
           {title}
         </span>
         {description ? (
-          <span className="line-clamp-2 text-xs leading-relaxed text-muted">
+          <span className="line-clamp-2 text-xs leading-relaxed text-muted-strong">
             {description}
           </span>
         ) : null}

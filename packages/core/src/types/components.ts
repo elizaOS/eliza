@@ -106,6 +106,16 @@ export interface ActionParameter {
 	 */
 	requiredForSubactions?: readonly string[];
 	/**
+	 * Explicit legacy string selectors that may satisfy this required parameter
+	 * at runtime admission. Each alternative must also be a declared parameter,
+	 * supplied as an own, nonempty string and valid against both schemas. Only an
+	 * absent canonical parameter may be waived; arguments are never renamed.
+	 * Native tool schemas still require the canonical name. Use this only when
+	 * the owning handler deliberately supports these alternatives and validates
+	 * conflicting values. Other required parameters remain required.
+	 */
+	legacyRequiredAlternatives?: readonly string[];
+	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
 	 * normalizer renames an incoming alias key to this param's name when the
 	 * param itself is absent from the args and exactly one declared param claims
@@ -180,6 +190,18 @@ export interface MessageHandlerDeterministicToolCall {
 	params?: Record<string, JsonValue>;
 }
 
+/** Stage-1 source selection for planning and completion; it never edits stored history. */
+export type CompletionContextSelection = {
+	mode: "full" | "selected";
+	sourceSetId: string;
+	/** The model reviewed every source for applicability before selecting. */
+	complete: boolean;
+	relevantSourceIds: string[];
+	constraintSourceIds: string[];
+	referentSourceIds: string[];
+	pendingIntentSourceIds: string[];
+};
+
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
@@ -192,6 +214,7 @@ export interface MessageHandlerPlan {
 	 */
 	requiresTool?: boolean;
 	contextSlices?: string[];
+	completionContext?: CompletionContextSelection;
 	candidateActions?: string[];
 	/**
 	 * Stage 1's declared user intents for the turn, verbatim ("delete
@@ -294,7 +317,7 @@ export type Handler = (
 	options?: HandlerOptions | Record<string, JsonValue | undefined>,
 	callback?: HandlerCallback,
 	responses?: Memory[],
-) => Promise<ActionResult | undefined>;
+) => Promise<ActionResult>;
 
 /**
  * Validator function type for actions/evaluators
@@ -388,6 +411,11 @@ export type DisclosureGate =
 	| { require: "audience_admission"; subject: DisclosureSubject };
 
 export interface Action {
+	/** Exact owner-declared read-only operation IDs whose successful, non-replayed
+	 * noop receipts may follow their original request through history projection.
+	 * Undeclared operations and mutation outcomes remain complete inline evidence. */
+	historicalObservationOperations?: readonly string[];
+
 	/** Action name */
 	name: string;
 
@@ -410,6 +438,13 @@ export interface Action {
 
 	/** Example usages */
 	examples?: ActionExample[][];
+
+	/** Complete model-facing call examples authored by this action's owner. */
+	exampleCalls?: readonly {
+		user: string;
+		actions: readonly string[];
+		params?: Record<string, Record<string, JsonValue>>;
+	}[];
 
 	/** Optional priority for action ordering */
 	priority?: number;
@@ -475,7 +510,7 @@ export interface Action {
 	 * CANONICAL "when to use / when NOT to use" carrier. Prefer this field over
 	 * burying disambiguation in `description`: `routingHint` is prepended
 	 * VERBATIM to the planner tool description (see `actions/to-tool.ts`) — it is
-	 * NOT run through `compressPromptDescription`, so it is never abbreviated and
+	 * never abbreviated, and
 	 * is captured in recorded trajectories via the planner stage's `model.tools`.
 	 * Any action that shares
 	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
@@ -484,8 +519,7 @@ export interface Action {
 	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
 	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
 	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
-	 * also survive description compression, so the cross-reference stays intact
-	 * even in the compressed form.
+	 * remain explicit in the authored routing hint.
 	 */
 	routingHint?: string;
 
@@ -647,6 +681,22 @@ export interface Action {
 	/** Child tool/action names or inline definitions exposed beneath this action. */
 	subActions?: Array<string | Action>;
 
+	/**
+	 * Deterministic dispatch for a call to this umbrella that omits its
+	 * discriminator. Returns the name of one promoted child in `subActions`
+	 * when `params` can only mean that sub-action, otherwise `undefined`. The
+	 * planner executor consults it before delegating such a call to the
+	 * sub-planner, a second planner model call over the child tools (live
+	 * 2026-09-14: `MEMORY {text, kind, tags}` with no `action` took 4.5 s
+	 * instead of ~2 s). Must be pure and synchronous, return `undefined` on
+	 * any ambiguity, and never name a destructive sub-action without the
+	 * call's own confirmation argument; the umbrella's handler still enforces
+	 * its per-operation contract on the pinned call.
+	 */
+	inferSubaction?: (
+		params: Readonly<Record<string, unknown>>,
+	) => string | undefined;
+
 	/** Whether this action should delegate selection to a sub-planner. */
 	subPlanner?: boolean | { name?: string; description?: string };
 
@@ -745,8 +795,27 @@ export type ProviderDataRecord = {
  * Result returned by a provider
  */
 export interface ProviderResult {
+	/** Complete source bodies the existing handler may select for later stages.
+	 * IDs must match labels in text. Notice must preserve access/availability facts.
+	 * Selection never changes stored evidence; missing/invalid review keeps all text. */
+	reviewableSources?: {
+		notice: string;
+		sources: Array<{
+			id: string;
+			text: string;
+			/** Exact original body, excluding provider presentation, for source-backed replies. */
+			originalText?: string;
+			metadata: Record<string, JsonValue>;
+		}>;
+	};
+
 	/** Human-readable text for LLM prompt inclusion */
 	text?: string;
+
+	/** Optional Stage-1 discovery notice. Keep standing constraints complete here;
+	 * the response handler can request the entire authorized `text` before answering.
+	 * Other consumers retain `text`. This never replaces stored provider evidence. */
+	discoveryText?: string;
 
 	/**
 	 * Complete, explicit retrieval representation used only when the primary
@@ -777,6 +846,8 @@ export interface ProviderResult {
  */
 export interface ProviderExecutionContext {
 	signal: AbortSignal;
+	/** Providers admitted to this composition, including reused results; registration alone does not establish ownership. */
+	selectedProviderNames?: readonly string[];
 }
 
 /**
@@ -868,17 +939,10 @@ export interface Provider {
 	registerByDefault?: boolean;
 
 	/**
-	 * When true, this provider is always composed into the Stage-1 response
-	 * state regardless of the turn's selected contexts (like the built-in
-	 * FACTS / CURRENT_TIME signals). Lets a plugin opt a dynamic provider into
-	 * always-on Stage-1 rendering without core having to name it — keeping the
-	 * core → plugin dependency direction inward-only.
-	 *
-	 * This is the explicit opt-in for FACTS/CURRENT_TIME-class always-on
-	 * signals; it bypasses context routing entirely, so keep the provider's
-	 * happy-path render empty/cheap (e.g. RECENT_ERRORS renders nothing when
-	 * healthy). Providers whose relevance is turn-scoped should declare
-	 * `contexts`/`contextGate` instead.
+	 * Legacy name for an always-on planning provider. Composed on planning turns
+	 * regardless of selected contexts, subject to role and disclosure gates.
+	 * Stage 1 admits only its explicit dialogue/character provider list; this
+	 * flag cannot add domain state to the response decision.
 	 */
 	alwaysInResponseState?: boolean;
 
@@ -953,13 +1017,30 @@ export function isActionConfirmationStatus(
 	);
 }
 
-/**
- * Result returned by an action after execution
- * Used for action chaining and state management
- */
+/** A tool-owned observation of an entire current inventory, never a filtered search or mutation result. */
+export interface EmptyTrackedStateObservation {
+	resource: "notes";
+	scope: "entire_current_inventory";
+	count: 0;
+	revision: number;
+	observedAt: string;
+}
+
+/** Result returned by an action for chaining, grounding, and state management. */
 export interface ActionResult {
+	/** Complete current read evidence for scoped absence claims; not an effect receipt. */
+	emptyTrackedState?: EmptyTrackedStateObservation;
 	/** Whether the action succeeded */
 	success: boolean;
+
+	/** Tool-owned verification of its observed execution; never inferred from prose.
+	 * Workspace/effect receipts still determine what scope this can verify. */
+	verification?: {
+		kind: string;
+		status: "passed" | "failed" | "no_tests";
+		family?: string;
+		exitCode: number;
+	};
 
 	/** Optional text description of the result */
 	text?: string;
@@ -1025,13 +1106,14 @@ export interface ActionResult {
 	data?: ProviderDataRecord;
 
 	/**
-	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use only this object and never additionally serialize `data`. Exact source
-	 * pages remain in `text`; progressive readers put model-safe `ReadView`
-	 * metadata here and keep native locators and complete bodies out of both
-	 * prompt projections and trajectories.
+	 * Supplemental model-bound metadata. By default both this and data remain
+	 * complete on the model wire. A producer may explicitly declare replace-data
+	 * only when this contains the complete model contract, including a fresh read
+	 * route for any deferred schema. Text and effect receipts are never replaced.
 	 */
 	promptData?: ProviderDataRecord;
+	/** Explicit producer opt-in; complete data stays in runtime state/recordings. */
+	promptDataMode?: "replace-data";
 
 	/** Error information if the action failed */
 	error?: string | Error;

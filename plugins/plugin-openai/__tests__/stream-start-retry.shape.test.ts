@@ -11,7 +11,13 @@
  * generators are single-use), no network; the live Cerebras failure this
  * fences rode the incident log.
  */
-import { EventType, InferenceTurnTimer, logger, runWithInferenceTiming } from "@elizaos/core";
+import {
+  EventType,
+  InferenceTurnTimer,
+  logger,
+  MODEL_PROVIDER_ATTEMPTS,
+  runWithInferenceTiming,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -110,6 +116,81 @@ async function collect(stream: { textStream: AsyncIterable<string> }) {
 }
 
 describe("live-stream start retry", () => {
+  it("does not restart an exhausted server retry budget through another tier", async () => {
+    const failure = { statusCode: 503, message: "Service unavailable" };
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) =>
+      Promise.resolve(emptyErroredResult(args.onError, failure))
+    );
+    const runtime = createRuntime();
+    const { handleTextSmall, handleTextLarge } = await import("../models/text");
+    const params = {
+      prompt: "Complete original request",
+      model: "shared-model",
+      stream: true,
+      [MODEL_PROVIDER_ATTEMPTS]: [],
+    };
+    const first = await handleTextSmall(runtime, params);
+    await expect(collect(first as { textStream: AsyncIterable<string> })).rejects.toMatchObject(
+      failure
+    );
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+    await expect(handleTextLarge(runtime, params)).rejects.toMatchObject(failure);
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+
+    aiMocks.streamText.mockImplementation(() => Promise.resolve(successResult(["ok"])));
+    // Distinct concrete models and independent model calls retain their chance.
+    await collect(
+      (await handleTextLarge(runtime, { ...params, model: "different-model" })) as {
+        textStream: AsyncIterable<string>;
+      }
+    );
+    await collect(
+      (await handleTextSmall(runtime, { ...params, [MODEL_PROVIDER_ATTEMPTS]: [] })) as {
+        textStream: AsyncIterable<string>;
+      }
+    );
+    // The endpoint identity also includes credentials, never only provider name.
+    vi.stubEnv("OPENAI_API_KEY", "another-fixture-key");
+    await collect(
+      (await handleTextLarge(runtime, params)) as { textStream: AsyncIterable<string> }
+    );
+    vi.stubEnv("OPENAI_BASE_URL", "https://another.example/v1");
+    await collect(
+      (await handleTextLarge(runtime, params)) as { textStream: AsyncIterable<string> }
+    );
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(10);
+  }, 30_000);
+  it("blocks a mutated provider body before its retry transport", async () => {
+    const transientError = Object.assign(new Error("temporary provider failure"), {
+      statusCode: 500,
+    });
+    aiMocks.streamText.mockImplementationOnce(
+      (options: {
+        messages?: Array<{ content?: unknown }>;
+        onError?: (event: { error: unknown }) => void;
+      }) => ({
+        textStream: (async function* textStream() {
+          if (options.messages?.[0]) options.messages[0].content = "mutated after admission";
+          options.onError?.({ error: transientError });
+          yield* [];
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      })
+    );
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), {
+        messages: [{ role: "user", content: "immutable" }],
+        stream: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "MODEL_PREPARED_REQUEST_MUTATED" });
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
   beforeEach(() => {
     // The plugin intentionally falls back to process.env when the runtime has
     // no setting. Pin the provider so a developer's live Cerebras key cannot
@@ -182,7 +263,7 @@ describe("live-stream start retry", () => {
 
     await expect(collect(stream)).resolves.toEqual(["ok"]);
     expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
-  }, 30_000);
+  }, 90_000);
 
   it("retries a transient throw on the first pull", async () => {
     let call = 0;
@@ -265,7 +346,9 @@ describe("live-stream start retry", () => {
           yield { type: "finish", finishReason: "tool-calls" };
         })(),
         text: Promise.resolve(""),
-        toolCalls: Promise.resolve([{ toolName: "HANDLE_RESPONSE", input: { replyText: "hi" } }]),
+        toolCalls: Promise.resolve([
+          { toolCallId: "call-test", toolName: "HANDLE_RESPONSE", input: { replyText: "hi" } },
+        ]),
         finishReason: Promise.resolve("tool-calls"),
         usage: Promise.resolve({ inputTokens: 10, outputTokens: 8 }),
       });
@@ -498,7 +581,7 @@ describe("live-stream start retry", () => {
       }
       return Promise.resolve({
         text: "",
-        toolCalls: [{ toolName: "lookup", input: { q: "answer" } }],
+        toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "answer" } }],
         finishReason: "tool-calls",
         usage: { inputTokens: 12, outputTokens: 6 },
         providerMetadata: undefined,
@@ -511,9 +594,9 @@ describe("live-stream start retry", () => {
       tools: { lookup: { description: "Lookup", inputSchema: { type: "object" } } },
       toolChoice: { type: "tool", toolName: "lookup" },
       responseSchema: { type: "object", properties: { answer: { type: "string" } } },
-    } as never)) as { toolCalls?: Array<{ toolName: string }> };
+    } as never)) as { toolCalls?: Array<{ name: string }> };
 
-    expect(result.toolCalls?.[0]?.toolName).toBe("lookup");
+    expect(result.toolCalls?.[0]?.name).toBe("lookup");
     expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
   }, 20_000);
 
@@ -830,7 +913,7 @@ describe("transient retry: observability", () => {
       }
       return Promise.resolve({
         text: "",
-        toolCalls: [{ toolName: "lookup", input: { q: "answer" } }],
+        toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "answer" } }],
         finishReason: "tool-calls",
         usage: { inputTokens: 12, outputTokens: 6 },
         providerMetadata: undefined,

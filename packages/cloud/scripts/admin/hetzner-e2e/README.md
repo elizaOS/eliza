@@ -1,74 +1,38 @@
-# Hetzner Agent E2E
+# Hetzner operator diagnostics
 
-Nightly end-to-end smoke that provisions a real Hetzner cpx22 server,
-deploys a trivial agent via the Eliza Cloud staging API, runs a
-bridge-ping healthcheck plus one real chat turn (a `message.send`
-JSON-RPC through the production Worker bridge path, requiring a reply
-that echoes a per-run proof token and carries no fabrication flag),
-and tears everything down. A reaper
-workflow sweeps any servers older than 60 minutes every half hour as a
-safety net.
+These scripts provision a raw Hetzner server, wait for SSH and Docker, deploy
+an agent through the Cloud API, probe its bridge, and clean up the test server.
+They are manually invoked diagnostics. No repository workflow schedules this
+suite or its reaper, and no workflow concurrency group protects manual runs.
 
-Before allocation, the provisioner also removes older servers carrying both
-`ci=true` and `workflow=hetzner-e2e`. The workflow concurrency group prevents
-official E2E runs from overlapping, and malformed or untagged inventory entries
-are never deletion candidates.
+For managed-agent staging acceptance, use the shared-agent and dedicated-agent
+lanes in [live-smoke.yml](../../../../../.github/workflows/live-smoke.yml).
+Those lanes cover managed-agent acceptance and do not exercise this directory's
+raw-provider server allocation and SSH bootstrap.
 
-The workflow gracefully skips when secrets are unset, so it can land
-on `develop` and be activated later by adding secrets. Once secrets
-are present, the Cloud API auth preflight is a real gate: a 401/403
-from `CLOUD_E2E_API_KEY` fails the run instead of reporting a skip,
-because an invalid key would otherwise hide provisioning regressions.
+## Operator responsibility
 
-## One-time setup
+Provisioning creates a billable server. Use a separate test-only Hetzner
+project, token and SSH key. Do not run concurrent invocations against the same
+state file. Before allocation, the provisioner removes older servers carrying
+both `ci=true` and `workflow=hetzner-e2e`; malformed or untagged entries are
+excluded. The reaper only runs when explicitly invoked, so its age threshold
+is not a resource-lifetime or cost guarantee.
 
-### 1. Create a CI-scoped Hetzner project + token
+The scripts consume these environment variables directly; adding GitHub
+secrets alone does not schedule or execute them:
 
-1. Create a separate Hetzner Cloud project (so a leaked token can't
-   touch production servers).
-2. Issue a read-write API token in that project.
-3. Generate a fresh `ed25519` SSH keypair locally (not your dev key):
-   ```bash
-   ssh-keygen -t ed25519 -f /tmp/hetzner-e2e-key -N ""
-   ```
-4. Upload the public key to the Hetzner project (Hetzner Console →
-   Security → SSH Keys) and record the **numeric key id** from the
-   URL.
+| Variable | Purpose |
+| --- | --- |
+| `HCLOUD_TOKEN_CI` | Token for the isolated Hetzner project |
+| `CLOUD_E2E_API_KEY` | Cloud staging API credential |
+| `CI_SSH_PRIVATE_KEY` | Test-only private key used by the SSH readiness check |
+| `CI_SSH_PUBLIC_KEY_ID` | Numeric Hetzner identifier of the matching public key |
+| `GITHUB_RUN_ID` | Optional run identity used by labels and fallback cleanup |
 
-### 2. Create the GitHub environment
-
-In the repo settings, create a new environment named
-`ci-hetzner-e2e`. (Restricting to `develop` is recommended.)
-
-### 3. Add environment secrets
-
-| Secret | Value |
-|---|---|
-| `HCLOUD_TOKEN_CI` | The Hetzner API token from step 1.2 |
-| `CLOUD_E2E_API_KEY` | A long-lived Eliza Cloud staging bearer token |
-| `CI_SSH_PRIVATE_KEY` | Contents of `/tmp/hetzner-e2e-key` (private) |
-| `CI_SSH_PUBLIC_KEY_ID` | Numeric Hetzner SSH key id from step 1.4 |
-
-## Estimated cost
-
-Default `cpx22` in `fsn1` is a shared 2 vCPU / 4 GB server. A nightly run that
-lives ~10 minutes is **about $0.30–$1.00/month** depending on
-healthcheck duration. The reaper enforces a 60-minute upper bound so
-the worst case (a stuck workflow) is bounded at one server-hour per
-run.
-
-If the requested `HETZNER_E2E_SERVER_TYPE` is deprecated or not
-offered at `HETZNER_E2E_LOCATION`, the provisioner falls back through
-a short list of known-good shared-cpu `cpx22` locations, followed by `cpx11` in
-`hil`, before giving up.
-
-## Operator use / dry run
-
-The former scheduled and dispatch workflows were retired during CI
-consolidation. To test locally without touching Hetzner, run only the helpers that
-don't make real API calls (e.g. typecheck them with `tsc --noEmit`).
-**Do not** invoke `hetzner-e2e-provision.ts` outside of CI unless you
-intend to create a real billable server.
+Preserve the state file through teardown. If it is missing, teardown needs the
+matching run identity for its label sweep. Cleanup is an explicit operator
+step; never assume a scheduled reaper will remove a leftover server.
 
 ## Files
 

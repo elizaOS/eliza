@@ -15,6 +15,7 @@ import net from "node:net";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  decodeUrlPathComponent,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   isLoopbackHost,
@@ -24,7 +25,7 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
-import { decodeUrlPathComponent } from "@elizaos/shared";
+
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
@@ -58,9 +59,10 @@ import {
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  options?: { requireObject?: boolean },
+  options?: {
+    requireObject?: boolean;
+  },
 ) => Promise<T | null>;
-
 export interface RemoteCapabilityRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
@@ -78,7 +80,6 @@ export interface RemoteCapabilityRouteContext
     options: ConnectCloudCapabilitySandboxOptions,
   ) => Promise<ConnectCloudCapabilitySandboxResult>;
 }
-
 type ConnectBody = {
   endpoint?: unknown;
   cloud?: unknown;
@@ -89,29 +90,24 @@ type ConnectBody = {
   allowedModuleIds?: unknown;
   trustPolicy?: unknown;
 };
-
 type DirectEndpointBody = {
   id?: unknown;
   baseUrl?: unknown;
   token?: unknown;
 };
-
 type EndpointProviderMode =
   | "direct"
   | "home-machine"
   | "mobile-companion"
   | "desktop-companion";
-
 type DirectEndpointProviderOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
   trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
-
 type EndpointProviderOptions =
   | DirectEndpointProviderOptions
   | UrlRemoteCapabilityEndpointProviderOptions;
-
 type CloudBody = {
   cloudApiBase?: unknown;
   authToken?: unknown;
@@ -124,13 +120,11 @@ type CloudBody = {
   allowedModuleIds?: unknown;
   trustPolicy?: unknown;
 };
-
 export async function handleRemoteCapabilityRoutes(
   ctx: RemoteCapabilityRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, runtime, readJsonBody, json, error } =
     ctx;
-
   if (pathname.startsWith("/api/capability-router/assets/")) {
     if (!runtime) {
       error(res, "Agent runtime unavailable", 503);
@@ -159,28 +153,23 @@ export async function handleRemoteCapabilityRoutes(
     }
     return true;
   }
-
   if (pathname !== "/api/capability-router/connect") {
     return false;
   }
-
   if (method !== "POST") {
     error(res, "Method not allowed", 405);
     return true;
   }
-
   if (!runtime) {
     error(res, "Agent runtime unavailable", 503);
     return true;
   }
-
   const body = await readJsonBody<ConnectBody>(req, res, {
     requireObject: true,
   });
   if (body === null) {
     return true;
   }
-
   try {
     const unloadMissing =
       typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
@@ -209,7 +198,6 @@ export async function handleRemoteCapabilityRoutes(
       );
       return true;
     }
-
     if (body.endpoint !== undefined) {
       const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
@@ -224,7 +212,7 @@ export async function handleRemoteCapabilityRoutes(
           allowedModuleIds,
         ),
         unloadMissing,
-        requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        requestTimeoutMs: requestTimeoutMs ?? 60000,
         ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
         ...(trustPolicy === undefined ? {} : { trustPolicy }),
       });
@@ -254,7 +242,6 @@ export async function handleRemoteCapabilityRoutes(
       });
       return true;
     }
-
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
       if (trustPolicy !== undefined && cloud.trustPolicy !== undefined) {
@@ -289,7 +276,7 @@ export async function handleRemoteCapabilityRoutes(
         ...(cloudTrustPolicy === undefined
           ? {}
           : { trustPolicy: cloudTrustPolicy }),
-        requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        requestTimeoutMs: requestTimeoutMs ?? 60000,
       });
       if (persist) {
         await persistEndpoint(
@@ -317,7 +304,6 @@ export async function handleRemoteCapabilityRoutes(
       });
       return true;
     }
-
     error(res, "Request body must include either 'endpoint' or 'cloud'.", 400);
     return true;
   } catch (err) {
@@ -331,7 +317,6 @@ export async function handleRemoteCapabilityRoutes(
     return true;
   }
 }
-
 async function serveCapabilityRouterAssetProxy(
   ctx: RemoteCapabilityRouteContext,
   runtime: IAgentRuntime,
@@ -370,7 +355,6 @@ async function serveCapabilityRouterAssetProxy(
   }
   response.end?.(method === "HEAD" ? undefined : body);
 }
-
 function parseAssetProxyPath(pathname: string): {
   endpointId: string;
   moduleId: string;
@@ -412,7 +396,6 @@ function parseAssetProxyPath(pathname: string): {
   }
   return { endpointId, moduleId, assetPath };
 }
-
 function getRuntimeCapabilityRouter(
   runtime: IAgentRuntime,
 ): ElizaCapabilityRouter {
@@ -424,7 +407,6 @@ function getRuntimeCapabilityRouter(
   }
   return router;
 }
-
 type CapabilityRouterPersistConfig = {
   env?: {
     vars?: Record<string, string>;
@@ -432,7 +414,6 @@ type CapabilityRouterPersistConfig = {
   };
   [key: string]: unknown;
 };
-
 function persistEndpoint(
   ctx: Pick<
     RemoteCapabilityRouteContext,
@@ -459,7 +440,6 @@ function persistEndpoint(
     audit,
   );
 }
-
 async function persistEndpointInner(
   ctx: {
     config: CapabilityRouterPersistConfig;
@@ -539,7 +519,6 @@ async function persistEndpointInner(
   };
   ctx.saveConfig(ctx.config);
 }
-
 type CapabilityRouterTrustAuditInput = {
   mode: string;
   provider: string;
@@ -547,7 +526,6 @@ type CapabilityRouterTrustAuditInput = {
   allowedModuleIds?: string[];
   sync: RemotePluginSyncResult;
 };
-
 type CapabilityRouterTrustAuditRecord = {
   recordedAt: string;
   mode: string;
@@ -559,7 +537,6 @@ type CapabilityRouterTrustAuditRecord = {
   unloaded: string[];
   trustDecisions: RemotePluginSyncResult["trustDecisions"];
 };
-
 function readTrustAuditRecords(
   value: string | undefined,
 ): CapabilityRouterTrustAuditRecord[] {
@@ -572,7 +549,6 @@ function readTrustAuditRecords(
     return [];
   }
 }
-
 function appendTrustAuditRecord(
   existing: CapabilityRouterTrustAuditRecord[],
   audit: CapabilityRouterTrustAuditInput,
@@ -594,7 +570,6 @@ function appendTrustAuditRecord(
     },
   ];
 }
-
 function isTrustAuditRecord(
   value: unknown,
 ): value is CapabilityRouterTrustAuditRecord {
@@ -615,7 +590,6 @@ function isTrustAuditRecord(
     Array.isArray(record.trustDecisions)
   );
 }
-
 function readPersistedModuleAllowlists(
   value: string | undefined,
 ): Record<string, string[]> {
@@ -638,7 +612,6 @@ function readPersistedModuleAllowlists(
     return {};
   }
 }
-
 function mergePersistedModuleAllowlists(
   existing: Record<string, string[]>,
   endpointId: string,
@@ -657,7 +630,6 @@ function mergePersistedModuleAllowlists(
   }
   return next;
 }
-
 function readPersistedTrustPolicies(
   value: string | undefined,
 ): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
@@ -684,7 +656,6 @@ function readPersistedTrustPolicies(
     return {};
   }
 }
-
 function mergePersistedTrustPolicies(
   existing: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>,
   endpointId: string,
@@ -699,7 +670,6 @@ function mergePersistedTrustPolicies(
   }
   return next;
 }
-
 function readPersistedEndpoints(
   value: string | undefined,
 ): RemoteCapabilityEndpointConfig[] {
@@ -735,7 +705,6 @@ function readPersistedEndpoints(
     return [];
   }
 }
-
 function mergePersistedEndpoints(
   existing: RemoteCapabilityEndpointConfig[],
   next: RemoteCapabilityEndpointConfig,
@@ -755,7 +724,6 @@ function mergePersistedEndpoints(
   byKey.set(normalizedNext.id || normalizedNext.baseUrl, normalizedNext);
   return [...byKey.values()];
 }
-
 function parseDirectEndpoint(value: unknown): RemoteCapabilityEndpointConfig {
   const body = requireObject(value, "endpoint") as DirectEndpointBody;
   return {
@@ -764,7 +732,6 @@ function parseDirectEndpoint(value: unknown): RemoteCapabilityEndpointConfig {
     ...optionalToken(body.token, "endpoint.token"),
   };
 }
-
 function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
   if (value === undefined || value === null || value === "") return "direct";
   const provider = requireNonEmptyString(value, "provider");
@@ -780,7 +747,6 @@ function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
     `provider must be one of direct, home-machine, mobile-companion, or desktop-companion.`,
   );
 }
-
 function getEndpointProvider(
   providerMode: EndpointProviderMode,
 ): RemoteCapabilityEndpointProvider<EndpointProviderOptions> {
@@ -795,7 +761,6 @@ function getEndpointProvider(
       return desktopCompanionCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
   }
 }
-
 function buildEndpointProvisionOptions(
   providerMode: EndpointProviderMode,
   endpoint: RemoteCapabilityEndpointConfig,
@@ -814,7 +779,6 @@ function buildEndpointProvisionOptions(
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
   };
 }
-
 function parseCloudOptions(
   value: unknown,
 ): Omit<
@@ -842,7 +806,6 @@ function parseCloudOptions(
     "cloud.pollIntervalMs",
   );
   if (pollIntervalMs instanceof Error) throw pollIntervalMs;
-
   return {
     cloudApiBase: requireHttpUrl(body.cloudApiBase, "cloud.cloudApiBase"),
     authToken: requireNonEmptyString(body.authToken, "cloud.authToken"),
@@ -856,7 +819,6 @@ function parseCloudOptions(
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };
 }
-
 function serializeSyncResult(sync: RemotePluginSyncResult): JsonObject {
   return {
     registered: sync.registered.map((plugin) => plugin.name),
@@ -865,7 +827,6 @@ function serializeSyncResult(sync: RemotePluginSyncResult): JsonObject {
     trustDecisions: sync.trustDecisions,
   };
 }
-
 function redactEndpoint(endpoint: RemoteCapabilityEndpointConfig): JsonObject {
   return {
     id: endpoint.id,
@@ -873,21 +834,18 @@ function redactEndpoint(endpoint: RemoteCapabilityEndpointConfig): JsonObject {
     hasToken: typeof endpoint.token === "string" && endpoint.token.length > 0,
   };
 }
-
 function requireObject(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${field} must be an object.`);
   }
   return value as Record<string, unknown>;
 }
-
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${field} must be a non-empty string.`);
   }
   return value.trim();
 }
-
 function optionalNonEmptyString(
   value: unknown,
   field: string,
@@ -895,7 +853,6 @@ function optionalNonEmptyString(
   if (value === undefined) return undefined;
   return requireNonEmptyString(value, field);
 }
-
 function requireHttpUrl(value: unknown, field: string): string {
   const text = requireNonEmptyString(value, field).replace(/\/+$/, "");
   let parsed: URL;
@@ -935,12 +892,15 @@ function requireHttpUrl(value: unknown, field: string): string {
   parsed.search = "";
   return parsed.toString().replace(/\/+$/, "");
 }
-
-function optionalToken(value: unknown, field: string): { token?: string } {
+function optionalToken(
+  value: unknown,
+  field: string,
+): {
+  token?: string;
+} {
   const token = optionalNonEmptyString(value, field);
   return token === undefined ? {} : { token };
 }
-
 function optionalPositiveInteger(
   value: unknown,
   field: string,
@@ -951,7 +911,6 @@ function optionalPositiveInteger(
   }
   return value;
 }
-
 function parseOptionalStringArray(
   value: unknown,
   field: string,
@@ -962,7 +921,6 @@ function parseOptionalStringArray(
   }
   return normalizeStringList(value);
 }
-
 function parseOptionalEndpointTrustPolicy(
   value: unknown,
   field: string,
@@ -1002,7 +960,6 @@ function parseOptionalEndpointTrustPolicy(
   });
   return Object.keys(trustPolicy).length === 0 ? undefined : trustPolicy;
 }
-
 function optionalBooleanField<TKey extends keyof RemotePluginTrustPolicy>(
   value: unknown,
   field: string,
@@ -1016,7 +973,6 @@ function optionalBooleanField<TKey extends keyof RemotePluginTrustPolicy>(
     ? ({ [key]: true } as Partial<Pick<RemotePluginTrustPolicy, TKey>>)
     : {};
 }
-
 function parseOptionalStringRecord(
   value: unknown,
   field: string,
@@ -1036,7 +992,6 @@ function parseOptionalStringRecord(
   }
   return result;
 }
-
 function normalizeStringList(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }

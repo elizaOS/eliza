@@ -16,8 +16,12 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
-import { writeJsonAtomic } from "@elizaos/core/atomic-json";
+import {
+  ElizaError,
+  type ElizaErrorOptions,
+  logger,
+  writeJsonAtomic,
+} from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;

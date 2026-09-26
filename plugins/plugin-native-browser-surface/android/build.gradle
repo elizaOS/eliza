@@ -16,9 +16,26 @@ apply plugin: 'com.android.library'
 apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace = "ai.eliza.plugins.browsersurface"
+    sourceSets.main.assets.srcDirs += ['../resources']
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
 
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
+        def browserPackage = System.getenv('ELIZA_CHROMIUM_PACKAGE_NAME')
+        if (browserPackage == null) browserPackage = 'org.chromium.chrome'
+        if (!(browserPackage in ['org.chromium.chrome', 'ai.elizaos.chromium'])) {
+            throw new GradleException('ELIZA_CHROMIUM_PACKAGE_NAME must be org.chromium.chrome or ai.elizaos.chromium')
+        }
+        def browserCertificate = System.getenv('ELIZA_CHROMIUM_CERT_SHA256') ?: ''
+        if (browserCertificate && !(browserCertificate ==~ /[0-9a-fA-F]{64}/)) {
+            throw new GradleException('ELIZA_CHROMIUM_CERT_SHA256 must be a 64-character SHA-256 certificate digest')
+        }
+        buildConfigField "String", "ELIZA_CHROMIUM_PACKAGE_NAME", "\"${browserPackage}\""
+        buildConfigField "String", "ELIZA_CHROMIUM_CERT_SHA256", "\"${browserCertificate}\""
+        manifestPlaceholders.elizaChromiumPackageName = browserPackage
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -50,6 +67,7 @@ repositories {
 }
 
 dependencies {
+    implementation "androidx.browser:browser:1.8.0"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

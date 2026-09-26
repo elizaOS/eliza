@@ -1,80 +1,39 @@
-# @elizaos/capacitor-messages
+# @elizaos/plugin-native-messages
 
-Android SMS/MMS bridge for elizaOS — a Capacitor plugin that lets an Eliza agent send outbound SMS messages and read the device SMS inbox via the Android Telephony API.
+Android SMS overlay plugin for elizaOS — provides an SMS inbox and compose surface
+backed by the native `@elizaos/plugin-native-messages/bridge` bridge.
 
-## What it does
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-- **Send SMS** — dispatches single or multipart text messages using `SmsManager`, waits for radio-layer delivery confirmation, and writes the sent message to the Android sent folder.
-- **Read SMS** — queries the system `content://sms` provider and returns messages sorted newest-first, with optional filtering by conversation thread.
+## Development
 
-The web/browser fallback reports messaging unavailable (`sendSms` throws; `listMessages` returns an empty list). This plugin is meaningful only on Android.
-
-## Installation
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-npm install @elizaos/capacitor-messages
-npx cap sync android
+bun run --cwd plugins/plugin-native-messages build  # build
+bun run --cwd plugins/plugin-native-messages test   # tests
 ```
 
-## Android permissions
+The package-owned root TypeScript configuration covers its React view and
+native bridge. Production output uses `tsconfig.build.json`.
 
-Declare in your app's `AndroidManifest.xml` (already present in the plugin manifest, but the host app must request at runtime):
+Native view and app-shell declarations share an ADMIN-gated capability catalog. Agents use named complete-or-error reads; mutations and generic renderer/DOM operations require human interaction. A bridge result at its non-paginated boundary is an explicit incomplete-read error. Device-status failures remain errors rather than fabricated empty state.
 
-| Permission | Required by |
-|---|---|
-| `android.permission.SEND_SMS` | `sendSms` |
-| `android.permission.READ_SMS` | `listMessages` |
-| `android.permission.RECEIVE_SMS` | Declared in plugin manifest |
-| `android.permission.RECEIVE_MMS` | Declared in plugin manifest |
-| `android.permission.RECEIVE_WAP_PUSH` | Declared in plugin manifest |
+Reads preserve complete SMS bodies and have no implicit result cap; only an
+explicit positive safe-integer limit bounds results. Outbound requests own their
+receivers, deadline and teardown settlement. A timeout means unknown send status
+and must not trigger an automatic resend. Only the default SMS app persists sent
+rows; other apps leave platform-owned persistence alone.
 
-Request the permissions your methods need before calling them. Calls made without the required permission are rejected immediately.
+## Android modem verification
 
-## API
-
-### `Messages.sendSms(options)`
-
-```typescript
-import { Messages } from "@elizaos/capacitor-messages";
-
-const result = await Messages.sendSms({
-  address: "+15550001234",  // E.164 or local format accepted by SmsManager
-  body: "Hello from Eliza",
-});
-// result: { messageId: string, messageUri: string }
-```
-
-Long messages are automatically split into multipart SMS by `SmsManager.divideMessage`. The call resolves only after every part has been confirmed by the radio layer.
-
-### `Messages.listMessages(options?)`
-
-```typescript
-const { messages } = await Messages.listMessages({
-  limit: 50,       // 1–500, default 100
-  threadId: "42",  // optional — filter to one conversation
-});
-// messages: SmsMessageSummary[]
-```
-
-Each `SmsMessageSummary` contains: `id`, `threadId`, `address`, `body`, `date` (Unix ms), `type` (Telephony.Sms constants), `read`.
-
-## Types
-
-```typescript
-interface SendSmsOptions   { address: string; body: string }
-interface SendSmsResult    { messageId: string; messageUri: string }
-interface ListMessagesOptions { limit?: number; threadId?: string }
-interface SmsMessageSummary {
-  id: string; threadId: string; address: string;
-  body: string; date: number; type: number; read: boolean;
-}
-```
-
-## Building from source
-
-```bash
-bun run --cwd plugins/plugin-native-messages build
-```
-
-Runs with `bun`; `typescript` (`tsc`) and `rollup` are dev dependencies.
-
+`node packages/app/scripts/android-native-sms.mjs --sender emulator-5580 --receiver emulator-5582`
+leases two isolated stock emulators, sends through the real WebView bridge, checks
+the sent-row receipt and received content, then removes its messages and APKs.
+Set each emulator's `-phone-number` to `1555521` followed by its console port.
+Peer routing must work in the installed emulator; a missing receipt or delivery fails.
+Use `--sender emulator-5580 --loopback` explicitly for a separate modem-loopback
+proof; add `--multipart` to verify a long Unicode message including its trailing
+newline. Reports under `test-results/android-native-sms/` identify the transport;
+loopback does not prove peer or carrier delivery. Device E2E runs both single-part
+and multipart modem loopback and uploads the reports and provider receipts.

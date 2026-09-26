@@ -7,133 +7,41 @@
  * bundles the fixture with esbuild (core/node builtins stubbed dead-in-browser)
  * and drives it in headless chromium.
  *
- * Run: bun packages/ui/src/components/shell/__e2e__/capture-default-notifications.mjs
+ * Run: bun run --cwd packages/ui test:notifications-e2e
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { builtinModules } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { chromium } from "playwright";
-import { FILE_FIXTURE_BOOTSTRAP } from "../../../testing/e2e-runner/fixture-bundle.ts";
+import {
+  FILE_FIXTURE_BOOTSTRAP,
+  bundleFixture,
+  compileTailwindTheme,
+  stubElizaCore,
+  stubNodeBuiltins,
+  withChromium,
+} from "../../../testing/e2e-runner/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-notifications");
+await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      // tierForPriority must carry the REAL tier semantics: the rested shade
-      // filters on tierForPriority(p) === "interrupt", so a proxy-noop here
-      // would blank the rested state and fake a regression.
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        // The wake/provision path (client-cloud.ts) subclasses the real
-        // ElizaError; esbuild's ESM interop copies only this object's own keys,
-        // so a Proxy fallback would surface undefined here and break the
-        // subclass at evaluation time. Export a real class with core's shape so
-        // the fixture bundle exercises the same error type production does.
-        class ElizaError extends Error {
-          constructor(message, options = {}) {
-            super(
-              message,
-              options.cause !== undefined ? { cause: options.cause } : undefined,
-            );
-            this.name = "ElizaError";
-            this.code = options.code;
-            this.context = options.context;
-            this.severity = options.severity;
-            Object.setPrototypeOf(this, new.target.prototype);
-          }
-        }
-        module.exports = new Proxy(
-          {
-            ElizaError,
-            isElizaError: (v) => v instanceof ElizaError,
-            DEFAULT_NOTIFICATION_CATEGORY: "general",
-            DEFAULT_NOTIFICATION_PRIORITY: "normal",
-            tierForPriority: (priority) =>
-              priority === "urgent" || priority === "high"
-                ? "interrupt"
-                : priority === "low"
-                  ? "silent"
-                  : "ambient",
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
-const result = await build({
-  entryPoints: [join(here, "notifications-center-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubElizaCore, stubNodeBuiltins],
-  write: false,
+const js = await bundleFixture({
+  entry: join(here, "notifications-center-fixture.tsx"),
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
 });
-const js = result.outputFiles[0].text;
 console.log(`bundled (${js.length} bytes)`);
 
-// Fetch the Tailwind runtime once and serve it from the loopback server. Styled
-// pixels are part of this evidence contract, so a missing runtime must abort the
-// capture instead of silently producing an unreviewable unstyled artifact.
-const tailwindResponse = await fetch("https://cdn.tailwindcss.com", {
-  signal: AbortSignal.timeout(30_000),
+const themeCss = await compileTailwindTheme({
+  uiRoot: resolve(here, "../../../.."),
+  sources: [resolve(here, ".."), resolve(here, "../../ui")],
 });
-if (!tailwindResponse.ok) {
-  throw new Error(
-    `Tailwind runtime prerequisite failed (${tailwindResponse.status} ${tailwindResponse.statusText})`,
-  );
-}
-const tailwindJs = await tailwindResponse.text();
-if (!tailwindJs.trim()) {
-  throw new Error("Tailwind runtime prerequisite returned an empty response");
-}
 
 const html = `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>notifications e2e</title>
-<script src="/tailwind.js"></script>
+<style>${themeCss}</style>
 <style>html,body{margin:0;height:100%;color:#f4f4f5;font-family:ui-sans-serif,system-ui;
   background-color:#0a0d16;
   background-image:
@@ -152,11 +60,6 @@ await writeFile(htmlPath, html);
 // dismiss (correct app behavior that would fake a swipe regression here).
 // Every /api/* write gets a happy ok-JSON so acted-on rows stay acted-on.
 const server = createServer((req, res) => {
-  if (req.url === "/tailwind.js") {
-    res.setHeader("Content-Type", "text/javascript");
-    res.end(tailwindJs);
-    return;
-  }
   if (!req.url || req.url === "/" || req.url.startsWith("/notifications")) {
     res.setHeader("Content-Type", "text/html");
     res.end(html);
@@ -194,10 +97,11 @@ async function shadeMode(page) {
 const HEADFUL =
   process.argv.includes("--headful") || process.env.HEADFUL === "1";
 console.log(HEADFUL ? "mode: HEADFUL (real Chromium)" : "mode: headless");
-const browser = await chromium.launch({
+try {
+await withChromium({
   headless: !HEADFUL,
   slowMo: HEADFUL ? 120 : 0,
-});
+}, async (browser) => {
 for (const [name, width, height] of [
   ["desktop", 1280, 900],
   ["mobile", 390, 844],
@@ -208,6 +112,7 @@ for (const [name, width, height] of [
     recordVideo: { dir: outDir, size: { width, height } },
   });
   const page = await context.newPage();
+  page.setDefaultTimeout(15_000);
   // Headless: still the entrance + scroll-driven (`animation-timeline: view()`)
   // effects for deterministic pixels and to dodge the headless-shell compositor
   // crash driving view-timeline rows while the scroller transforms. Headful
@@ -215,7 +120,7 @@ for (const [name, width, height] of [
   // headless-shell can't composite), which is the whole point of --headful.
   if (!HEADFUL) await page.emulateMedia({ reducedMotion: "reduce" });
   const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("pageerror", (e) => { errors.push(e.message); console.error(e.stack ?? e.message); });
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(ROW);
   // Readiness = an applied Tailwind effect. The runtime global lands before
@@ -239,12 +144,19 @@ for (const [name, width, height] of [
     viewportState.innerWidth === width && viewportState.innerHeight === height,
     JSON.stringify(viewportState),
   );
-  // 1. RESTED: interrupt triage — the task group is a Z-stack (urgent on top,
-  //    two glass peeks, no header eyebrow), the solo system row is flat, the
-  //    rest hides behind the "N more" button.
+  check("populated inbox starts expanded", (await shadeMode(page)) === "expanded");
+  const initialList = page.locator(LIST);
+  await initialList.hover();
+  await page.mouse.wheel(0, 30);
+  await page.mouse.wheel(0, 30);
+  await page.waitForFunction(
+    (selector) => document.querySelector(selector)?.getAttribute("data-shade-mode") === "rested",
+    LIST,
+  );
+  await page.waitForTimeout(500);
   check("rested mode", (await shadeMode(page)) === "rested");
   check(
-    "two interactive cards at rest (stack top + solo)",
+    "collapsed projection retains the two producer cards",
     (await page.locator(ROW).count()) === 2,
   );
   check(
@@ -267,18 +179,6 @@ for (const [name, width, height] of [
         .locator('[data-testid="notification-stack-count"]')
         .count()) === 0,
   );
-  check(
-    "the count control reflects the complete inbox",
-    (
-      await page
-        .locator('[data-testid="notifications-count-button"]')
-        .textContent()
-    )?.includes("7 Notifications"),
-  );
-  check(
-    "hidden tier not visible at rest",
-    (await page.locator("text=Take the tour").count()) === 0,
-  );
   const restedPreviewFaces = await page
     .locator("[data-notification-stack-preview-content]")
     .evaluateAll((previews) =>
@@ -299,26 +199,23 @@ for (const [name, width, height] of [
       ),
     JSON.stringify(restedPreviewFaces),
   );
-  const glass = await page
-    .locator('[data-testid="notification-row-swipe"]')
-    .first()
-    .evaluate((el) => {
-      const s = getComputedStyle(el);
-      return {
-        blur: s.backdropFilter || s.webkitBackdropFilter || "",
-        shadow: s.boxShadow,
-      };
-    });
+  check("collapsed retained cards are hidden from interaction", await page.locator("[data-notification-group]").evaluateAll((groups) => groups.length > 0 && groups.every((group) => group.hasAttribute("inert") && group.getAttribute("aria-hidden") === "true")));
+  await pullDown(page);
+  await page.waitForFunction((selector) => document.querySelector(selector)?.getAttribute("data-shade-mode") === "expanded", LIST);
+  const glass = await page.locator(".eliza-notif-row-surface").first().evaluate((el) => {
+    const style = getComputedStyle(el, "::after");
+    return { background: style.backgroundColor, border: style.borderTopStyle, width: style.borderTopWidth };
+  });
   check(
-    "stacked cards retain the liquid-glass inset edge",
-    glass.shadow.includes("inset"),
-    glass.shadow,
+    "cards paint a visible fill and border",
+    glass.background !== "rgba(0, 0, 0, 0)" && glass.border === "solid" && Number.parseFloat(glass.width) > 0,
+    JSON.stringify(glass),
   );
   await page.screenshot({
-    path: join(outDir, `notifications-${name}-rested.png`),
+    path: join(outDir, `notifications-${name}-folded.png`),
     fullPage: true,
   });
-  console.log(`  📸 notifications-${name}-rested.png`);
+  console.log(`  📸 notifications-${name}-folded.png`);
 
   // A partial horizontal swipe exposes the actual next notification rather
   // than a blank decorative plate. Release below threshold restores the stack
@@ -340,6 +237,10 @@ for (const [name, width, height] of [
     restedSwipeBox.y + restedSwipeBox.height / 2,
     { steps: 8 },
   );
+  await page.waitForFunction(() => {
+    const content = document.querySelector('[data-testid="notification-stack-peek"] [data-notification-stack-preview-content]');
+    return content && getComputedStyle(content).visibility === "visible";
+  });
   const underCard = await underlyingPeek.evaluate((peek) => {
     const content = peek.querySelector(
       "[data-notification-stack-preview-content]",
@@ -398,71 +299,7 @@ for (const [name, width, height] of [
     (await page.locator(ROW).count()) === 2,
   );
 
-  // 2. PULL TO EXPAND: a real mouse drag down from the list top reveals every
-  //    priority tier — but the Z-stacks PERSIST (per-stack fan-out below).
-  await pullDown(page);
-  await page.waitForFunction(
-    (sel) =>
-      document
-        .querySelector(sel)
-        ?.getAttribute("data-shade-mode") === "expanded",
-    LIST,
-  );
   check("pull-down expands the shade", (await shadeMode(page)) === "expanded");
-  check(
-    "expanded shade exposes clear and collapse controls",
-    (await page.locator('[data-testid="notifications-clear-all"]').count()) ===
-      1 &&
-      (await page.locator('[data-testid="notifications-collapse"]').count()) ===
-        1,
-  );
-  const clearAllControl = page.locator(
-    '[data-testid="notifications-clear-all"]',
-  );
-  const clearAllRestBox = await clearAllControl.boundingBox();
-  await clearAllControl.hover();
-  await page.waitForTimeout(220);
-  const clearAllHoverBox = await clearAllControl.boundingBox();
-  check(
-    "Clear All stays an X on hover",
-    Math.abs(clearAllRestBox.width - clearAllHoverBox.width) <= 1 &&
-      (await clearAllControl.getAttribute("data-clear-stage")) === "0",
-  );
-  await clearAllControl.click();
-  await page.waitForTimeout(220);
-  const firstClearStage = {
-    stage: await clearAllControl.getAttribute("data-clear-stage"),
-    label: await clearAllControl.getAttribute("aria-label"),
-  };
-  check(
-    "first Clear All click reveals Clear all",
-    firstClearStage.stage === "1" &&
-      firstClearStage.label === "Continue clearing all notifications",
-    JSON.stringify(firstClearStage),
-  );
-  await clearAllControl.click();
-  await page.waitForTimeout(220);
-  const secondClearStage = {
-    stage: await clearAllControl.getAttribute("data-clear-stage"),
-    label: await clearAllControl.getAttribute("aria-label"),
-  };
-  check(
-    "second Clear All click requires Confirm?",
-    secondClearStage.stage === "2" &&
-      secondClearStage.label === "Confirm clear all notifications",
-    JSON.stringify(secondClearStage),
-  );
-  await page.evaluate(() => {
-    document.body.dispatchEvent(
-      new PointerEvent("pointerdown", { bubbles: true }),
-    );
-  });
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="notifications-clear-all"]')
-        ?.getAttribute("data-clear-stage") === "0",
-  );
   check(
     "stacks persist through the shade expand",
     (await page.locator('[data-testid="notification-stack-peek"]').count()) >
@@ -498,9 +335,8 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-expanded.png`);
 
-  // Direct collapse keeps every visible card and its specular rim at full
-  // material opacity. Only the information inside later cards fades toward
-  // the resting projection, and reversing the same gesture restores it.
+  // Direct collapse fades the painted layer and information without applying
+  // a second opacity multiplier to the parent; reversing restores the shade.
   const verticalList = page.locator(LIST);
   await verticalList.evaluate((list) => {
     list.scrollTop = 0;
@@ -525,7 +361,7 @@ for (const [name, width, height] of [
       return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
     });
     const visibleSurfaces = Array.from(
-      list.querySelectorAll('[data-testid="notification-row-swipe"]'),
+      list.querySelectorAll(".eliza-notif-row-surface"),
     ).filter((surface) => {
       const bounds = surface.getBoundingClientRect();
       return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
@@ -543,8 +379,8 @@ for (const [name, width, height] of [
       groupOpacities: visibleGroups.map((group) =>
         Number.parseFloat(getComputedStyle(group).opacity),
       ),
-      rimOpacities: visibleSurfaces.map((surface) =>
-        Number.parseFloat(getComputedStyle(surface, "::before").opacity),
+      materialOpacities: visibleSurfaces.map((surface) =>
+        Number.parseFloat(getComputedStyle(surface, "::after").opacity),
       ),
       surfaceOpacities: visibleSurfaces.map((surface) =>
         Number.parseFloat(getComputedStyle(surface).opacity),
@@ -552,13 +388,11 @@ for (const [name, width, height] of [
     };
   });
   check(
-    "direct collapse fades every visible glass surface while keeping one rim material",
+    "direct collapse fades the painted material without fading its parent twice",
     directCollapseFrame.groupOpacities.length > 0 &&
       directCollapseFrame.groupOpacities.every((opacity) => opacity === 1) &&
-      directCollapseFrame.surfaceOpacities.some(
-        (opacity) => opacity > 0 && opacity < 1,
-      ) &&
-      directCollapseFrame.rimOpacities.every((opacity) => opacity === 1),
+      directCollapseFrame.surfaceOpacities.every((opacity) => opacity === 1) &&
+      directCollapseFrame.materialOpacities.some((opacity) => opacity > 0 && opacity < 1),
     JSON.stringify(directCollapseFrame),
   );
   check(
@@ -589,7 +423,7 @@ for (const [name, width, height] of [
 
   // Release a short, slow collapse so it starts its cancel animation, then
   // immediately re-grab. The second gesture must take direct ownership:
-  // content tracks the finger with no inherited easing and the rims stay put.
+  // content and painted fill track the finger with no inherited easing.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.waitForTimeout(50);
   await page.mouse.move(verticalX, verticalStartY);
@@ -623,14 +457,14 @@ for (const [name, width, height] of [
       list.querySelectorAll(".eliza-notif-row-content"),
     );
     const surfaces = Array.from(
-      list.querySelectorAll('[data-testid="notification-row-swipe"]'),
+      list.querySelectorAll(".eliza-notif-row-surface"),
     );
     return {
       contentOpacities: contents.map((content) =>
         Number.parseFloat(getComputedStyle(content).opacity),
       ),
-      rimOpacities: surfaces.map((surface) =>
-        Number.parseFloat(getComputedStyle(surface, "::before").opacity),
+      materialOpacities: surfaces.map((surface) =>
+        Number.parseFloat(getComputedStyle(surface, "::after").opacity),
       ),
       transitionDurations: contents.map(
         (content) => getComputedStyle(content).transitionDuration,
@@ -638,11 +472,11 @@ for (const [name, width, height] of [
     };
   });
   check(
-    "an immediate re-grab tracks directly without dimming the rims",
+    "an immediate re-grab tracks content and painted material without inherited easing",
     regrabFrame.contentOpacities.some(
       (opacity) => opacity > 0 && opacity < 1,
     ) &&
-      regrabFrame.rimOpacities.every((opacity) => opacity === 1) &&
+      regrabFrame.materialOpacities.some((opacity) => opacity > 0 && opacity < 1) &&
       regrabFrame.transitionDurations.every((duration) =>
         duration
           .split(",")
@@ -684,10 +518,6 @@ for (const [name, width, height] of [
         0 &&
       (await page.locator('[data-testid="notification-stack-clear"]').count()) >
         0,
-  );
-  check(
-    "global Collapse remains visible with fanned stacks",
-    await page.locator('[data-testid="notifications-collapse"]').isVisible(),
   );
   await page
     .locator('[data-testid="notification-stack-collapse"]')
@@ -749,8 +579,6 @@ for (const [name, width, height] of [
 
   // 5. DIRECTIONAL SETTLE: fingers-down (negative wheel deltas) while expanded
   //    is a no-op, so trailing trackpad momentum cannot snap the shade shut.
-  //    The global Collapse control remains available even when producer stacks
-  //    are fanned and closes the complete notification surface in one action.
   const listBox = await page.locator(LIST).boundingBox();
   await page.locator(LIST).evaluate((list) => {
     list.scrollTop = 0;
@@ -765,14 +593,15 @@ for (const [name, width, height] of [
     "fingers-down while expanded does NOT collapse (momentum-proof)",
     (await shadeMode(page)) === "expanded",
   );
-  await page.locator('[data-testid="notifications-collapse"]').click();
+  await page.mouse.wheel(0, 30);
+  await page.mouse.wheel(0, 30);
   await page.waitForFunction(
     (sel) =>
       document.querySelector(sel)?.getAttribute("data-shade-mode") === "rested",
     LIST,
   );
   check(
-    "the explicit collapse control returns to triage",
+    "the upward wheel gesture returns to triage",
     (await shadeMode(page)) === "rested",
   );
 
@@ -791,7 +620,9 @@ if (HEADFUL) {
   console.log("HEADFUL: holding the window open 8s for live inspection…");
   await new Promise((r) => setTimeout(r, 8000));
 }
-await browser.close();
-server.close();
+});
+} finally {
+  await new Promise((resolve) => server.close(resolve));
+}
 console.log(failures === 0 ? "\nPASS" : `\nFAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

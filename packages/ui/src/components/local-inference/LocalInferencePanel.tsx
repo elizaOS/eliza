@@ -2,10 +2,11 @@
  * Top-level local-inference settings surface: the model hub (curated catalog +
  * download queue), active-model bar, hardware badge, connected device bridges,
  * and the voice sub-model updater. Streams live download/active deltas over SSE
- * and drives the hub through the local-inference API client.
+ * and falls back to authenticated API snapshots when streaming is unavailable.
  */
 
-import type { VoiceModelId } from "@elizaos/shared";
+import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import type { VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -16,15 +17,19 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { isApiError } from "../../api/client-types-core";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useRole } from "../../hooks/useRole";
-import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
+import {
+  filterSettingsDefaultLocalModels,
+  isSettingsDefaultLocalModel,
+} from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
-import { resolveApiUrl } from "../../utils/asset-url";
-import { getElizaApiToken } from "../../utils/eliza-globals";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
+import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
@@ -32,16 +37,16 @@ import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
+import { findInstalled } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
-import type {
-  VoiceModelInstallationView,
-  VoiceUpdatePreferencesView,
+import {
+  ModelUpdatesPanel,
+  type VoiceModelInstallationView,
+  type VoiceUpdatePreferencesView,
 } from "./ModelUpdatesPanel";
-import { ModelUpdatesPanel } from "./ModelUpdatesPanel";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
 type HubTab = "curated" | "downloads";
-
 export function LocalInferencePanel() {
   useRenderGuard("LocalInferencePanel");
   const { setActionNotice, t } = useAppSelectorShallow((s) => ({
@@ -52,15 +57,28 @@ export function LocalInferencePanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<HubTab>("curated");
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [pollSnapshots, setPollSnapshots] = useState(true);
+  const [authenticationBlocked, setAuthenticationBlocked] = useState(false);
+  const refreshGeneration = useRef(0);
+  const hasHubSnapshot = useRef(false);
   const deviceBridgeStatus = useDeviceBridgeStatus();
-
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     try {
       const snapshot = await client.getLocalInferenceHub();
+      if (generation !== refreshGeneration.current) return;
+      hasHubSnapshot.current = true;
       setHub(snapshot);
       setError(null);
+      setAuthenticationBlocked(false);
     } catch (err) {
+      // error-policy:J4 Snapshot failure remains visible until a successful refresh.
+      if (generation !== refreshGeneration.current) return;
+      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
+        // Repeated authentication failures consume the server's login budget.
+        // Keep the visible error until the owner retries with a valid session.
+        setAuthenticationBlocked(true);
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -70,23 +88,42 @@ export function LocalInferencePanel() {
       );
     }
   }, [t]);
-
   useEffect(() => {
     void refresh();
+    return () => {
+      refreshGeneration.current += 1;
+    };
   }, [refresh]);
-
   useEffect(() => {
+    if (!pollSnapshots || authenticationBlocked) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await refresh();
+      if (!stopped) timer = setTimeout(poll, 2000);
+    };
+    timer = setTimeout(poll, 2000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [pollSnapshots, authenticationBlocked, refresh]);
+  useEffect(() => {
+    if (authenticationBlocked) return;
     // Subscribe to server-side progress updates. EventSource doesn't allow
     // custom headers, so we pass the auth token as a query param — the
     // route's `isStreamAuthorized` accepts either source.
     const url = resolveApiUrl("/api/local-inference/downloads/stream");
     const withToken = appendTokenParam(url);
-    // On-device runtimes are reached over the native IPC base, which
-    // EventSource cannot open; skip live updates there rather than throwing.
+    // Native IPC and header-only authentication cannot use EventSource.
+    // Keep fetching through the authenticated client until the stream opens.
     const es = openEventSource(withToken, { withCredentials: false });
-    eventSourceRef.current = es;
+    setPollSnapshots(true);
     if (!es) return;
-
+    es.onopen = () => {
+      setPollSnapshots(false);
+      void refresh();
+    };
     es.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data) as
@@ -99,8 +136,13 @@ export function LocalInferencePanel() {
               type: "progress" | "completed" | "failed" | "cancelled";
               job: DownloadJob;
             }
-          | { type: "active"; active: ActiveModelState };
-
+          | {
+              type: "active";
+              active: ActiveModelState;
+            };
+        // Stream deltas supersede pending snapshots once the hub is initialized.
+        // Before that first snapshot, a delta cannot populate the full hub.
+        if (hasHubSnapshot.current) refreshGeneration.current += 1;
         if (payload.type === "snapshot") {
           setHub((prev) =>
             prev
@@ -133,29 +175,24 @@ export function LocalInferencePanel() {
             void refresh();
           }
         }
-      } catch {
-        // Ignore malformed events rather than blow away the panel.
+      } catch (error) {
+        // error-policy:J3 Reject malformed stream data and recover from an API snapshot.
+        reportRendererDiagnostic({ scope: "local-inference.stream", error });
+        setPollSnapshots(true);
       }
     };
-
     es.onerror = () => {
-      // EventSource auto-reconnects; we only surface the error if it
-      // outright closes.
-      if (es.readyState === EventSource.CLOSED) {
-        setError(
-          t("localinference.liveDisconnected", {
-            defaultValue: "Live updates disconnected",
-          }),
-        );
-      }
+      // A reconnecting stream may be unauthorized indefinitely. API snapshots
+      // preserve progress without exposing native credentials to EventSource.
+      setPollSnapshots(true);
     };
-
     return () => {
+      es.onopen = null;
+      es.onmessage = null;
+      es.onerror = null;
       es.close();
-      eventSourceRef.current = null;
     };
-  }, [refresh, t]);
-
+  }, [refresh, authenticationBlocked]);
   const withBusy = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
       setBusy(true);
@@ -171,11 +208,11 @@ export function LocalInferencePanel() {
     },
     [setActionNotice],
   );
-
   const handleDownload = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
         await client.startLocalInferenceDownload(modelId);
+        await refresh();
         setActionNotice(
           t("localinference.downloadStarted", {
             defaultValue: "Download started",
@@ -185,18 +222,17 @@ export function LocalInferencePanel() {
         );
       });
     },
-    [setActionNotice, withBusy, t],
+    [refresh, setActionNotice, withBusy, t],
   );
-
   const handleCancel = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
         await client.cancelLocalInferenceDownload(modelId);
+        await refresh();
       });
     },
-    [withBusy],
+    [refresh, withBusy],
   );
-
   const handleActivate = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
@@ -224,14 +260,12 @@ export function LocalInferencePanel() {
     },
     [setActionNotice, withBusy, t],
   );
-
   const handleUnload = useCallback(() => {
     void withBusy(async () => {
       const active = await client.clearLocalInferenceActive();
       setHub((prev) => (prev ? { ...prev, active } : prev));
     });
   }, [withBusy]);
-
   const handleUninstall = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
@@ -248,7 +282,6 @@ export function LocalInferencePanel() {
     },
     [refresh, setActionNotice, withBusy, t],
   );
-
   const handleVerify = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
@@ -285,7 +318,6 @@ export function LocalInferencePanel() {
     },
     [refresh, setActionNotice, withBusy, t],
   );
-
   const handleRedownload = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
@@ -305,18 +337,19 @@ export function LocalInferencePanel() {
     },
     [refresh, setActionNotice, withBusy, t],
   );
-
-  if (error && !hub) {
-    return (
-      <div className="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-        <span>{error}</span>
-        <Button size="dense" variant="dangerOutline" onClick={refresh}>
-          {t("localinference.retry", { defaultValue: "Retry" })}
-        </Button>
-      </div>
-    );
-  }
-
+  const refreshError = error ? (
+    <Alert
+      role="alert"
+      variant="destructive"
+      className="flex items-center justify-between gap-3"
+    >
+      <AlertDescription>{error}</AlertDescription>
+      <Button size="dense" variant="dangerOutline" onClick={refresh}>
+        {t("localinference.retry", { defaultValue: "Retry" })}
+      </Button>
+    </Alert>
+  ) : null;
+  if (error && !hub) return refreshError;
   if (!hub) {
     return (
       <p className="text-sm text-muted">
@@ -326,11 +359,15 @@ export function LocalInferencePanel() {
       </p>
     );
   }
-
   const catalog = filterSettingsDefaultLocalModels(hub.catalog);
-
+  // Publication policy governs new offers; installed models retain management controls.
+  const managementCatalog = hub.catalog.filter(
+    (model) =>
+      isSettingsDefaultLocalModel(model) || findInstalled(model, hub.installed),
+  );
   return (
     <div className="flex flex-col gap-3">
+      {refreshError}
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar status={deviceBridgeStatus} />
       <FirstRunOffer
@@ -381,7 +418,7 @@ export function LocalInferencePanel() {
 
       {tab === "curated" && (
         <ModelHubView
-          catalog={catalog}
+          catalog={managementCatalog}
           installed={hub.installed}
           downloads={hub.downloads}
           active={hub.active}
@@ -424,14 +461,12 @@ export function LocalInferencePanel() {
     </div>
   );
 }
-
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
   const hasQuery = url.includes("?");
   return `${url}${hasQuery ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
-
 /**
  * Voice sub-model auto-updater UI section (R5-versioning §5).
  *
@@ -461,7 +496,6 @@ function VoiceModelUpdatesSection() {
   >([]);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-
   // Bootstrap from the live API.
   useEffect(() => {
     let cancelled = false;
@@ -497,7 +531,6 @@ function VoiceModelUpdatesSection() {
       cancelled = true;
     };
   }, []);
-
   const onCheckNow = useCallback(async () => {
     setChecking(true);
     try {
@@ -519,7 +552,6 @@ function VoiceModelUpdatesSection() {
       setChecking(false);
     }
   }, [setActionNotice, t]);
-
   const onUpdateNow = useCallback(
     async (id: VoiceModelId) => {
       try {
@@ -540,7 +572,6 @@ function VoiceModelUpdatesSection() {
     },
     [setActionNotice, t],
   );
-
   const onTogglePin = useCallback(
     async (id: VoiceModelId, pinned: boolean) => {
       try {
@@ -566,7 +597,6 @@ function VoiceModelUpdatesSection() {
     },
     [setActionNotice, t],
   );
-
   const onSetPreferences = useCallback(
     async (next: VoiceUpdatePreferencesView) => {
       // Optimistic update — revert to the prior value on failure so the
@@ -602,7 +632,6 @@ function VoiceModelUpdatesSection() {
     },
     [setActionNotice, t],
   );
-
   return (
     <ModelUpdatesPanel
       installations={installations}
@@ -617,8 +646,6 @@ function VoiceModelUpdatesSection() {
     />
   );
 }
-
 export default LocalInferencePanel;
-
 // Avoid "unused" lints for re-exports that consumers may want.
 export type { CatalogModel, HardwareProbe, InstalledModel };

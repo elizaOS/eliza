@@ -19,7 +19,7 @@
 # For linux/riscv64 (no upstream image — oven-sh/bun#6266, #21923), build a local
 # Bun image via elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and pass
 # --build-arg BUN_BASE=<local-tag>.
-ARG BUN_BASE=oven/bun:1.3.14-alpine
+ARG BUN_BASE=oven/bun:1.4.2-alpine
 
 FROM ${BUN_BASE} AS base
 
@@ -54,7 +54,7 @@ COPY ${CORE_DIR}/src/errors.ts ${CORE_DIR}/src/errors.ts
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 WORKDIR /app/${SERVICE_DIR}
-RUN bun build src/index.ts --outdir dist --target node
+RUN bun build src/index.ts --outdir dist --target node --conditions eliza-source
 
 # Production stage
 FROM base AS runner

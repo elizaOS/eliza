@@ -3,19 +3,17 @@
  * The real-device harness requires Cloud sign-in to use the external device
  * flow and rejects any invocation of browser credential APIs.
  */
+
 import path from "node:path";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.ts";
 import { expect, ORIGIN, test } from "./android-harness";
 import {
   ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY,
   resumedAndroidActivityComponent,
 } from "./resumed-android-activity";
 
-const ARTIFACT_DIR = path.join(
-  process.cwd(),
-  "test-results",
-  "android-passkey-degrade",
-);
+const ARTIFACT_DIR = testOutputPath("app", "android-passkey-degrade");
 
 const RESET_KEYS = [
   "eliza:first-run-complete",

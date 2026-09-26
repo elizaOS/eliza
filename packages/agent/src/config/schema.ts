@@ -8,20 +8,17 @@
  * the base. The base schema/hints are computed once and cached; buildConfigSchema
  * layers any plugin/connector metadata on top per call.
  */
-import { CONNECTOR_IDS } from "@elizaos/shared/config/schema";
+import { CONNECTOR_IDS } from "@elizaos/core";
 import { VERSION } from "../runtime/version.ts";
 import { isSensitiveConfigKey } from "./sensitive-keys.ts";
-
-export { CONNECTOR_IDS };
-
 import { ElizaSchema } from "./zod-schema.ts";
 
+export { CONNECTOR_IDS };
 export type ShowIfCondition = {
   field: string;
   op: "eq" | "neq" | "in" | "truthy" | "falsy";
   value?: unknown;
 };
-
 export type ConfigUiHint = {
   label?: string;
   help?: string;
@@ -91,20 +88,15 @@ export type ConfigUiHint = {
     restoreValue?: string;
   };
 };
-
 export type ConfigUiHints = Record<string, ConfigUiHint>;
-
 export type ConfigSchema = ReturnType<typeof ElizaSchema.toJSONSchema>;
-
 type JsonSchemaNode = Record<string, unknown>;
-
 export type ConfigSchemaResponse = {
   schema: ConfigSchema;
   uiHints: ConfigUiHints;
   version: string;
   generatedAt: string;
 };
-
 export type PluginUiMetadata = {
   id: string;
   name?: string;
@@ -139,7 +131,6 @@ export type PluginUiMetadata = {
   >;
   configSchema?: JsonSchemaNode;
 };
-
 export type ConnectorUiMetadata = {
   id: string;
   label?: string;
@@ -147,7 +138,6 @@ export type ConnectorUiMetadata = {
   configSchema?: JsonSchemaNode;
   configUiHints?: Record<string, ConfigUiHint>;
 };
-
 const GROUP_LABELS: Record<string, string> = {
   wizard: "Wizard",
   update: "Update",
@@ -161,7 +151,6 @@ const GROUP_LABELS: Record<string, string> = {
   audio: "Audio",
   models: "Models",
   messages: "Messages",
-  commands: "Commands",
   session: "Session",
   cron: "Cron",
   hooks: "Hooks",
@@ -176,7 +165,6 @@ const GROUP_LABELS: Record<string, string> = {
   presence: "Presence",
   voicewake: "Voice Wake",
 };
-
 const GROUP_ORDER: Record<string, number> = {
   wizard: 20,
   update: 25,
@@ -189,7 +177,6 @@ const GROUP_ORDER: Record<string, number> = {
   audio: 60,
   models: 70,
   messages: 80,
-  commands: 85,
   session: 90,
   cron: 100,
   hooks: 110,
@@ -205,7 +192,6 @@ const GROUP_ORDER: Record<string, number> = {
   voicewake: 230,
   logging: 900,
 };
-
 const FIELD_LABELS: Record<string, string> = {
   "meta.firstRunComplete": "First Run Complete",
   "meta.lastTouchedVersion": "Config Last Touched Version",
@@ -293,9 +279,7 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.message.crossContext.marker.prefix": "Cross-Context Marker Prefix",
   "tools.message.crossContext.marker.suffix": "Cross-Context Marker Suffix",
   "tools.message.broadcast.enabled": "Enable Message Broadcast",
-  "tools.web.search.enabled": "Enable Web Search Tool",
-  "tools.web.search.provider": "Web Search Provider",
-  "tools.web.search.apiKey": "Brave Search API Key",
+  "tools.web.search.enabled": "Legacy Web Search Toggle",
   "tools.web.search.maxResults": "Web Search Max Results",
   "tools.web.search.timeoutSeconds": "Web Search Timeout (sec)",
   "tools.web.search.cacheTtlMinutes": "Web Search Cache TTL (min)",
@@ -415,15 +399,6 @@ const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.humanDelay.minMs": "Human Delay Min (ms)",
   "agents.defaults.humanDelay.maxMs": "Human Delay Max (ms)",
   "agents.defaults.cliBackends": "CLI Backends",
-  "commands.native": "Native Commands",
-  "commands.nativeSkills": "Native Skill Commands",
-  "commands.text": "Text Commands",
-  "commands.bash": "Allow Bash Chat Command",
-  "commands.bashForegroundMs": "Bash Foreground Window (ms)",
-  "commands.config": "Allow /config",
-  "commands.debug": "Allow /debug",
-  "commands.restart": "Allow Restart",
-  "commands.useAccessGroups": "Use Access Groups",
   "ui.seamColor": "Accent Color",
   "ui.assistant.name": "Assistant Name",
   "ui.assistant.avatar": "Assistant Avatar",
@@ -512,7 +487,6 @@ const FIELD_LABELS: Record<string, string> = {
   "plugins.installs.*.version": "Plugin Install Version",
   "plugins.installs.*.installedAt": "Plugin Install Time",
 };
-
 const FIELD_HELP: Record<string, string> = {
   "meta.firstRunComplete":
     "Explicit first-run completion marker used to keep the app out of setup until reset.",
@@ -604,21 +578,12 @@ const FIELD_HELP: Record<string, string> = {
     'Text suffix for cross-context markers (supports "{channel}").',
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled":
-    "Enable the web_search tool (requires a provider API key).",
-  "tools.web.search.provider": 'Search provider ("brave" or "perplexity").',
-  "tools.web.search.apiKey":
-    "Brave Search API key (fallback: BRAVE_API_KEY env var).",
+    "WEB_SEARCH is keyless (Parallel). This legacy toggle is retained for compatibility and does not control tool availability.",
   "tools.web.search.maxResults": "Default number of results to return (1-10).",
   "tools.web.search.timeoutSeconds":
     "Timeout in seconds for web_search requests.",
   "tools.web.search.cacheTtlMinutes":
     "Cache TTL in minutes for web_search results.",
-  "tools.web.search.perplexity.apiKey":
-    "Perplexity or OpenRouter API key (fallback: PERPLEXITY_API_KEY or OPENROUTER_API_KEY env var).",
-  "tools.web.search.perplexity.baseUrl":
-    "Perplexity base URL override (default: https://openrouter.ai/api/v1 or https://api.perplexity.ai).",
-  "tools.web.search.perplexity.model":
-    'Perplexity model override (default: "perplexity/sonar-pro").',
   "tools.web.fetch.enabled":
     "Enable the web_fetch tool (lightweight HTTP fetch).",
   "tools.web.fetch.timeoutSeconds":
@@ -831,23 +796,6 @@ const FIELD_HELP: Record<string, string> = {
     "Minimum delay in ms for custom humanDelay (default: 800).",
   "agents.defaults.humanDelay.maxMs":
     "Maximum delay in ms for custom humanDelay (default: 2500).",
-  "commands.native":
-    "Register native commands with channels that support it (Discord/Slack/Telegram).",
-  "commands.nativeSkills":
-    "Register native skill commands (user-invocable skills) with channels that support it.",
-  "commands.text": "Allow text command parsing (slash commands only).",
-  "commands.bash":
-    "Allow bash chat command (`!`; `/bash` alias) to run host shell commands (default: false; requires tools.elevated).",
-  "commands.bashForegroundMs":
-    "How long bash waits before backgrounding (default: 2000; 0 backgrounds immediately).",
-  "commands.config":
-    "Allow /config chat command to read/write config on disk (default: false).",
-  "commands.debug":
-    "Allow /debug chat command for runtime-only overrides (default: false).",
-  "commands.restart":
-    "Allow /restart and gateway restart tool actions (default: false).",
-  "commands.useAccessGroups":
-    "Enforce access-group allowlists/policies for commands.",
   "session.dmScope":
     'DM session scoping: "main" keeps continuity; "per-peer", "per-channel-peer", or "per-account-channel-peer" isolates DM history (recommended for shared inboxes/multi-account).',
   "session.identityLinks":
@@ -947,7 +895,17 @@ const FIELD_HELP: Record<string, string> = {
   "connectors.slack.dm.policy":
     'Direct message access control ("pairing" recommended). "open" requires connectors.slack.dm.allowFrom=["*"].',
 };
-
+/** Retired keyed web-search settings: WEB_SEARCH is keyless and no runtime
+ * path reads these. The zod shape still accepts them so an existing config
+ * validates; the settings surface never offers them. */
+const RETIRED_WEB_SEARCH_PATHS = [
+  "tools.web.search.provider",
+  "tools.web.search.apiKey",
+  "tools.web.search.perplexity",
+  "tools.web.search.perplexity.apiKey",
+  "tools.web.search.perplexity.baseUrl",
+  "tools.web.search.perplexity.model",
+] as const;
 const FIELD_PLACEHOLDERS: Record<string, string> = {
   "gateway.remote.url": "ws://host:18789",
   "gateway.remote.tlsFingerprint": "sha256:ab12cd34…",
@@ -958,29 +916,24 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "connectors.mattermost.baseUrl": "https://chat.example.com",
   "agents.list[].identity.avatar": "avatars/eliza.png",
 };
-
 function isSensitivePath(path: string): boolean {
   return isSensitiveConfigKey(path);
 }
-
 type JsonSchemaObject = JsonSchemaNode & {
   type?: string | string[];
   properties?: Record<string, JsonSchemaObject>;
   required?: string[];
   additionalProperties?: JsonSchemaObject | boolean;
 };
-
 function cloneSchema<T>(value: T): T {
   return structuredClone(value);
 }
-
 function asSchemaObject(value: unknown): JsonSchemaObject | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
   return value as JsonSchemaObject;
 }
-
 function isObjectSchema(schema: JsonSchemaObject): boolean {
   const type = schema.type;
   if (type === "object") {
@@ -991,7 +944,6 @@ function isObjectSchema(schema: JsonSchemaObject): boolean {
   }
   return Boolean(schema.properties || schema.additionalProperties);
 }
-
 function mergeObjectSchema(
   base: JsonSchemaObject,
   extension: JsonSchemaObject,
@@ -1018,7 +970,6 @@ function mergeObjectSchema(
   }
   return merged;
 }
-
 function buildBaseHints(): ConfigUiHints {
   const hints: ConfigUiHints = {};
   for (const [group, label] of Object.entries(GROUP_LABELS)) {
@@ -1040,9 +991,11 @@ function buildBaseHints(): ConfigUiHints {
     const current = hints[path];
     hints[path] = current ? { ...current, placeholder } : { placeholder };
   }
+  for (const path of RETIRED_WEB_SEARCH_PATHS) {
+    hints[path] = { ...hints[path], hidden: true };
+  }
   return hints;
 }
-
 function applySensitiveHints(hints: ConfigUiHints): ConfigUiHints {
   const next = { ...hints };
   for (const key of Object.keys(next)) {
@@ -1052,7 +1005,6 @@ function applySensitiveHints(hints: ConfigUiHints): ConfigUiHints {
   }
   return next;
 }
-
 function applyPluginHints(
   hints: ConfigUiHints,
   plugins: PluginUiMetadata[],
@@ -1065,7 +1017,6 @@ function applyPluginHints(
     }
     const name = (plugin.name ?? id).trim() || id;
     const basePath = `plugins.entries.${id}`;
-
     next[basePath] = {
       ...next[basePath],
       label: name,
@@ -1082,7 +1033,6 @@ function applyPluginHints(
       label: `${name} Config`,
       help: `Plugin-defined config payload for ${id}.`,
     };
-
     const uiHints = plugin.configUiHints ?? {};
     for (const [relPathRaw, hint] of Object.entries(uiHints)) {
       const relPath = relPathRaw.trim().replace(/^\./, "");
@@ -1098,7 +1048,6 @@ function applyPluginHints(
   }
   return next;
 }
-
 function applyConnectorHints(
   hints: ConfigUiHints,
   connectors: ConnectorUiMetadata[],
@@ -1118,7 +1067,6 @@ function applyConnectorHints(
       ...(label ? { label } : {}),
       ...(help ? { help } : {}),
     };
-
     const uiHints = connector.configUiHints ?? {};
     for (const [relPathRaw, hint] of Object.entries(uiHints)) {
       const relPath = relPathRaw.trim().replace(/^\./, "");
@@ -1134,7 +1082,6 @@ function applyConnectorHints(
   }
   return next;
 }
-
 function listHeartbeatTargetConnectors(
   connectors: ConnectorUiMetadata[],
 ): string[] {
@@ -1158,7 +1105,6 @@ function listHeartbeatTargetConnectors(
   }
   return ordered;
 }
-
 function applyHeartbeatTargetHints(
   hints: ConfigUiHints,
   connectors: ConnectorUiMetadata[],
@@ -1183,7 +1129,6 @@ function applyHeartbeatTargetHints(
   }
   return next;
 }
-
 function applyPluginSchemas(
   schema: ConfigSchema,
   plugins: PluginUiMetadata[],
@@ -1195,11 +1140,9 @@ function applyPluginSchemas(
   if (!entriesNode) {
     return next;
   }
-
   const entryBase = asSchemaObject(entriesNode.additionalProperties);
   const entryProperties = entriesNode.properties ?? {};
   entriesNode.properties = entryProperties;
-
   for (const plugin of plugins) {
     if (!plugin.configSchema) {
       continue;
@@ -1218,17 +1161,14 @@ function applyPluginSchemas(
       isObjectSchema(pluginSchema)
         ? mergeObjectSchema(baseConfigSchema, pluginSchema)
         : cloneSchema(plugin.configSchema);
-
     entryObject.properties = {
       ...entryObject.properties,
       config: nextConfigSchema,
     };
     entryProperties[plugin.id] = entryObject;
   }
-
   return next;
 }
-
 function applyConnectorSchemas(
   schema: ConfigSchema,
   connectors: ConnectorUiMetadata[],
@@ -1241,7 +1181,6 @@ function applyConnectorSchemas(
   }
   const connectorProps = connectorsNode.properties ?? {};
   connectorsNode.properties = connectorProps;
-
   for (const connector of connectors) {
     if (!connector.configSchema) {
       continue;
@@ -1259,12 +1198,9 @@ function applyConnectorSchemas(
       connectorProps[connector.id] = cloneSchema(connector.configSchema);
     }
   }
-
   return next;
 }
-
 let cachedBase: ConfigSchemaResponse | null = null;
-
 function stripConnectorSchema(schema: ConfigSchema): ConfigSchema {
   const next = cloneSchema(schema);
   const root = asSchemaObject(next);
@@ -1279,7 +1215,6 @@ function stripConnectorSchema(schema: ConfigSchema): ConfigSchema {
   }
   return next;
 }
-
 function buildBaseConfigSchema(): ConfigSchemaResponse {
   if (cachedBase) {
     return cachedBase;
@@ -1299,7 +1234,6 @@ function buildBaseConfigSchema(): ConfigSchemaResponse {
   cachedBase = next;
   return next;
 }
-
 export function buildConfigSchema(params?: {
   plugins?: PluginUiMetadata[];
   connectors?: ConnectorUiMetadata[];

@@ -4,9 +4,9 @@
  */
 // @vitest-environment jsdom
 
-import { logger } from "@elizaos/logger";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../logger.ts";
 
 const h = vi.hoisted(() => ({
   useTalkMode: false,

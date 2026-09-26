@@ -6,19 +6,20 @@
 
 const NUMBER_TOKEN = String.raw`(?:[+-]?(?:\d+(?:\.\d+)?|\.\d+)|an?|one|[^\s,;:!?]+)`;
 const UNIT_TOKEN = `(seconds?|minutes?|hours?)`;
+const RECIPIENT_TOKEN = String.raw`(?:me|us|(?:this|the)\s+group)`;
 
 const COMMAND_DELAY_PATTERN = new RegExp(
-  String.raw`\b(?:(?:please\s+)?remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\s+(?:for\s+)?in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
+  String.raw`\b(?:(?:please\s+)?remind\s+${RECIPIENT_TOKEN}|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\s+(?:for\s+)?in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
   "gi",
 );
 
 const LEADING_DELAY_PATTERN = new RegExp(
-  String.raw`(?:^|[.!?]\s+)(?:please\s+)?in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\s*[,;:\-]?\s*(?:please\s+)?remind\s+me\b`,
+  String.raw`(?:^|[.!?]\s+)(?:please\s+)?in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\s*[,;:\-]?\s*(?:please\s+)?remind\s+${RECIPIENT_TOKEN}\b`,
   "gi",
 );
 
 const TRAILING_DELAY_PATTERN = new RegExp(
-  String.raw`\b(?:(?:please\s+)?remind\s+me\s+to|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder\s+(?:to|for))\s+[^.!?\n]{1,200}?\s+in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
+  String.raw`\b(?:(?:please\s+)?remind\s+${RECIPIENT_TOKEN}\s+to|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder\s+(?:to|for))\s+[^.!?\n]{1,200}?\s+in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
   "gi",
 );
 
@@ -161,7 +162,7 @@ const IMMEDIATE_REVISION_PATTERN = new RegExp(
 );
 
 const LATER_CANCELLATION_PATTERN = new RegExp(
-  String.raw`^\s*${COMMAND_SEPARATOR}?\s*(?:(?:but|however)\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:actually\s*${COMMAND_SEPARATOR}?\s*please|please\s*${COMMAND_SEPARATOR}?\s*actually|actually|please)\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b|(?:never\s+mind\b|cancel(?:\s+(?:that(?:\s+reminder)?|it|the\s+reminder))?\b)(?:\s*,?\s+please\b)?(?=\s*(?:[.!?…]+|$)))`,
+  String.raw`^\s*${COMMAND_SEPARATOR}?\s*(?:(?:but|however)\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:actually\s*${COMMAND_SEPARATOR}?\s*please|please\s*${COMMAND_SEPARATOR}?\s*actually|actually|please)\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+${RECIPIENT_TOKEN}|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b|(?:never\s+mind\b|cancel(?:\s+(?:that(?:\s+reminder)?|it|the\s+reminder))?\b)(?:\s*,?\s+please\b)?(?=\s*(?:[.!?…]+|$)))`,
   "i",
 );
 

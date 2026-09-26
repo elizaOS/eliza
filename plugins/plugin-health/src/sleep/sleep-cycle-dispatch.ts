@@ -2,25 +2,23 @@
  * Derives the morning and night check-in scheduling windows (and their recap
  * payloads) from a resolved sleep-cycle state and the owner's baseline/profile.
  */
-import type {
-  LifeOpsCircadianState,
-  LifeOpsPersonalBaseline,
-  LifeOpsRegularityClass,
-  LifeOpsScheduleRegularity,
+
+import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import {
+  type LifeOpsCircadianState,
+  type LifeOpsPersonalBaseline,
+  type LifeOpsRegularityClass,
+  type LifeOpsScheduleRegularity,
 } from "../contracts/health.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
-import { parseIsoMs } from "../util/time-util.js";
-import type { SleepRecap } from "./sleep-recap.js";
-
+import { type SleepRecap } from "./sleep-recap.js";
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;
 // Default bedtime when an irregular-schedule owner has not configured a
 // `nightCheckinTime` profile field. Matches the documented night-summary
 // expectation in the lifeops T9f plan.
 export const DEFAULT_IRREGULAR_BEDTIME_LOCAL = "23:00";
-
 const HHMM_RE = /^(\d{1,2}):(\d{2})$/;
-
 export interface CheckinSleepCycleState {
   readonly circadianState: LifeOpsCircadianState;
   readonly wakeAt: string | null;
@@ -32,7 +30,6 @@ export interface CheckinSleepCycleState {
     readonly minutesUntilBedtimeTarget: number | null;
   };
 }
-
 function parseHHMM(value: string | null | undefined): {
   hour: number;
   minute: number;
@@ -47,7 +44,6 @@ function parseHHMM(value: string | null | undefined): {
   if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;
   return { hour, minute };
 }
-
 /**
  * For owners whose schedule is `irregular` / `very_irregular`, the relative
  * time resolver leaves `bedtimeTargetAt` null because no projection is
@@ -87,9 +83,8 @@ export function minutesUntilLocalBedtime(args: {
           minute: parts.minute,
           second: 0,
         }).getTime();
-  return Math.round((candidateMs - nowMs) / 60_000);
+  return Math.round((candidateMs - nowMs) / 60000);
 }
-
 function isIrregular(
   regularityClass: LifeOpsRegularityClass | undefined,
 ): boolean {
@@ -97,7 +92,6 @@ function isIrregular(
     regularityClass === "irregular" || regularityClass === "very_irregular"
   );
 }
-
 export function shouldRunMorningCheckinFromSleepCycle(args: {
   readonly state: CheckinSleepCycleState | null;
   readonly now: Date;
@@ -109,12 +103,11 @@ export function shouldRunMorningCheckinFromSleepCycle(args: {
   if (wakeAtMs === null) {
     return false;
   }
-  const minutesSinceWake = (args.now.getTime() - wakeAtMs) / 60_000;
+  const minutesSinceWake = (args.now.getTime() - wakeAtMs) / 60000;
   return (
     minutesSinceWake >= 0 && minutesSinceWake <= MORNING_CHECKIN_WINDOW_MINUTES
   );
 }
-
 /**
  * Decide whether the night summary should fire on this scheduler tick.
  *
@@ -188,7 +181,6 @@ export function shouldRunNightCheckinFromSleepCycle(args: {
   }
   return false;
 }
-
 /**
  * Project the four sleep-recap fields out of a merged schedule-state record
  * (or any object exposing the same `baseline` / `regularity` shape) so the

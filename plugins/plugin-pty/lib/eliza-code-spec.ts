@@ -5,18 +5,16 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import {
   type DevCloudEnvAuthority,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
-import type { PtySpawnSpec } from "../services/pty-types";
-
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { type PtySpawnSpec } from "../services/pty-types";
 export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.eliza.app/v1";
 export const ELIZA_CLOUD_FAST_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const ELIZA_CLOUD_SMART_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
-
 export interface ElizaCodeCloudTuple {
   /** Immutable launcher authority, or null for the legacy operator-controlled path. */
   authority: DevCloudEnvAuthority | null;
@@ -27,12 +25,10 @@ export interface ElizaCodeCloudTuple {
   /** OpenAI-compatible inference base URL the child must use. */
   baseUrl?: string;
 }
-
 function trimmed(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized || undefined;
 }
-
 /**
  * Convert the canonical Cloud control-plane base (`/api/v1`) stamped by the
  * launcher into the OpenAI-compatible inference base (`/v1`) consumed by
@@ -44,7 +40,6 @@ function toElizaCodeInferenceBaseUrl(
   const normalized = trimmed(value)?.replace(/\/+$/, "");
   return normalized?.replace(/\/api\/v1$/, "/v1");
 }
-
 /**
  * Resolve the only Cloud tuple an eliza-code child may use. A valid launcher
  * authority owns the tuple completely: blocked targets disable the Cloud lane,
@@ -79,7 +74,6 @@ export function resolveElizaCodeCloudTuple(input?: {
     baseUrl: trimmed(input?.baseUrl) ?? ELIZA_CLOUD_DEFAULT_BASE_URL,
   };
 }
-
 function isAuthorityControlledChildEnvKey(key: string): boolean {
   const normalized = key.toUpperCase();
   return (
@@ -93,7 +87,6 @@ function isAuthorityControlledChildEnvKey(key: string): boolean {
     normalized.startsWith("WAIFU_ELIZA_CLOUD_")
   );
 }
-
 export interface ElizaCodeCerebrasOptions {
   /** Working directory the interactive session runs in (confined to this). */
   cwd: string;
@@ -118,7 +111,6 @@ export interface ElizaCodeCerebrasOptions {
   /** Extra env overrides merged last (tests / advanced callers). */
   extraEnv?: Record<string, string | undefined>;
 }
-
 /**
  * Builds the spawn spec. Performs no I/O or process spawn; when a development
  * Cloud authority exists it reads only that immutable launcher snapshot.
@@ -149,7 +141,6 @@ export function buildElizaCodeCerebrasSpec(
       "eliza-code interactive session requires a resolved binPath (dist/index.js).",
     );
   }
-
   const baseUrl = cloud.baseUrl;
   if (!baseUrl) {
     throw new Error(
@@ -161,11 +152,9 @@ export function buildElizaCodeCerebrasSpec(
   const tier = opts.tier ?? "fast";
   const runner = (opts.runner ?? "bun").trim();
   const cwd = path.resolve(opts.cwd);
-
   // Small/medium follow the tier; large is always the smart model so heavy
   // reasoning calls escalate even in fast mode.
   const smallModel = tier === "smart" ? smartModel : fastModel;
-
   const env: Record<string, string | undefined> = {
     ELIZA_CODE_PROVIDER: "openai",
     ELIZA_CODE_CODING_ONLY: "1",
@@ -179,7 +168,6 @@ export function buildElizaCodeCerebrasSpec(
     SHELL_ALLOWED_DIRECTORY: cwd,
     ...(opts.extraEnv ?? {}),
   };
-
   // A direct library caller can otherwise smuggle a second Cloud tuple through
   // extraEnv after the validated values. Clamp the final child projection too,
   // so route validation is not the only authority boundary.
@@ -190,7 +178,6 @@ export function buildElizaCodeCerebrasSpec(
     env.OPENAI_API_KEY = apiKey;
     env.OPENAI_BASE_URL = baseUrl;
   }
-
   return {
     command: runner,
     args: [opts.binPath, "--interactive", "--coding-only"],
@@ -200,7 +187,6 @@ export function buildElizaCodeCerebrasSpec(
     kind: "eliza-code",
   };
 }
-
 /**
  * Resolves the operator-supplied interactive eliza-code entry. The CLI is an
  * external runtime dependency, so deployments must provide an absolute
@@ -212,7 +198,6 @@ export function resolveElizaCodeBin(opts?: {
 }): string {
   const env = opts?.env ?? process.env;
   const exists = opts?.exists ?? existsSync;
-
   const configuredPath = env.ELIZA_CODE_BIN?.trim();
   if (!configuredPath) {
     throw new Error(

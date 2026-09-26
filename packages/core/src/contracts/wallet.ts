@@ -1,6 +1,6 @@
 /**
- * Runtime-owned wallet contracts, RPC builders, and provider normalization.
- * Pure shapes live in wallet-types; shared import paths forward to this owner.
+ * Wallet wire contracts, RPC request builders, and provider normalization.
+ * Hosts consume these shared values when configuring their wallet services.
  */
 
 import type {
@@ -102,7 +102,6 @@ export type {
 
 // ── Runtime helpers ──────────────────────────────────────────────────────────
 // RPC provider catalog, normalizers, and request builders.
-// These have runtime values and cannot live in the pure-types contracts package.
 
 export const WALLET_RPC_PROVIDER_OPTIONS = {
 	evm: [

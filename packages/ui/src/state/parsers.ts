@@ -1,8 +1,9 @@
 /**
  * Pure parsers that turn untrusted stream/WS payloads into the typed shapes the
  * chat reducer consumes (agent status, startup diagnostics, conversation
- * messages, custom-action params, slash-command input). No React, no I/O.
+ * messages and custom-action params). No React, no I/O.
  */
+
 import type {
   AgentStartupDiagnostics,
   AgentStatus,
@@ -13,17 +14,11 @@ import type {
 import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,
-} from "../utils/streaming-text";
-import {
-  AGENT_STATES,
-  type ApiLikeError,
-  type SlashCommandInput,
-} from "./types";
-
+} from "../utils/streaming-text.js";
+import { AGENT_STATES, type ApiLikeError } from "./types";
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 export function parseAgentStatusEvent(
   data: Record<string, unknown>,
 ): AgentStatus | null {
@@ -58,7 +53,6 @@ export function parseAgentStatusEvent(
     startup,
   };
 }
-
 /**
  * Parses `agentStatus` from a `desktopTrayMenuClick` payload when the main
  * process finishes menu reset (`itemId === "menu-reset-app-applied"`).
@@ -74,14 +68,16 @@ export function parseAgentStatusFromMainMenuResetPayload(
   ) {
     return null;
   }
-  const as = (payload as { agentStatus?: Record<string, unknown> | null })
-    .agentStatus;
+  const as = (
+    payload as {
+      agentStatus?: Record<string, unknown> | null;
+    }
+  ).agentStatus;
   if (!as || typeof as !== "object" || Array.isArray(as)) {
     return null;
   }
   return parseAgentStatusEvent(as);
 }
-
 export function parseAgentStartupDiagnostics(
   value: unknown,
 ): AgentStartupDiagnostics | undefined {
@@ -115,7 +111,6 @@ export function parseAgentStartupDiagnostics(
   }
   return startup;
 }
-
 export function parseStreamEventEnvelopeEvent(
   data: Record<string, unknown>,
 ): StreamEventEnvelope | null {
@@ -131,7 +126,6 @@ export function parseStreamEventEnvelopeEvent(
   ) {
     return null;
   }
-
   const envelope: StreamEventEnvelope = {
     type,
     version: 1,
@@ -148,7 +142,6 @@ export function parseStreamEventEnvelopeEvent(
   if (typeof data.roomId === "string") envelope.roomId = data.roomId;
   return envelope;
 }
-
 export function parseConversationMessageEvent(
   value: unknown,
 ): ConversationMessage | null {
@@ -177,6 +170,13 @@ export function parseConversationMessageEvent(
     return null;
   }
   const parsed: ConversationMessage = { id, role, text, timestamp };
+  if (
+    role === "assistant" &&
+    typeof value.planningAcknowledgment === "string" &&
+    value.planningAcknowledgment.trim()
+  ) {
+    parsed.planningAcknowledgment = value.planningAcknowledgment;
+  }
   if (transcriptVisibility === "internal") {
     parsed.transcriptVisibility = transcriptVisibility;
   }
@@ -266,30 +266,26 @@ export function parseConversationMessageEvent(
   }
   return parsed;
 }
-
-export function parseProactiveMessageEvent(
-  data: Record<string, unknown>,
-): { conversationId: string; message: ConversationMessage } | null {
+export function parseProactiveMessageEvent(data: Record<string, unknown>): {
+  conversationId: string;
+  message: ConversationMessage;
+} | null {
   const conversationId = data.conversationId;
   if (typeof conversationId !== "string") return null;
   const message = parseConversationMessageEvent(data.message);
   if (!message) return null;
   return { conversationId, message };
 }
-
 export { mergeStreamingText };
-
 export function computeStreamingDelta(
   existing: string,
   incoming: string,
 ): string {
   return computeStreamingDeltaInternal(existing, incoming);
 }
-
 export function normalizeStreamComparisonText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
-
 export function shouldApplyFinalStreamText(
   streamed: string,
   finalText: string,
@@ -302,12 +298,6 @@ export function shouldApplyFinalStreamText(
     normalizeStreamComparisonText(finalText)
   );
 }
-
-function normalizeSlashCommandName(name: string): string {
-  if (!name.startsWith("/")) name = `/${name}`;
-  return name.trim().toLowerCase();
-}
-
 // Split command arguments into tokens. Each token is an optional `key=` prefix
 // followed by a value that is either a quoted string (quotes stripped, inner
 // spaces preserved) or a bare run of non-space chars. Keeping `key="multi word"`
@@ -325,28 +315,12 @@ function splitCommandArgs(text: string): string[] {
   }
   return parts;
 }
-
-export function parseSlashCommandInput(text: string): SlashCommandInput | null {
-  if (!text.startsWith("/")) return null;
-  const body = text.slice(1).trim();
-  if (!body) return null;
-  const firstSpace = body.search(/\s/);
-  if (firstSpace === -1) {
-    return { name: normalizeSlashCommandName(body), argsRaw: "" };
-  }
-  return {
-    name: normalizeSlashCommandName(body.slice(0, firstSpace)),
-    argsRaw: body.slice(firstSpace + 1).trim(),
-  };
-}
-
 export function normalizeCustomActionName(value: string): string {
   return value
     .trim()
     .replace(/[\s-]+/g, "_")
     .toUpperCase();
 }
-
 export function parseCustomActionParams(
   action: CustomActionDef,
   argsRaw: string,
@@ -357,7 +331,6 @@ export function parseCustomActionParams(
   const tokens = splitCommandArgs(argsRaw);
   const named = new Map<string, string>();
   const positional: string[] = [];
-
   for (const token of tokens) {
     const eq = token.indexOf("=");
     if (eq > 0) {
@@ -370,13 +343,11 @@ export function parseCustomActionParams(
     }
     positional.push(token);
   }
-
   const params: Record<string, string> = {};
   const defs = Array.isArray(action.parameters) ? action.parameters : [];
   const defsByLower = new Map(
     defs.map((def) => [def.name.trim().toLowerCase(), def.name]),
   );
-
   for (const [key, value] of named) {
     const canonical = defsByLower.get(key);
     if (canonical) {
@@ -385,13 +356,11 @@ export function parseCustomActionParams(
       params[key] = value;
     }
   }
-
   for (const def of defs) {
     if (params[def.name] == null && positional.length > 0) {
       params[def.name] = positional.shift() as string;
     }
   }
-
   if (positional.length > 0) {
     const sink = defs.find((def) =>
       ["input", "text", "query", "message", "prompt"].includes(
@@ -405,21 +374,17 @@ export function parseCustomActionParams(
         : positional.join(" ");
     }
   }
-
   const missingRequired = defs
     .filter((def) => def.required)
     .map((def) => def.name)
     .filter((name) => !(params[name] ?? "").trim());
-
   return { params, missingRequired };
 }
-
 /** Plain-text variant of formatSearchBullet (uses `- ` bullets, no bold). */
 export function formatSearchBullet(label: string, items: string[]): string {
   if (items.length === 0) return `${label}: none`;
   return `${label}:\n${items.map((item) => `- ${item}`).join("\n")}`;
 }
-
 export function asApiLikeError(err: unknown): ApiLikeError | null {
   if (!isRecord(err)) return null;
   const kind = err.kind;
@@ -442,7 +407,6 @@ export function asApiLikeError(err: unknown): ApiLikeError | null {
     data,
   };
 }
-
 /** API-error-aware variant that extracts path/status/message from structured errors. */
 export function formatStartupErrorDetail(err: unknown): string | undefined {
   const apiErr = asApiLikeError(err);

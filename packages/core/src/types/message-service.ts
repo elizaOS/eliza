@@ -13,10 +13,17 @@ import type {
 	HandlerCallback,
 	StreamChunkCallback,
 } from "./components";
+import type { EffectReceipt } from "./effects";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { ModelType } from "./model";
-import type { Content, Media, MentionContext, UUID } from "./primitives";
+import type {
+	Content,
+	JsonValue,
+	Media,
+	MentionContext,
+	UUID,
+} from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
@@ -41,6 +48,8 @@ export interface MessageProcessingOptions {
 	codingActionProfile?: CodingActionProfile;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
+	/** Transient progress from existing inference; never a persisted or final reply. */
+	onPlanningAcknowledgment?: (text: string) => void;
 	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.
@@ -82,7 +91,7 @@ export interface MessageProcessingOptions {
 /**
  * Result of message processing
  */
-export interface MessageTerminalFailure {
+export interface RuntimeFailure {
 	/** Stable machine-readable category for adapters and orchestration hosts. */
 	kind: string;
 	/** Action boundary code when the failing tool supplied typed provenance. */
@@ -93,16 +102,37 @@ export interface MessageTerminalFailure {
 	message: string;
 }
 
+/** Server-only evidence for regenerating prose without executing a turn again. */
+export interface MessageReplyRecoveryContext {
+	context: string;
+	/** Complete current-turn settlements retained for in-flight callback recovery. */
+	actionResults?: ActionResult[];
+	/** Optional source-selected rendering; complete context remains authoritative. */
+	historySelection?: {
+		context: string;
+		fullContextHash: string;
+		contextHash: string;
+	};
+	pendingToolCalls: JsonValue[];
+	evaluatorOutputs: JsonValue[];
+	ownerExclusiveDisclosureUsed: boolean;
+}
+
+/** Execution outcome is independent of whether a transport delivered a reply. */
+export type TurnOutcome = (
+	| { status: "completed"; reason?: string }
+	| { status: "denied"; reason: string }
+	| { status: "cancelled"; reason: string }
+	| { status: "failed"; error: RuntimeFailure }
+) & { effects: readonly EffectReceipt[] };
+
 export interface MessageProcessingResult {
+	outcome: TurnOutcome;
+	/** Final planner assessment; not an independent benchmark grade. Omitted when unavailable. */
+	requestFulfilled?: boolean;
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
-	/**
-	 * Terminal failure independent of response delivery. Callback-delivered or
-	 * deduplicated text may leave `responseContent` null, but callers still need
-	 * an authoritative non-success result.
-	 */
-	terminalFailure?: MessageTerminalFailure;
 	/**
 	 * The returned delivery belongs to a live message-service run whose detached
 	 * task barrier will emit `RUN_ENDED`. Hosts must preserve this capability on
@@ -117,6 +147,8 @@ export interface MessageProcessingResult {
 	persistedResponseMessageIds?: UUID[];
 	/** Results executed during this turn, preserved across planner/cache cleanup. */
 	actionResults?: ActionResult[];
+	/** Complete original context; never expose this on public chat DTOs. */
+	replyRecovery?: MessageReplyRecoveryContext;
 	state?: State;
 	mode?: MessageProcessingMode;
 	skipEvaluation?: boolean;
@@ -174,6 +206,7 @@ export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked";
  *   async handleMessage(runtime, message, callback) {
  *     // Your custom message handling logic
  *     return {
+ *       outcome: { status: "completed", effects: [] },
  *       didRespond: true,
  *       responseContent: { text: "Custom response" },
  *       responseMessages: [],

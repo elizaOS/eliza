@@ -7,12 +7,13 @@
  * input is an already-loaded registry map.
  */
 
-import { searchRegistryEntries } from "@elizaos/registry";
 import {
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
-} from "@elizaos/shared";
+  searchRegistryEntries,
+} from "@elizaos/core";
+
 import type {
   RegistryAppInfo,
   RegistryPluginInfo,

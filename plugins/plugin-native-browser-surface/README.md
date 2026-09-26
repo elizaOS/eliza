@@ -1,61 +1,38 @@
 # @elizaos/capacitor-browser-surface
 
-`ElizaSurfaceManager` — the native Capacitor plugin that layers one **isolated
-native web surface per Browser tab** on the mobile shell (issue #15245, deferred
-from #14181, parent epic #13452).
+Isolated native browser surfaces for mobile Browser tabs, exposed through the ElizaSurfaceManager Capacitor bridge.
 
-The Browser view hosts arbitrary third-party web content. On desktop it embeds an
-Electrobun `WebContentsView` (its own renderer process). On the web it degrades to
-a sandboxed iframe. On a **native mobile shell** an in-realm iframe would still
-share the host WebView's renderer process and storage partition — the exact
-cross-surface leak the isolation epic closes. This plugin gives each tab its own
-native child web surface instead:
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-- **iOS** — a `WKWebView` per surface. `isolated` process ⇒ a fresh
-  `WKProcessPool` boundary; `isolated` storage ⇒
-  `WKWebsiteDataStore.nonPersistent()` (its own cookies/localStorage/IndexedDB).
-  `shared` reuses a plugin-owned pool / the default store.
-- **Android** — a `WebView` per surface with a verified out-of-app sandboxed
-  renderer; Android may reuse that renderer process across sibling WebViews.
-  `isolated` storage ⇒ its own androidx.webkit multi-profile `Profile`. If the
-  system WebView is too old for multi-profile or cannot expose an out-of-app
-  renderer, `createSurface` **rejects** rather than silently weakening the
-  boundary.
+Android `openBrowser` opens a full Chromium Custom Tab using the installed
+build-pinned browser (`org.chromium.chrome` by default, or `ai.elizaos.chromium`
+for the owned build). Chromium owns cookies, permissions, headers,
+password autofill and passkeys; the return value confirms dispatch, not website
+load or sign-in. The browser must provide a Custom Tabs service. Missing or
+disabled or incorrectly signed Chromium is an explicit error, without a WebView fallback. Existing
+`createSurface` views remain isolated WebViews and are not full-browser tabs.
 
-## Explicit-policy invariant
+Set `ELIZA_CHROMIUM_PACKAGE_NAME` to one of those two package names and
+`ELIZA_CHROMIUM_CERT_SHA256` to its signing-certificate SHA-256 when building the
+Android host and plugin. Missing pins fail closed; package selection is never a
+runtime setting. Changing packages uses a separate browser profile and does not
+migrate existing browser grants or credentials. Native messaging retains its
+upstream `org.chromium.chrome.browser` AIDL/action ABI.
 
-Every surface carries an **explicit** process + storage policy. `createSurface`
-rejects when either field is absent — there is no implicit platform default,
-because a defaulted storage partition is the leak this closes. The policy is
-derived from the view's `SurfaceManifest` on the JS side
-(`packages/ui/src/surface/native-surface-shell.ts` → `deriveSurfacePlacement`).
+## Development
 
-## Consumer
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-The renderer never imports this package directly. `@elizaos/ui`'s
-`capacitor-native-surface-shell.ts` models the method set structurally and calls
-it through the Capacitor `Plugins` registry under the jsName `ElizaSurfaceManager`;
-`use-mobile-native-tab-surfaces.ts` drives one surface per Browser tab
-(create → setBounds/navigate → foreground/background → destroy) on the
-`native-mobile-webview` render path.
+```bash
+bun run --cwd plugins/plugin-native-browser-surface build  # build
+bun run --cwd plugins/plugin-native-browser-surface test   # tests
+```
 
-`setBounds` carries both the page rectangle and its outer rounded clip in one
-update. The renderer reads that clip from the actual computed overflow-clipping
-host instead of copying a CSS radius token. Android and iOS update their paint
-mask and hit-test shape in place, so responsive radius changes neither reload
-the page nor interfere with the independent React-overlay occlusion holes.
+Android device tests exercise ownership, storage isolation, real WebView page
+reads, navigation/back/reload, and visibility after rejected presentation:
 
-## Non-goals
+```bash
+node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
+```
 
-- Desktop `WebContentsView` embedding (shipped in #14181).
-- Wallet / EIP-1193 injection and the desktop `BROWSER_TAB_PRELOAD_SCRIPT` — mobile
-  native surfaces ship isolation only.
-
-## Testing
-
-- `bun run test` — web-fallback and native source-contract tests.
-- Android `connectedAndroidTest` — cross-profile storage-isolation on a real
-  emulator plus outer-corner/occlusion paint and touch composition
-  (`BrowserSurfaceIsolationInstrumentedTest`).
-- The JS driver + placement + per-tab hook are unit-tested in `@elizaos/ui`
-  (`src/surface/*.test.ts`, `src/surface-embedding.test.ts`).
+The bridge fixture exports native screenshots and complete page-read results.

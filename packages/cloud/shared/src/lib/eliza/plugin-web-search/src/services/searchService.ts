@@ -86,18 +86,18 @@ export class WebSearchService extends Service implements IWebSearchService {
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
     // No key required: without a Google/Gemini key the service serves the
-    // keyless MCP path (Parallel → Exa) instead of refusing to start, so a
+    // keyless MCP path (Parallel) instead of refusing to start, so a
     // hosted agent always has working web search.
     if (!getGoogleSearchApiKey(runtime)) {
       logger.info(
         { src: "webSearchService:initialize" },
-        "No Google search key configured; using keyless MCP search (Parallel → Exa)",
+        "No Google search key configured; using keyless MCP search (Parallel)",
       );
     }
   }
 
   get capabilityDescription(): string {
-    return "Web search: Google-grounded via Gemini when a key is configured, otherwise keyless MCP search (Parallel with Exa fallback).";
+    return "Web search: Google-grounded via Gemini when a key is configured, otherwise keyless MCP search (Parallel).";
   }
 
   async stop(): Promise<void> {}
@@ -105,7 +105,7 @@ export class WebSearchService extends Service implements IWebSearchService {
   async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
     if (!getGoogleSearchApiKey(this.runtime)) {
       const started = Date.now();
-      const keyless = await executeKeylessMcpSearch(query, options?.max_results ?? 5);
+      const keyless = await executeKeylessMcpSearch(query);
       return {
         answer: keyless.answer,
         query,

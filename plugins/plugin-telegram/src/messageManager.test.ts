@@ -29,12 +29,12 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    resolveAttachmentBytes: resolveAttachmentBytesMock,
     logger: {
       ...actual.logger,
       error: loggerErrorMock,
       warn: loggerWarnMock,
     },
-    resolveAttachmentBytes: resolveAttachmentBytesMock,
   };
 });
 

@@ -8,61 +8,31 @@
     "exports": {
         "./package.json": "./package.json",
         ".": {
-            "eliza-source": {
-                "types": "./src/index.ts",
-                "import": "./src/index.ts",
-                "default": "./src/index.ts"
-            },
+            "eliza-source": "./src/index.ts",
             "import": {
                 "types": "./dist/index.d.ts",
                 "default": "./dist/index.js"
             }
         },
-        "./edge": {
-            "types": "./dist/edge.d.ts",
-            "eliza-source": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "bun": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "worker": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "import": "./dist/edge.js",
-            "default": "./dist/edge.js"
-        },
         "./*.css": "./dist/*.css",
-        "./*": {
-            "types": "./dist/*.d.ts",
-            "eliza-source": {
-                "types": "./src/*.ts",
-                "import": "./src/*.ts",
-                "default": "./src/*.ts"
-            },
-            "import": "./dist/*.js",
-            "default": "./dist/*.js"
+        "./browser-web-search": {
+            "eliza-source": "./src/browser-web-search.ts",
+            "types": "./dist/browser-web-search.d.ts",
+            "import": "./dist/browser-web-search.js"
         }
     },
     "files": [
         "dist"
     ],
     "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@tavily/core": "^0.7.0"
+        "@elizaos/core": "workspace:*"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.8",
+        "@biomejs/biome": "2.5.14",
         "tsup": "^8.5.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^4.1.10"
+        "vitest": "^5.0.1"
     },
     "scripts": {
         "test": "vitest run --config ./vitest.config.ts",
@@ -79,9 +49,13 @@
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",
         "pluginParameters": {
-            "TAVILY_API_KEY": {
+            "WEB_SEARCH_BROWSER_PROFILE_ID": {
                 "type": "string",
-                "description": "Tavily API key for accessing news services"
+                "description": "Explicit owner grant: exact registered Chromium profile ID permitted for browser-first web searches."
+            },
+            "WEB_SEARCH_BROWSER_TARGET_ID": {
+                "type": "string",
+                "description": "Registered profile-bound browser target; defaults to chromium-device. Does not grant access without the exact profile ID."
             }
         }
     }

@@ -307,7 +307,7 @@ export function PromoteAppDialog({
                       className={`px-2 py-0.5 rounded-sm text-2xs ${
                         config.channels.includes("social")
                           ? "bg-accent-subtle text-accent"
-                          : "bg-bg-hover text-muted"
+                          : "bg-bg-hover text-muted-strong"
                       }`}
                     >
                       ~$0.02/post
@@ -351,7 +351,7 @@ export function PromoteAppDialog({
                       className={`px-2 py-0.5 rounded-sm text-2xs ${
                         config.channels.includes("seo")
                           ? "bg-status-success-bg text-status-success"
-                          : "bg-bg-hover text-muted"
+                          : "bg-bg-hover text-muted-strong"
                       }`}
                     >
                       ~$0.03
@@ -414,7 +414,7 @@ export function PromoteAppDialog({
                         className={`px-2 py-0.5 rounded-sm text-2xs ${
                           config.channels.includes("advertising")
                             ? "bg-accent-subtle text-accent"
-                            : "bg-bg-hover text-muted"
+                            : "bg-bg-hover text-muted-strong"
                         }`}
                       >
                         Custom budget

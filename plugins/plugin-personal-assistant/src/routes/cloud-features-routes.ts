@@ -9,17 +9,15 @@
  * did not report. Fails with the upstream status when Cloud is unreachable or
  * the caller is not signed in.
  */
-
 import type http from "node:http";
-import type { CloudProxyConfigLike } from "@elizaos/agent";
+import { type CloudProxyConfigLike } from "@elizaos/agent";
 import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
   type Service,
-  sendJson,
-  sendJsonError,
 } from "@elizaos/core";
+import { sendJson, sendJsonError } from "@elizaos/core/api/http-helpers";
 import {
   type CloudAuthApiKeyService,
   normalizeCloudApiKey,
@@ -39,20 +37,16 @@ import {
   type LifeOpsFeatureFlagsSyncResponse,
   type LifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
-
 export interface CloudFeaturesRouteState {
   config: CloudProxyConfigLike;
   runtime?: AgentRuntime | null;
 }
-
-const PROXY_TIMEOUT_MS = 15_000;
-
+const PROXY_TIMEOUT_MS = 15000;
 interface CloudFeatureRow {
   readonly featureKey: LifeOpsFeatureKey;
   readonly enabled: boolean;
   readonly packageId: string | null;
 }
-
 interface CloudFeaturesUpstream {
   readonly features?: ReadonlyArray<{
     readonly featureKey?: unknown;
@@ -60,7 +54,6 @@ interface CloudFeaturesUpstream {
     readonly packageId?: unknown;
   }>;
 }
-
 function resolveProxyApiKey(state: CloudFeaturesRouteState): string | null {
   const cloudAuth = state.runtime
     ? state.runtime.getService<Service & CloudAuthApiKeyService>("CLOUD_AUTH")
@@ -75,7 +68,6 @@ function resolveProxyApiKey(state: CloudFeaturesRouteState): string | null {
     state.runtime,
   );
 }
-
 function buildAuthHeaders(
   config: CloudProxyConfigLike,
   apiKey: string,
@@ -88,7 +80,6 @@ function buildAuthHeaders(
   if (serviceKey) headers["X-Service-Key"] = serviceKey;
   return headers;
 }
-
 function parseCloudFeatures(payload: unknown): CloudFeatureRow[] {
   if (!payload || typeof payload !== "object") return [];
   const features = (payload as CloudFeaturesUpstream).features;
@@ -107,13 +98,11 @@ function parseCloudFeatures(payload: unknown): CloudFeatureRow[] {
   }
   return rows;
 }
-
 interface FetchCloudFeaturesResult {
   readonly status: number;
   readonly rows: ReadonlyArray<CloudFeatureRow>;
   readonly error: string | null;
 }
-
 export async function fetchCloudFeatures(
   state: CloudFeaturesRouteState,
 ): Promise<FetchCloudFeaturesResult> {
@@ -155,14 +144,11 @@ export async function fetchCloudFeatures(
     return {
       status: 502,
       rows: [],
-      error: `Cloud features response was not valid JSON (${
-        error instanceof Error ? error.message : String(error)
-      }).`,
+      error: `Cloud features response was not valid JSON (${error instanceof Error ? error.message : String(error)}).`,
     };
   }
   return { status: 200, rows: parseCloudFeatures(payload), error: null };
 }
-
 function toRowDto(state: FeatureFlagState): LifeOpsFeatureFlagRowDto {
   const packageId = state.metadata.packageId;
   return {
@@ -180,7 +166,6 @@ function toRowDto(state: FeatureFlagState): LifeOpsFeatureFlagRowDto {
       : false,
   };
 }
-
 async function handleGet(
   res: http.ServerResponse,
   state: CloudFeaturesRouteState,
@@ -196,7 +181,6 @@ async function handleGet(
   };
   sendJson(res, response, 200);
 }
-
 async function handleSync(
   res: http.ServerResponse,
   state: CloudFeaturesRouteState,
@@ -246,7 +230,6 @@ async function handleSync(
   };
   sendJson(res, response, 200);
 }
-
 export async function handleCloudFeaturesRoute(
   _req: http.IncomingMessage,
   res: http.ServerResponse,

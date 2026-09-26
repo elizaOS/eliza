@@ -13,14 +13,16 @@
 
 import {
   type IAgentRuntime,
+  type IPermissionsRegistry,
   type Memory,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type PermissionState,
   type Provider,
   type ProviderResult,
   revalidateOwnerExclusiveDisclosure,
   type State,
 } from "@elizaos/core";
-import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
+
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 
 /** Service id used by the concrete permissions registry service. */

@@ -18,6 +18,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { isDiscordDmSenderAllowed as isDmSenderAllowed } from "@elizaos/core/discord-dm-policy";
 import { createHash } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { discordConnectionsRepository, userCharactersRepository } from "../../../db/repositories";
@@ -34,17 +35,17 @@ import {
   DISCORD_RATE_LIMIT_REQUESTS,
   DISCORD_RATE_LIMIT_WINDOW_MS,
 } from "./constants";
-import { isDmSenderAllowed } from "./dm-policy";
-import type { DiscordEventPayload, MessageCreateData } from "./schemas";
-import { MessageCreateDataSchema } from "./schemas";
+import {
+  type DiscordEventPayload,
+  type MessageCreateData,
+  MessageCreateDataSchema,
+} from "./schemas";
 
 // ============================================
 // Constants
 // ============================================
-
 /** Maximum Discord message length */
 const MAX_DISCORD_MESSAGE_LENGTH = 2000;
-
 /**
  * Discord bot token pattern for sanitization.
  * Tokens have format: base64(bot_id).base64(timestamp).base64(hmac)
@@ -53,7 +54,6 @@ const MAX_DISCORD_MESSAGE_LENGTH = 2000;
  * - Part 3 (HMAC): 27-40 characters
  */
 const DISCORD_TOKEN_PATTERN = /[A-Za-z0-9_-]{18,30}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}/g;
-
 /**
  * Sanitize error messages to prevent accidental token exposure in logs.
  * Discord bot tokens have a specific format that we can detect and redact.
@@ -62,14 +62,11 @@ function sanitizeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(DISCORD_TOKEN_PATTERN, "[REDACTED_TOKEN]");
 }
-
 /** HTTP request timeout for Discord API calls */
-const DISCORD_API_TIMEOUT_MS = 10_000;
-
+const DISCORD_API_TIMEOUT_MS = 10000;
 // ============================================
 // Rate Limiter
 // ============================================
-
 interface RateLimitState {
   tokens: number;
   lastRefill: number;
@@ -79,14 +76,12 @@ interface RateLimitState {
     reject: (error: Error) => void;
   }>;
 }
-
 /**
  * Per-bot rate limiter using token bucket algorithm.
  * Discord enforces 50 requests/second globally per bot.
  */
 class DiscordRateLimiter {
   private limiters: Map<string, RateLimitState> = new Map();
-
   /**
    * Get or create rate limit state for a bot.
    */
@@ -105,7 +100,6 @@ class DiscordRateLimiter {
     }
     return state;
   }
-
   /**
    * Refill tokens based on elapsed time.
    */
@@ -120,7 +114,6 @@ class DiscordRateLimiter {
       state.lastRefill = now;
     }
   }
-
   /**
    * Process queued requests when tokens become available.
    */
@@ -133,41 +126,34 @@ class DiscordRateLimiter {
       }
     }
   }
-
   /**
    * Acquire a rate limit token. Waits if necessary.
    * Throws if queue is full to prevent memory exhaustion.
    */
   async acquire(botToken: string): Promise<void> {
     const state = this.getState(botToken);
-
     // Check if we're in a forced retry-after period
     if (state.retryAfter !== null && Date.now() < state.retryAfter) {
       const waitTime = state.retryAfter - Date.now();
       await new Promise((resolve) => setTimeout(resolve, waitTime));
       state.retryAfter = null;
     }
-
     // Refill tokens based on elapsed time
     this.refillTokens(state);
-
     // If tokens available, consume one immediately
     if (state.tokens > 0) {
       state.tokens--;
       return;
     }
-
     // Check queue size to prevent memory exhaustion
     if (state.queue.length >= DISCORD_RATE_LIMIT_MAX_QUEUE) {
       throw new Error(
         `Discord rate limit queue full (${DISCORD_RATE_LIMIT_MAX_QUEUE} pending requests)`,
       );
     }
-
     // Queue the request and wait for a token
     return new Promise<void>((resolve, reject) => {
       state.queue.push({ resolve, reject });
-
       // Schedule token refill and queue processing
       const waitTime = Math.ceil(DISCORD_RATE_LIMIT_WINDOW_MS / DISCORD_RATE_LIMIT_REQUESTS);
       setTimeout(() => {
@@ -176,7 +162,6 @@ class DiscordRateLimiter {
       }, waitTime);
     });
   }
-
   /**
    * Handle a 429 response by setting the retry-after delay.
    * Returns the retry delay in milliseconds.
@@ -186,18 +171,14 @@ class DiscordRateLimiter {
     const retryMs = retryAfterSeconds
       ? retryAfterSeconds * 1000
       : DISCORD_RATE_LIMIT_DEFAULT_RETRY_MS;
-
     state.retryAfter = Date.now() + retryMs;
     state.tokens = 0; // Drain all tokens on rate limit
-
     logger.warn("[DiscordRateLimiter] Rate limited by Discord", {
       retryAfterMs: retryMs,
       queueSize: state.queue.length,
     });
-
     return retryMs;
   }
-
   /**
    * Clean up old rate limiters to prevent memory leaks.
    * Call periodically (e.g., every 5 minutes).
@@ -205,7 +186,6 @@ class DiscordRateLimiter {
   cleanup(): void {
     const now = Date.now();
     const staleThreshold = 5 * 60 * 1000; // 5 minutes
-
     for (const [key, state] of this.limiters) {
       if (state.queue.length === 0 && now - state.lastRefill > staleThreshold) {
         this.limiters.delete(key);
@@ -213,17 +193,13 @@ class DiscordRateLimiter {
     }
   }
 }
-
 /** Singleton rate limiter instance */
 const discordRateLimiter = new DiscordRateLimiter();
-
 // Prunes stale rate limiters periodically
 setInterval(() => discordRateLimiter.cleanup(), 5 * 60 * 1000);
-
 // ============================================
 // Types
 // ============================================
-
 interface ProcessedMessage {
   roomId: string;
   entityId: string;
@@ -243,25 +219,22 @@ interface ProcessedMessage {
     };
   };
 }
-
 // ============================================
 // Main Router
 // ============================================
-
 /**
  * Route a Discord event to the appropriate handler.
  */
-export async function routeDiscordEvent(
-  payload: DiscordEventPayload,
-): Promise<{ processed: boolean; response?: string }> {
+export async function routeDiscordEvent(payload: DiscordEventPayload): Promise<{
+  processed: boolean;
+  response?: string;
+}> {
   const { event_type, connection_id } = payload;
-
   logger.info("[DiscordRouter] Routing event", {
     eventType: event_type,
     connectionId: connection_id,
     eventId: payload.event_id,
   });
-
   switch (event_type) {
     case "MESSAGE_CREATE": {
       // Validate message data
@@ -274,7 +247,6 @@ export async function routeDiscordEvent(
       }
       return handleMessageCreate(payload, parsed.data);
     }
-
     case "MESSAGE_UPDATE":
     case "MESSAGE_DELETE":
     case "MESSAGE_REACTION_ADD":
@@ -286,7 +258,6 @@ export async function routeDiscordEvent(
         eventType: event_type,
       });
       return { processed: true };
-
     default:
       logger.warn("[DiscordRouter] Unknown event type", {
         eventType: event_type,
@@ -294,19 +265,20 @@ export async function routeDiscordEvent(
       return { processed: false };
   }
 }
-
 /**
  * Handle MESSAGE_CREATE events.
  */
 async function handleMessageCreate(
   payload: DiscordEventPayload,
   data: MessageCreateData,
-): Promise<{ processed: boolean; response?: string }> {
+): Promise<{
+  processed: boolean;
+  response?: string;
+}> {
   // Skip bot messages
   if (data.author.bot) {
     return { processed: true };
   }
-
   // Get connection to find the associated app
   const connection = await discordConnectionsRepository.findById(payload.connection_id);
   if (!connection) {
@@ -315,7 +287,6 @@ async function handleMessageCreate(
     });
     return { processed: false };
   }
-
   // Check if we should respond based on connection metadata
   const metadata = connection.metadata;
   if (metadata) {
@@ -326,7 +297,6 @@ async function handleMessageCreate(
     if (metadata.disabledChannels?.includes(data.channel_id)) {
       return { processed: true }; // Skip - channel disabled
     }
-
     // DM gating (#18691): skip messages the connection's DM policy rejects.
     if (!data.guild_id && !isDmSenderAllowed(metadata, data.author.id)) {
       logger.debug("[DiscordRouter] DM blocked by policy", {
@@ -336,7 +306,6 @@ async function handleMessageCreate(
       });
       return { processed: true };
     }
-
     // Check response mode
     if (metadata.responseMode === "mention") {
       // Only respond if THIS bot is mentioned
@@ -368,7 +337,6 @@ async function handleMessageCreate(
       }
     }
   }
-
   // Get the character directly from the connection
   if (!connection.character_id) {
     logger.warn("[DiscordRouter] Connection has no linked character", {
@@ -376,7 +344,6 @@ async function handleMessageCreate(
     });
     return { processed: false };
   }
-
   const character = await userCharactersRepository.findById(connection.character_id);
   if (!character) {
     logger.warn("[DiscordRouter] Character not found", {
@@ -384,12 +351,10 @@ async function handleMessageCreate(
     });
     return { processed: false };
   }
-
   // Create a system context for Discord
   const context = userContextService.createSystemContext(AgentMode.CHAT);
   context.characterId = character.id;
   context.organizationId = connection.organization_id;
-
   let runtime: AgentRuntime;
   try {
     runtime = await runtimeFactory.createRuntimeForUser(context);
@@ -401,11 +366,9 @@ async function handleMessageCreate(
     });
     return { processed: false };
   }
-
   // Process the message
   const processed = processMessage(data, payload);
   let response: string | undefined;
-
   try {
     response = await sendToRuntime(runtime, processed);
   } catch (error) {
@@ -416,7 +379,6 @@ async function handleMessageCreate(
     });
     return { processed: false };
   }
-
   // Send response back to Discord if we have one
   if (response) {
     try {
@@ -428,7 +390,6 @@ async function handleMessageCreate(
         nonce: connection.token_nonce,
         authTag: connection.token_auth_tag,
       });
-
       await sendDiscordResponse(botToken, data.channel_id, response, data.id);
     } catch (error) {
       logger.error("[DiscordRouter] Failed to send Discord response", {
@@ -438,20 +399,16 @@ async function handleMessageCreate(
       });
     }
   }
-
   return { processed: true, response };
 }
-
 /**
  * Process Discord message data into a format for the runtime.
  */
 function processMessage(data: MessageCreateData, payload: DiscordEventPayload): ProcessedMessage {
   // Create a room ID based on channel
   const roomId = stringToUuid(`discord-${payload.organization_id}-${data.channel_id}`) as string;
-
   // Create entity ID for the Discord user
   const entityId = stringToUuid(`discord-user-${data.author.id}`) as string;
-
   // Process attachments
   const attachments: Media[] = [];
   const resolveContentType = (mime?: string): ContentType | undefined => {
@@ -461,7 +418,6 @@ function processMessage(data: MessageCreateData, payload: DiscordEventPayload): 
     if (mime.startsWith("audio/")) return ContentType.AUDIO;
     return ContentType.DOCUMENT;
   };
-
   // Regular attachments
   if (data.attachments?.length) {
     for (const att of data.attachments) {
@@ -473,7 +429,6 @@ function processMessage(data: MessageCreateData, payload: DiscordEventPayload): 
       });
     }
   }
-
   // Voice attachments (processed by gateway)
   if (data.voice_attachments?.length) {
     for (const va of data.voice_attachments) {
@@ -485,7 +440,6 @@ function processMessage(data: MessageCreateData, payload: DiscordEventPayload): 
       });
     }
   }
-
   return {
     roomId,
     entityId,
@@ -499,7 +453,6 @@ function processMessage(data: MessageCreateData, payload: DiscordEventPayload): 
     },
   };
 }
-
 /**
  * Send a processed message to the Eliza runtime and get a response.
  */
@@ -511,7 +464,6 @@ async function sendToRuntime(
   const entityUuid = message.entityId as UUID;
   const worldId = stringToUuid("discord-world") as UUID;
   const serverId = stringToUuid("discord-server") as UUID;
-
   // Ensure world exists
   try {
     await runtime.ensureWorldExists({
@@ -525,7 +477,6 @@ async function sendToRuntime(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
   // Ensure room exists
   try {
     await runtime.ensureRoomExists({
@@ -543,11 +494,9 @@ async function sendToRuntime(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
   // Ensure user entity exists
   const displayName =
     message.metadata.discordAuthor.global_name || message.metadata.discordAuthor.username;
-
   try {
     await runtime.createEntity({
       id: entityUuid,
@@ -568,7 +517,6 @@ async function sendToRuntime(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
   // Ensure participants
   try {
     await Promise.all([
@@ -580,7 +528,6 @@ async function sendToRuntime(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
   // Create user message
   const userMessage: Memory = {
     id: uuidv4() as UUID,
@@ -601,7 +548,6 @@ async function sendToRuntime(
       discord: message.metadata,
     } satisfies NonNullable<Memory["metadata"]>,
   };
-
   // Save user message to maintain conversation history
   try {
     await runtime.createMemory(userMessage, "messages");
@@ -610,9 +556,7 @@ async function sendToRuntime(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
   let responseText: string | undefined;
-
   // Emit message event and capture response
   await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
     runtime,
@@ -620,7 +564,6 @@ async function sendToRuntime(
     callback: async (content: Content) => {
       if (content.text) {
         responseText = content.text;
-
         // Create response memory
         const responseMemory: Memory = {
           id: createUniqueUuid(runtime, userMessage.id as UUID),
@@ -640,7 +583,6 @@ async function sendToRuntime(
             visibility: "visible",
           },
         };
-
         try {
           await runtime.createMemory(responseMemory, "messages");
         } catch (error) {
@@ -652,10 +594,8 @@ async function sendToRuntime(
       return [];
     },
   });
-
   return responseText;
 }
-
 /**
  * Send a response message back to Discord with rate limiting.
  *
@@ -675,11 +615,9 @@ async function sendDiscordResponse(
     if (replyTo) {
       payload.message_reference = { message_id: replyTo };
     }
-
     await discordRateLimiter.acquire(botToken);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), DISCORD_API_TIMEOUT_MS);
-
     const makeRequest = async (): Promise<Response> =>
       fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
         method: "POST",
@@ -687,7 +625,6 @@ async function sendDiscordResponse(
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
-
     try {
       let response = await makeRequest();
       if (response.status === 429) {
@@ -698,7 +635,6 @@ async function sendDiscordResponse(
         await discordRateLimiter.acquire(botToken);
         response = await makeRequest();
       }
-
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const errorText = sanitizeError(JSON.stringify(errorBody));
@@ -713,7 +649,6 @@ async function sendDiscordResponse(
       clearTimeout(timeoutId);
     }
   };
-
   const chunks = splitMessageLosslessly(content, MAX_DISCORD_MESSAGE_LENGTH);
   for (const [index, chunk] of chunks.entries()) {
     await sendChunk(chunk, index === 0 ? replyToMessageId : undefined);

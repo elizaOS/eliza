@@ -324,6 +324,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
               size="sm"
               disabled={isPublishing}
               onClick={handlePublish}
+              variant="accentDarkHover"
               data-testid="hosting-publish"
             >
               {isPublishing ? (

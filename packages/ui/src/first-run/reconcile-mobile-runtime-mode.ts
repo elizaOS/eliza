@@ -21,11 +21,11 @@
  * `resolveAndroidRuntimeMode` (platform/android-runtime.ts) read the
  * `VITE_ELIZA_{IOS,ANDROID,MOBILE}_RUNTIME_MODE` / `..._API_BASE` values the
  * mobile build lanes stamp into the renderer bundle
- * (packages/app-core/scripts/run-mobile-build.mjs).
+ * (packages/app/scripts/run-mobile-build.ts).
  */
 
-import { logger } from "@elizaos/logger";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { logger } from "../logger.ts";
 import { resolveAndroidRuntimeMode } from "../platform/android-runtime";
 import { resolveIosRuntimeConfig } from "../platform/ios-runtime";
 import { loadPersistedActiveServer } from "../state/persistence";

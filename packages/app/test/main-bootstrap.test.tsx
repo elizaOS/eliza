@@ -188,8 +188,10 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     RenderTelemetryProfiler: Children,
     ShellModalityProvider: Children,
     ShellRoleProvider: Children,
+    DeveloperWorkspace: Children,
     DesktopSurfaceNavigationRuntime: () => null,
     DesktopTrayRuntime: () => null,
+    ManagedCloudPage: () => null,
     MarketingHomePage: () => null,
     MarketingDownloadsPage: () => null,
     CloudRouterShell: ({ appElement }: { appElement: React.ReactNode }) =>
@@ -197,6 +199,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     APP_LOG_PREFIX: "[bootstrap-test]",
     __ELIZA_CHAT_UI_HARNESS__: false,
     __ELIZA_SERVICE_WORKER__: false,
+    developerWorkspaceEnabled: false,
     isNative: false,
     isIOS: false,
     isAndroid: false,
@@ -223,7 +226,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
       ...bindings,
       exports: {},
       APP_BRANDING: { version },
-      CodingAgentTasksPanel: () => null,
+      AppBlockerSettingsCard: () => null,
       hot: hotEnabled
         ? {
             data: hotData,
@@ -320,8 +323,8 @@ describe("main renderer bootstrap ownership", () => {
       apiToken: "test-runtime-token",
     });
     expect(harness.getBootConfig().runtimeOwned).toBe(firstConfig.runtimeOwned);
-    expect(harness.getBootConfig().codingAgentTasksPanel).not.toBe(
-      firstConfig.codingAgentTasksPanel,
+    expect(harness.getBootConfig().appBlockerSettingsCard).not.toBe(
+      firstConfig.appBlockerSettingsCard,
     );
     expect(
       document.querySelector('[data-bootstrap-version="second"]'),

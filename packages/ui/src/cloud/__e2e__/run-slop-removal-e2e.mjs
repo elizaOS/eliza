@@ -36,7 +36,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.mjs";
+import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.ts";
 import { optionalWalletPeerStubPlugin } from "./optional-wallet-peer-stub.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -466,29 +466,30 @@ for (const [from, expectedPath] of redirectCases) {
   await assertManagedAppRoute(from, expectedPath);
 }
 
-// 1c. The in-app /settings#<section> hash surface — the app-side half of the
-//     dual-mount. `/settings` falls through to the agent-app catch-all (it is an
-//     in-app view, not a registered cloud route), so the fixture's CatchAllProbe
-//     mounts and `readSettingsHashSection` resolves every registered cloud
-//     section, including the legacy `#billing` / `#api-keys` aliases.
-console.log("== leg 1c: in-app settings hash sections ==");
+// Cloud-owned hash sections redirect to their canonical route. App-only
+// sections and legacy aliases remain on the in-app settings surface.
+console.log("== leg 1c: settings hash routing ==");
 const hashCases = [
-  ["/settings#cloud-billing", "cloud-billing"],
-  ["/settings#billing", "cloud-billing"],
-  ["/settings#cloud-api-keys", "cloud-api-keys"],
-  ["/settings#api-keys", "cloud-api-keys"],
-  ["/settings#cloud-monetization", "cloud-monetization"],
-  ["/settings#cloud-account", "cloud-account"],
-  ["/settings#cloud-security", "cloud-security"],
-  ["/settings#cloud-plugin-grants", "cloud-plugin-grants"],
-  ["/settings#cloud-organization", "cloud-organization"],
+  ["/settings#cloud-billing", "/cloud/billing", "(none)"],
+  ["/settings#billing", "/settings#billing", "cloud-billing"],
+  ["/settings#cloud-api-keys", "/cloud/api-keys", "(none)"],
+  ["/settings#api-keys", "/settings#api-keys", "cloud-api-keys"],
+  ["/settings#cloud-monetization", "/cloud/monetization", "(none)"],
+  ["/settings#cloud-account", "/cloud/account", "(none)"],
+  ["/settings#cloud-security", "/settings#cloud-security", "cloud-security"],
+  ["/settings#cloud-plugin-grants", "/cloud/security/permissions", "(none)"],
+  ["/settings#cloud-organization", "/cloud/organization", "(none)"],
 ];
-for (const [from, expectedSection] of hashCases) {
+for (const [from, expectedLocation, expectedSection] of hashCases) {
   await page.goto(`${ORIGIN}${from}`, { waitUntil: "load" });
   await page.getByTestId("probe-location").waitFor({ timeout: 30_000 });
+  await page.waitForFunction(
+    (expected) => document.querySelector('[data-testid="probe-location"]')?.textContent === expected,
+    expectedLocation,
+  );
   const loc = await page.getByTestId("probe-location").innerText();
   const section = await page.getByTestId("probe-section").innerText();
-  assert(loc === from, `${from} stays on the in-app settings surface (got ${loc})`);
+  assert(loc === expectedLocation, `${from} resolves to ${expectedLocation} (got ${loc})`);
   assert(
     section === expectedSection,
     `${from} resolves settings section ${expectedSection} (got ${section})`,

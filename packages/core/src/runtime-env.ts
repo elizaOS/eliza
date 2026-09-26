@@ -12,7 +12,7 @@
  * capabilities that shell out are unavailable.
  */
 
-import { getBootConfigEnvAliases } from "./boot-env.js";
+import { getBootConfigEnvAliases } from "./config/boot-config-store.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";

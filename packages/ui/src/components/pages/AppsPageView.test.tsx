@@ -1,6 +1,10 @@
 /** Verifies AppsPageView slug resolution through the package's configured test harness. */
 // @vitest-environment jsdom
 
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
+import { useRoutableViews } from "../../hooks/useAvailableViews";
 /**
  * Renders the real AppsPageView with mocked view/state hooks to cover the
  * /apps/<slug> claim resolution (#17033): the grid for claimed slugs, a
@@ -10,11 +14,7 @@
  * entry); and the structured once-per-slug warning that makes the dead route
  * observable. Fake timers drive the grace window deterministically.
  */
-import { logger } from "@elizaos/logger";
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
-import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { logger } from "../../logger.ts";
 import { AppsPageView } from "./AppsPageView";
 
 const appStateValue = vi.hoisted(() => ({
@@ -26,6 +26,7 @@ const appStateValue = vi.hoisted(() => ({
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useRoutableViews: vi.fn(),
+  useAvailableViews: () => ({ views: [] }),
 }));
 
 vi.mock("../../state", () => ({

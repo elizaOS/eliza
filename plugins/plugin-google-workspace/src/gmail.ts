@@ -371,6 +371,21 @@ export class GoogleGmailClient {
     };
   }
 
+  async getGmailMessageRevision(
+    params: GoogleAccountRef & { messageId: string }
+  ): Promise<string | null> {
+    const message = await this.getGmailMessage(params);
+    if (!message) return null;
+    const historyId = message.metadata.historyId;
+    if (typeof historyId !== "string" || historyId.trim().length === 0) {
+      throw new ElizaError("Gmail did not return a stable message revision", {
+        code: "GMAIL_READ_REINDEX_REQUIRED",
+        context: { messageId: params.messageId },
+      });
+    }
+    return historyId;
+  }
+
   async getGmailThread(
     params: GoogleAccountRef & { threadId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageSummary[]> {
@@ -557,7 +572,7 @@ export class GoogleGmailClient {
       ...(params.cc && params.cc.length > 0
         ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`]
         : []),
-      `Subject: ${sanitizeMailHeaderValue(normalizeReplySubject(params.subject))}`,
+      `Subject: ${encodeMailSubject(normalizeReplySubject(params.subject))}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
@@ -585,7 +600,7 @@ export class GoogleGmailClient {
       ...(params.bcc && params.bcc.length > 0
         ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`]
         : []),
-      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
+      `Subject: ${encodeMailSubject(params.subject.trim() || "(no subject)")}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       "",
@@ -611,7 +626,7 @@ export class GoogleGmailClient {
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc?.length ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`] : []),
       ...(params.bcc?.length ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`] : []),
-      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
+      `Subject: ${encodeMailSubject(params.subject.trim() || "(no subject)")}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
@@ -1411,7 +1426,7 @@ function encodeMessage(input: GoogleSendEmailInput): string {
     input.bcc?.length
       ? `Bcc: ${sanitizeMailHeaderValue(formatEmailAddresses(input.bcc))}`
       : undefined,
-    `Subject: ${sanitizeMailHeaderValue(input.subject)}`,
+    `Subject: ${encodeMailSubject(input.subject)}`,
     "MIME-Version: 1.0",
   ].filter(Boolean);
 
@@ -1687,6 +1702,34 @@ function labelsForOperation(
  */
 function sanitizeMailHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+/**
+ * Uses RFC 2047 encoded words for Unicode, long subjects and literal encoded-word
+ * syntax. Each word stays within the MIME line limit, including the Subject
+ * prefix; code-point iteration preserves every UTF-8 character across folds.
+ */
+function encodeMailSubject(value: string): string {
+  const subject = sanitizeMailHeaderValue(value);
+  if (/^[\x20-\x7e]*$/.test(subject) && subject.length <= 67 && !subject.includes("=?")) {
+    return subject;
+  }
+  const words: string[] = [];
+  let chunk = "";
+  let byteLength = 0;
+  for (const character of subject) {
+    const size = Buffer.byteLength(character, "utf8");
+    // 39 UTF-8 bytes produce a 64-character encoded word and a 73-character first line.
+    if (byteLength + size > 39) {
+      words.push(`=?UTF-8?B?${Buffer.from(chunk, "utf8").toString("base64")}?=`);
+      chunk = "";
+      byteLength = 0;
+    }
+    chunk += character;
+    byteLength += size;
+  }
+  if (chunk) words.push(`=?UTF-8?B?${Buffer.from(chunk, "utf8").toString("base64")}?=`);
+  return words.join("\r\n ");
 }
 
 function normalizeReplySubject(subject: string): string {

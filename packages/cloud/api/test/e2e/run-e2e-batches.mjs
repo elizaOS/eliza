@@ -15,7 +15,7 @@ const rmRecursiveScript = join(
   repoRoot,
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 const extraArgs = process.argv.slice(2);

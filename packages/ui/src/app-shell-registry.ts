@@ -4,27 +4,24 @@
  * the shell derives stable bridge owners from the live registry snapshots and
  * rejects ambiguous handler ids before mounting either surface family.
  */
+
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
+  ViewCapability,
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
-import {
-  getAllOverlayApps,
-  type OverlayApp,
-  packageNameToAppRouteSlug,
-} from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
 import type { ComponentType } from "react";
-import { getUiRegistryStore } from "./registry-host";
-
+import type { OverlayApp } from "./apps/overlay-app-api.js";
+import { getAllOverlayApps } from "./apps/overlay-app-registry.js";
+import { getUiRegistryStore } from "./registry-host.js";
 export type AppShellPageLoader = () => Promise<{
   default: ComponentType<Record<string, unknown>>;
   cleanup?: () => void | Promise<void>;
 }>;
-
 export type AppShellPageAvailability = "always" | "managed-cloud";
-
 /**
  * A page contributed at runtime by a plugin or host app. Mirrors the fields
  * on `PluginAppNavTab` from `@elizaos/core`, plus either a resolved React
@@ -89,6 +86,13 @@ export interface AppShellPageRegistration {
    * only when `surface.capabilities` also grants `wallpaper`.
    */
   surface?: SurfaceManifest;
+  /** Shares the plugin view's typed authority catalog with the bundled renderer. */
+  capabilities?: readonly ViewCapability[];
+  /** Dispatches declared semantic operations while the owning page is mounted. */
+  interact?: (
+    capability: string,
+    params?: Record<string, unknown>,
+  ) => Promise<unknown>;
   /**
    * Screen background policy for this page. Defaults to `"opaque"`. Superseded
    * by `surface.background` when a manifest is declared.
@@ -109,15 +113,12 @@ export interface AppShellPageRegistration {
   /** Lazy page loader. The shell wraps it in React.lazy + Suspense. */
   loader?: AppShellPageLoader;
 }
-
 interface AppShellPageRegistryStore {
   entries: Map<string, AppShellPageRegistration>;
   listeners: Set<() => void>;
   version: number;
 }
-
 const APP_SHELL_PAGE_REGISTRY_STORE = "app-shell-pages";
-
 function getRegistryStore(): AppShellPageRegistryStore {
   return getUiRegistryStore(APP_SHELL_PAGE_REGISTRY_STORE, () => ({
     entries: new Map<string, AppShellPageRegistration>(),
@@ -125,7 +126,6 @@ function getRegistryStore(): AppShellPageRegistryStore {
     version: 0,
   }));
 }
-
 export function registerAppShellPage(
   registration: AppShellPageRegistration,
 ): void {
@@ -134,11 +134,9 @@ export function registerAppShellPage(
   store.version += 1;
   for (const listener of store.listeners) listener();
 }
-
 export function listAppShellPages(): AppShellPageRegistration[] {
   return [...getRegistryStore().entries.values()];
 }
-
 function normalizedRouteSegments(path: string): string[] {
   return path
     .split(/[?#]/, 1)[0]
@@ -146,7 +144,6 @@ function normalizedRouteSegments(path: string): string[] {
     .split("/")
     .filter(Boolean);
 }
-
 /** Pure exact/pattern matcher shared by navigation and the shell renderer. */
 export function appShellPageMatchesPath(
   page: AppShellPageRegistration,
@@ -167,15 +164,15 @@ export function appShellPageMatchesPath(
     return candidate.length === expected.length;
   });
 }
-
 /** Pure runtime gate shared by routing, launcher, palette, and slash choices. */
 export function appShellPageIsAvailable(
   page: AppShellPageRegistration,
-  runtime: { managedCloud: boolean },
+  runtime: {
+    managedCloud: boolean;
+  },
 ): boolean {
   return page.availability !== "managed-cloud" || runtime.managedCloud;
 }
-
 export function subscribeAppShellPages(listener: () => void): () => void {
   const store = getRegistryStore();
   store.listeners.add(listener);
@@ -183,20 +180,16 @@ export function subscribeAppShellPages(listener: () => void): () => void {
     store.listeners.delete(listener);
   };
 }
-
 export function getAppShellPageRegistrySnapshot(): number {
   return getRegistryStore().version;
 }
-
 export type RegisteredAgentSurfaceKind = "app-shell" | "overlay";
-
 export interface RegisteredAgentSurfaceDescriptor {
   kind: RegisteredAgentSurfaceKind;
   viewId: string;
   ownerId: string;
   path: string;
 }
-
 function requireStableAgentViewId(
   value: string,
   kind: RegisteredAgentSurfaceKind,
@@ -210,7 +203,6 @@ function requireStableAgentViewId(
   }
   return viewId;
 }
-
 function overlayAgentViewId(appName: string): string {
   const packageSlug = packageNameToAppRouteSlug(appName);
   if (packageSlug) return packageSlug;
@@ -222,7 +214,6 @@ function overlayAgentViewId(appName: string): string {
     .replace(/^-|-$/g, "")
     .toLowerCase();
 }
-
 /** The bridge descriptor generated for one app-shell page registration. */
 export function appShellAgentSurfaceDescriptor(
   page: AppShellPageRegistration,
@@ -238,7 +229,6 @@ export function appShellAgentSurfaceDescriptor(
     path: page.path,
   };
 }
-
 /** The bridge descriptor generated for one overlay-app registration. */
 export function overlayAgentSurfaceDescriptor(
   app: OverlayApp,
@@ -255,7 +245,6 @@ export function overlayAgentSurfaceDescriptor(
     path: `/apps/${viewId}`,
   };
 }
-
 /**
  * Build the exhaustive in-process bridge inventory from registry snapshots.
  * Duplicate identities fail closed: two mounted surfaces cannot safely share
@@ -284,7 +273,6 @@ export function buildRegisteredAgentSurfaceInventory(
     left.viewId.localeCompare(right.viewId),
   );
 }
-
 /** The current exhaustive bridge inventory, generated from both registries. */
 export function listRegisteredAgentSurfaceInventory(): RegisteredAgentSurfaceDescriptor[] {
   return buildRegisteredAgentSurfaceInventory(
@@ -292,7 +280,6 @@ export function listRegisteredAgentSurfaceInventory(): RegisteredAgentSurfaceDes
     getAllOverlayApps(),
   );
 }
-
 /**
  * Resolve a renderer's descriptor through the exhaustive live inventory. This
  * makes duplicate-id validation part of the mount path, not a test-only audit.
@@ -313,7 +300,6 @@ export function requireRegisteredAgentSurface(
   }
   return descriptor;
 }
-
 /**
  * A thunk that resolves a host-provided module for view bundles. View bundles
  * are built with `@elizaos/ui`, `react`, etc. left external; at runtime the
@@ -321,11 +307,9 @@ export function requireRegisteredAgentSurface(
  * this importer so the view shares the host realm.
  */
 export type HostExternalImporter = () => Promise<Record<string, unknown>>;
-
 function hostExternalImporterRegistryKey(): symbol {
-  return Symbol.for("elizaos.app-core.host-external-importer-registry");
+  return Symbol.for("elizaos.app.host-external-importer-registry");
 }
-
 function getHostExternalImporterStore(): Map<string, HostExternalImporter> {
   const globalObject = globalThis as Record<PropertyKey, unknown>;
   const registryKey = hostExternalImporterRegistryKey();
@@ -337,7 +321,6 @@ function getHostExternalImporterStore(): Map<string, HostExternalImporter> {
   globalObject[registryKey] = created;
   return created;
 }
-
 /**
  * Contribute a host-external importer for a view-bundle specifier the framework
  * trunk map in `DynamicViewLoader` does not own. This is the extension point
@@ -353,14 +336,12 @@ export function registerHostExternalImporter(
 ): void {
   getHostExternalImporterStore().set(specifier, importer);
 }
-
 /** Resolve a registered host-external importer, or `undefined` if none. */
 export function resolveRegisteredHostExternalImporter(
   specifier: string,
 ): HostExternalImporter | undefined {
   return getHostExternalImporterStore().get(specifier);
 }
-
 /** The specifiers contributed through {@link registerHostExternalImporter}. */
 export function registeredHostExternalSpecifiers(): string[] {
   return [...getHostExternalImporterStore().keys()];

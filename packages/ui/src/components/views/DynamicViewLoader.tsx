@@ -1,3 +1,28 @@
+import type {
+  ResolvedSurfaceManifest,
+  SurfaceManifest,
+  ViewCapability,
+} from "@elizaos/core";
+import { resolveAppBranding } from "@elizaos/core/config/app-config";
+import { ElizaError } from "@elizaos/core/errors";
+import {
+  HOST_EXTERNAL_RUNTIME_PARAM,
+  HOST_EXTERNAL_SPECIFIERS_PARAM,
+  type HostExternalBundleFactory,
+  type HostModuleImporter,
+} from "@elizaos/core/views/host-external-contract";
+import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import {
+  type ComponentType,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 /**
  * DynamicViewLoader — loads a view bundle from a remote URL at runtime.
  *
@@ -18,31 +43,6 @@
  * click-element, fill-input) are handled by the loader itself even when the
  * module has no interact export.
  */
-
-import {
-  ElizaError,
-  type ResolvedSurfaceManifest,
-  resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
-import {
-  HOST_EXTERNAL_RUNTIME_PARAM,
-  HOST_EXTERNAL_SPECIFIERS_PARAM,
-  type HostExternalBundleFactory,
-  type HostModuleImporter,
-  resolveAppBranding,
-} from "@elizaos/shared";
-import {
-  type ComponentType,
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
 import * as AgentSurfaceHost from "../../agent-surface";
 import {
   AgentElementOverlay,
@@ -57,10 +57,11 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import {
-  type HostExternalImporter,
   registeredHostExternalSpecifiers,
   resolveRegisteredHostExternalImporter,
 } from "../../app-shell-registry";
+import { registerDetailExtension } from "../../apps/detail-extension-registry.js";
+import { registerOverlayApp } from "../../apps/overlay-app-registry.js";
 import {
   type EvictReason,
   emitModuleCacheTelemetry,
@@ -87,7 +88,6 @@ import {
   subscribeActiveSurfaceRealmScope,
 } from "../../surface-realm-broker";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
-import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
   selectLatestRunForApp,
@@ -101,7 +101,6 @@ import {
   SurfaceGrid,
   SurfaceSection,
 } from "../apps/extensions/surface.tsx";
-import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
 import { PagePanel } from "../composites/page-panel/index.ts";
 import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -126,7 +125,6 @@ interface ViewBundleModule {
   ) => Promise<unknown>;
   cleanup?: () => void | Promise<void>;
 }
-
 interface ViewBundleCacheEntry {
   key: string;
   promise: Promise<ViewBundleModule>;
@@ -136,23 +134,37 @@ interface ViewBundleCacheEntry {
   cleanupScheduled: boolean;
   retentionTimer: ReturnType<typeof setTimeout> | null;
 }
-
 // Browser ESM modules cannot be forcibly unloaded once imported, but the shell
 // can stop retaining the resolved module object and call the view's exported
 // cleanup hook. Keep a tiny LRU of recently used views so quick tab switches are
 // instant, then drop idle/heavy views automatically.
 const bundleModuleCache = new Map<string, ViewBundleCacheEntry>();
-const DEFAULT_BUNDLE_CACHE_TTL_MS = 5 * 60_000;
-const LOW_MEMORY_BUNDLE_CACHE_TTL_MS = 60_000;
+const bundleScopeIds = new WeakMap<SurfaceRealmScope, number>();
+let nextBundleScopeId = 1;
+function bundleCacheKey(
+  bundleUrl: string,
+  componentExport: string,
+  scope: SurfaceRealmScope | null,
+  installationId?: string,
+): string {
+  if (!scope)
+    return `${bundleUrl}::${componentExport}::${installationId ?? "unbound"}`;
+  let scopeId = bundleScopeIds.get(scope);
+  if (scopeId === undefined) {
+    scopeId = nextBundleScopeId++;
+    bundleScopeIds.set(scope, scopeId);
+  }
+  return `${bundleUrl}::${componentExport}::scope-${scopeId}::${installationId ?? "unbound"}`;
+}
+const DEFAULT_BUNDLE_CACHE_TTL_MS = 5 * 60000;
+const LOW_MEMORY_BUNDLE_CACHE_TTL_MS = 60000;
 const DEFAULT_BUNDLE_CACHE_MAX_ENTRIES = 6;
 const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
-
 let bundleCacheLifecycleInstalled = false;
 let pruneBundleCacheOnPressure: (() => void) | null = null;
 let pruneBundleCacheOnHeapPressure: (() => void) | null = null;
 let pruneBundleCacheOnVisibilityHidden: (() => void) | null = null;
 let pruneBundleCacheOnAppPause: (() => void) | null = null;
-
 function bundleCacheStats(): {
   activeCount: number;
   idleCount: number;
@@ -169,10 +181,12 @@ function bundleCacheStats(): {
   }
   return { activeCount, idleCount, cacheSize: bundleModuleCache.size };
 }
-
 function emitBundleTelemetry(
   action: ModuleCacheTelemetryEvent["action"],
-  patch: { key?: string; reason?: EvictReason } = {},
+  patch: {
+    key?: string;
+    reason?: EvictReason;
+  } = {},
 ): void {
   emitModuleCacheTelemetry({
     source: "dynamic-view",
@@ -181,19 +195,16 @@ function emitBundleTelemetry(
     ...bundleCacheStats(),
   });
 }
-
 function getBundleCacheMaxEntries(): number {
   if (isUnderMemoryPressure()) {
     return LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES;
   }
   return DEFAULT_BUNDLE_CACHE_MAX_ENTRIES;
 }
-
 function getBundleCacheTtlMs(): number {
   if (isUnderMemoryPressure()) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
   return DEFAULT_BUNDLE_CACHE_TTL_MS;
 }
-
 function scheduleIdleWork(work: () => void): void {
   if (typeof window === "undefined") {
     work();
@@ -202,16 +213,17 @@ function scheduleIdleWork(work: () => void): void {
   const w = window as Window & {
     requestIdleCallback?: (
       cb: () => void,
-      options?: { timeout?: number },
+      options?: {
+        timeout?: number;
+      },
     ) => number;
   };
   if (typeof w.requestIdleCallback === "function") {
-    w.requestIdleCallback(work, { timeout: 2_000 });
+    w.requestIdleCallback(work, { timeout: 2000 });
     return;
   }
   window.setTimeout(work, 250);
 }
-
 function runBundleCleanup(cleanup: ViewBundleModule["cleanup"]): void {
   if (!cleanup) return;
   void Promise.resolve()
@@ -220,7 +232,6 @@ function runBundleCleanup(cleanup: ViewBundleModule["cleanup"]): void {
       // View cleanup must never crash the host shell.
     });
 }
-
 function cleanupBundleEntry(
   entry: ViewBundleCacheEntry,
   reason: EvictReason,
@@ -241,7 +252,6 @@ function cleanupBundleEntry(
   runBundleCleanup(cleanup);
   if (cleanup) emitBundleTelemetry("cleanup", { key: entry.key, reason });
 }
-
 function armBundleEntryRetentionTimer(entry: ViewBundleCacheEntry): void {
   if (typeof window === "undefined") return;
   if (entry.retentionTimer) {
@@ -252,7 +262,6 @@ function armBundleEntryRetentionTimer(entry: ViewBundleCacheEntry): void {
     scheduleIdleWork(() => pruneBundleModuleCache());
   }, getBundleCacheTtlMs() + 50);
 }
-
 function pruneBundleModuleCache(
   options: { force?: boolean; reason?: EvictReason } = {},
 ): void {
@@ -270,7 +279,6 @@ function pruneBundleModuleCache(
     cleanupBundleEntry(entry, phase === "ttl" ? ttlReason : lruReason);
   }
 }
-
 function installBundleCacheLifecycle(): void {
   if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
   bundleCacheLifecycleInstalled = true;
@@ -312,7 +320,6 @@ function installBundleCacheLifecycle(): void {
   );
   document.addEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
 }
-
 export function __resetDynamicViewLoaderCacheForTests(): void {
   for (const entry of bundleModuleCache.values()) {
     if (entry.retentionTimer) {
@@ -348,7 +355,6 @@ export function __resetDynamicViewLoaderCacheForTests(): void {
   pruneBundleCacheOnAppPause = null;
   bundleCacheLifecycleInstalled = false;
 }
-
 function isReactComponentExport(
   value: unknown,
 ): value is ComponentType<Record<string, unknown>> {
@@ -357,15 +363,6 @@ function isReactComponentExport(
     (typeof value === "object" && value !== null && "$$typeof" in value)
   );
 }
-
-function importHostExternal(
-  specifier: string,
-): Promise<Record<string, unknown>> {
-  return import(/* @vite-ignore */ specifier) as Promise<
-    Record<string, unknown>
-  >;
-}
-
 // View bundles execute inside the host realm, so core exports must cross an
 // explicit browser-safe boundary instead of retaining the runtime namespace in
 // the initial app bundle. Additions belong here only when a real view consumes
@@ -373,11 +370,9 @@ function importHostExternal(
 const CORE_VIEW_COMPAT = Object.freeze({
   ElizaError,
 }) satisfies Readonly<Record<"ElizaError", typeof ElizaError>>;
-
 async function importCoreViewCompat(): Promise<Record<string, unknown>> {
   return CORE_VIEW_COMPAT;
 }
-
 const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   client,
   resolveAppBranding,
@@ -401,15 +396,12 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   toneForStatusText,
   toneForViewerAttachment,
 };
-
 async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
   return APP_CORE_VIEW_COMPAT;
 }
-
 async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
   return import("../index.ts");
 }
-
 function resolveSurfaceRealmScopeForHostExternal(
   boundScope: SurfaceRealmScope | null,
   vector: "storage" | "navigate",
@@ -418,41 +410,26 @@ function resolveSurfaceRealmScopeForHostExternal(
   const activeScope = getActiveSurfaceRealmScope();
   if (activeScope === boundScope) return boundScope;
   throw new SurfaceRealmDeniedError(
-    boundScope?.viewId ?? "unbound",
+    boundScope?.viewId ?? "unscoped",
     vector,
     `stale host external call after surface deactivation: ${detail}`,
   );
 }
-
-function importUiRootCompat(): Promise<Record<string, unknown>> {
-  return importUiRootCompatForScope(getActiveSurfaceRealmScope());
-}
-
-function importUiAppNavigateViewCompat(): Promise<Record<string, unknown>> {
-  return importUiAppNavigateViewCompatForScope(getActiveSurfaceRealmScope());
-}
-
-function importUiBridgeCompat(): Promise<Record<string, unknown>> {
-  return importUiBridgeCompatForScope(getActiveSurfaceRealmScope());
-}
-
-async function importUiRootCompatForScope(
-  boundScope: SurfaceRealmScope | null,
+async function importUiRootCompat(
+  boundScope = getActiveSurfaceRealmScope(),
 ): Promise<Record<string, unknown>> {
-  // The root package is deliberately limited to design-system primitives. The
-  // brokered navigation and bridge adapters are overlaid for older view bundles
-  // that still request those names from the root specifier; raw shell-global
-  // channels are not part of the root namespace and therefore cannot leak here.
+  // Root UI exports share the host API client and primitives. Navigation and
+  // bridge adapters remain bound to the requesting view; raw shell-global
+  // channels are never exposed to view bundles.
   const [rootModule, appNavigateView, bridge] = await Promise.all([
     import("../../index.ts"),
-    importUiAppNavigateViewCompatForScope(boundScope),
-    importUiBridgeCompatForScope(boundScope),
+    importUiAppNavigateViewCompat(boundScope),
+    importUiBridgeCompat(boundScope),
   ]);
   return { ...rootModule, ...appNavigateView, ...bridge };
 }
-
-async function importUiAppNavigateViewCompatForScope(
-  boundScope: SurfaceRealmScope | null,
+async function importUiAppNavigateViewCompat(
+  boundScope = getActiveSurfaceRealmScope(),
 ): Promise<Record<string, unknown>> {
   const appNavigateView = await import("../../app-navigate-view.ts");
   return {
@@ -471,9 +448,8 @@ async function importUiAppNavigateViewCompatForScope(
     },
   };
 }
-
-async function importUiBridgeCompatForScope(
-  boundScope: SurfaceRealmScope | null,
+async function importUiBridgeCompat(
+  boundScope = getActiveSurfaceRealmScope(),
 ): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
   // The bridge barrel carries the shell-privileged raw-global channel for shell
@@ -523,30 +499,24 @@ async function importUiBridgeCompatForScope(
     },
   };
 }
-
 // Framework + host modules the shell always provides to every view bundle:
-// react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app-core` view
-// compat surface, `@elizaos/shared`, and the native capacitor bridges. This map is
+// react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app` view
+// compat surface and browser-safe shared subpaths. This map is
 // FRAMEWORK-ONLY — it must never list a plugin-specific specifier. A plugin (or
 // a build-variant entrypoint) contributes its own specifiers through
 // `registerHostExternalImporter` so adding a host-external plugin never edits
 // this shared UI module.
-const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
-  "@elizaos/app-core": importAppCoreViewCompat,
-  "@elizaos/app-core/browser": importAppCoreViewCompat,
-  "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
+type ScopedHostExternalImporter = (
+  scope?: SurfaceRealmScope | null,
+) => Promise<Record<string, unknown>>;
+const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
+  "@elizaos/app": importAppCoreViewCompat,
+  "@elizaos/app/browser": importAppCoreViewCompat,
+  "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
-  "@elizaos/capacitor-contacts": () =>
-    importHostExternal("@elizaos/capacitor-contacts"),
-  "@elizaos/capacitor-messages": () =>
-    importHostExternal("@elizaos/capacitor-messages"),
-  "@elizaos/capacitor-mobile-signals": () =>
-    importHostExternal("@elizaos/capacitor-mobile-signals"),
-  "@elizaos/capacitor-phone": () =>
-    importHostExternal("@elizaos/capacitor-phone"),
-  "@elizaos/capacitor-system": () =>
-    importHostExternal("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => import("@elizaos/shared"),
+  "@elizaos/core/errors": () => import("@elizaos/core/errors"),
+  "@elizaos/core/lifeops-normalize/time-zone": () =>
+    import("@elizaos/core/lifeops-normalize/time-zone"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,
@@ -645,7 +615,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "three/examples/jsm/loaders/GLTFLoader.js": () =>
     import("three/examples/jsm/loaders/GLTFLoader.js"),
 };
-
 /**
  * Resolve a view-bundle external specifier to its importer: the framework trunk
  * map first, then the specifiers plugins/build variants contributed through
@@ -653,13 +622,12 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
  */
 function resolveHostExternalImporter(
   specifier: string,
-): HostExternalImporter | undefined {
+): ScopedHostExternalImporter | undefined {
   return (
     HOST_EXTERNAL_IMPORTERS[specifier] ??
     resolveRegisteredHostExternalImporter(specifier)
   );
 }
-
 /**
  * Every specifier the shell can rewrite for a view bundle — the framework trunk
  * map plus the registered extension specifiers. Computed per bundle load so a
@@ -671,22 +639,19 @@ function hostExternalSpecifiers(): string[] {
     ...registeredHostExternalSpecifiers(),
   ];
 }
-
 declare global {
   interface Window {
     __ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__?: (
       bundleUrl: string,
+      importHost: HostModuleImporter,
     ) => Promise<Record<string, unknown>>;
   }
 }
-
 type ViewBundleModuleImporter = (
   moduleUrl: string,
 ) => Promise<Record<string, unknown>>;
-
 const BUNDLE_CREDENTIAL_QUERY_PARAM =
   /^(?:access[_-]?token|api[_-]?key|authorization|bearer|credential|password|secret|token)$/iu;
-
 /**
  * View bundles are resolved against the shell URL but fetched through the
  * active authenticated API transport. A paired browser therefore has two
@@ -697,7 +662,6 @@ const BUNDLE_CREDENTIAL_QUERY_PARAM =
 function isTrustedViewBundleOrigin(origin: string): boolean {
   if (typeof window === "undefined") return true;
   if (origin === window.location.origin) return true;
-
   const apiBase = client.baseUrl.trim();
   if (!apiBase) return false;
   try {
@@ -706,7 +670,6 @@ function isTrustedViewBundleOrigin(origin: string): boolean {
     return false;
   }
 }
-
 function trustedBundleRequestPath(bundleUrl: string): string {
   if (typeof window === "undefined") return bundleUrl;
   const parsed = new URL(bundleUrl, window.location.href);
@@ -724,11 +687,9 @@ function trustedBundleRequestPath(bundleUrl: string): string {
   }
   return `${parsed.pathname}${parsed.search}`;
 }
-
 // Protected view bundles are build artifacts and can legitimately take longer
 // than the generic 10-second read budget over an authenticated remote tunnel.
-const VIEW_BUNDLE_DOWNLOAD_TIMEOUT_MS = 120_000;
-
+const VIEW_BUNDLE_DOWNLOAD_TIMEOUT_MS = 120000;
 function isJavaScriptBundleResponse(response: Response): boolean {
   const contentType = response.headers.get("content-type")?.toLowerCase();
   return (
@@ -738,10 +699,8 @@ function isJavaScriptBundleResponse(response: Response): boolean {
     contentType?.startsWith("text/ecmascript") === true
   );
 }
-
 const importBundleModuleUrl: ViewBundleModuleImporter = (moduleUrl) =>
   import(/* @vite-ignore */ moduleUrl);
-
 /**
  * Fetch a protected host-external bundle through the active API client before
  * executing it from a temporary module URL. Authentication stays inside the
@@ -770,7 +729,6 @@ export async function importAuthenticatedViewBundle(
       "DynamicViewLoader: protected view bundle response was not JavaScript",
     );
   }
-
   const source = await response.text();
   const moduleUrl = URL.createObjectURL(
     new Blob([source], { type: "application/javascript" }),
@@ -781,7 +739,6 @@ export async function importAuthenticatedViewBundle(
     URL.revokeObjectURL(moduleUrl);
   }
 }
-
 /**
  * Resolve one host-external specifier to the host shell's live singleton (the
  * framework trunk map first, then registered plugin/build-variant specifiers).
@@ -789,27 +746,33 @@ export async function importAuthenticatedViewBundle(
  * HostModuleImporter} it resolves its externals through — no `globalThis` bridge.
  * Exported so tests can exercise the resolver the factory receives.
  */
-export const hostImport: HostModuleImporter = (specifier) =>
-  importHostForScope(specifier, getActiveSurfaceRealmScope());
-
-async function importHostForScope(
+async function importHostExternalForScope(
   specifier: string,
   scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
-  if (specifier === "@elizaos/ui") return importUiRootCompatForScope(scope);
-  if (specifier === "@elizaos/ui/app-navigate-view")
-    return importUiAppNavigateViewCompatForScope(scope);
-  if (specifier === "@elizaos/ui/bridge")
-    return importUiBridgeCompatForScope(scope);
+  if (getActiveSurfaceRealmScope() !== scope) {
+    throw new SurfaceRealmDeniedError(
+      scope?.viewId ?? "unscoped",
+      "navigate",
+      "host import belongs to a deactivated surface",
+    );
+  }
   const importer = resolveHostExternalImporter(specifier);
   if (!importer) {
     throw new Error(
       `DynamicViewLoader: unsupported host external "${specifier}"`,
     );
   }
-  return importer();
+  return importer(scope);
 }
-
+function createBoundHostImport(
+  scope: SurfaceRealmScope | null,
+): HostModuleImporter {
+  return (specifier) => importHostExternalForScope(specifier, scope);
+}
+export const hostImport: HostModuleImporter = (specifier) => {
+  return importHostExternalForScope(specifier, getActiveSurfaceRealmScope());
+};
 /**
  * A served view bundle's default export is a `HostExternalBundleFactory`: call
  * it with {@link hostImport} to get the view's export namespace. Test/dev bundle
@@ -818,6 +781,7 @@ async function importHostForScope(
  */
 async function resolveBundleNamespace(
   mod: Record<string, unknown>,
+  importHost: HostModuleImporter,
   scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
   if (scope !== getActiveSurfaceRealmScope()) {
@@ -829,14 +793,10 @@ async function resolveBundleNamespace(
   }
   const factory = mod.default;
   if (typeof factory !== "function") return mod;
-  return (factory as HostExternalBundleFactory)((specifier) =>
-    importHostForScope(specifier, scope),
-  );
+  return (factory as HostExternalBundleFactory)(importHost);
 }
-
 /** Dev-mode polling interval in ms. Not used in production builds. */
 const DEV_POLL_INTERVAL_MS = 2000;
-
 /**
  * A view bundle is executed as an ES module in the host realm (it receives the
  * host React singleton, the API client, and the native bridges via the
@@ -858,11 +818,11 @@ export function isSameOriginBundleUrl(bundleUrl: string): boolean {
     return false;
   }
 }
-
 async function importViewBundle(
   bundleUrl: string,
   scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
+  const importHost = createBoundHostImport(scope);
   if (
     (import.meta.env.DEV ||
       import.meta.env.MODE === "test" ||
@@ -870,23 +830,21 @@ async function importViewBundle(
     typeof window !== "undefined" &&
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
   ) {
-    return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl);
+    return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl, importHost);
   }
-
   if (!isSameOriginBundleUrl(bundleUrl)) {
     throw new Error(
       `DynamicViewLoader: refusing to import a cross-origin view bundle (${bundleUrl}). View bundles must be served same-origin from /api/views/.`,
     );
   }
-
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
   if (hostExternalUrl) {
     return resolveBundleNamespace(
       await importAuthenticatedViewBundle(hostExternalUrl),
+      importHost,
       scope,
     );
   }
-
   try {
     return await import(/* @vite-ignore */ bundleUrl);
   } catch (err) {
@@ -895,7 +853,6 @@ async function importViewBundle(
       throw err;
     }
   }
-
   const rewrittenUrl = buildHostExternalBundleUrl(bundleUrl);
   if (!rewrittenUrl) {
     throw new Error(
@@ -904,10 +861,10 @@ async function importViewBundle(
   }
   return resolveBundleNamespace(
     await importAuthenticatedViewBundle(rewrittenUrl),
+    importHost,
     scope,
   );
 }
-
 function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   if (typeof window === "undefined") return null;
   const rewrittenUrl = new URL(bundleUrl, window.location.href);
@@ -920,38 +877,23 @@ function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   );
   return rewrittenUrl.href;
 }
-
-// Evaluated namespaces capture broker handles. Reuse is valid only within the
-// scope that evaluated them, even when another backend serves the same URL.
-const bundleScopeIds = new WeakMap<SurfaceRealmScope, number>();
-let nextBundleScopeId = 0;
-function bundleCacheKey(
-  bundleUrl: string,
-  componentExport: string,
-  scope: SurfaceRealmScope | null,
-): string {
-  const base = `${bundleUrl}::${componentExport}`;
-  if (!scope) return base;
-  let id = bundleScopeIds.get(scope);
-  if (id === undefined) {
-    id = ++nextBundleScopeId;
-    bundleScopeIds.set(scope, id);
-  }
-  return `${base}::scope:${id}`;
-}
-
 function ensureBundleModuleEntry(
   bundleUrl: string,
   componentExport: string,
   scope: SurfaceRealmScope | null,
+  installationId?: string,
 ): ViewBundleCacheEntry {
-  const cacheKey = bundleCacheKey(bundleUrl, componentExport, scope);
+  const cacheKey = bundleCacheKey(
+    bundleUrl,
+    componentExport,
+    scope,
+    installationId,
+  );
   const cached = bundleModuleCache.get(cacheKey);
   if (cached) {
     cached.lastUsedAt = Date.now();
     return cached;
   }
-
   let entry: ViewBundleCacheEntry;
   const promise = importViewBundle(bundleUrl, scope).then(
     (mod: Record<string, unknown>) => {
@@ -999,7 +941,6 @@ function ensureBundleModuleEntry(
       throw error;
     },
   );
-
   entry = {
     key: cacheKey,
     promise,
@@ -1012,25 +953,29 @@ function ensureBundleModuleEntry(
   bundleModuleCache.set(cacheKey, entry);
   return entry;
 }
-
 function acquireBundleModule(
   bundleUrl: string,
   componentExport: string,
   scope: SurfaceRealmScope | null,
+  installationId?: string,
 ): {
   cacheKey: string;
   promise: Promise<ViewBundleModule>;
   release: () => void;
 } {
   installBundleCacheLifecycle();
-  const entry = ensureBundleModuleEntry(bundleUrl, componentExport, scope);
+  const entry = ensureBundleModuleEntry(
+    bundleUrl,
+    componentExport,
+    scope,
+    installationId,
+  );
   entry.refCount += 1;
   entry.lastUsedAt = Date.now();
   if (entry.retentionTimer) {
     clearTimeout(entry.retentionTimer);
     entry.retentionTimer = null;
   }
-
   let released = false;
   return {
     cacheKey: entry.key,
@@ -1042,7 +987,9 @@ function acquireBundleModule(
       entry.lastUsedAt = Date.now();
       emitBundleTelemetry("release", { key: entry.key });
       if (entry.refCount === 0) {
-        if (bundleModuleCache.get(entry.key) === entry) {
+        if (getActiveSurfaceRealmScope() !== scope) {
+          cleanupBundleEntry(entry, "invalidate");
+        } else if (bundleModuleCache.get(entry.key) === entry) {
           armBundleEntryRetentionTimer(entry);
           scheduleIdleWork(() => pruneBundleModuleCache());
         } else {
@@ -1052,7 +999,6 @@ function acquireBundleModule(
     },
   };
 }
-
 function invalidateBundleModule(cacheKey: string): void {
   const entry = bundleModuleCache.get(cacheKey);
   if (!entry) return;
@@ -1061,7 +1007,6 @@ function invalidateBundleModule(cacheKey: string): void {
     cleanupBundleEntry(entry, "invalidate");
   }
 }
-
 const STANDARD_CAPABILITIES = new Set([
   "get-state",
   "refresh",
@@ -1070,7 +1015,6 @@ const STANDARD_CAPABILITIES = new Set([
   "fill-input",
   "get-text",
 ]);
-
 const DOM_FILLABLE_AGENT_ROLES = new Set([
   "text-input",
   "number-input",
@@ -1078,7 +1022,6 @@ const DOM_FILLABLE_AGENT_ROLES = new Set([
   "select",
   "slider",
 ]);
-
 const DOM_CLICKABLE_AGENT_ROLES = new Set([
   "button",
   "link",
@@ -1088,11 +1031,13 @@ const DOM_CLICKABLE_AGENT_ROLES = new Set([
   "list-item",
   "card",
 ]);
-
 function resolveInteractTarget(
   containerEl: HTMLElement | null,
   params: Record<string, unknown> | undefined,
-): { target: HTMLElement | null; selector: string | null } {
+): {
+  target: HTMLElement | null;
+  selector: string | null;
+} {
   const selector =
     typeof params?.selector === "string" ? params.selector : null;
   const name = typeof params?.name === "string" ? params.name : null;
@@ -1105,7 +1050,6 @@ function resolveInteractTarget(
     null;
   return { target, selector: selector ?? name };
 }
-
 function setNativeInputValue(
   target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
   value: string,
@@ -1121,18 +1065,15 @@ function setNativeInputValue(
   target.dispatchEvent(new Event("input", { bubbles: true }));
   target.dispatchEvent(new Event("change", { bubbles: true }));
 }
-
 function agentSelector(id: string): string {
   return `[data-agent-id="${CSS.escape(id)}"]`;
 }
-
 function getAgentElementById(
   containerEl: HTMLElement | null,
   id: string,
 ): HTMLElement | null {
   return containerEl?.querySelector<HTMLElement>(agentSelector(id)) ?? null;
 }
-
 function readElementValue(el: HTMLElement): unknown {
   if (
     el instanceof HTMLInputElement ||
@@ -1146,7 +1087,6 @@ function readElementValue(el: HTMLElement): unknown {
   }
   return undefined;
 }
-
 function snapshotDomAgentElement(el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const role = el.getAttribute("data-agent-role") || "region";
@@ -1178,14 +1118,12 @@ function snapshotDomAgentElement(el: HTMLElement) {
     },
   };
 }
-
 function listDomAgentElements(containerEl: HTMLElement | null) {
   if (!containerEl) return [];
   return [...containerEl.querySelectorAll<HTMLElement>("[data-agent-id]")]
     .map(snapshotDomAgentElement)
     .filter((item) => item.id.length > 0);
 }
-
 function handleDomAgentSurfaceCapability(
   viewId: string,
   viewType: "gui" | "tui" | "xr",
@@ -1199,7 +1137,6 @@ function handleDomAgentSurfaceCapability(
       const elements = listDomAgentElements(containerEl);
       return role ? elements.filter((item) => item.role === role) : elements;
     }
-
     case "get-agent-state": {
       const elements = listDomAgentElements(containerEl);
       const focused = elements.find((item) => item.focused)?.id ?? null;
@@ -1212,7 +1149,6 @@ function handleDomAgentSurfaceCapability(
         updatedAt: Date.now(),
       };
     }
-
     case "describe-element": {
       const id = agentIdParam(params);
       if (!id) throw new Error("describe-element requires an `id` parameter");
@@ -1220,13 +1156,11 @@ function handleDomAgentSurfaceCapability(
       if (!el) throw new Error(`No element registered with id "${id}"`);
       return snapshotDomAgentElement(el);
     }
-
     case "get-focus": {
       const elements = listDomAgentElements(containerEl);
       const element = elements.find((item) => item.focused) ?? null;
       return { focusedId: element?.id ?? null, element };
     }
-
     case "agent-focus": {
       const id = agentIdParam(params);
       if (!id) throw new Error("agent-focus requires an `id` parameter");
@@ -1235,7 +1169,6 @@ function handleDomAgentSurfaceCapability(
       el.focus();
       return { ok: true, id };
     }
-
     case "agent-click": {
       const id = agentIdParam(params);
       if (!id) throw new Error("agent-click requires an `id` parameter");
@@ -1244,7 +1177,6 @@ function handleDomAgentSurfaceCapability(
       el.click();
       return { ok: true, id };
     }
-
     case "agent-fill": {
       const id = agentIdParam(params);
       const value = typeof params?.value === "string" ? params.value : null;
@@ -1276,7 +1208,6 @@ function handleDomAgentSurfaceCapability(
       }
       return { ok: false, id, reason: "element is not a native field" };
     }
-
     case "agent-scroll-to": {
       const id = agentIdParam(params);
       if (!id) throw new Error("agent-scroll-to requires an `id` parameter");
@@ -1285,15 +1216,12 @@ function handleDomAgentSurfaceCapability(
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       return { ok: true, id };
     }
-
     case "set-highlight":
       return { highlighting: false };
-
     default:
       throw new Error(`Unknown agent-surface capability "${capability}"`);
   }
 }
-
 /**
  * Handle a standard capability on the view container element.
  * Called when a view module does not export an `interact` function, or when
@@ -1305,7 +1233,6 @@ function agentIdParam(
   const id = params?.agentId ?? params?.id;
   return typeof id === "string" ? id : null;
 }
-
 async function handleStandardCapability(
   capability: string,
   params: Record<string, unknown> | undefined,
@@ -1317,7 +1244,6 @@ async function handleStandardCapability(
   switch (capability) {
     case "get-text":
       return containerEl?.innerText ?? "";
-
     case "get-state": {
       // Prefer the agent-surface snapshot when the view registers elements; it
       // supersedes the legacy manual `[data-view-state]` attribute.
@@ -1334,12 +1260,10 @@ async function handleStandardCapability(
       }
       return {};
     }
-
     case "refresh":
       invalidateBundleModule(cacheKey);
       setReloadKey((k) => k + 1);
       return { refreshed: true };
-
     case "focus-element": {
       // Addressing by registered agent id takes precedence over raw selectors.
       const id = agentIdParam(params);
@@ -1354,7 +1278,6 @@ async function handleStandardCapability(
       }
       return { focused: false, reason: "element not found" };
     }
-
     case "click-element": {
       const id = agentIdParam(params);
       if (id && registry) {
@@ -1368,7 +1291,6 @@ async function handleStandardCapability(
       }
       return { clicked: false, reason: "element not found" };
     }
-
     case "fill-input": {
       const value = typeof params?.value === "string" ? params.value : null;
       if (value === null) {
@@ -1419,13 +1341,12 @@ async function handleStandardCapability(
       }
       return { filled: false, reason: "element is not fillable" };
     }
-
     default:
       throw new Error(`Unknown standard capability "${capability}"`);
   }
 }
-
 interface DynamicViewLoaderProps {
+  installationId?: string;
   /** The URL of the JS bundle to dynamically import. */
   bundleUrl?: string;
   /** HTML document URL for sandboxed-iframe views. */
@@ -1448,47 +1369,9 @@ interface DynamicViewLoaderProps {
    * an un-manifested plugin view exposes read-only introspection only.
    */
   surface?: SurfaceManifest;
+  /** Typed interaction authority supplied by the registered view declaration. */
+  capabilities?: readonly ViewCapability[];
 }
-
-interface ViewRealmBinding {
-  viewId: string;
-  scope: SurfaceRealmScope | null;
-  admitted: boolean;
-}
-
-function useViewRealmBinding(viewId: string): ViewRealmBinding {
-  const published = useSyncExternalStore(
-    subscribeActiveSurfaceRealmScope,
-    getActiveSurfaceRealmScope,
-    getActiveSurfaceRealmScope,
-  );
-  const initialBinding = (): ViewRealmBinding => ({
-    viewId,
-    scope: published?.ownsView(viewId) ? published : null,
-    admitted: published === null || published.ownsView(viewId),
-  });
-  const [binding, setBinding] = useState(initialBinding);
-  // Retained background views keep their old lease and denied handles. They
-  // must never re-evaluate under the foreground owner's grants. A composed
-  // layout admits its explicit members under the shared default-deny scope.
-  if (binding.viewId !== viewId) {
-    const next = initialBinding();
-    setBinding(next);
-    return next;
-  }
-  if (published?.ownsView(viewId) && binding.scope !== published) {
-    const next = { viewId, scope: published, admitted: true };
-    setBinding(next);
-    return next;
-  }
-  if (published && binding.scope === null && binding.admitted) {
-    const next = { viewId, scope: null, admitted: false };
-    setBinding(next);
-    return next;
-  }
-  return binding;
-}
-
 /**
  * Loads and mounts a view component from a remote bundle URL.
  *
@@ -1501,6 +1384,7 @@ function useViewRealmBinding(viewId: string): ViewRealmBinding {
  * ```
  */
 export const DynamicViewLoader = memo(function DynamicViewLoader({
+  installationId,
   bundleUrl,
   frameUrl,
   componentExport = "default",
@@ -1509,7 +1393,19 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   viewType = "gui",
   reserveChatClearance = true,
   surface,
+  capabilities,
 }: DynamicViewLoaderProps) {
+  const surfaceScope = useSyncExternalStore(
+    subscribeActiveSurfaceRealmScope,
+    getActiveSurfaceRealmScope,
+    () => null,
+  );
+  // A retained background view must never evaluate against the foreground
+  // view's authority. Null is the standalone host/test lane with no shell scope.
+  const scopeOwnsView = surfaceScope === null || surfaceScope.ownsView(viewId);
+  const cacheKey = bundleUrl
+    ? bundleCacheKey(bundleUrl, componentExport, surfaceScope, installationId)
+    : null;
   // Resolve the declared manifest once per surface declaration so the interact
   // broker gate reads a stable {@link ResolvedSurfaceManifest}. An absent
   // manifest resolves to the safe default (no capability grants).
@@ -1524,10 +1420,22 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // and talks to the shell only through the postMessage broker, so the in-realm
   // bundle-load / interact-registry path below is skipped for it.
   const isSandboxed = resolvedManifest.isolation === "sandboxed-iframe";
-  const { scope: activeScope, admitted: scopeAdmitted } =
-    useViewRealmBinding(viewId);
-  const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
-  const [loadError, setLoadError] = useState<Error | null>(null);
+  const [loadedBundle, setLoadedBundle] = useState<{
+    cacheKey: string;
+    module: ViewBundleModule;
+  } | null>(null);
+  const bundle =
+    scopeOwnsView && loadedBundle?.cacheKey === cacheKey
+      ? loadedBundle.module
+      : null;
+  const [failedLoad, setFailedLoad] = useState<{
+    cacheKey: string;
+    error: Error;
+  } | null>(null);
+  const loadError =
+    scopeOwnsView && failedLoad?.cacheKey === cacheKey
+      ? failedLoad.error
+      : null;
   // Incrementing this key invalidates the module cache entry and forces a
   // fresh import. Used by the dev-mode ETag poller when the bundle changes,
   // and by the `refresh` standard capability.
@@ -1541,63 +1449,61 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // must not re-run the import or flash the loading skeleton).
   const viewIdRef = useRef(viewId);
   viewIdRef.current = viewId;
-
   // reloadKey is intentionally a dependency: bumping it via the
   // standard `refresh` capability or the dev-mode ETag poller must
   // re-run this effect to invalidate the module cache.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a manual cache-bust trigger
   useEffect(() => {
-    if (!scopeAdmitted) {
-      setBundle(null);
-      setLoadError(null);
+    if (!dynamicLoadingAllowed || isSandboxed || !bundleUrl || !scopeOwnsView)
       return;
-    }
-    if (!dynamicLoadingAllowed || isSandboxed || !bundleUrl) return;
-
+    // A parent layout effect may publish a new scope before this passive
+    // effect runs. The store subscription will rerender with that exact owner.
+    if (getActiveSurfaceRealmScope() !== surfaceScope) return;
     let cancelled = false;
-    const lease = acquireBundleModule(bundleUrl, componentExport, activeScope);
-
-    setBundle(null);
-    setLoadError(null);
+    const lease = acquireBundleModule(
+      bundleUrl,
+      componentExport,
+      surfaceScope,
+      installationId,
+    );
+    setLoadedBundle(null);
+    setFailedLoad(null);
     void lease.promise
       .then((nextBundle) => {
-        if (!cancelled) {
-          setBundle(nextBundle);
+        if (!cancelled && getActiveSurfaceRealmScope() === surfaceScope) {
+          setLoadedBundle({ cacheKey: lease.cacheKey, module: nextBundle });
         }
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (cancelled || getActiveSurfaceRealmScope() !== surfaceScope) return;
         const error = err instanceof Error ? err : new Error(String(err));
         reportRendererDiagnostic({
           scope: "dynamic-view.load",
           error,
           context: { viewId: viewIdRef.current, bundleUrl },
         });
-        setLoadError(error);
+        setFailedLoad({ cacheKey: lease.cacheKey, error });
       });
-
     return () => {
       cancelled = true;
       lease.release();
     };
   }, [
-    activeScope,
-    scopeAdmitted,
     bundleUrl,
+    installationId,
     componentExport,
     dynamicLoadingAllowed,
     isSandboxed,
     reloadKey,
+    scopeOwnsView,
+    surfaceScope,
   ]);
-
   // Register this view's interact handler whenever the bundle is loaded.
   // The handler is unregistered on unmount or when the bundle changes.
   useLayoutEffect(() => {
     if (!bundle) return;
-
     // The capability broker (#13452) gates the interact channel on the view's
-    // resolved manifest: read-only introspection is always allowed, but mutating
-    // agent-surface/standard capabilities require the `agent-surface` grant. A
+    // declared semantic authority and resolved surface manifest. A
     // denied capability throws, surfacing to the agent instead of a silent no-op.
     const unregister = registerViewInteractHandler(
       viewId,
@@ -1606,7 +1512,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         viewId,
         resolvedManifest,
         async (capability, params) => {
-          const registry = getViewRegistry(viewId, viewType);
+          const registry = getViewRegistry(viewId, viewType, installationId);
           // Generic agent-surface capabilities (list-elements, agent-fill, …)
           // operate on the view's element registry.
           if (isAgentSurfaceCapability(capability)) {
@@ -1634,7 +1540,13 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               params,
               containerRef.current,
               setReloadKey,
-              bundleCacheKey(bundleUrl, componentExport, activeScope),
+              cacheKey ??
+                bundleCacheKey(
+                  bundleUrl,
+                  componentExport,
+                  surfaceScope,
+                  installationId,
+                ),
               registry,
             );
           }
@@ -1646,28 +1558,36 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             `View "${viewId}" does not support capability "${capability}"`,
           );
         },
+        capabilities,
       ),
+      installationId,
     );
-
     return unregister;
   }, [
-    activeScope,
     bundle,
+    installationId,
     bundleUrl,
+    cacheKey,
     componentExport,
     resolvedManifest,
+    capabilities,
+    surfaceScope,
     viewId,
     viewType,
   ]);
-
   // Dev-mode only: poll the bundle URL with HEAD requests every 2s. When the
   // ETag changes the bundle has been rebuilt — evict the cache entry and bump
   // reloadKey so the component re-imports the updated bundle.
   const lastEtagRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!import.meta.env.DEV || !bundleUrl || !dynamicLoadingAllowed) return;
-
-    const cacheKey = bundleCacheKey(bundleUrl, componentExport, activeScope);
+    if (
+      !import.meta.env.DEV ||
+      !bundleUrl ||
+      !dynamicLoadingAllowed ||
+      !scopeOwnsView ||
+      !cacheKey
+    )
+      return;
     let requestPath: string;
     try {
       requestPath = trustedBundleRequestPath(bundleUrl);
@@ -1676,12 +1596,13 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       // must not raise a second unhandled error for the same invalid bundle.
       return;
     }
-
+    let cancelled = false;
+    lastEtagRef.current = null;
     const id = setInterval(() => {
       void client
         .rawRequest(requestPath, { method: "HEAD" }, { allowNonOk: true })
         .then((res) => {
-          if (!res.ok) return;
+          if (cancelled || !res.ok) return;
           const etag = res.headers.get("etag");
           if (lastEtagRef.current !== null && etag !== lastEtagRef.current) {
             // Bundle changed on disk — evict cache and trigger re-import.
@@ -1694,30 +1615,27 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           // Network errors during polling are non-fatal; just wait for the next tick.
         });
     }, DEV_POLL_INTERVAL_MS);
-
-    return () => clearInterval(id);
-  }, [activeScope, bundleUrl, componentExport, dynamicLoadingAllowed]);
-
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [bundleUrl, cacheKey, dynamicLoadingAllowed, scopeOwnsView]);
   // Recover from a load failure or render crash: evict the cached module so the
   // next import re-fetches a fresh copy, clear the latched error, and bump
   // reloadKey to re-run the load effect. Bumping reloadKey also changes the
   // ErrorBoundary key below, remounting it with cleared state — so a view that
   // crashed at render is genuinely retried, not stuck behind a latched boundary.
   const recoverView = useCallback(() => {
-    if (!bundleUrl) return;
-    invalidateBundleModule(
-      bundleCacheKey(bundleUrl, componentExport, activeScope),
-    );
-    setLoadError(null);
+    if (!cacheKey) return;
+    invalidateBundleModule(cacheKey);
+    setFailedLoad(null);
     setReloadKey((k) => k + 1);
-  }, [activeScope, bundleUrl, componentExport]);
-
+  }, [cacheKey]);
   // iOS App Store and Google Play builds cannot load remote JS or HTML frame
   // documents at runtime; both execute plugin-provided code.
   if (!dynamicLoadingAllowed) {
     return <ViewRestrictedState viewId={viewId} />;
   }
-
   // A sandboxed-iframe view embeds cross-realm through a real HTML document URL.
   // Never feed the JS module `bundleUrl` to an iframe: `/api/views/:id/bundle.js`
   // is served as JavaScript and is only valid for host-realm dynamic import.
@@ -1751,7 +1669,6 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       </div>
     );
   }
-
   if (!bundleUrl) {
     return (
       <ViewErrorState
@@ -1775,18 +1692,20 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       />
     );
   }
-
   if (!bundle) {
     return <ViewLoadingSkeleton />;
   }
-
   const View = bundle.component;
   const viewProps = {
     ...forwardedViewProps,
     exitToApps: navigateToViews,
     t: (
       key: string,
-      options?: { defaultValue?: string } | Record<string, unknown>,
+      options?:
+        | {
+            defaultValue?: string;
+          }
+        | Record<string, unknown>,
     ) =>
       typeof options === "object" &&
       options !== null &&
@@ -1795,7 +1714,6 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         ? options.defaultValue
         : key,
   };
-
   return (
     <div
       ref={containerRef}
@@ -1803,12 +1721,17 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       data-agent-surface-kind="dynamic"
       data-agent-surface-view-id={viewId}
     >
-      <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
+      <AgentSurfaceProvider
+        key={installationId ?? "unbound"}
+        viewId={viewId}
+        viewType={viewType}
+        installationId={installationId}
+      >
         {/* Keyed by bundleUrl+reloadKey so a successful reload (refresh
             capability / dev HMR / Retry) remounts the boundary with cleared
             state instead of staying latched on a stale render crash. */}
         <ErrorBoundary
-          key={`${bundleUrl}:${reloadKey}`}
+          key={`${cacheKey}:${reloadKey}`}
           fallback={(error, resetErrorBoundary) => (
             <ViewErrorState
               viewId={viewId}
@@ -1822,11 +1745,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           )}
         >
           {/* One shell-level SpatialSurface owns modality for every mounted
-              view — GUI by auto-detect, XR inside a headset host — so plugin
-              view components no longer each wrap themselves. Omitting `modality`
-              keeps the exact auto-detect behaviour the per-view wrappers had.
-              The host also reserves the floating composer clearance once so
-              spatial plugin content scrolls above the chat affordance. */}
+            view — GUI by auto-detect, XR inside a headset host — so plugin
+            view components no longer each wrap themselves. Omitting `modality`
+            keeps the exact auto-detect behaviour the per-view wrappers had.
+            The host also reserves the floating composer clearance once so
+            spatial plugin content scrolls above the chat affordance. */}
           <SpatialSurface reserveChatClearance={reserveChatClearance}>
             <View {...viewProps} />
           </SpatialSurface>

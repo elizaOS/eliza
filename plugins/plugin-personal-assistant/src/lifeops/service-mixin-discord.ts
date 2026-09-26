@@ -3,12 +3,13 @@
  * `withDiscord` mixin that composes the Discord domain's DM-inbox, search, and
  * connector-verification methods onto the LifeOpsService base.
  */
-import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord/user-account-scraper";
-import type {
-  LifeOpsConnectorSide,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsOwnerBrowserAccessSource,
-} from "@elizaos/shared";
+
+import {
+  type LifeOpsConnectorSide,
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsOwnerBrowserAccessSource,
+} from "@elizaos/core/contracts/personal-assistant";
+import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord";
 import type {
   DiscordConnectorVerification,
   DiscordSendMessageResult,
@@ -33,6 +34,7 @@ export interface LifeOpsDiscordService {
   ): Promise<DiscordMessageSearchResult[]>;
   sendDiscordMessage(request: {
     side?: LifeOpsConnectorSide;
+    expectedIdentityId?: string;
     channelId?: string;
     /** Discord user id target (DM via createDM); exclusive with channelId. */
     userId?: string;

@@ -8,33 +8,45 @@
  * This is the composition root that turns the LifeOps domains, mixins, and
  * default packs into a runnable Eliza plugin; it owns no domain logic itself.
  */
+
 import {
   type EventPayload,
   EventType,
-  getDefaultTriageService,
   type IAgentRuntime,
   logger,
   type MessagePayload,
-  messagingTriageActions,
-  type Plugin,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
-  registerSendPolicy,
 } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import {
+  type IPermissionsRegistry,
+  type PermissionState,
+  type Platform,
+  type Prober,
+} from "@elizaos/core/contracts/permissions";
+import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+import {
+  MEETING_TRANSCRIPT_FINALIZED_EVENT,
+  type MeetingTranscriptFinalizedPayload,
+} from "@elizaos/core/meetings";
+import {
+  getDefaultTriageService,
+  messagingTriageActions,
+  registerSendPolicy,
+} from "@elizaos/plugin-assistant";
 import {
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,
   requestSelfControlPermission,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
-import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import {
   calendarPlugin,
   handleMeetingJoinDispatch,
   MEETING_JOIN_CHANNEL_KEY,
 } from "@elizaos/plugin-calendar";
-import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
@@ -46,23 +58,21 @@ import {
   registerHealthConnectors,
   registerHealthDefaultPacks,
 } from "@elizaos/plugin-health";
-import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
+import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { pdfPlugin } from "@elizaos/plugin-pdf";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
-import { waitForScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
+import {
+  registerScheduledTaskRunnerBootHook,
+  waitForScheduledTaskRunnerService,
+} from "@elizaos/plugin-scheduling";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
-import type {
-  IPermissionsRegistry,
-  MeetingTranscriptFinalizedPayload,
-  PermissionState,
-  Platform,
-  Prober,
-} from "@elizaos/shared";
-import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
-import { calendarAction } from "./actions/calendar.js";
+import {
+  calendarAction,
+  calendarActionPromotionOptions,
+} from "./actions/calendar.js";
 import { registerPersonalAssistantCalendarSourcesHost } from "./actions/calendar-sources.js";
 import {
   conflictDetectAction,
@@ -78,7 +88,6 @@ import { householdCoordinationAction } from "./actions/household-coordination.js
 import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
   ownerAlarmsAction,
-  ownerFinancesAction,
   ownerGoalsAction,
   ownerHealthAction,
   ownerRemindersAction,
@@ -183,6 +192,7 @@ import { registerCoreFactMemoryBridge } from "./lifeops/owner/core-fact-memory-b
 import {
   createOwnerFactStore,
   registerOwnerFactStore,
+  resolveConfiguredOwnerTimeZone,
 } from "./lifeops/owner/fact-store.js";
 import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
 import {
@@ -212,7 +222,6 @@ import {
   createResourceCapacityAction,
   ResourceCapacityRuntimeService,
 } from "./lifeops/resource-capacity/index.js";
-// LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -228,6 +237,7 @@ import {
 } from "./lifeops/scheduled-task/message-draft-dispatch.js";
 import {
   installLifeOpsScheduledTaskEventBridge,
+  registerDossierActivityAnchor,
   registerLifeOpsScheduledTaskRunnerDeps,
 } from "./lifeops/scheduled-task/runtime-wiring.js";
 import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
@@ -252,13 +262,10 @@ import {
 import { createUndatedOwnerTodoDirectRoutingRule } from "./lifeops/todos/direct-routing.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { isDarwin } from "./platform/host.js";
-import { browserBridgeProvider } from "./provider.js";
-// Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { agreementPinsProvider } from "./providers/agreement-pins.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 import { delegationContractsProvider } from "./providers/delegation-contracts.js";
-// LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
 import { ftuGoalProvider } from "./providers/ftu-goal.js";
 import { healthProvider } from "./providers/health.js";
@@ -269,13 +276,16 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
-import { BrowserBridgePluginService } from "./service.js";
+import { PersonalAssistantStartupService } from "./startup-work.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
   ensureBlockRuleReconcileTask,
   registerBlockRuleReconcilerWorker,
 } from "./website-blocker/chat-integration/index.js";
 
+// LifeOps runtime (scheduler task worker + registration)
+// Activity-profile (proactive agent: GM/GN/nudges)
+// LifeOps core providers
 const handleDelegationInboundMessage = createDelegationInboundMessageHandler({
   createRepository: (runtime) => new LifeOpsRepository(runtime),
   createApprovalQueue: (runtime) =>
@@ -307,23 +317,40 @@ const foodDomainAction = createFoodDomainAction({
 const localConditionsAction = createLocalConditionsAction({
   authorize: hasLifeOpsAccess,
 });
-
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google-workspace";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
-
 function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   return (
     !!value &&
     typeof value === "object" &&
-    typeof (value as { get?: unknown }).get === "function" &&
-    typeof (value as { check?: unknown }).check === "function" &&
-    typeof (value as { request?: unknown }).request === "function" &&
-    typeof (value as { openSettings?: unknown }).openSettings === "function" &&
-    typeof (value as { registerProber?: unknown }).registerProber === "function"
+    typeof (
+      value as {
+        get?: unknown;
+      }
+    ).get === "function" &&
+    typeof (
+      value as {
+        check?: unknown;
+      }
+    ).check === "function" &&
+    typeof (
+      value as {
+        request?: unknown;
+      }
+    ).request === "function" &&
+    typeof (
+      value as {
+        openSettings?: unknown;
+      }
+    ).openSettings === "function" &&
+    typeof (
+      value as {
+        registerProber?: unknown;
+      }
+    ).registerProber === "function"
   );
 }
-
 // plugin-blocker's SelfControl state lacks the shared contract's required
 // `platform` field; adapt at this boundary so the registry sees the full shape.
 const WEBSITE_BLOCKING_PLATFORM: Platform =
@@ -332,7 +359,6 @@ const WEBSITE_BLOCKING_PLATFORM: Platform =
   process.platform === "linux"
     ? process.platform
     : "web";
-
 function toSharedPermissionState(state: {
   status: PermissionState["status"];
   lastChecked: number;
@@ -351,7 +377,6 @@ function toSharedPermissionState(state: {
   }
   return shared;
 }
-
 const websiteBlockingPermissionProber: Prober = {
   id: "website-blocking",
   check: async () =>
@@ -360,7 +385,6 @@ const websiteBlockingPermissionProber: Prober = {
     toSharedPermissionState(await requestSelfControlPermission()),
   openSettings: openSelfControlPermissionLocation,
 };
-
 export function registerLifeOpsWebsiteBlockingPermissionProber(
   runtime: IAgentRuntime,
 ): boolean {
@@ -371,7 +395,6 @@ export function registerLifeOpsWebsiteBlockingPermissionProber(
   service.registerProber(websiteBlockingPermissionProber);
   return true;
 }
-
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -379,9 +402,9 @@ async function ensureTaskWithRetries(args: {
   ensure: () => Promise<unknown>;
   delays?: readonly number[];
 }): Promise<void> {
-  const isRuntimeStopped = () =>
-    (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true;
-  const delays = args.delays ?? [2_000, 5_000, 10_000];
+  const startup = PersonalAssistantStartupService.forRuntime(args.runtime);
+  const isRuntimeStopped = () => startup.stopping;
+  const delays = args.delays ?? [2000, 5000, 10000];
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     if (isRuntimeStopped()) {
       return;
@@ -398,7 +421,7 @@ async function ensureTaskWithRetries(args: {
         args.runtime.logger.warn(
           `${args.prefix} ${args.label} init failed (attempt ${attempt + 1}/${delays.length + 1}), retrying in ${delays[attempt]}ms: ${message}`,
         );
-        await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+        await startup.wait(delays[attempt]);
         continue;
       }
       args.runtime.logger.error(
@@ -410,7 +433,6 @@ async function ensureTaskWithRetries(args: {
     }
   }
 }
-
 function isDisabledByEnv(disableKey: string): boolean {
   const disableValue = (process.env[disableKey] ?? "").trim().toLowerCase();
   if (
@@ -420,17 +442,14 @@ function isDisabledByEnv(disableKey: string): boolean {
   ) {
     return true;
   }
-
   return false;
 }
-
 function isGoogleConnectorPlugin(plugin: Plugin): boolean {
   return (
     plugin.name === GOOGLE_CONNECTOR_PLUGIN_NAME ||
     plugin.name === GOOGLE_CONNECTOR_PLUGIN_PACKAGE
   );
 }
-
 function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
   for (const key of ["googlePlugin", "default"]) {
     const value = module[key];
@@ -444,7 +463,6 @@ function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
   }
   return null;
 }
-
 async function importGoogleConnectorPluginModule(): Promise<
   Record<string, unknown>
 > {
@@ -468,14 +486,12 @@ async function importGoogleConnectorPluginModule(): Promise<
     }
   }
 }
-
 export async function ensureLifeOpsGooglePluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
   if (runtime.plugins.some(isGoogleConnectorPlugin)) {
     return;
   }
-
   const module = await importGoogleConnectorPluginModule();
   const plugin = resolvePluginExport(module);
   if (!plugin) {
@@ -488,7 +504,6 @@ export async function ensureLifeOpsGooglePluginRegistered(
   }
   await runtime.registerPlugin(plugin);
 }
-
 /**
  * Register `@elizaos/plugin-calendar` if it is not already in the runtime so
  * the calendar `CalendarService` (which LifeOps delegates every calendar call
@@ -525,7 +540,6 @@ export async function ensureLifeOpsCalendarPluginRegistered(
     ),
   });
 }
-
 /**
  * Register `@elizaos/plugin-pdf` when LifeOps is loaded directly. Parenting
  * agreement ingestion and the school-calendar workflow both require the
@@ -541,24 +555,6 @@ export async function ensureLifeOpsPdfPluginRegistered(
   }
   await runtime.registerPlugin(pdfPlugin);
 }
-
-/**
- * Register `@elizaos/plugin-finances` if it is not already in the runtime. The
- * finance tables (life_payment_*, life_subscription_*) moved out of LifeOps
- * into the finances plugin's `app_finances` schema; PA's finance repository
- * methods read/write those tables via raw SQL, so the finances plugin (which
- * owns the schema + the non-destructive data copy) MUST be loaded whenever PA
- * is. Hard dependency, so a static import is sufficient.
- */
-export async function ensureLifeOpsFinancesPluginRegistered(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  if (runtime.plugins.some((plugin) => plugin.name === financesPlugin.name)) {
-    return;
-  }
-  await runtime.registerPlugin(financesPlugin);
-}
-
 /**
  * Register `@elizaos/plugin-reminders` if it is not already in the runtime. The
  * reminder tables (life_reminder_plans / life_reminder_attempts /
@@ -576,7 +572,6 @@ export async function ensureLifeOpsRemindersPluginRegistered(
   }
   await runtime.registerPlugin(remindersPlugin);
 }
-
 /**
  * Register `@elizaos/plugin-inbox` if it is not already in the runtime. The
  * inbox triage domain (the INBOX action, the inboxTriage provider, and the
@@ -594,7 +589,6 @@ export async function ensureLifeOpsInboxPluginRegistered(
   }
   await runtime.registerPlugin(inboxPlugin);
 }
-
 /**
  * Register `@elizaos/plugin-goals` if it is not already in the runtime. The
  * goal TABLES (life_goal_definitions / life_goal_links) were carved into
@@ -618,14 +612,12 @@ export async function ensureLifeOpsGoalsPluginRegistered(
     actions: [],
   });
 }
-
 export async function ensureLifeOpsHealthPluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
   if (!runtime.plugins.some((plugin) => plugin.name === healthPlugin.name)) {
     await runtime.registerPlugin(healthPlugin);
   }
-
   // Health is often loaded as a support package before PA creates the
   // registries it contributes to. Re-run the idempotent contribution hooks
   // after PA has attached those registries so boot order cannot drop health
@@ -639,10 +631,8 @@ export async function ensureLifeOpsHealthPluginRegistered(
     createDefaultCircadianInsightContract(),
   );
 }
-
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
-
 async function recordTaskInitFailure(
   runtime: IAgentRuntime,
   label: string,
@@ -659,7 +649,6 @@ async function recordTaskInitFailure(
     // Cache not available; the logger.error is the primary signal.
   }
 }
-
 /**
  * Kick off task registration AFTER `runtime.initPromise` resolves — this step
  * cannot be awaited inside `init()` because `init()` runs before the runtime
@@ -674,7 +663,6 @@ async function recordTaskInitFailure(
 // macOS-only — hide the owner-screentime umbrella on other hosts so the
 // planner never picks it.
 const platformGatedActionUmbrellas = isDarwin() ? [ownerScreenTimeAction] : [];
-
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -682,29 +670,17 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
   ensure: () => Promise<unknown>;
   delays?: readonly number[];
 }): void {
-  void args.runtime.initPromise
-    .then(async () => {
-      if (
-        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-      ) {
-        return;
-      }
-      await ensureTaskWithRetries(args);
-    })
-    .catch((error) => {
-      if (
-        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-      ) {
-        return;
-      }
+  PersonalAssistantStartupService.forRuntime(args.runtime).runAfterInit(
+    () => ensureTaskWithRetries(args),
+    async (error) => {
       const message = error instanceof Error ? error.message : String(error);
       args.runtime.logger.error(
         `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
       );
-      void recordTaskInitFailure(args.runtime, args.label, message);
-    });
+      await recordTaskInitFailure(args.runtime, args.label, message);
+    },
+  );
 }
-
 const rawPersonalAssistantPlugin: Plugin = {
   name: "@elizaos/plugin-personal-assistant",
   description:
@@ -732,9 +708,11 @@ const rawPersonalAssistantPlugin: Plugin = {
     // top-level entry for every flat child action (e.g. `BLOCK_BLOCK`,
     // `BLOCK_LIST_ACTIVE`, `OWNER_FINANCES_DASHBOARD`, `CREDENTIALS_FILL`, ...).
     ...promoteSubactionsToActions(blockAction),
-    ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
-    ...promoteSubactionsToActions(calendarAction),
+    ...promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    ),
     ...promoteSubactionsToActions(householdCoordinationAction),
     ...promoteSubactionsToActions(householdOperationsAction),
     ...promoteSubactionsToActions(resourceCapacityAction),
@@ -786,7 +764,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...messagingTriageActions,
   ].map(ownerPrivateAction),
   providers: [
-    browserBridgeProvider,
     firstRunProvider,
     ftuGoalProvider,
     roomPolicyProvider,
@@ -806,7 +783,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     activityProfileProvider,
   ].map(ownerPrivateProvider),
   services: [
-    BrowserBridgePluginService,
+    PersonalAssistantStartupService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
     HouseholdCoordinationRuntimeService,
@@ -942,12 +919,17 @@ const rawPersonalAssistantPlugin: Plugin = {
     runtime: IAgentRuntime,
   ) => {
     registerPersonalAssistantConflictDetectHost(runtime);
+    // Domain plugins, routes and actions alike, resolve
+    // "today" through the shared calendar zone owner; the owner facts are the
+    // only source of the user's configured zone, so register before any turn.
+    registerCalendarTimeZoneResolver(runtime, (_runtime, now) =>
+      resolveConfiguredOwnerTimeZone(runtime, now),
+    );
     runtime.registerEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, async (payload) =>
       handleMeetingTranscriptFinalized(
         payload as EventPayload & MeetingTranscriptFinalizedPayload,
       ),
     );
-
     // These registries participate in the first inbound turn. Establish them
     // before plugin discovery yields so a newly ready runtime cannot briefly
     // answer an actionable request as plain chat.
@@ -967,7 +949,6 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),
     );
-
     // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
     // to the matching Mockoon environment on localhost. No-op otherwise.
     const mockoonApplied = applyMockoonEnvOverrides();
@@ -977,66 +958,41 @@ const rawPersonalAssistantPlugin: Plugin = {
         `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
       );
     }
-
     registerLifeOpsWebsiteBlockingPermissionProber(runtime);
-
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsPdfPluginRegistered(runtime);
-
-    await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
-
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and
     // writing audit rows through the LifeOps repository. Non-fatal on failure:
     // the calendar service falls back to its default gate (Google-only, no
     // reminder/audit side effects).
-    void runtime.initPromise
-      .then(() => {
-        if (
-          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-        ) {
-          return;
-        }
-        registerLifeOpsCalendarGate(runtime);
-      })
-      .catch((error) => {
+    const startup = PersonalAssistantStartupService.forRuntime(runtime);
+    startup.runAfterInit(
+      () => registerLifeOpsCalendarGate(runtime),
+      (error) => {
         logger.error(
-          `[lifeops] failed to register calendar host gate (calendar degraded to default gate): ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[lifeops] failed to register calendar host gate: ${error instanceof Error ? error.message : String(error)}`,
         );
-      });
-
+      },
+    );
     // Expired, revoked, and already-consumed private card files are a separate
     // lifecycle concern from calendar-gate registration. Keep their failures
     // independently observable so cleanup trouble cannot masquerade as a
     // disabled calendar host gate.
-    void runtime.initPromise
-      .then(async () => {
-        if (
-          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-        ) {
-          return;
-        }
+    startup.runAfterInit(
+      async () => {
         await new CalendarCardAccessStore(runtime).cleanup();
-      })
-      .catch((error) => {
-        // error-policy:J7 startup cleanup is diagnostic maintenance; report it
-        // without preventing the rest of the assistant from initializing.
-        logger.error(
-          `[lifeops] failed to clean private calendar cards: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+      },
+      (error) => {
         runtime.reportError("LifeOps.calendarCardCleanup", error, {
           recovery: "next_monthly_workflow_or_restart",
         });
-      });
-
+      },
+    );
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
     registerConnectorRegistry(runtime, connectorRegistry);
@@ -1045,11 +1001,9 @@ const rawPersonalAssistantPlugin: Plugin = {
         connectorRegistry?: typeof connectorRegistry;
       }
     ).connectorRegistry = connectorRegistry;
-
     const oraclePack = createDefaultOraclePack(runtime);
     registerExternalOracleRegistry(runtime, oraclePack.external);
     registerLocalActivityAdapterRegistry(runtime, oraclePack.localActivities);
-
     const channelRegistry = createChannelRegistry();
     registerDefaultChannelPack(channelRegistry, runtime);
     // Meeting auto-join dispatch channel: plugin-calendar's scheduled join
@@ -1073,9 +1027,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     registerChannelRegistry(runtime, channelRegistry);
     installFirstRunChannelInspector(runtime, channelRegistry);
     (
-      runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry }
+      runtime as IAgentRuntime & {
+        channelRegistry?: typeof channelRegistry;
+      }
     ).channelRegistry = channelRegistry;
-
     // Inject PA's production scheduled-task deps into the always-loaded
     // @elizaos/plugin-scheduling runner host. The runner service itself lives
     // in plugin-scheduling now; this binds it to LifeOps's DB-backed store,
@@ -1083,19 +1038,27 @@ const rawPersonalAssistantPlugin: Plugin = {
     // probes, and anchor registry. First-wins, so this stays authoritative for
     // the lifetime of the runtime once registered.
     registerLifeOpsScheduledTaskRunnerDeps(runtime);
-
+    registerScheduledTaskRunnerBootHook(runtime, async (service) => {
+      const { ensureFamilyBackupCleanupSchedule } = await import(
+        "./lifeops/family-workflows/backup-cleanup-schedule.js"
+      );
+      await ensureFamilyBackupCleanupSchedule(
+        runtime,
+        service.getRunner({ agentId: runtime.agentId }),
+      );
+    });
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
-
     registerDefaultBlockerPack(runtime);
-
     const anchorRegistry = createAnchorRegistry();
     registerAppLifeOpsAnchors(anchorRegistry);
+    registerDossierActivityAnchor(runtime, anchorRegistry);
     registerAnchorRegistry(runtime, anchorRegistry);
     (
-      runtime as IAgentRuntime & { anchorRegistry?: typeof anchorRegistry }
+      runtime as IAgentRuntime & {
+        anchorRegistry?: typeof anchorRegistry;
+      }
     ).anchorRegistry = anchorRegistry;
-
     const eventKindRegistry = createEventKindRegistry();
     registerAppLifeOpsEventKinds(eventKindRegistry);
     registerEventKindRegistry(runtime, eventKindRegistry);
@@ -1108,17 +1071,16 @@ const rawPersonalAssistantPlugin: Plugin = {
     // every registered event kind. Must run after registerEventKindRegistry;
     // the runner resolves lazily per event through the cached service host.
     installLifeOpsScheduledTaskEventBridge(runtime);
-
     const familyRegistry = createFamilyRegistry();
     registerBuiltinTelemetryFamilies(familyRegistry);
     registerAppLifeOpsBusFamilies(familyRegistry);
     registerFamilyRegistry(runtime, familyRegistry);
     (
-      runtime as IAgentRuntime & { busFamilyRegistry?: typeof familyRegistry }
+      runtime as IAgentRuntime & {
+        busFamilyRegistry?: typeof familyRegistry;
+      }
     ).busFamilyRegistry = familyRegistry;
-
     activateLifeOpsActivitySignals(runtime);
-
     const workflowStepRegistry = createWorkflowStepRegistry();
     registerDefaultWorkflowStepPack(workflowStepRegistry);
     registerWorkflowStepRegistry(runtime, workflowStepRegistry);
@@ -1127,12 +1089,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         workflowStepRegistry?: typeof workflowStepRegistry;
       }
     ).workflowStepRegistry = workflowStepRegistry;
-
     // FeatureFlagRegistry — open-key registry covering the 10 closed
     // `LifeOpsFeatureKey` built-ins plus any 3rd-party plugin contributions.
     // Audit C top-1 finding (`docs/audit/rigidity-hunt-audit.md`).
     registerDefaultFeatureFlagPack(runtime);
-
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
     // Structural runtime property (same pattern as anchorRegistry /
@@ -1145,17 +1105,13 @@ const rawPersonalAssistantPlugin: Plugin = {
         activitySignalBus?: typeof activitySignalBus;
       }
     ).activitySignalBus = activitySignalBus;
-
     await ensureLifeOpsHealthPluginRegistered(runtime);
-
     const ownerFactStore = createOwnerFactStore(runtime);
     registerOwnerFactStore(runtime, ownerFactStore);
     registerCoreFactMemoryBridge(runtime);
-
     const promptRegistry = createMultilingualPromptRegistry();
     registerDefaultPromptPack(promptRegistry);
     registerMultilingualPromptRegistry(runtime, promptRegistry);
-
     // End-to-end locale wiring: the planner (in core) reads this provider
     // each turn, awaits the resolved owner-locale, and passes the
     // resulting `LocalizedActionExampleResolver` into `buildActionCatalog`.
@@ -1163,7 +1119,6 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createOwnerLocaleExamplesProvider(runtime),
     );
-
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through. The stable
     // OWNER_SEND_APPROVAL task worker executes the held send once the owner
@@ -1176,8 +1131,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     const triage = getDefaultTriageService();
     triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
-    triage.register(new BrowserBridgeAdapter());
-
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
     // learned schedule facts, without planning actions or creating approvals.
@@ -1204,7 +1157,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         "[proactive] Proactive agent task skipped — ELIZA_DISABLE_PROACTIVE_AGENT=1",
       );
     }
-
     // Register the follow-up tracker worker.
     registerFollowupTrackerWorker(runtime);
     scheduleTaskEnsureAfterRuntimeInit({
@@ -1215,7 +1167,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         await ensureFollowupTrackerTask(runtime);
       },
     });
-
     registerBlockRuleReconcilerWorker(runtime);
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
@@ -1225,7 +1176,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         await ensureBlockRuleReconcileTask(runtime);
       },
     });
-
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
       prefix: "[lifeops]",
@@ -1234,7 +1184,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
       },
     });
-
     const lifeOpsSchedulerDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_LIFEOPS_SCHEDULER",
     );
@@ -1324,17 +1273,16 @@ const rawPersonalAssistantPlugin: Plugin = {
    * to touch those here.
    */
   dispose: async (runtime: IAgentRuntime) => {
+    await PersonalAssistantStartupService.forRuntime(runtime).stop();
     deactivateLifeOpsActivitySignals(runtime);
     setRuntimeChannelInspector(runtime, null);
     unregisterMessageDraftScheduledTaskBridge(runtime);
-
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,
       LIFEOPS_TASK_NAME,
       FOLLOWUP_TRACKER_TASK_NAME,
       BLOCK_RULE_RECONCILE_TASK_NAME,
     ];
-
     // Delete persisted Task rows so the scheduler doesn't try to run them
     // on restart (the worker function will be gone).
     for (const name of taskNames) {
@@ -1361,7 +1309,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         );
       }
     }
-
     // Unregister the in-memory worker functions.
     for (const name of taskNames) {
       try {
@@ -1375,9 +1322,28 @@ const rawPersonalAssistantPlugin: Plugin = {
     }
   },
 };
-
 export const personalAssistantPlugin: Plugin = rawPersonalAssistantPlugin;
-
+export {
+  createGlobalPauseStore,
+  createHandoffStore,
+  createPendingPromptsStore,
+  describeResumeCondition,
+  evaluateResume,
+  type GlobalPauseStatus,
+  type GlobalPauseStore,
+  type GlobalPauseWindow,
+  type HandoffEnterOpts,
+  type HandoffStatus,
+  type HandoffStore,
+  type PendingPromptRecordInput,
+  type PendingPromptsStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+  resolveGlobalPauseStore,
+  resolveHandoffStore,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 export { appBlockerProvider } from "@elizaos/plugin-blocker/providers/app-blocker";
 export {
   getAppBlockerPermissionState,
@@ -1389,6 +1355,7 @@ export {
   startAppBlock,
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
+export { inboxTriageProvider } from "@elizaos/plugin-inbox";
 export { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 export { workThreadAction } from "./actions/work-thread.js";
 export type { OverdueDigest, OverdueFollowup } from "./followup/index.js";
@@ -1465,25 +1432,6 @@ export {
   type FtuGoalStatus,
 } from "./lifeops/ftu-goal/state.js";
 export {
-  createGlobalPauseStore,
-  type GlobalPauseStatus,
-  type GlobalPauseStore,
-  type GlobalPauseWindow,
-  resolveGlobalPauseStore,
-} from "./lifeops/global-pause/store.js";
-export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  type HandoffEnterOpts,
-  type HandoffStatus,
-  type HandoffStore,
-  type ResumeCondition,
-  type ResumeEvaluation,
-  type ResumeEvaluationInput,
-  resolveHandoffStore,
-} from "./lifeops/handoff/store.js";
-export {
   type AgreementGuestGrantPreview,
   AgreementKnowledgeError,
   AgreementKnowledgeRuntimeService,
@@ -1527,15 +1475,10 @@ export {
   registerOwnerFactStore,
   resolveOwnerFactStore,
 } from "./lifeops/owner/fact-store.js";
-export {
-  createPendingPromptsStore,
-  type PendingPromptRecordInput,
-  type PendingPromptsStore,
-  resolvePendingPromptsStore,
-} from "./lifeops/pending-prompts/store.js";
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
+  executeLifeOpsReminderTask,
   executeLifeOpsSchedulerTask,
   LIFEOPS_TASK_INTERVAL_MS,
   LIFEOPS_TASK_JITTER_MS,
@@ -1634,7 +1577,6 @@ export { firstRunProvider } from "./providers/first-run.js";
 export type { FtuGoalAffordance } from "./providers/ftu-goal.js";
 export { ftuGoalProvider } from "./providers/ftu-goal.js";
 export { healthProvider } from "./providers/health.js";
-export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 export {
   pendingApprovalsProvider,
@@ -1663,4 +1605,3 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export { BrowserBridgePluginService, browserBridgeProvider };

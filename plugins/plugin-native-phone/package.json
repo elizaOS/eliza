@@ -1,66 +1,117 @@
 {
-  "name": "@elizaos/capacitor-phone",
+  "name": "@elizaos/plugin-native-phone",
   "version": "2.0.3-beta.7",
-  "description": "Android phone and Telecom bridge for ElizaOS.",
-  "main": "./dist/plugin.cjs.js",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
+  "type": "module",
+  "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+  "main": "./dist/index.js",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/plugin.cjs.js"
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./plugin": {
+      "eliza-source": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    },
+    "./bridge": {
+      "eliza-source": "./src/bridge.ts",
+      "types": "./dist/bridge.d.ts",
+      "import": "./dist/bridge.js",
+      "default": "./dist/bridge.js"
+    }
   },
-  "files": [
-    "android/src/main/",
-    "android/build.gradle",
-    "dist/",
-    "dist"
-  ],
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-phone -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
-    "test": "vitest run",
-    "prepublishOnly": "bun run build",
-    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-phone -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "vite build --config vite.config.views.ts",
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "build:unlocked": "bun run build:js && bun run build:views && bun run build:types"
   },
-  "license": "MIT",
+  "dependencies": {
+    "@capacitor/barcode-scanner": "^3.0.0",
+    "@capacitor/core": "8.4.0",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.0",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Phone",
+      "category": "system",
+      "androidOnly": true,
+      "heroImage": "assets/hero.png"
+    },
+    "appRegister": "register"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "android/src/main/",
+    "android/build.gradle"
+  ],
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "rollup": "^4.63.4",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "bun-types": "1.4.2",
+    "jsdom": "^29.0.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tsup": "^8.5.1",
+    "vite": "^8.3.0"
+  },
   "capacitor": {
     "android": {
       "src": "android"
     }
   },
-  "devDependencies": {
-    "@capacitor/core": "^8.3.1",
-    "rollup": "^4.62.4",
-    "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
-  },
-  "peerDependencies": {
-    "@capacitor/core": "^8.3.1"
-  },
-  "elizaos": {
-    "platforms": [
-      "browser",
-      "node"
-    ],
-    "runtime": "both",
-    "platformDetails": {
-      "browser": "Web fallback reports phone APIs unavailable.",
-      "android": true
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  }
+  "sideEffects": [
+    "./src/register.ts",
+    "./src/register-phone-page.ts",
+    "./src/register-companion-page.ts",
+    "./src/bridge.ts",
+    "./src/companion/services/eliza-intent.ts",
+    "./dist/register.js",
+    "./dist/register-phone-page.js",
+    "./dist/register-companion-page.js",
+    "./dist/bridge.js",
+    "./dist/companion/services/eliza-intent.js",
+    "**/*.css"
+  ]
 }

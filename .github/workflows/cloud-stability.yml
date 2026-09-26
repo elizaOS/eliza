@@ -1,0 +1,182 @@
+name: Cloud Agent Stability
+
+on:
+  workflow_call:
+    inputs:
+      real_model:
+        description: Enable the explicitly credentialed model lane
+        type: boolean
+        default: false
+      provider:
+        type: string
+        default: openai
+      model:
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      real_model:
+        description: Run a real model over mock services instead of keyless fixtures
+        type: boolean
+        default: true
+      provider:
+        description: Production model provider; all service providers remain mock-backed
+        required: true
+        default: openai
+        type: choice
+        options: [openai, anthropic]
+      model:
+        description: Optional production model override
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-stability-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  deterministic-keyless:
+    if: ${{ !inputs.real_model }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      NODE_ENV: test
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      HCLOUD_TOKEN: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Establish Linux scenario containment boundary
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes acl apparmor bubblewrap iptables
+          sudo tee /etc/apparmor.d/eliza-stability-bwrap >/dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile eliza-stability-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/eliza-stability-bwrap
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
+          sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            /bin/bash packages/cloud/scripts/e2e/stability-linux-sandbox.sh setup
+          echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
+      - name: Expose checkout outside the runner private home
+        run: |
+          sudo install -d -m 0755 /opt/eliza-stability
+          sudo mount --bind "$GITHUB_WORKSPACE" /opt/eliza-stability
+      - name: Prove Linux containment against adversarial escapes
+        working-directory: /opt/eliza-stability
+        run: bun run --cwd packages/cloud/e2e test:containment
+      - name: Run exact-three keyless AgentRuntime scenario
+        working-directory: /opt/eliza-stability
+        run: >-
+          bun run --cwd packages/cloud/e2e stability:keyless --
+          --run-id cloud-keyless-${{ github.run_id }}-${{ github.run_attempt }}
+          --output /opt/eliza-stability/test-results/cloud-stability/keyless
+      - name: Upload deterministic trajectories and ledgers
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stability-keyless-${{ github.run_attempt }}
+          path: |
+            test-results/cloud-stability/keyless
+            packages/cloud/e2e/.logs
+          retention-days: 14
+          include-hidden-files: true
+          if-no-files-found: error
+
+  real-model-mock-services:
+    if: ${{ inputs.real_model }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: "true"
+      NODE_ENV: test
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      HCLOUD_TOKEN: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Establish Linux scenario containment boundary
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes acl apparmor bubblewrap iptables
+          sudo tee /etc/apparmor.d/eliza-stability-bwrap >/dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile eliza-stability-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/eliza-stability-bwrap
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
+          sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            /bin/bash packages/cloud/scripts/e2e/stability-linux-sandbox.sh setup
+          echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
+      - name: Expose checkout outside the runner private home
+        run: |
+          sudo install -d -m 0755 /opt/eliza-stability
+          sudo mount --bind "$GITHUB_WORKSPACE" /opt/eliza-stability
+      - name: Prove Linux containment against adversarial escapes
+        working-directory: /opt/eliza-stability
+        run: bun run --cwd packages/cloud/e2e test:containment
+      - name: Run exact-three real-model scenario over mock services
+        working-directory: /opt/eliza-stability
+        env:
+          OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
+          STABILITY_PROVIDER: ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}
+          STABILITY_INPUT_MODEL: ${{ inputs.model || '' }}
+          STABILITY_RUN_ID: cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
+          STABILITY_OUTPUT: /opt/eliza-stability/test-results/cloud-stability/real
+        run: |
+          args=(
+            bun run --cwd packages/cloud/e2e stability:real --
+            --provider "$STABILITY_PROVIDER"
+          )
+          if [ -n "$STABILITY_INPUT_MODEL" ]; then
+            if [[ ! "$STABILITY_INPUT_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$ ]]; then
+              echo "::error::model must match the bounded provider model identifier grammar"
+              exit 1
+            fi
+            args+=(--model "$STABILITY_INPUT_MODEL")
+          fi
+          args+=(--run-id "$STABILITY_RUN_ID" --output "$STABILITY_OUTPUT")
+          "${args[@]}"
+      - name: Upload real-model trajectories and mock-service ledgers
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stability-real-${{ github.run_attempt }}
+          path: |
+            test-results/cloud-stability/real
+            packages/cloud/e2e/.logs
+          retention-days: 30
+          include-hidden-files: true
+          if-no-files-found: error

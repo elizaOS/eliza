@@ -11,9 +11,54 @@
  */
 
 import type {
-  AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ImageConfig,
+  ImageProvider,
+  MediaConfig,
+  MediaMode,
+  ReleaseChannel,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
+} from "@elizaos/core/contracts/config";
+import type { DropStatus, MintResult } from "@elizaos/core/contracts/drop";
+import type {
+  CloudProviderOption,
+  FirstRunConnectorConfig as ConnectorConfig,
+  FirstRunConnection,
+  FirstRunOptions,
+  InventoryProviderOption,
+  MessageExample,
+  MessageExampleContent,
+  ModelOption,
+  OpenRouterModelOption,
+  ProviderOption,
+  RpcProviderOption,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+} from "@elizaos/core/contracts/first-run-options";
+import type {
+  AllPermissionsState,
+  PermissionId,
+  PermissionState,
+  PermissionStatus,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/core/contracts/permissions";
+import type { VerificationResult } from "@elizaos/core/contracts/verification";
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/core/contracts/wallet";
+import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -22,45 +67,11 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  CloudProviderOption,
-  FirstRunConnectorConfig as ConnectorConfig,
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  DropStatus,
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
-  FirstRunConnection,
-  FirstRunOptions,
-  ImageConfig,
-  ImageProvider,
-  InventoryProviderOption,
-  MediaConfig,
-  MediaMode,
-  MessageExample,
-  MessageExampleContent,
-  MintResult,
-  ModelOption,
-  OpenRouterModelOption,
-  PermissionId,
-  PermissionState,
-  PermissionStatus,
-  ProviderOption,
-  ReleaseChannel,
-  RpcProviderOption,
   SolanaNft,
   SolanaTokenBalance,
-  StylePreset,
-  SubscriptionProviderStatus,
-  SubscriptionStatusResponse,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-  VerificationResult,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -72,18 +83,13 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared";
-import {
-  DEFAULT_WALLET_RPC_SELECTIONS,
-  normalizeWalletRpcProviderId,
-  normalizeWalletRpcSelections,
-  WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/wallet-types";
 import { getBootConfig as getBootConfigForNativeUpdate } from "../config/boot-config-store";
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
 } from "./browser-contracts";
+import { ElizaClient as _ElizaClient, type ElizaClient } from "./client-base";
 import type {
   StewardApprovalActionResponse,
   StewardApprovalInfo,
@@ -110,15 +116,6 @@ export type {
 } from "./android-native-agent-transport";
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
-export {
-  BROWSER_BRIDGE_SESSION_STATUSES,
-  type BrowserBridgeSession,
-  type BrowserBridgeSessionAction,
-  type BrowserBridgeSessionResponse,
-  type BrowserBridgeSessionStatus,
-  type BrowserBridgeSessionsResponse,
-  type BrowserBridgeSettingsResponse,
-} from "./client-browser-bridge";
 export {
   CloudAgentWakeError,
   type CloudAgentWakePhase,
@@ -248,13 +245,11 @@ export {
 // Domain method augmentations (declaration merging + prototype assignment)
 // These import ElizaClient from client-base directly, avoiding circular deps.
 // ---------------------------------------------------------------------------
-
 import "./client-agent";
 import "./client-accounts";
 import "./client-approvals";
 import "./client-automations";
 import "./client-background";
-import "./client-browser-bridge";
 import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";
@@ -271,23 +266,21 @@ import "./client-skills";
 import "./client-transcripts";
 import "./client-vault";
 import "./client-wallet";
-
 // ---------------------------------------------------------------------------
 // Singleton
 // ---------------------------------------------------------------------------
-
-import type { ElizaClient } from "./client-base";
-import { ElizaClient as _ElizaClient } from "./client-base";
 // External plugins augment ElizaClient via `declare module "@elizaos/ui"`.
 // Annotating with ElizaClient (which TypeScript normalizes to the canonical
 // @elizaos/ui export) makes augmented methods visible to callers. The
 // prototype has all methods at runtime via the augmenting side-effect imports.
 export const client: ElizaClient = new _ElizaClient();
-
 if (typeof window !== "undefined") {
   window.addEventListener("eliza:desktop-api-base-updated", (event: Event) => {
     const detail = (
-      event as CustomEvent<{ previousBase: string | null; base: string }>
+      event as CustomEvent<{
+        previousBase: string | null;
+        base: string;
+      }>
     ).detail;
     if (!detail || typeof detail.base !== "string") return;
     const current = client.getBaseUrl().replace(/\/+$/, "");

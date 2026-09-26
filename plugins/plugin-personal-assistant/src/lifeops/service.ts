@@ -12,25 +12,59 @@ export {
   LifeOpsWorkflowRunFailedUncompensatedError,
 } from "./service-types.js";
 
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsCalendarEventResponse,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsCalendarSummary,
+  type LifeOpsNextCalendarEventContext,
+  type ListLifeOpsCalendarsRequest,
+  type SetLifeOpsCalendarIncludedRequest,
+  type SetLifeOpsCalendarIncludedResponse,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type GetLifeOpsInboxRequest,
+  type LifeOpsCapabilitiesStatus,
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsIMessageConnectorStatus,
+  type LifeOpsInbox,
+  type LifeOpsInboxMessage,
+  type LifeOpsMessageChannel,
+  type LifeOpsOwnerBrowserAccessSource,
+  type LifeOpsPersonalBaselineResponse,
+  type LifeOpsRelationship,
+  type LifeOpsRelationshipInteraction,
+  type LifeOpsSchedulingNegotiation,
+  type LifeOpsSchedulingProposal,
+  type LifeOpsScreenTimeDaily,
+  type LifeOpsScreenTimeHistoryResponse,
+  type LifeOpsScreenTimeRangeKey,
+  type LifeOpsScreenTimeSession,
+  type LifeOpsScreenTimeSource,
+  type LifeOpsScreenTimeSummary,
+  type LifeOpsSleepHistoryResponse,
+  type LifeOpsSleepRegularityResponse,
+  type LifeOpsTelegramConnectorStatus,
+  type LifeOpsWhatsAppConnectorStatus,
+  type LifeOpsXFeedItem,
+  type LifeOpsXFeedType,
+  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  type LifeOpsSocialHabitSummary as SocialHabitSummary,
+  type VerifyLifeOpsTelegramConnectorRequest,
+  type VerifyLifeOpsTelegramConnectorResponse,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionPreflightRequest,
-  BrowserBridgeCompanionPreflightResponse,
-  BrowserBridgeCompanionRevocationResetResponse,
-  BrowserBridgeCompanionRevokeResponse,
-  BrowserBridgeCompanionSessionBeginRequest,
-  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncRequest,
-  BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
-import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord/user-account-scraper";
+import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord";
 import type {
   DuffelOffer,
   DuffelOrder,
@@ -38,14 +72,6 @@ import type {
   SearchFlightsRequest,
   SearchFlightsResult,
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
-import type { LifeOpsSubscriptionPlaybook } from "@elizaos/plugin-finances/subscriptions-playbooks";
-import type {
-  LifeOpsSubscriptionAuditSummary,
-  LifeOpsSubscriptionCancellationRequest,
-  LifeOpsSubscriptionCancellationSummary,
-  LifeOpsSubscriptionDiscoveryRequest,
-  LifeOpsSubscriptionExecutor,
-} from "@elizaos/plugin-finances/subscriptions-types";
 import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
 import type {
   HealthBackend,
@@ -61,50 +87,7 @@ import type {
   EmailUnsubscribeRequest,
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
-} from "@elizaos/plugin-inbox/inbox/email-unsubscribe-types";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  CreateLifeOpsCalendarEventResponse,
-  GetLifeOpsCalendarFeedRequest,
-  GetLifeOpsInboxRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  LifeOpsCapabilitiesStatus,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsIMessageConnectorStatus,
-  LifeOpsInbox,
-  LifeOpsInboxMessage,
-  LifeOpsMessageChannel,
-  LifeOpsNextCalendarEventContext,
-  LifeOpsOwnerBrowserAccessSource,
-  LifeOpsPersonalBaselineResponse,
-  LifeOpsRelationship,
-  LifeOpsRelationshipInteraction,
-  LifeOpsSchedulingNegotiation,
-  LifeOpsSchedulingProposal,
-  LifeOpsScreenTimeDaily,
-  LifeOpsScreenTimeHistoryResponse,
-  LifeOpsScreenTimeRangeKey,
-  LifeOpsScreenTimeSession,
-  LifeOpsScreenTimeSource,
-  LifeOpsScreenTimeSummary,
-  LifeOpsSleepHistoryResponse,
-  LifeOpsSleepRegularityResponse,
-  LifeOpsTelegramConnectorStatus,
-  LifeOpsWhatsAppConnectorStatus,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  ListLifeOpsCalendarsRequest,
-  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  SetLifeOpsCalendarIncludedRequest,
-  SetLifeOpsCalendarIncludedResponse,
-  LifeOpsSocialHabitSummary as SocialHabitSummary,
-  VerifyLifeOpsTelegramConnectorRequest,
-  VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-inbox";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
@@ -220,11 +203,11 @@ import {
 import { ScreenTimeDomain } from "./domains/screentime-service.js";
 import { SleepDomain } from "./domains/sleep-service.js";
 import { StatusDomain } from "./domains/status-service.js";
-import { SubscriptionsDomain } from "./domains/subscriptions-service.js";
 import {
   TelegramDomain,
   type TelegramMessageSearchResult,
   type TelegramReadReceiptResult,
+  type TelegramSendMessageResult,
 } from "./domains/telegram-service.js";
 import { TravelDomain } from "./domains/travel-service.js";
 import {
@@ -362,10 +345,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   get scheduling() {
     return this.schedulingDomain;
-  }
-
-  get subscriptions() {
-    return this.subscriptionsDomain;
   }
 
   get status() {
@@ -1473,50 +1452,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.browserDomain.getCurrentBrowserPage();
   }
 
-  syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
-    companion: BrowserBridgeCompanionStatus;
-    tabs: BrowserBridgeTabSummary[];
-    currentPage: BrowserBridgePageContext | null;
-  }> {
-    return this.browserDomain.syncBrowserState(request);
-  }
-
-  createBrowserCompanionPairing(
-    request: CreateBrowserBridgeCompanionPairingRequest,
-  ): Promise<BrowserBridgeCompanionPairingResponse> {
-    return this.browserDomain.createBrowserCompanionPairing(request);
-  }
-
-  resetBrowserCompanionRevocation(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevocationResetResponse> {
-    return this.browserDomain.resetBrowserCompanionRevocation(companionId);
-  }
-
-  syncBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionSyncRequest,
-  ): Promise<BrowserBridgeCompanionSyncResponse> {
-    return this.browserDomain.syncBrowserCompanion(
-      companionId,
-      pairingToken,
-      request,
-    );
-  }
-
-  preflightBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionPreflightRequest,
-  ): Promise<BrowserBridgeCompanionPreflightResponse> {
-    return this.browserDomain.preflightBrowserCompanion(
-      companionId,
-      pairingToken,
-      request,
-    );
-  }
-
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]> {
     return this.browserDomain.listBrowserSessions();
   }
@@ -1550,64 +1485,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     request: UpdateLifeOpsBrowserSessionProgressRequest,
   ): Promise<LifeOpsBrowserSession> {
     return this.browserDomain.updateBrowserSessionProgress(sessionId, request);
-  }
-
-  updateBrowserSessionProgressFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionProgressRequest,
-  ): Promise<LifeOpsBrowserSession> {
-    return this.browserDomain.updateBrowserSessionProgressFromCompanion(
-      companionId,
-      pairingToken,
-      sessionId,
-      request,
-    );
-  }
-
-  beginBrowserSessionActionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionBeginRequest,
-  ): Promise<LifeOpsBrowserSession> {
-    return this.browserDomain.beginBrowserSessionActionFromCompanion(
-      companionId,
-      pairingToken,
-      sessionId,
-      request,
-    );
-  }
-
-  completeBrowserSessionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: CompleteLifeOpsBrowserSessionRequest,
-  ): Promise<LifeOpsBrowserSession> {
-    return this.browserDomain.completeBrowserSessionFromCompanion(
-      companionId,
-      pairingToken,
-      sessionId,
-      request,
-    );
-  }
-
-  revokeBrowserCompanion(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse> {
-    return this.browserDomain.revokeBrowserCompanion(companionId);
-  }
-
-  revokeBrowserCompanionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse> {
-    return this.browserDomain.revokeBrowserCompanionFromCompanion(
-      companionId,
-      pairingToken,
-    );
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
@@ -2215,7 +2092,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   sendIMessage(
     req: IMessageSendRequest,
-  ): Promise<{ ok: true; messageId?: string }> {
+  ): Promise<{ ok: true; messageId?: string; messageIds?: string[] }> {
     return this.imessageDomain.sendIMessage(req);
   }
 
@@ -2257,9 +2134,10 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   sendTelegramMessage(request: {
     side?: LifeOpsConnectorSide;
+    expectedIdentityId?: string;
     target: string;
     message: string;
-  }): Promise<{ ok: true; messageId: string | null }> {
+  }): Promise<TelegramSendMessageResult> {
     return this.telegramDomain.sendTelegramMessage(request);
   }
 
@@ -2328,6 +2206,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   sendDiscordMessage(request: {
     side?: LifeOpsConnectorSide;
+    expectedIdentityId?: string;
     channelId?: string;
     /** Discord user id target (DM via createDM); exclusive with channelId. */
     userId?: string;
@@ -2616,69 +2495,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingProposal[]> {
     return this.schedulingDomain.listProposals(negotiationId, tx);
-  }
-
-  // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
-  // Public (not private) to avoid TS4094 on the re-exported mixin class.
-  readonly subscriptionsDomain = new SubscriptionsDomain(this);
-
-  async listSubscriptionPlaybooks(): Promise<LifeOpsSubscriptionPlaybook[]> {
-    return this.subscriptionsDomain.listSubscriptionPlaybooks();
-  }
-
-  findSubscriptionPlaybookForMerchant(merchant: string): {
-    key: string;
-    serviceName: string;
-    managementUrl: string;
-    executorPreference: LifeOpsSubscriptionPlaybook["executorPreference"];
-  } | null {
-    return this.subscriptionsDomain.findSubscriptionPlaybookForMerchant(
-      merchant,
-    );
-  }
-
-  async getLatestSubscriptionAudit(): Promise<LifeOpsSubscriptionAuditSummary | null> {
-    return this.subscriptionsDomain.getLatestSubscriptionAudit();
-  }
-
-  async auditSubscriptions(
-    requestUrl: URL,
-    request: LifeOpsSubscriptionDiscoveryRequest = {},
-  ): Promise<LifeOpsSubscriptionAuditSummary> {
-    return this.subscriptionsDomain.auditSubscriptions(requestUrl, request);
-  }
-
-  async getSubscriptionCancellationStatus(args: {
-    cancellationId?: string | null;
-    serviceName?: string | null;
-    serviceSlug?: string | null;
-  }): Promise<LifeOpsSubscriptionCancellationSummary | null> {
-    return this.subscriptionsDomain.getSubscriptionCancellationStatus(args);
-  }
-
-  async cancelSubscription(
-    request: LifeOpsSubscriptionCancellationRequest,
-  ): Promise<LifeOpsSubscriptionCancellationSummary> {
-    return this.subscriptionsDomain.cancelSubscription(request);
-  }
-
-  summarizeSubscriptionAudit(summary: LifeOpsSubscriptionAuditSummary): string {
-    return this.subscriptionsDomain.summarizeSubscriptionAudit(summary);
-  }
-
-  summarizeSubscriptionCancellation(
-    summary: LifeOpsSubscriptionCancellationSummary,
-  ): string {
-    return this.subscriptionsDomain.summarizeSubscriptionCancellation(summary);
-  }
-
-  resolveSubscriptionIntent(text: string): {
-    mode: "audit" | "cancel" | "status" | null;
-    serviceName?: string;
-    serviceSlug?: string;
-    executor?: LifeOpsSubscriptionExecutor;
-  } {
-    return this.subscriptionsDomain.resolveSubscriptionIntent(text);
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

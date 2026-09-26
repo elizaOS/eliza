@@ -29,6 +29,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -62,6 +63,32 @@ export const lifeConnectorGrants = appLifeopsPgSchema.table(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [unique().on(t.agentId, t.provider, t.side, t.mode, t.identityEmail)],
+);
+
+/** Persists reviewed account handoffs and their resumable side-effect boundaries. */
+export const lifeAccountHandoffs = appLifeopsPgSchema.table(
+  "life_account_handoffs",
+  {
+    agentId: text("agent_id").notNull(),
+    ownerEntityId: text("owner_entity_id").notNull(),
+    operationId: text("operation_id").notNull(),
+    revision: integer("revision").notNull().default(0),
+    phase: text("phase").notNull().default("reviewed"),
+    reviewJson: text("review_json").notNull(),
+    receiptJson: text("receipt_json").notNull().default("{}"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.agentId, t.ownerEntityId, t.operationId] }),
+    uniqueIndex("life_account_handoffs_active_owner")
+      .on(t.agentId, t.ownerEntityId)
+      .where(sql`${t.phase} NOT IN ('completed', 'cancelled')`),
+  ],
 );
 
 export const lifeAccountPrivacy = appLifeopsPgSchema.table(
@@ -423,11 +450,6 @@ export const lifeDelegationContracts = appLifeopsPgSchema.table(
     ),
   ],
 );
-
-// Finance tables (life_payment_*, life_subscription_*) moved to
-// @elizaos/plugin-finances under pgSchema("app_finances"). PA no longer creates
-// them in app_lifeops; the finances plugin owns + migrates them. PA's raw
-// finance SQL (repository.ts) targets app_finances directly.
 
 // Carved to @elizaos/plugin-inbox (`app_inbox`); kept here only as the
 // non-destructive migration source. See the inbox-triage note further down.
@@ -1133,9 +1155,8 @@ export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
 
 // Knowledge graph tables (life_entities, life_entity_identities,
 // life_entity_attributes, life_relationships_v2,
-// life_relationship_audit_events) are now runtime-owned: their drizzle
-// definitions + schema registration live in `@elizaos/agent`
-// (`services/knowledge-graph/schema.ts`). They remain in the same
+// life_relationship_audit_events) belong to `@elizaos/plugin-relationships`
+// (`knowledge-graph/schema.ts`); the host registers them. They remain in the same
 // `app_lifeops` Postgres schema — ownership moved, the physical tables did
 // not. The DB-backed EntityStore / RelationshipStore are surfaced via the
 // runtime `KnowledgeGraphService`.
@@ -2162,6 +2183,7 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
 // ---------------------------------------------------------------------------
 
 export const lifeOpsSchema = {
+  lifeAccountHandoffs,
   lifeConnectorGrants,
   lifeAccountPrivacy,
   lifeTaskDefinitions,

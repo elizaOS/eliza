@@ -5,12 +5,22 @@
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
-import { findBySku, HARDWARE_SKUS } from "@elizaos/shared/hardware-catalog";
+import {
+  checkoutAmountUsdToCents,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+} from "@elizaos/cloud-shared/billing";
+import {
+  findBySku,
+  HARDWARE_SKUS,
+} from "@elizaos/cloud-shared/hardware-catalog";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requireCurrentBillingManagerSession,
+  requireUserWithOrg,
+} from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -22,7 +32,12 @@ import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
+// Canonical checkout bounds come from the shared organization-credit contract;
+// this route must not restate the range locally (#22963).
+const CUSTOM_AMOUNT_LIMITS = {
+  MIN_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+  MAX_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
+} as const;
 const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
 const checkoutRequestSchema = z
@@ -65,7 +80,7 @@ const app = new Hono<AppEnv>();
 
 app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
-    const user = await requireUserWithOrg(c);
+    let user = await requireUserWithOrg(c);
     const body = await c.req.json();
     const validationResult = checkoutRequestSchema.safeParse(body);
     if (!validationResult.success) {
@@ -85,6 +100,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       hardwareSku,
       returnUrl,
     } = validationResult.data;
+
+    if (!hardwareSku) user = await requireCurrentBillingManagerSession(c);
 
     // Credit checkout callers may pin the principal they rendered. Compare
     // that precondition to the live authenticated principal before catalog,
@@ -225,8 +242,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       if (stripeCurrency !== "usd") {
         return c.json({ error: "Credit purchases require USD billing" }, 503);
       }
-      const amountCents = amount * 100;
-      if (!Number.isSafeInteger(amountCents)) {
+      const amountCents = checkoutAmountUsdToCents(amount);
+      if (amountCents === null) {
         return c.json({ error: "Amount must use exact whole cents" }, 400);
       }
       lineItems = [
@@ -320,6 +337,23 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
           }),
         )
       : null;
+    // Catalog reads and digest computation await work. Recheck immediately
+    // before creating durable order/customer authority or calling Stripe.
+    if (creditQuote) {
+      const current = await requireCurrentBillingManagerSession(c);
+      if (
+        current.id !== user.id ||
+        current.organization_id !== organizationId
+      ) {
+        return c.json(
+          {
+            error: "Checkout identity changed; refresh before retrying",
+            code: "CHECKOUT_PRINCIPAL_CHANGED",
+          },
+          409,
+        );
+      }
+    }
     let checkoutOrder = creditQuote
       ? await stripeCheckoutOrdersService.create({
           organizationId,

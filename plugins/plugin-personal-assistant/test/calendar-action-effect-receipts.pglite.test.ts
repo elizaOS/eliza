@@ -11,19 +11,36 @@ import {
   type Content,
   executePlannedToolCall,
   type Memory,
-  SECRETS_SERVICE_TYPE,
+  ModelType,
+  promoteSubactionsToActions,
   type UUID,
 } from "@elizaos/core";
+import type { LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import {
   type CalendarHostGate,
   CalendarRepository,
   CalendarService,
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { calendarAction } from "../src/actions/calendar.js";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import {
+  calendarAction,
+  calendarActionPromotionOptions,
+} from "../src/actions/calendar.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
+import { googleHandoffFixture } from "./helpers/handoff-google.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -113,12 +130,15 @@ async function invoke(
   actor: Memory,
   params: Record<string, unknown>,
   directReply = true,
+  actionName = calendarAction.name,
+  replyOwner?: "planner",
 ): Promise<{ delivered: Content[]; result: ActionResult }> {
   const delivered: Content[] = [];
   const result = await executePlannedToolCall(
     runtime,
     {
       message: actor,
+      replyOwner,
       userRoles: ["OWNER"],
       activeContexts: ["calendar"],
       callback: async (content) => {
@@ -126,8 +146,13 @@ async function invoke(
         return [];
       },
     },
-    { name: calendarAction.name, params },
-    { actions: [calendarAction] },
+    { name: actionName, params },
+    {
+      actions: promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      ).filter((action) => action.name === actionName),
+    },
   );
   if (directReply) {
     expect(delivered, JSON.stringify(result)).toHaveLength(1);
@@ -145,6 +170,29 @@ async function invoke(
   expect(result.effectReceipts).toHaveLength(1);
   return { delivered, result };
 }
+
+const icsTransport = {
+  fetchImpl: async () =>
+    new Response(icsBody(), {
+      status: 200,
+      headers: {
+        "content-type": "text/calendar",
+        etag: '"receipt-suite-v1"',
+      },
+    }),
+};
+
+beforeEach(() => {
+  const sync = calendar.syncIcsCalendarSource.bind(calendar);
+  // Every forced refresh crosses the same remote fixture boundary; the real
+  // synchronizer still validates, parses and persists the subscription.
+  vi.spyOn(calendar, "syncIcsCalendarSource").mockImplementation(
+    (sourceId, options = {}) =>
+      sync(sourceId, { ...options, transport: icsTransport }),
+  );
+});
+
+afterEach(() => vi.restoreAllMocks());
 
 beforeAll(async () => {
   runtimeResult = await createLifeOpsTestRuntime();
@@ -176,16 +224,7 @@ beforeAll(async () => {
   });
   await calendar.syncIcsCalendarSource(source.id, {
     now: new Date(SOURCE_SYNCED_AT),
-    transport: {
-      fetchImpl: async () =>
-        new Response(icsBody(), {
-          status: 200,
-          headers: {
-            "content-type": "text/calendar",
-            etag: '"receipt-suite-v1"',
-          },
-        }),
-    },
+    transport: icsTransport,
   });
 }, 180_000);
 
@@ -207,7 +246,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       type: "object",
       additionalProperties: false,
       properties: {
-        startAt: { type: "string" },
+        start: { type: "string" },
         recurrence: expect.any(Object),
       },
     });
@@ -219,6 +258,216 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       true,
     );
     expect(state.text).toContain(calendarAction.name);
+  });
+
+  it("returns a settled observation for planner-owned availability reads", async () => {
+    const collaborator = await import("@elizaos/plugin-assistant");
+    const { renderGroundedActionReply } = await import(
+      "../../plugin-assistant/src/actions/grounded-action-reply.ts"
+    );
+    vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+      renderGroundedActionReply,
+    );
+    const actor = message(
+      "00000000-0000-0000-0000-000000009978",
+      "Check this window before moving the event.",
+    );
+    const { result } = await invoke(
+      actor,
+      { action: "check_availability", startAt: EVENT_START, endAt: EVENT_END },
+      false,
+      calendarAction.name,
+      "planner",
+    );
+    expect(result.success).toBe(true);
+    expect(result.data?.readOnlyOperation).toBe(true);
+    expect(result.turnComplete).toBeUndefined();
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "noop",
+      operation: "calendar.check_availability.read",
+      idempotency: { replayed: false },
+    });
+  });
+
+  it.each([undefined, "2026-07-29T17:05:00.000Z"])(
+    "checks the full requested duration including a conflict in its final five minutes (end %s)",
+    async (endAt) => {
+      const actor = message(
+        "00000000-0000-0000-0000-000000009976",
+        "Am I free at 16:50 UTC for 15 minutes?",
+      );
+      const { result } = await invoke(
+        actor,
+        {
+          interval: {
+            startAt: "2026-07-29T16:50:00.000Z",
+            durationMinutes: 15,
+            ...(endAt === undefined ? {} : { endAt }),
+          },
+        },
+        true,
+        "CALENDAR_CHECK_AVAILABILITY",
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        isFree: false,
+        windowStart: "2026-07-29T16:50:00.000Z",
+        windowEnd: "2026-07-29T17:05:00.000Z",
+        conflicts: [
+          expect.objectContaining({ title: "School planning meeting" }),
+        ],
+      });
+    },
+  );
+
+  it.each([
+    { durationMinutes: 0 },
+    { durationMinutes: -15 },
+    { durationMinutes: Number.POSITIVE_INFINITY },
+    { durationMinutes: Number.NaN },
+    { durationMinutes: "15" },
+    { endAt: null },
+    {},
+    { durationMinutes: 15, endAt: "2026-07-29T17:00:00.000Z" },
+    { durationMinutes: 15, endAt: "not a time" },
+  ])(
+    "rejects an invalid or contradictory availability range %j",
+    async (range) => {
+      const actor = message(
+        "00000000-0000-0000-0000-000000009975",
+        "Check 16:50 UTC for 15 minutes.",
+      );
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message: actor,
+          replyOwner: "planner",
+          userRoles: ["OWNER"],
+          activeContexts: ["calendar"],
+        },
+        {
+          name: "CALENDAR_CHECK_AVAILABILITY",
+          params: {
+            interval: { startAt: "2026-07-29T16:50:00.000Z", ...range },
+          },
+        },
+        {
+          actions: promoteSubactionsToActions(
+            calendarAction,
+            calendarActionPromotionOptions,
+          ).filter((action) => action.name === "CALENDAR_CHECK_AVAILABILITY"),
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.data?.isFree).toBeUndefined();
+      expect(
+        result.effectReceipts?.some((receipt) => receipt.outcome === "noop"),
+      ).not.toBe(true);
+    },
+  );
+
+  it.each([
+    // Fractional local forms still reject a clock skipped by DST.
+    {
+      windowStart: "2027-03-14T02:30:00.250",
+      windowEnd: "2027-03-14T12:00:00.250",
+    },
+    { windowStart: "2027-02-30T09:00:00", windowEnd: "2027-03-01T12:00:00" },
+    { windowStart: "2027-03-14T02:30:00", windowEnd: "2027-03-14T12:00:00" },
+    {
+      windowStart: "2027-01-18T09:00:00−05:00",
+      windowEnd: "2027-01-18T12:00:00-05:00",
+    },
+    { windowStart: "2027-01-18T09:00:00-05:00", windowEnd: "not a date" },
+    {
+      windowStart: "2027-01-18T12:00:00-05:00",
+      windowEnd: "2027-01-18T09:00:00-05:00",
+    },
+    {
+      windowStart: "2027-01-18T09:00:00-05:00",
+      windowEnd: "2027-01-18T09:00:00-05:00",
+    },
+  ])(
+    "rejects an invalid supplied proposal window before reading the calendar: %j",
+    async (window) => {
+      const read = vi.spyOn(calendar, "getCalendarFeed");
+      const { result } = await invoke(
+        message(
+          "00000000-0000-0000-0000-000000009980",
+          "Offer January 18 morning slots.",
+        ),
+        { ...window, timeZone: "America/New_York", duration: { minutes: 15 } },
+        true,
+        "CALENDAR_PROPOSE_TIMES",
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("INVALID_WINDOW");
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "failed",
+        failure: { acceptance: "rejected" },
+      });
+      expect(result.data?.slots).toBeUndefined();
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
+
+  it("exposes missing interval inputs as a repairable call error, not a calendar finding", async () => {
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message: message(
+          "00000000-0000-0000-0000-000000009974",
+          "Check 16:50 UTC for 15 minutes.",
+        ),
+        replyOwner: "planner",
+        userRoles: ["OWNER"],
+        activeContexts: ["calendar"],
+      },
+      {
+        name: "CALENDAR",
+        params: {
+          action: "check_availability",
+          startAt: "2026-07-29T16:50:00.000Z",
+        },
+      },
+      {
+        actions: promoteSubactionsToActions(
+          calendarAction,
+          calendarActionPromotionOptions,
+        ).filter((action) => action.name === "CALENDAR"),
+      },
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("INVALID_WINDOW");
+    expect(result.error).toContain("durationMinutes or endAt");
+    expect(result.error).toContain("No calendar read was performed");
+    expect(result.data?.isFree).toBeUndefined();
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: { acceptance: "rejected" },
+    });
+  });
+
+  it("gives distinct same-turn availability reads distinct receipt identities", async () => {
+    const actor = message(
+      "00000000-0000-0000-0000-000000009977",
+      "Check two windows.",
+    );
+    const first = await invoke(actor, {
+      action: "check_availability",
+      startAt: EVENT_START,
+      endAt: EVENT_END,
+    });
+    const second = await invoke(actor, {
+      action: "check_availability",
+      startAt: WINDOW_START,
+      endAt: WINDOW_END,
+    });
+    expect(first.result.success).toBe(true);
+    expect(second.result.success).toBe(true);
+    expect(first.result.effectReceipts?.[0]?.receiptId).not.toBe(
+      second.result.effectReceipts?.[0]?.receiptId,
+    );
   });
 
   it.each([
@@ -262,7 +511,8 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       operation: "calendar.propose_times.preview",
       directReply: true,
     },
-  ])("binds $name to its persisted calendar snapshot", async (testCase) => {
+  ])("binds $name to its observed calendar snapshot", async (testCase) => {
+    const readStarted = Date.now();
     const { result } = await invoke(
       message(
         `00000000-0000-0000-0000-${testCase.operation
@@ -285,8 +535,348 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         id: expect.any(String),
         version: expect.stringMatching(/(?:^|:)[a-f0-9]{64}$/),
       },
-      observedAt: SOURCE_SYNCED_AT,
+      observedAt: expect.any(String),
     });
+    const observed = Date.parse(result.effectReceipts?.[0]?.observedAt ?? "");
+    expect(observed).toBeGreaterThanOrEqual(readStarted);
+    expect(observed).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("distinguishes an elapsed daily feed from tomorrow's next event at evening time", async () => {
+    const now = "2028-09-25T03:53:00.000Z";
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(now));
+    try {
+      for (const [title, startAt, endAt] of [
+        [
+          "Elapsed afternoon event",
+          "2028-09-24T23:30:00.000Z",
+          "2028-09-24T23:45:00.000Z",
+        ],
+        [
+          "Tomorrow upcoming event",
+          "2028-09-25T18:00:00.000Z",
+          "2028-09-25T18:15:00.000Z",
+        ],
+      ]) {
+        await calendar.createCalendarEventMutation(
+          new URL("http://internal.local"),
+          {
+            title,
+            startAt,
+            endAt,
+            timeZone: "America/Los_Angeles",
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            idempotencyKey: title,
+          },
+        );
+      }
+      const actor = message(
+        "00000000-0000-0000-0000-000000009953",
+        "Read my next saved calendar event. Do not change anything.",
+      );
+      const details = {
+        calendarId: ELIZA_CALENDAR_ID,
+        timeZone: "America/Los_Angeles",
+      };
+      const feed = (
+        await invoke(
+          actor,
+          { intent: "next event", details },
+          false,
+          "CALENDAR_FEED",
+        )
+      ).result;
+      expect(feed.success).toBe(true);
+      expect(feed.data?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ title: "Elapsed afternoon event" }),
+        ]),
+      );
+      expect(feed.data?.events).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ title: "Tomorrow upcoming event" }),
+        ]),
+      );
+      expect(feed.data?.replyContext).toMatchObject({
+        scenario: "feed_results",
+        context: {
+          asOf: now,
+          selection: "bounded_agenda",
+          nextEventLookupPerformed: false,
+        },
+      });
+      expect(JSON.stringify(feed.data?.replyContext)).toContain(
+        "CALENDAR_NEXT_EVENT",
+      );
+      const next = (
+        await invoke(actor, { details }, false, "CALENDAR_NEXT_EVENT")
+      ).result;
+      expect(next.success).toBe(true);
+      expect(next.data?.event).toMatchObject({
+        title: "Tomorrow upcoming event",
+        startAt: "2028-09-25T18:00:00.000Z",
+      });
+      expect(next.effectReceipts?.[0]?.operation).not.toBe(
+        "calendar.feed.read",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["CALENDAR_FEED", "CALENDAR_SEARCH_EVENTS"])(
+    "executes %s with aliased read bounds through the promoted child",
+    async (actionName) => {
+      const { result } = await invoke(
+        message(
+          actionName === "CALENDAR_FEED"
+            ? "00000000-0000-0000-0000-000000009951"
+            : "00000000-0000-0000-0000-000000009952",
+          "Read the school planning meeting in the specified window. Do not change it.",
+        ),
+        {
+          ...(actionName === "CALENDAR_SEARCH_EVENTS"
+            ? { query: "School planning meeting" }
+            : {}),
+          details: {
+            time_min: WINDOW_START,
+            time_max: WINDOW_END,
+            time_zone: "UTC",
+            includeHiddenCalendars: true,
+            force_sync: false,
+          },
+        },
+        false,
+        actionName,
+      );
+      expect(result.success).toBe(true);
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "noop",
+        resource: { kind: "calendar.feed" },
+      });
+      expect(JSON.stringify(result.data)).toContain("School planning meeting");
+      expect(JSON.stringify(result.data)).toContain(EVENT_START);
+    },
+  );
+
+  it("interprets fractional local proposal bounds in the requested timezone", async () => {
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009987",
+        "Find a one-hour opening in this window.",
+      ),
+      {
+        duration: { minutes: 60 },
+        windowStart: "2027-01-18T09:00:00.250",
+        windowEnd: "2027-01-18T12:00:00.250",
+        timeZone: "America/New_York",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      windowStart: "2027-01-18T14:00:00.250Z",
+      windowEnd: "2027-01-18T17:00:00.250Z",
+    });
+  });
+
+  it.each([undefined, "planner"] as const)(
+    "proposes a new window and awaits selection without changing the event (reply owner %s)",
+    async (replyOwner) => {
+      if (replyOwner === "planner") {
+        // Exercise the real deferred renderer; the package's default collaborator
+        // always returns a standalone model reply and cannot represent this path.
+        const collaborator = await import("@elizaos/plugin-assistant");
+        const { renderGroundedActionReply } = await import(
+          "../../plugin-assistant/src/actions/grounded-action-reply.ts"
+        );
+        vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+          renderGroundedActionReply,
+        );
+      }
+      const { result } = await invoke(
+        message(
+          replyOwner === "planner"
+            ? "00000000-0000-0000-0000-000000009979"
+            : "00000000-0000-0000-0000-000000009971",
+          'Check which times are free January 18, 2027 in the morning for moving "School planning meeting". Do not move it yet.',
+        ),
+        {
+          duration: { existingEventQuery: "School planning meeting" },
+          windowStart: "2027-01-18T09:00:00",
+          windowEnd: "2027-01-18T12:00:00",
+          timeZone: "America/New_York",
+        },
+        replyOwner !== "planner",
+        "CALENDAR_PROPOSE_TIMES",
+        replyOwner,
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        awaitingUserInput: true,
+        windowStart: "2027-01-18T14:00:00.000Z",
+        windowEnd: "2027-01-18T17:00:00.000Z",
+        durationMinutes: 60,
+        existingEvent: {
+          title: "School planning meeting",
+          startAt: EVENT_START,
+          endAt: EVENT_END,
+        },
+        existingEventDisplay: {
+          localStart: expect.stringMatching(/^Wed, Jul 29(?: at |, )1:00 PM$/),
+          localEnd: expect.stringMatching(/^Wed, Jul 29(?: at |, )2:00 PM$/),
+          timeZone: "America/New_York",
+        },
+        slots: expect.arrayContaining([
+          expect.objectContaining({ durationMinutes: 60 }),
+        ]),
+        targetSnapshot: expect.any(Object),
+      });
+      const feed = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        {
+          timeMin: WINDOW_START,
+          timeMax: WINDOW_END,
+          includeHiddenCalendars: true,
+        },
+      );
+      expect(
+        feed.events.filter(
+          (event) => event.title === "School planning meeting",
+        ),
+      ).toEqual([
+        expect.objectContaining({ startAt: EVENT_START, endAt: EVENT_END }),
+      ]);
+    },
+  );
+
+  it.each([undefined, "planner"] as const)(
+    "awaits a new booking selection without creating an event (reply owner %s)",
+    async (replyOwner) => {
+      if (replyOwner === "planner") {
+        const collaborator = await import("@elizaos/plugin-assistant");
+        const { renderGroundedActionReply } = await import(
+          "../../plugin-assistant/src/actions/grounded-action-reply.ts"
+        );
+        vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+          renderGroundedActionReply,
+        );
+      }
+      const bounds = {
+        timeMin: "2027-01-18T14:00:00.000Z",
+        timeMax: "2027-01-18T17:00:00.000Z",
+        includeHiddenCalendars: true,
+      };
+      const before = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        bounds,
+      );
+      const { result } = await invoke(
+        message(
+          replyOwner === "planner"
+            ? "00000000-0000-0000-0000-000000009981"
+            : "00000000-0000-0000-0000-000000009982",
+          replyOwner === "planner"
+            ? "Schedule a 15-minute planning meeting with Mira and Rowan January 18 in the morning, in America/New_York."
+            : "Schedule a 15-minute planning meeting January 18 in the morning, in America/New_York.",
+        ),
+        {
+          duration: { minutes: 15 },
+          ...(replyOwner === "planner"
+            ? { counterparties: ["Mira", "Rowan"] }
+            : {}),
+          windowStart: "2027-01-18T09:00:00",
+          windowEnd: "2027-01-18T12:00:00",
+          timeZone: "America/New_York",
+        },
+        replyOwner !== "planner",
+        "CALENDAR_PROPOSE_TIMES",
+        replyOwner,
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        awaitingUserInput: true,
+        counterparties: replyOwner === "planner" ? ["Mira", "Rowan"] : [],
+        durationMinutes: 15,
+        slots: expect.arrayContaining([
+          expect.objectContaining({ durationMinutes: 15 }),
+        ]),
+      });
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "preview",
+        operation: "calendar.propose_times.preview",
+      });
+      if (replyOwner === "planner") {
+        expect(result.transcriptVisibility).toBe("internal");
+        expect(result.data?.replyGrounding).toEqual(expect.any(String));
+      }
+      const after = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        bounds,
+      );
+      expect(after.events).toEqual(before.events);
+    },
+  );
+
+  it("does not substitute a default duration for an unresolved existing event", async () => {
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009970",
+        "Move the nonexistent rehearsal to tomorrow morning.",
+      ),
+      {
+        duration: { existingEventQuery: "nonexistent rehearsal" },
+        windowStart: "2027-01-18T09:00:00Z",
+        windowEnd: "2027-01-18T12:00:00Z",
+        timeZone: "UTC",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      awaitingUserInput: true,
+      candidates: [],
+    });
+    expect(result.data).not.toHaveProperty("slots");
+  });
+
+  it("asks which existing event before proposing slots for duplicate titles", async () => {
+    for (const hour of [14, 16]) {
+      await calendar.createCalendarEventMutation(
+        new URL("http://internal.local"),
+        {
+          title: "Duplicate proposal target",
+          startAt: `2027-01-18T${hour}:00:00Z`,
+          endAt: `2027-01-18T${hour}:30:00Z`,
+          timeZone: "UTC",
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          idempotencyKey: `duplicate-proposal-target-${hour}`,
+        },
+      );
+    }
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009969",
+        "Move Duplicate proposal target to the morning.",
+      ),
+      {
+        duration: { existingEventQuery: "Duplicate proposal target" },
+        windowStart: "2027-01-18T09:00:00Z",
+        windowEnd: "2027-01-18T12:00:00Z",
+        timeZone: "UTC",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ awaitingUserInput: true });
+    expect(result.data?.candidates).toHaveLength(2);
+    expect(result.data).not.toHaveProperty("slots");
   });
 
   it("persists meeting preferences and binds the receipt to the read-back task", async () => {
@@ -343,7 +933,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         {
           action: "create_event",
           title: "Team sync",
-          details: { startAt: EVENT_START, endAt: EVENT_END },
+          details: { start: EVENT_START, end: EVENT_END },
         },
       )
     ).result;
@@ -372,7 +962,209 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     });
   });
 
+  it.each([
+    {
+      id: "00000000-0000-0000-0000-000000009978",
+      requiresInput: false,
+      startAt: null,
+    },
+    {
+      id: "00000000-0000-0000-0000-000000009977",
+      requiresInput: true,
+      startAt: "2026-07-30T10:00:00Z",
+    },
+  ])(
+    "blocks preset-only or clarification-required creation ($requiresInput)",
+    async ({ id, requiresInput, startAt }) => {
+      const useModel = runtime.useModel.bind(runtime);
+      let extractionCalls = 0;
+      vi.spyOn(runtime, "useModel").mockImplementation((async (
+        type,
+        params,
+      ) => {
+        if (
+          type === ModelType.TEXT_LARGE &&
+          String(params?.prompt).includes(
+            "Extract calendar event creation fields",
+          )
+        ) {
+          extractionCalls += 1;
+          expect(params).toMatchObject({
+            temperature: 0,
+            responseSchema: {
+              type: "object",
+              additionalProperties: false,
+              required: expect.arrayContaining([
+                "title",
+                "startAt",
+                "endAt",
+                "durationMinutes",
+                "requiresInput",
+              ]),
+              properties: { startAt: { type: ["string", "null"] } },
+            },
+          });
+          return {
+            text: JSON.stringify({
+              requiresInput,
+              clarification: "What time in the morning?",
+              title: "Create extraction timing check",
+              description: null,
+              location: null,
+              startAt,
+              endAt: null,
+              timeZone: "UTC",
+              recurrence: null,
+              travelOriginAddress: null,
+              durationMinutes: 15,
+              windowPreset: "tomorrow_morning",
+              isShortPreparation: false,
+            }),
+            toolCalls: [],
+            finishReason: "stop",
+          };
+        }
+        return useModel(type, params);
+      }) as typeof runtime.useModel);
+      const { result } = await invoke(
+        message(
+          id,
+          "Create an event called Create extraction timing check on July 30, 2026 in the morning for 15 minutes.",
+        ),
+        {
+          action: "create_event",
+          title: "Create extraction timing check",
+          details: {
+            start: "2026-07-30T10:00:00Z",
+            end: "2026-07-30T10:15:00Z",
+            timeZone: "UTC",
+            calendarId: ELIZA_CALENDAR_ID,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+          },
+        },
+        false,
+        calendarAction.name,
+        "planner",
+      );
+      expect(extractionCalls, JSON.stringify(result)).toBe(1);
+      expect(result.data?.awaitingUserInput, JSON.stringify(result)).toBe(true);
+      expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
+      const feed = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        {
+          timeMin: WINDOW_START,
+          timeMax: WINDOW_END,
+          includeHiddenCalendars: true,
+        },
+      );
+      expect(
+        feed.events.filter(
+          (event) => event.title === "Create extraction timing check",
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("preserves update extraction controls through the registered host action", async () => {
+    const created = await calendar.createCalendarEventMutation(
+      new URL("http://internal.local/api/calendar"),
+      {
+        title: "Host extraction check",
+        startAt: EVENT_START,
+        endAt: EVENT_END,
+        timeZone: "UTC",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        idempotencyKey: "host-extraction-check",
+      },
+    );
+    const target = created.event;
+    if (!target) throw new Error("Calendar fixture was not created");
+    const useModel = runtime.useModel.bind(runtime);
+    let extractionCalls = 0;
+    vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
+      if (
+        type === ModelType.TEXT_LARGE &&
+        String(params?.prompt).includes("Extract calendar event update fields")
+      ) {
+        extractionCalls += 1;
+        expect(params).toMatchObject({
+          temperature: 0,
+          responseSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: expect.arrayContaining([
+              "requiresInput",
+              "startAt",
+              "endAt",
+            ]),
+          },
+        });
+        return {
+          text: JSON.stringify({
+            requiresInput: true,
+            clarification: "What time?",
+          }),
+          toolCalls: [],
+          finishReason: "stop",
+        };
+      }
+      return useModel(type, params);
+    }) as typeof runtime.useModel);
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009979",
+        "Move Host extraction check to tomorrow morning.",
+      ),
+      {
+        action: "update_event",
+        details: {
+          eventId: target?.id,
+          calendarId: ELIZA_CALENDAR_ID,
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+        },
+      },
+      false,
+      calendarAction.name,
+      "planner",
+    );
+    expect(extractionCalls, JSON.stringify(result)).toBe(1);
+    expect(result.data?.awaitingUserInput).toBe(true);
+    expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
+    const unchanged = await calendar.getConditionalCalendarMutationTarget(
+      new URL("http://internal.local/api/calendar"),
+      {
+        eventId: target.id,
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+      },
+    );
+    expect(unchanged.startAt).toBe(target?.startAt);
+    expect(unchanged.endAt).toBe(target?.endAt);
+    expect(unchanged.metadata.etag).toBe(target?.metadata.etag);
+  });
+
   it("atomically distinguishes first approval, concurrent replay, and later replay", async () => {
+    const fixture = googleHandoffFixture();
+    const grant = writableGrant(String(runtime.agentId));
+    calendar.setGate({
+      ...gate(String(runtime.agentId)),
+      getGoogleConnectorAccounts: async () => [{ ...fixture.status, grant }],
+    });
+    const getService = runtime.getService.bind(runtime);
+    vi.spyOn(runtime, "getService").mockImplementation(((name: string) =>
+      name === "google"
+        ? {
+            listCalendars: async () => [
+              { ...fixture.entry, calendarId: "primary" },
+            ],
+            listEventPage: async () => ({
+              events: [],
+              nextPageToken: null,
+              nextSyncToken: null,
+            }),
+          }
+        : getService(name)) as typeof runtime.getService);
     await new CalendarRepository(runtime).upsertCalendarSyncState({
       id: `${runtime.agentId}:google:owner:grant:connector-account:calendar-receipt-owner:calendar:primary`,
       agentId: String(runtime.agentId),
@@ -387,9 +1179,31 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       syncedAt: SOURCE_SYNCED_AT,
       updatedAt: SOURCE_SYNCED_AT,
     });
+    // This test exercises approval replay, with explicit extraction output;
+    // the domain timing-authority tests cover missing/fabricated timing.
+    const useModel = runtime.useModel.bind(runtime);
+    vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
+      if (
+        type === ModelType.TEXT_LARGE &&
+        String(params?.prompt).includes(
+          "Extract calendar event creation fields",
+        )
+      ) {
+        expect(params?.temperature).toBe(0);
+        return JSON.stringify({
+          grantId: grant.id,
+          calendarId: "primary",
+          title: "Family planning",
+          startAt: "2026-07-30T17:00:00Z",
+          endAt: "2026-07-30T18:00:00Z",
+          timeZone: "UTC",
+        });
+      }
+      return useModel(type, params);
+    }) as typeof runtime.useModel);
     const actor = message(
       "00000000-0000-0000-0000-000000009931",
-      "Add family planning tomorrow.",
+      "Add family planning on owner@example.test primary Google calendar on July 30, 2026 from 5 to 6 PM UTC.",
     );
     const params = {
       action: "create_event",
@@ -398,8 +1212,8 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         side: "owner",
         grantId: "connector-account:calendar-receipt-owner",
         calendarId: "primary",
-        startAt: "2026-07-30T17:00:00.000Z",
-        endAt: "2026-07-30T18:00:00.000Z",
+        start: "2026-07-30T17:00:00.000Z",
+        end: "2026-07-30T18:00:00.000Z",
         timeZone: "UTC",
       },
     };

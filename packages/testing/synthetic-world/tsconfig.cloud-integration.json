@@ -1,0 +1,10 @@
+{
+  "extends": "../../cloud/shared/tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node", "bun-types"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*.ts", "test/cloud-command-journal.pglite.test.ts"],
+  "exclude": ["node_modules"]
+}

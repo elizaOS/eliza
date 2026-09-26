@@ -1,3 +1,4 @@
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
 /**
  * Registry Client for Eliza.
  *
@@ -9,11 +10,14 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger } from "@elizaos/core";
-import { isRegistryCacheFresh } from "@elizaos/registry";
+import {
+  isRegistryCacheFresh,
+  logger,
+  type RegistryEndpoint,
+} from "@elizaos/core";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import {
   LOCAL_APP_DEFAULT_SANDBOX,
   resolveAppOverride,
@@ -91,6 +95,7 @@ let registryRefreshPromise: Promise<Map<string, RegistryPluginInfo>> | null =
  * that snapshot (or stamp a fresh TTL over it) once it finally resolves.
  */
 let registryGeneration = 0;
+let registryDiscoveryScope: string | null = null;
 
 const LOCAL_FALLBACK_CACHE_TTL_MS = 5 * 60_000;
 
@@ -134,16 +139,17 @@ function cacheFilePath(): string {
   return path.join(resolveStateDir(), "cache", "registry.json");
 }
 
-async function readFileCache(): Promise<Map<
-  string,
-  RegistryPluginInfo
-> | null> {
+async function readFileCache(
+  discoveryScope: string,
+): Promise<Map<string, RegistryPluginInfo> | null> {
   try {
     const raw = await fs.readFile(cacheFilePath(), "utf-8");
     const parsed = JSON.parse(raw) as {
+      discoveryScope?: string;
       fetchedAt: number;
       plugins: Array<[string, RegistryPluginInfo]>;
     };
+    if (parsed.discoveryScope !== discoveryScope) return null;
     if (typeof parsed.fetchedAt !== "number" || !Array.isArray(parsed.plugins))
       return null;
     if (!isRegistryCacheFresh(parsed.fetchedAt, CACHE_TTL_MS)) return null;
@@ -155,12 +161,14 @@ async function readFileCache(): Promise<Map<
 
 async function writeFileCache(
   plugins: Map<string, RegistryPluginInfo>,
+  discoveryScope: string,
 ): Promise<void> {
   const filePath = cacheFilePath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(
     filePath,
     JSON.stringify({
+      discoveryScope,
       fetchedAt: Date.now(),
       plugins: [...plugins.entries()],
     }),
@@ -168,10 +176,13 @@ async function writeFileCache(
   );
 }
 
-function persistFileCache(plugins: Map<string, RegistryPluginInfo>): void {
+function persistFileCache(
+  plugins: Map<string, RegistryPluginInfo>,
+  discoveryScope: string,
+): void {
   // error-policy:J6 The registry file is a derived cache; persistence failure
   // is warned while the complete in-memory network snapshot remains usable.
-  const write = writeFileCache(plugins).catch((err) => {
+  const write = writeFileCache(plugins, discoveryScope).catch((err) => {
     logger.warn(`[registry-client] Cache write failed: ${String(err)}`);
   });
   registryFileWritePromise = write;
@@ -217,7 +228,7 @@ export function addRegistryEndpoint(label: string, url: string): void {
     { label, url: normalised, enabled: true },
   ];
   saveElizaConfig(cfg);
-  memoryCache = null;
+  invalidateRegistryCaches();
 }
 
 /** Remove a custom registry endpoint by URL. Cannot remove the default. */
@@ -239,7 +250,7 @@ export function removeRegistryEndpoint(url: string): void {
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = updated;
   saveElizaConfig(cfg);
-  memoryCache = null;
+  invalidateRegistryCaches();
 }
 
 /** Toggle an endpoint's enabled status. */
@@ -257,7 +268,7 @@ export function toggleRegistryEndpoint(url: string, enabled: boolean): void {
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = endpoints;
   saveElizaConfig(cfg);
-  memoryCache = null;
+  invalidateRegistryCaches();
 }
 
 export function isDefaultEndpoint(url: string): boolean {
@@ -268,9 +279,24 @@ export function isDefaultEndpoint(url: string): boolean {
 // Public API
 // ---------------------------------------------------------------------------
 
+function bindRegistryDiscoveryScope(): string {
+  const discoveryScope = JSON.stringify([
+    resolveStateDir(),
+    ...resolveWorkspaceRootsForDiscovery(),
+    getConfiguredEndpoints(),
+  ]);
+  if (registryDiscoveryScope !== discoveryScope) {
+    registryDiscoveryScope = discoveryScope;
+    invalidateRegistryCaches();
+  }
+
+  return discoveryScope;
+}
+
 async function loadRegistryPlugins(
   skipFileCache: boolean,
 ): Promise<Map<string, RegistryPluginInfo>> {
+  const discoveryScope = bindRegistryDiscoveryScope();
   if (
     memoryCache &&
     isRegistryCacheFresh(
@@ -281,30 +307,32 @@ async function loadRegistryPlugins(
     return memoryCache.plugins;
   }
 
-  if (!skipFileCache) {
-    const fileReadGeneration = registryGeneration;
-    const fromFile = await readFileCache();
-    if (fromFile) {
-      await applyLocalWorkspaceApps(fromFile);
-      await applyNodeModulePlugins(fromFile);
-      await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
-
-      // A refresh can unlink the cache while an earlier read still owns an open
-      // file handle. Return that snapshot only to its original caller; publishing
-      // it would replace the post-refresh memory cache with stale disk state.
-      if (fileReadGeneration !== registryGeneration) return fromFile;
-
-      memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
-      return fromFile;
-    }
-  }
-
   if (registryLoadPromise) {
     return registryLoadPromise;
   }
 
   const generation = registryGeneration;
+  // Disk snapshots also require workspace discovery. Share the entire load so
+  // concurrent callers do not repeat those scans before memory is populated.
   const load: Promise<Map<string, RegistryPluginInfo>> = (async () => {
+    if (!skipFileCache) {
+      const fileReadGeneration = registryGeneration;
+      const fromFile = await readFileCache(discoveryScope);
+      if (fromFile) {
+        await applyLocalWorkspaceApps(fromFile);
+        await applyNodeModulePlugins(fromFile);
+        await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
+
+        // A refresh can unlink the cache while an earlier read still owns an open
+        // file handle. Return that snapshot only to its original caller; publishing
+        // it would replace the post-refresh memory cache with stale disk state.
+        if (fileReadGeneration !== registryGeneration) return fromFile;
+
+        memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
+        return fromFile;
+      }
+    }
+
     logger.info("[registry-client] Fetching plugin registry...");
     let plugins: Map<string, RegistryPluginInfo>;
     let usedLocalFallback = false;
@@ -338,7 +366,7 @@ async function loadRegistryPlugins(
       ttlMs: usedLocalFallback ? LOCAL_FALLBACK_CACHE_TTL_MS : CACHE_TTL_MS,
     };
     if (!usedLocalFallback) {
-      persistFileCache(plugins);
+      persistFileCache(plugins, discoveryScope);
     }
 
     return plugins;
@@ -368,6 +396,7 @@ export async function getRegistryPlugins(): Promise<
 function invalidateRegistryCaches(): void {
   memoryCache = null;
   registryLoadPromise = null;
+  registryRefreshPromise = null;
   registryGeneration += 1;
 }
 
@@ -384,8 +413,8 @@ async function removeRegistryFileCache(): Promise<void> {
   // A prior generation publishes memory before its best-effort file write
   // finishes. Drain that write before unlinking so it cannot recreate stale
   // disk state after this refresh has installed a newer snapshot.
-  if (registryFileWritePromise) await registryFileWritePromise;
   const filePath = cacheFilePath();
+  if (registryFileWritePromise) await registryFileWritePromise;
   try {
     await fs.unlink(filePath);
   } catch (error) {
@@ -402,17 +431,24 @@ async function removeRegistryFileCache(): Promise<void> {
 export async function refreshRegistry(): Promise<
   Map<string, RegistryPluginInfo>
 > {
+  bindRegistryDiscoveryScope();
   if (registryRefreshPromise) return registryRefreshPromise;
 
-  const refresh = (async () => {
-    // Removal is useful persistent cleanup but is not required for correctness:
-    // the refresh explicitly bypasses the file tier even when unlink is denied.
-    await removeRegistryFileCache();
-    invalidateRegistryCaches();
-    return loadRegistryPlugins(true);
-  })().finally(() => {
-    if (registryRefreshPromise === refresh) registryRefreshPromise = null;
-  });
+  const generation = registryGeneration;
+  // Removal is useful persistent cleanup but is not required for correctness:
+  // the refresh explicitly bypasses the file tier even when unlink is denied.
+  const refresh = removeRegistryFileCache()
+    .then(() => {
+      // Endpoint or workspace changes may have installed a newer load while file
+      // cleanup awaited I/O. Do not invalidate that newer generation.
+      if (generation !== registryGeneration) return getRegistryPlugins();
+      invalidateRegistryCaches();
+      registryRefreshPromise = refresh;
+      return loadRegistryPlugins(true);
+    })
+    .finally(() => {
+      if (registryRefreshPromise === refresh) registryRefreshPromise = null;
+    });
   registryRefreshPromise = refresh;
   return refresh;
 }

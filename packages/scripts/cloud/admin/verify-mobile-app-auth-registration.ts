@@ -491,8 +491,7 @@ export function mobileAppAuthDatabaseConnection(databaseUrl: string): {
     fail("Remote DATABASE_URL must require TLS");
   }
   const skipVerify =
-    process.env.DATABASE_SSL_NO_VERIFY === "true" ||
-    sslmode === "no-verify";
+    process.env.DATABASE_SSL_NO_VERIFY === "true" || sslmode === "no-verify";
   if (!sslmode) {
     parsed.searchParams.set("sslmode", skipVerify ? "no-verify" : "require");
   }
@@ -573,11 +572,12 @@ async function main(): Promise<void> {
   const enabled = requireMobileAppAuthEnabled(
     readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENABLED"),
   );
-  const appId = enabled && !options.skipDatabase
-    ? requireMobileAppAuthAppId(
-        readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID"),
-      )
-    : undefined;
+  const appId =
+    enabled && !options.skipDatabase
+      ? requireMobileAppAuthAppId(
+          readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID"),
+        )
+      : undefined;
 
   if (enabled && !options.skipDatabase) {
     if (!appId) {

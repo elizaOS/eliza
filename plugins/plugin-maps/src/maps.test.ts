@@ -2,10 +2,9 @@
 
 import {
   type ActionParameters,
-  AgentRuntime,
+  type AgentRuntime,
   type Content,
   createCharacter,
-  InMemoryDatabaseAdapter,
   isPromotedSubactionVirtual,
   type Memory,
   normalizeEffectReceipts,
@@ -13,6 +12,7 @@ import {
   tagsRequireEffectReceipts,
   type UUID,
 } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";
@@ -110,11 +110,10 @@ describe("MapsService and MAPS action", () => {
   let service: MapsService;
 
   beforeEach(() => {
-    runtime = new AgentRuntime({
+    runtime = createSQLiteTestRuntime({
       agentId: AGENT_ID,
       character: createCharacter({ name: "Maps Test" }),
-      adapter: new InMemoryDatabaseAdapter(),
-      disableBasicCapabilities: true,
+
       logLevel: "fatal",
     });
     service = new MapsService(runtime);

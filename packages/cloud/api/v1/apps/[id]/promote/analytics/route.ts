@@ -1,27 +1,30 @@
 /**
  * Serves authenticated app-promotion analytics with a bounded reporting window.
  */
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
 import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
+import { type RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { advertisingService } from "@/lib/services/advertising";
 import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_ANALYTICS_DAYS = 90;
-
 async function __hono_GET(
   request: Request,
-  { params }: RouteContext<{ id: string }>,
+  {
+    params,
+  }: RouteContext<{
+    id: string;
+  }>,
 ) {
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
-
     const app = await appsService.getById(id);
     if (!app || app.organization_id !== user.organization_id) {
       return Response.json({ error: "App not found" }, { status: 404 });
@@ -29,7 +32,6 @@ async function __hono_GET(
     if (await isAppKeyOutOfScope(apiKey?.id, id)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
-
     const url = new URL(request.url);
     const rawDays = url.searchParams.get("days");
     let days = 30;
@@ -45,12 +47,10 @@ async function __hono_GET(
       days = parsed;
     }
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
     const campaigns = await advertisingService.listCampaigns(
       user.organization_id!,
       { appId: id },
     );
-
     const totals = campaigns.reduce(
       (acc, c) => ({
         spend: acc.spend + parseFloat(c.total_spend),
@@ -60,16 +60,13 @@ async function __hono_GET(
       }),
       { spend: 0, impressions: 0, clicks: 0, conversions: 0 },
     );
-
     const round2 = (n: number) => Math.round(n * 100) / 100;
     const safeDiv = (a: number, b: number, mult = 1) =>
       b > 0 ? (a / b) * mult : 0;
-
     const attribution = await conversionTrackingService.getCampaignAttribution(
       user.organization_id!,
       { appId: id },
     );
-
     return Response.json({
       summary: {
         totalCampaigns: campaigns.length,
@@ -111,7 +108,6 @@ async function __hono_GET(
     return nextJsonFromCaughtError(error);
   }
 }
-
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, {

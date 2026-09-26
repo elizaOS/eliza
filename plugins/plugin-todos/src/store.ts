@@ -1,9 +1,6 @@
 /** Storage-neutral todo contract shared by Node and edge runtime hosts. */
-
-import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared/todo-cutover";
-
-import type { Todo, TodoStatus } from "./types.js";
-
+import { type SharedTodoMutationCutoverRecord } from "@elizaos/core/todo-cutover";
+import { type Todo, type TodoStatus } from "./types.js";
 export interface TodoFilter {
   entityId: string;
   agentId: string;
@@ -12,12 +9,10 @@ export interface TodoFilter {
   includeCompleted?: boolean;
   limit?: number;
 }
-
 export interface TodoScope {
   agentId: string;
   entityId: string;
 }
-
 export interface CreateTodoInput {
   entityId: string;
   agentId: string;
@@ -30,7 +25,6 @@ export interface CreateTodoInput {
   parentTrajectoryStepId?: string | null;
   metadata?: Record<string, unknown>;
 }
-
 export interface UpdateTodoInput {
   content?: string;
   activeForm?: string;
@@ -38,7 +32,6 @@ export interface UpdateTodoInput {
   parentTodoId?: string | null;
   metadata?: Record<string, unknown>;
 }
-
 export interface WriteTodoListInput {
   entityId: string;
   agentId: string;
@@ -53,34 +46,59 @@ export interface WriteTodoListInput {
     parentTodoId?: string | null;
   }>;
 }
-
 export type TodoMutation =
   | {
       action: "create";
       input: Omit<CreateTodoInput, "agentId" | "entityId">;
     }
-  | { action: "update"; id: string; patch: UpdateTodoInput }
-  | { action: "complete" | "cancel"; id: string }
-  | { action: "delete"; id: string }
+  | {
+      action: "update";
+      id: string;
+      patch: UpdateTodoInput;
+    }
+  | {
+      action: "complete" | "cancel";
+      id: string;
+    }
+  | {
+      action: "delete";
+      id: string;
+    }
   | {
       action: "write";
       input: Omit<WriteTodoListInput, "agentId" | "entityId">;
     }
-  | { action: "clear"; roomId?: string | null };
-
+  | {
+      action: "clear";
+      roomId?: string | null;
+    };
 export type TodoMutationResult =
-  | { action: "create"; todo: Todo }
-  | { action: "update" | "complete" | "cancel"; todo: Todo | null }
-  | { action: "delete"; deleted: Todo | null }
-  | { action: "write"; before: Todo[]; after: Todo[] }
-  | { action: "clear"; count: number };
-
+  | {
+      action: "create";
+      todo: Todo;
+    }
+  | {
+      action: "update" | "complete" | "cancel";
+      todo: Todo | null;
+    }
+  | {
+      action: "delete";
+      deleted: Todo | null;
+    }
+  | {
+      action: "write";
+      before: Todo[];
+      after: Todo[];
+    }
+  | {
+      action: "clear";
+      count: number;
+    };
 export interface TodoMutationInput {
   scope: TodoScope;
   idempotencyKey: string;
   mutation: TodoMutation;
 }
-
 export interface TodoMutationExecution {
   mutationId: string;
   idempotencyKey: string;
@@ -89,7 +107,6 @@ export interface TodoMutationExecution {
   applied: boolean;
   result: TodoMutationResult;
 }
-
 export interface TodoMutationRecord {
   mutationId: string;
   scope: TodoScope;
@@ -100,14 +117,11 @@ export interface TodoMutationRecord {
   result: TodoMutationResult;
   committedAt: Date;
 }
-
 export type TodoMutationRecordWire = SharedTodoMutationCutoverRecord;
-
 export interface TodoCutoverState {
   todos: Todo[];
   mutations: TodoMutationRecord[];
 }
-
 export interface TodoMutationImportInput {
   targetScope: TodoScope;
   records: TodoMutationRecord[];
@@ -115,19 +129,16 @@ export interface TodoMutationImportInput {
   roomIdMap?: Readonly<Record<string, string | null>>;
   worldIdMap?: Readonly<Record<string, string | null>>;
 }
-
 export interface TodoMutationImportResult {
   imported: number;
   skipped: number;
 }
-
 export interface TodoScopeConvergenceInput {
   sourceScope: TodoScope;
   targetScope: TodoScope;
   roomIdMap?: Readonly<Record<string, string | null>>;
   worldIdMap?: Readonly<Record<string, string | null>>;
 }
-
 export interface TodoStore {
   applyMutation(input: TodoMutationInput): Promise<TodoMutationExecution>;
   readCutoverState(scope: TodoScope): Promise<TodoCutoverState>;
@@ -145,12 +156,16 @@ export interface TodoStore {
   ): Promise<Todo | null>;
   delete(scope: TodoScope, id: string): Promise<boolean>;
   /** Replace the complete `(agentId, entityId)` list; room identifies new rows. */
-  writeList(
-    input: WriteTodoListInput,
-  ): Promise<{ before: Todo[]; after: Todo[] }>;
-  clear(filter: TodoScope & { roomId?: string | null }): Promise<number>;
+  writeList(input: WriteTodoListInput): Promise<{
+    before: Todo[];
+    after: Todo[];
+  }>;
+  clear(
+    filter: TodoScope & {
+      roomId?: string | null;
+    },
+  ): Promise<number>;
 }
-
 export function isTodoStore(value: unknown): value is TodoStore {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
@@ -168,7 +183,6 @@ export function isTodoStore(value: unknown): value is TodoStore {
     "clear",
   ].every((method) => typeof candidate[method] === "function");
 }
-
 export const TODO_LIST_LIMIT_ERROR_CODE = "TODO_INVALID_LIST_LIMIT";
 export const TODO_DUPLICATE_ID_ERROR_CODE = "TODO_DUPLICATE_ID";
 export const TODO_INVALID_PARENT_ERROR_CODE = "TODO_INVALID_PARENT";
@@ -176,10 +190,11 @@ export const TODO_PARENT_CYCLE_ERROR_CODE = "TODO_PARENT_CYCLE";
 export const TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE = "TODO_IDEMPOTENCY_CONFLICT";
 export const TODO_SCOPE_CONVERGENCE_ERROR_CODE =
   "TODO_SCOPE_CONVERGENCE_CONFLICT";
-
 /** Return the first repeated persisted id in a desired todo list. */
 export function findDuplicateTodoId(
-  todos: ReadonlyArray<{ id?: string }>,
+  todos: ReadonlyArray<{
+    id?: string;
+  }>,
 ): string | null {
   const seen = new Set<string>();
   for (const todo of todos) {
@@ -189,7 +204,6 @@ export function findDuplicateTodoId(
   }
   return null;
 }
-
 export function isValidTodoListLimit(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }

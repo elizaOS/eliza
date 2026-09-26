@@ -1,15 +1,11 @@
 /** Verifies TranscriptsView through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * Behaviour coverage for TranscriptsView: real render in jsdom asserting the
  * recordings list + player pairing and meeting-aware summary handling.
  */
 
-import type {
-  Transcript,
-  TranscriptSummary,
-} from "@elizaos/shared/transcripts";
+import type { Transcript, TranscriptSummary } from "@elizaos/core/transcripts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -18,13 +14,12 @@ import {
 } from "./TranscriptsView";
 
 afterEach(cleanup);
-
 const summaries: TranscriptSummary[] = [
   {
     id: "t1",
     title: "Standup",
-    createdAt: 1_700_000_000_000,
-    durationMs: 65_000,
+    createdAt: 1700000000000,
+    durationMs: 65000,
     speakerCount: 2,
     status: "ready",
     source: "voice-session",
@@ -34,8 +29,8 @@ const summaries: TranscriptSummary[] = [
   {
     id: "t2",
     title: "Note",
-    createdAt: 1_700_100_000_000,
-    durationMs: 5_000,
+    createdAt: 1700100000000,
+    durationMs: 5000,
     speakerCount: 1,
     status: "processing",
     source: "voice-session",
@@ -43,12 +38,11 @@ const summaries: TranscriptSummary[] = [
     hasAudio: false,
   },
 ];
-
 const selected: Transcript = {
   id: "t1",
   title: "Standup",
-  createdAt: 1_700_000_000_000,
-  durationMs: 65_000,
+  createdAt: 1700000000000,
+  durationMs: 65000,
   source: "voice-session",
   scope: "owner-private",
   status: "ready",
@@ -65,7 +59,6 @@ const selected: Transcript = {
     },
   ],
 };
-
 describe("TranscriptsView", () => {
   it("lists recordings and selects on click", () => {
     const onSelect = vi.fn();
@@ -92,7 +85,6 @@ describe("TranscriptsView", () => {
     // Nothing selected → detail empty state.
     expect(screen.getByTestId("transcripts-detail-empty")).toBeTruthy();
   });
-
   it("shows the player for the selected transcript", () => {
     render(
       <TranscriptsView
@@ -109,7 +101,6 @@ describe("TranscriptsView", () => {
     expect(screen.getByTestId("transcript-play")).toBeTruthy();
     expect(screen.getByTestId("transcript-word-0-0").textContent).toBe("ship");
   });
-
   it("shows an empty hint when there are no recordings", () => {
     render(
       <TranscriptsView
@@ -121,15 +112,14 @@ describe("TranscriptsView", () => {
     );
     expect(screen.getByTestId("transcripts-empty")).toBeTruthy();
   });
-
   // The server-computed list-row projection (summarizeTranscript): the badge
   // platform + the participant COUNT are already on the summary; the roster
   // names live only on the full transcript record (detail pane).
   const meetingSummary: MeetingAwareTranscriptSummary = {
     id: "m1",
     title: "Weekly sync",
-    createdAt: 1_700_200_000_000,
-    durationMs: 120_000,
+    createdAt: 1700200000000,
+    durationMs: 120000,
     speakerCount: 3,
     status: "recording",
     preview: "",
@@ -140,7 +130,6 @@ describe("TranscriptsView", () => {
       participantCount: 2,
     },
   };
-
   /** The full meeting record the detail pane renders (roster names + platform). */
   const meetingDetailMetadata = {
     platform: "google_meet",
@@ -149,7 +138,6 @@ describe("TranscriptsView", () => {
       { id: "2", displayName: "Bob" },
     ],
   };
-
   it("renders platform badge, participant count, and LIVE on a live meeting row", () => {
     render(
       <TranscriptsView
@@ -173,7 +161,6 @@ describe("TranscriptsView", () => {
       "Recording",
     );
   });
-
   it("omits meeting affordances on an archived meeting row", () => {
     render(
       <TranscriptsView
@@ -186,7 +173,6 @@ describe("TranscriptsView", () => {
     expect(screen.queryByTestId("transcript-live-m1")).toBeNull();
     expect(screen.getByTestId("transcript-platform-m1")).toBeTruthy();
   });
-
   it("shows meeting metadata + the player on an archived meeting detail", () => {
     const archivedMeeting: Transcript = {
       ...selected,
@@ -214,7 +200,6 @@ describe("TranscriptsView", () => {
     expect(screen.getByTestId("transcript-play")).toBeTruthy();
     expect(screen.queryByTestId("live-meeting-pane")).toBeNull();
   });
-
   it("shows capture, consent, retention, and sharing states from meeting metadata", () => {
     const archivedMeeting: Transcript = {
       ...selected,
@@ -244,7 +229,6 @@ describe("TranscriptsView", () => {
         onSelect={vi.fn()}
       />,
     );
-
     const state = screen.getByTestId("meeting-capture-privacy-state");
     expect(state.textContent).toContain("Capture: Bot-free tab/system");
     expect(state.textContent).toContain("Consent: Granted");
@@ -258,7 +242,6 @@ describe("TranscriptsView", () => {
     expect(state.textContent).toContain("Source audio: Disabled");
     expect(state.textContent).toContain("Artifacts: Shared");
   });
-
   it("exposes independent artifact controls and source-audio deletion", () => {
     const onUpdatePrivacy = vi.fn();
     const onDeleteSourceAudio = vi.fn();
@@ -287,7 +270,6 @@ describe("TranscriptsView", () => {
         onDeleteSourceAudio={onDeleteSourceAudio}
       />,
     );
-
     expect(
       screen.getByTestId("transcript-artifact-privacy-controls"),
     ).toBeTruthy();
@@ -302,7 +284,6 @@ describe("TranscriptsView", () => {
     );
     expect(onDeleteSourceAudio).toHaveBeenCalledTimes(1);
   });
-
   it("renders distinct selected loading, unavailable, and mutation error states", () => {
     const { rerender } = render(
       <TranscriptsView
@@ -314,7 +295,6 @@ describe("TranscriptsView", () => {
       />,
     );
     expect(screen.getByTestId("transcripts-detail-loading")).toBeTruthy();
-
     rerender(
       <TranscriptsView
         transcripts={summaries}
@@ -328,7 +308,6 @@ describe("TranscriptsView", () => {
       screen.getByTestId("transcripts-detail-error").textContent,
     ).toContain("Transcript unavailable");
   });
-
   it("renders the join bar and forwards a join request", () => {
     const onJoinMeeting = vi.fn();
     render(

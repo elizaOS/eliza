@@ -1,0 +1,109 @@
+Subject: [PATCH] riscv64 Rust-core bun: ENABLE(WEBASSEMBLY) guards in ZigGlobalObject
+
+The riscv64 JSCOnly C_LOOP WebKit is built with ENABLE_WEBASSEMBLY=0, so
+JSC::Wasm::StreamingCompiler / JSC::Wasm::CompilerMode and the
+compileStreaming/instantiateStreaming GlobalObjectMethodTable slots do not
+exist. ZigGlobalObject.cpp references all of these unguarded and fails to
+compile (errors in JSWasmStreamingCompiler.h plus ZigGlobalObject.cpp:142,
+936-937, 964-965, 3738-3799). This is the same class the Zig-era
+bun-patches/0009 guarded for ZigGlobalObject; that hunk did not rebase into the
+Rust-core 0001 (the file's line locations diverged), so re-apply it here at the
+Rust-core locations:
+
+- guard the `JSWasmStreamingCompiler.h` include,
+- both GlobalObjectMethodTable initializers (GlobalObject + EvalGlobalObject):
+  compileStreaming/instantiateStreaming -> nullptr under ENABLE(WEBASSEMBLY)=0,
+- the `m_wasmStreamingConsumeStreamFunction` lazy initializer in finishCreation,
+- the extern-C streaming block (getBodyStream..., StreamingCompiler__addBytes,
+  handleResponseOnStreamingAction, compile/instantiateStreaming definitions),
+- the two static declarations in ZigGlobalObject.h.
+
+JSWasmStreamingCompiler.cpp is already excluded from the riscv64 build by 0001's
+glob-sources exclude, and its header is now only included under the guard.
+
+diff --git a/src/jsc/bindings/ZigGlobalObject.cpp b/src/jsc/bindings/ZigGlobalObject.cpp
+index 15858d7b..fb221c3d 100644
+--- a/src/jsc/bindings/ZigGlobalObject.cpp
++++ b/src/jsc/bindings/ZigGlobalObject.cpp
+@@ -139,7 +139,9 @@
+ #include "JSTransformStreamDefaultController.h"
+ #include "JSURLPattern.h"
+ #include "JSURLSearchParams.h"
++#if ENABLE(WEBASSEMBLY)
+ #include "JSWasmStreamingCompiler.h"
++#endif
+ #include <JavaScriptCore/WebAssemblyCompileOptions.h>
+ #include "JSWebSocket.h"
+ #include "JSWorker.h"
+@@ -933,8 +935,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
+         &scriptExecutionStatus,
+         &unsafeEvalNoop, // reportViolationForUnsafeEval
+         nullptr, // defaultLanguage
++#if ENABLE(WEBASSEMBLY)
+         &compileStreaming,
+         &instantiateStreaming,
++#else
++        nullptr,
++        nullptr,
++#endif
+         &Zig::deriveShadowRealmGlobalObject,
+         &codeForEval, // codeForEval
+         &canCompileStrings, // canCompileStrings
+@@ -961,8 +968,13 @@ const JSC::GlobalObjectMethodTable& EvalGlobalObject::globalObjectMethodTable()
+         &scriptExecutionStatus,
+         &unsafeEvalNoop, // reportViolationForUnsafeEval
+         nullptr, // defaultLanguage
++#if ENABLE(WEBASSEMBLY)
+         &compileStreaming,
+         &instantiateStreaming,
++#else
++        nullptr,
++        nullptr,
++#endif
+         &Zig::deriveShadowRealmGlobalObject,
+         &codeForEval, // codeForEval
+         &canCompileStrings, // canCompileStrings
+@@ -2195,10 +2207,12 @@ void GlobalObject::finishCreation(VM& vm)
+             init.set(JSC::JSFunction::create(init.vm, init.owner, utilInspectStylizeWithNoColorCodeGenerator(init.vm), init.owner));
+         });
+
++#if ENABLE(WEBASSEMBLY)
+     m_wasmStreamingConsumeStreamFunction.initLater(
+         [](const Initializer<JSFunction>& init) {
+             init.set(JSC::JSFunction::create(init.vm, init.owner, wasmStreamingConsumeStreamCodeGenerator(init.vm), init.owner));
+         });
++#endif
+
+     m_nativeMicrotaskTrampoline.initLater(
+         [](const Initializer<JSFunction>& init) {
+@@ -3723,6 +3737,7 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
+     return result;
+ }
+
++#if ENABLE(WEBASSEMBLY)
+ extern "C" JSC::EncodedJSValue Zig__GlobalObject__getBodyStreamOrBytesForWasmStreaming(JSGlobalObject*, EncodedJSValue response, JSC::Wasm::StreamingCompiler* compiler);
+
+ extern "C" void JSC__Wasm__StreamingCompiler__addBytes(JSC::Wasm::StreamingCompiler* compiler, const uint8_t* spanPtr, size_t spanSize)
+@@ -3785,6 +3800,7 @@ void GlobalObject::instantiateStreaming(JSGlobalObject* globalObject, JSC::JSPro
+ {
+     handleResponseOnStreamingAction(globalObject, promise, source, JSC::Wasm::CompilerMode::FullCompile, importObject, WTF::move(compileOptions));
+ }
++#endif // ENABLE(WEBASSEMBLY)
+
+ GlobalObject::PromiseFunctions GlobalObject::promiseHandlerID(Zig::FFIFunction handler)
+ {
+diff --git a/src/jsc/bindings/ZigGlobalObject.h b/src/jsc/bindings/ZigGlobalObject.h
+index eae5d1cc..dabafe12 100644
+--- a/src/jsc/bindings/ZigGlobalObject.h
++++ b/src/jsc/bindings/ZigGlobalObject.h
+@@ -201,8 +201,10 @@ public:
+     static JSC::JSPromise* moduleLoaderFetch(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, RefPtr<JSC::ScriptFetchParameters>, RefPtr<JSC::ScriptFetcher>);
+     static JSC::JSObject* moduleLoaderCreateImportMetaProperties(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, JSC::JSModuleRecord*, RefPtr<JSC::ScriptFetcher>);
+     static JSC::JSValue moduleLoaderEvaluate(JSGlobalObject*, JSC::JSModuleLoader*, JSValue key, JSValue moduleRecordValue, RefPtr<JSC::ScriptFetcher>, JSValue sentValue, JSValue resumeMode);
++#if ENABLE(WEBASSEMBLY)
+     static void compileStreaming(JSGlobalObject*, JSC::JSPromise*, JSC::JSValue source, std::optional<JSC::WebAssemblyCompileOptions>&&);
+     static void instantiateStreaming(JSGlobalObject*, JSC::JSPromise*, JSC::JSValue source, JSC::JSObject* importObject, std::optional<JSC::WebAssemblyCompileOptions>&&);
++#endif
+
+     static ScriptExecutionStatus scriptExecutionStatus(JSGlobalObject*, JSObject*);
+     static void promiseRejectionTracker(JSGlobalObject*, JSC::JSPromise*, JSC::JSPromiseRejectionOperation);

@@ -3,7 +3,7 @@
  * active windows; the assistant must avoid default-morning scheduling and store
  * a term-paper plan that fits the stated rhythm.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

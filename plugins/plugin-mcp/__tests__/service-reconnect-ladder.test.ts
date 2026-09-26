@@ -50,7 +50,7 @@ import {
   type PingConfig,
 } from "../src/types";
 
-const STDIO: McpServerConfig = { type: "stdio", command: "bun", args: ["server.mjs"] };
+const STDIO: McpServerConfig = { type: "stdio", command: "bun", args: ["server.ts"] };
 
 type LadderInternals = {
   runtime: { reportError: ReturnType<typeof vi.fn> };

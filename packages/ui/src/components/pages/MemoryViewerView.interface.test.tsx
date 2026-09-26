@@ -28,6 +28,12 @@ const clientMock = vi.hoisted(() => ({
 const dispatchChatOpen = vi.hoisted(() => vi.fn());
 const authorityMock = vi.hoisted(() => ({ value: "agent-a" }));
 
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
 vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../events", () => ({ dispatchChatOpen }));
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({

@@ -8,12 +8,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ElizaConfig } from "@elizaos/core";
 import {
   type AgentRuntime,
   assertActiveTrajectoryForLlmCall,
   ElizaError,
   EventType,
   getTrajectoryContext,
+  type IAgentRuntime,
   isLlmGenerationModelType,
   isTextGenerationModelType,
   normalizeTrajectoryLlmPurpose,
@@ -23,7 +25,6 @@ import {
   type ModelTokenMetadata,
   resolveModelTokenMetadata,
 } from "../config/model-metadata.ts";
-import type { ElizaConfig } from "../config/types.ts";
 
 import type { TrajectoryLlmCall } from "../types/trajectory.ts";
 
@@ -57,6 +58,7 @@ import {
 import {
   applyActiveViewAwareness,
   getActiveViewContext,
+  renderActiveViewContextBlock,
 } from "./view-action-affinity.ts";
 
 // ---------------------------------------------------------------------------
@@ -410,7 +412,12 @@ function ensureTrajectoryLoggerTracking(
         const currentValue = toOptionalNumber(
           readExistingNumeric(latestCall, key),
         );
-        if (currentValue !== undefined && currentValue > 0) return;
+        // Zero is a valid sampling setting, not a missing measurement.
+        if (
+          currentValue !== undefined &&
+          (key === "temperature" || currentValue > 0)
+        )
+          return;
         writeNumeric(latestCall, key, nextValue);
         updated = true;
       };
@@ -1001,15 +1008,15 @@ export function serializeCompactorMessagesForModel(
 }
 
 /**
- * Inject the Active View awareness block into the *current* (last) user
- * message. Using findIndex (first user) broke multi-turn planners: turn 2+
- * either rewrote history or hit the idempotent early-return on a prior turn's
- * already-annotated message, so the live user turn never received the block
- * and deterministic fixtures looking at latestUserText failed closed (#17918).
+ * Append the fresh view snapshot to the last user message. Keeping the original
+ * content first preserves the reusable planner prefix as feedback grows. Each
+ * dispatch starts from the caller's unchanged messages; never strip headings
+ * from them, since a quoted Active View block can be original source evidence.
  */
 function applyActiveViewAwarenessToMessages(
+  runtime: IAgentRuntime,
   messages: CompactorMessage[],
-  view: Parameters<typeof applyActiveViewAwareness>[1],
+  view: Parameters<typeof applyActiveViewAwareness>[2],
 ): CompactorMessage[] {
   let userMessageIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -1021,8 +1028,10 @@ function applyActiveViewAwarenessToMessages(
   if (userMessageIndex === -1) return messages;
 
   const message = messages[userMessageIndex];
-  const awareContent = applyActiveViewAwareness(message.content, view);
-  if (awareContent === message.content) return messages;
+  if (!view) return messages;
+  const block = renderActiveViewContextBlock(runtime, view);
+  const awareContent =
+    message.content.length > 0 ? `${message.content}\n\n${block}` : block;
 
   const rewritten = [...messages];
   rewritten[userMessageIndex] = { ...message, content: awareContent };
@@ -1458,7 +1467,7 @@ export function installPromptOptimizations(
     // /api/views/:id/navigate (stored in view-action-affinity). Read it once so
     // both the action-weighting (keep view-scoped actions at full param detail)
     // and the awareness block below stay consistent for this prompt.
-    const activeView = getActiveViewContext();
+    const activeView = getActiveViewContext(runtime);
 
     if (shouldApplyPromptBudget(modelType)) {
       const budget = resolvePromptBudget(runtime, modelType, {
@@ -1485,7 +1494,11 @@ export function installPromptOptimizations(
         modelType === "ACTION_PLANNER")
     ) {
       if (promptKey) {
-        const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
+        const awarePrompt = applyActiveViewAwareness(
+          runtime,
+          nextPrompt,
+          activeView,
+        );
         if (awarePrompt !== nextPrompt) {
           promptOptimizationTelemetry.transformations.push(
             `active-view-awareness:${activeView.viewId}`,
@@ -1494,6 +1507,7 @@ export function installPromptOptimizations(
         }
       } else if (nextMessages) {
         const awareMessages = applyActiveViewAwarenessToMessages(
+          runtime,
           nextMessages,
           activeView,
         );
@@ -1587,19 +1601,16 @@ export function installPromptOptimizations(
       capturedUsage?.completionTokens ?? estimateTokenCount(responseText);
     const fallbackCall = {
       stepId: normalizedTrajectoryStepId ?? undefined,
-      model: resolveTrajectoryModelLabel(
-        runtime,
-        modelType,
-        payloadRecord,
-        args[2],
-      ),
+      model:
+        capturedUsage?.model ??
+        resolveTrajectoryModelLabel(runtime, modelType, payloadRecord, args[2]),
       systemPrompt,
       userPrompt: userPromptForTrajectory,
       response: responseText,
-      temperature:
-        typeof payloadRecord.temperature === "number"
-          ? payloadRecord.temperature
-          : 0,
+      // Omission delegates sampling to the provider; it does not mean zero.
+      ...(typeof payloadRecord.temperature === "number"
+        ? { temperature: payloadRecord.temperature }
+        : {}),
       maxTokens:
         toOptionalNumber(payloadRecord.maxTokens) ??
         toOptionalNumber(payloadRecord.maxOutputTokens) ??
@@ -1648,10 +1659,13 @@ export function installPromptOptimizations(
       typeof trajectoryLogger.updateLatestLlmCall === "function"
     ) {
       try {
-        await trajectoryLogger.updateLatestLlmCall(
-          normalizedTrajectoryStepId,
-          fallbackCall,
-        );
+        await trajectoryLogger.updateLatestLlmCall(normalizedTrajectoryStepId, {
+          ...fallbackCall,
+          // The provider has already recorded its actual model. A runtime
+          // configuration or plugin label is only a fallback for missing
+          // captures, never evidence that can overwrite that identity.
+          model: capturedUsage?.model,
+        });
       } catch {
         // Ignore enrichment failures; the model call itself already succeeded.
       }

@@ -1,155 +1,33 @@
 # @elizaos/plugin-browser
 
-Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile), and manages the Chrome, Firefox, and Safari Agent Browser Bridge companion extension.
+Adds browser automation through registered native Chromium profiles, the desktop
+workspace, and configured hosted endpoints. Enable `features.browser` in host
+configuration. The MV3 companion in `packages/browser-bridge-extension` controls
+the same visible profile through an authenticated native messaging host on Linux
+and the supported Chromium Desktop Android build. It supports background tabs and
+complete DOM snapshots; selectors expire after effects and require fresh readback.
+Android Custom Tabs are addressable by their exact tab IDs while open, including
+when backgrounded. Creating a new background tab requires a regular Chromium
+window: open Chromium from the launcher once. Without one, the command returns
+`UNAVAILABLE` before the effect and does not launch a window or retry elsewhere.
+The Android app holds a certificate-verified Custom Tabs service binding while
+its agent foreground service runs. Chunk acknowledgements bound Binder traffic
+without shortening page context. Deployment still requires a verified extension
+and a Chromium build provisioned for its native host; unpacked debug installation
+is development evidence, not release provisioning.
 
-## What this plugin provides
+Native profiles are preferred before hosted browsers. Signed remote device grants
+bind browser commands to one exact profile; older agent grants do not grant browser
+access. A dispatched command is never replayed against a different session.
+Android accessibility is a foreground-only fallback when the native profile is
+unavailable before dispatch. Desktop workspace autofill requires prior per-domain
+vault authorization and does not silently fill remote device profiles.
 
-### Actions
+## Development
 
-**BROWSER** — Controls a registered browser target. The agent picks the best available backend automatically, or you can pin a specific target with the `target` parameter. Supported operations:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-| `action` value | What it does |
-|---|---|
-| `open` | Open a URL in a new tab |
-| `navigate` | Navigate an existing tab to a URL |
-| `click` | Click a DOM element by CSS selector |
-| `type` | Type text into a selector |
-| `fill` / `clear` | Replace a form control's value or clear it |
-| `press` | Press a keyboard key |
-| `scroll` / `scroll_into` | Scroll by direction and pixels, or reveal a selector |
-| `hover` | Hover a DOM element by CSS selector |
-| `drag` | Drag a source selector to `targetSelector` |
-| `get` | Get a DOM value |
-| `state` | Return current tab state (URL, title) |
-| `snapshot` | Capture a DOM snapshot |
-| `screenshot` | Capture a screenshot |
-| `reload` | Reload the current tab |
-| `back` / `forward` | Browser history navigation |
-| `close` | Close a tab |
-| `show` / `hide` | Show or hide the browser window |
-| `wait` | Wait for a selector to appear |
-| `tab` | Tab management (list/new/close/switch) |
-| `realistic_click` | Animated cursor click (visible to user) |
-| `realistic_fill` | Animated fill with per-character delay |
-| `realistic_type` | Animated typing |
-| `realistic_press` | Animated key press |
-| `cursor_move` | Animate cursor to a position |
-| `cursor_hide` | Hide the cursor overlay |
-| `autofill_login` | Fill saved credentials into a browser tab (vault-gated; requires `domain`) |
-
-**MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report the complete paired-companion inventory, exact count, and settings). Owner-only.
-
-### Browser targets
-
-The plugin uses a pluggable target registry in `BrowserService`. Targets are selected automatically by availability and score:
-
-| Target ID | Backend | When available |
-|---|---|---|
-| `workspace` | Electrobun `BrowserView` (desktop) or JSDOM (web) | Always |
-| `bridge` | Paired Chrome, Firefox, or Safari via companion extension | At least one companion paired |
-| `stagehand` | Playwright/Stagehand via HTTP endpoint | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` set |
-
-External plugins can register additional targets by calling `BrowserService.registerTarget(target)`.
-
-### Confirmed uploads
-
-Generic `eval`, `upload`, and `realistic-upload` commands fail closed. Uploads
-must use `BrowserService.executeConfirmedUpload` with the core v2 interaction
-contract: an explicitly granted account profile, a pinned adapter advertising
-the upload action, the exact semantic action digest, and an atomically
-consume-once confirmation. A target must separately opt in through
-`executeAuthorizedUpload` and return an applied effect receipt for the exact
-surface, generation, operation, and action idempotency key. The receipt records
-only opaque session, account-grant, and resource identities; raw owner/profile
-handles and file handles are excluded.
-
-The built-in `workspace`, `bridge`, and `stagehand` targets do not yet expose a
-proof-producing upload hook, so they reject uploads before consuming a
-confirmation. A custom target must not opt in until its underlying browser or
-provider can return authoritative acceptance evidence.
-
-### Provider
-
-`browser_workspace` — Injects the current dispatch mode (`desktop` / `web`) and the complete list of open tabs into agent context. Active when the `browser` or `web` context is selected.
-
-### Routes
-
-`/api/browser-bridge/*` — HTTP surface for the companion extension: pairing, settings, tab sync, page-context ingest, session progress, and extension package build/download.
-
-## Requirements
-
-### Auto-enable
-
-The plugin is opt-in. It activates when `config.features.browser` is truthy in the elizaOS agent config:
-
-```json
-{
-  "features": {
-    "browser": true
-  }
-}
-```
-
-### Environment variables
-
-| Variable | Purpose |
-|---|---|
-| `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | Full URL for the Stagehand command endpoint |
-| `STAGEHAND_SERVER_URL` | Stagehand base URL (commands go to `<url>/api/browser-command`) |
-| `ELIZA_BROWSER_STAGEHAND_URL` | Alias for `STAGEHAND_SERVER_URL` |
-| `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | Set `false` to disable automatic stagehand-server install/build |
-| `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | Set `true` to allow stagehand target on mobile |
-| `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | Platform hint for target scoring (`ios`/`android`/`mobile`) |
-| `ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL` | Chrome Web Store listing override |
-| `ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL` | Firefox Add-ons listing override |
-| `ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL` | Safari App Store listing override |
-
-### Vault keys (set by the user, not env vars)
-
-`autofill_login` only fires when the user has pre-authorized it per domain:
-
-- `creds.<domain>.:autoallow = "1"` — set via Settings → Vault → Logins.
-
-Without this flag, the action returns an error rather than prompting interactively.
-
-## Companion extension authentication
-
-Companion-scoped endpoints require two headers:
-
-```
-X-Browser-Bridge-Companion-Id: <companion uuid>
-Authorization: Bearer <pairing token>
-```
-
-Legacy header aliases (`X-LifeOps-Browser-Companion-Id`, `x-eliza-browser-companion-id`) are not accepted.
-
-## Database
-
-Drizzle tables in the `browser` PostgreSQL schema (applied by elizaOS `plugin-sql` migrator):
-
-- `browser_bridge_companions`
-- `browser_bridge_settings`
-- `browser_bridge_tabs`
-- `browser_bridge_page_contexts`
-
-## Registering a custom browser target
-
-Any plugin can extend the browser dispatch surface at runtime:
-
-```ts
-import { BrowserService, BROWSER_SERVICE_TYPE } from "@elizaos/plugin-browser";
-import type { BrowserTarget } from "@elizaos/plugin-browser";
-
-const myTarget: BrowserTarget = {
-  id: "my-target",
-  name: "My Browser",
-  description: "Custom browser backend.",
-  kind: "external",
-  priority: 50,
-  available: async () => true,
-  execute: async (command) => { /* ... */ },
-};
-
-const browserService = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
-browserService?.registerTarget(myTarget);
+```bash
+bun run --cwd plugins/plugin-browser build
+bun run --cwd plugins/plugin-browser test
 ```

@@ -1,18 +1,16 @@
 // Wires hosted Eliza agent lifecycle behavior for cloud runtime services.
 import { type AgentRuntime, elizaLogger } from "@elizaos/core";
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
 
-const DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS = 10_000;
+const DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS = 10000;
 // Node coerces larger setTimeout delays to 1 ms and emits an overflow warning.
-const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
-
+const MAX_NODE_TIMEOUT_MS = 2147483647;
 function getRuntimeLifecycleTimeoutMs(): number {
   const configured = parsePositiveInteger(process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS);
   return configured !== undefined && configured <= MAX_NODE_TIMEOUT_MS
     ? configured
     : DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS;
 }
-
 export async function runWithLifecycleTimeout(
   operation: Promise<void>,
   action: string,
@@ -21,7 +19,6 @@ export async function runWithLifecycleTimeout(
 ): Promise<void> {
   const timeoutMs = getRuntimeLifecycleTimeoutMs();
   let timeout: ReturnType<typeof setTimeout> | undefined;
-
   await Promise.race([
     operation,
     new Promise<void>((resolve) => {
@@ -29,15 +26,20 @@ export async function runWithLifecycleTimeout(
         elizaLogger.warn(`[${label}] ${action} timed out after ${timeoutMs}ms for ${id}`);
         resolve();
       }, timeoutMs);
-      (timeout as { unref?: () => void }).unref?.();
+      (
+        timeout as {
+          unref?: () => void;
+        }
+      ).unref?.();
     }),
   ]).finally(() => {
     if (timeout) clearTimeout(timeout);
   });
 }
-
 export const safeClose = async (
-  closeable: { close(): Promise<void> },
+  closeable: {
+    close(): Promise<void>;
+  },
   label: string,
   id: string,
 ): Promise<void> => {
@@ -46,7 +48,6 @@ export const safeClose = async (
     .catch((e) => elizaLogger.debug(`[${label}] Close error for ${id}: ${e}`));
   await runWithLifecycleTimeout(closeOperation, "Close", label, id);
 };
-
 /** Stop runtime services without closing the shared database adapter pool. */
 export async function stopRuntimeServices(
   runtime: AgentRuntime,

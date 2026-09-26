@@ -7,23 +7,22 @@
  * across from PA's `app_lifeops` on first boot. Depends on `@elizaos/plugin-sql`
  * for the runtime DB handle the schema registers against.
  */
+
 import {
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  type Plugin,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
 import { InboxMigrationService } from "./inbox/migration.ts";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
 import { inboxRoutes } from "./routes/inbox-routes.ts";
-
 export const inboxPlugin: Plugin = {
   name: "@elizaos/plugin-inbox",
   description:
-    "Unified cross-channel inbox triage with unresolved-item tracking. Hosts the INBOX umbrella action (list/search/summarize fan-out across email/Discord/Telegram/WhatsApp/X/Slack and similar non-SMS channels) and the inboxTriage provider, backed by the InboxService/InboxRepository triage back-end plus the aggregation domain in `inbox/aggregate.ts` (builders, request resolver, cached read-through InboxDomain). The legacy transport route `GET /api/lifeops/inbox` and the connector sources/cache tables stay in @elizaos/plugin-personal-assistant, which injects them through the aggregate seams and delegates the domain here. (Android SMS is handled by plugin-messages.)",
+    "Unified cross-channel inbox triage with unresolved-item tracking. Hosts the INBOX umbrella action (list/search/summarize fan-out across email/Discord/Telegram/WhatsApp/X/Slack and similar non-SMS channels) and the inboxTriage provider, backed by the InboxService/InboxRepository triage back-end plus the aggregation domain in `inbox/aggregate.ts` (builders, request resolver, cached read-through InboxDomain). The legacy transport route `GET /api/lifeops/inbox` and the connector sources/cache tables stay in @elizaos/plugin-personal-assistant, which injects them through the aggregate seams and delegates the domain here. (Android SMS is handled by plugin-native-messages.)",
   dependencies: ["@elizaos/plugin-sql"],
   schema: inboxDbSchema,
   services: [InboxMigrationService],
@@ -84,5 +83,4 @@ export const inboxPlugin: Plugin = {
     },
   ],
 };
-
 export default inboxPlugin;

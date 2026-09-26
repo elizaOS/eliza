@@ -6,19 +6,23 @@
  * choices, network mode, credential env keys) back into ElizaConfig and
  * `process.env`. Pure resolution logic consumed by the wallet routes and services.
  */
+
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
-  resolveCloudApiBaseUrl,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import type { ElizaConfig } from "../config/config.ts";
 
 function normalizeSecret(value: string | null | undefined): string | null {

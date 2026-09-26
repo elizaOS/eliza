@@ -5,7 +5,6 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -14,7 +13,8 @@ import {
   type CarveOutSqlExecutor,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "./carve-out-migration.js";
+} from "./database-utils/carve-out-migration.js";
+import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "./database-utils/raw-sql.js";
 
 let database: PGlite | undefined;
 

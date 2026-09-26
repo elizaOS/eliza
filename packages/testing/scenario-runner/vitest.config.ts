@@ -1,0 +1,76 @@
+/**
+ * Vitest config for the scenario-runner package. Aliases every workspace
+ * `@elizaos/*` package to its TypeScript source so the scenario runtime resolves
+ * optional plugins independent of build order (test:server only builds core); see
+ * the inline note on the dynamic-import failure this avoids.
+ */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../scripts/vitest/source-aliases";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "../../..");
+const workspaceSourceAliases = buildWorkspaceSourceAliases(repoRoot);
+
+export default defineConfig({
+  root: here,
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts", "src/__tests__/**/*.test.ts"],
+    exclude: ["dist/**", "**/node_modules/**"],
+    testTimeout: 180_000,
+  },
+  resolve: {
+    alias: [
+      {
+        find: /^zod$/,
+        replacement: path.join(repoRoot, "node_modules/zod/v4/index.js"),
+      },
+      {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/testing\/scenario-runner\/missing-input-terminal-relay$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/testing/scenario-runner/src/missing-input-terminal-relay.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/atomic-json$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/core/src/utils/atomic-json.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/agent-surface$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/agent-surface/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/components\/ui\/(.*)$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/components/ui/$1.tsx",
+        ),
+      },
+      ...workspaceSourceAliases,
+    ].map((entry) => ({
+      ...entry,
+      // vite `resolve.alias` replacements must be POSIX forward-slash paths.
+      // `path.join` yields backslashes on Windows, which break vite's alias
+      // matching (specifiers like `@elizaos/plugin-native-inference/model-catalog` then fall
+      // through to Node and fail with "Cannot find package"). No-op on POSIX.
+      replacement: entry.replacement.split("\\").join("/"),
+    })),
+  },
+});

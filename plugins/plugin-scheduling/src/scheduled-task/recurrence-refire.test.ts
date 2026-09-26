@@ -1,26 +1,4 @@
-/**
- * Recurrence-refire unit tests (#10723).
- *
- * Before the fix, every recurring ScheduledTask fired at most once:
- *  - terminal-death: completed/skipped rows got `next_fire_at = NULL` from
- *    `resolveNextFireAt`, so the tick slice never saw them again;
- *  - zombie: a recurring row stuck in `fired` raced out of every claim
- *    (`claimForFire` matched `status = 'scheduled'` only), forever;
- *  - acknowledged-death: `acknowledged` (non-terminal by design) was
- *    excluded from the tick's status filter.
- *
- * These tests drive the REAL runner + in-memory store and assert:
- *  - `fireWithResult({ allowTerminalRefire })` claims the due next occurrence
- *    from `fired` / `acknowledged` / terminal recurring rows via the
- *    `(status, firedAt)` CAS;
- *  - a NOT-due refire attempt bails as `raced` (the fresh-row due re-check
- *    that closes the sequential double-fire window);
- *  - `dismissed` and non-recurring terminal rows never refire;
- *  - `resolveNextFireAt` (observed through the store's upsert options) keeps
- *    a trigger-derived `next_fire_at` for recurring rows in refire-eligible
- *    statuses and clears it for dismissed / settled non-recurring rows.
- */
-
+/** Exercises recurrence claims, due boundaries and next-fire persistence using the real in-memory runner. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -142,74 +120,53 @@ async function firedLogCount(h: Harness, taskId: string): Promise<number> {
   return rows.filter((r) => r.transition === "fired").length;
 }
 
+function lastUpsertFor(h: Harness, taskId: string): string | null {
+  const rows = h.upserts.filter((u) => u.taskId === taskId);
+  const last = rows[rows.length - 1];
+  if (!last) throw new Error(`no upsert captured for ${taskId}`);
+  return last.nextFireAtIso;
+}
+
 describe("recurrence refire — fireWithResult({ allowTerminalRefire })", () => {
-  it("refires a COMPLETED daily cron task at the next day's occurrence", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    const first = await h.runner.fireWithResult(task.taskId);
-    expect(first.kind).toBe("fired");
-    await h.runner.apply(task.taskId, "complete");
+  it.each([
+    ["completed", "complete"],
+    ["fired", undefined],
+    ["acknowledged", "acknowledge"],
+    ["skipped", "skip"],
+  ] as const)(
+    "refires a %s daily task at its indexed next occurrence",
+    async (status, verb) => {
+      const h = makeHarness();
+      const task = await h.runner.schedule(dailyCronInput());
+      expect((await h.runner.fireWithResult(task.taskId)).kind).toBe("fired");
+      h.setNow("2026-05-09T10:00:00.000Z");
+      if (verb) await h.runner.apply(task.taskId, verb);
+      const settled = await h.store.get(task.taskId);
+      expect(settled?.state.status).toBe(status);
+      if (verb === "complete") expect(settled?.state.completedAt).toBeDefined();
+      if (verb === "acknowledge")
+        expect(settled?.state.acknowledgedAt).toBeDefined();
+      expect(lastUpsertFor(h, task.taskId)).toBe("2026-05-10T09:00:00.000Z");
 
-    h.setNow("2026-05-10T09:00:30.000Z");
-    const second = await h.runner.fireWithResult(task.taskId, {
-      allowTerminalRefire: true,
-    });
-    expect(second.kind).toBe("fired");
-    if (second.kind !== "fired") throw new Error("unreachable");
-    expect(second.task.state.status).toBe("fired");
-    expect(second.task.state.firedAt).toBe("2026-05-10T09:00:30.000Z");
-    expect(second.task.state.completedAt).toBeUndefined();
-    expect(await firedLogCount(h, task.taskId)).toBe(2);
-  });
-
-  it("refires a ZOMBIE (status=fired, never settled) daily cron task the next day", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    const zombie = await h.store.get(task.taskId);
-    expect(zombie?.state.status).toBe("fired");
-
-    h.setNow("2026-05-10T09:01:00.000Z");
-    const refire = await h.runner.fireWithResult(task.taskId, {
-      allowTerminalRefire: true,
-    });
-    expect(refire.kind).toBe("fired");
-    if (refire.kind !== "fired") throw new Error("unreachable");
-    expect(refire.task.state.firedAt).toBe("2026-05-10T09:01:00.000Z");
-    expect(await firedLogCount(h, task.taskId)).toBe(2);
-  });
-
-  it("refires an ACKNOWLEDGED daily cron task the next day and clears acknowledgedAt", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    const acked = await h.runner.apply(task.taskId, "acknowledge");
-    expect(acked.state.status).toBe("acknowledged");
-    expect(acked.state.acknowledgedAt).toBeDefined();
-
-    h.setNow("2026-05-10T09:00:00.000Z");
-    const refire = await h.runner.fireWithResult(task.taskId, {
-      allowTerminalRefire: true,
-    });
-    expect(refire.kind).toBe("fired");
-    if (refire.kind !== "fired") throw new Error("unreachable");
-    expect(refire.task.state.acknowledgedAt).toBeUndefined();
-    expect(await firedLogCount(h, task.taskId)).toBe(2);
-  });
-
-  it("refires a SKIPPED (completion-timeout style) recurring task at the next occurrence", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    await h.runner.apply(task.taskId, "skip", { reason: "completion timeout" });
-
-    h.setNow("2026-05-10T09:00:00.000Z");
-    const refire = await h.runner.fireWithResult(task.taskId, {
-      allowTerminalRefire: true,
-    });
-    expect(refire.kind).toBe("fired");
-    expect(await firedLogCount(h, task.taskId)).toBe(2);
-  });
+      h.setNow("2026-05-10T09:00:30.000Z");
+      const refire = await h.runner.fireWithResult(task.taskId, {
+        allowTerminalRefire: true,
+      });
+      expect(refire).toMatchObject({
+        kind: "fired",
+        task: {
+          state: {
+            status: "fired",
+            firedAt: "2026-05-10T09:00:30.000Z",
+          },
+        },
+      });
+      const reloaded = await h.store.get(task.taskId);
+      expect(reloaded?.state.completedAt).toBeUndefined();
+      expect(reloaded?.state.acknowledgedAt).toBeUndefined();
+      expect(await firedLogCount(h, task.taskId)).toBe(2);
+    },
+  );
 
   it("interval task fires across three consecutive intervals via zombie refire", async () => {
     const h = makeHarness("2026-05-09T12:00:00.000Z");
@@ -307,6 +264,7 @@ describe("recurrence refire — fireWithResult({ allowTerminalRefire })", () => 
     const task = await h.runner.schedule(dailyCronInput());
     await h.runner.fireWithResult(task.taskId);
     await h.runner.apply(task.taskId, "dismiss");
+    expect(lastUpsertFor(h, task.taskId)).toBeNull();
 
     h.setNow("2026-05-10T09:00:00.000Z");
     const attempt = await h.runner.fireWithResult(task.taskId, {
@@ -327,6 +285,7 @@ describe("recurrence refire — fireWithResult({ allowTerminalRefire })", () => 
     );
     await h.runner.fireWithResult(task.taskId);
     await h.runner.apply(task.taskId, "complete");
+    expect(lastUpsertFor(h, task.taskId)).toBeNull();
 
     h.setNow("2026-05-10T09:00:00.000Z");
     const attempt = await h.runner.fireWithResult(task.taskId, {
@@ -408,68 +367,14 @@ describe("recurrence refire — claimForFire CAS (in-memory reference store)", (
   });
 });
 
-describe("resolveNextFireAt — indexed next_fire_at across refire-eligible statuses", () => {
-  function lastUpsertFor(h: Harness, taskId: string): string | null {
-    const rows = h.upserts.filter((u) => u.taskId === taskId);
-    const last = rows[rows.length - 1];
-    if (!last) throw new Error(`no upsert captured for ${taskId}`);
-    return last.nextFireAtIso;
-  }
-
-  it("keeps a trigger-derived next_fire_at on a COMPLETED recurring task", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    h.setNow("2026-05-09T10:00:00.000Z");
-    await h.runner.apply(task.taskId, "complete");
-    expect(lastUpsertFor(h, task.taskId)).toBe("2026-05-10T09:00:00.000Z");
-  });
-
-  it("keeps a trigger-derived next_fire_at on an ACKNOWLEDGED recurring task", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    h.setNow("2026-05-09T09:30:00.000Z");
-    await h.runner.apply(task.taskId, "acknowledge");
-    expect(lastUpsertFor(h, task.taskId)).toBe("2026-05-10T09:00:00.000Z");
-  });
-
-  it("clears next_fire_at on a COMPLETED once task", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(
-      dailyCronInput({
-        trigger: { kind: "once", atIso: "2026-05-09T09:00:00.000Z" },
-      }),
-    );
-    await h.runner.fireWithResult(task.taskId);
-    await h.runner.apply(task.taskId, "complete");
-    expect(lastUpsertFor(h, task.taskId)).toBeNull();
-  });
-
-  it("clears next_fire_at on an ACKNOWLEDGED once task", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(
-      dailyCronInput({
-        trigger: { kind: "once", atIso: "2026-05-09T09:00:00.000Z" },
-      }),
-    );
-    await h.runner.fireWithResult(task.taskId);
-    await h.runner.apply(task.taskId, "acknowledge");
-    expect(lastUpsertFor(h, task.taskId)).toBeNull();
-  });
-
-  it("clears next_fire_at on a DISMISSED recurring task", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    await h.runner.apply(task.taskId, "dismiss");
-    expect(lastUpsertFor(h, task.taskId)).toBeNull();
-  });
-
-  it("keeps next_fire_at on a ZOMBIE fired recurring task (post-fire persist)", async () => {
-    const h = makeHarness("2026-05-09T09:00:00.000Z");
-    const task = await h.runner.schedule(dailyCronInput());
-    await h.runner.fireWithResult(task.taskId);
-    expect(lastUpsertFor(h, task.taskId)).toBe("2026-05-10T09:00:00.000Z");
-  });
+it("clears next_fire_at on an ACKNOWLEDGED once task", async () => {
+  const h = makeHarness("2026-05-09T09:00:00.000Z");
+  const task = await h.runner.schedule(
+    dailyCronInput({
+      trigger: { kind: "once", atIso: "2026-05-09T09:00:00.000Z" },
+    }),
+  );
+  await h.runner.fireWithResult(task.taskId);
+  await h.runner.apply(task.taskId, "acknowledge");
+  expect(lastUpsertFor(h, task.taskId)).toBeNull();
 });

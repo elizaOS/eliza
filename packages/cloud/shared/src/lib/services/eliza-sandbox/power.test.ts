@@ -1,6 +1,8 @@
 /** Exercises sandbox power contracts with explicit database and replacement-authority simulations. Real durable authority is covered separately by the PGlite suites. */
 
 import { describe, expect, mock, spyOn, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import type { AgentSandbox, AgentSandboxBackup } from "../../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { type StoredAgentSandboxBackup } from "../../../db/schemas/agent-sandboxes";
@@ -17,9 +19,11 @@ import { customSandbox, fetchUrl } from "./test-support/fixtures.js";
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
 import { encryptField } from "../../../db/crypto/field-crypto";
 import { resetKmsClientForTests } from "../../../db/crypto/kms-client";
+import * as computeStop from "../agent-compute-stop";
 import {
   installSandboxBillingSimulation,
   installSandboxDatabaseSimulation,
+  sandboxDirectReads,
   sandboxTransactions,
 } from "./test-support/database.js";
 import { KMS_TEST_COORDS, KMS_TEST_ORG } from "./test-support/kms.js";
@@ -52,7 +56,7 @@ afterAll(() => {
 });
 describe("ElizaSandboxService wake", () => {
   test.skipIf(process.platform === "win32")(
-    "skips missing state restore endpoint for web-only custom images",
+    "resume of a sleeping custom image uses the verified wake restore path",
     async () => {
       const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
       const now = new Date("2026-06-04T12:05:00.000Z");
@@ -100,8 +104,10 @@ describe("ElizaSandboxService wake", () => {
       const provider: SandboxProvider = {
         create: mock(async () => ({
           sandboxId: "agent-e06bb509",
-          bridgeUrl: "https://runtime.example",
-          healthUrl: "https://runtime.example/health",
+          // A public literal keeps the real SSRF guard enabled without DNS.
+          // The fetch collaborator below intercepts every request.
+          bridgeUrl: "https://93.184.216.34",
+          healthUrl: "https://93.184.216.34/health",
           metadata: {
             nodeId: "node-1",
             containerName: "agent-e06bb509",
@@ -116,13 +122,17 @@ describe("ElizaSandboxService wake", () => {
       globalThis.fetch = mock(async (input: RequestInfo | URL) => {
         const url = fetchUrl(input);
         requests.push(url);
-        if (url === "https://runtime.example/api/agents") {
+        if (url === "https://93.184.216.34/api/agents") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        if (url === "https://runtime.example/api/restore") {
+        if (url === "https://93.184.216.34/api/restore") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
         return Response.json({ ok: true });
+      });
+      const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue({
+        ...sleepingSandbox,
+        status: "running",
       });
       const originalFindByIdAndOrg = agentSandboxesRepository.findByIdAndOrg;
       const originalFindByIdAndOrgForWrite = agentSandboxesRepository.findByIdAndOrgForWrite;
@@ -195,17 +205,17 @@ describe("ElizaSandboxService wake", () => {
       ).mockResolvedValue(sleepingSandbox);
 
       try {
-        const result = await new ElizaSandboxService(provider).executeWake(
+        const result = await new ElizaSandboxService(provider).executeResume(
           sleepingSandbox.id,
           sleepingSandbox.organization_id,
         );
 
         expect(result).toEqual({
           success: true,
+          containerStarted: true,
           reprovisioned: true,
-          restoredBackupId: backup.id,
         });
-        expect(requests).toContain("https://runtime.example/api/restore");
+        expect(requests).toContain("https://93.184.216.34/api/restore");
         expect(updateSpy).toHaveBeenCalledWith(
           sleepingSandbox.id,
           expect.objectContaining({ status: "running" }),
@@ -220,6 +230,7 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.listBackupMetadata = originalListBackupMetadata;
         agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
+        findByIdSpy.mockRestore();
         createForAgentSpy.mockRestore();
         updateSpy.mockRestore();
         gateAuthority.mockRestore();
@@ -989,6 +1000,556 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
       findSpy.mockRestore();
       shutdownSpy.mockRestore();
       provisionSpy.mockRestore();
+    }
+  });
+});
+
+// executeSuspend's paid-retirement routing must be a funding-STATE decision.
+// Settled funding rows persist for the life of the agent, so routing on row
+// existence sent every post-funded user suspend into the sleep lifecycle,
+// which refuses the two states expiry reconciliation deliberately produces
+// (#31312 follow-up): stopped in place without a retirement binding, and
+// running with no open window. These fixtures drive the real executeSuspend
+// body over the simulated database; funded ownership and settlement remain
+// covered by the PostgreSQL/SSH suite.
+describe("ElizaSandboxService.executeSuspend retirement routing is funding-state-bound", () => {
+  const JOB = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
+
+  function suspendRecord(status: AgentSandbox["status"]): AgentSandbox {
+    return {
+      ...customSandbox(),
+      status,
+      lifecycle_job_id: null,
+      lifecycle_execution_generation: null,
+    };
+  }
+
+  function stopIntentRow() {
+    return {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-000000000002",
+      authorization: "user_request",
+      status: "pending",
+      last_error: null,
+      lifecycle_revision: 0,
+      attempts: 0,
+    };
+  }
+
+  function suspendTx(
+    updates: Array<Record<string, unknown>>,
+    intent: ReturnType<typeof stopIntentRow> & { prepared_backup?: unknown },
+    publish: (query: SQL) => void,
+  ) {
+    const tx = {
+      transaction: async <T>(fn: (nested: unknown) => Promise<T>): Promise<T> => fn(tx),
+      select: (selection?: Record<string, unknown>) => {
+        const rows =
+          selection && "allocatedCount" in selection
+            ? [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000010", allocatedCount: 1 }]
+            : selection && "relation" in selection
+              ? [{ relation: "agent_sandbox_replacement_attempts" }]
+              : selection && "containerCount" in selection
+                ? [
+                    {
+                      containerCount: 0,
+                      agentCount: 0,
+                      replacementCleanupCount: 0,
+                      exactRestoreReplacementCount: 0,
+                    },
+                  ]
+                : [intent];
+        const chain = Object.assign(Promise.resolve(rows), {
+          from: () => chain,
+          where: () => chain,
+          for: () => chain,
+          limit: async () => rows,
+        });
+        return chain;
+      },
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          updates.push(values);
+          if ("prepared_backup" in values) Object.assign(intent, values);
+          return {
+            where: () => ({
+              returning: async () => [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000010" }],
+            }),
+          };
+        },
+      }),
+      execute: async (query: SQL) => {
+        publish(query);
+        return { rows: [] };
+      },
+    };
+    return tx;
+  }
+
+  // Funding rows are given in deliberately adversarial TABLE order (an older
+  // retirement-bound row physically before a newer unbound one, or vice
+  // versa). The stub sorts by (period_start, id) DESC only when the query
+  // under test actually chained orderBy, so a probe that drops the ordering —
+  // the unordered limit(1) class #31312 shipped — reads the wrong window and
+  // fails these cases instead of passing them by fixture accident.
+  interface FundingRow {
+    id: string;
+    period_start: string;
+    retirementBackupId: string | null;
+  }
+
+  async function suspendHarness(opts: {
+    status: AgentSandbox["status"];
+    fundingRows: FundingRow[];
+    sleep?: { success: boolean; containerRemoved: boolean; backupId?: string };
+    corruptBackup?: boolean;
+    missingSnapshot?: boolean;
+    changedGeneration?: boolean;
+  }) {
+    const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
+    const rec = suspendRecord(opts.status);
+    const runtimeIdentity = {
+      organizationId: rec.organization_id,
+      agentId: rec.id,
+      nodeId: rec.node_id!,
+      nodeRecordId: "aaaaaaaa-aaaa-4aaa-8aaa-000000000010",
+      nodeIncarnation: "aaaaaaaa-aaaa-4aaa-8aaa-000000000011",
+      nodeHistoryId: "aaaaaaaa-aaaa-4aaa-8aaa-000000000012",
+      hostname: "test-node.invalid",
+      sshPort: 22,
+      sshUser: "root",
+      hostKeyFingerprint: "SHA256:fixture",
+      containerName: rec.container_name!,
+      containerId: "a".repeat(64),
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => ({
+        sandboxId: rec.sandbox_id as string,
+        bridgeUrl: "https://runtime.example",
+        healthUrl: "https://runtime.example/health",
+      })),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+      computeFundingCapability: "host-lease-v1",
+      observeRuntime: mock(async (request) => {
+        expect(request).toMatchObject({
+          organizationId: rec.organization_id,
+          agentId: rec.id,
+          nodeId: rec.node_id,
+          containerName: rec.container_name,
+        });
+        if (request.expected) expect(request.expected).toEqual(runtimeIdentity);
+        return { kind: "present" as const, identity: runtimeIdentity, running: true };
+      }),
+    };
+    const svc = new ElizaSandboxService(provider);
+    const updates: Array<Record<string, unknown>> = [];
+    const intent = stopIntentRow();
+    const stateData = { memories: [], config: {}, workspaceFiles: {} };
+    const backupId = "cccccccc-cccc-4ccc-8ccc-000000000003";
+    const publications: string[] = [];
+    sandboxTransactions.implementation = async (fn) =>
+      fn(
+        suspendTx(updates, intent, (query) => {
+          const rendered = new PgDialect().sqlToQuery(query);
+          publications.push(rendered.sql);
+          if (rendered.sql.includes("SET status =")) {
+            rec.status = rendered.params[0] as AgentSandbox["status"];
+            rec.bridge_url = null;
+            rec.health_url = null;
+            if (rendered.sql.includes("sandbox_id = NULL")) {
+              rec.sandbox_id = null;
+              rec.node_id = null;
+              rec.container_name = null;
+              rec.bridge_port = null;
+              rec.web_ui_port = null;
+              rec.headscale_ip = null;
+            }
+          }
+        }) as unknown as Parameters<typeof fn>[0],
+      );
+    sandboxDirectReads.select = () => {
+      let ordered = false;
+      const chain = {
+        from: () => chain,
+        where: () => chain,
+        orderBy: () => {
+          ordered = true;
+          return chain;
+        },
+        limit: async (count: number) => {
+          const rows = ordered
+            ? opts.fundingRows
+                .slice()
+                .sort(
+                  (a, b) =>
+                    b.period_start.localeCompare(a.period_start) || b.id.localeCompare(a.id),
+                )
+            : opts.fundingRows;
+          return rows.slice(0, count).map((row) => ({
+            retirementBackupId: row.retirementBackupId,
+          }));
+        },
+      };
+      return chain;
+    };
+    const spies = [
+      spyOn(agentSandboxesRepository, "getStoredBackupById").mockImplementation(async () => {
+        if (opts.changedGeneration) rec.environment_revision = 1;
+        return {
+          id: backupId,
+          sandbox_record_id: opts.corruptBackup ? crypto.randomUUID() : rec.id,
+          backup_kind: "full",
+          parent_backup_id: null,
+          state_data_storage: "inline",
+          state_data_key: null,
+          state_data: stateData,
+          size_bytes: 2,
+          content_hash: null,
+          created_at: new Date("2026-09-24T00:00:00Z"),
+        } as StoredAgentSandboxBackup;
+      }),
+      spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(undefined),
+      spyOn(
+        svc as unknown as {
+          persistSnapshotWithinTransaction: (
+            ...args: unknown[]
+          ) => Promise<{ backupId: string; lifecycleRevision: number }>;
+        },
+        "persistSnapshotWithinTransaction",
+      ).mockResolvedValue({ backupId, lifecycleRevision: rec.lifecycle_revision }),
+      spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec),
+      spyOn(
+        svc as unknown as { lockLifecycle: (...args: unknown[]) => Promise<void> },
+        "lockLifecycle",
+      ).mockResolvedValue(undefined),
+      spyOn(
+        svc as unknown as {
+          getAgentForLifecycleMutation: (...args: unknown[]) => Promise<AgentSandbox>;
+        },
+        "getAgentForLifecycleMutation",
+      ).mockImplementation(async () => ({ ...rec })),
+      spyOn(
+        svc as unknown as { hasActiveProvisionJobTx: (...args: unknown[]) => Promise<boolean> },
+        "hasActiveProvisionJobTx",
+      ).mockResolvedValue(false),
+      spyOn(
+        svc as unknown as { getReplacementCleanupLocator: (...args: unknown[]) => unknown },
+        "getReplacementCleanupLocator",
+      ).mockReturnValue(undefined),
+      spyOn(
+        svc as unknown as {
+          revalidateContainerBackedLifecycleGeneration: (
+            ...args: unknown[]
+          ) => Promise<AgentSandbox>;
+        },
+        "revalidateContainerBackedLifecycleGeneration",
+      ).mockResolvedValue(rec),
+    ];
+    const stopForReplacement = spyOn(
+      svc as unknown as {
+        runBoundedSandboxStopForReplacement: (...args: unknown[]) => Promise<undefined>;
+      },
+      "runBoundedSandboxStopForReplacement",
+    ).mockResolvedValue(undefined);
+    const backupGate = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      backupId: "cccccccc-cccc-4ccc-8ccc-000000000003",
+      capturedFresh: !opts.missingSnapshot,
+      ...(opts.missingSnapshot ? {} : { pendingSnapshot: { stateData, sizeBytes: 2 } }),
+    });
+    const sleepSpy = spyOn(
+      SandboxPower.prototype as unknown as {
+        executeSleepWithStopAuthority: (...args: unknown[]) => Promise<unknown>;
+      },
+      "executeSleepWithStopAuthority",
+    );
+    if (opts.sleep) {
+      sleepSpy.mockResolvedValue(opts.sleep);
+    } else {
+      sleepSpy.mockImplementation(async () => {
+        throw new Error("suspend was routed into paid retirement");
+      });
+    }
+    return {
+      svc,
+      rec,
+      runtimeIdentity,
+      publications,
+      updates,
+      sleepSpy,
+      stopForReplacement,
+      restore() {
+        sandboxTransactions.implementation = null;
+        sandboxDirectReads.select = null;
+        sleepSpy.mockRestore();
+        backupGate.mockRestore();
+        stopForReplacement.mockRestore();
+        for (const spy of spies) spy.mockRestore();
+      },
+    };
+  }
+
+  test("user suspend of an expiry-stopped, unbacked agent confirms through the stopped fast path", async () => {
+    // Settled window, no retirement binding: the state low-level expiry
+    // reconciliation leaves behind after stopping unpaid CPU in place.
+    // Table order is adversarial: an OLDER retirement-bound window sits
+    // physically first; the LATEST window is the expiry stop's unbound one.
+    // An unordered probe reads the stale bound row and wrongly routes.
+    const h = await suspendHarness({
+      status: "stopped",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000001",
+          period_start: "2026-05-01T00:00:00.000Z",
+          retirementBackupId: "dddddddd-dddd-4ddd-8ddd-000000000009",
+        },
+        {
+          id: "f0000000-0000-4000-8000-000000000002",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
+    });
+    billing.settleLifecycleBillingInTransactionSpy.mockClear();
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({ success: true, containerStopped: true });
+      expect(h.sleepSpy).not.toHaveBeenCalled();
+      expect(billing.settleLifecycleBillingInTransactionSpy).toHaveBeenCalled();
+      expect(h.updates).toContainEqual(expect.objectContaining({ status: "provider_confirmed" }));
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("suspend of a previously funded running runtime publishes cold retirement and resumes through wake", async () => {
+    const h = await suspendHarness({
+      status: "running",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000003",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
+    });
+    billing.settleLifecycleBillingInTransactionSpy.mockClear();
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({
+        success: true,
+        containerStopped: true,
+        backupId: "cccccccc-cccc-4ccc-8ccc-000000000003",
+      });
+      expect(h.sleepSpy).not.toHaveBeenCalled();
+      expect(h.updates).toContainEqual(expect.objectContaining({ allocated_count: 0 }));
+      expect(h.stopForReplacement).toHaveBeenCalledWith("sandbox-e06bb509", {
+        expectedRuntime: h.runtimeIdentity,
+        releaseCapacity: false,
+      });
+      expect(billing.settleLifecycleBillingInTransactionSpy).toHaveBeenCalled();
+      expect(h.updates).toContainEqual(expect.objectContaining({ status: "provider_confirmed" }));
+      expect(h.rec).toMatchObject({
+        status: "sleeping",
+        sandbox_id: null,
+        node_id: null,
+        container_name: null,
+        bridge_port: null,
+        web_ui_port: null,
+        headscale_ip: null,
+      });
+      expect(h.publications.some((statement) => statement.includes("sandbox_id = NULL"))).toBe(
+        true,
+      );
+      const retained = spyOn(
+        SandboxPower.prototype as unknown as {
+          executeFundedResume: (...args: unknown[]) => Promise<never>;
+        },
+        "executeFundedResume",
+      ).mockImplementation(async () => {
+        throw new Error("removed runtime must not reserve retained funding");
+      });
+      const wake = spyOn(SandboxPower.prototype, "executeWake").mockResolvedValue({
+        success: true,
+        reprovisioned: true,
+        restoredBackupId: "cccccccc-cccc-4ccc-8ccc-000000000003",
+      });
+      try {
+        expect(await h.svc.executeResume(h.rec.id, h.rec.organization_id)).toEqual({
+          success: true,
+          containerStarted: true,
+          reprovisioned: true,
+        });
+        expect(wake).toHaveBeenCalledWith(h.rec.id, h.rec.organization_id);
+        expect(retained).not.toHaveBeenCalled();
+        wake.mockResolvedValue({
+          success: false,
+          reprovisioned: false,
+          error: "Backup integrity verification failed",
+        });
+        expect(await h.svc.executeResume(h.rec.id, h.rec.organization_id)).toMatchObject({
+          success: false,
+          containerStarted: false,
+          error: "Backup integrity verification failed",
+        });
+        expect(retained).not.toHaveBeenCalled();
+      } finally {
+        wake.mockRestore();
+        retained.mockRestore();
+      }
+    } finally {
+      h.restore();
+    }
+  });
+
+  for (const mode of ["foreign backup", "missing snapshot"] as const) {
+    test(`cold retirement refuses ${mode} before provider removal`, async () => {
+      const h = await suspendHarness({
+        status: "running",
+        fundingRows: [
+          {
+            id: "f0000000-0000-4000-8000-000000000003",
+            period_start: "2026-06-01T00:00:00.000Z",
+            retirementBackupId: null,
+          },
+        ],
+        corruptBackup: mode === "foreign backup",
+        missingSnapshot: mode === "missing snapshot",
+      });
+      try {
+        await expect(
+          h.svc.executeSuspend(h.rec.id, h.rec.organization_id, JOB, "user_request", 0),
+        ).rejects.toThrow(
+          mode === "foreign backup"
+            ? "Prepared stop backup is missing or belongs to another agent"
+            : "Cold retirement requires a committed stop backup",
+        );
+        expect(h.stopForReplacement).not.toHaveBeenCalled();
+        expect(h.rec.status).toBe("running");
+        expect(h.publications).toHaveLength(0);
+      } finally {
+        h.restore();
+      }
+    });
+  }
+
+  test("cold retirement refuses changed source generation before provider removal", async () => {
+    const h = await suspendHarness({
+      status: "running",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000003",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
+      changedGeneration: true,
+    });
+    try {
+      expect(
+        await h.svc.executeSuspend(h.rec.id, h.rec.organization_id, JOB, "user_request", 0),
+      ).toMatchObject({ success: false, containerStopped: false });
+      expect(h.stopForReplacement).not.toHaveBeenCalled();
+      expect(h.rec.status).toBe("running");
+      expect(h.publications).toHaveLength(0);
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("a stopped agent whose latest window is retirement-bound still routes to paid retirement", async () => {
+    // Adversarial table order again, mirrored: the LATEST window is bound
+    // (committed funded stop awaiting reclaim), but an OLDER unbound window
+    // sits physically first. An unordered probe reads the stale unbound row
+    // and wrongly falls through to the legacy path.
+    const h = await suspendHarness({
+      status: "stopped",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000004",
+          period_start: "2026-05-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+        {
+          id: "f0000000-0000-4000-8000-000000000005",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: "dddddddd-dddd-4ddd-8ddd-000000000004",
+        },
+      ],
+      sleep: { success: true, containerRemoved: false, backupId: "b-reclaim" },
+    });
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({
+        success: true,
+        containerStopped: false,
+        backupId: "b-reclaim",
+      });
+      expect(h.sleepSpy).toHaveBeenCalledTimes(1);
+      expect(h.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("an open funding window still routes to paid retirement", async () => {
+    const h = await suspendHarness({
+      status: "running",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000006",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
+      sleep: { success: true, containerRemoved: false, backupId: "b-funded" },
+    });
+    const funded = computeStop.hasOpenAgentComputeFunding as unknown as {
+      mockResolvedValue: (value: boolean) => void;
+    };
+    const credits = spyOn(
+      (await import("../credits")).creditsService,
+      "invalidateCreditCaches",
+    ).mockResolvedValue(undefined);
+    funded.mockResolvedValue(true);
+    try {
+      const result = await h.svc.executeSuspend(
+        h.rec.id,
+        h.rec.organization_id,
+        JOB,
+        "user_request",
+        0,
+      );
+      expect(result).toEqual({
+        success: true,
+        containerStopped: false,
+        backupId: "b-funded",
+      });
+      expect(h.sleepSpy).toHaveBeenCalledTimes(1);
+      expect(h.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      funded.mockResolvedValue(false);
+      credits.mockRestore();
+      h.restore();
     }
   });
 });

@@ -1,19 +1,19 @@
 /**
  * Config redaction, first-run, and skill validation helpers extracted from server.ts.
  */
-
 import type http from "node:http";
 import path from "node:path";
-import { ElizaError, logger, sendJsonError } from "@elizaos/core";
 import {
-  getDefaultStylePreset,
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared/character-presets";
-import {
+  ElizaError,
   FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
   FIRST_RUN_PROVIDER_CATALOG,
-} from "@elizaos/shared/contracts/first-run-options";
+  getDefaultStylePreset,
+  getStylePresets,
+  logger,
+  normalizeCharacterLanguage,
+  sendJsonError,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
@@ -21,9 +21,7 @@ import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 // ---------------------------------------------------------------------------
 // Config redaction
 // ---------------------------------------------------------------------------
-
 export { isBlockedObjectKey } from "./blocked-object-keys.ts";
-
 /** Honest GET /api/config and /api/connectors payloads are a handful of objects deep. */
 export const MAX_CONFIG_SECRET_FILTER_DEPTH = 32;
 /**
@@ -32,14 +30,12 @@ export const MAX_CONFIG_SECRET_FILTER_DEPTH = 32;
  * synthetic graphs that would otherwise RangeError or hang the authorized
  * config and connector routes.
  */
-export const MAX_CONFIG_SECRET_FILTER_NODES = 100_000;
+export const MAX_CONFIG_SECRET_FILTER_NODES = 100000;
 export const CONFIG_SECRET_FILTER_UNBOUNDED = "CONFIG_SECRET_FILTER_UNBOUNDED";
-
 type FilterWalkContext = {
   visits: number;
   visiting: WeakSet<object>;
 };
-
 function failConfigSecretFilterUnbounded(
   context: Record<string, unknown>,
   cause?: unknown,
@@ -54,7 +50,6 @@ function failConfigSecretFilterUnbounded(
     },
   );
 }
-
 function reserveFilterVisits(ctx: FilterWalkContext, count: number): void {
   if (count > MAX_CONFIG_SECRET_FILTER_NODES - ctx.visits) {
     failConfigSecretFilterUnbounded({
@@ -64,14 +59,12 @@ function reserveFilterVisits(ctx: FilterWalkContext, count: number): void {
   }
   ctx.visits += count;
 }
-
 function enterFilterContainer(value: object, ctx: FilterWalkContext): void {
   if (ctx.visiting.has(value)) {
     failConfigSecretFilterUnbounded({ cycle: true });
   }
   ctx.visiting.add(value);
 }
-
 function inspectFilter<T>(operation: string, inspect: () => T): T {
   try {
     return inspect();
@@ -80,7 +73,6 @@ function inspectFilter<T>(operation: string, inspect: () => T): T {
     failConfigSecretFilterUnbounded({ inspection: operation }, cause);
   }
 }
-
 function ownEnumerableStringKeys(value: object): string[] {
   const keys: string[] = [];
   for (const key of inspectFilter("ownKeys", () => Reflect.ownKeys(value))) {
@@ -93,7 +85,6 @@ function ownEnumerableStringKeys(value: object): string[] {
   }
   return keys;
 }
-
 function ownValueDescriptor(
   value: object,
   key: string,
@@ -107,7 +98,6 @@ function ownValueDescriptor(
   }
   return descriptor;
 }
-
 function ownArrayLength(value: unknown[]): number {
   const descriptor = ownValueDescriptor(value, "length");
   if (
@@ -119,11 +109,9 @@ function ownArrayLength(value: unknown[]): number {
   }
   return descriptor.value;
 }
-
 function newFilterWalkContext(): FilterWalkContext {
   return { visits: 0, visiting: new WeakSet<object>() };
 }
-
 function redactLeaf(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return value.length > 0 ? "[REDACTED]" : "";
@@ -132,7 +120,6 @@ function redactLeaf(value: unknown): unknown {
   }
   return "[REDACTED]";
 }
-
 function walkConfigSecretFilter(
   value: unknown,
   depth: number,
@@ -151,7 +138,6 @@ function walkConfigSecretFilter(
   if (typeof value !== "object") {
     return redactAll ? redactLeaf(value) : value;
   }
-
   enterFilterContainer(value, ctx);
   try {
     if (Array.isArray(value)) {
@@ -172,7 +158,6 @@ function walkConfigSecretFilter(
       }
       return next;
     }
-
     const keys = ownEnumerableStringKeys(value);
     reserveFilterVisits(ctx, keys.length);
     const out: Record<string, unknown> = {};
@@ -193,23 +178,19 @@ function walkConfigSecretFilter(
     ctx.visiting.delete(value);
   }
 }
-
 export function redactDeep(val: unknown): unknown {
   return walkConfigSecretFilter(val, 0, newFilterWalkContext(), false);
 }
-
 export function redactConfigSecrets(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   return redactDeep(config) as Record<string, unknown>;
 }
-
 export function isRedactedSecretValue(value: unknown): boolean {
   return (
     typeof value === "string" && value.trim().toUpperCase() === "[REDACTED]"
   );
 }
-
 function walkStripRedactedPlaceholders(
   value: unknown,
   depth: number,
@@ -225,7 +206,6 @@ function walkStripRedactedPlaceholders(
   }
   if (!visitAlreadyReserved) reserveFilterVisits(ctx, 1);
   if (value === null || typeof value !== "object") return;
-
   enterFilterContainer(value, ctx);
   try {
     if (Array.isArray(value)) {
@@ -238,7 +218,6 @@ function walkStripRedactedPlaceholders(
       }
       return;
     }
-
     const keys = ownEnumerableStringKeys(value);
     reserveFilterVisits(ctx, keys.length);
     const obj = value as Record<string, unknown>;
@@ -258,18 +237,14 @@ function walkStripRedactedPlaceholders(
     ctx.visiting.delete(value);
   }
 }
-
 /** Remove UI round-trip placeholders so GET /api/config -> PUT never persists "[REDACTED]". */
 export function stripRedactedPlaceholderValuesDeep(value: unknown): void {
   walkStripRedactedPlaceholders(value, 0, newFilterWalkContext());
 }
-
 // ---------------------------------------------------------------------------
 // Skill-ID path-traversal guard
 // ---------------------------------------------------------------------------
-
 const SAFE_SKILL_ID_RE = /^[a-zA-Z0-9._-]+$/;
-
 export function validateSkillId(
   skillId: string,
   res: http.ServerResponse,
@@ -286,11 +261,9 @@ export function validateSkillId(
   }
   return skillId;
 }
-
 // ---------------------------------------------------------------------------
 // First-run helpers
 // ---------------------------------------------------------------------------
-
 const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
 const ELEVENLABS_VOICE_ID_BY_PRESET: Record<string, string> = {
   rachel: "21m00Tcm4TlvDq8ikWAM",
@@ -317,7 +290,6 @@ const ELEVENLABS_VOICE_ID_BY_PRESET: Record<string, string> = {
   satoshi: "7cOBG34AiHrAzs842Rdi",
   ryu: "QzTKubutNn9TjrB7Xb2Q",
 };
-
 export function readUiLanguageHeader(
   req: http.IncomingMessage | undefined,
 ): string | undefined {
@@ -333,19 +305,21 @@ export function readUiLanguageHeader(
     ? header.trim()
     : undefined;
 }
-
 export function resolveConfiguredCharacterLanguage(
   config?: ElizaConfig,
   req?: http.IncomingMessage,
 ) {
   const uiLanguage =
     readUiLanguageHeader(req) ??
-    ((config?.ui as { language?: unknown } | undefined)?.language as
-      | string
-      | undefined);
+    ((
+      config?.ui as
+        | {
+            language?: unknown;
+          }
+        | undefined
+    )?.language as string | undefined);
   return normalizeCharacterLanguage(uiLanguage);
 }
-
 export function resolveFirstRunStylePreset(
   body: Record<string, unknown>,
   language: string,
@@ -357,7 +331,6 @@ export function resolveFirstRunStylePreset(
     const byId = presets.find((preset) => preset.id === requestedPresetId);
     if (byId) return byId;
   }
-
   if (
     typeof body.avatarIndex === "number" &&
     Number.isFinite(body.avatarIndex)
@@ -367,16 +340,13 @@ export function resolveFirstRunStylePreset(
     );
     if (byAvatar) return byAvatar;
   }
-
   const requestedName = typeof body.name === "string" ? body.name.trim() : "";
   if (requestedName) {
     const byName = presets.find((preset) => preset.name === requestedName);
     if (byName) return byName;
   }
-
   return getDefaultStylePreset(language);
 }
-
 export function applyFirstRunVoicePreset(
   config: ElizaConfig,
   body: Record<string, unknown>,
@@ -386,22 +356,18 @@ export function applyFirstRunVoicePreset(
   if (!elevenLabsApiKey) {
     return;
   }
-
   const stylePreset = resolveFirstRunStylePreset(body, language);
   const voicePresetId = stylePreset.voicePresetId.trim();
   if (!voicePresetId) {
     return;
   }
-
   const voiceId = ELEVENLABS_VOICE_ID_BY_PRESET[voicePresetId];
   if (!voiceId) {
     return;
   }
-
   if (!config.messages || typeof config.messages !== "object") {
     config.messages = {};
   }
-
   const messages = config.messages as Record<string, unknown>;
   const existingTts =
     messages.tts && typeof messages.tts === "object"
@@ -411,7 +377,6 @@ export function applyFirstRunVoicePreset(
     existingTts.elevenlabs && typeof existingTts.elevenlabs === "object"
       ? (existingTts.elevenlabs as Record<string, unknown>)
       : {};
-
   messages.tts = {
     ...existingTts,
     provider: "elevenlabs",
@@ -426,7 +391,6 @@ export function applyFirstRunVoicePreset(
     },
   };
 }
-
 export function resolveDefaultAgentName(
   config?: ElizaConfig,
   req?: http.IncomingMessage,
@@ -437,11 +401,9 @@ export function resolveDefaultAgentName(
   if (configuredName) {
     return configuredName;
   }
-
   return getDefaultStylePreset(resolveConfiguredCharacterLanguage(config, req))
     .name;
 }
-
 export function getProviderOptions(): Array<{
   id: string;
   name: string;
@@ -459,7 +421,6 @@ export function getProviderOptions(): Array<{
     description: provider.description,
   }));
 }
-
 export function getCloudProviderOptions(): Array<{
   id: string;
   name: string;
@@ -471,7 +432,6 @@ export function getCloudProviderOptions(): Array<{
     description: provider.description,
   }));
 }
-
 export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
   const missingEvm =
     typeof process.env.EVM_PRIVATE_KEY !== "string" ||
@@ -479,11 +439,9 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
   const missingSolana =
     typeof process.env.SOLANA_PRIVATE_KEY !== "string" ||
     !process.env.SOLANA_PRIVATE_KEY.trim();
-
   if (!missingEvm && !missingSolana) {
     return false;
   }
-
   try {
     const walletKeys = generateWalletKeys();
     if (
@@ -494,13 +452,11 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
       config.env = {};
     }
     const envConfig = config.env as Record<string, string>;
-
     if (missingEvm) {
       envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
       process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
       logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
     }
-
     if (missingSolana) {
       envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
       setSolanaWalletEnv(walletKeys.solanaPrivateKey);
@@ -508,7 +464,6 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
         `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
       );
     }
-
     return true;
   } catch (err) {
     logger.warn(
@@ -517,13 +472,10 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
     return false;
   }
 }
-
 // ---------------------------------------------------------------------------
 // State dir safety
 // ---------------------------------------------------------------------------
-
 const RESET_STATE_ALLOWED_SEGMENTS = new Set(["eliza"]);
-
 function hasAllowedResetSegment(resolvedState: string): boolean {
   return resolvedState
     .split(path.sep)
@@ -531,7 +483,6 @@ function hasAllowedResetSegment(resolvedState: string): boolean {
       RESET_STATE_ALLOWED_SEGMENTS.has(segment.trim().toLowerCase()),
     );
 }
-
 export function isSafeResetStateDir(
   resolvedState: string,
   homeDir: string,
@@ -539,16 +490,13 @@ export function isSafeResetStateDir(
   const normalizedState = path.resolve(resolvedState);
   const normalizedHome = path.resolve(homeDir);
   const parsedRoot = path.parse(normalizedState).root;
-
   if (normalizedState === parsedRoot) return false;
   if (normalizedState === normalizedHome) return false;
-
   const relativeToHome = path.relative(normalizedHome, normalizedState);
   const isUnderHome =
     relativeToHome.length > 0 &&
     !relativeToHome.startsWith("..") &&
     !path.isAbsolute(relativeToHome);
   if (!isUnderHome) return false;
-
   return hasAllowedResetSegment(normalizedState);
 }

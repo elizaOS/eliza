@@ -3,9 +3,9 @@
  * reconfigure) onto an {@link IAgentRuntime}. {@link installRuntimePluginLifecycle}
  * wraps the runtime's `register*` methods so that, during a `registerPlugin`
  * call, every action, provider, evaluator, route, event, model, service,
- * shortcut, send-handler, and database adapter the plugin contributes is
+ * send-handler, and database adapter the plugin contributes is
  * attributed to it — captured through async-context storage
- * (`AsyncLocalStorage` on Node, a stack fallback elsewhere) rather than by name.
+ * (`AsyncLocalStorage`) rather than by name.
  * The resulting {@link PluginOwnership} record is the reverse index that makes
  * teardown possible.
  *
@@ -24,6 +24,7 @@
  * module-level snapshot would silently collapse a stricter gate to USER — a
  * permission bypass, #12089).
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
@@ -39,7 +40,6 @@ import type {
 } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
-import type { ShortcutDefinition } from "./types/shortcut";
 import {
 	lookupProviderCatalogContexts,
 	resolveActionContexts,
@@ -49,13 +49,11 @@ import {
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
 type RuntimeEvaluator = RegisteredEvaluator;
-type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];
 type RuntimeEventRegistration = PluginEventRegistration;
 type RuntimeModelRegistration = PluginModelRegistration;
 type RuntimeServiceRegistration = PluginServiceRegistration;
-type RuntimeShortcut = ShortcutDefinition;
 
 type RuntimeSendHandler = (
 	runtime: unknown,
@@ -106,11 +104,6 @@ type RuntimePluginServiceStartCapture = {
 	pluginName: string;
 };
 
-type AsyncContextStorage<T> = {
-	run<R>(store: T, callback: () => R): R;
-	getStore(): T | undefined;
-};
-
 type RuntimeWithPluginLifecycle = IAgentRuntime &
 	RuntimePrivateState & {
 		__elizaPluginLifecycleInstalled?: boolean;
@@ -148,59 +141,10 @@ type RuntimePrivateState = {
 	registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void;
 };
 
-class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
-	private readonly stack: T[] = [];
-
-	run<R>(store: T, callback: () => R): R {
-		this.stack.push(store);
-		try {
-			return callback();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	getStore(): T | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
-}
-
-function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
-	if (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined" &&
-		typeof process.getBuiltinModule === "function"
-	) {
-		try {
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<T>();
-			return {
-				run<R>(store: T, callback: () => R): R {
-					return storage.run(store, callback);
-				},
-				getStore(): T | undefined {
-					return storage.getStore();
-				},
-			};
-		} catch {
-			// error-policy:J4 AsyncLocalStorage is optional in constrained
-			// runtimes; the scoped stack is the explicit degraded implementation.
-			// AsyncLocalStorage unavailable — fall back to stack storage.
-		}
-	}
-
-	return new StackAsyncContextStorage<T>();
-}
-
 const pluginRegistrationContext =
-	createAsyncContextStorage<RuntimePluginRegistrationCapture>();
+	new AsyncLocalStorage<RuntimePluginRegistrationCapture>();
 const pluginServiceStartContext =
-	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
+	new AsyncLocalStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
@@ -533,11 +477,9 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		actions: [],
 		providers: [],
 		evaluators: [],
-		routes: [],
 		events: [],
 		models: [],
 		services: [],
-		shortcuts: [],
 		sendHandlerSources: [],
 		hasAdapter: false,
 		registeredAt: Date.now(),
@@ -701,14 +643,6 @@ function removeOwnedEvents(
 	}
 }
 
-function removeOwnedRoutes(
-	runtime: RuntimeWithPluginLifecycle,
-	ownership: PluginOwnership,
-): void {
-	if (ownership.routes.length === 0 || runtime.routes.length === 0) return;
-	removeArrayItemsByReference(runtime.routes, ownership.routes);
-}
-
 function removeOwnedPlugins(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -750,9 +684,6 @@ function removeOwnedComponents(
 	removeArrayItemsByReference(runtime.actions, ownership.actions);
 	removeArrayItemsByReference(runtime.providers, ownership.providers);
 	removeArrayItemsByReference(runtime.evaluators, ownership.evaluators);
-	for (const shortcutId of ownership.shortcuts) {
-		runtime.unregisterShortcut?.(shortcutId);
-	}
 }
 
 async function restoreAdapterIfNeeded(
@@ -822,7 +753,6 @@ async function teardownPluginOwnership(
 
 	try {
 		removeOwnedEvents(runtime, ownership);
-		removeOwnedRoutes(runtime, ownership);
 		removeOwnedModels(privateState, ownership);
 		removeOwnedConnectorSources(ownership);
 		removeOwnedComponents(runtime, ownership);
@@ -853,22 +783,15 @@ async function teardownPluginOwnership(
 	}
 }
 
-function trackRoutesAndPluginRef(
+function trackPluginRef(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 	pluginsBefore: Set<Plugin>,
-	routesBefore: Set<RuntimeRoute>,
 ): void {
 	for (const plugin of runtime.plugins) {
 		if (!pluginsBefore.has(plugin) && plugin.name === ownership.pluginName) {
 			ownership.registeredPlugin = plugin;
 			break;
-		}
-	}
-
-	for (const route of runtime.routes) {
-		if (!routesBefore.has(route)) {
-			pushUniqueRef(ownership.routes, route);
 		}
 	}
 }
@@ -888,8 +811,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerProvider.bind(runtimeWithLifecycle);
 	const originalRegisterEvaluator =
 		runtimeWithLifecycle.registerEvaluator.bind(runtimeWithLifecycle);
-	const originalRegisterShortcut =
-		runtimeWithLifecycle.registerShortcut.bind(runtimeWithLifecycle);
 	const originalRegisterModel =
 		runtimeWithLifecycle.registerModel.bind(runtimeWithLifecycle);
 	const originalRegisterEvent =
@@ -962,13 +883,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			pushUniqueRef(capture.ownership.evaluators, registeredEvaluator);
 		}
 	}) as typeof runtimeWithLifecycle.registerEvaluator;
-
-	runtimeWithLifecycle.registerShortcut = ((shortcut: RuntimeShortcut) => {
-		const capture = pluginRegistrationContext.getStore();
-		originalRegisterShortcut(shortcut);
-		if (!capture) return;
-		pushUniqueString(capture.ownership.shortcuts, shortcut.id);
-	}) as typeof runtimeWithLifecycle.registerShortcut;
 
 	runtimeWithLifecycle.registerModel = ((
 		modelType,
@@ -1086,7 +1000,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	runtimeWithLifecycle.registerPlugin = (async (plugin: Plugin) => {
 		const pluginsBefore = new Set(runtimeWithLifecycle.plugins);
-		const routesBefore = new Set(runtimeWithLifecycle.routes);
 		const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>();
 		for (const classes of privateState.serviceTypes.values()) {
 			for (const serviceClass of classes) {
@@ -1123,23 +1036,16 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
 			});
-			trackRoutesAndPluginRef(
-				runtimeWithLifecycle,
-				capture.ownership,
-				pluginsBefore,
-				routesBefore,
-			);
+			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			if (
 				capture.ownership.registeredPlugin ||
 				capture.ownership.actions.length > 0 ||
 				capture.ownership.providers.length > 0 ||
 				capture.ownership.evaluators.length > 0 ||
-				capture.ownership.routes.length > 0 ||
 				capture.ownership.events.length > 0 ||
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
-				capture.ownership.shortcuts.length > 0 ||
 				capture.ownership.sendHandlerSources.length > 0 ||
 				capture.ownership.hasAdapter
 			) {
@@ -1151,12 +1057,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		} catch (error) {
 			// error-policy:J2 Roll back partial plugin ownership before preserving
 			// the original registration failure.
-			trackRoutesAndPluginRef(
-				runtimeWithLifecycle,
-				capture.ownership,
-				pluginsBefore,
-				routesBefore,
-			);
+			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
 				allowAdapterUnload: true,

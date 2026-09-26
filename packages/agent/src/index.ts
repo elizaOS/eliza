@@ -22,13 +22,11 @@ export {
   sendJson,
   sendJsonError,
 } from "@elizaos/core";
-
 export interface CloudConfigLike {
   apiKey?: string | null;
   baseUrl?: string | null;
   [key: string]: unknown;
 }
-
 type CloudUrlValidator = (value: string) => Promise<string | null>;
 type ElizaCloudRoutesModule = {
   handleCloudBillingRoute: AgentCloudBillingRouteHandler;
@@ -36,62 +34,158 @@ type ElizaCloudRoutesModule = {
   handleCloudRoute: AgentCloudRouteHandler;
   validateCloudBaseUrl: CloudUrlValidator;
 };
-
 async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
   return import(
     "@elizaos/plugin-elizacloud"
   ) as Promise<ElizaCloudRoutesModule>;
 }
-
 export const handleCloudBillingRoute: AgentCloudBillingRouteHandler = async (
   ...args
 ) => {
   const { handleCloudBillingRoute } = await loadElizaCloudRoutes();
   return handleCloudBillingRoute(...args);
 };
-
 export const handleCloudCompatRoute: AgentCloudCompatRouteHandler = async (
   ...args
 ) => {
   const { handleCloudCompatRoute } = await loadElizaCloudRoutes();
   return handleCloudCompatRoute(...args);
 };
-
 export const handleCloudRoute: AgentCloudRouteHandler = async (...args) => {
   const { handleCloudRoute } = await loadElizaCloudRoutes();
   return handleCloudRoute(...args);
 };
-
 export async function validateCloudBaseUrl(
   value: string,
 ): Promise<string | null> {
   const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
   return validateCloudBaseUrl(value);
 }
-export * from "@elizaos/auth";
-export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
+export * from "@elizaos/auth/auth";
+export type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ElizaConfig,
+  ReleaseChannel,
+  RolesConfig,
+} from "@elizaos/core";
+// Config contract types are exported from core above; the host config module
+// supplies its own runtime functions.
 export {
+  type AppUiExtensionConfig,
+  type AwarenessContributor,
+  type AwarenessInvalidationEvent,
+  AwarenessRegistry,
   CONNECTOR_PLUGINS,
-  normalizeCloudSiteUrl,
+  type CreateIntegrationSpanOptions,
+  collectKeywordTermMatches,
+  createIntegrationTelemetrySpan,
+  DEFAULT_CACHE_TTL_MS,
+  defaultIntegrationSeverityPolicy,
+  hasRoleAccess,
+  type IntegrationBoundary,
+  type IntegrationLogger,
+  type IntegrationObservabilityEvent,
+  type IntegrationOutcome,
+  type IntegrationSeverity,
+  type IntegrationSeverityPolicy,
+  type IntegrationSpanFailureArgs,
+  type IntegrationSpanMeta,
+  type IntegrationSpanSuccessArgs,
+  type IntegrationTelemetrySpan,
+  type IPermissionsRegistry,
+  isCloudExecutionMode,
+  type LocalExecutionMode,
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
+  type Prober,
   parseClampedFloat,
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
   RESTART_EXIT_CODE,
+  type RegistryAppInfo,
   type RestartHandler,
+  type RuntimeExecutionMode,
+  type RuntimeExecutionModeSource,
   requestRestart,
-  resolveCloudApiBaseUrl,
+  resolveFallbackOwnerEntityId,
+  resolveLocalExecutionMode,
+  resolveOwnerEntityId,
+  resolveRuntimeExecutionMode,
+  SELF_STATUS_SCHEMA_VERSION,
+  SUMMARY_CHAR_LIMIT,
+  SUMMARY_TOTAL_CHAR_LIMIT,
   setRestartHandler,
-} from "@elizaos/shared";
+  shouldUseSandboxExecution,
+  textIncludesKeywordTerm,
+} from "@elizaos/core";
 export {
-  type ExtractActionParamsArgs,
-  extractActionParamsViaLlm,
-  type ParamSchemaDescriptor,
-} from "./actions/extract-params.ts";
-export * from "./actions/index.ts";
+  normalizeCloudSiteUrl,
+  resolveCloudApiBaseUrl,
+} from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+export {
+  connectAccountAction,
+  messageWantsAccountConnect,
+  resolveRequestedProviders,
+} from "./actions/connect-account.ts";
+export {
+  contactAction,
+  registerEntitySearchCategory,
+} from "./actions/contact.ts";
+export {
+  hasContextSignal,
+  hasContextSignalSync,
+  hasContextSignalSyncForKey,
+  hasSelectedActionContext,
+  hasSelectedContextOrSignalSync,
+  messageText,
+} from "./actions/context-signal.ts";
+export {
+  type ContextSignalKey,
+  type ContextSignalStrength,
+  getContextSignalTerms,
+  type ResolvedContextSignalSpec,
+  resolveContextSignalSpec,
+} from "./actions/context-signal-lexicon.ts";
+export {
+  databaseAction,
+  registerVectorSearchCategory,
+} from "./actions/database.ts";
+export { logsAction } from "./actions/logs.ts";
+export {
+  ambiguousMemoryUserFacingText,
+  inferMemorySubaction,
+  MAX_MEMORY_ACTION_RESULT_CHARS,
+  MAX_MEMORY_PAGE_ITEMS,
+  memoryAction,
+  memoryUserFacingLine,
+} from "./actions/memories.ts";
+export { pageDelegateAction } from "./actions/page-action-groups.ts";
+export { pluginAction } from "./actions/plugin.ts";
+export { runtimeAction } from "./actions/runtime.ts";
+export {
+  hasLoadedTextProvider,
+  normalizeCodingBackend,
+  readBackendRouting,
+  SETTINGS_OPS,
+  type SettingsOp,
+  settingsAction,
+  trimToString,
+} from "./actions/settings-actions.ts";
+export {
+  completeOutputBlock,
+  normalizeTerminalOutput,
+  resolveTerminalTransportTimeoutMs,
+  terminalAction,
+} from "./actions/terminal.ts";
+export {
+  impliedTriggerQuery,
+  TRIGGER_OPS,
+  triggerAction,
+} from "./actions/trigger.ts";
 export * from "./api/config-env.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export * from "./api/conversation-metadata.ts";
@@ -111,7 +205,7 @@ export {
 } from "./api/provider-switch-config.ts";
 export { RegistryService } from "./api/registry-service.ts";
 // Runtime-mode contract (mode resolution, route-visibility gate, remote-mode
-// forwarder). `api/server.ts` enforces it in its own dispatch; the app-core
+// forwarder). `api/server.ts` enforces it in its own dispatch; the app
 // compat pipeline calls the same pre-dispatch hook so every host shares one
 // gate.
 export {
@@ -178,11 +272,12 @@ export {
 } from "./api/server-helpers.ts";
 // Loopback-trust + token helpers. These come from the canonical
 // `./api/server-helpers-auth.js` (the same module the live server uses), not a
-// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/shared`
+// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/core`
 // and are not re-surfaced here; the `PluginConfigMutationRejection` type is
 // exported through `./api/server.js`.
 export {
   getConfiguredApiToken,
+  isCredentialedCorsOrigin,
   isTrustedLocalRequest,
 } from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
@@ -209,33 +304,49 @@ export {
 export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/workbench-helpers.ts";
-export * from "./awareness/index.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
-export { CharacterSchema } from "./config/character-schema.ts";
-export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
-export * from "./config/index.ts";
-export { resolveUserPath } from "./config/paths.ts";
-// Surface plugin-widgets / plugin-validation / plugin-manager
-// types through the barrel so `@elizaos/plugin-registry` consumes them
-// without reaching into subpaths. The implementations remain agent-private.
-// plugin-routes / plugins-compat-routes moved to @elizaos/plugin-registry.
-// Re-export the internal helpers they consume so the plugin can stay free of
-// `agent/src/...` deep imports.
+export * from "./config/character-schema.ts";
+export * from "./config/config.ts";
+export * from "./config/env-vars.ts";
+export * from "./config/includes.ts";
+export * from "./config/model-metadata.ts";
+export * from "./config/owner-contacts.ts";
+export * from "./config/paths.ts";
+// Export host-owned plugin metadata helpers for transport consumers.
 export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
-// `contracts/awareness.js` preserves the agent-owned import surface by
-// re-exporting the canonical awareness contracts from `@elizaos/shared`.
-// Config media/custom-action contract types are exported from `./config/index.js`
-// (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
-// `tsc` reports duplicate symbol errors (TS2308).
-export * from "./contracts/awareness.ts";
-export * from "./diagnostics/integration-observability.ts";
-export * from "./hooks/index.ts";
+export * from "./config/schema.ts";
+export * from "./config/telegram-custom-commands.ts";
+export { type LoadHooksOptions, loadHooks } from "./hooks/loader.ts";
+export { createHookEvent, triggerHook } from "./hooks/registry.ts";
 export * from "./providers/workspace.ts";
 export * from "./runtime/advanced-capabilities-config.ts";
 export * from "./runtime/agent-event-service.ts";
+export {
+  type BootHookContributor,
+  type BootHookDeclaration,
+  drainBootHookContributors,
+  getBootHookContributors,
+  resolveBootHookContributors,
+  runBootHooks,
+} from "./runtime/boot-hooks.ts";
+export {
+  type AgentEnvironment,
+  BOOT_PHASES,
+  type BootContext,
+  type BootHostMode,
+  type BootPhaseName,
+  type BootPhaseObserver,
+  type BootPlan,
+  type BootPolicy,
+  captureAgentEnvironment,
+  createBootContext,
+  type ElizaBootResult,
+  resolveBootPlan,
+  resolveBootPolicy,
+} from "./runtime/boot-pipeline.ts";
 export * from "./runtime/core-plugins.ts";
 export {
   type DevTrajectoryRecoveryPreparation,
@@ -248,15 +359,6 @@ export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/first-run-names.ts";
 export { extractPlugin } from "./runtime/load-plugin-from-vfs.ts";
-export {
-  isCloudExecutionMode,
-  type LocalExecutionMode,
-  type RuntimeExecutionMode,
-  type RuntimeExecutionModeSource,
-  resolveLocalExecutionMode,
-  resolveRuntimeExecutionMode,
-  shouldUseSandboxExecution,
-} from "./runtime/local-execution-mode.ts";
 export {
   LOGS_RETENTION_PREFIX,
   LOGS_RETENTION_SERVICE,
@@ -283,8 +385,67 @@ export {
   resolveMemoryRetentionService,
   type SweepResult,
 } from "./runtime/memory-retention-service.ts";
+export {
+  type ClassifyContext,
+  classifyOperation,
+  defaultClassifier,
+} from "./runtime/operations/classifier.ts";
+export {
+  type ColdStrategyOptions,
+  createColdStrategy,
+} from "./runtime/operations/cold-strategy.ts";
+export {
+  getDefaultHealthChecker,
+  HealthChecker,
+} from "./runtime/operations/health.ts";
+export {
+  builtInHealthChecks,
+  dbConnectionCheck,
+  essentialServicesCheck,
+  providerSmokeCheck,
+  runtimeReadyCheck,
+} from "./runtime/operations/health-checks.ts";
+export {
+  DefaultRuntimeOperationManager,
+  type DefaultRuntimeOperationManagerOptions,
+  type IntentClassifier,
+} from "./runtime/operations/manager.ts";
+export {
+  createHotStrategy,
+  type HotStrategyDeps,
+} from "./runtime/operations/reload-hot.ts";
+export {
+  FilesystemRuntimeOperationRepository,
+  getDefaultRepository,
+} from "./runtime/operations/repository.ts";
+export type {
+  ConfigReloadIntent,
+  HealthCheck,
+  HealthCheckReport,
+  HealthCheckResult,
+  OperationError,
+  OperationErrorCode,
+  OperationIntent,
+  OperationKind,
+  OperationPhase,
+  OperationStatus,
+  PhaseName,
+  PhaseStatus,
+  PluginDisableIntent,
+  PluginEnableIntent,
+  ProviderSwitchIntent,
+  ReloadContext,
+  ReloadStrategy,
+  ReloadTier,
+  RestartIntent,
+  RuntimeOperation,
+  RuntimeOperationListOptions,
+  RuntimeOperationManager,
+  RuntimeOperationRepository,
+  StartOperationOutcome,
+  StartOperationRequest,
+} from "./runtime/operations/types.ts";
 export * from "./runtime/operations/vault-bridge.ts";
-export * from "./runtime/owner-entity.ts";
 export * from "./runtime/plugin-collector.ts";
 export * from "./runtime/plugin-lifecycle.ts";
 export {
@@ -294,73 +455,224 @@ export {
   resolvePlugins,
 } from "./runtime/plugin-resolver.ts";
 export * from "./runtime/plugin-types.ts";
+export {
+  type AgentProcessLifecycle,
+  createAgentProcessLifecycle,
+  installProcessSignalHandlers,
+} from "./runtime/process-lifecycle.ts";
 export * from "./runtime/release-plugin-policy.ts";
+export { default as rolesPlugin } from "./runtime/roles/src/index.ts";
+export { rolesProvider } from "./runtime/roles/src/provider.ts";
+export {
+  type BoundedWalkOptions,
+  type BoundedWalkRejection,
+  type BoundedWalkResult,
+  boundedWalk,
+  TOOL_OUTPUT_LIMITS,
+} from "./runtime/tool-call-cache/bounded-walk.ts";
+export {
+  isCacheableToolOutput,
+  ToolCallCache,
+  type ToolCallCacheOptions,
+} from "./runtime/tool-call-cache/cache.ts";
+export {
+  buildCacheKey,
+  CACHE_KEY_LIMITS,
+  type CacheKeyRejection,
+  type CacheKeyResult,
+  type CanonicalizeLimits,
+  type CanonicalizeResult,
+  canonicalizeJson,
+  ToolCacheKeyBoundError,
+  tryBuildCacheKey,
+  tryCanonicalizeJson,
+} from "./runtime/tool-call-cache/key.ts";
+export {
+  defaultPrivacyRedactor,
+  isRedactionDegraded,
+} from "./runtime/tool-call-cache/redact.ts";
+export {
+  CACHEABLE_TOOL_REGISTRY,
+  isCacheable,
+  resolveToolDescriptor,
+} from "./runtime/tool-call-cache/registry.ts";
+export type {
+  CacheableToolDescriptor,
+  PrivacyRedactor,
+  ToolArgs,
+  ToolCacheEntry,
+  ToolOutput,
+} from "./runtime/tool-call-cache/types.ts";
 export * from "./runtime/trajectory-internals.ts";
-export * from "./runtime/trajectory-persistence.ts";
+export {
+  computeBySource,
+  extractInsightsFromResponse,
+  extractRows,
+  flushObservationBuffer,
+  pushChatExchange,
+  readOrchestratorTrajectoryContext,
+  shouldEnableTrajectoryLoggingByDefault,
+  shouldRunObservationExtraction,
+} from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-query.ts";
+export { loadPersistedTrajectoryRows } from "./runtime/trajectory-query.ts";
+export {
+  DEFAULT_GET_STEPS_LIMIT,
+  getSteps,
+  loadAllStepsForTrajectory,
+  MAX_GET_STEPS_LIMIT,
+  type TrajectoryStepsPage,
+} from "./runtime/trajectory-steps-reader.ts";
+export {
+  clearAllSteps,
+  deleteStepsForTrajectories,
+  replaceStepsForTrajectory,
+  upsertStep,
+} from "./runtime/trajectory-steps-writer.ts";
+export {
+  annotateTrajectoryStep,
+  clearPersistedTrajectoryRows,
+  completeTrajectoryStepInDatabase,
+  createDatabaseTrajectoryLogger,
+  DatabaseTrajectoryLogger,
+  deletePersistedTrajectoryRows,
+  flushTrajectoryWrites,
+  installDatabaseTrajectoryLogger,
+  pruneOldTrajectories,
+  startTrajectoryStepInDatabase,
+} from "./runtime/trajectory-storage.ts";
 export * from "./runtime/version.ts";
-export * from "./security/index.ts";
+export {
+  hasAdminAccess,
+  hasOwnerAccess,
+  hasPrivateAccess,
+  isAgentSelf,
+  type RequiredRole,
+} from "./security/access.ts";
+export {
+  __resetAuditFeedForTests,
+  AUDIT_EVENT_TYPES,
+  AUDIT_SEVERITIES,
+  type AuditEntry,
+  type AuditEventType,
+  type AuditFeedQuery,
+  type AuditFeedSubscriber,
+  type AuditLogConfig,
+  type AuditSeverity,
+  getAuditFeedSize,
+  queryAuditFeed,
+  SandboxAuditLog,
+  subscribeAuditFeed,
+} from "./security/audit-log.ts";
 export * from "./services/agent-backup.ts";
+export {
+  AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS,
+  type AgentBackupDatabaseComponent,
+  type AgentBackupFileEntry,
+  type AgentBackupFileEnvelope,
+  type AgentBackupFileSet,
+  type AgentBackupManifest,
+  type AgentBackupPgliteDump,
+  type AgentBackupPostgresDump,
+  type AgentBackupPostgresTable,
+  type AgentBackupStateData,
+  type AgentBackupV2CaptureComponentSource,
+  AgentBackupV2CaptureError,
+  type AgentBackupV2CaptureRuntime,
+  type AgentBackupV2CaptureSourceChunk,
+  AgentSnapshotBudgetExceededError,
+  type CreateAgentBackupV2CaptureOptions,
+  createAgentBackupV2Capture,
+  createAgentSnapshot,
+  createDefaultAgentBackupV2CaptureSources,
+  createLocalAgentBackup,
+  fetchAgentScopedRowsBatched,
+  type LocalAgentBackupMetadata,
+  listLocalAgentBackups,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
+  type PglitePhysicalPreflight,
+  preflightPglitePhysicalDirectory,
+  purgeAdmittedRetiredLocalAgentBackups,
+  type RetiredLocalAgentBackup,
+  resolveAgentBackupAvailableMemoryBytes,
+  restoreAgentSnapshot,
+  restoreLocalAgentBackup,
+  reviewRetiredLocalAgentBackups,
+  SnapshotBudget,
+  type SnapshotReservation,
+  type StreamAgentBackupV2CaptureOptions,
+  sha256AgentBackupV2CaptureChunk,
+  streamAgentBackupV2Capture,
+  withReviewedRetiredLocalAgentBackups,
+} from "./services/agent-backup.ts";
 export * from "./services/agent-export.ts";
-// Runtime owner-approval queue promoted from LifeOps (Slice 4). Named
-// re-export — same rationale as the knowledge graph / pending-prompts below:
-// keep it out of the broad services barrel to avoid TS2308.
 export {
-  APPROVAL_EXECUTION_CAPABILITY,
-  APPROVAL_EXECUTION_PROTOCOL_VERSION,
-  APPROVAL_SERVICE,
-  type ApprovalAction,
-  type ApprovalChannel,
-  type ApprovalEnqueueInput,
-  type ApprovalEnqueueResult,
-  type ApprovalExecution,
-  type ApprovalExecutionClaim,
-  type ApprovalExecutionCompletion,
-  type ApprovalExecutionFailure,
-  type ApprovalExecutionMutation,
-  type ApprovalExecutionReconciliation,
-  ApprovalIdempotencyConflictError,
-  type ApprovalListFilter,
-  ApprovalNotFoundError,
-  type ApprovalPayload,
-  type ApprovalQueue,
-  type ApprovalQueueOptions,
-  type ApprovalRequest,
-  type ApprovalRequestState,
-  type ApprovalResolution,
-  ApprovalService,
-  ApprovalStateTransitionError,
-  type ApprovalTravelCalendarSync,
-  type ApprovalTravelPassenger,
-  createApprovalQueue,
-  PgApprovalQueue,
-  resolveApprovalService,
-} from "./services/approval/index.ts";
+  AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+  AGENT_EXPORT_FAILED,
+  type AgentExportComponentDigest,
+  AgentExportError,
+  type AgentExportManifest,
+  type AgentExportOptions,
+  type AgentExportPayload,
+  buildExportManifest,
+  canonicalize,
+  collectReferencedMediaFileNames,
+  digestCollection,
+  type ExportSizeEstimate,
+  estimateExportSize,
+  exportAgent,
+  type ImportResult,
+  importAgent,
+  MANIFEST_COLLECTIONS,
+  MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
+  MAX_AGENT_EXPORT_CANONICALIZE_NODES,
+  type ManifestCollection,
+  type ManifestMismatch,
+  type ManifestVerification,
+  restoreMedia,
+  verifyExportManifest,
+} from "./services/agent-export.ts";
 export {
-  createGlobalPauseStore,
-  GLOBAL_PAUSE_CACHE_KEY,
-  GLOBAL_PAUSE_SERVICE,
-  GlobalPauseService,
-  type GlobalPauseStatus,
-  type GlobalPauseStore,
-  type GlobalPauseWindow,
-  resolveGlobalPauseService,
-} from "./services/global-pause/index.ts";
+  gatePluginSessionForHostedApp,
+  hasActiveAppRunForCanonicalName,
+  isHostedAppActiveForAgentActions,
+} from "./services/app-session-gate.ts";
 export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  HANDOFF_SERVICE,
-  type HandoffEnterOpts,
-  HandoffService,
-  type HandoffStatus,
-  type HandoffStore,
-  type ResumeCondition,
-  type ResumeEvaluation,
-  type ResumeEvaluationInput,
-  resolveHandoffService,
-} from "./services/handoff/index.ts";
-export * from "./services/index.ts";
+  AUDIO_REDACTION_RULESET_VERSION,
+  AUDIO_REDACTION_SERVICE_TYPE,
+  AudioRedactionService,
+  assertAudioRedactionInputBudget,
+  assertAudioRedactionWordBudget,
+  selectAudioRedactionSentinels,
+  type VerifiedAudioRedactionRequest,
+  type VerifiedAudioRedactionResult,
+} from "./services/audio-redaction-service.ts";
+export {
+  MAX_AUDIO_REDACTION_MATCH_CANDIDATES,
+  MAX_AUDIO_REDACTION_NORMALIZED_CHARS,
+  MAX_AUDIO_REDACTION_PII_NORMALIZED_CHARS,
+  MAX_AUDIO_REDACTION_PII_SPAN_CHARS,
+  MAX_AUDIO_REDACTION_PII_SPANS,
+  MAX_AUDIO_REDACTION_WORD_CHARS,
+  MAX_AUDIO_REDACTION_WORDS,
+} from "./services/audio-redaction-word-budget.ts";
+export {
+  type AuditedDecision,
+  type BrokerOptions,
+  type BrokerSnapshot,
+  CapabilityBroker,
+  type CapabilityDecision,
+  type CapabilityKind,
+  type CapabilityOp,
+  type CapabilityRequest,
+  getCapabilityBroker,
+} from "./services/capability-broker.ts";
+export {
+  EscalationService,
+  type EscalationState,
+  registerEscalationChannel,
+} from "./services/escalation.ts";
 export {
   type JsRuntimeBridge,
   type JsRuntimeEvaluateOptions,
@@ -371,36 +683,32 @@ export {
   registerJsRuntimeFactory,
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
-// Runtime knowledge graph (entity/relationship stores + service). Named
-// re-export to mirror the relationships-graph surface and avoid colliding
-// with the broad services barrel.
 export {
-  archiveCoreRelationshipsInventory,
-  type CoreRelationshipsInventoryDatabase,
-  type CoreRelationshipsInventoryReport,
-  type CoreRelationshipsInventorySession,
-  type CoreRelationshipsSourceKind,
-  EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  RelationshipStore,
-  resolveKnowledgeGraphService,
-} from "./services/knowledge-graph/index.ts";
-// Cache-backed runtime stores promoted from LifeOps (pending-prompts /
-// global-pause / handoff). Named re-exports — same rationale as the knowledge
-// graph above: keep them out of the broad services barrel to avoid TS2308.
+  MessageInteractionHostService,
+  type MessageInteractionHostServiceOptions,
+  resolveMessageInteractionHostService,
+} from "./services/message-interaction-host.ts";
 export {
-  createPendingPromptsStore,
-  type ExpectedReplyKind,
-  PENDING_PROMPTS_SERVICE,
-  type PendingPrompt,
-  type PendingPromptRecordInput,
-  PendingPromptsService,
-  type PendingPromptsStore,
-  type RecordedPendingPrompt,
-  resolvePendingPromptsService,
-} from "./services/pending-prompts/index.ts";
+  FileMessageInteractionSessionStore,
+  type FileMessageInteractionSessionStoreOptions,
+} from "./services/message-interaction-session-store.ts";
+export {
+  isOverlayAppPresenceActive,
+  OVERLAY_APP_PRESENCE_TTL_MS,
+  setOverlayAppPresence,
+} from "./services/overlay-app-presence.ts";
+export {
+  PERMISSIONS_REGISTRY_SERVICE,
+  PermissionRegistry,
+  type PermissionRegistryOptions,
+} from "./services/permissions-registry.ts";
+export {
+  createPluginCompiler,
+  PluginCompiler,
+  type PluginCompilerFormat,
+  type PluginCompilerOptions,
+  type PluginCompilerResult,
+} from "./services/plugin-compiler.ts";
 export * from "./services/plugin-installer";
 export type {
   CoreManagerLike,
@@ -424,9 +732,36 @@ export type {
   SyncResult,
 } from "./services/plugin-manager-types.ts";
 export {
+  type InstalledPluginInfo,
   isCoreManagerLike,
   isPluginManagerLike,
+  type RegistryPluginInfo as RegistryPluginManagerInfo,
+  type RegistrySearchResult as RegistryPluginManagerSearchResult,
 } from "./services/plugin-manager-types.ts";
+export {
+  addRegistryEndpoint,
+  getAppInfo,
+  getConfiguredEndpoints,
+  getPluginInfo,
+  getRegistryPlugins,
+  isDefaultEndpoint,
+  listApps,
+  listNonAppPlugins,
+  refreshRegistry,
+  removeRegistryEndpoint,
+  searchApps,
+  searchNonAppPlugins,
+  searchPlugins,
+  toggleRegistryEndpoint,
+} from "./services/registry-client.ts";
+export { resolveAppHeroImage } from "./services/registry-client-queries.ts";
+export type {
+  RegistryAppMeta,
+  RegistryAppViewerMeta,
+  RegistryPluginInfo as RegistryClientPluginInfo,
+  RegistryPluginListItem,
+  RegistrySearchResult as RegistryClientSearchResult,
+} from "./services/registry-client-types.ts";
 export {
   type ClusterMemoriesQuery,
   type ClusterSearchQuery,
@@ -443,10 +778,116 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.ts";
+export {
+  type CloudCapabilitySandboxProvisionOptions,
+  type CloudCapabilitySandboxProvisionResult,
+  type ConnectCloudCapabilitySandboxOptions,
+  type ConnectCloudCapabilitySandboxResult,
+  cloudCapabilityEndpointProvider,
+  connectCloudCapabilitySandbox,
+  provisionCloudCapabilitySandbox,
+  type WaitForCloudCapabilityEndpointAvailabilityOptions,
+  waitForCloudCapabilityEndpointAvailability,
+} from "./services/remote-capability-cloud-sandbox.ts";
+export {
+  buildRemoteCapabilityEndpointTrustPolicy as buildEndpointTrustPolicy,
+  buildRemoteCapabilityEndpointTrustPolicy,
+  type ConnectRemoteCapabilityEndpointProviderOptions,
+  type ConnectRemoteCapabilityEndpointProviderResult,
+  connectRemoteCapabilityEndpointProvider,
+  type DirectRemoteCapabilityEndpointProviderOptions,
+  directRemoteCapabilityEndpointProvider,
+  installRemoteCapabilityEndpoint,
+  normalizeEndpointTrustPolicyOptions,
+  type ProvisionedRemoteCapabilityEndpoint,
+  REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
+  type RemoteCapabilityEndpointProvider,
+  type RemoteCapabilityEndpointProviderId,
+  type RemoteCapabilityEndpointTrustPolicyOptions,
+  type TeeRemoteCapabilityEndpointProviderOptions,
+  teeRemoteCapabilityEndpointProvider,
+} from "./services/remote-capability-endpoint-provider.ts";
+export {
+  createRemoteCapabilityFetchHandler,
+  type RemoteCapabilityEndpointConfig,
+  type RemoteCapabilityFetchHandlerOptions,
+  type RemoteCapabilityRouterConfig,
+  RemoteCapabilityRouterService,
+  type RemoteCapabilityServer,
+  resolveRemoteCapabilityRouterConfig,
+} from "./services/remote-capability-router.ts";
+export {
+  desktopCompanionCapabilityEndpointProvider,
+  homeMachineCapabilityEndpointProvider,
+  mobileCompanionCapabilityEndpointProvider,
+  type UrlRemoteCapabilityEndpointProviderDefaults,
+  type UrlRemoteCapabilityEndpointProviderOptions,
+  urlRemoteCapabilityEndpointProvider,
+} from "./services/remote-capability-url-endpoint-providers.ts";
+export {
+  bootstrapRemoteCapabilityPlugins,
+  createRemoteCapabilityPlugin,
+  type RemotePluginAdapterOptions,
+  type RemotePluginBootstrapOptions,
+  type RemotePluginSyncResult,
+  type RemotePluginTrustDecision,
+  type RemotePluginTrustPolicy,
+  registerRemoteCapabilityPlugins,
+  syncRemoteCapabilityPlugins,
+} from "./services/remote-plugin-adapter.ts";
+export {
+  createTeeGatedRemoteSigningService,
+  type PendingApproval,
+  RemoteSigningRuntimeService,
+  RemoteSigningService,
+  type RemoteSigningServiceConfig,
+  type SignerBackend,
+  type SigningResult,
+  type TeeGatedRemoteSigningConfig,
+  type UnsignedTransaction,
+} from "./services/remote-signing-service.ts";
+export {
+  AppleContainerEngine,
+  buildContainerExecArgs,
+  type ContainerExecOptions,
+  type ContainerExecResult,
+  type ContainerRunOptions,
+  createEngine,
+  DockerEngine,
+  detectBestEngine,
+  type EngineInfo,
+  getAllEngineInfo,
+  getPlatformSetupNotes,
+  type ISandboxEngine,
+  type SandboxEngineType,
+} from "./services/sandbox-engine.ts";
+export {
+  type SandboxEvent,
+  type SandboxExecOptions,
+  type SandboxExecResult,
+  SandboxManager,
+  type SandboxManagerConfig,
+  type SandboxMode,
+  type SandboxRunOptions,
+  type SandboxState,
+} from "./services/sandbox-manager.ts";
+export {
+  buildUpdateCommand,
+  detectInstallMethod,
+  getUpdateActionPlan,
+  type InstallMethod,
+  performUpdate,
+  type UpdateActionPlan,
+  type UpdateAuthority,
+  type UpdateCommandInfo,
+  type UpdateNextAction,
+  type UpdateResult,
+} from "./services/self-updater.ts";
 // Re-export the shell-execution router by name to keep a stable surface for
 // callers that consume the chokepoint directly without unpacking the wider
 // services barrel.
 export {
+  resolveShellExecutionMode,
   runShell,
   type ShellExecutionMode,
   type ShellRequest,
@@ -454,6 +895,13 @@ export {
   type ShellRouterContext,
   type ShellSandboxBackend,
 } from "./services/shell-execution-router.ts";
+export {
+  createDefaultPolicy,
+  type PolicyDecision,
+  type SigningPolicy,
+  SigningPolicyEvaluator,
+  type SigningRequest,
+} from "./services/signing-policy.ts";
 export * from "./services/tee-boot-gate.ts";
 export * from "./services/tee-boot-gate-state.ts";
 export * from "./services/tee-confidential-inference.ts";
@@ -468,11 +916,60 @@ export * from "./services/tee-revocation.ts";
 export * from "./services/tee-runtime-config.ts";
 export * from "./services/tee-sealed-volume.ts";
 export * from "./services/tee-signer-backend.ts";
+export {
+  CHANNEL_DIST_TAGS,
+  checkForUpdate,
+  fetchAllChannelVersions,
+  resolveChannel,
+  type UpdateCheckResult,
+} from "./services/update-checker.ts";
+export {
+  AI_PROVIDER_PLUGINS,
+  compareSemver,
+  diagnoseNoAIProvider,
+  parseSemver,
+} from "./services/version-compat.ts";
+export {
+  createVirtualFilesystemService,
+  type VirtualFilesystemDiffEntry,
+  type VirtualFilesystemDiffStatus,
+  type VirtualFilesystemEntry,
+  VirtualFilesystemError,
+  type VirtualFilesystemExportFile,
+  type VirtualFilesystemOptions,
+  type VirtualFilesystemQuota,
+  type VirtualFilesystemRollback,
+  VirtualFilesystemService,
+  type VirtualFilesystemSnapshot,
+} from "./services/virtual-filesystem.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
 export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
-// `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
-export * from "./types/index.ts";
+export type {
+  AutonomousConfigLike,
+  CloudProxyConfigLike,
+} from "./types/config-like.ts";
+export type {
+  Trajectory,
+  TrajectoryActionAttempt,
+  TrajectoryCacheStats,
+  TrajectoryExportFormat,
+  TrajectoryExportOptions,
+  TrajectoryExportResult,
+  TrajectoryFlattenedLlmCall,
+  TrajectoryJsonShape,
+  TrajectoryListItem,
+  TrajectoryListOptions,
+  TrajectoryListResult,
+  TrajectoryLlmCall,
+  TrajectoryProviderAccess,
+  TrajectorySkillInvocation,
+  TrajectoryStatus,
+  TrajectoryStep,
+  TrajectoryStepId,
+  TrajectoryStepKind,
+  TrajectoryUsageTotals,
+} from "./types/trajectory.ts";
 export * from "./version-resolver.ts";

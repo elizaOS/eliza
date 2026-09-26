@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Assistant Home Flow app flow using the real
  * renderer fixture.
  */
+
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -17,11 +19,7 @@ import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import { seedStewardSession } from "./helpers/test-auth";
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
-  "assistant-home-flow",
-);
+const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "assistant-home-flow");
 
 const VIEW_FIXTURES = [
   {

@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-settings",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
+  "description": "Android Device Settings overlay app for ElizaOS \u2014 brightness, volume, Android roles, and system settings shortcuts.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -28,7 +28,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "lint:check": "bunx @biomejs/biome check .",
@@ -36,10 +36,8 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
@@ -67,6 +65,6 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   }
 }

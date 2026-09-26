@@ -1,6 +1,6 @@
 /**
  * Client-side auth constants (session/CSRF cookie + header names) shared with
- * the node auth implementation in @elizaos/app-core.
+ * the node auth implementation in @elizaos/app.
  */
 export const SESSION_COOKIE_NAME = "eliza_session";
 export const CSRF_COOKIE_NAME = "eliza_csrf";

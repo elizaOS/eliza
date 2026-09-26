@@ -10,13 +10,16 @@
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import {
+	ChannelType,
 	InferenceTurnTimer,
+	type Memory,
 	runWithInferenceTiming,
-} from "../src/inference-timing";
-import { createTestRuntime } from "../src/testing/pglite-runtime";
-import { runWithTrajectoryContext } from "../src/trajectory-context";
-import type { Memory, UUID } from "../src/types";
-import { ChannelType } from "../src/types";
+	runWithTrajectoryContext,
+	type UUID,
+} from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing";
+import { createDocumentsPlugin } from "../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
@@ -81,8 +84,14 @@ async function main(): Promise<void> {
 	);
 	const { runtime, cleanup } = await createTestRuntime({
 		characterName: "ProviderLatencyAudit",
+		plugins: [createAssistantPlugin(), createDocumentsPlugin()],
 	});
 	try {
+		await Promise.all(
+			runtime
+				.getRegisteredServiceTypes()
+				.map((type) => runtime.getServiceLoadPromise(type)),
+		);
 		const worldId = randomUUID() as UUID;
 		const roomId = randomUUID() as UUID;
 		const entityId = randomUUID() as UUID;
@@ -213,7 +222,9 @@ async function main(): Promise<void> {
 main().catch((error: unknown) => {
 	process.stderr.write(
 		`Provider latency audit failed: ${
-			error instanceof Error ? error.stack : String(error)
+			error instanceof Error
+				? `${error.message}\n${error.stack ?? ""}`
+				: String(error)
 		}\n`,
 	);
 	process.exitCode = 1;

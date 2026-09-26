@@ -4,7 +4,6 @@
  * backend touches it; rejecting absolute paths, `..` segments, and NUL bytes here closes off
  * traversal outside the backend root ahead of the Node backend's separate real-path check.
  */
-import * as posix from "node:path/posix";
 
 export interface NormalizedPath {
 	/** Path normalized to POSIX separators, no leading slash, no `..` segments. */
@@ -57,7 +56,12 @@ export function normalizeDevicePath(
 	if (unified.split("/").some((seg) => seg === "..")) {
 		throw new Error(`path traversal is not allowed: ${input}`);
 	}
-	const normalized = posix.normalize(unified);
+	// Parent segments were rejected above. Collapsing separators and current
+	// directory segments needs no Node module and works in native WebViews.
+	const normalized = unified
+		.split("/")
+		.filter((segment) => segment !== "" && segment !== ".")
+		.join("/");
 	if (normalized === "." || normalized === "") {
 		if (options.allowRoot === true) {
 			return { relative: "", segments: [] };

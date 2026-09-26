@@ -6,15 +6,19 @@
  * graph, retains every source revision, and emits only proposed or blocked
  * action items for the existing approval and scheduling systems to consume.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  type Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
+import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
-import type { Entity, Relationship } from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/plugin-relationships";
 import { actionBundleId, SchoolSourceFactRepository } from "./repository.js";
 import {
   type ActionApprovalRequirement,
@@ -44,38 +48,31 @@ import {
   type SourceFactCandidate,
   stableSchoolId,
 } from "./types.js";
-
 export const SCHOOL_SOURCE_FACT_SERVICE = "lifeops_school_source_facts";
 const SCHOOL_NOTICE_FACT_PREFIX = "school.notice:";
-
 interface PersistedSchoolFactValue {
   extraction: SchoolNoticeExtraction;
   childResolutionStatus: ChildResolution["status"];
   childQuestion: string | null;
 }
-
 interface SchoolFactProjection {
   fact: SourceFact;
   payload: PersistedSchoolFactValue;
   childEntityId: string | null;
   materialSha256: string;
 }
-
 function invalid(message: string, context?: Record<string, unknown>): never {
   throw new SchoolSourceFactError(message, "SCHOOL_INVALID_CONTRACT", context);
 }
-
 function asRecord(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return invalid(`${field} must be an object`, { field });
   }
   return value as Record<string, unknown>;
 }
-
 function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase().replace(/\s+/gu, " ");
 }
-
 function attributeStrings(entity: Entity, keys: readonly string[]): string[] {
   const values: string[] = [];
   for (const key of keys) {
@@ -93,7 +90,6 @@ function attributeStrings(entity: Entity, keys: readonly string[]): string[] {
   }
   return values;
 }
-
 function includesNormalized(
   values: readonly string[],
   target: string,
@@ -101,12 +97,10 @@ function includesNormalized(
   const normalizedTarget = normalizeText(target);
   return values.some((value) => normalizeText(value) === normalizedTarget);
 }
-
 function householdRole(relationship: Relationship): string | null {
   const value = relationship.metadata?.householdRole;
   return typeof value === "string" ? value : null;
 }
-
 function canonicalNoticeKey(extraction: SchoolNoticeExtraction): string {
   if (extraction.kind === "correction") {
     if (!extraction.correctsNoticeKey) {
@@ -122,7 +116,6 @@ function canonicalNoticeKey(extraction: SchoolNoticeExtraction): string {
   }
   return extraction.noticeKey;
 }
-
 function schoolFactValue(fact: SourceFact): PersistedSchoolFactValue {
   const record = asRecord(fact.value, `sourceFact(${fact.id}).value`);
   const extraction = normalizeSchoolNoticeExtraction(record.extraction);
@@ -150,7 +143,6 @@ function schoolFactValue(fact: SourceFact): PersistedSchoolFactValue {
     childQuestion: question,
   };
 }
-
 function schoolFactProjection(fact: SourceFact): SchoolFactProjection {
   const payload = schoolFactValue(fact);
   if (fact.subjectEntityIds.length > 1) {
@@ -175,7 +167,6 @@ function schoolFactProjection(fact: SourceFact): SchoolFactProjection {
     materialSha256: materialNoticeSha256(payload.extraction, childEntityId),
   };
 }
-
 function nextActionPolicy(action: SchoolNoticeNextAction): {
   effectClass: ActionEffectClass;
   approvalRequirement: ActionApprovalRequirement;
@@ -212,7 +203,6 @@ function nextActionPolicy(action: SchoolNoticeNextAction): {
     approvalRequirement: "owner_approval",
   };
 }
-
 function consequenceItems(
   resolution: SchoolNoticeResolution,
 ): ActionBundleItem[] {
@@ -268,7 +258,6 @@ function consequenceItems(
     };
   });
 }
-
 function sameStringSet(
   left: readonly string[],
   right: readonly string[],
@@ -278,7 +267,6 @@ function sameStringSet(
   const rightSorted = [...right].sort();
   return leftSorted.every((value, index) => value === rightSorted[index]);
 }
-
 function bundleMatches(
   bundle: ActionBundle,
   input: Omit<ActionBundle, "id" | "revision" | "createdAt">,
@@ -292,7 +280,6 @@ function bundleMatches(
     canonicalSchoolJson(bundle.items) === canonicalSchoolJson(input.items)
   );
 }
-
 export interface SchoolSourceFactServiceDependencies {
   runtime: IAgentRuntime;
   agentId: string;
@@ -301,17 +288,17 @@ export interface SchoolSourceFactServiceDependencies {
   repository: SchoolSourceFactRepository;
   now?: () => Date;
 }
-
 export class SchoolSourceFactService {
   private readonly now: () => Date;
-
   constructor(private readonly deps: SchoolSourceFactServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
   }
-
   static create(
     runtime: IAgentRuntime,
-    options?: { agentId?: string; now?: () => Date },
+    options?: {
+      agentId?: string;
+      now?: () => Date;
+    },
   ): SchoolSourceFactService {
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) {
@@ -337,11 +324,13 @@ export class SchoolSourceFactService {
       now: options?.now,
     });
   }
-
   async captureCandidates(
     artifactValue: SourceArtifactInput,
     candidateValues: readonly SourceFactCandidate[],
-  ): Promise<{ artifact: SourceArtifact; sourceFacts: SourceFact[] }> {
+  ): Promise<{
+    artifact: SourceArtifact;
+    sourceFacts: SourceFact[];
+  }> {
     const artifactInput = normalizeSourceArtifactInput(artifactValue);
     await this.requireSourceActor(artifactInput);
     const artifact = await this.deps.repository.putArtifact(artifactInput);
@@ -355,7 +344,6 @@ export class SchoolSourceFactService {
     }
     return { artifact, sourceFacts };
   }
-
   async ingestSchoolNotice(
     inputValue: IngestSchoolNoticeInput,
   ): Promise<IngestSchoolNoticeResult> {
@@ -368,7 +356,6 @@ export class SchoolSourceFactService {
     if (extraction.contact?.entityId) {
       await this.requireEntity(extraction.contact.entityId);
     }
-
     const childResolution = await this.resolveChild(extraction.childReference);
     const childEntityId =
       childResolution.status === "resolved" ? childResolution.entityId : null;
@@ -409,7 +396,6 @@ export class SchoolSourceFactService {
     });
     const sourceFact = await this.deps.repository.putFact(artifact, candidate);
     await this.linkDeclaredFactRelationships(sourceFact, artifact.observedAt);
-
     let responsibilityAssignment: ResponsibilityAssignment | null = null;
     if (responsibility) {
       await this.requireEntities([
@@ -438,7 +424,6 @@ export class SchoolSourceFactService {
       actionBundleReplayed: replayed,
     };
   }
-
   async resolveChild(reference: ChildReference): Promise<ChildResolution> {
     const children = await this.listHouseholdChildren();
     const candidates = children
@@ -446,15 +431,15 @@ export class SchoolSourceFactService {
       .filter(
         (
           candidate,
-        ): candidate is ChildResolutionCandidate & { score: number } =>
-          candidate !== null,
+        ): candidate is ChildResolutionCandidate & {
+          score: number;
+        } => candidate !== null,
       )
       .sort(
         (left, right) =>
           right.score - left.score ||
           left.entityId.localeCompare(right.entityId),
       );
-
     if (reference.externalChildId) {
       const exact = candidates.filter((candidate) =>
         candidate.matchedHints.includes("externalChildId"),
@@ -483,7 +468,6 @@ export class SchoolSourceFactService {
           "No household child matches this school identifier. Confirm the child before writing any dependent record.",
       };
     }
-
     if (candidates.length === 0) {
       return {
         status: "unresolved",
@@ -510,7 +494,6 @@ export class SchoolSourceFactService {
       matchedHints: best[0].matchedHints,
     };
   }
-
   async reconcileNotice(
     noticeKeyValue: string,
     explicitResponsibilityAssignmentId: string | null = null,
@@ -626,7 +609,6 @@ export class SchoolSourceFactService {
         }
       }
     }
-
     const existingBundles =
       await this.deps.repository.listActionBundles(noticeKey);
     const responsibilityAssignmentId =
@@ -655,7 +637,6 @@ export class SchoolSourceFactService {
       bundleMatches(bundle, bundleInput),
     );
     if (replay) return { resolution, bundle: replay, replayed: true };
-
     const revision =
       existingBundles.reduce(
         (highest, bundle) => Math.max(highest, bundle.revision),
@@ -678,7 +659,6 @@ export class SchoolSourceFactService {
     );
     return { resolution, bundle: persisted, replayed: false };
   }
-
   async listCurrentActionBundles(noticeKey: string): Promise<ActionBundle[]> {
     const bundles = await this.deps.repository.listActionBundles(noticeKey);
     const relationships = await this.deps.repository.listRelationships({
@@ -689,25 +669,20 @@ export class SchoolSourceFactService {
     );
     return bundles.filter((bundle) => !supersededIds.has(bundle.id));
   }
-
   async listFacts(stableFactKey?: string): Promise<SourceFact[]> {
     return this.deps.repository.listFacts(stableFactKey);
   }
-
   async listActionBundles(noticeKey?: string): Promise<ActionBundle[]> {
     return this.deps.repository.listActionBundles(noticeKey);
   }
-
   async getArtifact(id: string): Promise<SourceArtifact | null> {
     return this.deps.repository.getArtifact(id);
   }
-
   async getResponsibility(
     id: string,
   ): Promise<ResponsibilityAssignment | null> {
     return this.deps.repository.getResponsibility(id);
   }
-
   private async listHouseholdChildren(): Promise<Entity[]> {
     const relationships = await this.deps.relationshipStore.list({
       fromEntityId: SELF_ENTITY_ID,
@@ -729,11 +704,14 @@ export class SchoolSourceFactService {
     }
     return children;
   }
-
   private scoreChild(
     entity: Entity,
     reference: ChildReference,
-  ): (ChildResolutionCandidate & { score: number }) | null {
+  ):
+    | (ChildResolutionCandidate & {
+        score: number;
+      })
+    | null {
     const matchedHints: string[] = [];
     let score = 0;
     const names = [
@@ -795,7 +773,6 @@ export class SchoolSourceFactService {
       score,
     };
   }
-
   private async requireSourceActor(
     artifact: SourceArtifactInput,
   ): Promise<void> {
@@ -803,13 +780,11 @@ export class SchoolSourceFactService {
       await this.requireEntity(artifact.sourceActor.id);
     }
   }
-
   private async requireEntities(entityIds: readonly string[]): Promise<void> {
     for (const entityId of Array.from(new Set(entityIds))) {
       await this.requireEntity(entityId);
     }
   }
-
   private async requireEntity(entityId: string): Promise<Entity> {
     const entity = await this.deps.entityStore.get(entityId);
     if (!entity) {
@@ -821,7 +796,6 @@ export class SchoolSourceFactService {
     }
     return entity;
   }
-
   private effectiveFrom(
     extraction: SchoolNoticeExtraction,
     artifact: SourceArtifactInput,
@@ -831,13 +805,11 @@ export class SchoolSourceFactService {
     }
     return artifact.effectiveAt;
   }
-
   private effectiveUntil(extraction: SchoolNoticeExtraction): string | null {
     return extraction.timing?.kind === "instant"
       ? extraction.timing.endAt
       : null;
   }
-
   private async linkDeclaredFactRelationships(
     fact: SourceFact,
     occurredAt: string,
@@ -868,15 +840,11 @@ export class SchoolSourceFactService {
     }
   }
 }
-
 export class SchoolSourceFactRuntimeService extends Service {
   static override serviceType = SCHOOL_SOURCE_FACT_SERVICE;
-
   override capabilityDescription =
     "Immutable school source facts, child disambiguation, correction reconciliation, safe action bundles, and structural C/P/E/M ownership";
-
   readonly school: SchoolSourceFactService;
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
@@ -887,29 +855,27 @@ export class SchoolSourceFactRuntimeService extends Service {
     }
     this.school = SchoolSourceFactService.create(runtime);
   }
-
   static async start(
     runtime: IAgentRuntime,
   ): Promise<SchoolSourceFactRuntimeService> {
     await runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE);
     return new SchoolSourceFactRuntimeService(runtime);
   }
-
   async stop(): Promise<void> {}
-
   ingestSchoolNotice(
     input: IngestSchoolNoticeInput,
   ): Promise<IngestSchoolNoticeResult> {
     return this.school.ingestSchoolNotice(input);
   }
-
   captureCandidates(
     artifact: SourceArtifactInput,
     candidates: readonly SourceFactCandidate[],
-  ): Promise<{ artifact: SourceArtifact; sourceFacts: SourceFact[] }> {
+  ): Promise<{
+    artifact: SourceArtifact;
+    sourceFacts: SourceFact[];
+  }> {
     return this.school.captureCandidates(artifact, candidates);
   }
-
   reconcileNotice(noticeKey: string): Promise<{
     resolution: SchoolNoticeResolution;
     bundle: ActionBundle;
@@ -917,12 +883,10 @@ export class SchoolSourceFactRuntimeService extends Service {
   }> {
     return this.school.reconcileNotice(noticeKey);
   }
-
   listFacts(): Promise<SourceFact[]> {
     return this.school.listFacts();
   }
 }
-
 export function getSchoolSourceFactRuntimeService(
   runtime: IAgentRuntime,
 ): SchoolSourceFactRuntimeService | null {

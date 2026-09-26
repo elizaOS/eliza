@@ -5,22 +5,23 @@
  */
 
 import { logger } from "@elizaos/core";
-import type {
-  AutomationNodeDescriptor,
-  IPermissionsRegistry,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsTelegramConnectorStatus,
-  PermissionState,
-} from "@elizaos/shared";
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
-} from "@elizaos/shared/automation-node-contributors";
+} from "@elizaos/core/automation-node-contributors";
+import { type AutomationNodeDescriptor } from "@elizaos/core/contracts/automation-nodes";
+import {
+  type IPermissionsRegistry,
+  type PermissionState,
+} from "@elizaos/core/contracts/permissions";
+import {
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsTelegramConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 import { LifeOpsService } from "./lifeops/service";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
-
 async function resolveGoogleStatus(
   lifeOps: LifeOpsService,
 ): Promise<LifeOpsGoogleConnectorStatus | null> {
@@ -32,16 +33,13 @@ async function resolveGoogleStatus(
     );
   } catch (error) {
     logger.warn(
-      `[lifeops] Failed to resolve Google connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[lifeops] Failed to resolve Google connector status: ${error instanceof Error ? error.message : String(error)}`,
     );
     // error-policy:J4 null renders the automation node as "not connected /
     // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
-
 async function resolveTelegramStatus(
   lifeOps: LifeOpsService,
 ): Promise<LifeOpsTelegramConnectorStatus | null> {
@@ -49,16 +47,13 @@ async function resolveTelegramStatus(
     return await lifeOps.getTelegramConnectorStatus("owner");
   } catch (error) {
     logger.warn(
-      `[lifeops] Failed to resolve Telegram connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[lifeops] Failed to resolve Telegram connector status: ${error instanceof Error ? error.message : String(error)}`,
     );
     // error-policy:J4 null renders the automation node as "not connected /
     // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
-
 async function resolveDiscordStatus(
   lifeOps: LifeOpsService,
 ): Promise<LifeOpsDiscordConnectorStatus | null> {
@@ -66,25 +61,29 @@ async function resolveDiscordStatus(
     return await lifeOps.getDiscordConnectorStatus("owner");
   } catch (error) {
     logger.warn(
-      `[lifeops] Failed to resolve Discord connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[lifeops] Failed to resolve Discord connector status: ${error instanceof Error ? error.message : String(error)}`,
     );
     // error-policy:J4 null renders the automation node as "not connected /
     // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
-
 function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   return (
     !!value &&
     typeof value === "object" &&
-    typeof (value as { check?: unknown }).check === "function" &&
-    typeof (value as { get?: unknown }).get === "function"
+    typeof (
+      value as {
+        check?: unknown;
+      }
+    ).check === "function" &&
+    typeof (
+      value as {
+        get?: unknown;
+      }
+    ).get === "function"
   );
 }
-
 export async function resolveNativeCalendarPermission(
   runtime: AutomationNodeContributorContext["runtime"],
 ): Promise<PermissionState | null> {
@@ -96,9 +95,7 @@ export async function resolveNativeCalendarPermission(
     return await service.check("calendar");
   } catch (error) {
     logger.warn(
-      `[lifeops] Live native Calendar permission check failed; falling back to cached value: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[lifeops] Live native Calendar permission check failed; falling back to cached value: ${error instanceof Error ? error.message : String(error)}`,
     );
     try {
       // error-policy:J4 cached permission state while the live check is
@@ -117,7 +114,6 @@ export async function resolveNativeCalendarPermission(
     }
   }
 }
-
 function buildLifeOpsNode(
   id: string,
   label: string,
@@ -138,7 +134,6 @@ function buildLifeOpsNode(
     ...(enabled ? {} : { disabledReason }),
   };
 }
-
 function buildLifeOpsEventNode(
   eventKind: string,
   label: string,
@@ -159,7 +154,6 @@ function buildLifeOpsEventNode(
     ...(enabled ? {} : { disabledReason }),
   };
 }
-
 async function buildLifeOpsAutomationNodes({
   runtime,
   adminEntityId,
@@ -172,7 +166,6 @@ async function buildLifeOpsAutomationNodes({
       resolveDiscordStatus(lifeOps),
       resolveNativeCalendarPermission(runtime),
     ]);
-
   const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
   const hasGoogleCapability = (needle: string) =>
     [...googleCapabilities].some((capability) => capability.includes(needle));
@@ -186,7 +179,6 @@ async function buildLifeOpsAutomationNodes({
   const calendarDisabledReason = googleStatus?.connected
     ? "Reconnect Google with Calendar access or grant Apple Calendar access."
     : "Connect Google Calendar or grant Apple Calendar access.";
-
   return [
     buildLifeOpsNode(
       "lifeops:gmail",
@@ -232,7 +224,6 @@ async function buildLifeOpsAutomationNodes({
     ),
   ];
 }
-
 export function registerLifeOpsAutomationNodeContributor(): void {
   registerAutomationNodeContributor("lifeops", buildLifeOpsAutomationNodes);
 }

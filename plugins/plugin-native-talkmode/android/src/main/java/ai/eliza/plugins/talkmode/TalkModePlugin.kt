@@ -137,7 +137,8 @@ class TalkModePlugin : Plugin() {
     // mutually exclusive with SpeechRecognizer on the mic: Android only lets one
     // capture client own a given input source at a time, so starting frame
     // capture SUSPENDS any active SpeechRecognizer and stopping it resumes STT.
-    private var audioRecord: AudioRecord? = null
+    @Volatile private var audioRecord: AudioRecord? = null
+    private var audioFramesDestroyed = false
     private var audioFrameJob: Job? = null
     private val audioFrameRunning = AtomicBoolean(false)
     private var sttSuspendedForFrames = false
@@ -516,7 +517,12 @@ class TalkModePlugin : Plugin() {
         }
     }
 
+    @Synchronized
     private fun startAudioFramesInternal(call: PluginCall) {
+        if (audioFramesDestroyed) {
+            call.reject("TalkMode has been destroyed", "AUDIO_CAPTURE_DESTROYED")
+            return
+        }
         if (audioFrameRunning.get()) {
             call.resolve(TalkModeAndroidBridgeContract.audioFramesStartedPayload(
                 sampleRate = lastFrameSampleRate,
@@ -650,16 +656,18 @@ class TalkModePlugin : Plugin() {
         // IO dispatcher: a tight blocking read loop must not sit on the main
         // thread. Frames are marshalled to JS via notifyListeners (thread-safe).
         audioFrameJob = scope.launch(Dispatchers.IO) {
-            val buffer = ShortArray(frameSamples)
-            val bytes = ByteArray(frameSamples * 2)
-            var frameIndex = 0L
+            var failure: Exception? = null
             try {
-                while (audioFrameRunning.get() && isActive) {
+                val buffer = ShortArray(frameSamples)
+                val bytes = ByteArray(frameSamples * 2)
+                var frameIndex = 0L
+                while (audioFrameRunning.get() && audioRecord === record && isActive) {
                     val read = record.read(buffer, 0, frameSamples)
-                    if (read <= 0) {
-                        // ERROR_INVALID_OPERATION (-3) / ERROR_BAD_VALUE (-2):
-                        // the record was released or the mic was taken; stop.
-                        if (read < 0) break
+                    if (read < 0 || record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                        throw IllegalStateException("AudioRecord capture stopped (read result $read)")
+                    }
+                    if (read == 0) {
+                        yield()
                         continue
                     }
                     var sumSquares = 0.0
@@ -680,26 +688,46 @@ class TalkModePlugin : Plugin() {
                     val idx = frameIndex
                     frameIndex += 1
                     val ts = SystemClock.elapsedRealtime()
-                    notifyListeners("audioFrame", JSObject().apply {
-                        put("pcm16", pcmBase64)
-                        put("sampleRate", record.sampleRate)
-                        put("channels", 1)
-                        put("samples", read)
-                        put("rms", rms)
-                        put("timestamp", ts)
-                        put("frameIndex", idx)
-                    })
+                    synchronized(this@TalkModePlugin) {
+                        if (audioRecord !== record || !audioFrameRunning.get() || !isActive) return@synchronized
+                        notifyListeners("audioFrame", JSObject().apply {
+                            put("pcm16", pcmBase64)
+                            put("sampleRate", record.sampleRate)
+                            put("channels", 1)
+                            put("samples", read)
+                            put("rms", rms)
+                            put("timestamp", ts)
+                            put("frameIndex", idx)
+                        })
+                    }
                 }
-            } catch (e: Throwable) {
-                Log.e(TAG, "Audio frame loop error", e)
-                notifyListeners("error", JSObject().apply {
-                    put("message", "Audio frame capture stopped: ${e.message}")
-                    put("fatal", false)
-                })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failure = e
+            } finally {
+                finishAudioFrames(record, failure)
             }
         }
     }
 
+    @Synchronized
+    private fun finishAudioFrames(record: AudioRecord, failure: Exception?) {
+        // A canceled reader may finish after a replacement session starts.
+        // Only the session that still owns the recorder can change its state.
+        if (audioRecord !== record) return
+        stopAudioFramesInternal()
+        if (failure != null) {
+            Log.e(TAG, "Audio frame loop error", failure)
+            notifyListeners("error", JSObject().apply {
+                put("message", "Audio frame capture stopped: ${failure.message}")
+                put("code", "AUDIO_CAPTURE_FAILED")
+                put("fatal", false)
+            })
+        }
+    }
+
+    @Synchronized
     private fun stopAudioFramesInternal() {
         if (!audioFrameRunning.getAndSet(false) && audioRecord == null) {
             return
@@ -719,11 +747,13 @@ class TalkModePlugin : Plugin() {
             if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 record.stop()
             }
-        } catch (_: Throwable) {
+        } catch (e: Exception) {
+            Log.w(TAG, "AudioRecord stop failed during cleanup", e)
         }
         try {
             record.release()
-        } catch (_: Throwable) {
+        } catch (e: Exception) {
+            Log.w(TAG, "AudioRecord release failed during cleanup", e)
         }
     }
 
@@ -2116,9 +2146,10 @@ class TalkModePlugin : Plugin() {
         systemTts?.shutdown()
         systemTts = null
         cleanupPcmTrack()
-        audioFrameRunning.set(false)
-        audioFrameJob?.cancel()
-        releaseAudioRecord()
+        synchronized(this) {
+            audioFramesDestroyed = true
+            stopAudioFramesInternal()
+        }
         silenceJob?.cancel()
         restartJob?.cancel()
         speakingJob?.cancel()

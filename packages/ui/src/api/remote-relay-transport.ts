@@ -7,13 +7,13 @@
 import {
   parseRemoteAgentRequest,
   type RemoteAgentRequest,
-} from "@elizaos/shared/contracts/remote-agent-request";
+} from "@elizaos/core/contracts/remote-agent-request";
 import type {
   RemoteCommandAction,
   RemoteJsonValue,
   RemoteTargetPublicIdentity,
   SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
 import {
   acknowledgeRemoteCommandEnqueue,
   createRemoteCommand,
@@ -24,22 +24,21 @@ import {
 import type { AgentProfile } from "../state/agent-profile-types";
 import { loadAgentProfileRegistry } from "../state/agent-profiles";
 import type { RemoteControlCloudClient } from "./remote-control-cloud-client";
+import {
+  type AgentRequestTransport,
+  bodyToString,
+  headersToRecord,
+} from "./transport";
 
 type RemoteRelayCloudClient = Pick<
   RemoteControlCloudClient,
   "enqueueCommand" | "readCommand"
 >;
-
 async function defaultCloudClient(): Promise<RemoteControlCloudClient> {
   const module = await import("./remote-control-cloud-default");
   return module.createDefaultRemoteControlCloudClient();
 }
-
-import type { AgentRequestTransport } from "./transport";
-import { bodyToString, headersToRecord } from "./transport";
-
 const enqueueTails = new Map<string, Promise<void>>();
-
 function relayProfileForUrl(url: string): AgentProfile | null {
   let parsed: URL;
   try {
@@ -75,7 +74,6 @@ function relayProfileForUrl(url: string): AgentProfile | null {
     ) ?? null
   );
 }
-
 async function withSessionEnqueue<T>(
   sessionId: string,
   operation: () => Promise<T>,
@@ -101,17 +99,14 @@ async function withSessionEnqueue<T>(
     }
   }
 }
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw signal.reason ?? new DOMException("Aborted", "AbortError");
   }
 }
-
 interface RemoteRelayCommandDependencies {
   getController: typeof getOrCreateRemoteControllerIdentity;
   createCommand: typeof createRemoteCommand;
@@ -121,7 +116,6 @@ interface RemoteRelayCommandDependencies {
   now: () => number;
   wait: (ms: number) => Promise<void>;
 }
-
 const remoteRelayCommandDependencies: RemoteRelayCommandDependencies = {
   getController: getOrCreateRemoteControllerIdentity,
   createCommand: createRemoteCommand,
@@ -131,7 +125,6 @@ const remoteRelayCommandDependencies: RemoteRelayCommandDependencies = {
   now: Date.now,
   wait,
 };
-
 async function sendCommand(
   cloud: RemoteRelayCloudClient,
   profile: AgentProfile,
@@ -195,8 +188,7 @@ async function sendCommand(
       if (!next.recoveredPending) return next;
     }
   });
-
-  const resultDeadline = created.expiresAt + 10 * 60_000;
+  const resultDeadline = created.expiresAt + 10 * 60000;
   let crossedStartBoundary = false;
   let verifiedStartReceipt = false;
   const command: SignedRemoteCommand = created.command;
@@ -254,7 +246,7 @@ async function sendCommand(
     }
     if (
       !crossedStartBoundary &&
-      dependencies.now() > created.expiresAt + 30_000
+      dependencies.now() > created.expiresAt + 30000
     ) {
       throw new Error("The remote host did not accept the command in time.");
     }
@@ -270,7 +262,6 @@ async function sendCommand(
       : "The remote command timed out before starting.",
   );
 }
-
 export function remoteRelayTransportForUrl(
   url: string,
   cloudFactory: () =>
@@ -306,7 +297,6 @@ export function remoteRelayTransportForUrl(
     },
   };
 }
-
 function normalizeRelayAgentRequest(
   requestUrl: string,
   init: RequestInit,
@@ -343,7 +333,6 @@ function normalizeRelayAgentRequest(
     ...(body !== undefined ? { body } : {}),
   });
 }
-
 function responseFromRemoteResult(
   result: RemoteJsonValue | undefined,
 ): Response {
@@ -383,7 +372,6 @@ function responseFromRemoteResult(
     },
   );
 }
-
 export const remoteRelayTransportInternals = {
   normalizeRelayAgentRequest,
   // Backward-compatible test seam retained while the route contract expands.
@@ -392,3 +380,38 @@ export const remoteRelayTransportInternals = {
   sendCommand,
   withSessionEnqueue,
 };
+
+/** Sends a typed browser command under a target-approved profile grant without agent text mediation. */
+export async function sendRemoteBrowserCommand(
+  profile: AgentProfile,
+  payload: unknown,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const { parseRemoteBrowserCommandPayload } = await import(
+    "@elizaos/core/contracts/remote-control"
+  );
+  const parsed = parseRemoteBrowserCommandPayload(payload);
+  const result = await sendCommand(
+    await defaultCloudClient(),
+    profile,
+    "browser.command",
+    { profileId: parsed.profileId, command: { ...parsed.command } },
+    signal,
+  );
+  if (
+    !result ||
+    typeof result !== "object" ||
+    Array.isArray(result) ||
+    typeof result.status !== "number" ||
+    typeof result.body !== "string"
+  )
+    throw new Error(
+      "The remote browser returned an invalid transport receipt.",
+    );
+  const body: unknown = JSON.parse(result.body);
+  if (result.status !== 200)
+    throw new Error(
+      `The remote browser command failed with HTTP ${result.status}; inspect the same device before retrying.`,
+    );
+  return body;
+}

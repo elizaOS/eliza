@@ -30,12 +30,14 @@ import type {
 	IAgentRuntime,
 } from "@elizaos/core";
 import {
-	DEFAULT_ACCOUNT_ID,
-	listEnabledDiscordAccounts,
+	listDiscordAccountIds,
 	normalizeAccountId,
+	normalizeDiscordToken,
 	type ResolvedDiscordAccount,
 	resolveDiscordAccount,
 } from "./accounts";
+
+import type { DiscordService } from "./service";
 
 export const DISCORD_PROVIDER_ID = "discord";
 
@@ -64,7 +66,17 @@ function roleForAccount(account: ResolvedDiscordAccount): "OWNER" | "AGENT" {
 	return "AGENT";
 }
 
-function toConnectorAccount(account: ResolvedDiscordAccount): ConnectorAccount {
+function toConnectorAccount(
+	account: ResolvedDiscordAccount,
+	service: DiscordService | null,
+): ConnectorAccount {
+	const client = service?.getClient(account.accountId);
+	const connected = Boolean(
+		account.enabled &&
+			account.token &&
+			client?.isReady() &&
+			normalizeDiscordToken(client.token) === account.token,
+	);
 	const now = Date.now();
 	return {
 		id: normalizeAccountId(account.accountId),
@@ -73,7 +85,12 @@ function toConnectorAccount(account: ResolvedDiscordAccount): ConnectorAccount {
 		role: roleForAccount(account),
 		purpose: purposeForAccount(account),
 		accessGate: accessGateForAccount(account),
-		status: account.enabled && account.token ? "connected" : "disabled",
+		status:
+			!account.enabled || !account.token
+				? "disabled"
+				: connected
+					? "connected"
+					: "pending",
 		createdAt: now,
 		updatedAt: now,
 		metadata: {
@@ -93,18 +110,14 @@ export function createDiscordConnectorAccountProvider(
 	return {
 		provider: DISCORD_PROVIDER_ID,
 		label: "Discord",
+		statusAuthority: "provider",
 		listAccounts: async (
 			_manager: ConnectorAccountManager,
 		): Promise<ConnectorAccount[]> => {
-			const enabled = listEnabledDiscordAccounts(runtime);
-			if (enabled.length > 0) {
-				return enabled.map(toConnectorAccount);
-			}
-			// Fall back to the default account so single-account env-only
-			// deployments still surface in the manager. Status reflects whether
-			// a token is actually configured.
-			const fallback = resolveDiscordAccount(runtime, DEFAULT_ACCOUNT_ID);
-			return [toConnectorAccount(fallback)];
+			const service = runtime.getService<DiscordService>(DISCORD_PROVIDER_ID);
+			return listDiscordAccountIds(runtime).map((accountId) =>
+				toConnectorAccount(resolveDiscordAccount(runtime, accountId), service),
+			);
 		},
 		createAccount: async (
 			input: ConnectorAccountPatch,

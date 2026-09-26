@@ -10,7 +10,7 @@
  * diarization + speaker attribution, and emits VOICE_TURN_OBSERVED.
  *
  * This module is the agent-side mirror of the host smoke harness
- * (`packages/app-core/scripts/voice-attribution-smoke.ts`): same real models,
+ * (`packages/app/scripts/voice-attribution-smoke.ts`): same real models,
  * same consumer, fed live frames over HTTP instead of a WAV.
  *
  * Single fused engine: VAD, the WeSpeaker speaker encoder, and the pyannote
@@ -27,8 +27,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { resolvePlatform } from "@elizaos/shared";
-import { StreamingEchoDelayCalibrator } from "@elizaos/shared/voice/aec";
+import { resolvePlatform } from "@elizaos/core/runtime-env";
+import { StreamingEchoDelayCalibrator } from "@elizaos/core/voice/aec";
 import {
 	type AttributedTurn,
 	type AttributionPipelineLike,

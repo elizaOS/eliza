@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import type { PostWorkbenchVfsGitRequest } from "@elizaos/shared";
+import type { PostWorkbenchVfsGitRequest } from "@elizaos/core";
 import git, {
   type AuthCallback,
   type ReadCommitResult,

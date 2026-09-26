@@ -8,10 +8,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
@@ -27,12 +25,11 @@ import { agentBillingRunRepository } from "../agent-billing-runs";
 
 const PGLITE_TIMEOUT = 60_000;
 const BILLING_NOW = new Date("2026-08-20T12:00:00.000Z");
-let pgliteReady = true;
 let sequence = 0;
 
 function unique(prefix: string): string {
   sequence += 1;
-  return `${prefix}-${sequence}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${sequence}`;
 }
 
 async function seedOrganizationAndUser(): Promise<{
@@ -54,12 +51,14 @@ async function seedSandbox(
   organizationId: string,
   userId: string,
   values: {
-    status?: "running" | "stopped" | "error";
+    status?: "running" | "stopped" | "error" | "deletion_pending" | "deletion_failed";
     billingStatus?: AgentBillingStatus;
     deletedAt?: Date | null;
     lastBackupAt?: Date | null;
     executionTier?: string;
     poolStatus?: "unclaimed" | null;
+    deletionAttemptId?: string;
+    lastBilledAt?: Date | null;
   } = {},
 ): Promise<string> {
   const [sandbox] = await dbWrite
@@ -72,10 +71,15 @@ async function seedSandbox(
       execution_tier: (values.executionTier ?? "dedicated-always") as never,
       billing_status: values.billingStatus ?? "active",
       deleted_at: values.deletedAt ?? null,
+      deletion_attempt_id: values.deletionAttemptId ?? null,
+      deletion_started_at: values.deletionAttemptId ? BILLING_NOW : null,
       last_backup_at: values.lastBackupAt ?? null,
       pool_status: values.poolStatus ?? null,
       created_at: new Date("2026-08-20T10:00:00.000Z"),
-      last_billed_at: new Date("2026-08-20T10:00:00.000Z"),
+      last_billed_at:
+        values.lastBilledAt === undefined
+          ? new Date("2026-08-20T10:00:00.000Z")
+          : values.lastBilledAt,
       shutdown_warning_sent_at: new Date("2026-08-20T10:30:00.000Z"),
       scheduled_shutdown_at: new Date("2026-08-20T11:30:00.000Z"),
     })
@@ -101,30 +105,21 @@ async function row(id: string) {
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    return;
-  }
-  try {
-    const schema = {
+  const { apply } = await pushSchema(
+    {
       organizations,
       users,
       userCharacters,
       agentSandboxes,
       agentBillingRuns,
       agentBillingRunItems,
-    };
-    const { apply } = await pushSchema(schema as never, dbWrite as never);
-    await apply();
-  } catch (error) {
-    // error-policy:J1 The test-harness boundary records schema setup failure for the mandatory readiness assertion.
-    pgliteReady = false;
-    console.error("[agent-billing-safety] real PGlite schema setup failed", error);
-  }
+    } as never,
+    dbWrite as never,
+  );
+  await apply();
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  expect(pgliteReady).toBe(true);
   await dbWrite.delete(agentBillingRunItems);
   await dbWrite.delete(agentBillingRuns);
   await dbWrite.delete(agentSandboxes);
@@ -293,4 +288,151 @@ describe("AgentBillingRepository billable-state authority", () => {
     expect(outcome).toEqual({ status: "already_billed_recently" });
     expect((await row(sandboxId)).last_billed_at).toEqual(new Date("2026-08-20T10:00:00.000Z"));
   });
+});
+
+async function billableIds(): Promise<string[]> {
+  const now = new Date();
+  const { runningSandboxes } = await agentBillingRepository.listBillableSandboxes(
+    now,
+    new Date(now.getTime() - 60 * 60 * 1000),
+  );
+  return runningSandboxes.map((sandbox) => sandbox.id);
+}
+
+describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
+  test("a suspended running agent is EXCLUDED from the billable set until reactivated", async () => {
+    const { organizationId, userId } = await seedOrganizationAndUser();
+    const existingCursor = new Date();
+    const sandboxId = await seedSandbox(organizationId, userId, {
+      billingStatus: "suspended",
+      lastBilledAt: existingCursor,
+    });
+
+    expect((await row(sandboxId)).billing_status).toBe("suspended");
+    expect(await billableIds()).not.toContain(sandboxId);
+
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(sandboxId, new Date());
+
+    // Lifecycle settlement owns the cursor; reactivation only restores admission.
+    expect(await row(sandboxId)).toMatchObject({
+      billing_status: "active",
+      last_billed_at: existingCursor,
+    });
+    expect(await billableIds()).not.toContain(sandboxId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ last_billed_at: new Date(Date.now() - 2 * 60 * 60 * 1000) })
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(await billableIds()).toContain(sandboxId);
+
+    const [persisted] = await dbWrite
+      .select({
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(persisted.shutdown_warning_sent_at).toBeNull();
+    expect(persisted.scheduled_shutdown_at).toBeNull();
+  });
+
+  test("an EXEMPT agent is never forced into billing by reactivation", async () => {
+    const { organizationId, userId } = await seedOrganizationAndUser();
+    const sandboxId = await seedSandbox(organizationId, userId, { billingStatus: "exempt" });
+
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(sandboxId, new Date());
+
+    expect((await row(sandboxId)).billing_status).toBe("exempt");
+    expect(await billableIds()).not.toContain(sandboxId);
+  });
+
+  test("billing maintenance cannot rewrite status or locators after deletion owns the row", async () => {
+    const { organizationId, userId } = await seedOrganizationAndUser();
+    const sandboxId = await seedSandbox(organizationId, userId, { billingStatus: "suspended" });
+    const deletionStartedAt = new Date("2026-07-23T14:00:00.000Z");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_pending",
+        deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        deletion_started_at: deletionStartedAt,
+        sandbox_id: "sandbox-owned-by-delete",
+        bridge_url: "https://delete-owned.example",
+        health_url: "https://delete-owned.example/health",
+      })
+      .where(eq(agentSandboxes.id, sandboxId));
+
+    await agentBillingRepository.scheduleShutdownWarning(
+      sandboxId,
+      organizationId,
+      new Date("2026-07-23T14:01:00.000Z"),
+      new Date("2026-07-23T15:00:00.000Z"),
+    );
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+      sandboxId,
+      new Date("2026-07-23T14:02:00.000Z"),
+    );
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(
+      sandboxId,
+      organizationId,
+      new Date("2026-07-23T14:03:00.000Z"),
+    );
+
+    const [persisted] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(persisted).toMatchObject({
+      status: "deletion_pending",
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: deletionStartedAt,
+      sandbox_id: "sandbox-owned-by-delete",
+      bridge_url: "https://delete-owned.example",
+      health_url: "https://delete-owned.example/health",
+      billing_status: "suspended",
+    });
+    expect(persisted.shutdown_warning_sent_at).toEqual(new Date("2026-08-20T10:30:00.000Z"));
+    expect(persisted.scheduled_shutdown_at).toEqual(new Date("2026-08-20T11:30:00.000Z"));
+  });
+});
+
+describe("AgentBillingRepository deletion-in-flight discovery", () => {
+  test.each(["running", "stopped", "deletion_pending", "deletion_failed"] as const)(
+    "keeps provider-unconfirmed %s deletion billable until terminal row removal",
+    async (status) => {
+      const { organizationId, userId } = await seedOrganizationAndUser();
+      const values = {
+        status,
+        lastBilledAt: null,
+        lastBackupAt: status === "stopped" ? BILLING_NOW : null,
+      };
+      const deletingId = await seedSandbox(organizationId, userId, {
+        ...values,
+        deletionAttemptId: crypto.randomUUID(),
+      });
+      const liveId = await seedSandbox(organizationId, userId, {
+        ...values,
+        status: status === "stopped" ? "stopped" : "running",
+      });
+      const due = await agentBillingRepository.listBillableSandboxes(
+        BILLING_NOW,
+        new Date("2026-08-20T11:00:00.000Z"),
+      );
+      const ids = (status === "stopped" ? due.stoppedWithBackups : due.runningSandboxes).map(
+        (sandbox) => sandbox.id,
+      );
+      expect(ids).toContain(liveId);
+      expect(ids).toContain(deletingId);
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, deletingId));
+      const afterRemoval = await agentBillingRepository.listBillableSandboxes(
+        BILLING_NOW,
+        new Date("2026-08-20T11:00:00.000Z"),
+      );
+      expect(
+        [...afterRemoval.runningSandboxes, ...afterRemoval.stoppedWithBackups].map(
+          (sandbox) => sandbox.id,
+        ),
+      ).not.toContain(deletingId);
+    },
+  );
 });

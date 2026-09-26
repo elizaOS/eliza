@@ -1,16 +1,17 @@
-/**
- * Tests that `ensureLocalInferenceHandler` registers the TEXT_SMALL/TEXT_LARGE/
- * TEXT_EMBEDDING handlers and wires the router at boot. Routing mode,
- * assignments, and the registry are mocked; no model loads.
- */
+/** Exercises local boot registration and handler dispatch with controlled engine/registry boundaries, plus real AgentRuntime timed-ASR startup and teardown. */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { Module } from "node:module";
+import os from "node:os";
+import path from "node:path";
 import {
 	AgentRuntime,
 	ModelType,
 	type Service,
 	type ServiceClass,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initializeTestRuntime } from "@elizaos/testing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
 const assignmentsState = vi.hoisted(() => ({
@@ -21,6 +22,30 @@ const registryState = vi.hoisted(() => ({
 }));
 const hardwareState = vi.hoisted(() => ({
 	probe: { memory: { totalGb: 8 } },
+}));
+const embeddingState = vi.hoisted(() => ({
+	embedSupported: vi.fn(() => true),
+	bundle: vi.fn<() => string | null>(() => null),
+	create: vi.fn(() => 1),
+	embed: vi.fn(() => new Float32Array([0.25, -0.5, 0.75])),
+	destroy: vi.fn(),
+	close: vi.fn(),
+}));
+vi.mock("./fused-embedding-bundle", () => ({
+	resolveFusedEmbeddingBundleRoot: embeddingState.bundle,
+}));
+vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
+	resolveFusedLibraryPath: vi.fn(() => "/test/libelizainference"),
+}));
+vi.mock("../services/voice/ffi-bindings", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../services/voice/ffi-bindings")>()),
+	loadElizaInferenceFfi: () => ({
+		embedSupported: embeddingState.embedSupported,
+		create: embeddingState.create,
+		embed: embeddingState.embed,
+		destroy: embeddingState.destroy,
+		close: embeddingState.close,
+	}),
 }));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
@@ -121,9 +146,14 @@ vi.mock("../services/voice", () => ({
 }));
 
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
+import { BionicHostLoader } from "../services/bionic-host-loader";
 import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
-import { TimedAsrService } from "../services/runtime-services";
+import {
+	type LocalInferenceLoaderRuntimeService,
+	registerLocalInferenceLoaderService,
+	TimedAsrService,
+} from "../services/runtime-services";
 import { VoiceStartupError } from "../services/voice/errors";
 import { registerLocalInferenceBoot } from "./boot";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
@@ -185,18 +215,19 @@ function makeRuntime(): {
 	return { registrations, runtime };
 }
 
-function findRegisteredHandler(
+function findRegisteredHandler<Result = string>(
 	registrations: Registration[],
 	modelType: ModelType,
-): (runtime: AgentRuntime, params: Record<string, unknown>) => Promise<string> {
+): (runtime: AgentRuntime, params: Record<string, unknown>) => Promise<Result> {
 	const registration = registrations.find(
 		(entry) => entry.modelType === modelType,
 	);
-	expect(registration).toBeDefined();
-	return registration?.handler as (
+	if (!registration)
+		throw new Error(`Missing registered handler: ${modelType}`);
+	return registration.handler as (
 		runtime: AgentRuntime,
 		params: Record<string, unknown>,
-	) => Promise<string>;
+	) => Promise<Result>;
 }
 
 beforeEach(() => {
@@ -205,11 +236,11 @@ beforeEach(() => {
 	assignmentsState.assignments = {};
 	registryState.installed = [];
 	hardwareState.probe = { memory: { totalGb: 8 } };
-	delete process.env.ELIZA_LOCAL_LLAMA;
-	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
-	delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
-	delete process.env.ELIZA_BIONIC_INFERENCE_SOCK;
-	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
+	vi.stubEnv("ELIZA_LOCAL_LLAMA", undefined);
+	vi.stubEnv("ELIZA_DEVICE_BRIDGE_ENABLED", undefined);
+	vi.stubEnv("ELIZA_BIONIC_HOST_DELEGATED", undefined);
+	vi.stubEnv("ELIZA_BIONIC_INFERENCE_SOCK", undefined);
+	vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", undefined);
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
@@ -226,13 +257,54 @@ beforeEach(() => {
 	);
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("ensureLocalInferenceHandler", () => {
+	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
+		vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "1");
+		vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", "1");
+		vi.stubEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS", "false");
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		runtime.setSetting("ELIZA_DEPLOYMENT_RUNTIME", "cloud");
+		const cloudText = async () => "cloud reply";
+		runtime.registerModel(ModelType.TEXT_SMALL, cloudText, "existing-cloud");
+		await ensureLocalInferenceHandler(runtime);
+		await ensureLocalInferenceHandler(runtime);
+		expect(typeof runtime.getModel(ModelType.TEXT_EMBEDDING)).toBe("function");
+		expect(runtime.getModel(ModelType.TEXT_SMALL)).toBe(cloudText);
+		expect(runtime.getModel(ModelType.TEXT_LARGE)).toBe(cloudText);
+		expect(runtime.getModel(ModelType.TEXT_TO_SPEECH)).toBeUndefined();
+		expect(runtime.getService("localInferenceLoader")).toBeNull();
+		expect(engineState.load).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["cloud", "0", "1", "false", "0"],
+		["cloud", "1", "0", "false", "0"],
+		["cloud", "1", "1", "true", "0"],
+		["cloud", "1", "1", "false", "1"],
+		["remote", "1", "1", "false", "0"],
+	])(
+		"keeps embeddings absent for excluded cloud configuration %j",
+		async (mode, provisioned, optIn, cloudEmbeddings, disabled) => {
+			vi.stubEnv("ELIZA_CLOUD_PROVISIONED", provisioned);
+			vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", optIn);
+			vi.stubEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS", cloudEmbeddings);
+			vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", disabled);
+			const runtime = new AgentRuntime({ logLevel: "fatal" });
+			runtime.setSetting("ELIZA_DEPLOYMENT_RUNTIME", mode);
+			await ensureLocalInferenceHandler(runtime);
+			expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+			expect(engineState.load).not.toHaveBeenCalled();
+		},
+	);
+
 	it("boots timed ASR through a real AgentRuntime and stops it cleanly", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		const stop = vi.spyOn(TimedAsrService.prototype, "stop");
 
 		try {
-			await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+			await initializeTestRuntime(runtime, { skipMigrations: true });
 			await registerLocalInferenceBoot(runtime);
 
 			const timedAsr = runtime.getService<TimedAsrService>("timedAsr");
@@ -338,7 +410,7 @@ describe("ensureLocalInferenceHandler", () => {
 	});
 
 	it("honors ELIZA_DISABLE_LOCAL_EMBEDDINGS by leaving TEXT_EMBEDDING unregistered", async () => {
-		process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
+		vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", "1");
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
@@ -374,7 +446,7 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(engineState.available).not.toHaveBeenCalled();
 	});
 
-	it("registers desktop gte-small embeddings when no generative backend is available", async () => {
+	it("registers desktop BGE embeddings when no generative backend is available", async () => {
 		engineState.available.mockResolvedValue(false);
 		const { registrations, runtime } = makeRuntime();
 
@@ -398,6 +470,92 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(installRouterHandler).toHaveBeenCalledWith(runtime, {
 			skipSlots: [],
 		});
+	});
+
+	it("retries embedding initialization failures, then shares resident hardware selection", async () => {
+		// Exercise the registered desktop handler; only hardware and native FFI
+		// are substituted. Real-weight vector equivalence is a separate gate.
+		const nativeModule = Module as typeof Module & {
+			_resolveFilename: (id: string, ...args: unknown[]) => string;
+		};
+		const originalResolve = nativeModule._resolveFilename;
+		const resolveSpy = vi
+			.spyOn(nativeModule, "_resolveFilename")
+			.mockImplementation((id, ...args) =>
+				id === "bun:ffi" ? id : originalResolve.call(nativeModule, id, ...args),
+			);
+		vi.stubEnv("LOCAL_EMBEDDING_MODEL", "unit-custom.gguf");
+		vi.stubEnv("ELIZA_EMBED_POOLING", "mean");
+		try {
+			const { registrations, runtime } = makeRuntime();
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			await expect(handler(runtime, { text: "hello" })).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+			});
+			expect(probeHardware).toHaveBeenCalledTimes(1);
+			embeddingState.bundle.mockReturnValue("/test/embedding-bundle");
+			embeddingState.embedSupported.mockReturnValueOnce(false);
+			await expect(handler(runtime, { text: "unsupported" })).rejects.toThrow(
+				"TEXT_EMBEDDING unavailable",
+			);
+			expect(embeddingState.close).toHaveBeenCalledTimes(1);
+			await expect(handler(runtime, { text: "hello" })).resolves.toEqual([
+				0.25, -0.5, 0.75,
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+			const initialArgs = embeddingState.embed.mock.calls[0];
+			vi.mocked(probeHardware).mockRejectedValue(
+				new Error("probe should not run for a resident model"),
+			);
+			const secondRuntime = makeRuntime();
+			await ensureLocalInferenceHandler(secondRuntime.runtime);
+			const secondHandler = findRegisteredHandler(
+				secondRuntime.registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			expect(
+				await Promise.all([
+					handler(runtime, { text: "hello" }),
+					secondHandler(secondRuntime.runtime, { text: "hello" }),
+				]),
+			).toEqual([
+				[0.25, -0.5, 0.75],
+				[0.25, -0.5, 0.75],
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+			expect(embeddingState.embed.mock.calls[2]).toEqual(initialArgs);
+			vi.stubEnv("LOCAL_EMBEDDING_GPU_LAYERS", "1");
+			const callsBeforeGpuChange = embeddingState.embed.mock.calls.length;
+			await expect(
+				handler(runtime, { text: "changed backend" }),
+			).rejects.toMatchObject({
+				code: "EMBEDDING_CONFIGURATION_CHANGED",
+			});
+			expect(embeddingState.embed).toHaveBeenCalledTimes(callsBeforeGpuChange);
+			vi.stubEnv("LOCAL_EMBEDDING_GPU_LAYERS", "");
+			const callsBeforeChange = embeddingState.embed.mock.calls.length;
+			vi.stubEnv("ELIZA_EMBED_POOLING", "cls");
+			await expect(handler(runtime, { text: "warm" })).rejects.toMatchObject({
+				code: "EMBEDDING_CONFIGURATION_CHANGED",
+			});
+			expect(embeddingState.embed).toHaveBeenCalledTimes(callsBeforeChange);
+			vi.stubEnv("ELIZA_EMBED_POOLING", "MEAN");
+			await expect(handler(runtime, { text: "warm" })).resolves.toEqual([
+				0.25, -0.5, 0.75,
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.mocked(probeHardware).mockResolvedValue(hardwareState.probe as never);
+			resolveSpy.mockRestore();
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("does not duplicate registrations on the same runtime", async () => {
@@ -482,51 +640,39 @@ describe("ensureLocalInferenceHandler", () => {
 	});
 
 	it("uses a fine-grained maxTokensPerStep for user-visible streaming, coarse for internal calls", async () => {
-		const prior = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
-		delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
-		try {
-			const { registrations, runtime } = makeRuntime();
-			engineState.hasLoadedModel.mockReturnValue(true);
+		vi.stubEnv("ELIZA_LOCAL_STREAM_TOKENS_PER_STEP", undefined);
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
 
-			await ensureLocalInferenceHandler(runtime);
-			const handler = findRegisteredHandler(
-				registrations,
-				ModelType.TEXT_LARGE,
-			);
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_LARGE);
 
-			// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
-			await handler(runtime, {
-				prompt: "hi",
-				stream: true,
-				onStreamChunk: () => {},
-			});
-			expect(engineState.generate).toHaveBeenLastCalledWith(
-				expect.objectContaining({ maxTokensPerStep: 8 }),
-			);
+		// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
+		await handler(runtime, {
+			prompt: "hi",
+			stream: true,
+			onStreamChunk: () => {},
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxTokensPerStep: 8 }),
+		);
 
-			// Internal / non-streamed call → no override (runner keeps coarse 32).
-			await handler(runtime, { prompt: "hi" });
-			expect(engineState.generate).toHaveBeenLastCalledWith(
-				expect.objectContaining({ maxTokensPerStep: undefined }),
-			);
+		// Internal / non-streamed call → no override (runner keeps coarse 32).
+		await handler(runtime, { prompt: "hi" });
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxTokensPerStep: undefined }),
+		);
 
-			// The shared env knob overrides the tuned streaming default.
-			process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = "4";
-			await handler(runtime, {
-				prompt: "hi",
-				stream: true,
-				onStreamChunk: () => {},
-			});
-			expect(engineState.generate).toHaveBeenLastCalledWith(
-				expect.objectContaining({ maxTokensPerStep: 4 }),
-			);
-		} finally {
-			if (prior === undefined) {
-				delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
-			} else {
-				process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = prior;
-			}
-		}
+		// The shared env knob overrides the tuned streaming default.
+		vi.stubEnv("ELIZA_LOCAL_STREAM_TOKENS_PER_STEP", "4");
+		await handler(runtime, {
+			prompt: "hi",
+			stream: true,
+			onStreamChunk: () => {},
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxTokensPerStep: 4 }),
+		);
 	});
 
 	it("routes only explicitly user-visible generations to local voice", async () => {
@@ -654,19 +800,13 @@ describe("ensureLocalInferenceHandler", () => {
 		const onStreamChunk = vi.fn();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
-		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<{ title: string; description: string }>)
-			| undefined;
-		expect(handler).toBeDefined();
+		const handler = findRegisteredHandler<{
+			title: string;
+			description: string;
+		}>(registrations, ModelType.IMAGE_DESCRIPTION);
 
 		await expect(
-			handler?.(runtime, {
+			handler(runtime, {
 				imageUrl: "data:image/png;base64,AAAA",
 				prompt: "describe this",
 				stream: true,
@@ -701,18 +841,12 @@ describe("ensureLocalInferenceHandler", () => {
 		const onStreamChunk = vi.fn();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
-		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<{ title: string; description: string }>)
-			| undefined;
-		expect(handler).toBeDefined();
+		const handler = findRegisteredHandler<{
+			title: string;
+			description: string;
+		}>(registrations, ModelType.IMAGE_DESCRIPTION);
 
-		await handler?.(runtime, {
+		await handler(runtime, {
 			imageUrl: "https://example.test/image.png",
 			prompt: "describe this",
 			onStreamChunk,
@@ -732,19 +866,13 @@ describe("ensureLocalInferenceHandler", () => {
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.TRANSCRIPTION,
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TRANSCRIPTION,
 		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
 
 		await expect(
-			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
+			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).resolves.toBe("transcribed");
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
@@ -766,115 +894,55 @@ describe("ensureLocalInferenceHandler", () => {
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.TRANSCRIPTION,
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TRANSCRIPTION,
 		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
 
 		await expect(
-			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
+			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).rejects.toThrow(VoiceStartupError);
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();
 	});
 
-	it("threads structured streaming callbacks through the RESPONSE_HANDLER registration", async () => {
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(
-			registrations,
-			ModelType.RESPONSE_HANDLER,
-		);
-
-		const onStreamChunk = vi.fn();
-		await handler(runtime, {
-			messages: [{ role: "user", content: "hello" }],
-			streamStructured: true,
-			responseSkeleton: { spans: [] },
-			onStreamChunk,
-		});
-
-		expect(engineState.generate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				prompt: "user:\nhello",
-				streamStructured: true,
-				onTextChunk: expect.any(Function),
-			}),
-		);
-	});
-
-	it("delivers engine onTextChunk tokens to the caller's onStreamChunk per token (chat streaming)", async () => {
-		// End-to-end guard for the local chat streaming regression: the registered
-		// RESPONSE_HANDLER handler must connect the runtime's `onStreamChunk` to the
-		// engine's `onTextChunk` so each generated token is delivered incrementally,
-		// not collapsed into one final chunk. The mocked engine fires onTextChunk
-		// per token (mirroring NodeLlamaCppBackend/FfiStreamingBackend), and we
-		// assert the caller saw multiple distinct chunks in order.
-		const tokens = ["On ", "it ", "now."];
-		engineState.generate.mockImplementationOnce(
-			async (args: { onTextChunk?: (chunk: string) => unknown }) => {
-				for (const token of tokens) {
-					await args.onTextChunk?.(token);
-				}
-				return tokens.join("");
-			},
-		);
-
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(
-			registrations,
-			ModelType.RESPONSE_HANDLER,
-		);
-
-		const received: string[] = [];
-		await handler(runtime, {
-			messages: [{ role: "user", content: "hello" }],
-			streamStructured: true,
-			responseSkeleton: { spans: [] },
-			onStreamChunk: (chunk: string) => {
-				received.push(chunk);
-			},
-		});
-
-		expect(received).toEqual(tokens);
-		expect(received.length).toBeGreaterThan(1);
-	});
-
-	it("wires onTextChunk for a plain (non-structured) stream request", async () => {
-		// The chat path can ask for token streaming via `stream: true` without a
-		// response skeleton. The handler must still bridge onStreamChunk →
-		// onTextChunk so cloud-parity token streaming works for the local model.
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(
-			registrations,
-			ModelType.RESPONSE_HANDLER,
-		);
-
-		await handler(runtime, {
-			messages: [{ role: "user", content: "hello" }],
-			stream: true,
-			onStreamChunk: vi.fn(),
-		});
-
-		expect(engineState.generate).toHaveBeenCalledWith(
-			expect.objectContaining({ onTextChunk: expect.any(Function) }),
-		);
-	});
+	it.each(["structured", "plain"] as const)(
+		"delivers ordered tokens through the %s streaming handler",
+		async (mode) => {
+			const tokens = ["On ", "it ", "now."];
+			engineState.generate.mockImplementationOnce(
+				async (args: { onTextChunk?: (chunk: string) => unknown }) => {
+					for (const token of tokens) await args.onTextChunk?.(token);
+					return tokens.join("");
+				},
+			);
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(true);
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.RESPONSE_HANDLER,
+			);
+			const received: string[] = [];
+			await handler(runtime, {
+				messages: [{ role: "user", content: "hello" }],
+				...(mode === "structured"
+					? { streamStructured: true, responseSkeleton: { spans: [] } }
+					: { stream: true }),
+				onStreamChunk: (chunk: string) => {
+					received.push(chunk);
+				},
+			});
+			expect(received).toEqual(tokens);
+			expect(engineState.generate).toHaveBeenCalledWith(
+				expect.objectContaining({
+					prompt: "user:\nhello",
+					streamStructured: mode === "structured" ? true : undefined,
+				}),
+			);
+		},
+	);
 
 	it("adds Eliza turn markers to caller stop sequences", async () => {
 		const { registrations, runtime } = makeRuntime();
@@ -948,4 +1016,37 @@ describe("ensureLocalInferenceHandler", () => {
 			}),
 		);
 	});
+});
+
+it("does not unload the chat assignment when a dedicated embedding assignment is invalid", async () => {
+	const root = mkdtempSync(path.join(os.tmpdir(), "bionic-assignment-"));
+	try {
+		const encoder = path.join(root, "invalid-encoder.gguf");
+		writeFileSync(encoder, "not canonical weights");
+		assignmentsState.assignments = { TEXT_EMBEDDING: "encoder" };
+		registryState.installed = [{ id: "encoder", path: encoder }];
+		const loader = new BionicHostLoader("unused-assignment-test");
+		const chat = path.join(root, "text", "chat.gguf");
+		await loader.loadModel({ modelPath: chat });
+		const { runtime, registrations } = makeRuntime();
+		await registerLocalInferenceLoaderService(runtime, loader);
+		await runtime.getServiceLoadPromise("localInferenceLoader");
+		engineState.hasLoadedModel.mockReturnValue(true);
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_EMBEDDING,
+		);
+		await expect(
+			handler(runtime, { text: "complete source" }),
+		).rejects.toMatchObject({ code: "EMBEDDING_MODEL_UNAVAILABLE" });
+		expect(loader.currentModelPath()).toBe(chat);
+		expect(
+			runtime
+				.getService<LocalInferenceLoaderRuntimeService>("localInferenceLoader")
+				?.currentModelPath(),
+		).toBe(chat);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });

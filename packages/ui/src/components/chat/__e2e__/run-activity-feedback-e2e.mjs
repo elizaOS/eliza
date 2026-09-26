@@ -2,15 +2,14 @@
  * Real-browser screenshots for the #13535 agent-activity surfaces — no app
  * server. Bundles activity-feedback-fixture.tsx (the REAL TurnStatus working
  * indicator + the REAL ToolCallEventLog inline row) with esbuild, loads it in
- * headless Chromium via Playwright, waits for the elapsed clock to tick past its
- * 900ms grace, and captures desktop + mobile rest screenshots of the three turn
+ * headless Chromium via Playwright, checks phase labels, and captures desktop
+ * and mobile screenshots of the three turn
  * states (thinking / tool-running / settled). Exits non-zero on any page error.
  *
  * Run: bun run --cwd packages/ui test:activity-feedback-e2e
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -27,41 +26,21 @@ function assert(cond, msg) {
   return cond;
 }
 
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
 const result = await build({
   entryPoints: [join(here, "activity-feedback-fixture.tsx")],
   bundle: true,
   format: "iife",
   platform: "browser",
+  alias: {
+    // Resolve the tool row through the canonical browser-safe public entry.
+    "@elizaos/core/client-public": join(
+      here,
+      "../../../../../core/src/client-public.ts",
+    ),
+  },
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -100,10 +79,9 @@ async function capture(name, viewport, deviceScaleFactor) {
   assert(spinner >= 2, `${name}: working-indicator spinners render (${spinner})`);
   const rows = await page.getByTestId("tool-call-event-log").count();
   assert(rows >= 2, `${name}: inline tool rows render (${rows})`);
-  // Let the elapsed clock cross its 900ms grace so "Thinking · Ns" shows.
-  await page.waitForTimeout(2600);
-  const elapsed = await page.getByTestId("turn-status-elapsed").first().innerText();
-  assert(/\d+s/.test(elapsed), `${name}: elapsed clock ticks (${elapsed.trim()})`);
+  const statuses = await page.getByTestId("turn-status-label").allTextContents();
+  assert(statuses.some((text) => text.includes("Thinking")), `${name}: thinking label renders`);
+  assert(statuses.some((text) => text.includes("Using Web search")), `${name}: tool phase label renders`);
   await page.screenshot({
     path: join(outDir, `${name}.png`),
     fullPage: true,

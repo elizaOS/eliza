@@ -2,7 +2,12 @@
  * Unit tests for `discordDataRoutes` (guilds / channels / subscriptions) —
  * drives the route handlers against a mocked runtime and service.
  */
-import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
+
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+	RouteRequest,
+	RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 import { discordDataRoutes } from "../data-routes";
 import { DISCORD_LOCAL_SERVICE_NAME } from "../discord-local-service";
@@ -16,7 +21,6 @@ function route(path: string, type: string) {
 	}
 	return found;
 }
-
 function makeResponse() {
 	const res = {
 		status: vi.fn(() => res),
@@ -27,7 +31,6 @@ function makeResponse() {
 	};
 	return res;
 }
-
 function makeRuntime(service: Record<string, unknown>): IAgentRuntime {
 	return {
 		getService: vi.fn((serviceName: string) =>
@@ -35,7 +38,6 @@ function makeRuntime(service: Record<string, unknown>): IAgentRuntime {
 		),
 	} as unknown as IAgentRuntime;
 }
-
 function makeService(overrides: Record<string, unknown> = {}) {
 	return {
 		getStatus: vi.fn(() => ({})),
@@ -47,18 +49,15 @@ function makeService(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	};
 }
-
 describe("discordDataRoutes", () => {
 	it("rejects malformed guildId before calling the local service", async () => {
 		const service = makeService();
 		const res = makeResponse();
-
 		await route("/api/discord/channels", "GET").handler(
 			{ url: "/api/discord/channels?guildId=../../etc/passwd" } as RouteRequest,
 			res,
 			makeRuntime(service),
 		);
-
 		expect(res.status).toHaveBeenCalledWith(400);
 		expect(res.json).toHaveBeenCalledWith({
 			error: {
@@ -68,13 +67,11 @@ describe("discordDataRoutes", () => {
 		});
 		expect(service.listChannels).not.toHaveBeenCalled();
 	});
-
 	it("passes a valid guild snowflake through to listChannels", async () => {
 		const service = makeService({
 			listChannels: vi.fn(async () => [{ id: "222222222222222222" }]),
 		});
 		const res = makeResponse();
-
 		await route("/api/discord/channels", "GET").handler(
 			{
 				url: "/api/discord/channels?guildId=111111111111111111",
@@ -82,7 +79,6 @@ describe("discordDataRoutes", () => {
 			res,
 			makeRuntime(service),
 		);
-
 		expect(service.listChannels).toHaveBeenCalledWith("111111111111111111");
 		expect(res.status).toHaveBeenCalledWith(200);
 		expect(res.json).toHaveBeenCalledWith({
@@ -90,11 +86,9 @@ describe("discordDataRoutes", () => {
 			count: 1,
 		});
 	});
-
 	it("rejects malformed channelIds before subscribing", async () => {
 		const service = makeService();
 		const res = makeResponse();
-
 		await route("/api/discord/subscriptions", "POST").handler(
 			{
 				body: {
@@ -104,7 +98,6 @@ describe("discordDataRoutes", () => {
 			res,
 			makeRuntime(service),
 		);
-
 		expect(res.status).toHaveBeenCalledWith(400);
 		expect(res.json).toHaveBeenCalledWith({
 			error: {
@@ -114,11 +107,9 @@ describe("discordDataRoutes", () => {
 		});
 		expect(service.subscribeChannelMessages).not.toHaveBeenCalled();
 	});
-
 	it("trims and de-duplicates valid subscription channel snowflakes", async () => {
 		const service = makeService();
 		const res = makeResponse();
-
 		await route("/api/discord/subscriptions", "POST").handler(
 			{
 				body: {
@@ -132,7 +123,6 @@ describe("discordDataRoutes", () => {
 			res,
 			makeRuntime(service),
 		);
-
 		expect(service.subscribeChannelMessages).toHaveBeenCalledWith([
 			"111111111111111111",
 			"222222222222222222",

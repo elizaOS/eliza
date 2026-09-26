@@ -1,15 +1,14 @@
 /** Completes only the exact started claim attempt with a target-signed result. */
 
-import { parseEncryptedRemoteControlEnvelope } from "@elizaos/shared/contracts/remote-control";
+import { parseEncryptedRemoteControlEnvelope } from "@elizaos/core/contracts/remote-control";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteCommandEnvelopesRepository } from "@/db/repositories/remote-command-envelopes";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../../../host-auth";
 
 const app = new Hono<AppEnv>();
-
 app.post("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -106,5 +105,4 @@ app.post("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 export default app;

@@ -5,7 +5,6 @@
  * Polls the agent status until running, then dispatches AGENT_RUNNING.
  */
 
-import { logger } from "@elizaos/logger";
 import {
   type AgentBootProgress,
   type AgentStartupDiagnostics,
@@ -13,6 +12,7 @@ import {
   client,
   type LaunchSnapshot,
 } from "../api";
+import { logger } from "../logger.ts";
 import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,

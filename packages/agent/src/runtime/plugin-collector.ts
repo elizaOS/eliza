@@ -14,31 +14,24 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
-  isGoogleChatConfigured,
-  lifeOpsPassiveConnectorsSetting,
-} from "@elizaos/core";
-import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
-  type: "json",
-};
-import providerPluginMap from "@elizaos/registry/first-party/provider-plugin-map.json" with {
-  type: "json",
-};
-import shortIdPluginMap from "@elizaos/registry/first-party/short-id-plugin-map.json" with {
-  type: "json",
-};
-import {
+  channelPluginMap,
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
+  isGoogleChatConfigured,
   isMobilePlatform,
+  lifeOpsPassiveConnectorsSetting,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
+  providerPluginMap,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+  shortIdPluginMap,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyDevCloudConfigAuthority,
@@ -203,11 +196,11 @@ function telegramStandaloneRequested(
  * `plugins.installs` may still reference the old id.
  */
 const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
+  "@elizaos/plugin-task-coordinator": "@elizaos/plugin-agent-orchestrator/ui",
   "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-shell": "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-discord-local": "@elizaos/plugin-discord",
   "@elizaos/plugin-telegram-standalone": "@elizaos/plugin-telegram",
-  "@homunculuslabs/plugin-zai": "@elizaos/plugin-zai",
 };
 
 export function resolvePluginPackageAlias(packageName: string): string {
@@ -276,7 +269,7 @@ function isStoreBuildVariant(): boolean {
 /**
  * Maps Eliza channel names to plugin package names. Derived at registry build
  * time from each connector entry's `channels` (e.g. x -> ["x", "twitter"]); see
- * packages/registry/src/first-party. To add/rename a channel, edit the owning
+ * packages/core/src/catalog. To add/rename a channel, edit the owning
  * connector's registry-entry.json `channels` and regenerate — not this list.
  */
 export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
@@ -285,7 +278,7 @@ export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
 /**
  * Maps environment variable names to model-provider plugin packages. Derived at
  * registry build time from config fields marked `autoEnableProvider`; see
- * packages/registry/src/first-party. To add or rename a provider env key, edit
+ * packages/core/src/catalog. To add or rename a provider env key, edit
  * the owning registry entry and regenerate — not this list.
  */
 export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> =
@@ -306,7 +299,6 @@ export const MODEL_PROVIDER_PLUGIN_NAMES: ReadonlySet<string> = new Set(
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-local-inference",
-  "@elizaos/plugin-zerollama",
 ]);
 
 const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
@@ -376,7 +368,7 @@ const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
  *
  * The registry-owned aliases (wallet, browser, polymarket, vision, …) are
  * generated at registry-build time from each entry's `shortIds` field — see
- * `collectShortIdPluginMap` in packages/registry/src/first-party/generate.ts.
+ * `collectShortIdPluginMap` in packages/core/src/catalog/generate.ts.
  * To add or rename one of those aliases, edit the owning plugin's
  * registry-entry.json `shortIds` and regenerate — not this map. The generator
  * fails loudly if two plugins claim the same short id, so drift cannot ship.
@@ -634,7 +626,7 @@ export function collectPluginNames(
     orchestratorCompatPluginRequested(config, isCloudContainer)
   ) {
     // Only the BACKEND is gated to non-mobile + an explicit request. The
-    // operator-console view (@elizaos/plugin-task-coordinator) is seeded for
+    // operator-console view (@elizaos/plugin-agent-orchestrator) is seeded for
     // all platforms via MOBILE_VIEW_PLUGINS above (views-only, degrades
     // gracefully without the backend), so the /orchestrator tile resolves
     // everywhere.
@@ -644,22 +636,12 @@ export function collectPluginNames(
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
     );
   }
-  // Dedicated cloud containers get the local-desktop operator surface by
-  // default: the web terminal's PTY service and the BYO-subscription CLI
-  // inference lane. Both are dormant until used — plugin-pty registers
-  // PTY_SERVICE and waits for a terminal to connect; plugin-cli-inference's
-  // model map is inert unless ELIZA_CHAT_VIA_CLI selects a backend. lean-chat
-  // containers stay lean: these are in LEAN_CHAT_EXCLUDED_PLUGINS.
+  // Dedicated cloud containers expose the web terminal through the PTY service.
   if (!onMobile && !leanChat && isCloudContainer) {
     pluginsToLoad.add("@elizaos/plugin-pty");
     track(
       "@elizaos/plugin-pty",
       "cloud container default (web terminal PTY service)",
-    );
-    pluginsToLoad.add("@elizaos/plugin-cli-inference");
-    track(
-      "@elizaos/plugin-cli-inference",
-      "cloud container default (inert unless ELIZA_CHAT_VIA_CLI selects a backend)",
     );
     // Cloud containers drop local inference unless the on-device signal is
     // explicitly set: they have no GPU, the on-device gte-small embedder runs
@@ -1068,6 +1050,14 @@ export function collectPluginNames(
   if (devCloudAuthority) applyProviderPrecedence();
 
   withholdPluginsComposedByPersonalAssistant(pluginsToLoad, track);
+  // The full plugin already owns these views. A view-only host loads the
+  // browser-safe leaf without importing or initializing subprocess services.
+  if (
+    pluginsToLoad.has("agent-orchestrator") ||
+    pluginsToLoad.has("@elizaos/plugin-agent-orchestrator")
+  ) {
+    pluginsToLoad.delete("@elizaos/plugin-agent-orchestrator/ui");
+  }
   return pluginsToLoad;
 }
 

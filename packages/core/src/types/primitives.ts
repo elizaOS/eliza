@@ -2,9 +2,9 @@
  * Foundational scalar and JSON types shared across the whole type system: `UUID`,
  * `Content`, `Media`, `Metadata`, the JSON value/object unions, and channel-type
  * enums. The leaf dependency most other `types/*` modules build on; keep it
- * free of runtime-specific imports so browser/edge builds can consume it.
+ * independent of runtime initialization.
  */
-import type { InteractionBlock } from "./interactions";
+import type { InteractionBlock } from "./interactions.js";
 
 /**
  * JSON-serializable primitive value.
@@ -23,7 +23,7 @@ export type JsonObject = { [key: string]: JsonValue };
 
 /**
  * Minimal process-like environment shape for packages that also run in
- * browsers, workers, or tests where `process.env` may not exist.
+ * tests and callers supplying an explicit environment.
  */
 export type ProcessEnvLike = Record<string, string | undefined>;
 
@@ -94,6 +94,12 @@ export interface Content {
 
 	/** The main text content visible to users */
 	text?: string;
+
+	/** Exact quote origins are read hints, never permission or authorship proof. */
+	sourceReplyReferences?: {
+		replySha256: string;
+		sources: { eventId: string; sourceSha256: string }[];
+	};
 
 	/**
 	 * Core-validated effect receipts grounding this exact visible text. Plugins

@@ -10,29 +10,39 @@
  * independent round-trips. Current-room messages are filtered out to avoid
  * echo, and hash-memory hits win on id overlap. Gated to USER.
  */
-import type {
-  AccessContext,
-  CanonicalRecallResult,
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  Room,
-  State,
-  UUID,
-} from "@elizaos/core";
 import {
+  type AccessContext,
   buildAccessContext,
-  embedRecallQuery,
+  type CanonicalRecallResult,
+  ChannelType,
   filterByAccessContext,
+  getUserMessageText,
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  type Memory,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type Provider,
+  type ProviderResult,
+  type Room,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
+  type State,
   searchCanonicalConversationMemories,
   stringToUuid,
+  type UUID,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+
+import {
+  embedRecallQuery,
+  getEvaluatorProgressState,
+  HISTORY_RETENTION_EVALUATOR,
+  historyRetentionContext,
+  type ProviderOriginalMessages,
+  priorDialogueOriginalText,
+  renderProviderOriginalMessages,
+  visibleHistoryEventIds,
+} from "@elizaos/plugin-assistant";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -50,6 +60,16 @@ const MATCH_THRESHOLD = 0.7;
 // down-weights common stop words ("you"/"are"), so weak/stop-word-only matches
 // score far below a real hit and fall under this floor.
 const MIN_HASH_MEMORY_SCORE = 0.5;
+
+// Only a complete standalone greeting skips optional cross-room similarity
+// search. This does not route the turn or remove current-room history. Short
+// substantive queries (names, IDs) and greetings followed by requests still
+// use recall; unknown languages/forms conservatively keep the retrieval path.
+function isStandaloneGreeting(text: string): boolean {
+  return /^(?:(?:hi|hey|hello)(?: there)?|good morning|good afternoon|good evening|hola|bonjour|salut|hallo|こんにちは|你好)[\s.!！?？]*$/iu.test(
+    text.trim(),
+  );
+}
 
 function memoryText(memory: Memory): string {
   return typeof memory.content.text === "string" ? memory.content.text : "";
@@ -121,8 +141,8 @@ export const relevantConversationsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const text = message.content.text;
-    if (!text || text.trim().length < 5) {
+    const text = getUserMessageText(message);
+    if (!text.trim() || isStandaloneGreeting(text)) {
       return { text: "", values: {}, data: {} };
     }
 
@@ -179,6 +199,8 @@ export const relevantConversationsProvider: Provider = {
             agentId: runtime.agentId,
             deliveryMessage: message,
             matchThreshold: MATCH_THRESHOLD,
+            includeEmbedding: false,
+            excludeRoomIds: [message.roomId],
           });
         })(),
       ]);
@@ -193,13 +215,15 @@ export const relevantConversationsProvider: Provider = {
         accessContext,
         runtime.agentId,
       );
-      const filtered = readable
-        .filter((m) => m.content.text && m.roomId !== currentRoomId)
-        .filter(
-          (memory, index, all) =>
-            !memory.id ||
-            all.findIndex((candidate) => candidate.id === memory.id) === index,
-        );
+      const seenIds = new Set<string>();
+      const filtered = readable.filter((memory) => {
+        if (!memory.content.text || memory.roomId === currentRoomId)
+          return false;
+        if (!memory.id) return true;
+        if (seenIds.has(memory.id)) return false;
+        seenIds.add(memory.id);
+        return true;
+      });
 
       if (
         filtered.some(
@@ -262,27 +286,164 @@ export const relevantConversationsProvider: Provider = {
         semanticRecall?.availability === "unavailable"
           ? "partial"
           : "complete";
-      const lines: string[] = [
-        availability === "partial"
-          ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
-          : "Relevant past conversations:",
-      ];
-      for (const mem of filtered) {
-        const room = roomCache.get(mem.roomId) ?? null;
-        const tag = roomSourceTag(room);
-        const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const speaker = formatSpeakerLabel(runtime, mem);
-        const msgText = memoryText(mem);
-        lines.push(`${tag} ${age}${speaker}: ${msgText}`);
-      }
+      const originalMessages: ProviderOriginalMessages = {
+        header:
+          availability === "partial"
+            ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
+            : "Relevant past conversations:",
+        sources: filtered.map((mem, index) => {
+          const room = roomCache.get(mem.roomId) ?? null;
+          const body = memoryText(mem);
+          const original = priorDialogueOriginalText(mem);
+          const quoteable =
+            original !== undefined &&
+            original === body &&
+            original.length > 0 &&
+            !!mem.id &&
+            !!mem.agentId;
+          return {
+            id: `${quoteable ? "recalled" : "record"}${index + 1}`,
+            prefix: `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(mem.createdAt)}${formatSpeakerLabel(runtime, mem)}: `,
+            ...(quoteable ? { originalText: body } : { text: body }),
+            memoryId: mem.id ?? null,
+            agentId: mem.agentId ?? null,
+            roomId: mem.roomId,
+            entityId: mem.entityId,
+            createdAt: typeof mem.createdAt === "number" ? mem.createdAt : null,
+          };
+        }),
+      };
 
+      // The checkpoint is an internal index, never a disclosure grant. Validate
+      // its original room snapshot, then only defer records already admitted
+      // above. No body read for index validation enters the provider output.
+      const deferred = new Set<string>();
+      if (
+        accessContext.role === "OWNER" &&
+        accessContext.worldId &&
+        message.content.channelType !== ChannelType.VOICE_DM &&
+        currentRoom?.type !== ChannelType.VOICE_DM
+      ) {
+        await Promise.all(
+          roomIds.map(async (roomId) => {
+            const room = roomCache.get(roomId);
+            if (
+              !room ||
+              room.worldId !== accessContext.worldId ||
+              ![
+                ChannelType.DM,
+                ChannelType.API,
+                ChannelType.SELF,
+                ChannelType.VOICE_DM,
+              ].some((type) => type === room.type)
+            )
+              return;
+            try {
+              const sourceMessage = { ...message, roomId };
+              const checkpoint = await getEvaluatorProgressState(
+                runtime,
+                sourceMessage,
+                HISTORY_RETENTION_EVALUATOR,
+              );
+              if (!checkpoint) return;
+              const originals = await runtime.getMemories({
+                agentId: runtime.agentId,
+                roomId,
+                tableName: "messages",
+                unique: false,
+                includeEmbedding: false,
+                orderDirection: "asc",
+              });
+              const context = historyRetentionContext(
+                runtime,
+                sourceMessage,
+                originals,
+              );
+              const visible = visibleHistoryEventIds(
+                context,
+                {
+                  agentId: runtime.agentId,
+                  roomId,
+                  entityId: message.entityId,
+                  roles: ["OWNER"],
+                },
+                checkpoint,
+              );
+              if (!visible) return;
+              const originalIds = new Set(
+                context.events.map((event) => event.id),
+              );
+              const byId = new Map(
+                originals.map((original) => [original.id, original]),
+              );
+              const roomDeferred: string[] = [];
+              for (const memory of filtered) {
+                if (!memory.id || memory.roomId !== roomId) continue;
+                const original = byId.get(memory.id);
+                if (
+                  !original ||
+                  original.entityId !== memory.entityId ||
+                  original.roomId !== memory.roomId ||
+                  original.createdAt !== memory.createdAt ||
+                  JSON.stringify(original.content) !==
+                    JSON.stringify(memory.content) ||
+                  JSON.stringify(original.metadata) !==
+                    JSON.stringify(memory.metadata)
+                )
+                  continue;
+                const eventId = `history:${memory.id}`;
+                if (originalIds.has(eventId) && !visible.has(eventId))
+                  roomDeferred.push(memory.id);
+              }
+              for (const id of roomDeferred) deferred.add(id);
+            } catch (error) {
+              // error-policy:J4 Optional index failure preserves full admitted recall.
+              runtime.reportError(
+                "RelevantConversationsProvider.retention",
+                error,
+                { roomId },
+              );
+            }
+          }),
+        );
+      }
+      const fullText = renderProviderOriginalMessages(originalMessages);
+      const discoveryText = deferred.size
+        ? renderProviderOriginalMessages({
+            ...originalMessages,
+            sources: originalMessages.sources.filter(
+              (_, index) => !deferred.has(filtered[index].id ?? ""),
+            ),
+          }) +
+          "\nOther reviewed conversation originals are deferred, not absent. Request relevant-conversations for complete recalled originals when a fact, correction, quotation or dependency is missing. Retention is not proof of relevance or permission."
+        : undefined;
       return {
-        text: lines.join("\n"),
+        text: fullText,
+        ...(discoveryText && discoveryText.length < fullText.length
+          ? { discoveryText }
+          : {}),
+        reviewableSources: {
+          notice: originalMessages.header,
+          sources: originalMessages.sources.map((source, index) => ({
+            id: source.id,
+            text: `${source.prefix}${memoryText(filtered[index])}`,
+            ...(source.originalText !== undefined
+              ? { originalText: source.originalText }
+              : {}),
+            metadata: {
+              recordId: source.memoryId,
+              roomId: source.roomId,
+              entityId: source.entityId,
+              createdAt: source.createdAt,
+            },
+          })),
+        },
         values: {
           relevantConversationCount: filtered.length,
           relevantConversationAvailability: availability,
         },
         data: {
+          originalMessages,
           messages: filtered.map((m) => ({
             id: m.id,
             roomId: m.roomId,
@@ -295,15 +456,16 @@ export const relevantConversationsProvider: Provider = {
         },
       };
     } catch (error) {
-      // error-policy:J4 recall failure degrades to no relevant-conversations
-      // text, but must be distinguishable from a legit-empty recall: reportError
-      // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
-      // it reading as "no relevant history".
+      // error-policy:J4 expose retrieval failure before a direct response can mistake it for empty history.
       runtime.reportError("RelevantConversationsProvider", error, {
         entityId: message.entityId,
         roomId: message.roomId,
       });
-      return { text: "", values: {}, data: {} };
+      return {
+        text: "Relevant cross-room recall is unavailable because retrieval failed. Do not infer that no prior discussion exists; use an authorized recall tool if available or state the gap.",
+        values: {},
+        data: { recallUnavailable: true },
+      };
     }
   },
 };

@@ -23,7 +23,7 @@ const repoRoot = path.resolve(here, "../../../..");
 const electrobunArtifactsDir = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "platforms",
   "electrobun",
   "artifacts",
@@ -31,7 +31,7 @@ const electrobunArtifactsDir = path.join(
 const electrobunBuildDir = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "platforms",
   "electrobun",
   "build",
@@ -234,7 +234,7 @@ function buildPackagedLauncherIfMissing(): void {
   );
   runPackagedAutoBuildStep(
     "electrobun build",
-    ["run", "--cwd", "packages/app-core/platforms/electrobun", "build"],
+    ["run", "--cwd", "packages/app/platforms/electrobun", "build"],
     15 * 60 * 1000,
   );
 }

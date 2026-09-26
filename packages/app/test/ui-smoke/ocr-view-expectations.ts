@@ -14,7 +14,6 @@ export interface SemanticOcrExpectationPolicy {
 
 export interface SemanticOcrExemptionPolicy {
   kind: "semantic-exemption";
-  applicability: "native-platform-gated" | "unregistered-remote-bundle";
   reason: string;
   /** Observable browser fallback that must still render without semantic drift. */
   fallbackExpectation: OcrExpectation;
@@ -29,13 +28,11 @@ function expected(expectation: OcrExpectation): SemanticOcrExpectationPolicy {
 }
 
 function exempt(
-  applicability: SemanticOcrExemptionPolicy["applicability"],
   reason: string,
   fallbackExpectation: OcrExpectation,
 ): SemanticOcrExemptionPolicy {
   return {
     kind: "semantic-exemption",
-    applicability,
     reason,
     fallbackExpectation,
   };
@@ -44,11 +41,6 @@ function exempt(
 const LAUNCHER_FALLBACK: OcrExpectation = {
   requireAll: ["Settings", "Wallet"],
   requireAny: ["Projects", "Calendar", "Automations"],
-};
-
-const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
-  requireAll: ["Views", "Refresh"],
-  requireAny: ["ready views", "gui ready"],
 };
 
 const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
@@ -70,7 +62,6 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-camera": exempt(
-    "native-platform-gated",
     "The camera is an AOSP-native surface, so the browser audit intentionally renders the truthful unavailable state.",
     VIEW_UNAVAILABLE_FALLBACK,
   ),
@@ -89,14 +80,6 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-stream": expected({
     requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
-  }),
-  "builtin-pendant-transcript": expected({
-    requireAll: ["Pendant Transcript"],
-    requireAny: [
-      "No transcript segments yet",
-      "Local offline cache",
-      "Connect",
-    ],
   }),
   "builtin-apps": expected({
     requireAll: ["Apps"],
@@ -156,7 +139,12 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-experience": expected({
     requireAll: ["Experience"],
-    requireAny: ["Captured", "Avg importance", "need review"],
+    requireAny: [
+      "Captured",
+      "Avg importance",
+      "need review",
+      "I haven’t learned anything yet",
+    ],
   }),
   "builtin-files": expected({
     requireAny: ["No files yet", "Documents", "Images", "Search files"],
@@ -174,6 +162,10 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-trajectories": expected({
     requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
+  }),
+  "builtin-context-inspector": expected({
+    requireAll: ["Context inspector", "Model request budgets"],
+    requireAny: ["partial-recoverable", "token-budget", "Retention"],
   }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],
@@ -198,7 +190,9 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected(VIEW_UNAVAILABLE_FALLBACK),
+  "builtin-rolodex": expected({
+    requireAny: ["People", "Organizations", "Graph"],
+  }),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),
@@ -269,6 +263,17 @@ export const VIEW_OCR_POLICIES = {
       "December",
     ],
   }),
+  "plugin-family-interview-gui": expected({
+    requireAny: [
+      "Your update",
+      "Fill missing information",
+      "School and activities",
+    ],
+    forbid: [
+      "Sources are unavailable",
+      "Could not load selected correspondence",
+    ],
+  }),
   "plugin-family-operations-gui": expected({
     requireAny: ["Family Operations", "Private owner workspace"],
   }),
@@ -283,18 +288,9 @@ export const VIEW_OCR_POLICIES = {
     ],
     forbid: ["Loading sessions", "unavailable"],
   }),
-  "plugin-finances-gui": expected({
-    requireAny: ["Balance", "Transactions", "Recurring"],
-    forbid: ["Loading"],
-  }),
   "plugin-goals-gui": expected({
     requireAny: ["Active", "needs a review", "paused"],
   }),
-  "plugin-lifeops-live-test-gui": exempt(
-    "unregistered-remote-bundle",
-    "The LifeOps live-test GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
-    VIEW_REGISTRY_FALLBACK,
-  ),
   "plugin-health-gui": expected({
     requireAny: ["Last sleep", "Regularity", "Baseline"],
   }),
@@ -321,25 +317,19 @@ export const VIEW_OCR_POLICIES = {
   "plugin-wallet-gui": expected({
     requireAny: ["Tokens", "RPC", "ETH", "SOL"],
   }),
-  "plugin-views-manager-gui": expected({
-    requireAll: ["Views", "Refresh"],
-    requireAny: ["ready views", "gui ready"],
-  }),
   "plugin-notes-gui": expected({
     requireAll: ["Launch checklist", "Follow up"],
     requireAny: ["Cloud agent", "demo recording"],
   }),
-  "plugin-task-coordinator-gui": expected({
+  "plugin-agent-orchestrator-tasks-gui": expected({
     requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
   }),
   "plugin-orchestrator-gui": expected({
     requireAll: ["Orchestrator"],
   }),
-  "plugin-cockpit-gui": exempt(
-    "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the truthful unavailable state is the only observable surface.",
-    VIEW_UNAVAILABLE_FALLBACK,
-  ),
+  "plugin-cockpit-gui": expected({
+    requireAll: ["Coding Cockpit", "Task rooms", "New session"],
+  }),
   "plugin-trajectory-logger-gui": expected({
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
   }),

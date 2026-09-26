@@ -17,6 +17,7 @@
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
+	createPreparedModelRequestGuard,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -30,14 +31,12 @@ import {
 	ModelType,
 	type PiiScrubParams,
 	type PiiScrubResult,
-	type Plugin,
 	resolveBackgroundInferenceBudget,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
 } from "@elizaos/core";
-
-import { generateMediaAction } from "./actions/generate-media.js";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
@@ -63,15 +62,12 @@ import { augmentVisionRequest } from "./services/vision/augmenter.js";
 import { prepareVisionImageInput } from "./services/vision/image-input.js";
 import type { VisionImageInput } from "./services/vision/types.js";
 import { extractRequestedVoiceId } from "./services/voice/requested-voice.js";
-
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
-
 export const LOCAL_INFERENCE_TEXT_MODEL_TYPES = [
 	ModelType.TEXT_SMALL,
 	ModelType.TEXT_LARGE,
 ] as const;
-
 export const LOCAL_INFERENCE_MODEL_TYPES = [
 	...LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 	ModelType.TEXT_EMBEDDING,
@@ -80,27 +76,25 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TEXT_TO_SPEECH,
 	ModelType.TRANSCRIPTION,
 ] as const;
-
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
 	| "capability_unavailable"
 	| "invalid_input"
 	| "invalid_output";
-
 export class LocalInferenceUnavailableError extends Error {
 	readonly code = "LOCAL_INFERENCE_UNAVAILABLE";
 	readonly provider = LOCAL_INFERENCE_PROVIDER_ID;
-
 	constructor(
 		readonly modelType: string,
 		readonly reason: LocalInferenceUnavailableReason,
 		message: string,
-		options?: { cause?: unknown },
+		options?: {
+			cause?: unknown;
+		},
 	) {
 		super(message, options);
 		this.name = "LocalInferenceUnavailableError";
 	}
-
 	toJSON(): Record<string, string> {
 		return {
 			code: this.code,
@@ -111,7 +105,6 @@ export class LocalInferenceUnavailableError extends Error {
 		};
 	}
 }
-
 export function isLocalInferenceUnavailableError(
 	error: unknown,
 ): error is LocalInferenceUnavailableError {
@@ -119,10 +112,13 @@ export function isLocalInferenceUnavailableError(
 		error instanceof LocalInferenceUnavailableError ||
 		(typeof error === "object" &&
 			error !== null &&
-			(error as { code?: unknown }).code === "LOCAL_INFERENCE_UNAVAILABLE")
+			(
+				error as {
+					code?: unknown;
+				}
+			).code === "LOCAL_INFERENCE_UNAVAILABLE")
 	);
 }
-
 interface LocalInferenceGenerateArgs {
 	prompt: string;
 	stopSequences?: string[];
@@ -132,11 +128,9 @@ interface LocalInferenceGenerateArgs {
 	signal?: AbortSignal;
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 }
-
 interface LocalInferenceEmbedResult {
 	embedding: number[];
 }
-
 interface LocalInferenceTextToSpeechService {
 	synthesizeSpeech?: (
 		text: string,
@@ -161,9 +155,13 @@ interface LocalInferenceTextToSpeechService {
 		voiceId?: string,
 	) => AsyncIterable<Uint8Array>;
 }
-
 interface LocalInferenceTranscriptionService {
-	transcribe?: (params: unknown) => Promise<string | { text?: string }>;
+	transcribe?: (params: unknown) => Promise<
+		| string
+		| {
+				text?: string;
+		  }
+	>;
 	transcribePcm?: (
 		params: {
 			pcm: Float32Array;
@@ -171,9 +169,13 @@ interface LocalInferenceTranscriptionService {
 			signal?: AbortSignal;
 		},
 		signal?: AbortSignal,
-	) => Promise<string | { text?: string }>;
+	) => Promise<
+		| string
+		| {
+				text?: string;
+		  }
+	>;
 }
-
 /**
  * Optional arbiter accessor. When the local-inference plugin's runtime
  * service registers a MemoryArbiter (WS1) on the IAgentRuntime, this
@@ -190,7 +192,6 @@ interface LocalInferenceTranscriptionService {
 interface LocalInferenceArbiterAccessor {
 	getMemoryArbiter?: () => unknown;
 }
-
 interface LocalInferenceRuntimeService
 	extends LocalInferenceTextToSpeechService,
 		LocalInferenceTranscriptionService,
@@ -206,17 +207,14 @@ interface LocalInferenceRuntimeService
 		params: ImageDescriptionParams | string,
 	) => Promise<ImageDescriptionResult | string>;
 }
-
 type RuntimeWithServices = IAgentRuntime & {
 	getService?: (name: string) => unknown;
 };
-
 function serviceFromRuntime(
 	runtime: IAgentRuntime,
 ): LocalInferenceRuntimeService | null {
 	const withServices = runtime as RuntimeWithServices;
 	if (typeof withServices.getService !== "function") return null;
-
 	for (const name of [
 		"localInferenceLoader",
 		"localInference",
@@ -229,7 +227,6 @@ function serviceFromRuntime(
 	}
 	return null;
 }
-
 function unavailable(
 	modelType: string,
 	reason: LocalInferenceUnavailableReason,
@@ -240,7 +237,6 @@ function unavailable(
 		cause,
 	});
 }
-
 function requireService(
 	runtime: IAgentRuntime,
 	modelType: string,
@@ -255,16 +251,13 @@ function requireService(
 	}
 	return service;
 }
-
 type MessageLike = {
 	role?: unknown;
 	content?: unknown;
 };
-
 type PromptSegmentLike = {
 	content?: unknown;
 };
-
 function renderPromptContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
@@ -273,10 +266,22 @@ function renderPromptContent(content: unknown): string {
 			if (
 				part &&
 				typeof part === "object" &&
-				(part as { type?: unknown }).type === "text" &&
-				typeof (part as { text?: unknown }).text === "string"
+				(
+					part as {
+						type?: unknown;
+					}
+				).type === "text" &&
+				typeof (
+					part as {
+						text?: unknown;
+					}
+				).text === "string"
 			) {
-				return (part as { text: string }).text;
+				return (
+					part as {
+						text: string;
+					}
+				).text;
 			}
 			return null;
 		});
@@ -289,7 +294,6 @@ function renderPromptContent(content: unknown): string {
 	}
 	return content === undefined ? "" : JSON.stringify(content);
 }
-
 function renderPromptMessages(messages: readonly MessageLike[]): string {
 	return messages
 		.map((message) => {
@@ -298,7 +302,6 @@ function renderPromptMessages(messages: readonly MessageLike[]): string {
 		})
 		.join("\n\n");
 }
-
 function promptFromParams(params: GenerateTextParams): string {
 	const record = params as GenerateTextParams & {
 		messages?: readonly MessageLike[];
@@ -324,7 +327,6 @@ function promptFromParams(params: GenerateTextParams): string {
 	}
 	return prompt;
 }
-
 function textGenerationArgsFromParams(
 	params: GenerateTextParams,
 ): LocalInferenceGenerateArgs {
@@ -342,7 +344,6 @@ function textGenerationArgsFromParams(
 				: undefined,
 	};
 }
-
 function extractEmbeddingText(
 	params: TextEmbeddingParams | string | null,
 ): string {
@@ -356,7 +357,6 @@ function extractEmbeddingText(
 		"[local-inference] TEXT_EMBEDDING requires { text } or a non-empty string; null warmup probes are not served with fake vectors",
 	);
 }
-
 function extractSpeechText(params: TextToSpeechParams | string): string {
 	if (typeof params === "string") return params;
 	if (params && typeof params === "object" && typeof params.text === "string") {
@@ -368,7 +368,6 @@ function extractSpeechText(params: TextToSpeechParams | string): string {
 		"[local-inference] TEXT_TO_SPEECH requires a string or { text } input",
 	);
 }
-
 function extractSpeechSignal(
 	params: TextToSpeechParams | string,
 ): AbortSignal | undefined {
@@ -376,7 +375,6 @@ function extractSpeechSignal(
 		? params.signal
 		: undefined;
 }
-
 function ensureNonEmptyText(modelType: string, text: string): string {
 	const trimmed = text.trim();
 	if (!trimmed) {
@@ -388,7 +386,6 @@ function ensureNonEmptyText(modelType: string, text: string): string {
 	}
 	return trimmed;
 }
-
 function normalizeEmbeddingResult(
 	result: number[] | LocalInferenceEmbedResult,
 ): number[] {
@@ -405,7 +402,6 @@ function normalizeEmbeddingResult(
 	}
 	return embedding;
 }
-
 function normalizeAudioBytes(
 	result: Uint8Array | ArrayBuffer | Buffer,
 ): Uint8Array {
@@ -421,7 +417,6 @@ function normalizeAudioBytes(
 		"[local-inference] TEXT_TO_SPEECH backend returned non-audio output",
 	);
 }
-
 function concatAudioChunks(chunks: Uint8Array[]): Uint8Array {
 	const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
 	const out = new Uint8Array(total);
@@ -432,7 +427,6 @@ function concatAudioChunks(chunks: Uint8Array[]): Uint8Array {
 	}
 	return out;
 }
-
 /** A single-chunk {@link AudioStreamResult} around already-synthesized bytes —
  *  satisfies the streaming contract when the backend has no streaming synth. */
 function bufferedAudioStreamResult(
@@ -444,7 +438,6 @@ function bufferedAudioStreamResult(
 	}
 	return { audioStream: generate(), bytes: Promise.resolve(bytes), mimeType };
 }
-
 /** Wrap a backend streaming synth as an {@link AudioStreamResult}, accumulating
  *  the chunks so `bytes` resolves to the full clip after the stream is drained. */
 function streamingAudioStreamResult(
@@ -473,12 +466,14 @@ function streamingAudioStreamResult(
 	}
 	return { audioStream: generate(), bytes, mimeType };
 }
-
 const LOCAL_TTS_MIME = "audio/wav";
-
 function extractPcmTranscriptionParams(
 	params: TranscriptionParams | Buffer | string | unknown,
-): { pcm: Float32Array; sampleRate: number; signal?: AbortSignal } {
+): {
+	pcm: Float32Array;
+	sampleRate: number;
+	signal?: AbortSignal;
+} {
 	if (!params || typeof params !== "object" || params instanceof Uint8Array) {
 		throw unavailable(
 			ModelType.TRANSCRIPTION,
@@ -516,21 +511,28 @@ function extractPcmTranscriptionParams(
 		? { pcm: record.pcm, sampleRate, signal: record.signal }
 		: { pcm: record.pcm, sampleRate };
 }
-
 function extractTranscriptionSignal(params: unknown): AbortSignal | undefined {
 	return typeof params === "object" && params !== null
-		? (params as { signal?: AbortSignal }).signal
+		? (
+				params as {
+					signal?: AbortSignal;
+				}
+			).signal
 		: undefined;
 }
-
 function throwIfAborted(signal: AbortSignal | undefined): void {
 	if (!signal?.aborted) return;
 	throw signal.reason instanceof Error
 		? signal.reason
 		: new DOMException("Aborted", "AbortError");
 }
-
-function normalizeTranscript(result: string | { text?: string }): string {
+function normalizeTranscript(
+	result:
+		| string
+		| {
+				text?: string;
+		  },
+): string {
 	const text = typeof result === "string" ? result : result.text;
 	if (typeof text !== "string") {
 		throw unavailable(
@@ -541,7 +543,6 @@ function normalizeTranscript(result: string | { text?: string }): string {
 	}
 	return text;
 }
-
 function normalizeImageDescription(
 	result: ImageDescriptionResult | string,
 ): ImageDescriptionResult {
@@ -572,7 +573,6 @@ function normalizeImageDescription(
 		"[local-inference] IMAGE_DESCRIPTION backend returned an invalid description",
 	);
 }
-
 function createTextHandler(modelType: string) {
 	return async (
 		runtime: IAgentRuntime,
@@ -591,7 +591,7 @@ function createTextHandler(modelType: string) {
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
 		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time without changing prompt or output capacity.
+		// bounded time and take the device-class budget clamps.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
 		let lockWaitMs: number | undefined;
@@ -607,6 +607,28 @@ function createTextHandler(modelType: string) {
 			args.maxTokens = budgetedArgs.maxTokens;
 			lockWaitMs = budget.lockWaitMs;
 		}
+		const configuredModel = runtime.getSetting?.(
+			modelType === ModelType.TEXT_SMALL
+				? "LOCAL_SMALL_MODEL"
+				: "LOCAL_LARGE_MODEL",
+		);
+		const model =
+			typeof configuredModel === "string" && configuredModel.trim()
+				? configuredModel.trim()
+				: `${LOCAL_INFERENCE_PROVIDER_ID}:${modelType}`;
+		const preparedRequest = createPreparedModelRequestGuard({
+			provider: LOCAL_INFERENCE_PROVIDER_ID,
+			model,
+			projectRequest: () => ({
+				prompt: args.prompt,
+				stopSequences: args.stopSequences,
+				maxTokens: args.maxTokens,
+				temperature: args.temperature,
+				topP: args.topP,
+				stream: typeof args.onTextChunk === "function",
+			}),
+			outputReserveTokens: args.maxTokens,
+		});
 		return getInferencePriorityGate().runExclusive(
 			{
 				priority,
@@ -614,11 +636,13 @@ function createTextHandler(modelType: string) {
 				...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
 				...(params.signal ? { signal: params.signal } : {}),
 			},
-			() => generate.call(service, args),
+			() => {
+				preparedRequest.assertBeforeAttempt();
+				return generate.call(service, args);
+			},
 		);
 	};
 }
-
 /**
  * Production `PII_SCRUB` handler (#15973): runs the scrub-seam escalation as a
  * constrained JSON-judgment prompt on the resident local backend, so PII never
@@ -669,7 +693,6 @@ function createPiiScrubHandler() {
 		};
 	};
 }
-
 function createEmbeddingHandler() {
 	return async (
 		runtime: IAgentRuntime,
@@ -697,7 +720,6 @@ function createEmbeddingHandler() {
 		return normalizeEmbeddingResult(await service.embed({ input }));
 	};
 }
-
 function createTextToSpeechHandler() {
 	return async (
 		runtime: IAgentRuntime,
@@ -715,8 +737,11 @@ function createTextToSpeechHandler() {
 		const wantsStream =
 			typeof params === "object" &&
 			params !== null &&
-			(params as { audioStream?: boolean }).audioStream === true;
-
+			(
+				params as {
+					audioStream?: boolean;
+				}
+			).audioStream === true;
 		// Real chunked streaming when the backend implements the seam.
 		if (wantsStream && typeof service.synthesizeSpeechStream === "function") {
 			return streamingAudioStreamResult(
@@ -724,7 +749,6 @@ function createTextToSpeechHandler() {
 				LOCAL_TTS_MIME,
 			);
 		}
-
 		const synthesizeBuffered = async (): Promise<Uint8Array> => {
 			if (typeof service.synthesizeSpeech === "function") {
 				return normalizeAudioBytes(
@@ -746,7 +770,6 @@ function createTextToSpeechHandler() {
 				"[local-inference] Active local backend does not implement TEXT_TO_SPEECH",
 			);
 		};
-
 		const bytes = await synthesizeBuffered();
 		// Streaming asked but no streaming backend — satisfy the contract with a
 		// single chunk so consumers use one code path for cloud + local.
@@ -755,7 +778,6 @@ function createTextToSpeechHandler() {
 			: bytes;
 	};
 }
-
 function createTranscriptionHandler() {
 	return async (
 		runtime: IAgentRuntime,
@@ -786,7 +808,6 @@ function createTranscriptionHandler() {
 		);
 	};
 }
-
 /**
  * Arbiter accessor shape used by the IMAGE_DESCRIPTION handler. Two
  * call paths converge here:
@@ -811,7 +832,6 @@ interface ArbiterLike {
 		payload: Req;
 	}) => Promise<Res>;
 }
-
 function tryGetArbiter(
 	service: LocalInferenceRuntimeService | null,
 ): ArbiterLike | null {
@@ -828,7 +848,6 @@ function tryGetArbiter(
 	}
 	return null;
 }
-
 function tryGetImageGenArbiter(
 	service: LocalInferenceRuntimeService | null,
 ): ArbiterLike | null {
@@ -845,7 +864,6 @@ function tryGetImageGenArbiter(
 	}
 	return null;
 }
-
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	image: VisionImageInput;
 	prompt?: string;
@@ -863,18 +881,29 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	const prompt = typeof params === "object" ? params.prompt : undefined;
 	const signal =
 		typeof params === "object"
-			? (params as { signal?: AbortSignal }).signal
+			? (
+					params as {
+						signal?: AbortSignal;
+					}
+				).signal
 			: undefined;
 	// Token-by-token streaming is intentionally explicit for vision. Hidden image
 	// preprocessing can happen inside a streaming chat turn; only forward the
 	// runtime callback when the call itself asks for `stream: true`.
 	const wantsStream =
 		typeof params === "object" &&
-		(params as { stream?: boolean }).stream === true;
+		(
+			params as {
+				stream?: boolean;
+			}
+		).stream === true;
 	const streamSink =
 		wantsStream && typeof params === "object"
-			? (params as { onStreamChunk?: (chunk: string) => void | Promise<void> })
-					.onStreamChunk
+			? (
+					params as {
+						onStreamChunk?: (chunk: string) => void | Promise<void>;
+					}
+				).onStreamChunk
 			: undefined;
 	const onTextChunk =
 		typeof streamSink === "function"
@@ -895,7 +924,6 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		...(onTextChunk ? { onTextChunk } : {}),
 	};
 }
-
 function paramsWithPreparedVisionImage(
 	params: ImageDescriptionParams | string,
 	image: VisionImageInput,
@@ -908,7 +936,6 @@ function paramsWithPreparedVisionImage(
 		? dataUrl
 		: { ...params, imageUrl: dataUrl };
 }
-
 /**
  * Runtime setting marker that plugin-vision's `hasEliza1VisionHandler`
  * polls. Setting this to `"1"` makes VisionService prefer the eliza-1
@@ -918,7 +945,6 @@ function paramsWithPreparedVisionImage(
  * actual capability rather than plugin presence.
  */
 const ELIZA1_VISION_MARKER = "ELIZA1_VISION_HANDLER_PRESENT";
-
 function markEliza1VisionHandlerPresent(runtime: IAgentRuntime): void {
 	const r = runtime as IAgentRuntime & {
 		setSetting?: (key: string, value: unknown) => void;
@@ -935,7 +961,6 @@ function markEliza1VisionHandlerPresent(runtime: IAgentRuntime): void {
 		// Some test runtimes don't accept setSetting at runtime — non-fatal.
 	}
 }
-
 function createImageDescriptionHandler() {
 	return async (
 		runtime: IAgentRuntime,
@@ -953,7 +978,11 @@ function createImageDescriptionHandler() {
 			markEliza1VisionHandlerPresent(runtime);
 			const modelKeyCandidate =
 				typeof params === "object"
-					? (params as { modelKey?: unknown }).modelKey
+					? (
+							params as {
+								modelKey?: unknown;
+							}
+						).modelKey
 					: undefined;
 			const modelKey =
 				typeof modelKeyCandidate === "string" && modelKeyCandidate
@@ -984,7 +1013,6 @@ function createImageDescriptionHandler() {
 		);
 	};
 }
-
 /**
  * Image-gen request shape the WS3 arbiter capability accepts. Mirrors
  * `ImageGenRequest` from `./services/imagegen/types` without importing
@@ -1003,7 +1031,6 @@ interface ProviderImageGenRequest {
 	scheduler?: string;
 	signal?: AbortSignal;
 }
-
 interface ProviderImageGenResult {
 	image: Uint8Array;
 	mime: "image/png" | "image/jpeg";
@@ -1016,7 +1043,6 @@ interface ProviderImageGenResult {
 		inferenceTimeMs: number;
 	};
 }
-
 function paramsToImageGenRequest(
 	params: ImageGenerationParams,
 ): ProviderImageGenRequest {
@@ -1071,7 +1097,6 @@ function paramsToImageGenRequest(
 	}
 	return out;
 }
-
 function imageGenResultToUrls(
 	result: ProviderImageGenResult,
 ): ImageGenerationResult[] {
@@ -1086,7 +1111,6 @@ function imageGenResultToUrls(
 	const base64 = Buffer.from(result.image).toString("base64");
 	return [{ url: `data:${mime};base64,${base64}` }];
 }
-
 function createImageGenerationHandler() {
 	return async (
 		runtime: IAgentRuntime,
@@ -1115,13 +1139,14 @@ function createImageGenerationHandler() {
 		// small-tier default. Callers that want to pin a specific
 		// diffusion model pass `modelKey` through the params extension.
 		const modelKeyCandidate = (
-			params as ImageGenerationParams & { modelKey?: unknown }
+			params as ImageGenerationParams & {
+				modelKey?: unknown;
+			}
 		).modelKey;
 		const modelKey =
 			typeof modelKeyCandidate === "string" && modelKeyCandidate
 				? modelKeyCandidate
 				: resolveImageGenModelKeyFromRuntime(runtime);
-
 		const results: ImageGenerationResult[] = [];
 		for (let i = 0; i < count; i += 1) {
 			const seeded: ProviderImageGenRequest =
@@ -1137,7 +1162,6 @@ function createImageGenerationHandler() {
 		return results;
 	};
 }
-
 /**
  * Resolve the active tier-bound image-gen model id without importing
  * the imagegen subpackage. We look at:
@@ -1160,7 +1184,6 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
 	}
 	return "imagegen-sd-1_5-q5_0";
 }
-
 /**
  * Inlined tier → default image-gen model id map. Duplicates the
  * `TIER_TO_DEFAULT_IMAGE_MODEL` entries in `backend-selector.ts` —
@@ -1176,7 +1199,6 @@ const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
 	"eliza-1-27b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-27b-256k": "imagegen-sd-1_5-q5_0",
 };
-
 export function createLocalInferenceModelHandlers(): NonNullable<
 	Plugin["models"]
 > {
@@ -1191,13 +1213,11 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 		[ModelType.PII_SCRUB]: createPiiScrubHandler(),
 	};
 }
-
 function createStaticPluginModelHandlers(): NonNullable<Plugin["models"]> {
 	const { [ModelType.TEXT_EMBEDDING]: _embedding, ...handlers } =
 		createLocalInferenceModelHandlers();
 	return handlers;
 }
-
 export const localInferencePlugin: Plugin = {
 	name: LOCAL_INFERENCE_PROVIDER_ID,
 	description:
@@ -1205,7 +1225,6 @@ export const localInferencePlugin: Plugin = {
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [
 		localInferenceManagementAction,
-		generateMediaAction,
 		identifySpeakerAction,
 		manageTranscriptPrivacyAction,
 		redactTranscriptAction,
@@ -1263,5 +1282,4 @@ export const localInferencePlugin: Plugin = {
 		);
 	},
 };
-
 export default localInferencePlugin;

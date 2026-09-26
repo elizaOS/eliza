@@ -2,7 +2,7 @@
 # Hosts live Eliza agent runtimes for Eliza Cloud pods.
 #
 # BUILD CONTEXT IS THE REPOSITORY ROOT, not this directory. The service depends
-# on six `@elizaos/*` workspace packages (and their transitive workspace
+# on `@elizaos/*` workspace packages (and their transitive workspace
 # closure), and `workspace:*` cannot resolve from a context that contains only
 # this package — the same failure mode fixed for gateway-webhook (#17841) and
 # gateway-discord (#17929).
@@ -22,7 +22,7 @@
 # For linux/riscv64 (no upstream image — oven-sh/bun#6266, #21923), build a local
 # Bun image via elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and pass
 # --build-arg BUN_BASE=<local-tag>.
-ARG BUN_BASE=oven/bun:1.3.14-alpine
+ARG BUN_BASE=oven/bun:1.4.2-alpine
 
 FROM ${BUN_BASE} AS base
 WORKDIR /app
@@ -36,29 +36,24 @@ ARG SERVICE_DIR=packages/cloud/services/agent-server
 # is missing from this file.
 FROM base AS deps
 ARG SERVICE_DIR
-COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
-COPY packages/cloud/services/_common/package.json packages/cloud/services/_common/
-COPY packages/cloud/routing/package.json packages/cloud/routing/
+# Required by native authentication-provider dependencies (kept out of runner).
+RUN apk add --no-cache python3 make g++
+COPY packages/auth/package.json packages/auth/
 COPY packages/cloud/sdk/package.json packages/cloud/sdk/
-COPY packages/cloud/shared/package.json packages/cloud/shared/
+COPY packages/cloud/services/_common/package.json packages/cloud/services/_common/
+COPY packages/cloud/services/agent-server/package.json packages/cloud/services/agent-server/
 COPY packages/core/package.json packages/core/
-COPY packages/logger/package.json packages/logger/
-COPY packages/prompts/package.json packages/prompts/
-COPY packages/registry/package.json packages/registry/
-COPY packages/shared/package.json packages/shared/
-COPY packages/ui/package.json packages/ui/
-COPY plugins/plugin-cloud-apps/package.json plugins/plugin-cloud-apps/
+COPY packages/remote-control-host/package.json packages/remote-control-host/
+COPY plugins/plugin-assistant/package.json plugins/plugin-assistant/
+COPY plugins/plugin-browser/package.json plugins/plugin-browser/
 COPY plugins/plugin-elizacloud/package.json plugins/plugin-elizacloud/
-COPY plugins/plugin-native-agent/package.json plugins/plugin-native-agent/
-COPY plugins/plugin-native-bun-runtime/package.json plugins/plugin-native-bun-runtime/
-COPY plugins/plugin-native-camera/package.json plugins/plugin-native-camera/
-COPY plugins/plugin-native-llama/package.json plugins/plugin-native-llama/
 COPY plugins/plugin-openai/package.json plugins/plugin-openai/
-COPY plugins/plugin-scheduling/package.json plugins/plugin-scheduling/
 COPY plugins/plugin-sql/package.json plugins/plugin-sql/
 COPY plugins/plugin-web-search/package.json plugins/plugin-web-search/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
-RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/services/_common","packages/cloud/routing","packages/cloud/sdk","packages/cloud/shared","packages/core","packages/logger","packages/prompts","packages/registry","packages/shared","packages/ui","plugins/plugin-cloud-apps","plugins/plugin-elizacloud","plugins/plugin-native-agent","plugins/plugin-native-bun-runtime","plugins/plugin-native-camera","plugins/plugin-native-llama","plugins/plugin-openai","plugins/plugin-scheduling","plugins/plugin-sql","plugins/plugin-web-search","plugins/plugin-workflow"]}\n' > package.json \
+# The headless host does not install test dependencies or optional UI peers.
+RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/auth","packages/cloud/sdk","packages/cloud/services/_common","packages/cloud/services/agent-server","packages/core","packages/remote-control-host","plugins/plugin-assistant","plugins/plugin-browser","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-web-search","plugins/plugin-workflow"]}\n' > package.json \
+    && bun -e 'const root = await Bun.file("package.json").json(); for (const dir of root.workspaces) { const path = `${dir}/package.json`; const manifest = await Bun.file(path).json(); delete manifest.devDependencies; for (const [name, meta] of Object.entries(manifest.peerDependenciesMeta ?? {})) { if (meta.optional) delete manifest.peerDependencies?.[name]; } await Bun.write(path, JSON.stringify(manifest)); }' \
     && bun install --production
 
 # Production stage: run the service straight from TypeScript source, resolving
@@ -73,33 +68,20 @@ RUN adduser -D -u 1001 appuser && mkdir -p /app/cache && chown appuser /app/cach
 
 # bun's store lives at the workspace root and each member directory holds its
 # links, so both keep their original paths.
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/package.json ./package.json
-COPY --from=deps /app/${SERVICE_DIR}/node_modules ./${SERVICE_DIR}/node_modules
-COPY packages/cloud/services/_common packages/cloud/services/_common
-COPY packages/cloud/routing packages/cloud/routing
+COPY --from=deps /app/ ./
+COPY packages/auth packages/auth
 COPY packages/cloud/sdk packages/cloud/sdk
-COPY packages/cloud/shared packages/cloud/shared
+COPY packages/cloud/services/_common packages/cloud/services/_common
+COPY packages/cloud/services/agent-server packages/cloud/services/agent-server
 COPY packages/core packages/core
-COPY packages/logger packages/logger
-COPY packages/prompts packages/prompts
-COPY packages/registry packages/registry
-COPY packages/shared packages/shared
-COPY packages/ui packages/ui
-COPY plugins/plugin-cloud-apps plugins/plugin-cloud-apps
+COPY packages/remote-control-host packages/remote-control-host
+COPY plugins/plugin-assistant plugins/plugin-assistant
+COPY plugins/plugin-browser plugins/plugin-browser
 COPY plugins/plugin-elizacloud plugins/plugin-elizacloud
-COPY plugins/plugin-native-agent plugins/plugin-native-agent
-COPY plugins/plugin-native-bun-runtime plugins/plugin-native-bun-runtime
-COPY plugins/plugin-native-camera plugins/plugin-native-camera
-COPY plugins/plugin-native-llama plugins/plugin-native-llama
 COPY plugins/plugin-openai plugins/plugin-openai
-COPY plugins/plugin-scheduling plugins/plugin-scheduling
 COPY plugins/plugin-sql plugins/plugin-sql
 COPY plugins/plugin-web-search plugins/plugin-web-search
 COPY plugins/plugin-workflow plugins/plugin-workflow
-COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
-COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
-COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 
 WORKDIR /app/${SERVICE_DIR}
 USER appuser

@@ -1,35 +1,32 @@
 // Coordinates cloud service coding containers behavior behind route handlers.
-export type {
-  CloudCodingContainerSession,
-  CloudCodingContainerStatus,
-  CloudCodingPromotion,
-  CloudCodingSyncResult,
-  PromoteVfsToCloudContainerRequest,
-  PromoteVfsToCloudContainerResponse,
-  RequestCodingAgentContainerRequest,
-  RequestCodingAgentContainerResponse,
-  SyncCloudCodingContainerRequest,
-  SyncCloudCodingContainerResponse,
-} from "@elizaos/shared/contracts/cloud-coding-containers";
 export {
+  type CloudCodingContainerSession,
+  type CloudCodingContainerStatus,
+  type CloudCodingPromotion,
+  type CloudCodingSyncResult,
+  type PromoteVfsToCloudContainerRequest,
   PromoteVfsToCloudContainerRequestSchema,
+  type PromoteVfsToCloudContainerResponse,
+  type RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerRequestSchema,
+  type RequestCodingAgentContainerResponse,
+  type SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerRequestSchema,
-} from "@elizaos/shared/contracts/cloud-coding-containers";
+  type SyncCloudCodingContainerResponse,
+} from "@elizaos/core/contracts/cloud-coding-containers";
 
-import type {
-  CloudCodingContainerSession,
-  CloudCodingContainerStatus,
-  CloudCodingPromotion,
-  CloudCodingSyncResult,
-  CloudVfsBundle,
-  PromoteVfsToCloudContainerRequest,
-  RequestCodingAgentContainerRequest,
-  SyncCloudCodingContainerRequest,
-} from "@elizaos/shared/contracts/cloud-coding-containers";
+import {
+  type CloudCodingContainerSession,
+  type CloudCodingContainerStatus,
+  type CloudCodingPromotion,
+  type CloudCodingSyncResult,
+  type CloudVfsBundle,
+  type PromoteVfsToCloudContainerRequest,
+  type RequestCodingAgentContainerRequest,
+  type SyncCloudCodingContainerRequest,
+} from "@elizaos/core/contracts/cloud-coding-containers";
 import { containersEnv } from "../config/containers-env";
 import { describeImageReference } from "./containers/image-rollout-status";
-
 export interface CodingContainerCreatePayload {
   name: string;
   project_name: string;
@@ -47,32 +44,26 @@ export interface CodingContainerCreatePayload {
   volume_mount_path: string;
   bootstrap_source?: CloudVfsBundle;
 }
-
 export interface CodingContainerSessionBuildInput {
   request: RequestCodingAgentContainerRequest;
   createPayload: CodingContainerCreatePayload;
   upstreamData: Record<string, unknown>;
   now?: Date;
 }
-
 export interface CodingContainerPromotionBuildOptions {
   id?: string;
   now?: Date;
 }
-
 export interface CodingContainerSyncBuildOptions {
   id?: string;
   now?: Date;
 }
-
 const DEFAULT_CPU = 1792;
 const DEFAULT_MEMORY_MB = 1792;
 const DEFAULT_VOLUME_SIZE_GB = 10;
-
 function trimOptional(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function slugify(value: string | undefined, fallback: string): string {
   const slug =
     value
@@ -82,11 +73,9 @@ function slugify(value: string | undefined, fallback: string): string {
       .slice(0, 48) ?? "";
   return slug || fallback;
 }
-
 function randomId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID()}`;
 }
-
 function sourceSlug(request: RequestCodingAgentContainerRequest): string {
   const source = request.source;
   return slugify(
@@ -94,7 +83,6 @@ function sourceSlug(request: RequestCodingAgentContainerRequest): string {
     "workspace",
   );
 }
-
 export function resolveCodingWorkspacePath(
   request: RequestCodingAgentContainerRequest,
   fallbackId = "workspace",
@@ -105,7 +93,6 @@ export function resolveCodingWorkspacePath(
     fallback,
   );
 }
-
 function normalizeContainerPath(value: string, fallback: string): string {
   const trimmed = value.trim();
   if (!trimmed.startsWith("/") || trimmed.includes("\0")) return fallback;
@@ -123,7 +110,6 @@ function normalizeContainerPath(value: string, fallback: string): string {
   }
   return normalized;
 }
-
 export function buildCodingContainerCreatePayload(
   request: RequestCodingAgentContainerRequest,
 ): CodingContainerCreatePayload {
@@ -138,7 +124,6 @@ export function buildCodingContainerCreatePayload(
     containersEnv.defaultAgentImage();
   const prompt = trimOptional(request.prompt);
   const promotionId = trimOptional(request.promotionId);
-
   const environmentVars: Record<string, string> = {
     ...(request.container?.environmentVars ?? {}),
     ELIZA_CLOUD_CODING_CONTAINER: "true",
@@ -146,7 +131,6 @@ export function buildCodingContainerCreatePayload(
     ELIZA_CLOUD_CODING_AGENT: request.agent,
     ELIZA_CODING_WORKSPACE: workspacePath,
   };
-
   if (promotionId) environmentVars.ELIZA_CODING_PROMOTION_ID = promotionId;
   if (prompt) environmentVars.ELIZA_CODING_PROMPT = prompt;
   if (request.source?.sourceKind)
@@ -159,7 +143,6 @@ export function buildCodingContainerCreatePayload(
     environmentVars.ELIZA_CODING_SOURCE_SNAPSHOT_ID = request.source.snapshotId;
   if (request.source?.revision)
     environmentVars.ELIZA_CODING_SOURCE_REVISION = request.source.revision;
-
   return {
     name: slugify(request.container?.name, `coding-${request.agent}`),
     project_name: projectName,
@@ -180,7 +163,6 @@ export function buildCodingContainerCreatePayload(
     ...(request.source?.files?.length ? { bootstrap_source: request.source } : {}),
   };
 }
-
 /**
  * Returns true when `image` is permitted by the coding-container allowlist.
  *
@@ -207,7 +189,6 @@ export function isCodingContainerImageAllowed(
   const normalizedImage = image.trim().toLowerCase();
   if (!normalizedImage) return false;
   if (allowlist.length === 0) return false; // fail-closed
-
   for (const rawEntry of allowlist) {
     const entry = rawEntry.trim().toLowerCase();
     if (!entry) continue;
@@ -221,7 +202,6 @@ export function isCodingContainerImageAllowed(
   }
   return false;
 }
-
 /**
  * Returns true when `image` must be REJECTED because the digest-pin gate is
  * armed (`requireDigest`) but `image` is not pinned to a full `sha256:<64hex>`
@@ -239,7 +219,6 @@ export function isCodingContainerImageAllowed(
 export function imageRequiresDigestPin(image: string, requireDigest: boolean): boolean {
   return requireDigest && !describeImageReference(image).productionSafe;
 }
-
 function readString(data: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = data[key];
@@ -247,7 +226,6 @@ function readString(data: Record<string, unknown>, keys: string[]): string | und
   }
   return undefined;
 }
-
 function normalizeStatus(value: unknown): CloudCodingContainerStatus {
   if (value === "running" || value === "building" || value === "failed" || value === "stopped") {
     return value;
@@ -255,7 +233,6 @@ function normalizeStatus(value: unknown): CloudCodingContainerStatus {
   if (value === "pending" || value === "deploying") return "pending";
   return "requested";
 }
-
 export function buildCodingContainerSessionResponse({
   request,
   createPayload,
@@ -266,7 +243,6 @@ export function buildCodingContainerSessionResponse({
   if (!containerId) {
     throw new Error("Container control plane response did not include a container id");
   }
-
   return {
     containerId,
     status: normalizeStatus(upstreamData.status),
@@ -284,7 +260,6 @@ export function buildCodingContainerSessionResponse({
     },
   };
 }
-
 export function buildCodingPromotionResponse(
   request: PromoteVfsToCloudContainerRequest,
   options: CodingContainerPromotionBuildOptions = {},
@@ -296,7 +271,6 @@ export function buildCodingPromotionResponse(
     trimOptional(request.target?.workspacePath) ??
     trimOptional(request.source.rootPath) ??
     `/workspace/${slugify(sourceName, promotionId)}`;
-
   return {
     promotionId,
     status: "accepted",
@@ -310,7 +284,6 @@ export function buildCodingPromotionResponse(
     },
   };
 }
-
 export function buildCodingSyncResponse(
   containerId: string,
   request: SyncCloudCodingContainerRequest,

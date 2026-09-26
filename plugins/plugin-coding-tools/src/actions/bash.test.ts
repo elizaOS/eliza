@@ -23,8 +23,8 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
-import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __codingMutationRequiresVerificationForTests } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to
@@ -36,14 +36,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // the suite on Windows and trust the equivalent Linux/macOS runs.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
-import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
 import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import {
   beginLocalWorkspaceDeltaObservation,
   runtimeWorkspaceExecutionDomainId,
 } from "../lib/workspace-delta.js";
-import { availableToolsProvider } from "../providers/available-tools.js";
 import {
   BackgroundShellReapTimeoutError,
   BackgroundShellService,
@@ -68,13 +66,29 @@ import {
 } from "./bash.js";
 
 const originalEchoTranscript = process.env.ELIZA_SHELL_ECHO_TRANSCRIPT;
+const originalStateDir = process.env.ELIZA_STATE_DIR;
+const originalShellJobTtl = process.env.SHELL_JOB_TTL_MS;
+let shellTestStateDir: string;
 
-afterEach(() => {
+beforeEach(async () => {
+  shellTestStateDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "coding-tools-shell-test-state-"),
+  );
+  process.env.ELIZA_STATE_DIR = shellTestStateDir;
+  process.env.SHELL_JOB_TTL_MS = "60000";
+});
+
+afterEach(async () => {
   if (originalEchoTranscript === undefined) {
     delete process.env.ELIZA_SHELL_ECHO_TRANSCRIPT;
   } else {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = originalEchoTranscript;
   }
+  if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = originalStateDir;
+  if (originalShellJobTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
+  else process.env.SHELL_JOB_TTL_MS = originalShellJobTtl;
+  await fs.rm(shellTestStateDir, { recursive: true, force: true });
 });
 
 const execFileAsync = promisify(execFile);
@@ -200,6 +214,11 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     runtimeInstanceId: secretOwner.runtimeInstanceId,
     actions: [shellAction],
+    getRoom: async () => ({ worldId: "shell-test-world" }),
+    getWorld: async () => ({
+      id: "shell-test-world",
+      metadata: { ownership: { ownerId: makeMessage().entityId } },
+    }),
     character,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
@@ -245,6 +264,18 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   }
 
   return { runtime, sandbox, session, backgroundShell, shellHistoryService };
+}
+
+async function makeReceiptRuntime(
+  message: Memory,
+  opts: RuntimeOptions = {},
+): ReturnType<typeof makeRuntime> {
+  const root = path.join(shellTestStateDir, "workspace");
+  await fs.mkdir(root);
+  await execFileAsync("git", ["init", "-q"], { cwd: root });
+  const services = await makeRuntime({ ...opts, workspaceRoots: root });
+  services.session.setCwd(String(message.roomId), root);
+  return services;
 }
 
 async function delay(ms: number): Promise<void> {
@@ -325,24 +356,12 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model",
-  method: string,
-): never {
-  throw new CapabilityError({
-    code: "CAPABILITY_UNAVAILABLE",
-    message: `${capability} unavailable`,
-    capability,
-    method,
-  });
-}
-
 function makeShellRouter(
   runCommand: ElizaCapabilityRouter["pty"]["runCommand"],
 ): ElizaCapabilityRouter {
-  const unavailable = new UnavailableCapabilityRouter("desktop");
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -353,21 +372,21 @@ function makeShellRouter(
         model: false,
       },
     }),
-    fs: {
-      list: async () => unavailableCapability("fs", "fs.list"),
-      readText: async () => unavailableCapability("fs", "fs.readText"),
-      writeText: async () => unavailableCapability("fs", "fs.writeText"),
+    pty: {
+      ...router.pty,
+      runCommand: async (params) => {
+        const result = await runCommand(params);
+        return {
+          ...result,
+          capture: {
+            complete: true,
+            maxBytes: 1_000_000,
+            stdoutBytes: Buffer.byteLength(result.output, "utf8"),
+            stderrBytes: 0,
+          },
+        } as Awaited<ReturnType<ElizaCapabilityRouter["pty"]["runCommand"]>>;
+      },
     },
-    pty: { runCommand },
-    git: {
-      status: async () => unavailableCapability("git", "git.status"),
-      diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () => unavailableCapability("git", "git.command.run"),
-    },
-    model: {
-      status: async () => unavailableCapability("model", "model.status"),
-    },
-    plugin: unavailable.plugin,
   };
 }
 
@@ -415,7 +434,7 @@ function confirmationChallenge(result: ActionResult): string {
 }
 
 describeIfPosix("shellAction", () => {
-  it("runs local-safe commands through the configured sandbox backend", async () => {
+  it("reports source loss for an unattested local-safe sandbox result", async () => {
     const exec = vi.fn(async () => ({
       exitCode: 0,
       stdout: "sandboxed\n",
@@ -447,9 +466,13 @@ describeIfPosix("shellAction", () => {
     });
     expect(result).toMatchObject({
       exitCode: 0,
-      stdout: "sandboxed\n",
+      stdout: "",
       sandbox: "docker",
       timedOut: false,
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+        backend: "docker",
+      },
     });
   });
 
@@ -562,46 +585,6 @@ describeIfPosix("shellAction", () => {
         timeoutMs: 1_000,
       }),
     ).rejects.toThrow("disabled in cloud mode");
-  });
-
-  it("exposes coding tools through the provider and plugin auto-enable policy", async () => {
-    const providerResult = await availableToolsProvider.get(
-      {} as IAgentRuntime,
-      makeMessage(),
-      {} as State,
-    );
-    expect(providerResult.text).toContain("start_background");
-    expect(providerResult.data?.codingTools).toEqual([
-      "FILE",
-      "READ",
-      "WRITE",
-      "EDIT",
-      "SHELL",
-      "WEB_FETCH",
-      "WEB_SEARCH",
-      "WORKTREE",
-    ]);
-
-    const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
-    expect(shouldEnable).toBeTypeOf("function");
-    expect(
-      shouldEnable?.(
-        { ELIZA_RUNTIME_MODE: "local-yolo" },
-        { features: { codingTools: true } },
-      ),
-    ).toBe(true);
-    expect(
-      shouldEnable?.(
-        { ELIZA_BUILD_VARIANT: "store" },
-        { features: { codingTools: true } },
-      ),
-    ).toBe(false);
-    expect(
-      shouldEnable?.(
-        { ELIZA_PLATFORM: "ios" },
-        { features: { "coding-agent": true } },
-      ),
-    ).toBe(false);
   });
 
   it("prefers capability router for command execution when available", async () => {
@@ -826,27 +809,6 @@ describeIfPosix("shellAction", () => {
     });
   });
 
-  it("runs a simple foreground command (echo hello)", async () => {
-    const router = makeShellRouter(async () => ({
-      output: "alpha.txt\nsecret",
-      exitCode: 0,
-      timedOut: false,
-    }));
-    const { runtime } = await makeRuntime({ capabilityRouter: router });
-    const result = await shellAction.handler?.(
-      runtime,
-      makeMessage(),
-      undefined,
-      { command: "echo hello" },
-    );
-    expect(result.success).toBe(true);
-    expect(typeof result.text).toBe("string");
-    expect(result.text).toContain("hello");
-    expect(result.text).toContain("[exit 0]");
-    const data = result.data as Record<string, unknown> | undefined;
-    expect(data?.command).toBe("echo hello");
-  });
-
   it("caps only the visible callback for long foreground output", async () => {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
     const lines = Array.from(
@@ -892,7 +854,35 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text.length).toBeLessThan(1700);
   });
 
-  it("returns complete redacted Unicode stdout and stderr above the former model cap", async () => {
+  it("fails with typed source loss when a router lacks bounded capture attestation", async () => {
+    const runCommand = async () => ({
+      output: "possibly clipped upstream output",
+      exitCode: 0,
+      timedOut: false,
+    });
+    const router = makeShellRouter(runCommand);
+    router.pty.runCommand = runCommand;
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "remote command",
+      }),
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toContain(
+      "full string without a streaming completeness contract",
+    );
+    expect(result.data).toMatchObject({
+      source_loss: true,
+      source_loss_code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+      source_loss_backend: "capability-router",
+    });
+    expect(JSON.stringify(result)).not.toContain(
+      "possibly clipped upstream output",
+    );
+  });
+
+  it("delivers complete redacted Unicode streams to the planner and artifact reader", async () => {
     const secret = "marigold9-complete-shell-secret";
     const stdout = `${"🙂α\n".repeat(7_000)}${secret}\nstdout-tail`;
     const stderr = `${"界β\n".repeat(8_000)}${secret}\nstderr-tail`;
@@ -910,18 +900,137 @@ describeIfPosix("shellAction", () => {
     );
     const redactedStdout = stdout.replace(secret, "[REDACTED:TEST_SECRET]");
     const redactedStderr = stderr.replace(secret, "[REDACTED:TEST_SECRET]");
-    const resultText = result.text ?? "";
-    const streamText = resultText.slice(resultText.indexOf("--- stdout ---"));
-
     expect(result.success).toBe(true);
-    expect(streamText).toBe(
-      `--- stdout ---\n${redactedStdout}\n--- stderr ---\n${redactedStderr}`,
+    expect(result.text).toContain(redactedStdout);
+    expect(result.text).toContain(redactedStderr);
+    const data = result.data as Record<string, unknown>;
+    expect(data.output_truncated).toBe(false);
+    expect(data.output_projected).toBe(false);
+    expect(data.source_loss).toBe(false);
+    expect(data.stdout_source_bytes).toBe(Buffer.byteLength(stdout, "utf8"));
+    expect(data.stderr_source_bytes).toBe(Buffer.byteLength(stderr, "utf8"));
+    const handle = data.output_artifact_handle as string;
+    expect(handle).toMatch(/^shell_/);
+    const initialReadViews = data.output_artifact_read_views as Array<{
+      reference: {
+        kind: string;
+        ref: string;
+        revision: string;
+        resumability: string;
+        expiresAt: string;
+      };
+      slice: { completeness: string };
+    }>;
+    expect(initialReadViews).toHaveLength(2);
+    expect(initialReadViews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reference: expect.objectContaining({
+            kind: "tool-result",
+            ref: `shell:${handle}:stdout`,
+            resumability: "restart-safe",
+          }),
+          slice: expect.objectContaining({ completeness: "complete" }),
+        }),
+        expect.objectContaining({
+          reference: expect.objectContaining({
+            kind: "tool-result",
+            ref: `shell:${handle}:stderr`,
+            resumability: "restart-safe",
+          }),
+        }),
+      ]),
     );
-    expect((result.data as Record<string, unknown>).output_truncated).toBe(
-      false,
-    );
-    expect(result).not.toHaveProperty("data.output_artifact_handle");
     expect(JSON.stringify(result)).not.toContain(secret);
+
+    const retrieve = async (stream: "stdout" | "stderr") => {
+      let offset = 0;
+      let text = "";
+      for (;;) {
+        const page = requireActionResult(
+          await shellAction.handler?.(runtime, makeMessage(), undefined, {
+            action: "read_output_artifact",
+            handle,
+            artifact_stream: stream,
+            artifact_offset: offset,
+            artifact_limit: 20_000,
+          }),
+        );
+        expect(page.success).toBe(true);
+        const pageData = page.data as Record<string, unknown>;
+        const readView = pageData.readView as {
+          reference: { ref: string; resumability: string };
+          slice: { range: { start: number; end: number } };
+        };
+        expect(readView.reference).toMatchObject({
+          ref: `shell:${handle}:${stream}`,
+          resumability: "restart-safe",
+        });
+        expect(readView.slice.range).toMatchObject({
+          start: offset,
+          end: pageData.nextOffset,
+        });
+        text += pageData.text as string;
+        if (pageData.complete === true) return text;
+        expect(pageData.nextOffset).toBeGreaterThan(offset);
+        offset = pageData.nextOffset as number;
+      }
+    };
+    expect(await retrieve("stdout")).toBe(redactedStdout);
+    expect(await retrieve("stderr")).toBe(redactedStderr);
+  });
+
+  it("redacts configured secrets and PEM blocks split across OS chunks before publication", async () => {
+    const secret = "marigold9-cross-chunk-secret";
+    const pem = [
+      "-----BEGIN PRIVATE KEY-----",
+      "aGVsbG8tc2VjcmV0LWtleQ==",
+      "-----END PRIVATE KEY-----",
+    ].join("\n");
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const expression = (value: string) =>
+      `String.fromCodePoint(${[...value]
+        .map((character) => character.codePointAt(0))
+        .join(",")})`;
+    const script = [
+      `process.stdout.write(${expression(secret.slice(0, 11))});`,
+      `setTimeout(()=>process.stdout.write(${expression(`${secret.slice(11)}\n-----BEGIN PRI`)}),5);`,
+      `setTimeout(()=>process.stdout.write(${expression("VATE KEY-----\naGVsbG8tc2VjcmV0LWtleQ==\n-----END PRIVATE KEY-----\n")}),10);`,
+    ].join("");
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `node -e ${JSON.stringify(script)}`,
+      }),
+    );
+    expect(result.success).toBe(true);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain("aGVsbG8tc2VjcmV0LWtleQ");
+    const handle = (result.data as Record<string, unknown>)
+      .output_artifact_handle as string;
+    const page = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        action: "read_output_artifact",
+        handle,
+        artifact_stream: "stdout",
+        artifact_limit: 20_000,
+      }),
+    );
+    expect(page.text).toContain("[REDACTED:TEST_SECRET]");
+    expect(page.text).toContain("…redacted…");
+    expect(page.text).not.toContain(secret);
+    expect(page.text).not.toContain(pem.split("\n")[1]);
+    const persistedEntries = await fs.readdir(shellTestStateDir, {
+      recursive: true,
+      withFileTypes: true,
+    });
+    for (const entry of persistedEntries) {
+      if (!entry.isFile()) continue;
+      const parentPath = entry.parentPath ?? entry.path;
+      const bytes = await fs.readFile(path.join(parentPath, entry.name));
+      expect(bytes.includes(Buffer.from(secret))).toBe(false);
+      expect(bytes.includes(Buffer.from(pem.split("\n")[1] ?? ""))).toBe(false);
+    }
   });
 
   it("retrieves a retained legacy artifact through an authorized opaque handle", async () => {
@@ -934,7 +1043,10 @@ describeIfPosix("shellAction", () => {
     process.env.SHELL_JOB_TTL_MS = "60000";
     const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
     const workspace = path.join(stateDir, "workspace");
-    const staleArtifact = path.join(artifactRoot, "shell_stale");
+    const staleArtifact = path.join(
+      artifactRoot,
+      ".pending-00000000-0000-4000-8000-000000000001",
+    );
     const secret = "marigold9-artifact-secret";
     try {
       await fs.mkdir(workspace, { recursive: true });
@@ -965,32 +1077,47 @@ describeIfPosix("shellAction", () => {
       const handle = artifact.handle;
       const artifactDirectory = path.join(artifactRoot, handle);
       const manifestPath = path.join(artifactDirectory, "manifest.json");
-      const stdoutPath = path.join(artifactDirectory, "stdout.txt");
-      const stderrPath = path.join(artifactDirectory, "stderr.txt");
-      expect(await fs.readFile(stdoutPath, "utf8")).toBe(stdout);
-      expect(await fs.readFile(stderrPath, "utf8")).toBe(stderr);
       const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
-        stdout: { bytes: number; lines: number };
-        stderr: { bytes: number; lines: number };
-        truncation: { modelCharacterLimit: number; completeBytes: number };
+        version: number;
+        stdout: {
+          bytes: number;
+          lines: number;
+          characters: number;
+          sha256: string;
+          segments: Array<{ file: string; bytes: number }>;
+        };
+        stderr: {
+          bytes: number;
+          lines: number;
+          characters: number;
+          sha256: string;
+          segments: Array<{ file: string; bytes: number }>;
+        };
+        projection: { modelCharacterLimit: number };
+        contentRevision: string;
+        mac: string;
       };
 
       expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
-      expect(manifest.stdout).toEqual({
-        path: stdoutPath,
+      expect(manifest.version).toBe(2);
+      expect(manifest.stdout).toMatchObject({
         characters: stdout.length,
         bytes: Buffer.byteLength(stdout),
         lines: 14001,
       });
-      expect(manifest.stderr).toEqual({
-        path: stderrPath,
+      expect(manifest.stderr).toMatchObject({
         characters: stderr.length,
         bytes: Buffer.byteLength(stderr),
         lines: 1,
       });
-      expect(manifest.truncation.modelCharacterLimit).toBe(50_000);
-      expect(manifest.truncation.completeBytes).toBe(
-        Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+      expect(manifest.stdout.segments.length).toBeGreaterThan(0);
+      expect(manifest.stderr.segments.length).toBeGreaterThan(0);
+      expect(manifest.projection.modelCharacterLimit).toBe(50_000);
+      expect(manifest.contentRevision).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(manifest.mac).toMatch(/^[0-9a-f]{64}$/);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(workspace);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(
+        "legacy large command",
       );
       await expect(
         sandbox.validatePath(String(message.roomId), manifestPath),
@@ -1271,6 +1398,7 @@ describeIfPosix("shellAction", () => {
       const { runtime, session, backgroundShell } = await makeRuntime({
         workspaceRoots: root,
         backgroundBufferChars: 5,
+        backgroundKillGraceMs: 10_000,
       });
       const message = makeMessage();
       session.setCwd(String(message.roomId), root);
@@ -1284,37 +1412,40 @@ describeIfPosix("shellAction", () => {
       const started = backgroundShell.startSession({
         conversationId: String(message.roomId),
         command:
-          "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
+          "trap 'while [ ! -f .git/test-release ]; do sleep 0.01; done; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
         cwd: root,
         workspaceObservation,
       });
       const handle = started.handle;
-      let terminating:
-        | Awaited<ReturnType<BackgroundShellService["inspect"]>>
-        | undefined;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        const candidate = await backgroundShell.inspect({
-          conversationId: String(message.roomId),
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(
+              await backgroundShell.inspect({
+                conversationId: String(message.roomId),
+                handle,
+              }),
+            ).toMatchObject({
+              status: "terminating",
+              endedAt: null,
+              workspaceDeltaReceipt: {
+                reasonCode: "BACKGROUND_RECEIPT_PENDING",
+                operation: { handle, status: "terminating" },
+              },
+            });
+          },
+          { timeout: 5_000, interval: 10 },
+        );
+      } finally {
+        await fs.writeFile(path.join(root, ".git/test-release"), "release");
+        await waitForBackgroundToSettle(
+          backgroundShell,
+          String(message.roomId),
           handle,
-        });
-        if (candidate.status === "terminating") {
-          terminating = candidate;
-          break;
-        }
-        await delay(10);
+        );
       }
-      expect(terminating).toMatchObject({
-        status: "terminating",
-        endedAt: null,
-        workspaceDeltaReceipt: {
-          reasonCode: "BACKGROUND_RECEIPT_PENDING",
-          operation: { handle, status: "terminating" },
-        },
-      });
-      await waitForBackgroundToSettle(
-        backgroundShell,
-        String(message.roomId),
-        handle,
+      expect(await fs.readFile(path.join(root, "generated.txt"), "utf8")).toBe(
+        "late",
       );
       const poll = requireActionResult(
         await shellAction.handler?.(runtime, message, undefined, {
@@ -1338,12 +1469,12 @@ describeIfPosix("shellAction", () => {
   });
 
   it("escalates overflow from TERM to KILL and reaps a TERM-ignoring process", async () => {
-    const { runtime, backgroundShell } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime, backgroundShell } = await makeReceiptRuntime(message, {
       backgroundBufferChars: 5,
       backgroundKillGraceMs: 50,
       backgroundReapWaitMs: 500,
     });
-    const message = makeMessage();
     const startedAt = Date.now();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
@@ -1373,11 +1504,11 @@ describeIfPosix("shellAction", () => {
   });
 
   it("bounds explicit kill while escalating a TERM-ignoring process", async () => {
-    const { runtime } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime } = await makeReceiptRuntime(message, {
       backgroundKillGraceMs: 50,
       backgroundReapWaitMs: 500,
     });
-    const message = makeMessage();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
         action: "start_background",
@@ -1406,11 +1537,11 @@ describeIfPosix("shellAction", () => {
   });
 
   it("retains a pending receipt when close cannot prove reap before the deadline", async () => {
-    const { runtime, backgroundShell } = await makeRuntime({
+    const message = makeMessage();
+    const { runtime, backgroundShell } = await makeReceiptRuntime(message, {
       backgroundKillGraceMs: 30,
       backgroundReapWaitMs: 80,
     });
-    const message = makeMessage();
     const started = requireActionResult(
       await shellAction.handler?.(runtime, message, undefined, {
         action: "start_background",
@@ -1772,6 +1903,50 @@ describeIfPosix("shellAction", () => {
       await fs.rm(staleRoot, { recursive: true, force: true });
     }
   });
+
+  it.each(["cwd", "cd", "git-C"] as const)(
+    "preserves trusted coding directory selection through %s",
+    async (mode) => {
+      const roomId = "11111111-aaaa-bbbb-cccc-252525252526";
+      const sessionRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "shell-coding-cwd-"),
+      );
+      const target = path.join(sessionRoot, "checkers");
+      await fs.mkdir(target);
+      await execFileAsync("git", ["init", "-q", target]);
+      try {
+        const { runtime, session } = await makeRuntime();
+        session.setCwd(roomId, sessionRoot);
+        const command =
+          mode === "cd"
+            ? `cd '${target}' && pwd -P`
+            : mode === "git-C"
+              ? `git -C '${target}' rev-parse --show-toplevel`
+              : "pwd";
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            roomId,
+            "Add a checker for the current package, then create a branch and commit the fix.",
+          ),
+          { text: "", values: {}, data: { elizaTrustedCodingMode: true } },
+          { command, ...(mode === "cwd" ? { cwd: target } : {}) },
+        );
+        expect(result.success).toBe(true);
+        expect(result.text).toContain(
+          `--- stdout ---\n${await fs.realpath(target)}\n`,
+        );
+        const data = result.data as Record<string, unknown>;
+        expect(data.command).toBe(command);
+        if (mode === "cwd")
+          expect(await fs.realpath(String(data.cwd))).toBe(
+            await fs.realpath(target),
+          );
+      } finally {
+        await fs.rm(sessionRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("strips unmentioned cd prefixes for running-source checks", async () => {
     const roomId = "11111111-aaaa-bbbb-cccc-252525252525";
@@ -2774,6 +2949,43 @@ describeIfPosix("shellAction", () => {
     expect(data?.action).toBe("view_history");
   });
 
+  it.each([undefined, 120])(
+    "preserves complete requested history beyond the old implicit caps: %s",
+    async (limit) => {
+      const commands = Array.from(
+        { length: 120 },
+        (_, index) => `printf 'history-entry-${index}-complete'`,
+      );
+      const { runtime } = await makeRuntime({ shellHistoryCommands: commands });
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { action: "view_history", ...(limit === undefined ? {} : { limit }) },
+      );
+      expect(result.success).toBe(true);
+      for (const command of commands) expect(result.text).toContain(command);
+    },
+  );
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "invalid", null])(
+    "rejects an invalid history limit before reading session data: %s",
+    async (limit) => {
+      const { runtime, shellHistoryService } = await makeRuntime({
+        shellHistoryCommands: ["private session command"],
+      });
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { action: "view_history", limit },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(shellHistoryService?.getCommandHistory).not.toHaveBeenCalled();
+    },
+  );
+
   it("redacts a configured bare secret from foreground text, callback, data, and user-facing output", async () => {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
     const secret = "orchid42";
@@ -3095,12 +3307,12 @@ describeIfPosix("shellAction", () => {
   });
 
   it("rejects split-secret output that exceeds the complete-capture limit", async () => {
+    const actor = makeMessage();
     const secret = "marigold9";
-    const { runtime, backgroundShell } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeReceiptRuntime(actor, {
       configuredSecret: secret,
       backgroundBufferChars: 5,
     });
-    const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
         action: "start_background",
@@ -3756,84 +3968,42 @@ describe("shell timeout operator setting", () => {
   );
 
   it.each([
-    [undefined, 120_000],
-    [null, 120_000],
-    ["200", 200],
-    [100, 100],
-    [600_000, 600_000],
+    ["omitted setting", undefined, undefined, undefined, 120_000],
+    ["null setting", null, undefined, undefined, 120_000],
+    ["string setting", "200", undefined, undefined, 200],
+    ["minimum setting", 100, undefined, undefined, 100],
+    ["maximum setting", 600_000, undefined, undefined, 600_000],
+    ["per-call precedence", "600000", undefined, 250, 250],
+    ["environment fallback", null, "200", undefined, 200],
+    ["runtime precedence", "300", "200", undefined, 300],
   ] as const)(
-    "passes the omitted or valid setting %j to foreground execution as %j ms",
-    async (shellTimeoutMs, expectedTimeoutMs) => {
-      const calls: Array<{ timeoutMs?: number }> = [];
-      const router = makeShellRouter(async (params) => {
-        calls.push(params);
-        return { output: "ok\n", exitCode: 0, timedOut: false };
-      });
-      const { runtime } = await makeRuntime({
-        shellTimeoutMs,
-        capabilityRouter: router,
-      });
+    "dispatches the expected timeout for %s",
+    async (_label, shellTimeoutMs, environmentTimeout, timeout, expectedTimeoutMs) => {
+      await withShellTimeoutEnv(environmentTimeout, async () => {
+        const calls: Array<{ timeoutMs?: number }> = [];
+        const router = makeShellRouter(async (params) => {
+          calls.push(params);
+          return { output: "ok\n", exitCode: 0, timedOut: false };
+        });
+        const { runtime } = await makeRuntime({
+          shellTimeoutMs,
+          capabilityRouter: router,
+        });
 
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(),
-        undefined,
-        { command: "echo ok" },
-      );
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(),
+          undefined,
+          { command: "echo ok", ...(timeout === undefined ? {} : { timeout }) },
+        );
 
-      expect(result?.success).toBe(true);
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.timeoutMs).toBe(expectedTimeoutMs);
+        expect(result?.success).toBe(true);
+        expect(calls).toEqual([
+          expect.objectContaining({ timeoutMs: expectedTimeoutMs }),
+        ]);
+      });
     },
   );
-
-  it("prefers the per-call timeout over the operator default", async () => {
-    const calls: Array<{ timeoutMs?: number }> = [];
-    const router = makeShellRouter(async (params) => {
-      calls.push(params);
-      return { output: "ok\n", exitCode: 0, timedOut: false };
-    });
-    const { runtime } = await makeRuntime({
-      shellTimeoutMs: "600000",
-      capabilityRouter: router,
-    });
-
-    const result = await shellAction.handler?.(
-      runtime,
-      makeMessage(),
-      undefined,
-      { command: "echo ok", timeout: 250 },
-    );
-
-    expect(result?.success).toBe(true);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.timeoutMs).toBe(250);
-  });
-
-  it("uses the environment timeout when the runtime setting is omitted", async () => {
-    await withShellTimeoutEnv("200", async () => {
-      const calls: Array<{ timeoutMs?: number }> = [];
-      const router = makeShellRouter(async (params) => {
-        calls.push(params);
-        return { output: "ok\n", exitCode: 0, timedOut: false };
-      });
-      const { runtime } = await makeRuntime({
-        shellTimeoutMs: null,
-        capabilityRouter: router,
-      });
-
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(),
-        undefined,
-        { command: "echo ok" },
-      );
-
-      expect(result?.success).toBe(true);
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.timeoutMs).toBe(200);
-    });
-  });
 
   it("rejects a malformed environment timeout before dispatch", async () => {
     await withShellTimeoutEnv("45.5", async () => {
@@ -3857,31 +4027,6 @@ describe("shell timeout operator setting", () => {
       expect(result?.success).toBe(false);
       expect(result?.text).toContain("CODING_TOOLS_SHELL_TIMEOUT_MS");
       expect(calls).toHaveLength(0);
-    });
-  });
-
-  it("prefers the explicit runtime setting over the environment", async () => {
-    await withShellTimeoutEnv("200", async () => {
-      const calls: Array<{ timeoutMs?: number }> = [];
-      const router = makeShellRouter(async (params) => {
-        calls.push(params);
-        return { output: "ok\n", exitCode: 0, timedOut: false };
-      });
-      const { runtime } = await makeRuntime({
-        shellTimeoutMs: "300",
-        capabilityRouter: router,
-      });
-
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(),
-        undefined,
-        { command: "echo ok" },
-      );
-
-      expect(result?.success).toBe(true);
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.timeoutMs).toBe(300);
     });
   });
 

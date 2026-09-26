@@ -98,7 +98,7 @@ export const SplitLayout: Story = {
 export const EmptyFrame: Story = {
   args: {
     children: (
-      <PagePanelContentArea className="flex items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
+      <PagePanelContentArea className="flex items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-strong">
         Nothing here yet
       </PagePanelContentArea>
     ),

@@ -15,7 +15,7 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getProviders() {
       return Promise.resolve({
@@ -44,6 +44,7 @@ vi.mock("../../../shell/steward-url", () => ({
 }));
 
 vi.mock("../../../shell/steward-config", () => ({
+  configuredStewardApiUrlOverride: () => null,
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));

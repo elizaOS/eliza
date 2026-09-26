@@ -29,6 +29,9 @@ describe("BrowserSurfaceWeb", () => {
 
   it("rejects every surface method as unavailable", async () => {
     await expect(
+      web.openBrowser({ url: "https://example.com" }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(
       web.setBounds({
         ...identity,
         id: "a",
@@ -61,6 +64,12 @@ describe("BrowserSurfaceWeb", () => {
       web.navigate({ ...identity, id: "a", url: "https://example.com" }),
     ).rejects.toThrow(/native-only/i);
     await expect(web.reloadSurface({ ...identity, id: "a" })).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(web.goBack({ ...identity, id: "a" })).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(web.readPage({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
     await expect(web.presentSurface({ ...identity, id: "a" })).rejects.toThrow(

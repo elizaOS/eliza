@@ -6,7 +6,7 @@
  * examples accepted by the character API.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
 import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
 
 /**
@@ -15,7 +15,6 @@ import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
  * brought their own persona and the seed must not compete with it.
  */
 const PERSONA_KEYS = ["system", "prompt", "bio"] as const;
-
 /**
  * Stock bios shipped by older clients. These exact fingerprints are safe to
  * upgrade during create; any user edit, even a one-line change, remains a
@@ -34,13 +33,11 @@ const LEGACY_DEFAULT_BIOS: readonly (readonly string[])[] = [
     "Named after the 1966 original. A fair bit has changed.",
   ],
 ];
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
-
 /**
  * Whether a persona field carries usable content. Mirrors what the readers
  * accept, so a blank string or an all-blank array counts as absent here exactly
@@ -54,11 +51,9 @@ function hasPersonaValue(value: unknown): boolean {
   }
   return false;
 }
-
 function hasPersonaKey(config: Record<string, unknown>): boolean {
   return PERSONA_KEYS.some((key) => hasPersonaValue(config[key]));
 }
-
 /**
  * Whether `agent_config` already describes a character, in either the flat or
  * the nested `{ character: {...} }` shape.
@@ -70,7 +65,6 @@ export function agentConfigHasCharacter(agentConfig?: Record<string, unknown> | 
   const nested = asRecord(config.character);
   return nested ? hasPersonaKey(nested) : false;
 }
-
 /**
  * The shipped default preset ("eliza") projected onto the flat `agent_config`
  * persona keys. Returns a fresh object per call so a stored row never aliases
@@ -95,7 +89,6 @@ export function buildDefaultAgentCharacterConfig(): Record<string, unknown> {
     ...(preset.templates ? { templates: { ...preset.templates } } : {}),
   };
 }
-
 function hasLegacyDefaultBio(config: Record<string, unknown>): boolean {
   const bio = config.bio;
   if (!Array.isArray(bio)) return false;
@@ -104,7 +97,6 @@ function hasLegacyDefaultBio(config: Record<string, unknown>): boolean {
     (known) => bio.length === known.length && bio.every((entry, index) => entry === known[index]),
   );
 }
-
 /**
  * Seed the default persona under a caller's `agent_config`. Caller keys always
  * win, and a config that already carries a persona is returned unchanged, so

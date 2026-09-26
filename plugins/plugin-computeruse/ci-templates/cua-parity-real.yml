@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=8192"
@@ -96,10 +96,6 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts || bun install --ignore-scripts
 
       # ---- REQUIRED: codegen before core build (bun does not run prebuild) ----
-      - name: Generate core i18n keyword data
-        shell: bash
-        run: node packages/shared/scripts/generate-keywords.mjs
-
       # ---- REQUIRED: build core to dist (fixes eliza-source/@opentelemetry ESM) ----
       - name: Build @elizaos/core (Node target)
         shell: bash

@@ -33,6 +33,207 @@ afterEach(() => {
 });
 
 describe("defaultFamilyOperationsAdapter", () => {
+  it("updates only the selected task timing through authenticated transport and surfaces rejection", async () => {
+    let rejected = false;
+    let saved: unknown;
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const req = new Request(input, init);
+        if (
+          req.headers.get("authorization") !==
+          "Bearer family-adapter-test-session"
+        )
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (
+          requestPath(input) !==
+            "/api/lifeops/scheduled-tasks/family%2Fmonthly/edit" ||
+          req.method !== "POST"
+        )
+          return Response.json(
+            { error: "Wrong scheduled task" },
+            { status: 404 },
+          );
+        if (rejected)
+          return Response.json(
+            { error: "Task no longer available" },
+            { status: 409 },
+          );
+        saved = await req.json();
+        return Response.json({ task: saved });
+      },
+    );
+    const input = {
+      taskId: "family/monthly",
+      day: 15,
+      time: "14:35",
+      timezone: "America/New_York",
+    };
+    await defaultFamilyOperationsAdapter.updateMonthlySchedule(input);
+    expect(saved).toEqual({
+      trigger: {
+        kind: "cron",
+        expression: "35 14 15 * *",
+        tz: "America/New_York",
+      },
+    });
+    rejected = true;
+    await expect(
+      defaultFamilyOperationsAdapter.updateMonthlySchedule(input),
+    ).rejects.toThrow("Task no longer available");
+    await expect(
+      defaultFamilyOperationsAdapter.updateMonthlySchedule({
+        ...input,
+        day: 32,
+      }),
+    ).rejects.toThrow("Choose a day");
+    await expect(
+      defaultFamilyOperationsAdapter.updateMonthlySchedule({
+        ...input,
+        time: "25:00",
+      }),
+    ).rejects.toThrow("Choose a day");
+  });
+  it("recovers a prepared agreement review through the authenticated selected API and preserves validation failures", async () => {
+    const review = {
+      artifactId: "artifact/one",
+      outcome: "no_proposals",
+      generatedAt: "2026-09-13T00:00:00Z",
+      explanation: "Synthetic review",
+      obligations: [],
+    };
+    let prepared = false;
+    let unavailable = false;
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (
+          new URL(request.url).origin !== testApiBase ||
+          request.headers.get("authorization") !==
+            "Bearer family-adapter-test-session"
+        )
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (
+          requestPath(input) !== "/api/lifeops/agreements/artifact%2Fone/review"
+        )
+          return Response.json(
+            { error: "Wrong artifact route" },
+            { status: 404 },
+          );
+        if (unavailable)
+          return Response.json(
+            {
+              error: {
+                message: "Citation does not match source pages",
+                code: "AGREEMENT_REVIEW_CITATION_INVALID",
+              },
+            },
+            { status: 422 },
+          );
+        if (request.method === "POST") prepared = true;
+        return Response.json({ review: prepared ? review : null });
+      },
+    );
+    await expect(
+      defaultFamilyOperationsAdapter.readAgreementReview("artifact/one"),
+    ).resolves.toBeNull();
+    await expect(
+      defaultFamilyOperationsAdapter.prepareAgreementReview("artifact/one"),
+    ).resolves.toEqual(review);
+    await expect(
+      defaultFamilyOperationsAdapter.readAgreementReview("artifact/one"),
+    ).resolves.toEqual(review);
+    unavailable = true;
+    await expect(
+      defaultFamilyOperationsAdapter.prepareAgreementReview("artifact/one"),
+    ).rejects.toThrow("Citation does not match source pages");
+  });
+
+  it("sends the owner's selected month instead of letting the server choose next month", async () => {
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+      const request = new Request(new URL(path, "http://localhost"), init);
+      requests.push(request);
+      return Response.json({});
+    });
+    await defaultFamilyOperationsAdapter.generatePacket("2028-02");
+    expect(requests[0].method).toBe("POST");
+    expect(await requests[0].json()).toEqual({ periodKey: "2028-02" });
+  });
+  it("downloads binary exports through authenticated transport and surfaces integrity failures", async () => {
+    const bytes = new Uint8Array([80, 75, 3, 4, 0, 255]);
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        if (
+          new URL(String(input)).origin !== testApiBase ||
+          new Headers(init?.headers).get("authorization") !==
+            "Bearer family-adapter-test-session"
+        )
+          return new Response("Unauthorized", { status: 401 });
+        if (requestPath(input).endsWith("/export") && init?.method === "POST")
+          return new Response(bytes, {
+            headers: { "content-type": "application/zip" },
+          });
+        return new Response(
+          JSON.stringify({
+            error: { message: "Original failed integrity verification" },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
+    const archive = await defaultFamilyOperationsAdapter.downloadAgreement(
+      "artifact-one",
+      "export",
+    );
+    expect(new Uint8Array(await archive.arrayBuffer())).toEqual(bytes);
+    const workspace = await defaultFamilyOperationsAdapter.downloadWorkspace();
+    expect(new Uint8Array(await workspace.arrayBuffer())).toEqual(bytes);
+    await expect(
+      defaultFamilyOperationsAdapter.downloadAgreement(
+        "artifact-one",
+        "original",
+      ),
+    ).rejects.toThrow("Original failed integrity verification");
+  });
+
+  it("rejects a successful HTTP response that is not a workspace archive", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response("{}", { headers: { "content-type": "application/json" } }),
+    );
+    await expect(
+      defaultFamilyOperationsAdapter.downloadWorkspace(),
+    ).rejects.toThrow("The server did not return a workspace archive.");
+  });
+
+  it.each([
+    ["text/html", "<html>Bad gateway</html>", 502],
+    ["text/plain", "Payload too large", 413],
+    ["application/json", "{invalid", 502],
+  ])(
+    "preserves HTTP failures for %s error responses",
+    async (contentType, body, status) => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(body, {
+            status,
+            headers: { "content-type": contentType },
+          }),
+      );
+      await expect(
+        defaultFamilyOperationsAdapter.downloadAgreement(
+          "artifact-one",
+          "export",
+        ),
+      ).rejects.toThrow(`Download failed (${status})`);
+    },
+  );
+
   it("allows provider-backed mutations to complete beyond the ordinary read timeout", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -129,7 +330,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     const snapshot = await defaultFamilyOperationsAdapter.load();
     expect(snapshot.school).toMatchObject({
       status: "ready",
-      data: { state: "never_run" },
+      data: { state: "never_run", monthlySchedule: { status: "unavailable" } },
     });
     expect(snapshot.packets).toEqual({ status: "ready", data: [] });
 
@@ -184,6 +385,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     });
     await defaultFamilyOperationsAdapter.createPacketDraft({
       packetId: "packet/1",
+      expectedPacketVersion: 1,
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "times_only",
@@ -225,6 +427,7 @@ describe("defaultFamilyOperationsAdapter", () => {
       contentIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(JSON.parse(calls[4]?.[1]?.body as string)).toEqual({
+      expectedPacketVersion: 1,
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "times_only",
@@ -376,7 +579,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     expect(sessionStorage.getItem(resumeKey)).toBeNull();
   });
 
-  it("restores the latest draft and approval binding into the packet view", async () => {
+  it("associates drafts and approvals only with their source packet version", async () => {
     const packet = {
       packetId: "packet-1",
       period: {
@@ -387,7 +590,14 @@ describe("defaultFamilyOperationsAdapter", () => {
       },
       version: 1,
       createdAt: "2026-08-30T12:00:00.000Z",
-      sections: [],
+      sections: [
+        {
+          section: "school",
+          state: "contradictory",
+          claimIds: ["a", "b"],
+          contradictoryKeys: ["pickup"],
+        },
+      ],
       claims: [],
     };
     vi.stubGlobal(
@@ -401,10 +611,11 @@ describe("defaultFamilyOperationsAdapter", () => {
             : path.endsWith("/school/status")
               ? { sourceId: "concord", config: null, lastRun: null }
               : {
-                  packets: [packet],
+                  packets: [{ ...packet, version: 2 }, packet],
                   packetStates: [
                     {
                       packetId: "packet-1",
+                      internalVersion: 1,
                       draft: {
                         packetId: "packet-1",
                         internalVersion: 1,
@@ -418,6 +629,7 @@ describe("defaultFamilyOperationsAdapter", () => {
                         transformations: [],
                         createdAt: "2026-08-30T12:01:00.000Z",
                       },
+                      approval: null,
                       approvalId: "approval-1",
                     },
                   ],
@@ -433,8 +645,12 @@ describe("defaultFamilyOperationsAdapter", () => {
     expect(loaded.packets).toMatchObject({
       status: "ready",
       data: [
+        { packetId: "packet-1", version: 2, draft: null },
         {
           packetId: "packet-1",
+          version: 1,
+          sections: packet.sections,
+          status: "contradictory",
           draft: {
             draftVersion: 2,
             recipientEntityId: "guest-1",

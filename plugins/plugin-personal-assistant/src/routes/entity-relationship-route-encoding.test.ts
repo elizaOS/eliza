@@ -41,7 +41,7 @@ const graph = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/plugin-relationships", () => ({
   resolveKnowledgeGraphService: graph.resolve,
 }));
 

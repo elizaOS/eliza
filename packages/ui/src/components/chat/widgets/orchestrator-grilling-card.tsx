@@ -54,7 +54,7 @@ function statusStyle(status: GrillingStatus): StatusStyle {
     default:
       return {
         label: "Reviewing evidence",
-        toneClass: "bg-muted/20 text-muted",
+        toneClass: "bg-muted/20 text-muted-strong",
         icon: <Loader2 className="size-3.5 animate-spin" aria-hidden />,
       };
   }

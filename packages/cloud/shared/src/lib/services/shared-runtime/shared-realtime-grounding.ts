@@ -3,7 +3,7 @@
  * Shared without sending private-state requests to a public search provider.
  */
 
-import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/edge";
+import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
@@ -328,7 +328,7 @@ export function requireTraceableRealtimeSearch(
     result.success === true &&
     data.actionName === "WEB_SEARCH" &&
     normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
-    (data.provider === "parallel" || data.provider === "exa") &&
+    data.provider === "parallel" &&
     typeof receiptObservedAt === "number" &&
     Number.isSafeInteger(receiptObservedAt) &&
     Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&

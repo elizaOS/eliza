@@ -3,13 +3,13 @@
  * Update*, Extension*, Workbench*, Character*, Voice*, Skill*. One
  * slice of the ElizaClient type surface, re-exported through client-types.ts.
  */
-
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
   ViewKind,
 } from "@elizaos/core";
-import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
+import type { MessageExampleContent } from "@elizaos/core/contracts/first-run-options";
 import type { ConfigUiHint } from "../types";
 import type {
   ConversationScope,
@@ -19,6 +19,13 @@ import type {
   TriggerSummary,
 } from "./client-types-core";
 
+export type {
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
 export type {
   CloudCodingAgent,
   CloudCodingContainerSession,
@@ -34,20 +41,24 @@ export type {
   CloudVfsFile,
   CloudVfsFileEncoding,
   CloudVfsSourceKind,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
+} from "@elizaos/core/contracts/cloud-coding-containers";
+export type {
   CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
   CreateLifeOpsBrowserSessionRequest as CreateBrowserBridgeSessionRequest,
-  CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
-  GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   LifeOpsBrowserSession as BrowserBridgeSession,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
   LifeOpsDefinitionRecord,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailReplyDraft,
@@ -55,30 +66,22 @@ export type {
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
-  LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsReminderInspection,
   LifeOpsReminderPlan,
   LifeOpsTaskDefinition,
-  PostWorkbenchVfsPromoteToCloudRequest,
-  PromoteVfsToCloudContainerRequest,
-  PromoteVfsToCloudContainerResponse,
-  RequestCodingAgentContainerRequest,
-  RequestCodingAgentContainerResponse,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-  SyncCloudCodingContainerRequest,
-  SyncCloudCodingContainerResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
+export type { PostWorkbenchVfsPromoteToCloudRequest } from "@elizaos/core/contracts/workbench-routes";
 export type {
-  BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
@@ -86,7 +89,6 @@ export type {
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "./browser-contracts";
-
 export interface SecretInfo {
   key: string;
   description: string;
@@ -95,11 +97,13 @@ export interface SecretInfo {
   required: boolean;
   isSet: boolean;
   maskedValue: string | null;
-  usedBy: Array<{ pluginId: string; pluginName: string; enabled: boolean }>;
+  usedBy: Array<{
+    pluginId: string;
+    pluginName: string;
+    enabled: boolean;
+  }>;
 }
-
 export type { PluginParamDef };
-
 export interface PluginInfo {
   id: string;
   name: string;
@@ -117,8 +121,14 @@ export interface PluginInfo {
     | "feature";
   source: "bundled" | "store";
   parameters: PluginParamDef[];
-  validationErrors: Array<{ field: string; message: string }>;
-  validationWarnings: Array<{ field: string; message: string }>;
+  validationErrors: Array<{
+    field: string;
+    message: string;
+  }>;
+  validationWarnings: Array<{
+    field: string;
+    message: string;
+  }>;
   npmName?: string;
   directory?: string | null;
   registryKind?: string;
@@ -182,7 +192,7 @@ export interface PluginInfo {
   /**
    * App metadata declared by the plugin (`Plugin.app`). Surfaces nav-tab
    * registrations, developer-mode gating, and app-store visibility so the
-   * shell can wire pages dynamically without app-core hard-coding them.
+   * shell can wire pages dynamically without app hard-coding them.
    */
   app?: {
     displayName?: string;
@@ -207,7 +217,6 @@ export interface PluginInfo {
     }>;
   };
 }
-
 export interface CorePluginEntry {
   npmName: string;
   id: string;
@@ -216,19 +225,16 @@ export interface CorePluginEntry {
   loaded: boolean;
   enabled: boolean;
 }
-
 export interface CorePluginsResponse {
   core: CorePluginEntry[];
   optional: CorePluginEntry[];
 }
-
 export interface ConfigSchemaResponse {
   schema: unknown;
   uiHints: Record<string, unknown>;
   version: string;
   generatedAt: string;
 }
-
 /** UI-facing capability toggles persisted under `ui.capabilities`. */
 export interface AppConfigCapabilities {
   wallet?: boolean;
@@ -236,7 +242,6 @@ export interface AppConfigCapabilities {
   computerUse?: boolean;
   [key: string]: unknown;
 }
-
 /** The `ui` sub-object of the agent config that the dashboard reads/writes. */
 export interface AppConfigUi {
   ownerName?: string;
@@ -246,7 +251,6 @@ export interface AppConfigUi {
   capabilities?: AppConfigCapabilities;
   [key: string]: unknown;
 }
-
 /**
  * Response of `GET /api/config`. The underlying agent config is open-ended,
  * so unknown keys remain accessible via the index signature; the fields the
@@ -257,7 +261,6 @@ export interface AppConfigResponse {
   cloud?: Record<string, unknown>;
   [key: string]: unknown;
 }
-
 export interface TriggerEventDispatchResponse {
   ok: boolean;
   eventKind: string;
@@ -273,7 +276,6 @@ export interface TriggerEventDispatchResponse {
     trigger?: TriggerSummary | null;
   }>;
 }
-
 // Software Updates
 export interface UpdateStatus {
   currentVersion: string;
@@ -301,7 +303,6 @@ export interface UpdateStatus {
   lastCheckAt: string | null;
   error: string | null;
 }
-
 // Registry / Plugin Store types
 export interface RegistryPlugin {
   name: string;
@@ -324,7 +325,11 @@ export interface RegistryPlugin {
     v1Branch: string | null;
     v2Branch: string | null;
   };
-  supports: { v0: boolean; v1: boolean; v2: boolean };
+  supports: {
+    v0: boolean;
+    v1: boolean;
+    v2: boolean;
+  };
   installed: boolean;
   installedVersion: string | null;
   loaded: boolean;
@@ -347,7 +352,6 @@ export interface RegistryPlugin {
     note?: string;
   };
 }
-
 export interface RegistrySearchResult {
   name: string;
   description: string;
@@ -355,7 +359,11 @@ export interface RegistrySearchResult {
   tags: string[];
   latestVersion: string | null;
   stars: number;
-  supports: { v0: boolean; v1: boolean; v2: boolean };
+  supports: {
+    v0: boolean;
+    v1: boolean;
+    v2: boolean;
+  };
   repository: string;
   origin?: string;
   support?: string;
@@ -363,7 +371,6 @@ export interface RegistrySearchResult {
   firstParty?: boolean;
   thirdParty?: boolean;
 }
-
 export interface InstalledPlugin {
   name: string;
   version: string;
@@ -374,14 +381,12 @@ export interface InstalledPlugin {
   latestVersion?: string | null;
   betaVersion?: string | null;
 }
-
 export type PluginMutationApplyMode =
   | "none"
   | "config_apply"
   | "plugin_reload"
   | "runtime_reload"
   | "restart_required";
-
 export interface PluginMutationResult {
   ok: boolean;
   pluginName?: string;
@@ -395,11 +400,14 @@ export interface PluginMutationResult {
   message?: string;
   error?: string;
 }
-
 export interface PluginInstallResult {
   ok: boolean;
   pluginName?: string;
-  plugin?: { name: string; version: string; installPath: string };
+  plugin?: {
+    name: string;
+    version: string;
+    installPath: string;
+  };
   applied?: PluginMutationApplyMode;
   requiresRestart?: boolean;
   restartedRuntime?: boolean;
@@ -413,7 +421,6 @@ export interface PluginInstallResult {
   message?: string;
   error?: string;
 }
-
 // Registry plugin (non-app entries from the registry)
 export interface RegistryPluginItem {
   name: string;
@@ -422,7 +429,11 @@ export interface RegistryPluginItem {
   repository: string;
   topics: string[];
   latestVersion: string | null;
-  supports: { v0: boolean; v1: boolean; v2: boolean };
+  supports: {
+    v0: boolean;
+    v1: boolean;
+    v2: boolean;
+  };
   npm: {
     package: string;
     v0Version: string | null;
@@ -435,7 +446,6 @@ export interface RegistryPluginItem {
   firstParty?: boolean;
   thirdParty?: boolean;
 }
-
 // Workbench
 export interface WorkbenchTask {
   id: string;
@@ -445,7 +455,6 @@ export interface WorkbenchTask {
   isCompleted: boolean;
   updatedAt?: number;
 }
-
 export interface WorkbenchTodo {
   id: string;
   name: string;
@@ -455,7 +464,6 @@ export interface WorkbenchTodo {
   isCompleted: boolean;
   type: string;
 }
-
 export interface WorkbenchOverview {
   tasks: WorkbenchTask[];
   triggers: TriggerSummary[];
@@ -466,14 +474,12 @@ export interface WorkbenchOverview {
     lastEventAt?: number | null;
   };
 }
-
 export interface WorkbenchVfsEntry {
   path: string;
   type: "file" | "directory";
   size: number;
   mtimeMs: number;
 }
-
 export interface WorkbenchVfsSnapshot {
   id: string;
   projectId: string;
@@ -482,25 +488,21 @@ export interface WorkbenchVfsSnapshot {
   fileCount: number;
   note?: string;
 }
-
 export interface WorkbenchVfsQuota {
   usedBytes: number;
   fileCount: number;
   quotaBytes: number;
   maxFileBytes: number;
 }
-
 export interface WorkbenchVfsProject {
   projectId: string;
 }
-
 export interface WorkbenchVfsDiffEntry {
   path: string;
   status: "added" | "modified" | "deleted";
   before?: WorkbenchVfsEntry;
   after?: WorkbenchVfsEntry;
 }
-
 export interface WorkbenchVfsCompileResult {
   outFile: string;
   format: "esm" | "cjs";
@@ -508,14 +510,12 @@ export interface WorkbenchVfsCompileResult {
   warnings: unknown[];
   durationMs: number;
 }
-
 export interface WorkbenchLoadedVfsPlugin {
   pluginName: string;
   vfsPath: string;
   projectId: string | null;
   loadedAt: number;
 }
-
 export type AutomationType =
   | "coordinator_text"
   | "workflow"
@@ -541,14 +541,12 @@ export interface AutomationRoomBinding {
   sourceConversationId?: string;
   terminalBridgeConversationId?: string;
 }
-
 export interface AutomationLastExecution {
   status: "success" | "error" | "running" | "waiting" | "unknown";
   startedAt: string;
   stoppedAt?: string | null;
   errorMessage?: string;
 }
-
 export interface AutomationItem {
   id: string;
   type: AutomationType;
@@ -580,12 +578,10 @@ export interface AutomationItem {
   lastExecution?: AutomationLastExecution;
   executionFetchError?: string;
 }
-
 export interface AutomationExecutionFetchError {
   workflowId: string;
   error: string;
 }
-
 export interface AutomationSummary {
   total: number;
   coordinatorCount: number;
@@ -593,7 +589,6 @@ export interface AutomationSummary {
   scheduledCount: number;
   draftCount: number;
 }
-
 export interface AutomationListResponse {
   automations: AutomationItem[];
   summary: AutomationSummary;
@@ -601,9 +596,7 @@ export interface AutomationListResponse {
   workflowFetchError: string | null;
   executionFetchErrors: AutomationExecutionFetchError[];
 }
-
-export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared";
-
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/core/contracts/personal-assistant";
 // Voice / TTS config
 export type VoiceProvider =
   | "eliza-cloud"
@@ -612,7 +605,6 @@ export type VoiceProvider =
   | "edge"
   | "local-inference";
 export type VoiceMode = "cloud" | "own-key";
-
 /**
  * Speech-to-text provider. The legacy `whisper.cpp` pipeline has been
  * retired; on-device transcription now flows through the same local-inference
@@ -620,7 +612,6 @@ export type VoiceMode = "cloud" | "own-key";
  * advanced override so users can switch to Eliza Cloud or OpenAI Whisper.
  */
 export type AsrProvider = "local-inference" | "eliza-cloud" | "openai";
-
 export interface VoiceConfig {
   provider?: VoiceProvider;
   mode?: VoiceMode;
@@ -650,7 +641,6 @@ export interface VoiceConfig {
     modelId?: string;
   };
 }
-
 // Character
 export interface CharacterData {
   name?: string;
@@ -665,11 +655,13 @@ export interface CharacterData {
     post?: string[];
   };
   messageExamples?: Array<{
-    examples: Array<{ name: string; content: MessageExampleContent }>;
+    examples: Array<{
+      name: string;
+      content: MessageExampleContent;
+    }>;
   }>;
   postExamples?: string[];
 }
-
 // Skill types
 export interface SkillInfo {
   id: string;
@@ -678,7 +670,6 @@ export interface SkillInfo {
   enabled: boolean;
   scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
 }
-
 export interface SkillScanReportSummary {
   scannedAt: string;
   status: "clean" | "warning" | "critical" | "blocked";
@@ -704,8 +695,13 @@ export interface SkillScanReportSummary {
   }>;
   skillPath: string;
 }
-
 export interface WalletExportResult {
-  evm: { privateKey: string; address: string | null } | null;
-  solana: { privateKey: string; address: string | null } | null;
+  evm: {
+    privateKey: string;
+    address: string | null;
+  } | null;
+  solana: {
+    privateKey: string;
+    address: string | null;
+  } | null;
 }

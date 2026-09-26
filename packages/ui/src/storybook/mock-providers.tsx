@@ -27,6 +27,7 @@ const baseMockApp: Partial<AppContextValue> = {
   // `noop` fallback (a truthy function) — otherwise ChatView takes its
   // terminal/inbox early-return branch ("Starting terminal…") instead of
   // rendering the composer + transcript.
+  activeConversationId: null,
   activeInboxChat: null,
   activeTerminalSessionId: null,
   agentStatus: {

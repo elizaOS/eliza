@@ -2,13 +2,16 @@
  * Resolves Eliza Cloud deployment/service-routing preferences from a config,
  * used to patch first-run defaults toward the linked cloud topology.
  */
+
+import {
+  isElizaCloudLinkedInConfig,
+  resolveElizaCloudTopology,
+} from "@elizaos/core/contracts/cloud-topology";
 import {
   getFirstRunProviderOption,
-  isElizaCloudLinkedInConfig,
   resolveDeploymentTargetInConfig,
-  resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import { asRecord, readString } from "../state/config-readers";
 import type {
   CloudPreferenceClientLike as ClientLike,
@@ -16,10 +19,10 @@ import type {
 } from "./types";
 
 const PATCH_STATE = Symbol.for("elizaos.cloudPreferencePatch");
-type PatchableClient = ClientLike & { [PATCH_STATE]?: PatchState };
-
+type PatchableClient = ClientLike & {
+  [PATCH_STATE]?: PatchState;
+};
 type StorageConfig = Record<string, unknown>;
-
 function hasRemoteConnection(
   config: StorageConfig | null | undefined,
 ): boolean {
@@ -28,25 +31,21 @@ function hasRemoteConnection(
       .runtime === "remote"
   );
 }
-
 function cloudHandlesInference(
   config: StorageConfig | null | undefined,
 ): boolean {
   return resolveElizaCloudTopology(config as Record<string, unknown>).services
     .inference;
 }
-
 function hasInactiveCloudSignals(
   config: StorageConfig | null | undefined,
 ): boolean {
   return isElizaCloudLinkedInConfig(config as Record<string, unknown>);
 }
-
 export function shouldPreferLocalProviderConfig(
   config: StorageConfig | null | undefined,
 ): boolean {
   if (!config) return false;
-
   const llmText = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   )?.llmText;
@@ -54,21 +53,18 @@ export function shouldPreferLocalProviderConfig(
   if (llmText?.transport !== "direct" || !directProvider) {
     return false;
   }
-
   return Boolean(
     !hasRemoteConnection(config) &&
       !cloudHandlesInference(config) &&
       hasInactiveCloudSignals(config),
   );
 }
-
 export function normalizeConfigForLocalProviderPreference(
   config: StorageConfig | null | undefined,
 ): StorageConfig | null | undefined {
   if (!config || !shouldPreferLocalProviderConfig(config)) {
     return config;
   }
-
   // Strip cloud capability flags (enabled, provider, inferenceMode, services)
   // but preserve the apiKey so the cloud account link remains intact for
   // non-inference services (e.g. RPC proxy, storage).
@@ -76,10 +72,8 @@ export function normalizeConfigForLocalProviderPreference(
   const apiKey = readString(cloud, "apiKey");
   const nextCloud: Record<string, unknown> = {};
   if (apiKey) nextCloud.apiKey = apiKey;
-
   return { ...config, cloud: nextCloud };
 }
-
 export function installLocalProviderCloudPreferencePatch(
   client: ClientLike,
 ): () => void {
@@ -88,13 +82,10 @@ export function installLocalProviderCloudPreferencePatch(
   if (existingPatch) {
     return () => {};
   }
-
   const originalGetConfig = client.getConfig.bind(client);
-
   patchableClient[PATCH_STATE] = {
     getConfig: client.getConfig,
   } satisfies PatchState;
-
   client.getConfig = (async () => {
     const config = (await originalGetConfig()) as
       | StorageConfig
@@ -105,7 +96,6 @@ export function installLocalProviderCloudPreferencePatch(
       unknown
     >;
   }) as typeof client.getConfig;
-
   return () => {
     const patchState = patchableClient[PATCH_STATE];
     if (!patchState) {

@@ -17,7 +17,8 @@ const getInbox = vi.hoisted(() =>
   vi.fn(async () => ({ items: [{ id: "m1" }] })),
 );
 
-vi.mock("@elizaos/plugin-calendar/routes/calendar-routes", () => ({
+vi.mock("@elizaos/plugin-calendar", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-calendar")>()),
   handleCalendarRoutes: vi.fn(async () => false),
 }));
 

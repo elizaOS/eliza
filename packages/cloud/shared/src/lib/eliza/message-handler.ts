@@ -7,7 +7,6 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
-  DefaultMessageService,
   elizaLogger,
   type Media,
   Memory,
@@ -17,6 +16,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { DefaultMessageService } from "@elizaos/plugin-assistant";
 import { v4 as uuidv4 } from "uuid";
 import { roomsRepository } from "../../db/repositories";
 import { connectionCache } from "../cache/connection-cache";

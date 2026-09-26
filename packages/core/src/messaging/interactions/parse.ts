@@ -25,9 +25,9 @@ import type {
 	InteractionFieldType,
 	InteractionOption,
 	TaskInteraction,
-} from "../../types/interactions";
-import { truncateWellFormed } from "../../utils/well-formed.ts";
-import { stripDashboardOnlyMarkers } from "./dashboard-markers";
+} from "../../types/interactions.js";
+import { truncateWellFormed } from "../../utils/unicode.js";
+import { stripDashboardOnlyMarkers } from "./dashboard-markers.js";
 
 /** Hard caps mirroring the dashboard parsers — keep a runaway template safe. */
 export const MAX_FORM_FIELDS = 20;

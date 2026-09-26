@@ -1,5 +1,6 @@
 /** Unit tests for `transcriptKnowledgePayload` shaping transcripts into knowledge items. Deterministic. */
-import type { Transcript } from "@elizaos/shared/transcripts";
+
+import type { Transcript } from "@elizaos/core/transcripts";
 import { describe, expect, it } from "vitest";
 import {
 	TRANSCRIPT_DOCUMENT_TAG,
@@ -36,7 +37,6 @@ const transcript: Transcript = {
 		},
 	],
 };
-
 describe("transcriptKnowledgePayload", () => {
 	it("builds a searchable text document linked back to the transcript", () => {
 		const p = transcriptKnowledgePayload(transcript);
@@ -71,7 +71,6 @@ describe("transcriptKnowledgePayload", () => {
 			},
 		]);
 	});
-
 	it("omits audioUrl when the transcript has no audio, and slugs an empty title", () => {
 		const p = transcriptKnowledgePayload({
 			...transcript,

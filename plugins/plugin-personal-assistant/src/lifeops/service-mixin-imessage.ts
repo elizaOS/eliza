@@ -3,7 +3,7 @@
  * `withIMessage` mixin that composes the iMessage domain's read/send/status
  * methods onto the LifeOpsService base.
  */
-import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
+import { type LifeOpsIMessageConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import type {
   IMessageChat,
   IMessageRecord,
@@ -23,7 +23,7 @@ export interface LifeOpsIMessageService {
   getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus>;
   sendIMessage(
     req: IMessageSendRequest,
-  ): Promise<{ ok: true; messageId?: string }>;
+  ): Promise<{ ok: true; messageId?: string; messageIds?: string[] }>;
   readIMessages(opts: {
     chatId?: string;
     since?: string;

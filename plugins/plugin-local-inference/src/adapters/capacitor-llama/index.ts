@@ -10,41 +10,52 @@
  *
  * `capacitor-llama` is NEVER imported here.
  */
-
 import fs from "node:fs";
 import path, { basename } from "node:path";
-import type {
-	DetokenizeTextParams,
-	EventPayload,
-	GenerateTextParams,
-	ImageDescriptionParams,
-	ImageDescriptionResult,
-	JSONSchema,
-	ModelTypeName,
-	TextEmbeddingParams,
-	TextStreamResult,
-	TextToSpeechParams,
-	TokenizeTextParams,
-	TokenUsage,
-	ToolChoice,
-	ToolDefinition,
-	TranscriptionParams,
-} from "@elizaos/core";
 import {
+	type DetokenizeTextParams,
 	ElizaError,
+	type EventPayload,
 	EventType,
+	type GenerateTextParams,
 	type IAgentRuntime,
+	type ImageDescriptionParams,
+	type ImageDescriptionResult,
+	identifyEmbeddingVector,
+	type JSONSchema,
 	logger,
 	ModelType,
+	type ModelTypeName,
 	type Plugin,
 	resolveStateDir,
+	type TextEmbeddingParams,
+	type TextStreamResult,
+	type TextToSpeechParams,
+	type TokenizeTextParams,
+	type TokenUsage,
+	type ToolChoice,
+	type ToolDefinition,
+	type TranscriptionParams,
 } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/plugin-native-inference/model-catalog/bge-embedding-model";
+import {
+	assertBgeTokenAgreement,
+	prepareBgeEmbeddingInput,
+} from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 } from "../..";
+import {
+	normalizeEmbeddingVector,
+	verifyBgeEmbeddingFile,
+} from "../../runtime/embedding-vector-space";
 import { type Config, validateConfig } from "./environment";
-import { initCapacitorLlama, releaseAllCapacitorLlama } from "./loader";
+import {
+	initCapacitorLlama,
+	initMobileBgeEmbedding,
+	releaseAllCapacitorLlama,
+} from "./loader";
 import { resolveMobileGpuAdmission } from "./memory-admission";
 import {
 	applyStructuredPlan,
@@ -54,6 +65,7 @@ import {
 } from "./structured-output";
 import { streamCapacitorPrompt } from "./text-streaming";
 import {
+	type CapacitorEmbeddingContext,
 	type CapacitorLlamaCompletionParams,
 	type CapacitorLlamaCompletionResult,
 	type CapacitorLlamaContext,
@@ -63,18 +75,15 @@ import {
 } from "./types";
 
 const DEFAULT_LOCAL_SYSTEM_PROMPT = "Respond to the current request only.";
-
 interface ContextEntry {
 	ctx: CapacitorLlamaContext;
 	systemPrompt: string;
 }
-
 interface LocalGenerationResult {
 	text: string;
 	toolCalls: ToolCallResult[];
 	finishReason: string | undefined;
 }
-
 function assertCompleteGeneration(
 	result: CapacitorLlamaCompletionResult,
 ): void {
@@ -86,7 +95,6 @@ function assertCompleteGeneration(
 	) {
 		return;
 	}
-
 	throw new ElizaError(
 		"Local model generation ended before completion; refusing to return partial output",
 		{
@@ -101,23 +109,23 @@ function assertCompleteGeneration(
 		},
 	);
 }
-
 function completeFinishReason(
 	result: CapacitorLlamaCompletionResult,
 ): "stop" | undefined {
 	return result.stopped_eos || result.stopped_word ? "stop" : undefined;
 }
-
 type LocalGenerateTextParams = GenerateTextParams & {
 	modelType?: ModelTypeName;
 };
-
 type LocalGenerationOutput = LocalGenerationResult | TextStreamResult;
-
 type LocalInferenceRouteResult<T> =
-	| { handled: true; value: T }
-	| { handled: false };
-
+	| {
+			handled: true;
+			value: T;
+	  }
+	| {
+			handled: false;
+	  };
 function isStreamResult(
 	value: LocalGenerationOutput,
 ): value is TextStreamResult {
@@ -130,18 +138,15 @@ function isStreamResult(
 		"finishReason" in value
 	);
 }
-
 type LocalNativeTextModelResult = string & {
 	text: string;
 	toolCalls: ToolCallResult[];
 	finishReason?: string;
 };
-
 function getObjectField(value: unknown, key: string): unknown {
 	if (!value || typeof value !== "object") return undefined;
 	return (value as Record<string, unknown>)[key];
 }
-
 function extractEmbeddingText(
 	params: TextEmbeddingParams | string | null,
 ): string | null {
@@ -149,17 +154,15 @@ function extractEmbeddingText(
 	const text = getObjectField(params, "text");
 	return typeof text === "string" ? text : null;
 }
-
 function getRequiredEmbeddingText(
 	params: TextEmbeddingParams | string | null,
 ): string {
-	const text = extractEmbeddingText(params)?.trim();
-	if (!text) {
+	const text = extractEmbeddingText(params);
+	if (!text?.trim()) {
 		throw new Error("Embedding text must be a non-empty string");
 	}
 	return text;
 }
-
 function stringifyMessageContent(
 	content: NonNullable<GenerateTextParams["messages"]>[number]["content"],
 ): string {
@@ -178,7 +181,6 @@ function stringifyMessageContent(
 	}
 	return "";
 }
-
 function renderCompletionPrompt(params: GenerateTextParams): string {
 	if (params.messages && params.messages.length > 0) {
 		return params.messages
@@ -188,12 +190,10 @@ function renderCompletionPrompt(params: GenerateTextParams): string {
 			})
 			.join("\n");
 	}
-
 	const system = params.system?.trim() || DEFAULT_LOCAL_SYSTEM_PROMPT;
 	const prompt = params.prompt ?? "";
 	return `system: ${system}\nuser: ${prompt}`;
 }
-
 function getToolChoiceLabel(
 	toolChoice: ToolChoice | undefined,
 ): string | undefined {
@@ -213,18 +213,15 @@ function getToolChoiceLabel(
 	}
 	return undefined;
 }
-
 type NormalizedUsage = {
 	promptTokens: number;
 	completionTokens: number;
 	totalTokens: number;
 	estimated?: boolean;
 };
-
 function estimateTokenCount(text: string): number {
 	return text.length === 0 ? 0 : Math.ceil(text.length / 4);
 }
-
 function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
 	const responseText =
 		typeof response === "string"
@@ -245,7 +242,6 @@ function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
 		estimated: true,
 	};
 }
-
 function normalizedToTokenUsage(usage: NormalizedUsage): TokenUsage {
 	return {
 		promptTokens: usage.promptTokens,
@@ -253,7 +249,6 @@ function normalizedToTokenUsage(usage: NormalizedUsage): TokenUsage {
 		totalTokens: usage.totalTokens,
 	};
 }
-
 function estimateEmbeddingUsage(text: string): NormalizedUsage {
 	const promptTokens = estimateTokenCount(text);
 	return {
@@ -263,13 +258,11 @@ function estimateEmbeddingUsage(text: string): NormalizedUsage {
 		estimated: true,
 	};
 }
-
 function stripThinkTags(text: string): string {
 	return text.includes("<think>")
 		? text.replace(/<think>[\s\S]*?<\/think>\n?/g, "")
 		: text;
 }
-
 function wantsNativeShape(params: GenerateTextParams): boolean {
 	if (params.tools && params.tools.length > 0) return true;
 	if (params.responseSchema) return true;
@@ -283,7 +276,6 @@ function wantsNativeShape(params: GenerateTextParams): boolean {
 	}
 	return false;
 }
-
 function shouldFallbackFromLocalInference(error: unknown): boolean {
 	return (
 		isLocalInferenceUnavailableError(error) &&
@@ -293,7 +285,6 @@ function shouldFallbackFromLocalInference(error: unknown): boolean {
 			: true)
 	);
 }
-
 async function tryLocalInferenceModel<T>(
 	runtime: IAgentRuntime,
 	modelType: ModelTypeName,
@@ -304,7 +295,6 @@ async function tryLocalInferenceModel<T>(
 			modelType as keyof typeof localInferenceModelHandlers
 		];
 	if (typeof handler !== "function") return { handled: false };
-
 	try {
 		const value = await handler(runtime, params as never);
 		return { handled: true, value: value as T };
@@ -325,7 +315,6 @@ async function tryLocalInferenceModel<T>(
 		throw error;
 	}
 }
-
 function buildNativeResult(
 	result: LocalGenerationResult,
 ): LocalNativeTextModelResult {
@@ -336,7 +325,6 @@ function buildNativeResult(
 	});
 	return nativeResult as LocalNativeTextModelResult;
 }
-
 function getLocalModelLabel(
 	runtime: IAgentRuntime,
 	type: ModelTypeName,
@@ -357,7 +345,6 @@ function getLocalModelLabel(
 		runtime.getSetting("LOCAL_SMALL_MODEL") || config.LOCAL_SMALL_MODEL,
 	);
 }
-
 function emitModelUsed(
 	runtime: IAgentRuntime,
 	type: ModelTypeName,
@@ -383,7 +370,6 @@ function emitModelUsed(
 		} as EventPayload,
 	);
 }
-
 /**
  * Singleton manager. Holds one Capacitor context per `ModelType` (small,
  * large, embedding), plus the resolved environment configuration and model
@@ -394,7 +380,10 @@ class LocalAIManager {
 	private static instance: LocalAIManager | null = null;
 	private smallCtx: ContextEntry | null = null;
 	private mediumCtx: ContextEntry | null = null;
-	private embeddingCtx: CapacitorLlamaContext | null = null;
+	private embeddingCtx: CapacitorEmbeddingContext | null = null;
+	private embeddingHasNativeIdentity = false;
+	private embeddingInitializingPromise: Promise<void> | null = null;
+	private embeddingSpace: string | undefined;
 	private modelPath!: string;
 	private mediumModelPath!: string;
 	private embeddingModelPath!: string;
@@ -405,14 +394,12 @@ class LocalAIManager {
 	private environmentInitialized = false;
 	private environmentInitializingPromise: Promise<void> | null = null;
 	private modelsDir!: string;
-
 	private constructor() {
 		this.config = validateConfig();
 		this._setupCacheDir();
 		this.activeModelConfig = MODEL_SPECS.small;
 		this.embeddingModelConfig = MODEL_SPECS.embedding;
 	}
-
 	private _setupModelsDir(): void {
 		const modelsDirEnv =
 			this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
@@ -424,7 +411,6 @@ class LocalAIManager {
 		}
 		logger.info({ modelsDir: this.modelsDir }, "Models directory ready");
 	}
-
 	private _setupCacheDir(): void {
 		const cacheDirEnv =
 			this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
@@ -436,14 +422,12 @@ class LocalAIManager {
 		}
 		logger.info({ cacheDir: this.cacheDir }, "Cache directory ready");
 	}
-
 	public static getInstance(): LocalAIManager {
 		if (!LocalAIManager.instance) {
 			LocalAIManager.instance = new LocalAIManager();
 		}
 		return LocalAIManager.instance;
 	}
-
 	public async initializeEnvironment(): Promise<void> {
 		if (this.environmentInitialized) return;
 		if (this.environmentInitializingPromise) {
@@ -474,11 +458,9 @@ class LocalAIManager {
 		})();
 		await this.environmentInitializingPromise;
 	}
-
 	public getActiveModelConfig(): ModelSpec {
 		return this.activeModelConfig;
 	}
-
 	private async resolveCtx(
 		modelType: ModelTypeName,
 		systemPrompt: string,
@@ -503,7 +485,6 @@ class LocalAIManager {
 			if (slot === "medium") this.mediumCtx = null;
 			else this.smallCtx = null;
 		}
-
 		const spec = slot === "medium" ? MODEL_SPECS.medium : MODEL_SPECS.small;
 		const modelPath = slot === "medium" ? this.mediumModelPath : this.modelPath;
 		// GPU-OOM memory admission (#11612): on constrained mobile
@@ -537,7 +518,12 @@ class LocalAIManager {
 			// Unload-on-failure (#11612): a failed/partial load must not leave
 			// wired GPU buffers mapped — that footprint alone gets the process
 			// jetsammed on the next allocation.
-			if (admission) await releaseAllCapacitorLlama();
+			if (admission) {
+				await releaseAllCapacitorLlama();
+				this.embeddingCtx = null;
+				this.embeddingSpace = undefined;
+				this.embeddingHasNativeIdentity = false;
+			}
 			throw err;
 		}
 		const entry: ContextEntry = { ctx, systemPrompt };
@@ -546,7 +532,6 @@ class LocalAIManager {
 		this.activeModelConfig = spec;
 		return entry;
 	}
-
 	/**
 	 * Release a cached text context (unload-on-failure, #11612). A decode
 	 * failure on mobile (e.g. Metal ret=-3 GPU OOM) leaves multi-GiB wired
@@ -567,37 +552,119 @@ class LocalAIManager {
 			);
 		}
 	}
-
 	async initialize(
 		modelType: ModelTypeName = ModelType.TEXT_SMALL,
 	): Promise<void> {
 		await this.initializeEnvironment();
 		await this.resolveCtx(modelType, DEFAULT_LOCAL_SYSTEM_PROMPT);
 	}
-
 	public async initializeEmbedding(): Promise<void> {
 		await this.initializeEnvironment();
 		if (this.embeddingCtx) return;
-		this.embeddingCtx = await initCapacitorLlama({
-			model: this.embeddingModelPath,
-			n_ctx: this.embeddingModelConfig.contextSize,
-			n_gpu_layers: 0,
-			embedding: true,
-			pooling_type: "mean",
-		});
-	}
-
-	async generateEmbedding(text: string): Promise<number[]> {
-		await this.initializeEmbedding();
-		if (!this.embeddingCtx) {
-			throw new Error("Failed to initialize embedding context");
+		if (this.embeddingInitializingPromise)
+			return this.embeddingInitializingPromise;
+		this.embeddingInitializingPromise = (async () => {
+			const canonical =
+				basename(this.embeddingModelPath) === BGE_EMBEDDING_MODEL.filename;
+			const space = canonical
+				? verifyBgeEmbeddingFile(this.embeddingModelPath)
+				: undefined;
+			this.embeddingHasNativeIdentity = canonical;
+			const ctx = this.embeddingHasNativeIdentity
+				? await initMobileBgeEmbedding(
+						this.embeddingModelPath,
+						this.embeddingModelConfig.contextSize,
+					)
+				: await initCapacitorLlama({
+						model: this.embeddingModelPath,
+						n_ctx: this.embeddingModelConfig.contextSize,
+						n_gpu_layers: 0,
+						embedding: true,
+						pooling_type: canonical ? BGE_EMBEDDING_MODEL.pooling : "mean",
+					});
+			this.embeddingCtx = ctx;
+			this.embeddingSpace = space;
+		})();
+		try {
+			await this.embeddingInitializingPromise;
+		} finally {
+			this.embeddingInitializingPromise = null;
 		}
-		const result = await this.embeddingCtx.embedding(text, {
-			embd_normalize: 2,
-		});
-		return result.embedding;
 	}
-
+	async generateEmbedding(text: string): Promise<number[]> {
+		if (Buffer.from(text, "utf8").toString("utf8") !== text) {
+			throw new ElizaError(
+				"Embedding input contains unpaired UTF-16 surrogates",
+				{ code: "EMBEDDING_INPUT_INVALID" },
+			);
+		}
+		await this.initializeEmbedding();
+		if (!this.embeddingCtx)
+			throw new ElizaError("Failed to initialize embedding context", {
+				code: "EMBEDDING_CONTEXT_UNAVAILABLE",
+			});
+		const prepared = this.embeddingSpace
+			? prepareBgeEmbeddingInput(text, this.embeddingModelConfig.contextSize)
+			: undefined;
+		const inputText = prepared ? prepared.text : text;
+		const tokenized = await this.embeddingCtx.tokenize(inputText);
+		if (
+			!tokenized ||
+			!Array.isArray(tokenized.tokens) ||
+			tokenized.tokens.length === 0 ||
+			!tokenized.tokens.every((token) => Number.isInteger(token) && token >= 0)
+		) {
+			throw new ElizaError(
+				"Native tokenizer returned invalid BGE token admission data",
+				{ code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+			);
+		}
+		if (prepared) assertBgeTokenAgreement(prepared, tokenized.tokens);
+		const limit = this.embeddingModelConfig.contextSize;
+		if (tokenized.tokens.length > limit) {
+			throw new ElizaError(
+				`Embedding input has ${tokenized.tokens.length} tokens; this encoder supports ${limit}. Split the source into explicit, lossless chunks before embedding.`,
+				{
+					code: "EMBEDDING_INPUT_TOO_LARGE",
+					context: { tokenCount: tokenized.tokens.length, contextLimit: limit },
+				},
+			);
+		}
+		const result = await this.embeddingCtx.embedding(inputText, {
+			embd_normalize: 2,
+			...(prepared
+				? {
+						expectedTokenIds: prepared.tokenIds,
+						embeddingSpace: this.embeddingSpace,
+					}
+				: {}),
+		});
+		if (
+			this.embeddingHasNativeIdentity &&
+			(result.embeddingSpace !== this.embeddingSpace ||
+				result.tokens !== tokenized.tokens.length ||
+				!Array.isArray(result.tokenIds))
+		) {
+			throw new ElizaError(
+				"Native BGE provenance or token count does not match the prepared source",
+				{ code: "EMBEDDING_VECTOR_INVALID" },
+			);
+		}
+		if (prepared && this.embeddingHasNativeIdentity && result.tokenIds)
+			assertBgeTokenAgreement(prepared, result.tokenIds);
+		if (
+			this.embeddingSpace &&
+			result.embedding.length !== BGE_EMBEDDING_MODEL.dimensions
+		) {
+			throw new ElizaError("BGE returned an incompatible embedding dimension", {
+				code: "EMBEDDING_DIMENSION_MISMATCH",
+			});
+		}
+		const vector = normalizeEmbeddingVector(result.embedding);
+		return this.embeddingSpace
+			? identifyEmbeddingVector(vector, this.embeddingSpace)
+			: vector;
+	}
 	async generateText(
 		params: LocalGenerateTextParams,
 	): Promise<LocalGenerationOutput> {
@@ -612,7 +679,6 @@ class LocalAIManager {
 			responseFormat: params.responseFormat,
 			toolChoice: toolChoiceLabel,
 		});
-
 		const baseParams: CapacitorLlamaCompletionParams = {
 			prompt: renderCompletionPrompt({ ...params, system: systemPrompt }),
 			...(typeof params.maxTokens === "number"
@@ -629,7 +695,6 @@ class LocalAIManager {
 			stop: params.stopSequences ?? [],
 		};
 		const fullParams = applyStructuredPlan(baseParams, plan);
-
 		// Unload-on-failure (#11612): a failed decode must release the model
 		// instead of leaving it mapped (multi-GiB wired weights → jetsam).
 		const slot = modelType === ModelType.TEXT_LARGE ? "medium" : "small";
@@ -641,7 +706,6 @@ class LocalAIManager {
 				throw err;
 			}
 		};
-
 		if (plan.kind === "tools") {
 			const result = await runCompletion();
 			assertCompleteGeneration(result);
@@ -653,7 +717,6 @@ class LocalAIManager {
 				finishReason: completeFinishReason(result),
 			};
 		}
-
 		if (plan.kind === "schema" || plan.kind === "json_object") {
 			const result = await runCompletion();
 			assertCompleteGeneration(result);
@@ -664,14 +727,12 @@ class LocalAIManager {
 				finishReason: completeFinishReason(result),
 			};
 		}
-
 		const streamParams = params as GenerateTextParams & {
 			onStreamChunk?: unknown;
 		};
 		const wantsStreaming =
 			params.stream === true ||
 			typeof streamParams.onStreamChunk === "function";
-
 		if (wantsStreaming) {
 			return streamCapacitorPrompt({
 				ctx: entry.ctx,
@@ -689,7 +750,6 @@ class LocalAIManager {
 				postProcess: stripThinkTags,
 			});
 		}
-
 		const result = await runCompletion();
 		assertCompleteGeneration(result);
 		const text = stripThinkTags(result.content || result.text);
@@ -700,7 +760,6 @@ class LocalAIManager {
 		};
 	}
 }
-
 function finalizeTextResult(
 	runtime: IAgentRuntime,
 	modelType: ModelTypeName,
@@ -720,7 +779,6 @@ function finalizeTextResult(
 		});
 		return result;
 	}
-
 	emitModelUsed(
 		runtime,
 		modelType,
@@ -729,15 +787,12 @@ function finalizeTextResult(
 	);
 	return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
 }
-
 const localInferenceModelHandlers = createLocalInferenceModelHandlers();
 const localAIManager = LocalAIManager.getInstance();
-
 export const localAiPlugin: Plugin = {
 	name: "local-ai",
 	description:
 		"Local AI plugin using Eliza-1 GGUF models via the canonical Capacitor-llama adapter (mobile + desktop FFI; no node-llama-cpp).",
-
 	async init(
 		_config: Record<string, unknown> | undefined,
 		_runtime: IAgentRuntime,
@@ -767,7 +822,6 @@ export const localAiPlugin: Plugin = {
 		logger.info(modelsExist, "Local AI model file presence");
 		logger.info("Local AI plugin initialized");
 	},
-
 	models: {
 		[ModelType.TEXT_SMALL]: async (
 			runtime: IAgentRuntime,
@@ -788,7 +842,6 @@ export const localAiPlugin: Plugin = {
 			});
 			return finalizeTextResult(runtime, ModelType.TEXT_SMALL, params, result);
 		},
-
 		[ModelType.TEXT_LARGE]: async (
 			runtime: IAgentRuntime,
 			params: GenerateTextParams,
@@ -808,7 +861,6 @@ export const localAiPlugin: Plugin = {
 			});
 			return finalizeTextResult(runtime, ModelType.TEXT_LARGE, params, result);
 		},
-
 		[ModelType.TEXT_EMBEDDING]: async (
 			runtime: IAgentRuntime,
 			params: TextEmbeddingParams | string | null,
@@ -820,7 +872,6 @@ export const localAiPlugin: Plugin = {
 				params,
 			);
 			if (routed.handled) return routed.value;
-
 			const embedding = await localAIManager.generateEmbedding(text);
 			emitModelUsed(
 				runtime,
@@ -830,7 +881,6 @@ export const localAiPlugin: Plugin = {
 			);
 			return embedding;
 		},
-
 		[ModelType.TEXT_TOKENIZER_ENCODE]: async (
 			runtime: IAgentRuntime,
 			params: TokenizeTextParams,
@@ -846,7 +896,6 @@ export const localAiPlugin: Plugin = {
 					"Enable an Eliza-1 bundle and route via plugin-local-inference for tokenization.",
 			);
 		},
-
 		[ModelType.TEXT_TOKENIZER_DECODE]: async (
 			runtime: IAgentRuntime,
 			params: DetokenizeTextParams,
@@ -862,7 +911,6 @@ export const localAiPlugin: Plugin = {
 					"Enable an Eliza-1 bundle and route via plugin-local-inference for detokenization.",
 			);
 		},
-
 		[ModelType.IMAGE_DESCRIPTION]: async (
 			runtime: IAgentRuntime,
 			params: ImageDescriptionParams | string,
@@ -877,7 +925,6 @@ export const localAiPlugin: Plugin = {
 				"plugin-local-ai image description has been migrated to @elizaos/plugin-local-inference.",
 			);
 		},
-
 		[ModelType.TRANSCRIPTION]: async (
 			runtime: IAgentRuntime,
 			params: TranscriptionParams | Buffer | string,
@@ -892,7 +939,6 @@ export const localAiPlugin: Plugin = {
 				"plugin-local-ai transcription has been migrated to @elizaos/plugin-local-inference.",
 			);
 		},
-
 		[ModelType.TEXT_TO_SPEECH]: async (
 			runtime: IAgentRuntime,
 			params: TextToSpeechParams | string,
@@ -909,9 +955,7 @@ export const localAiPlugin: Plugin = {
 		},
 	},
 };
-
 export default localAiPlugin;
-
 // On-device fused voice-turn entry (#8786): native iOS/Android mic-capture
 // front-ends hand completed PCM turns to `NativePcmVoiceTurnCoordinator`, which
 // serializes them through `runDeviceVoiceTurn` → `LocalInferenceEngine.runVoiceTurn`

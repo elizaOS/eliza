@@ -20,7 +20,7 @@ export async function buildCloudSdk(options: CloudSdkBuildOptions = {}) {
   const mkdirFn = options.mkdir ?? mkdir;
   const removeDist =
     options.removeDist ??
-    (() => Bun.$`node ../../scripts/rm-path-recursive.mjs dist`);
+    (() => Bun.$`node ../../scripts/rm-path-recursive.ts dist`);
   const emitDeclarations =
     options.emitDeclarations ??
     (() => Bun.$`tsc6 --project tsconfig.json --noEmit false --noCheck`);

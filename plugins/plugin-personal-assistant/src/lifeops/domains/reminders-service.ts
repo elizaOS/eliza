@@ -28,6 +28,7 @@ import {
   runWithTrajectoryPurpose,
   ServiceType,
 } from "@elizaos/core";
+import type { LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -43,16 +44,14 @@ import {
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
   normalizeHealthSignal,
-  shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
 } from "@elizaos/plugin-health";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
   sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone/twilio";
+} from "@elizaos/plugin-native-phone/twilio";
 import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../../activity-profile/types.js";
 import type {
@@ -119,9 +118,11 @@ import {
   windowPolicyMatchesDefaults,
 } from "../defaults.js";
 import { materializeDefinitionOccurrences } from "../engine.js";
+import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 import {
+  ownerFactsToView,
   resolveOwnerFactStore,
   resolveOwnerTimeZone,
 } from "../owner/fact-store.js";
@@ -148,6 +149,9 @@ import {
   SCHEDULE_CLOUD_SYNC_TTL_MS,
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
 } from "../schedule-state.js";
+import { DOSSIER_ACTIVITY_METADATA_KEY } from "../scheduled-task/dossier-activity-policy.js";
+import { admitOwnerDossierActivity } from "../scheduled-task/dossier-activity-runtime.js";
+import { classifyDossierActivitySignal } from "../scheduled-task/dossier-activity-signal.js";
 import {
   type ProcessDueScheduledTasksResult,
   processDueScheduledTasks,
@@ -248,7 +252,6 @@ import {
   getZonedDateParts,
 } from "../time.js";
 import {
-  callerDefinitionScopes,
   getCallerDefinition,
   getCallerOccurrence,
   getCallerOccurrenceView,
@@ -405,6 +408,25 @@ type ScheduledWorkflowRunner = {
   }): Promise<LifeOpsWorkflowRun[]>;
 };
 
+/** A check-in is delivered only after transport acceptance and report persistence. */
+export type SleepCycleCheckinDispatchFailure = Extract<
+  DispatchResult,
+  { ok: false }
+>["reason"];
+
+export interface SleepCycleCheckinDeliveryReport {
+  kind: "morning" | "night";
+  status:
+    | "delivered"
+    | "skipped_already_sent"
+    | SleepCycleCheckinDispatchFailure;
+  reportId: string | null;
+  messageId: string | null;
+  reason: string | null;
+  message: string | null;
+  persisted: boolean;
+}
+
 function reminderChoiceId(args: {
   ownerType: "occurrence" | "calendar_event";
   ownerId: string;
@@ -438,6 +460,13 @@ function appendReminderChoiceChips(
   ].join("\n");
 }
 
+/** Supplied by authenticated owner ingress, independently of the request body. */
+export interface AuthenticatedDossierActivityContext {
+  principalId: string;
+  ownerPrincipalId: string;
+  receivedAtIso: string;
+}
+
 export interface LifeOpsReminderService {
   getReminderPreference(
     definitionId?: string | null,
@@ -447,6 +476,7 @@ export interface LifeOpsReminderService {
   ): Promise<LifeOpsReminderPreference>;
   captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
+    ownerActivity?: AuthenticatedDossierActivityContext,
   ): Promise<LifeOpsActivitySignal>;
   captureManualOverride(
     request: CaptureLifeOpsManualOverrideRequest,
@@ -478,6 +508,7 @@ export interface LifeOpsReminderService {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    sleepCycleCheckins: SleepCycleCheckinDeliveryReport[];
     subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }>;
   relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
@@ -4829,8 +4860,16 @@ export class RemindersDomain {
 
   async captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
+    ownerActivity?: AuthenticatedDossierActivityContext,
   ): Promise<LifeOpsActivitySignal> {
     const health = normalizeHealthSignal(request.health, "health");
+    const metadata =
+      request.metadata !== undefined
+        ? requireRecord(request.metadata, "metadata")
+        : {};
+    if (Object.hasOwn(metadata, DOSSIER_ACTIVITY_METADATA_KEY)) {
+      fail(400, "Dossier activity admission metadata is server-owned");
+    }
     const registeredSources = getSignalSourceRegistry(
       this.ctx.runtime,
     )?.sources();
@@ -4854,12 +4893,30 @@ export class RemindersDomain {
       onBattery:
         normalizeOptionalBoolean(request.onBattery, "onBattery") ?? null,
       health,
-      metadata:
-        request.metadata !== undefined
-          ? requireRecord(request.metadata, "metadata")
-          : {},
+      metadata,
     });
     await this.ctx.repository.createActivitySignal(signal);
+    const activityKind = classifyDossierActivitySignal(signal);
+    if (ownerActivity && activityKind !== "other") {
+      await admitOwnerDossierActivity(
+        createFamilySchedulingStores(this.ctx.runtime, this.ctx.agentId())
+          .store,
+        {
+          ...ownerActivity,
+          authenticated: true,
+          signalId: signal.id,
+          kind: activityKind,
+        },
+        {
+          timezone:
+            ownerFactsToView(
+              await resolveOwnerFactStore(this.ctx.runtime).read(),
+              new Date(ownerActivity.receivedAtIso),
+            ).timezone ?? resolveDefaultTimeZone(),
+          boundaryMinutes: 240,
+        },
+      );
+    }
     return signal;
   }
 
@@ -5121,6 +5178,7 @@ export class RemindersDomain {
   async processDueReminderDeliveries(args: {
     now: Date;
     limit: number;
+    includeCalendar: boolean;
     ownerTimezone: string;
     policies: LifeOpsChannelPolicy[];
     globalReminderPreference: LifeOpsReminderPreference;
@@ -5130,6 +5188,7 @@ export class RemindersDomain {
     const {
       now,
       limit,
+      includeCalendar,
       ownerTimezone,
       policies,
       globalReminderPreference,
@@ -5141,10 +5200,12 @@ export class RemindersDomain {
       return dueAttempts;
     }
 
-    const definitions = await listCallerDefinitions(
-      this.ctx.repository,
-      this.ctx,
-      { activeOnly: true },
+    // This is a background scheduler boundary, not a caller-facing read. A
+    // chat-created owner definition may belong to any owner entity under the
+    // agent, so filtering through the service's default synthetic owner would
+    // silently drop real reminders created from another room or connector.
+    const definitions = await this.ctx.repository.listActiveDefinitions(
+      this.ctx.agentId(),
     );
     for (const definition of definitions) {
       await this.refreshDefinitionOccurrences(definition, now);
@@ -5158,7 +5219,6 @@ export class RemindersDomain {
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-        callerDefinitionScopes(this.ctx),
       )
     ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const occurrencePlans =
@@ -5189,12 +5249,14 @@ export class RemindersDomain {
       now,
       OVERVIEW_HORIZON_MINUTES,
     ).toISOString();
-    const calendarEvents = await this.ctx.repository.listCalendarEvents(
-      this.ctx.agentId(),
-      "google",
-      now.toISOString(),
-      eventWindowEnd,
-    );
+    const calendarEvents = includeCalendar
+      ? await this.ctx.repository.listCalendarEvents(
+          this.ctx.agentId(),
+          "google",
+          now.toISOString(),
+          eventWindowEnd,
+        )
+      : [];
     const eventPlans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "calendar_event",
@@ -5499,7 +5561,11 @@ export class RemindersDomain {
   }
 
   async processReminders(
-    request: { now?: string; limit?: number } = {},
+    request: {
+      now?: string;
+      limit?: number;
+      scope?: "all" | "definitions";
+    } = {},
   ): Promise<LifeOpsReminderProcessingResult> {
     return this.withReminderProcessingLock(async () => {
       const now =
@@ -5510,6 +5576,13 @@ export class RemindersDomain {
         request.limit === undefined
           ? DEFAULT_REMINDER_PROCESS_LIMIT
           : normalizePositiveInteger(request.limit, "limit");
+      const scope =
+        request.scope === undefined
+          ? "all"
+          : normalizeEnumValue(request.scope, "scope", [
+              "all",
+              "definitions",
+            ] as const);
       // Anchor reminder window/dueness math to the owner's stored timezone
       // fact (travel-aware) rather than the host clock. On shared-server /
       // TZ=UTC topologies `resolveDefaultTimeZone()` is the SERVER zone, which
@@ -5556,6 +5629,7 @@ export class RemindersDomain {
         ...(await this.processDueReminderDeliveries({
           now,
           limit: limit - dueAttempts.length,
+          includeCalendar: scope === "all",
           ownerTimezone,
           policies,
           globalReminderPreference,
@@ -5585,6 +5659,7 @@ export class RemindersDomain {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    sleepCycleCheckins: SleepCycleCheckinDeliveryReport[];
     subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }> {
     const now =
@@ -5834,13 +5909,28 @@ export class RemindersDomain {
           limit: scheduledTaskLimit,
         }),
     );
-    if (request.sleepCycleCheckins !== false) {
-      await runSubsystem("sleep_cycle_checkins", undefined, () =>
-        this.processSleepCycleCheckins({
-          now,
-          currentSchedule,
-        }),
-      );
+    const sleepCycleCheckins: SleepCycleCheckinDeliveryReport[] =
+      request.sleepCycleCheckins !== false
+        ? await runSubsystem("sleep_cycle_checkins", [], () =>
+            this.processSleepCycleCheckins({
+              now,
+              currentSchedule,
+            }),
+          )
+        : [];
+    for (const checkin of sleepCycleCheckins) {
+      if (
+        checkin.status !== "delivered" &&
+        checkin.status !== "skipped_already_sent"
+      ) {
+        subsystemFailures.push({
+          subsystem: "sleep_cycle_checkins",
+          error:
+            "Sleep-cycle check-in delivery failed; report not persisted " +
+            `(${checkin.kind} report ${checkin.reportId ?? "?"}: ` +
+            `${checkin.reason ?? "unknown"})`,
+        });
+      }
     }
     await this.runTelemetryMaintenanceIfDue(now);
     return {
@@ -5854,6 +5944,7 @@ export class RemindersDomain {
         scheduledTaskResult.completionTimeouts.map((timeout) => ({
           ...timeout,
         })),
+      sleepCycleCheckins,
       subsystemFailures,
     };
   }
@@ -5872,11 +5963,9 @@ export class RemindersDomain {
    *     provisional record (tagged via `TZ_PROVISIONAL_TRAVEL_NOTE`) so a real
    *     booking or spoken statement is never dropped on a coincidental match.
    *
-   * On shared-server topology `resolveDefaultTimeZone()` returns the SERVER's
-   * zone, not the owner's device — so leg (2) is effectively a no-op there
-   * (device zone == home zone, or the home-zone fact is absent). That is the
-   * intended graceful degradation: we never fabricate a home zone or infer
-   * travel from the server's own zone.
+   * Host timezone is device evidence only for a recognized personal device.
+   * Cloud and unknown hosts still expire travel windows, but cannot infer
+   * owner travel or a return home from their own timezone.
    */
   private async reconcileTravelActive(now: Date): Promise<void> {
     const store = resolveOwnerFactStore(this.ctx.runtime);
@@ -5898,6 +5987,11 @@ export class RemindersDomain {
         );
         return;
       }
+    }
+
+    const { deviceKind } = resolveScheduleDeviceIdentity();
+    if (deviceKind === "cloud" || deviceKind === "unknown") {
+      return;
     }
 
     const homeTz = facts.timezone?.value;
@@ -5950,10 +6044,10 @@ export class RemindersDomain {
   private async processSleepCycleCheckins(args: {
     now: Date;
     currentSchedule: LifeOpsScheduleMergedStateRecord | null;
-  }): Promise<void> {
+  }): Promise<SleepCycleCheckinDeliveryReport[]> {
     const currentSchedule = args.currentSchedule;
     if (!currentSchedule) {
-      return;
+      return [];
     }
     const service = new CheckinService(this.ctx.runtime, {
       sources: this.deps.checkinSource,
@@ -5964,7 +6058,9 @@ export class RemindersDomain {
     // the dispatcher just consumed for trigger decisions. Morning runs
     // ignore this field; the assignment below is night-only by design.
     const sleepRecap = buildSleepRecapFromSchedule(currentSchedule);
-    const dispatch = async (kind: "morning" | "night"): Promise<void> => {
+    const dispatch = async (
+      kind: "morning" | "night",
+    ): Promise<SleepCycleCheckinDeliveryReport> => {
       const alreadySent = await service.hasCheckinForLocalDay({
         kind,
         now: args.now,
@@ -5987,7 +6083,15 @@ export class RemindersDomain {
             });
           }
         }
-        return;
+        return {
+          kind,
+          status: "skipped_already_sent",
+          reportId: null,
+          messageId: null,
+          reason: null,
+          message: null,
+          persisted: false,
+        };
       }
       const report =
         kind === "morning"
@@ -6039,19 +6143,31 @@ export class RemindersDomain {
             message: delivery.message,
           },
         );
-        return;
+        return {
+          kind,
+          status: delivery.reason,
+          reportId: report.reportId,
+          messageId: null,
+          reason: delivery.reason,
+          message: delivery.message ?? null,
+          persisted: false,
+        };
       }
       await service.persistCheckinReport(report, args.now);
+      return {
+        kind,
+        status: "delivered",
+        reportId: report.reportId,
+        messageId: delivery.messageId ?? null,
+        reason: null,
+        message: null,
+        persisted: true,
+      };
     };
+    const results: SleepCycleCheckinDeliveryReport[] = [];
 
-    if (
-      shouldRunMorningCheckinFromSleepCycle({
-        state: currentSchedule,
-        now: args.now,
-      })
-    ) {
-      await dispatch("morning");
-    }
+    // Automatic morning briefs are admitted and claimed by the activity-driven
+    // ScheduledTask; sleep projections must not start a second generation.
     // For irregular-schedule owners, the relative-time resolver leaves
     // `bedtimeTargetAt` null because no projection is trustworthy. Read the
     // owner's configured `nightCheckinTime` (HH:MM local) and pass it as a
@@ -6065,8 +6181,9 @@ export class RemindersDomain {
         nightFallbackBedtimeLocal: profileSchedule.nightCheckinTime,
       })
     ) {
-      await dispatch("night");
+      results.push(await dispatch("night"));
     }
+    return results;
   }
 
   /**

@@ -6,14 +6,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   type AgentRuntime,
   createMessageMemory,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -52,9 +52,9 @@ import {
   PARENTING_CURRENT_LOCATION_ATTRIBUTE,
   type ParentingSubjectLocationSource,
 } from "./subject-location.js";
-import type {
-  ParentingRiskSignal,
-  ParentingSafetyAssessment,
+import {
+  type ParentingRiskSignal,
+  type ParentingSafetyAssessment,
 } from "./types.js";
 
 type RiskOverrides = Partial<
@@ -69,7 +69,6 @@ type RiskOverrides = Partial<
     | "legalOrCustodyInterpretation"
   >
 >;
-
 function assessment(
   assessedAt: string,
   overrides: RiskOverrides = {},
@@ -89,10 +88,8 @@ function assessment(
     ...overrides,
   };
 }
-
 class StaticSafetyClassifier implements ParentingSafetyClassifier {
   constructor(private readonly overrides: RiskOverrides) {}
-
   async classify(input: {
     readonly text: string;
     readonly assessedAt: string;
@@ -103,7 +100,6 @@ class StaticSafetyClassifier implements ParentingSafetyClassifier {
     };
   }
 }
-
 describe("parenting guidance production wiring — real PGlite", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
@@ -115,7 +111,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
   const action = createParentingGuidanceAction({
     resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
   });
-
   async function putChild(input: {
     entityId: string;
     ageBand: "school_age" | "teen";
@@ -150,7 +145,7 @@ describe("parenting guidance production wiring — real PGlite", () => {
             jurisdiction: "US",
             observedAt: now,
             expiresAt: new Date(
-              Date.parse(now) + 12 * 60 * 60 * 1_000,
+              Date.parse(now) + 12 * 60 * 60 * 1000,
             ).toISOString(),
             source: "caregiver_presence_confirmation",
             verifiedByEntityId: SELF_ENTITY_ID,
@@ -169,7 +164,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       evidence: "Owner confirmed the child relationship.",
     });
   }
-
   function ownerMessage(text: string): Memory {
     return createMessageMemory({
       id: randomUUID() as UUID,
@@ -179,7 +173,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       content: { text, source: "client_chat" },
     });
   }
-
   async function setLocale(
     locale: string,
     options: {
@@ -196,7 +189,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       },
     );
   }
-
   async function setSubjectLocation(
     subjectEntityId: string,
     options: {
@@ -220,7 +212,7 @@ describe("parenting guidance production wiring — real PGlite", () => {
       delete attributes[PARENTING_CURRENT_LOCATION_ATTRIBUTE];
     } else {
       const observedAt =
-        options.observedAt ?? new Date(Date.now() - 60 * 1_000).toISOString();
+        options.observedAt ?? new Date(Date.now() - 60 * 1000).toISOString();
       attributes[PARENTING_CURRENT_LOCATION_ATTRIBUTE] =
         createParentingSubjectLocationAttribute({
           tenantAgentId: options.tenantAgentId ?? runtime.agentId,
@@ -231,7 +223,7 @@ describe("parenting guidance production wiring — real PGlite", () => {
           expiresAt:
             options.expiresAt ??
             new Date(
-              Date.parse(observedAt) + 12 * 60 * 60 * 1_000,
+              Date.parse(observedAt) + 12 * 60 * 60 * 1000,
             ).toISOString(),
           source: options.source ?? "caregiver_presence_confirmation",
           verifiedByEntityId: options.verifiedByEntityId ?? SELF_ENTITY_ID,
@@ -250,14 +242,12 @@ describe("parenting guidance production wiring — real PGlite", () => {
       state: entity.state,
     });
   }
-
   function useRisk(overrides: RiskOverrides): void {
     registerParentingSafetyClassifier(
       runtime,
       new StaticSafetyClassifier(overrides),
     );
   }
-
   async function run(input: {
     text: string;
     childId?: string;
@@ -290,12 +280,15 @@ describe("parenting guidance production wiring — real PGlite", () => {
     );
     if (!result) throw new Error("parenting action returned no result");
     const guidance = (
-      result.data as { guidance?: ParentingGuidanceDelivery } | undefined
+      result.data as
+        | {
+            guidance?: ParentingGuidanceDelivery;
+          }
+        | undefined
     )?.guidance;
     if (!guidance) throw new Error("guidance artifact missing");
     return { result, guidance };
   }
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -358,12 +351,10 @@ describe("parenting guidance production wiring — real PGlite", () => {
       issuedByEntityId: SELF_ENTITY_ID,
     });
     await setLocale("en-GB");
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   it("registers the conversational action and runtime service in production composition", () => {
     expect(
       personalAssistantPlugin.actions?.map((candidate) => candidate.name),
@@ -389,7 +380,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
         .join(" "),
     ).toMatch(/turned into a whole thing|can’t tell whether they meant it/u);
   });
-
   it("returns cited ordinary options and a concrete human next step from vague language", async () => {
     useRisk({});
     const { result, guidance } = await run({
@@ -397,7 +387,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       topic: "boundary_setting",
       requestedFramework: "good_inside",
     });
-
     expect(result.success).toBe(true);
     expect(guidance).toMatchObject({
       ageBand: "school_age",
@@ -422,7 +411,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
     expect(result.text).toMatch(/Sources:/u);
     expect(result.text).toMatch(/Human next step:/u);
   });
-
   it("uses classifier output rather than injected planner safety and authorization flags", async () => {
     useRisk({});
     const { guidance } = await run({
@@ -440,11 +428,9 @@ describe("parenting guidance production wiring — real PGlite", () => {
         locale: "en-US",
       },
     });
-
     expect(guidance.decision.status).toBe("educational_options");
     expect(guidance.decision.mayDisclosePrivateContext).toBe(true);
   });
-
   it("denies an ungranted household principal before child prose reaches the model classifier", async () => {
     let classifierCalls = 0;
     registerParentingSafetyClassifier(runtime, {
@@ -460,7 +446,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       runtime,
       resolveAuthenticatedPrincipal: async () => ungrantedCoParentId,
     });
-
     await expect(
       deniedService.advise({
         message: ownerMessage(
@@ -474,7 +459,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
     });
     expect(classifierCalls).toBe(0);
   });
-
   it("denies an otherwise authorized co-parent access to another child", async () => {
     let classifierCalls = 0;
     registerParentingSafetyClassifier(runtime, {
@@ -490,7 +474,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       runtime,
       resolveAuthenticatedPrincipal: async () => authorizedCoParentId,
     });
-
     await expect(
       childScopedService.advise({
         message: ownerMessage(
@@ -504,14 +487,12 @@ describe("parenting guidance production wiring — real PGlite", () => {
     });
     expect(classifierCalls).toBe(0);
   });
-
   it("stops on unknown risk instead of assuming ordinary guidance is safe", async () => {
     await setSubjectLocation(schoolAgeChildId);
     useRisk({ selfHarm: "unknown" });
     const { guidance } = await run({
       text: "They said something scary and I cannot tell what they meant.",
     });
-
     expect(guidance.decision.status).toBe("needs_safety_clarification");
     expect(guidance.decision.options).toEqual([]);
     expect(guidance.handoffResources.status).toBe("resolved");
@@ -523,14 +504,12 @@ describe("parenting guidance production wiring — real PGlite", () => {
       "crisis_support",
     ]);
   });
-
   it("resolves exact US emergency and crisis resources for urgent risk", async () => {
     await setSubjectLocation(schoolAgeChildId);
     useRisk({ immediateDanger: "present", selfHarm: "present" });
     const { result, guidance } = await run({
       text: "My child says they are going to hurt themselves right now.",
     });
-
     expect(guidance.decision.status).toBe("urgent_safety_handoff");
     expect(guidance.decision.options).toEqual([]);
     expect(guidance.handoffResources.status).toBe("resolved");
@@ -549,7 +528,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
     );
     expect(result.text).not.toContain("source-grounded educational options");
   });
-
   it.each([
     {
       label: "abuse",
@@ -582,14 +560,12 @@ describe("parenting guidance production wiring — real PGlite", () => {
       const { guidance } = await run({
         text: "The classifier fixture represents this sensitive request.",
       });
-
       expect(guidance.decision.status).toBe(status);
       expect(guidance.decision.options).toEqual([]);
       expect(guidance.decision.handoff?.kinds).toContain(kind);
       expect(guidance.handoffResources.status).toBe("resolved");
     },
   );
-
   it("withholds teen-private context even when planner flags claim disclosure authority", async () => {
     useRisk({});
     const { guidance } = await run({
@@ -608,7 +584,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
         },
       },
     });
-
     expect(guidance.decision).toMatchObject({
       status: "privacy_withheld",
       mayDisclosePrivateContext: false,
@@ -616,7 +591,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
     });
     expect(guidance.decision.omissionNotice).toMatch(/contents are omitted/u);
   });
-
   it("returns no guessed contacts when subject location is missing or unsupported", async () => {
     useRisk({ selfHarm: "present" });
     await setSubjectLocation(schoolAgeChildId, { remove: true });
@@ -637,7 +611,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       resources: [],
     });
     expect(missing.result.text).toMatch(/no contact was guessed/u);
-
     await setSubjectLocation(schoolAgeChildId, {
       locale: "en-GB",
       jurisdiction: "GB",
@@ -655,7 +628,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
     );
     await setSubjectLocation(schoolAgeChildId);
   });
-
   it("uses the child's co-parent-verified location while the owner travels elsewhere", async () => {
     useRisk({ selfHarm: "present" });
     await setLocale("en-GB", {
@@ -670,8 +642,8 @@ describe("parenting guidance production wiring — real PGlite", () => {
     const now = Date.now();
     await resolveOwnerFactStore(runtime).setActiveTravel(
       {
-        startIso: new Date(now - 60_000).toISOString(),
-        endIso: new Date(now + 60_000).toISOString(),
+        startIso: new Date(now - 60000).toISOString(),
+        endIso: new Date(now + 60000).toISOString(),
         destinationTimezone: "Europe/London",
       },
       {
@@ -707,13 +679,12 @@ describe("parenting guidance production wiring — real PGlite", () => {
       await setSubjectLocation(schoolAgeChildId);
     }
   });
-
   it("fails closed for stale, cross-child, or cross-tenant location assertions", async () => {
     useRisk({ selfHarm: "present" });
     const now = Date.now();
     await setSubjectLocation(schoolAgeChildId, {
-      observedAt: new Date(now - 48 * 60 * 60 * 1_000).toISOString(),
-      expiresAt: new Date(now - 24 * 60 * 60 * 1_000).toISOString(),
+      observedAt: new Date(now - 48 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
     });
     const stale = await run({
       text: "The child may hurt themselves now.",
@@ -727,7 +698,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       unavailableReason: "location_stale",
       resources: [],
     });
-
     await setSubjectLocation(schoolAgeChildId, {
       source: "professional_presence_confirmation",
       verifiedByEntityId: authorizedCoParentId,
@@ -739,7 +709,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       status: "unavailable",
       unavailableReason: "location_untrusted",
     });
-
     await setSubjectLocation(teenChildId, {
       verifiedByEntityId: authorizedCoParentId,
     });
@@ -751,7 +720,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       status: "unavailable",
       unavailableReason: "location_untrusted",
     });
-
     await setSubjectLocation(schoolAgeChildId, {
       tenantAgentId: `foreign-${runtime.agentId}`,
     });
@@ -765,11 +733,9 @@ describe("parenting guidance production wiring — real PGlite", () => {
     expect(crossTenant.result.text).toMatch(
       /no contact was guessed from the owner's profile or travel location/u,
     );
-
     await setSubjectLocation(schoolAgeChildId);
     await setSubjectLocation(teenChildId);
   });
-
   it("stops guidance without inventing a clinical handoff after source review expiry", async () => {
     useRisk({});
     const staleService = new ParentingGuidanceService({
@@ -782,7 +748,6 @@ describe("parenting guidance production wiring — real PGlite", () => {
       topic: "boundary_setting",
       requestedFramework: "none",
     });
-
     expect(guidance.decision.status).toBe("evidence_unavailable");
     expect(guidance.decision.handoff).toBeNull();
     expect(guidance.decision.options).toEqual([]);

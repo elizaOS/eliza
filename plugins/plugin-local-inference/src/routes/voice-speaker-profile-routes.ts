@@ -33,16 +33,14 @@
  * store persists, which the attribution pipeline then resolves on the next
  * recognition.
  */
-
 import type * as http from "node:http";
 import path from "node:path";
+import { logger, resolveStateDir } from "@elizaos/core";
 import {
-	logger,
 	readJsonBody,
-	resolveStateDir,
 	sendJson,
 	sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/core/api/http-helpers";
 import {
 	type VoiceProfileRecord,
 	VoiceProfileStore,
@@ -51,15 +49,12 @@ import {
 // ---------------------------------------------------------------------------
 // Injectable test hook (mirrors family-member-route.ts)
 // ---------------------------------------------------------------------------
-
 let profileStoreOverride: VoiceProfileStore | null = null;
-
 export function setVoiceSpeakerProfileStore(
 	store: VoiceProfileStore | null,
 ): void {
 	profileStoreOverride = store;
 }
-
 async function getProfileStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
 	const store = new VoiceProfileStore({
@@ -68,11 +63,9 @@ async function getProfileStore(): Promise<VoiceProfileStore> {
 	await store.init();
 	return store;
 }
-
 // ---------------------------------------------------------------------------
 // Response shape
 // ---------------------------------------------------------------------------
-
 export interface SpeakerProfileSummary {
 	profileId: string;
 	entityId: string | null;
@@ -83,7 +76,6 @@ export interface SpeakerProfileSummary {
 	firstObservedAt: string;
 	lastObservedAt: string;
 }
-
 function summarize(record: VoiceProfileRecord): SpeakerProfileSummary {
 	const label =
 		typeof record.metadata?.label === "string" ? record.metadata.label : null;
@@ -98,15 +90,12 @@ function summarize(record: VoiceProfileRecord): SpeakerProfileSummary {
 		lastObservedAt: record.lastObservedAt,
 	};
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 const PROFILE_ID_RE = /^[A-Za-z0-9._-]+$/;
 const BIND_RE = /^\/v1\/voice\/speaker-profiles\/([^/]+)\/bind$/;
 const UNBIND_RE = /^\/v1\/voice\/speaker-profiles\/([^/]+)\/unbind$/;
-
 function decodeProfileId(raw: string): string | null {
 	try {
 		return decodeURIComponent(raw);
@@ -116,7 +105,6 @@ function decodeProfileId(raw: string): string | null {
 		return null;
 	}
 }
-
 /**
  * Handle `/v1/voice/speaker-profiles*` requests.
  *
@@ -131,9 +119,7 @@ export async function handleVoiceSpeakerProfileRoutes(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
-
 	if (!pathname.startsWith("/v1/voice/speaker-profiles")) return false;
-
 	// GET /v1/voice/speaker-profiles — list recognized speaker profiles.
 	if (method === "GET" && pathname === "/v1/voice/speaker-profiles") {
 		const store = await getProfileStore();
@@ -141,7 +127,6 @@ export async function handleVoiceSpeakerProfileRoutes(
 		sendJson(res, { profiles: records.map(summarize) });
 		return true;
 	}
-
 	// POST /v1/voice/speaker-profiles/:id/bind { entityId, label? }
 	const bindMatch = BIND_RE.exec(pathname);
 	if (method === "POST" && bindMatch) {
@@ -166,7 +151,6 @@ export async function handleVoiceSpeakerProfileRoutes(
 			typeof body.label === "string" && body.label.trim().length > 0
 				? body.label.trim()
 				: undefined;
-
 		const store = await getProfileStore();
 		let updated: VoiceProfileRecord | null;
 		try {
@@ -190,7 +174,6 @@ export async function handleVoiceSpeakerProfileRoutes(
 		sendJson(res, summarize(updated));
 		return true;
 	}
-
 	// POST /v1/voice/speaker-profiles/:id/unbind
 	const unbindMatch = UNBIND_RE.exec(pathname);
 	if (method === "POST" && unbindMatch) {
@@ -212,6 +195,5 @@ export async function handleVoiceSpeakerProfileRoutes(
 		sendJson(res, summarize(updated));
 		return true;
 	}
-
 	return false;
 }

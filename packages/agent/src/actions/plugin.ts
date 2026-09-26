@@ -3,21 +3,20 @@
  * plugins and connectors. Manager-backed ops (install/uninstall/update/sync/
  * eject/reinject) go through the plugin_manager service; configure/read_config/
  * toggle/list/disconnect hit the local /api/plugins compat routes because their
- * orchestration lives in @elizaos/app-core, which this layer cannot import.
+ * orchestration lives in @elizaos/app, which this layer cannot import.
  */
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
   createSelfApiRequestHeaders,
-  requestRestart,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  requireRestartHandler,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
 import {
   isPluginManagerLike,
   type PluginManagerLike,
@@ -290,12 +289,14 @@ async function doSync(
 }
 
 async function doEject(
+  runtime: IAgentRuntime,
   mgr: PluginManagerLike,
   params: PluginParams,
 ): Promise<ActionResult> {
   const pluginId = resolveTargetId(params);
   if (!pluginId) return fail("Missing pluginId.", "PLUGIN_EJECT_FAILED");
 
+  const restart = requireRestartHandler();
   const result = await mgr.ejectPlugin(pluginId);
   if (!result.success) {
     return fail(
@@ -305,7 +306,16 @@ async function doEject(
   }
 
   setTimeout(() => {
-    requestRestart(`Plugin ${result.pluginName} ejected`);
+    void Promise.resolve()
+      .then(() => restart(`Plugin ${result.pluginName} ejected`))
+      .catch((error: unknown) => {
+        // error-policy:J7 observe deferred host failures after the plugin mutation.
+        logger.error(
+          { error, pluginId },
+          "[plugin:eject] Deferred restart failed",
+        );
+        runtime.reportError("plugin.eject.restart", error);
+      });
   }, 1_000);
 
   return {
@@ -316,12 +326,14 @@ async function doEject(
 }
 
 async function doReinject(
+  runtime: IAgentRuntime,
   mgr: PluginManagerLike,
   params: PluginParams,
 ): Promise<ActionResult> {
   const pluginId = resolveTargetId(params);
   if (!pluginId) return fail("Missing pluginId.", "PLUGIN_REINJECT_FAILED");
 
+  const restart = requireRestartHandler();
   const result = await mgr.reinjectPlugin(pluginId);
   if (!result.success) {
     return fail(
@@ -331,7 +343,16 @@ async function doReinject(
   }
 
   setTimeout(() => {
-    requestRestart(`Plugin ${result.pluginName} reinjected`);
+    void Promise.resolve()
+      .then(() => restart(`Plugin ${result.pluginName} reinjected`))
+      .catch((error: unknown) => {
+        // error-policy:J7 observe deferred host failures after the plugin mutation.
+        logger.error(
+          { error, pluginId },
+          "[plugin:reinject] Deferred restart failed",
+        );
+        runtime.reportError("plugin.reinject.restart", error);
+      });
   }, 1_000);
 
   return {
@@ -342,7 +363,7 @@ async function doReinject(
 }
 
 // configure / read_config / toggle: orchestration (vault mirror, runtime
-// mutation, drift reconciliation) is in @elizaos/app-core which the agent
+// mutation, drift reconciliation) is in @elizaos/app which the agent
 // layer cannot import. Hit the local /api/plugins compat routes instead.
 
 async function doConfigure(params: PluginParams): Promise<ActionResult> {
@@ -888,9 +909,9 @@ export const pluginAction: Action = {
           case "sync":
             return await doSync(mgr, params);
           case "eject":
-            return await doEject(mgr, params);
+            return await doEject(runtime, mgr, params);
           case "reinject":
-            return await doReinject(mgr, params);
+            return await doReinject(runtime, mgr, params);
         }
       }
 

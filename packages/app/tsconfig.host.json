@@ -1,0 +1,77 @@
+{
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "target": "ES2022",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun-types"],
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
+      "@elizaos/plugin-github/*": ["../../plugins/plugin-github/src/*"],
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/app/*": ["./src/*"],
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
+      ],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../ui/src/api/client-types-cloud.ts"
+      ],
+      "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
+      "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-computeruse/*": [
+        "../../plugins/plugin-computeruse/src/*"
+      ],
+      "@elizaos/plugin-coding-tools/*": [
+        "../../plugins/plugin-coding-tools/src/*"
+      ],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
+      "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
+      "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
+      "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/plugin-native-inference/*": [
+        "../../plugins/plugin-native-inference/src/*"
+      ]
+    }
+  },
+  "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],
+  "include": [
+    "src/connectors",
+    "src/ui-compat.ts",
+    "src/config",
+    "src/security",
+    "src/mobile-remote-target.ts",
+    "src/entry.ts",
+    "src/platform",
+    "src/runtime",
+    "src/utils",
+    "src/desktop-shell.ts",
+    "src/cli",
+    "src/permissions",
+    "src/browser.ts",
+    "src/styles",
+    "src/boot-profile.ts",
+    "src/diagnostics",
+    "src/registry",
+    "src/first-run",
+    "src/api",
+    "src/index.ts",
+    "src/account-pool.ts",
+    "src/entry-cloud-api-key.ts",
+    "src/alias-env-reads.13422.test.ts",
+    "src/services",
+    "vite-env.d.ts"
+  ]
+}

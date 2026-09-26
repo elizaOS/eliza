@@ -32,7 +32,7 @@ const buttonVariants = cva(
         default:
           "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/80 disabled:text-accent-fg",
         accentDarkHover:
-          "bg-accent text-accent-fg hover:bg-accent-muted hover:text-inverse disabled:bg-accent/80 disabled:text-accent-fg",
+          "bg-accent-action text-accent-action-foreground hover:bg-accent-action-hover hover:text-accent-action-hover-foreground disabled:bg-accent-action disabled:text-accent-action-foreground",
         surface:
           "bg-card text-txt-strong hover:bg-surface disabled:text-muted-strong",
         surfaceAccent:
@@ -53,11 +53,9 @@ const buttonVariants = cva(
         settingsRow:
           "bg-transparent text-muted hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-bg-hover data-[state=on]:hover:bg-bg-hover data-[state=on]:text-txt-strong",
         choice:
-          "border border-border-strong bg-card text-card-foreground hover:border-accent hover:bg-bg-choice-hover disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
+          "border border-border-strong bg-card text-card-foreground hover:border-accent hover:bg-bg-choice-hover disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:hover:bg-accent-action-hover data-[state=on]:hover:text-accent-action-hover-foreground data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
           "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-inverse-foreground whitespace-normal hover:bg-transparent hover:text-inverse",
-        publicTile:
-          "bg-inverse text-inverse-foreground hover:bg-inverse-foreground hover:text-inverse",
         publicLink:
           "h-auto bg-transparent p-0 text-xs text-muted underline-offset-2 hover:bg-transparent hover:text-txt",
         weatherPrompt:
@@ -83,7 +81,7 @@ const buttonVariants = cva(
         outlineMuted:
           "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-surface hover:text-txt",
         mutedLink:
-          "h-auto bg-transparent p-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-accent hover:underline",
+          "h-auto bg-transparent p-0 text-xs font-medium text-muted-strong underline-offset-2 hover:bg-transparent hover:text-accent hover:underline",
         warningOutline:
           "border border-warning/35 bg-warning/12 text-warning hover:border-warning/50 hover:bg-warning/18 hover:text-warning",
         outlineAccent:
@@ -147,8 +145,6 @@ const buttonVariants = cva(
           "size-8 rounded-sm p-0 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         pageDrawerTrigger:
           "h-9.5 rounded-sm px-3 text-sm font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
-        publicTile:
-          "h-18 w-full justify-start gap-4 rounded-xs px-5 text-left whitespace-normal",
         memorySidebar:
           "h-11 w-full justify-between gap-2 rounded-sm px-3 text-start text-sm font-medium",
       },

@@ -1,0 +1,28 @@
+{
+  "name": "@elizaos/linux-installer-plan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
+  "scripts": {
+    "build:native": "./native/build.sh $PWD/native/build/linux-peer-credentials.node",
+    "lint:check": "bunx @biomejs/biome check .",
+    "test:native": "bun run test:native:compile",
+    "test:native:compile": "./native/test-compile.sh",
+    "test:native:qualify": "./native/test-qualify.sh",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
+  }
+}

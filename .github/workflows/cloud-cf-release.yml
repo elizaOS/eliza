@@ -231,16 +231,16 @@ jobs:
           esac
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            canonical_source="packages/homepage/src/lib/contact.ts"
+            canonical_source="packages/cloud/shared/src/lib/public-telegram-identity.ts"
             resolved_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
             resolved_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
             valid_bot_id "$resolved_bot_id" || \
-              fail "The homepage canonical Telegram bot ID is missing or invalid"
+              fail "The cloud canonical Telegram bot ID is missing or invalid"
             [[ "$resolved_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
-              fail "The homepage canonical Telegram username is missing or invalid"
+              fail "The cloud canonical Telegram username is missing or invalid"
             resolved_bot_username_key="$(printf '%s' "$resolved_bot_username" | tr '[:upper:]' '[:lower:]')"
             [[ "$resolved_bot_username_key" == *bot ]] || \
-              fail "The homepage canonical Telegram username must use the managed bot suffix"
+              fail "The cloud canonical Telegram username must use the managed bot suffix"
           else
             valid_bot_id "$ADMITTED_TELEGRAM_BOT_ID" || \
               fail "The caller-admitted Telegram bot ID is missing or invalid; re-run all jobs"
@@ -364,7 +364,7 @@ jobs:
           # Pin the canonical released toolchain: floating `latest` first calls
           # GitHub's tags API, making deploys fail before setup during an API
           # outage, while canary has also hung in the link phase (#10839).
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install dependencies
         run: |
@@ -420,7 +420,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
-          node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+          node packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
 
       - name: Validate Railway PostgreSQL resilience gate configuration
         id: database_resilience
@@ -698,7 +698,7 @@ jobs:
             exit 1
           }
           trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
-          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" \
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.ts" \
             > "$trusted_admission"
           chmod 0500 "$trusted_admission"
           bun "$trusted_admission" \
@@ -794,7 +794,7 @@ jobs:
             bunx wrangler deploy --env production --dry-run \
               --outdir "$evidence_dir/worker-bundle"
           ) > "$evidence_dir/dry-run.stdout" 2> "$evidence_dir/dry-run.stderr"
-          node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+          node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
@@ -819,10 +819,6 @@ jobs:
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
-          # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
-          # gitignored generated keyword data. Source-mode (eliza-source) migrate
-          # never builds core, so generate the file first (mirrors core's prebuild).
-          node packages/shared/scripts/generate-keywords.mjs
           # Recheck inside the mutation step after all preparation. The branch
           # can advance between workflow steps. Once this step is running, any
           # mismatch must fail immediately before the database mutation.
@@ -833,7 +829,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
-          node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+          node packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
           # The migrator evaluates identity after acquiring its advisory lock,
           # on the exact PostgreSQL session that performs the schema writes.
           bun run db:cloud:migrate
@@ -1011,10 +1007,10 @@ jobs:
           # Pinned off `canary`: canary's link phase hangs on the self-hosted
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
-          # lookup during setup. See elizaOS/eliza#10839.
-          bun-version: "1.3.14"
+          # 28552075615 and 28569068598 (the money-integrity wave). Use the
+          # repository-pinned release to avoid floating-tag API lookups.
+          # See elizaOS/eliza#10839 for the historical incident.
+          bun-version: "1.4.2"
 
       - name: Install API dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -1140,7 +1136,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
 
       - name: Validate canonical routing contract
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -1229,7 +1225,7 @@ jobs:
           STEWARD_UPSTREAM_URL: https://steward-api-staging.up.railway.app
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$STEWARD_UPSTREAM_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface upstream
@@ -1253,8 +1249,8 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
-          node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.mjs" "${source_args[@]}"
-          if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+          node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
+          if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
             STAGING_SESSION_EXCHANGE_ENABLED --env staging); then
             echo "::error::Could not confirm staging session exchange is off before cutover"
             exit 1
@@ -1494,7 +1490,7 @@ jobs:
           # Value-safe validation: exact UUID allowlists, dedicated signing
           # key/kid, and the code/runtime version are all required before the
           # first QA-related Worker secret is touched.
-          node ../scripts/validate-staging-session-cutover.mjs
+          node ../scripts/validate-staging-session-cutover.ts
 
           # Fish is a separate, default-off promotion within realtime voice.
           # Refuse to advertise it unless its own credentials and the exact
@@ -1687,7 +1683,7 @@ jobs:
             local secret_inventory
             secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node \
-              "$CHECKOUT_DIR/packages/cloud/scripts/verify-worker-secret-binding-names.mjs" \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-worker-secret-binding-names.ts" \
               --queued "${worker_secret_names[@]}" \
               --required \
               ELIZA_APP_TELEGRAM_BOT_TOKEN \
@@ -1730,7 +1726,7 @@ jobs:
             printf '%s' "$secret_inventory" | env \
               "WEBHOOK_GATEWAY_RAILWAY_SECRET_VALUE=$railway_gateway_secret_value" \
               node \
-              "$CHECKOUT_DIR/packages/cloud/scripts/verify-webhook-gateway-binding.mjs" \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-webhook-gateway-binding.ts" \
               "${worker_secret_names[@]}"
             local status=$?
             railway_gateway_secret_value=""
@@ -1752,7 +1748,7 @@ jobs:
             # Unset: use a names-only inventory before and after deletion so
             # absence is success without depending on Wrangler error prose.
             local result
-            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
               --versions "$name" ${{ steps.env.outputs.wrangler_args }}); then
               echo "::error::$name is unset but its absence could not be confirmed"
               return 1
@@ -1932,7 +1928,7 @@ jobs:
           # staging Worker with production Steward while all health probes keep
           # returning 200. Blank means preserve the unreadable existing Worker
           # binding; a configured candidate must match the canonical upstream.
-          node "$CHECKOUT_DIR/packages/cloud/scripts/verify-steward-upstream-binding.mjs"
+          node "$CHECKOUT_DIR/packages/cloud/scripts/verify-steward-upstream-binding.ts"
 
           # Wrangler deploy accepts this JSON additively: named values are
           # committed in the same Worker version as the exact source, while
@@ -1940,7 +1936,7 @@ jobs:
           # when Cloudflare has an undeployed latest version, where standalone
           # `wrangler secret put` refuses to proceed.
           worker_secrets_file="$(node \
-            "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.mjs" \
+            "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.ts" \
             create "$RUNNER_TEMP" "${worker_secret_names[@]}")"
           echo "secrets_file=$worker_secrets_file" >> "$GITHUB_OUTPUT"
           echo "Prepared ${#worker_secret_names[@]} configured Worker bindings for the atomic deploy; values were not printed."
@@ -1982,7 +1978,7 @@ jobs:
             source_args+=(--force)
           fi
           recheck_canonical_source() {
-            node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.mjs" "${source_args[@]}"
+            node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
           }
           restore_legacy_onboarding_secrets() {
             if [ "$legacy_onboarding_secret_removed" != "true" ]; then
@@ -2000,7 +1996,7 @@ jobs:
             local name="$1"
             local result
             recheck_canonical_source
-            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
               --versions "$name" --env staging); then
               echo "::error::Could not retire legacy staging secret binding $name."
               return 1
@@ -2036,7 +2032,7 @@ jobs:
           fi
           recheck_canonical_source
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-            ENVIRONMENT=staging bun run --cwd "$CHECKOUT_DIR" cloud:reconcile-steward-email-callback
+            (cd "$CHECKOUT_DIR" && ENVIRONMENT=staging bun packages/cloud/scripts/reconcile-steward-email-callback-config.ts)
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
@@ -2045,7 +2041,7 @@ jobs:
         if: ${{ always() && steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' }}
         run: |
           set -euo pipefail
-          node "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.mjs" \
+          node "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.ts" \
             remove-all "$RUNNER_TEMP"
 
       - name: Verify required Worker secret binding names
@@ -2196,7 +2192,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$API_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface proxy
@@ -2312,7 +2308,7 @@ jobs:
           expected_enabled="$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"
 
           rollback_gate() {
-            if node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+            if node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
               STAGING_SESSION_EXCHANGE_ENABLED --env staging >/dev/null; then
               echo "Staging session exchange activation is off."
               return 0
@@ -2489,7 +2485,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile --ignore-scripts
@@ -2528,17 +2524,17 @@ jobs:
           bunx wrangler@4.100.0 pages functions build functions \
             --outdir "$functions_bundle" \
             --project-directory . \
-            --build-output-directory dist
+            --build-output-directory web-dist
           test -s "$functions_bundle/index.js"
-          install -m 0644 "$functions_bundle/index.js" dist/_worker.js
-          node --check dist/_worker.js
+          install -m 0644 "$functions_bundle/index.js" web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
-            packages/app/dist
+            packages/app/web-dist
             packages/app/wrangler.toml
           if-no-files-found: error
           retention-days: 1
@@ -2715,10 +2711,10 @@ jobs:
           # Pinned off `canary`: canary's link phase hangs on the self-hosted
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
-          # lookup during setup. See elizaOS/eliza#10839.
-          bun-version: "1.3.14"
+          # 28552075615 and 28569068598 (the money-integrity wave). Use the
+          # repository-pinned release to avoid floating-tag API lookups.
+          # See elizaOS/eliza#10839 for the historical incident.
+          bun-version: "1.4.2"
 
       - name: Resolve immutable app artifact
         id: pages-artifact
@@ -2756,8 +2752,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         run: |
           set -euo pipefail
-          test -s dist/_worker.js
-          node --check dist/_worker.js
+          test -s web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Legacy inline fallback - install dependencies
         if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
@@ -2927,7 +2923,7 @@ jobs:
             if [ "$FORCE" = "true" ]; then
               source_args+=(--force)
             fi
-            node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
           fi
           if output=$(bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>&1); then
             printf '%s\n' "$output"
@@ -2956,7 +2952,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         id: pages-deploy
@@ -2976,7 +2972,7 @@ jobs:
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
-        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
+        # `pages_build_output_dir = "./web-dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
         run: |
           set -euo pipefail
@@ -3001,7 +2997,7 @@ jobs:
           fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
             recheck_canonical_source() {
-              node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.mjs" "${source_args[@]}"
+              node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
             }
           else
             recheck_canonical_source() { :; }
@@ -3031,7 +3027,7 @@ jobs:
             fi
             if [ "$deploy_succeeded" = "true" ]; then
               if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-                pages_alias="$(node "$CHECKOUT_DIR/packages/cloud/scripts/pages-deployment-authority.mjs" parse \
+                pages_alias="$(node "$CHECKOUT_DIR/packages/cloud/scripts/pages-deployment-authority.ts" parse \
                   --input "$wrangler_output" \
                   --output "$PAGES_AUTHORITY_FILE" \
                   --expected-project "$PAGES_PROJECT" \
@@ -3080,9 +3076,9 @@ jobs:
             served_frontends+=("$PAGES_ALIAS")
           fi
           for served_url in "${served_frontends[@]}"; do
-            node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
+            node packages/cloud/scripts/verify-pages-frontend-cli.ts \
               --served-url "$served_url" \
-              --dist packages/app/dist \
+              --dist packages/app/web-dist \
               --require-text "Signing in to your agent" \
               --require-text "This tab will continue automatically" \
               --require-text "Open this agent from Eliza Cloud"
@@ -3137,7 +3133,7 @@ jobs:
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-              node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+              node packages/cloud/scripts/verify-steward-provider-discovery.ts \
                 --base-url "$served_url" \
                 --environment "$DEPLOY_ENVIRONMENT" \
                 --surface proxy
@@ -3146,7 +3142,7 @@ jobs:
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
               tenant_id="elizacloud-staging"
             fi
-            node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs \
+            node packages/cloud/scripts/verify-steward-oauth-callbacks.ts \
               --base-url "$served_url" \
               --callback-url "$served_url/login" \
               --environment "$DEPLOY_ENVIRONMENT" \
@@ -3224,7 +3220,7 @@ jobs:
         # require the beacon: a beaconless answer means the deploy that was
         # supposed to carry it did not take. A genuine cross-wire is always fatal.
         run: |
-          node packages/cloud/scripts/verify-environment-routing-cli.mjs \
+          node packages/cloud/scripts/verify-environment-routing-cli.ts \
             --environment "${{ steps.env.outputs.environment }}" \
             --require-beacon
 
@@ -3291,7 +3287,7 @@ jobs:
       - name: Verify public deployment before browser auth
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/pages-deployment-authority.mjs verify \
+          node packages/cloud/scripts/pages-deployment-authority.ts verify \
             --authority "$AUTHORITY_PATH" \
             --api-base https://api-staging.eliza.app \
             --phase preflight \
@@ -3304,23 +3300,21 @@ jobs:
           # local desktop model adds an unrelated network dependency.
           ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
         with:
-          bun-version: "1.3.14"
-          install-command: bun install --frozen-lockfile
+          setup-python: "true"
+          bun-version: "1.4.2"
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-
-      # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
+      # cloud-live-origin.ts imports @elizaos/core/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.
-      - name: Build @elizaos/core + @elizaos/shared browser bundles
-        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
       - name: Run deployed Personal identity, chat, and continuity trajectory
         id: deployed-browser
@@ -3371,7 +3365,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: deployed-renderer-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-*-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -3379,7 +3373,7 @@ jobs:
         if: ${{ always() && steps.deployed-browser.outcome != 'skipped' }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/pages-deployment-authority.mjs verify \
+          node packages/cloud/scripts/pages-deployment-authority.ts verify \
             --authority "$AUTHORITY_PATH" \
             --api-base https://api-staging.eliza.app \
             --phase postflight \
@@ -3388,7 +3382,7 @@ jobs:
       - name: Close deployed renderer proof
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/pages-deployment-authority.mjs combine \
+          node packages/cloud/scripts/pages-deployment-authority.ts combine \
             --authority "$AUTHORITY_PATH" \
             --preflight "$PREFLIGHT_PATH" \
             --remote-smoke "$REMOTE_SMOKE_PATH" \
@@ -3406,7 +3400,7 @@ jobs:
             echo "::error::Continuity evidence did not close"
             exit 1
           }
-          node packages/scripts/write-staging-cloud-receipt.mjs \
+          node packages/scripts/write-staging-cloud-receipt.ts \
             --output "$RECEIPT_PATH" \
             --source-sha "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" \

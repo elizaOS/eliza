@@ -24,15 +24,19 @@ import {
   type ActionResult,
   checkSenderRole,
   ElizaError,
+  getViewModalities,
   type IAgentRuntime,
   logger,
   type Memory,
   type RoleGateRole,
   type State,
+  type ViewDeclaration,
   type ViewScopedAction,
   type ViewScopedActionStep,
+  type ViewType,
 } from "@elizaos/core";
-import { getView } from "../api/views-registry.ts";
+
+import { assertRuntimeViewEntry, getView } from "../api/views-registry.ts";
 import {
   dispatchViewInteract,
   getViewsBroadcastWs,
@@ -180,9 +184,22 @@ function unwrapInteractResult(result: unknown): unknown {
  * @param decl   - the scoped-action declaration.
  */
 export function buildViewScopedAction(
+  ownerRuntime: IAgentRuntime,
   viewId: string,
   decl: ViewScopedAction,
+  modalities: readonly ViewType[] = ["gui"],
 ): Action {
+  const ownedEntries = new Map(
+    modalities.map((viewType) => {
+      const entry = getView(ownerRuntime, viewId, { viewType });
+      if (!entry || entry.viewType !== viewType)
+        throw new ElizaError(
+          "Scoped action requires its declared view modality",
+          { code: "VIEW_INSTALLATION_INVALID" },
+        );
+      return [viewType, entry] as const;
+    }),
+  );
   const paramList = decl.parameters ?? [];
   const paramLine =
     paramList.length > 0 ? ` (parameters: ${paramList.join(", ")})` : "";
@@ -202,8 +219,17 @@ export function buildViewScopedAction(
     // that keeps the agent from driving a view's controls while looking at a
     // different one; a view switch (POST /api/views/:id/navigate) re-stamps the
     // active context and flips this without a restart.
-    validate: async (): Promise<boolean> => {
-      return getActiveViewContext()?.viewId === viewId;
+    validate: async (runtime): Promise<boolean> => {
+      if (runtime !== ownerRuntime) return false;
+      const active = getActiveViewContext(runtime);
+      const entry =
+        active?.viewId === viewId
+          ? ownedEntries.get(active.viewType)
+          : undefined;
+      if (!entry || active?.installationId !== entry.installationId)
+        return false;
+      assertRuntimeViewEntry(runtime, entry);
+      return true;
     },
     handler: async (
       runtime: IAgentRuntime,
@@ -213,8 +239,17 @@ export function buildViewScopedAction(
     ): Promise<ActionResult> => {
       // Defense in depth: the executor already gates on validate(), but a
       // hallucinated direct call must not drive a background view's controls.
-      const active = getActiveViewContext();
-      if (active?.viewId !== viewId) {
+      if (runtime !== ownerRuntime)
+        throw new ElizaError("Scoped action belongs to another runtime", {
+          code: "VIEW_INSTALLATION_INVALID",
+        });
+      const active = getActiveViewContext(runtime);
+      const entry = active ? ownedEntries.get(active.viewType) : undefined;
+      if (
+        active?.viewId !== viewId ||
+        !entry ||
+        active.installationId !== entry.installationId
+      ) {
         throw new ElizaError(
           `View-scoped action "${decl.name}" requires the "${viewId}" view to be active (active view: ${active?.viewId ?? "none"})`,
           {
@@ -229,30 +264,22 @@ export function buildViewScopedAction(
         );
       }
 
-      const broadcastWs = getViewsBroadcastWs();
-      const broadcastWsToClientId = getViewsBroadcastWsToClientId();
-      const entry = getView(viewId, { viewType: active.viewType });
+      const broadcastWs = getViewsBroadcastWs(active.hostKey);
+      const broadcastWsToClientId = getViewsBroadcastWsToClientId(
+        active.hostKey,
+      );
+      assertRuntimeViewEntry(runtime, entry);
       // A scoped action drives a MOUNTED view surface. With no way to reach a
       // shell (no server-side handler and no WS broadcaster), the dispatch would
       // block on the pending-request timeout and then read as a plain failure —
       // fail loudly instead so the missing wiring surfaces to the agent.
-      if (!entry?.serverInteract && !broadcastWs) {
+      if (!entry.serverInteract && !broadcastWs) {
         throw new ElizaError(
           `View-scoped action "${decl.name}" cannot reach the "${viewId}" view: no mounted shell to dispatch to`,
           {
             code: "VIEW_SCOPED_ACTION_NO_SHELL",
             context: { actionName: decl.name, viewId },
             severity: "ephemeral",
-          },
-        );
-      }
-      if (!entry) {
-        throw new ElizaError(
-          `View-scoped action "${decl.name}" references view "${viewId}" which is not registered`,
-          {
-            code: "VIEW_SCOPED_ACTION_VIEW_UNREGISTERED",
-            context: { actionName: decl.name, viewId },
-            severity: "fatal",
           },
         );
       }
@@ -275,6 +302,18 @@ export function buildViewScopedAction(
         : undefined;
 
       for (const step of decl.steps) {
+        const current = getActiveViewContext(runtime);
+        if (
+          current?.viewId !== viewId ||
+          current.viewType !== entry.viewType ||
+          current.hostKey !== active.hostKey ||
+          current.clientId !== clientId
+        ) {
+          throw new ElizaError(
+            "The requesting client's foreground view changed before the next step",
+            { code: "VIEW_SCOPED_ACTION_VIEW_INACTIVE" },
+          );
+        }
         const { capability, params: stepParams } = stepToCapability(
           step,
           params,
@@ -290,6 +329,7 @@ export function buildViewScopedAction(
             ...(broadcastWsToClientId ? { broadcastWsToClientId } : {}),
             ...(clientId ? { clientId } : {}),
             runtime,
+            hostKey: active.hostKey,
             ...(userRoles ? { userRoles } : {}),
           },
           SCOPED_ACTION_STEP_TIMEOUT_MS,
@@ -359,10 +399,10 @@ export function scopedActionNames(
 }
 
 /** A view (any modality) that can carry scoped-action declarations. */
-interface ScopedActionSourceView {
-  id: string;
-  scopedActions?: ViewScopedAction[];
-}
+type ScopedActionSourceView = Pick<
+  ViewDeclaration,
+  "id" | "scopedActions" | "viewType" | "modalities"
+>;
 
 /**
  * Per-owner action objects currently registered in the runtime, so a
@@ -370,13 +410,22 @@ interface ScopedActionSourceView {
  * touching another owner's actions. Keyed by the owner passed to
  * {@link registerViewScopedActions} (plugin name, or "@elizaos/builtin").
  */
-const registeredByOwner = new Map<string, Map<string, Action>>();
-
-type ScopedActionRuntime = Pick<
+const runtimeActions = new WeakMap<
   IAgentRuntime,
-  "registerAction" | "unregisterAction"
-> &
-  Partial<Pick<IAgentRuntime, "actions">>;
+  Map<string, Map<string, Action>>
+>();
+function ownedActions(
+  runtime: IAgentRuntime,
+): Map<string, Map<string, Action>> {
+  let owners = runtimeActions.get(runtime);
+  if (!owners) {
+    owners = new Map();
+    runtimeActions.set(runtime, owners);
+  }
+  return owners;
+}
+
+type ScopedActionRuntime = IAgentRuntime;
 
 function findRuntimeAction(
   runtime: Pick<IAgentRuntime, "actions">,
@@ -389,14 +438,14 @@ function unregisterOwnedScopedActions(
   runtime: ScopedActionRuntime,
   owner: string,
 ): void {
-  const previous = registeredByOwner.get(owner);
+  const previous = ownedActions(runtime).get(owner);
   if (!previous) return;
   if (!Array.isArray(runtime.actions)) {
     logger.warn(
       { src: "ViewScopedActions", owner },
       `[ViewScopedActions] cannot prove scoped-action ownership for owner "${owner}" during unregister; leaving actions registered`,
     );
-    registeredByOwner.delete(owner);
+    ownedActions(runtime).delete(owner);
     return;
   }
   for (const [name, action] of previous) {
@@ -412,7 +461,7 @@ function unregisterOwnedScopedActions(
     }
     runtime.unregisterAction(name);
   }
-  registeredByOwner.delete(owner);
+  ownedActions(runtime).delete(owner);
 }
 
 /**
@@ -450,7 +499,12 @@ export function registerViewScopedActions(
         );
         continue;
       }
-      const action = buildViewScopedAction(view.id, decl);
+      const action = buildViewScopedAction(
+        runtime,
+        view.id,
+        decl,
+        getViewModalities(view),
+      );
       runtime.registerAction(action);
       if (
         Array.isArray(runtime.actions) &&
@@ -473,13 +527,13 @@ export function registerViewScopedActions(
   }
 
   if (registered.size > 0) {
-    registeredByOwner.set(owner, registered);
+    ownedActions(runtime).set(owner, registered);
     logger.info(
       { src: "ViewScopedActions", owner, count: registered.size },
       `[ViewScopedActions] registered ${registered.size} scoped action(s) for owner "${owner}"`,
     );
   } else {
-    registeredByOwner.delete(owner);
+    ownedActions(runtime).delete(owner);
   }
   return [...registered.keys()];
 }
@@ -490,9 +544,4 @@ export function unregisterViewScopedActions(
   owner: string,
 ): void {
   unregisterOwnedScopedActions(runtime, owner);
-}
-
-/** Test-only: forget all owner→action bookkeeping (does not touch a runtime). */
-export function __resetViewScopedActionRegistryForTests(): void {
-  registeredByOwner.clear();
 }

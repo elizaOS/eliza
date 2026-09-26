@@ -11,6 +11,7 @@
  * `plugin-lifeops` consumes this as the
  * calendar assistant action.
  */
+
 import { createHash } from "node:crypto";
 import type {
   Action,
@@ -25,6 +26,7 @@ import type {
 } from "@elizaos/core";
 import {
   describeUserReference,
+  ElizaError,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
   unwrapUserMessageText,
@@ -37,14 +39,18 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
-} from "@elizaos/shared";
+} from "@elizaos/core/i18n/recurrence-markers";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
-import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
+import {
+  CALENDAR_DETAIL_ALIASES,
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+} from "../calendar-action-schema.js";
 import { normalizeCalendarDateTimeInTimeZone } from "../internal/calendar-normalize.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
@@ -66,6 +72,7 @@ import {
 } from "../internal/detail.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
   ELIZA_CALENDAR_PROVIDER,
 } from "../internal/eliza-calendar.js";
 import { basicEmailValid } from "../internal/email.js";
@@ -76,6 +83,7 @@ import {
   formatNextEventContext,
 } from "../internal/format.js";
 import { GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX } from "../internal/google-delegates.js";
+import { parseCalendarNoteSource } from "../internal/note-source.js";
 import {
   describeRecurrence,
   normalizeRecurrenceScope,
@@ -85,11 +93,13 @@ import {
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
+  CalendarLocalTimeError,
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../internal/time.js";
 import { isMicrosoftCalendarGrantId } from "../microsoft/accounts.js";
 import { CalendarService } from "../service/CalendarService.js";
+import { evaluateCalendarWriteAvailability } from "./conflict-detect.js";
 import type {
   CalendarActionDeps,
   CalendarModelCallArgs,
@@ -248,8 +258,13 @@ function calendarIdDetail(
 
 function plannerWindowDetail(
   details: Record<string, unknown> | undefined,
+  timeZone: string,
 ): { timeMin: string; timeMax: string } | undefined {
-  return normalizePlannerCalendarWindow(details?.timeMin, details?.timeMax);
+  return normalizePlannerCalendarWindow(
+    details?.timeMin,
+    details?.timeMax,
+    timeZone,
+  );
 }
 
 // Whether the planner supplied a window we can actually search with. This has
@@ -261,10 +276,15 @@ function plannerWindowDetail(
 function plannerWindowUsable(
   details: Record<string, unknown> | undefined,
   llmPlan: CalendarLlmPlan,
+  timeZone: string,
 ): boolean {
   return Boolean(
-    plannerWindowDetail(details) ??
-      normalizePlannerCalendarWindow(llmPlan.timeMin, llmPlan.timeMax),
+    plannerWindowDetail(details, timeZone) ??
+      normalizePlannerCalendarWindow(
+        llmPlan.timeMin,
+        llmPlan.timeMax,
+        timeZone,
+      ),
   );
 }
 
@@ -298,6 +318,7 @@ type RankedCalendarSearchCandidate = {
 type CreateEventCalendarContext = {
   calendarTimeZone: string;
   feed: LifeOpsCalendarFeed;
+  calendars: LifeOpsCalendarSummary[];
 };
 
 export type CalendarLlmPlan = {
@@ -326,6 +347,8 @@ type CalendarMutationSubaction =
   | "delete_event";
 
 type CalendarActionParams = {
+  target?: string;
+  targetKind?: "query" | "eventId";
   subaction?: CalendarSubaction;
   intent?: string;
   title?: string;
@@ -412,59 +435,9 @@ const WEEKDAY_NAME_PATTERN = new RegExp(
   `\\b(?:(this|next)\\s+)?(${WEEKDAY_NAMES_SORTED.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
   "i",
 );
-const CALENDAR_DETAIL_ALIASES = {
-  calendarId: ["calendarid", "calendar_id"],
-  timeMin: ["timemin", "time_min"],
-  timeMax: ["timemax", "time_max"],
-  timeZone: ["timezone", "time_zone"],
-  forceSync: ["forcesync", "force_sync"],
-  windowDays: ["windowdays", "window_days"],
-  startAt: ["startat", "start_at", "start", "start_time", "starttime"],
-  endAt: ["endat", "end_at", "end", "end_time", "endtime"],
-  durationMinutes: ["durationminutes", "duration_minutes"],
-  windowPreset: ["windowpreset", "window_preset"],
-  eventId: [
-    "eventid",
-    "event_id",
-    "externaleventid",
-    "external_event_id",
-    "googleeventid",
-    "google_event_id",
-  ],
-  newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
-  oldTitle: ["oldtitle", "old_title"],
-  description: ["desc", "summary", "body"],
-  location: ["place", "venue"],
-  recurrence: [
-    "rrule",
-    "recurrencerule",
-    "recurrence_rule",
-    "repeat",
-    "repeats",
-    "repeatrule",
-    "repeat_rule",
-  ],
-  recurrenceScope: [
-    "recurrencescope",
-    "recurrence_scope",
-    "applyto",
-    "apply_to",
-    "editscope",
-    "edit_scope",
-  ],
-  travelOriginAddress: [
-    "traveloriginaddress",
-    "travel_origin_address",
-    "travelorigin",
-    "travel_origin",
-    "originaddress",
-    "origin_address",
-    "departureaddress",
-    "departure_address",
-    "fromaddress",
-    "from_address",
-  ],
-} as const;
+// Accepted alternate spellings for planner details live beside the
+// planner-facing schema (calendar-action-schema.ts: CALENDAR_DETAIL_ALIASES)
+// so the two surfaces are reviewed together.
 
 /** Deterministic "just this occurrence" phrasing across mutation requests. */
 const RECURRENCE_SCOPE_INSTANCE_PATTERN =
@@ -607,6 +580,7 @@ function normalizeCalendarSubaction(value: unknown): CalendarSubaction | null {
 
 function buildCalendarPlanFromParsed(
   parsed: Record<string, unknown>,
+  timeZone: string,
 ): CalendarLlmPlan | null {
   const subaction = normalizeCalendarSubaction(parsed.subaction);
   const shouldAct =
@@ -651,8 +625,7 @@ function buildCalendarPlanFromParsed(
         ? parsed.title.trim()
         : undefined,
     tripLocation,
-    timeMin: normalizeIsoDateTime(parsed.timeMin),
-    timeMax: normalizeIsoDateTime(parsed.timeMax),
+    ...normalizePlannerCalendarWindow(parsed.timeMin, parsed.timeMax, timeZone),
     windowLabel: normalizeWindowLabel(parsed.windowLabel ?? parsed.label),
   };
 }
@@ -1151,26 +1124,81 @@ async function finalizeCalendarPlan(args: {
  * "cancel my zorblax checkup" arrived with it set, on a solo event with no
  * attendees. The built-in calendar has no mail path and rejects the flag with a
  * 400, so a plain cancel died on a field the user never asked for and the reply
- * claimed the event could not be found (live capture 2026-08-14).
+ * claimed the event could not be found (live capture 2026-08-14). The same 400
+ * killed "move my vet appointment to 4pm" once the event carried a fabricated
+ * guest (live capture 2026-09-10), so the built-in provider never receives the
+ * flag: the change lands and the completed reply says nobody was emailed
+ * (see builtInNotifyNote).
  *
  * Same shape as the recurrenceScope guard beside it: honor the flag only when
  * the resolved target can actually act on it. Notifying nobody is a no-op, not
  * a conflict.
  */
-function shouldNotifyAttendees(
+export function shouldNotifyAttendees(
   details: Record<string, unknown> | undefined,
-  targetEvent: { attendees?: unknown } | undefined,
+  targetEvent: { provider?: unknown; attendees?: unknown } | undefined,
 ): boolean {
   if (detailBoolean(details, "notifyAttendees") !== true) return false;
+  if (targetEvent?.provider === ELIZA_CALENDAR_PROVIDER) return false;
   const attendees = targetEvent?.attendees;
   return Array.isArray(attendees) && attendees.length > 0;
+}
+
+/**
+ * Completed-reply fact for a built-in calendar mutation that asked for
+ * attendee notifications on an event with guests: the change is stored, but
+ * nobody was emailed, and the reply must not imply otherwise.
+ */
+export function builtInNotifyNote(
+  details: Record<string, unknown> | undefined,
+  targetEvent: { attendees: readonly unknown[] },
+): string {
+  if (detailBoolean(details, "notifyAttendees") !== true) return "";
+  if (targetEvent.attendees.length === 0) return "";
+  return " The built-in calendar can't email attendees, so nobody was notified.";
+}
+
+/**
+ * A provider rejection of one planner-supplied argument is a malformed call,
+ * not a failed operation: naming the argument lets the planner loop treat the
+ * corrected retry (same target, that field dropped) as superseding the
+ * failure, so the retry's own success text reaches the user instead of the
+ * first attempt's failure (live 2026-09-11: "move my vet appointment" with a
+ * junk notifyAttendees was retried and applied, yet the turn reported failure).
+ */
+export function rejectedArgumentForCalendarServiceError(
+  code: string | undefined,
+): string | undefined {
+  switch (code) {
+    case "CALENDAR_TARGET_SELECTOR_INVALID":
+      return "target";
+    case "CALENDAR_ATTENDEE_ARGUMENT_INVALID":
+      return "details.attendees";
+    case "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED":
+      return "details.notifyAttendees";
+    case "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED":
+      return "details.recurrence";
+    default:
+      return undefined;
+  }
 }
 
 function buildCalendarServiceErrorFallback(
   error: CalendarServiceError,
   intent: string,
 ): string {
+  if (
+    error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
+    error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+    error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+    error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
+  ) {
+    return error.message;
+  }
   const normalized = normalizeText(error.message);
+  if (normalized === "google calendar is not connected.") {
+    return "The selected Google Calendar account is not connected. This is a connection problem, not an event overlap; repeating the same request will not connect the account.";
+  }
   if (error.code === "CALENDAR_APPROVAL_GATEWAY_UNAVAILABLE") {
     return "Calendar changes are unavailable because the owner-approval gateway is not running. I did not change the calendar.";
   }
@@ -1178,11 +1206,6 @@ function buildCalendarServiceErrorFallback(
   // calendar has no recurrence engine. The generic copy invited a retry that
   // can only fail again ("couldn't add that weekly standup … try again." —
   // live capture), so name the boundary and the one action that lifts it.
-  // Reached only when the event really does have attendees; a spurious flag on
-  // a solo event is dropped before the service call (see shouldNotifyAttendees).
-  if (error.code === "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED") {
-    return "The built-in calendar can't email the other attendees, so I left that one alone. Connect Google Calendar and I'll send the update, or say go ahead without notifying anyone.";
-  }
   if (error.code === "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED") {
     return "Repeating events need a connected calendar — the built-in one only holds single events. Connect Google Calendar and I'll set up the recurring one, or I can add a single event now.";
   }
@@ -1402,7 +1425,7 @@ function dedupeCalendarQueries(queries: Array<string | undefined>): string[] {
   return [...new Set(normalized)];
 }
 
-function normalizeCalendarDetails(
+export function normalizeCalendarDetails(
   details: Record<string, unknown> | undefined,
   paramsTitleCandidates: Array<string | undefined> = [],
 ): Record<string, unknown> | undefined {
@@ -1474,8 +1497,45 @@ function normalizeCalendarDetails(
   return normalized;
 }
 
+/** Recognizes explicit mutation target phrases for the existing lookup path. */
+const MUTATION_LEAD_PATTERN =
+  /^(?:(?:hey|hi|ok|okay|please)[\s,]+)*(?:please\s+)?(?:can you\s+|could you\s+|would you\s+)?(?:move|reschedule|shift|push|bump|change|update|edit|delete|cancel|remove|drop|scrap)\s+(?:the\s+|my\s+|our\s+|that\s+|this\s+)?/i;
+const MUTATION_TAIL_PATTERN =
+  /\s+(?:to|at|for|on|from|until|till|by|into|instead|off|out)\b[\s\S]*$/i;
+const HINT_PRONOUN_LEAD_PATTERN =
+  /^(?:it|its|that|this|them|those|these|one|the one|everything|all|each|every)\b/i;
+const HINT_SCHEDULE_TOKEN_PATTERN =
+  /\b(?:\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|(?:next\s+)?(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|today|tomorrow|tonight|noon|midnight)\b/gi;
+
+/**
+ * The event the user named in a mutation request the planner sent without
+ * any target ("move my chiropractor appointment to friday at 4pm" arrived as
+ * `{action: "update_event"}`, live 2026-09-14, and the turn spent two rounds
+ * searching). The words between the leading verb and the first
+ * time/place clause, minus schedule tokens; undefined when nothing usable
+ * remains, so the existing clarification still asks.
+ */
+export function impliedMutationTargetHint(
+  requestText: string | undefined,
+): string | undefined {
+  const text = requestText?.trim();
+  if (!text) return undefined;
+  const firstClause = text.split(/[.!?;\n]/)[0] ?? "";
+  if (!MUTATION_LEAD_PATTERN.test(firstClause)) return undefined;
+  const hint = firstClause
+    .replace(MUTATION_LEAD_PATTERN, "")
+    .replace(MUTATION_TAIL_PATTERN, "")
+    .replace(HINT_SCHEDULE_TOKEN_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // A pronoun points at context the handler cannot see ("change its start
+  // time", "move it to 5pm"); the clarification asks as before.
+  if (HINT_PRONOUN_LEAD_PATTERN.test(hint)) return undefined;
+  return /[a-z]{3,}/i.test(hint) ? hint : undefined;
+}
+
 /** Blank model placeholders are omissions; clearing is a distinct operation. */
-function calendarUpdateTextField(
+export function calendarUpdateTextField(
   details: Record<string, unknown> | undefined,
   extracted: Record<string, unknown>,
   field: "description" | "location",
@@ -1497,68 +1557,6 @@ function calendarUpdateTextField(
   return undefined;
 }
 
-function parseStateLine(line: string): { role: string; text: string } {
-  const trimmed = line.trim();
-  const timestampedMatch = trimmed.match(
-    /^\d{1,2}:\d{2}\s+\([^)]+\)\s+\[[^\]]+\]\s+(\S+)\s*:\s*(.*)/,
-  );
-  if (timestampedMatch) {
-    const role = timestampedMatch[1];
-    const text = timestampedMatch[2];
-    if (!role || text === undefined) {
-      return { role: "", text: trimmed };
-    }
-    return {
-      role: role.toLowerCase(),
-      text: text.trim(),
-    };
-  }
-
-  const simpleMatch = trimmed.match(
-    /^(user|assistant|system|owner|admin|\S+)\s*:\s*(.*)/i,
-  );
-  if (simpleMatch) {
-    const role = simpleMatch[1];
-    const text = simpleMatch[2];
-    if (!role || text === undefined) {
-      return { role: "", text: trimmed };
-    }
-    return {
-      role: role.toLowerCase(),
-      text: text.trim(),
-    };
-  }
-
-  return { role: "", text: trimmed };
-}
-
-function planningConversationLines(state: State | undefined): string[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const stateRecord = state as Record<string, unknown>;
-  const values =
-    stateRecord.values && typeof stateRecord.values === "object"
-      ? (stateRecord.values as Record<string, unknown>)
-      : undefined;
-  const raw =
-    typeof values?.recentMessages === "string"
-      ? values.recentMessages
-      : typeof stateRecord.text === "string"
-        ? stateRecord.text
-        : "";
-  if (!raw) {
-    return [];
-  }
-
-  return raw
-    .split(/\n+/)
-    .map((line) => parseStateLine(line))
-    .filter((line) => line.role.length > 0 && line.text.length > 0)
-    .map((line) => `${line.role}: ${line.text}`);
-}
-
 function resolveCalendarIntentInput(
   paramsIntent: string | undefined,
   message: Parameters<typeof messageText>[0],
@@ -1569,6 +1567,7 @@ function resolveCalendarIntentInput(
 function resolveStructuredCalendarSubaction(
   params: CalendarActionParams,
   details: Record<string, unknown> | undefined,
+  timeZone: string,
 ): CalendarSubaction | null {
   if (detailString(details, "eventId")) {
     if (
@@ -1600,7 +1599,7 @@ function resolveStructuredCalendarSubaction(
     detailString(details, "query") ||
     (params.queries?.length ?? 0) > 0 ||
     (detailArray(details, "queries")?.length ?? 0) > 0 ||
-    plannerWindowDetail(details)
+    plannerWindowDetail(details, timeZone)
   ) {
     return "search_events";
   }
@@ -1676,9 +1675,10 @@ function parseRelativeDayOffset(text: string): number | null {
 export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
+  now: Date = new Date(),
 ): { year: number; month: number; day: number } | null {
   const normalized = normalizeText(value);
-  const localToday = getZonedDateParts(new Date(), timeZone);
+  const localToday = getZonedDateParts(now, timeZone);
 
   const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
   if (isoMatch) {
@@ -2041,6 +2041,16 @@ export function calendarTitleMatchesHint(title: string, hint: string): boolean {
   );
 }
 
+function calendarDateConstraintText(text: string, titles: string[]): string {
+  return titles.reduce(
+    (remaining, title) =>
+      title.trim()
+        ? remaining.replace(new RegExp(escapeRegExp(title), "giu"), " ")
+        : remaining,
+    text,
+  );
+}
+
 /**
  * Update/delete target lookup must honor both title identity and the stated
  * target day, even when only one title matches. A date mismatch is not
@@ -2067,17 +2077,26 @@ export function resolveCalendarMutationCandidates(args: {
   if (byTitle.length === 0) {
     return byTitle;
   }
-  const hasDestinationClause = args.texts.some(
+  // Title identity is already checked above. Dates inside those titles must
+  // not constrain which day's occurrence may be changed.
+  const titles = byTitle.map((event) => event.title);
+  const dateText = (text: string | undefined) =>
+    text === undefined ? undefined : calendarDateConstraintText(text, titles);
+  const texts = args.texts.map(dateText);
+  const hasDestinationClause = texts.some(
     (text) => text && resolveTargetScopedText(args.action, text) !== text,
   );
   const statedDate = resolveStatedTargetLocalDate({
     action: args.action,
-    texts: args.texts,
+    texts,
     timeZone: args.timeZone,
   });
   const queryDate =
     !statedDate && titleHint
-      ? parseExplicitLocalDate(titleHint, args.timeZone)
+      ? parseExplicitLocalDate(
+          calendarDateConstraintText(titleHint, titles),
+          args.timeZone,
+        )
       : null;
   // User target dates outrank the query. A destination-bearing update does
   // not establish whether a query date identifies the source or destination:
@@ -2111,7 +2130,7 @@ export function resolveCalendarMutationCandidates(args: {
     // stated, or several title matches, still take the strict paths above.
     const userStatedDate = resolveStatedTargetLocalDate({
       action: args.action,
-      texts: args.nonPlannerDateTexts,
+      texts: args.nonPlannerDateTexts.map(dateText),
       timeZone: args.timeZone,
     });
     if (!userStatedDate) return byTitle;
@@ -2168,6 +2187,8 @@ function formatCreateEventCalendarContext(
   const lines = [
     `Calendar timezone: ${context.calendarTimeZone}`,
     `Context window: ${context.feed.timeMin} to ${context.feed.timeMax}`,
+    `Authorized calendar account identities: ${JSON.stringify(context.calendars)}`,
+    `Calendar source identities and health: ${JSON.stringify(context.feed.sources)}`,
   ];
 
   if (context.feed.events.length === 0) {
@@ -2310,6 +2331,119 @@ function chooseSuggestedCreateEventMinute(args: {
  * the planner used `start`); every create read accepts both spellings so a
  * valid planner time is executed instead of re-extracted from prose.
  */
+const OFFSET_OR_UTC_SUFFIX_PATTERN = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/** Wall-clock `YYYY-MM-DDTHH:mm:ss` of `date` in `timeZone`. */
+function formatLocalDateTimeInZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const read = (type: string): string =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  return `${read("year")}-${read("month")}-${read("day")}T${read("hour")}:${read("minute")}:${read("second")}`;
+}
+
+/**
+ * Absolute instant of a planner datetime. Strings carrying `Z` or an offset
+ * are absolute already; a bare local datetime is read in `timeZone` (one
+ * correction pass handles the zone's offset at that wall-clock time).
+ */
+function parseDateTimeInZone(value: string, timeZone: string): Date | null {
+  const trimmed = value.trim();
+  if (OFFSET_OR_UTC_SUFFIX_PATTERN.test(trimmed)) {
+    const absolute = new Date(trimmed);
+    return Number.isFinite(absolute.getTime()) ? absolute : null;
+  }
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(
+      trimmed,
+    );
+  if (!match) return null;
+  const [, y, mo, d, h = "0", mi = "0", sec = "0"] = match;
+  const asUtc = Date.UTC(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(h),
+    Number(mi),
+    Number(sec),
+  );
+  let guess = new Date(asUtc);
+  for (let pass = 0; pass < 2; pass += 1) {
+    const local = formatLocalDateTimeInZone(guess, timeZone);
+    const localAsUtc = Date.parse(`${local}Z`);
+    if (!Number.isFinite(localAsUtc)) return null;
+    const drift = localAsUtc - asUtc;
+    if (drift === 0) break;
+    guess = new Date(guess.getTime() - drift);
+  }
+  return Number.isFinite(guess.getTime()) ? guess : null;
+}
+
+/**
+ * Time range for an update. A new start without a new end keeps the event's
+ * current duration (live 2026-09-10: "move my dentist appointment to friday at
+ * 4pm" arrived as `start` only, the stored 3–4 pm event kept its 4 pm end, and
+ * the service rejected the zero-length range). The derived end is spelled like
+ * the start it follows: absolute for `Z`/offset starts, wall-clock in
+ * `timeZone` otherwise. Every other combination passes through unchanged and
+ * the service keeps validating end-after-start.
+ */
+export function resolveUpdateTimeRange(args: {
+  explicitStart?: string;
+  explicitEnd?: string;
+  extractedStart?: string;
+  extractedEnd?: string;
+  target: { startAt: string; endAt: string };
+  timeZone?: string;
+}): { startAt?: string; endAt?: string } {
+  const startAt = args.explicitStart ?? args.extractedStart;
+  // Keep supplied bounds paired; unrelated extracted ends cannot change duration.
+  let endAt =
+    args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
+  if (
+    startAt &&
+    endAt &&
+    args.explicitEnd === undefined &&
+    !endFollowsStart(startAt, endAt, args.timeZone)
+  ) {
+    endAt = undefined;
+  }
+  if (!startAt || endAt) return { startAt, endAt };
+  const durationMs =
+    Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
+  if (!Number.isFinite(durationMs) || durationMs <= 0)
+    return { startAt, endAt };
+  const timeZone = args.timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, timeZone);
+  if (!start) return { startAt, endAt };
+  const end = new Date(start.getTime() + durationMs);
+  return {
+    startAt,
+    endAt: OFFSET_OR_UTC_SUFFIX_PATTERN.test(startAt.trim())
+      ? end.toISOString()
+      : formatLocalDateTimeInZone(end, timeZone),
+  };
+}
+
+function endFollowsStart(
+  startAt: string,
+  endAt: string,
+  timeZone: string | undefined,
+): boolean {
+  const zone = timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, zone);
+  const end = parseDateTimeInZone(endAt, zone);
+  return start !== null && end !== null && end.getTime() > start.getTime();
+}
+
 function createStartDetail(
   details: Record<string, unknown> | undefined,
 ): string | undefined {
@@ -2328,16 +2462,353 @@ const DATE_SEGMENT_SPLIT_PATTERN =
 function distinctStatedLocalDates(
   text: string,
   timeZone: string,
+  now?: Date,
 ): LocalDateOnly[] {
   const dates: LocalDateOnly[] = [];
-  for (const segment of text.split(DATE_SEGMENT_SPLIT_PATTERN)) {
+  // A comma inside a month/day/year date is not a boundary between requests.
+  // Retain its year before splitting separate date clauses for intent narrowing.
+  const dateClauses = text.replace(
+    new RegExp(MONTH_NAME_PATTERN.source, "gi"),
+    (date) => date.replace(/,\s*(?=\d{4}\b)/, " "),
+  );
+  for (const segment of dateClauses.split(DATE_SEGMENT_SPLIT_PATTERN)) {
     if (segment.trim().length === 0) continue;
-    const parsed = parseExplicitLocalDate(segment, timeZone);
+    const parsed = parseExplicitLocalDate(segment, timeZone, now);
     if (parsed && !dates.some((d) => compareLocalDates(d, parsed) === 0)) {
       dates.push(parsed);
     }
   }
   return dates;
+}
+
+/** Wall-clock time the user stated, on the 24-hour clock. */
+export type StatedClockTime = { hour: number; minute: number };
+
+export type StatedClockTimes =
+  | { kind: "none" }
+  | { kind: "one"; start: StatedClockTime; end?: StatedClockTime }
+  | { kind: "several" };
+
+const STATED_MERIDIEM_SOURCE = String.raw`(a\.?m\.?|p\.?m\.?)`;
+// "4pm", "4:30 p.m.", "noon", "midnight", "16:00". A bare "4" or "3:30" is
+// ambiguous and counts as no stated time.
+const STATED_CLOCK_MENTION_SOURCE = String.raw`\b(\d{1,2})(?::(\d{2}))?\s*${STATED_MERIDIEM_SOURCE}(?![a-z])|\b(noon|midnight)\b|\b([01]\d|2[0-3]):([0-5]\d)\b(?!\s*${STATED_MERIDIEM_SOURCE})`;
+const STATED_CLOCK_MENTION_PATTERN = new RegExp(
+  STATED_CLOCK_MENTION_SOURCE,
+  "gi",
+);
+const STATED_CLOCK_PRESENT_PATTERN = new RegExp(
+  STATED_CLOCK_MENTION_SOURCE,
+  "i",
+);
+// "3-5pm", "3pm to 5pm", "from 3 until 5pm": the first time inherits the
+// second's meridiem when it has none.
+const STATED_CLOCK_RANGE_PATTERN = new RegExp(
+  String.raw`\b(\d{1,2})(?::(\d{2}))?\s*${STATED_MERIDIEM_SOURCE}?\s*(?:-|–|—|until|till|through|to)\s*(\d{1,2})(?::(\d{2}))?\s*${STATED_MERIDIEM_SOURCE}(?![a-z])`,
+  "i",
+);
+
+function clockFromStatedParts(
+  hourRaw: string | undefined,
+  minuteRaw: string | undefined,
+  meridiem: string | undefined,
+): StatedClockTime | null {
+  if (hourRaw === undefined) return null;
+  const hour = Number(hourRaw);
+  const minute = minuteRaw === undefined ? 0 : Number(minuteRaw);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (minute < 0 || minute > 59) return null;
+  if (meridiem === undefined) {
+    return hour >= 0 && hour <= 23 ? { hour, minute } : null;
+  }
+  if (hour < 1 || hour > 12) return null;
+  const afternoon = meridiem.toLowerCase().startsWith("p");
+  return { hour: (hour % 12) + (afternoon ? 12 : 0), minute };
+}
+
+/**
+ * The clock time(s) a request states. Exactly one start (with the end of a
+ * stated range, when there is one) can be checked against an applied event;
+ * none, or several ("the 3pm dentist and the 5pm call"), cannot.
+ */
+export function parseStatedClockTimes(text: string): StatedClockTimes {
+  const normalized = normalizeText(text);
+  const range = STATED_CLOCK_RANGE_PATTERN.exec(normalized);
+  let remainder = normalized;
+  let start: StatedClockTime | undefined;
+  let end: StatedClockTime | undefined;
+  if (range) {
+    const rangeStart = clockFromStatedParts(
+      range[1],
+      range[2],
+      range[3] ?? range[6],
+    );
+    const rangeEnd = clockFromStatedParts(range[4], range[5], range[6]);
+    if (!rangeStart || !rangeEnd) return { kind: "several" };
+    start = rangeStart;
+    end = rangeEnd;
+    remainder = `${normalized.slice(0, range.index)} ${normalized.slice(
+      range.index + range[0].length,
+    )}`;
+  }
+  const mentions: StatedClockTime[] = [];
+  for (const match of remainder.matchAll(STATED_CLOCK_MENTION_PATTERN)) {
+    const mention =
+      match[4] !== undefined
+        ? { hour: match[4].toLowerCase() === "noon" ? 12 : 0, minute: 0 }
+        : match[5] !== undefined
+          ? clockFromStatedParts(match[5], match[6], undefined)
+          : clockFromStatedParts(match[1], match[2], match[3]);
+    if (!mention) return { kind: "several" };
+    mentions.push(mention);
+  }
+  if (start) {
+    return mentions.length > 0
+      ? { kind: "several" }
+      : { kind: "one", start, ...(end ? { end } : {}) };
+  }
+  const distinct = new Set(
+    mentions.map((mention) => `${mention.hour}:${mention.minute}`),
+  );
+  const only = mentions[0];
+  if (distinct.size === 0 || only === undefined) return { kind: "none" };
+  if (distinct.size > 1) return { kind: "several" };
+  return { kind: "one", start: only };
+}
+
+/**
+ * An update's destination is what the user asked for ("move my 3pm dentist
+ * to 4pm" moves it to 4pm): the last "to" clause that names a clock time.
+ */
+function statedUpdateDestinationText(text: string): string {
+  const segments = text.split(CALENDAR_DESTINATION_CLAUSE_PATTERN);
+  for (let index = segments.length - 1; index > 0; index -= 1) {
+    const segment = segments[index];
+    if (segment !== undefined && STATED_CLOCK_PRESENT_PATTERN.test(segment)) {
+      return segment;
+    }
+  }
+  return text;
+}
+
+function wordTokens(value: string): string[] {
+  return normalizeText(value)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length >= 2);
+}
+
+/**
+ * The deleted title carries every word of the target hint, and so does the
+ * user's own message: the hint is the planner's, the words must be the user's.
+ */
+function deletedTitleNamedByUser(
+  title: string,
+  hint: string | undefined,
+  requestText: string,
+): boolean {
+  const hintTokens = wordTokens(hint ?? "");
+  if (hintTokens.length === 0) return false;
+  const carries = (haystack: string): boolean => {
+    const tokens = new Set(
+      wordTokens(haystack).flatMap((token) => tokenVariants(token)),
+    );
+    return hintTokens.every((token) =>
+      tokenVariants(token).some((variant) => tokens.has(variant)),
+    );
+  };
+  return carries(title) && carries(requestText);
+}
+
+/**
+ * Internal date evidence: "Friday, Sep 18 at 4pm EDT" plus "tomorrow" when that is what the
+ * day is for the user, the year only when it is not the current one.
+ */
+function formatVerifiedEventMoment(
+  start: Date,
+  timeZone: string,
+  now: Date,
+): string {
+  const yearOf = (date: Date): string =>
+    new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(
+      date,
+    );
+  const today = getZonedDateParts(now, timeZone);
+  const applied = getZonedDateParts(start, timeZone);
+  const relative =
+    compareLocalDates(applied, today) === 0
+      ? "today, "
+      : compareLocalDates(applied, addDaysToLocalDate(today, 1)) === 0
+        ? "tomorrow, "
+        : "";
+  const day = `${relative}${new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    ...(yearOf(start) === yearOf(now) ? {} : { year: "numeric" }),
+  }).format(start)}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).formatToParts(start);
+  const read = (type: string): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const minute = read("minute");
+  const period = read("dayPeriod").toLowerCase();
+  const zone = read("timeZoneName");
+  const clock = `${read("hour")}${minute === "00" ? "" : `:${minute}`}${period}`;
+  return `${day} at ${clock}${zone ? ` ${zone}` : ""}`;
+}
+
+/**
+ * A place or note the receipt sentence cannot show. A value that only repeats
+ * the event title adds nothing the sentence lacks (live 2026-09-16: the
+ * planner sent description "Optometrist appointment" for an event of that
+ * title and the create lost its self-verified receipt).
+ */
+export function textFieldAddsDetail(value: string, title: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return normalizeLookupKey(trimmed) !== normalizeLookupKey(title.trim());
+}
+
+export function verifyAppliedCalendarMutation(args: {
+  operation: "create" | "update" | "delete";
+  /** The user's own words, never the planner's intent. */
+  requestText: string;
+  /** The event the receipt covers: as created/updated, or the deleted target. */
+  event: LifeOpsCalendarEvent;
+  /** update: the target before the move. */
+  previous?: Pick<LifeOpsCalendarEvent, "startAt" | "endAt">;
+  /** delete: the target words the lookup used. */
+  titleHint?: string;
+  fallbackTimeZone?: string;
+  now?: Date;
+  /** Events the receipt covers; only a single applied event is verifiable. */
+  appliedCount?: number;
+  /** The call carried something the sentence cannot vouch for. */
+  carriesUnshownDetails?: boolean;
+}): string | null {
+  try {
+    return verifyAppliedCalendarMutationOrThrow(args);
+  } catch {
+    // error-policy:J3 Invalid evidence cannot produce a verified calendar reply.
+    // A zone or parse failure falls back to the complete event evidence;
+    // response generation never changes whether the mutation applied.
+    return null;
+  }
+}
+
+function verifyAppliedCalendarMutationOrThrow(
+  args: Parameters<typeof verifyAppliedCalendarMutation>[0],
+): string | null {
+  if ((args.appliedCount ?? 1) !== 1) return null;
+  if (args.carriesUnshownDetails) return null;
+  const { event } = args;
+  if (event.provider !== ELIZA_CALENDAR_PROVIDER) return null;
+  if (event.isAllDay || event.attendees.length > 0) return null;
+  if (isRecurringCalendarEvent(event)) return null;
+  const title = event.title.trim();
+  if (!title) return null;
+  const timeZone = event.timezone?.trim() || args.fallbackTimeZone?.trim();
+  if (!timeZone || !isValidTimeZone(timeZone)) return null;
+  const start = new Date(event.startAt);
+  if (!Number.isFinite(start.getTime())) return null;
+  const now = args.now ?? new Date();
+  const requestText = args.requestText.trim();
+  if (!requestText) return null;
+  const scope =
+    args.operation === "update"
+      ? statedUpdateDestinationText(requestText)
+      : requestText;
+
+  const stated = parseStatedClockTimes(scope);
+  if (stated.kind === "several") return null;
+  if (stated.kind === "none" && args.operation !== "delete") return null;
+  const applied = getZonedDateParts(start, timeZone);
+  if (stated.kind === "one") {
+    if (
+      applied.hour !== stated.start.hour ||
+      applied.minute !== stated.start.minute
+    ) {
+      return null;
+    }
+    if (stated.end) {
+      const end = new Date(event.endAt);
+      if (!Number.isFinite(end.getTime())) return null;
+      const appliedEnd = getZonedDateParts(end, timeZone);
+      if (
+        appliedEnd.hour !== stated.end.hour ||
+        appliedEnd.minute !== stated.end.minute
+      ) {
+        return null;
+      }
+    }
+  }
+
+  const scopeDates = distinctStatedLocalDates(scope, timeZone, now);
+  const messageDates =
+    scope === requestText
+      ? scopeDates
+      : distinctStatedLocalDates(requestText, timeZone, now);
+  if (scopeDates.length > 1) return null;
+  if (scopeDates.length === 0 && messageDates.length > 1) return null;
+  const statedDay = scopeDates[0] ?? messageDates[0];
+  if (statedDay) {
+    if (compareLocalDates(applied, statedDay) !== 0) return null;
+  } else if (args.operation === "update") {
+    const previousStart = args.previous
+      ? new Date(args.previous.startAt)
+      : null;
+    if (!previousStart || !Number.isFinite(previousStart.getTime())) {
+      return null;
+    }
+    const previousDay = getZonedDateParts(previousStart, timeZone);
+    if (compareLocalDates(applied, previousDay) !== 0) return null;
+  } else if (args.operation === "create") {
+    const today = getZonedDateParts(now, timeZone);
+    const tomorrow = addDaysToLocalDate(today, 1);
+    if (
+      compareLocalDates(applied, today) !== 0 &&
+      compareLocalDates(applied, tomorrow) !== 0
+    ) {
+      return null;
+    }
+  }
+
+  if (args.operation === "update" && !(stated.kind === "one" && stated.end)) {
+    if (!args.previous) return null;
+    const previousDuration =
+      Date.parse(args.previous.endAt) - Date.parse(args.previous.startAt);
+    const appliedDuration = Date.parse(event.endAt) - Date.parse(event.startAt);
+    if (
+      !Number.isFinite(previousDuration) ||
+      !Number.isFinite(appliedDuration) ||
+      previousDuration !== appliedDuration
+    ) {
+      return null;
+    }
+  }
+
+  if (
+    args.operation === "delete" &&
+    !deletedTitleNamedByUser(title, args.titleHint, requestText)
+  ) {
+    return null;
+  }
+
+  const moment = formatVerifiedEventMoment(start, timeZone, now);
+  switch (args.operation) {
+    case "create":
+      return `Created “${title}” for ${moment}.`;
+    case "update":
+      return `Moved “${title}” to ${moment}.`;
+    case "delete":
+      return `Deleted “${title}” (${moment}) from your calendar.`;
+  }
 }
 
 /**
@@ -2351,12 +2822,18 @@ function resolveStatedCreateDate(args: {
   currentMessage: string;
   intent: string;
   timeZone: string;
+  now: Date;
 }): LocalDateOnly | null {
   const messageDates = distinctStatedLocalDates(
     args.currentMessage,
     args.timeZone,
+    args.now,
   );
-  const intentDate = parseExplicitLocalDate(args.intent, args.timeZone);
+  const intentDate = parseExplicitLocalDate(
+    args.intent,
+    args.timeZone,
+    args.now,
+  );
   if (messageDates.length >= 2) {
     return intentDate ?? messageDates[0] ?? null;
   }
@@ -2474,10 +2951,12 @@ function resolvePastStartClarification(args: {
 }
 
 function applyStatedDateToCreateRequest(args: {
+  title: string;
   request: CreateLifeOpsCalendarEventRequest;
   currentMessage: string;
   intent: string;
   timeZone: string;
+  now: Date;
 }): { corrected: boolean; fromLocalDate?: string; toLocalDate?: string } {
   const startAtIso = args.request.startAt;
   if (!startAtIso) {
@@ -2488,9 +2967,12 @@ function applyStatedDateToCreateRequest(args: {
     return { corrected: false };
   }
   const stated = resolveStatedCreateDate({
-    currentMessage: args.currentMessage,
-    intent: args.intent,
+    currentMessage: calendarDateConstraintText(args.currentMessage, [
+      args.title,
+    ]),
+    intent: calendarDateConstraintText(args.intent, [args.title]),
     timeZone: args.timeZone,
+    now: args.now,
   });
   if (!stated) {
     return { corrected: false };
@@ -2545,6 +3027,7 @@ function anchorCreateRequestToTimeZone(
       request.startAt,
       "startAt",
       timeZone,
+      "reject",
     );
   }
   if (request.endAt) {
@@ -2552,6 +3035,7 @@ function anchorCreateRequestToTimeZone(
       request.endAt,
       "endAt",
       timeZone,
+      "reject",
     );
   }
 }
@@ -2561,6 +3045,7 @@ function suggestCreateEventStartAt(args: {
   intent: string;
   title: string;
   calendarContext: CreateEventCalendarContext | null;
+  now: Date;
 }): { startAt: string; timeZone: string } | null {
   if (!args.calendarContext) {
     return null;
@@ -2570,6 +3055,7 @@ function suggestCreateEventStartAt(args: {
     currentMessage: args.currentMessage,
     intent: args.intent,
     timeZone: args.calendarContext.calendarTimeZone,
+    now: args.now,
   });
   if (!targetDate) {
     return null;
@@ -2617,10 +3103,8 @@ async function loadCreateEventCalendarContext(
   const requestTimeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
-    mode: connectorModeDetail(details),
-    side: connectorSideDetail(details),
-    grantId: connectorGrantIdDetail(details),
-    calendarId: calendarIdDetail(details),
+    // A planner-proposed destination must not hide other authorized sources
+    // before extraction resolves the account from the user request.
     timeZone: requestTimeZone,
     forceSync: true,
     ...buildLocalDayRange(requestTimeZone, 0, 14),
@@ -2638,15 +3122,8 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
+    calendars: await service.listCalendars(INTERNAL_URL),
   };
-}
-
-function normalizeIsoDateTime(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return undefined;
-  }
-  const parsed = Date.parse(value.trim());
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
 }
 
 function normalizeWindowLabel(value: unknown): string | undefined {
@@ -2657,60 +3134,6 @@ function normalizeWindowLabel(value: unknown): string | undefined {
   return cleaned.length > 0 && cleaned.length <= 80 ? cleaned : undefined;
 }
 
-function utcDateOnly(value: Date): LocalDateOnly {
-  return {
-    year: value.getUTCFullYear(),
-    month: value.getUTCMonth() + 1,
-    day: value.getUTCDate(),
-  };
-}
-
-function isUtcStartOfDay(value: Date): boolean {
-  return (
-    value.getUTCHours() === 0 &&
-    value.getUTCMinutes() === 0 &&
-    value.getUTCSeconds() === 0 &&
-    value.getUTCMilliseconds() === 0
-  );
-}
-
-function isUtcEndOfDay(value: Date): boolean {
-  return (
-    value.getUTCHours() === 23 &&
-    value.getUTCMinutes() === 59 &&
-    value.getUTCSeconds() === 59
-  );
-}
-
-function resolveCalendarLlmLocalDateWindow(
-  timeMin: string,
-  timeMax: string,
-  timeZone: string,
-): { timeMin: string; timeMax: string } | null {
-  const start = new Date(timeMin);
-  const end = new Date(timeMax);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
-    return null;
-  }
-  if (!isUtcStartOfDay(start)) {
-    return null;
-  }
-
-  const startDate = utcDateOnly(start);
-  const endExclusiveDate = isUtcStartOfDay(end)
-    ? utcDateOnly(end)
-    : isUtcEndOfDay(end)
-      ? addDaysToLocalDate(utcDateOnly(end), 1)
-      : null;
-  if (!endExclusiveDate) {
-    return null;
-  }
-  if (compareLocalDates(endExclusiveDate, startDate) <= 0) {
-    return null;
-  }
-  return buildLocalDateRange(timeZone, startDate, endExclusiveDate);
-}
-
 function resolveCalendarLlmWindow(
   timeZone: string,
   llmPlan: CalendarLlmPlan | undefined,
@@ -2718,6 +3141,7 @@ function resolveCalendarLlmWindow(
   const window = normalizePlannerCalendarWindow(
     llmPlan?.timeMin,
     llmPlan?.timeMax,
+    timeZone,
   );
   if (!window) {
     return null;
@@ -2736,10 +3160,8 @@ function resolveCalendarLlmWindow(
   }
 
   return {
-    ...(resolveCalendarLlmLocalDateWindow(timeMin, timeMax, timeZone) ?? {
-      timeMin,
-      timeMax,
-    }),
+    timeMin,
+    timeMax,
     label:
       normalizeWindowLabel(llmPlan?.windowLabel) ?? "for the requested window",
   };
@@ -2749,7 +3171,7 @@ function resolveCalendarLlmWindow(
 // gave no time hint. Reaches 1 year back and 5 years forward — far enough
 // to find an upcoming birthday or a recent past meeting without scanning the
 // entire account.
-function buildWideLookupRange(timeZone: string): {
+export function buildWideLookupRange(timeZone: string): {
   timeMin: string;
   timeMax: string;
 } {
@@ -2767,9 +3189,9 @@ function resolveCalendarWindow(
   label: string;
   explicitWindow: boolean;
 } {
-  const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
+  const plannerWindow = plannerWindowDetail(details, timeZone);
   const forceSync = detailBoolean(details, "forceSync");
   if (plannerWindow) {
     return {
@@ -2844,14 +3266,121 @@ function resolveCalendarWindow(
   };
 }
 
+function parseCalendarReadDate(
+  value: unknown,
+  timeZone: string,
+): LocalDateOnly {
+  const parsed =
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? parseExplicitLocalDate(value, timeZone)
+      : null;
+  const check = new Date(0);
+  if (parsed) check.setUTCFullYear(parsed.year, parsed.month - 1, parsed.day);
+  if (!parsed || check.toISOString().slice(0, 10) !== value) {
+    throw new CalendarServiceError(
+      400,
+      "Read dates must be valid YYYY-MM-DD calendar dates.",
+      "CALENDAR_READ_DATE_INVALID",
+    );
+  }
+  return parsed;
+}
+
+function resolveCalendarReadWindow(
+  intent: string,
+  details: Record<string, unknown> | undefined,
+  forSearch: boolean,
+  llmPlan: CalendarLlmPlan,
+  timeZone: string,
+): ReturnType<typeof resolveCalendarWindow> {
+  const date = details?.date;
+  if (date !== undefined || details?.endDate !== undefined) {
+    const parsed = parseCalendarReadDate(date, timeZone);
+    const finalDate =
+      details?.endDate === undefined
+        ? parsed
+        : parseCalendarReadDate(details.endDate, timeZone);
+    if (
+      typeof date === "string" &&
+      typeof details?.endDate === "string" &&
+      details.endDate < date
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "endDate must be on or after date.",
+        "CALENDAR_READ_DATE_INVALID",
+      );
+    }
+    if (
+      [
+        "timeMin",
+        "timemin",
+        "time_min",
+        "timeMax",
+        "timemax",
+        "time_max",
+        "windowDays",
+        "windowdays",
+        "window_days",
+      ].some((key) => details?.[key] !== undefined)
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "Supply date and optional endDate for whole local days, or explicit timestamp bounds, not both.",
+        "CALENDAR_READ_DATE_CONFLICT",
+      );
+    }
+    return {
+      request: {
+        calendarId: calendarIdDetail(details),
+        timeZone,
+        forceSync: detailBoolean(details, "forceSync"),
+        ...buildLocalDateRange(
+          timeZone,
+          parsed,
+          addDaysToLocalDate(finalDate, 1),
+        ),
+      },
+      label:
+        details?.endDate === undefined || details.endDate === date
+          ? `on ${formatExplicitCalendarDateLabel({ date: parsed, timeZone })} (${timeZone})`
+          : `from ${formatExplicitCalendarDateLabel({ date: parsed, timeZone })} through ${formatExplicitCalendarDateLabel({ date: finalDate, timeZone })}, inclusive (${timeZone})`,
+      explicitWindow: true,
+    };
+  }
+  const resolved = resolveCalendarWindow(
+    intent,
+    details,
+    forSearch,
+    llmPlan,
+    timeZone,
+  );
+  // Ground the reply in the actual read bounds, not a planner-authored label
+  // that can name a different day from the supplied timestamps.
+  if (resolved.request.timeMin && resolved.request.timeMax) {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+    resolved.label = `from ${formatter.format(new Date(resolved.request.timeMin))} to ${formatter.format(new Date(resolved.request.timeMax))} (end exclusive; ${timeZone})`;
+  }
+  return resolved;
+}
+
 function resolveTripWindowRequest(
   details: Record<string, unknown> | undefined,
   llmPlan?: CalendarLlmPlan,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): GetLifeOpsCalendarFeedRequest {
-  const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
+  const plannerWindow = plannerWindowDetail(details, timeZone);
   const forceSync = detailBoolean(details, "forceSync");
 
   if (plannerWindow) {
@@ -2984,7 +3513,7 @@ export async function extractCalendarPlanWithLlm(
 
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
     const parsed = parseCalendarJsonRecord<Record<string, unknown>>(raw);
-    return parsed ? buildCalendarPlanFromParsed(parsed) : null;
+    return parsed ? buildCalendarPlanFromParsed(parsed, timeZone) : null;
   };
 
   const plannerResult = await runLifeOpsJsonModel<Record<string, unknown>>({
@@ -3004,7 +3533,7 @@ export async function extractCalendarPlanWithLlm(
   }
 
   const parsedPlan = plannerResult.parsed
-    ? buildCalendarPlanFromParsed(plannerResult.parsed)
+    ? buildCalendarPlanFromParsed(plannerResult.parsed, timeZone)
     : null;
   if (parsedPlan) {
     return finalizeCalendarPlan({
@@ -3177,6 +3706,40 @@ function resolveCreateEventDurationMinutes(args: {
  * never planner/assistant prose or time-of-day window phrases, which appear in
  * one-shot asks ("dentist tomorrow in the morning") and must not open the gate.
  */
+const TRAVEL_INTENT_PATTERN =
+  /\b(?:travel(?:ing)? time|commut(?:e|ing)|driv(?:e|ing) time|(?:driving|travel(?:ing)?|commut(?:e|ing)|leav(?:e|ing)|depart(?:ing)?|coming) from|how long (?:to get|does it take)|time to get there|on (?:my|the) way)\b/i;
+
+/**
+ * Whether the user's own words ask for travel time or name a departure place.
+ * A planner-supplied origin address is honored only when this holds or the
+ * text literally contains that origin.
+ */
+export function intentStatesTravel(
+  originAddress: string | undefined,
+  ...texts: ReadonlyArray<string | null | undefined>
+): boolean {
+  const joined = texts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .trim();
+  if (!joined) return false;
+  if (TRAVEL_INTENT_PATTERN.test(joined)) return true;
+  const origin = originAddress?.trim();
+  if (!origin || origin.length < 3) return false;
+  // The origin must appear as a departure place in the user's words. A bare
+  // containment test accepted "Barber" copied from the event title on
+  // "add a barber appointment friday at 3pm" (live 2026-09-14) and the
+  // travel-buffer prep then refused the whole create.
+  return new RegExp(
+    `\\b(?:from|leaving|departing|starting at)\\s+${escapeRegExp(origin)}`,
+    "i",
+  ).test(joined);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function intentStatesRecurrence(
   ...texts: ReadonlyArray<string | null | undefined>
 ): boolean {
@@ -3190,12 +3753,15 @@ type CreateEventRequestBuildArgs = {
   inferredTitle: string | undefined;
   fallbackRequest?: CreateLifeOpsCalendarEventRequest;
   preferExtractedDetails?: boolean;
+  /** Missing authoritative timing must pause; never revive planner guesses. */
+  requireExtractedTiming?: boolean;
   /**
    * Authoritative user-authored text for the recurrence guard. Planner intent,
    * structured details, and assistant/system history must never authorize an
    * RRULE the current user did not request.
    */
-  recurrenceGuardTexts?: ReadonlyArray<string | null | undefined>;
+  /** The user's current authoritative text: model-authored recurrence and travel fields are honored only when it states them. */
+  authorizingUserTexts?: ReadonlyArray<string | null | undefined>;
 };
 
 type CreateEventRequestBuildResult = {
@@ -3272,7 +3838,12 @@ export function buildCreateEventRequest(
     | "tomorrow_afternoon"
     | "tomorrow_evening"
     | undefined;
-  if (args.preferExtractedDetails && extractedStartAt) {
+  if (args.requireExtractedTiming) {
+    resolvedStartAt = extractedStartAt;
+    // A broad window cannot authorize its preset default clock time. The
+    // conversational extractor must propose a concrete start or ask for input.
+    resolvedWindowPreset = undefined;
+  } else if (args.preferExtractedDetails && extractedStartAt) {
     resolvedStartAt = extractedStartAt;
     resolvedWindowPreset = undefined;
   } else if (args.preferExtractedDetails && extractedWindowPreset) {
@@ -3288,16 +3859,19 @@ export function buildCreateEventRequest(
         args.fallbackRequest?.windowPreset);
   }
 
-  const rawEndAt =
-    args.preferExtractedDetails &&
-    (extractedStartAt || extractedWindowPreset) &&
-    !extractedEndAt
+  const rawEndAt = args.requireExtractedTiming
+    ? extractedEndAt
+    : args.preferExtractedDetails &&
+        (extractedStartAt || extractedWindowPreset) &&
+        !extractedEndAt
       ? undefined
       : args.preferExtractedDetails
         ? (extractedEndAt ?? explicitEndAt ?? args.fallbackRequest?.endAt)
         : (explicitEndAt ?? extractedEndAt ?? args.fallbackRequest?.endAt);
 
-  const explicitDuration = detailNumber(args.details, "durationMinutes");
+  const explicitDuration = args.requireExtractedTiming
+    ? undefined
+    : detailNumber(args.details, "durationMinutes");
   const extractedDuration = parseCreateEventDurationValue(
     args.extractedDetails.durationMinutes,
   );
@@ -3317,11 +3891,21 @@ export function buildCreateEventRequest(
     explicitDuration !== undefined || extractedDuration !== undefined
       ? durationMinutes
       : fallbackDuration;
-  const travelIntent =
-    injectedDeps?.travelBuffer?.resolveTravelIntent({
-      details: args.details,
-      extractedDetails: args.extractedDetails,
-    }) ?? null;
+  // Only an explicit travel request authorizes buffer preparation. A missing
+  // destination remains a preparation error so the requested buffer cannot
+  // silently disappear while the event is created.
+  const plannerTravelOrigin =
+    detailString(args.details, "travelOriginAddress") ??
+    detailString(args.extractedDetails, "travelOriginAddress");
+  const travelIntent = intentStatesTravel(
+    plannerTravelOrigin,
+    ...(args.authorizingUserTexts ?? []),
+  )
+    ? (injectedDeps?.travelBuffer?.resolveTravelIntent({
+        details: args.details,
+        extractedDetails: args.extractedDetails,
+      }) ?? null)
+    : null;
 
   const explicitRecurrence = detailRecurrenceLines(args.details);
   // The extraction model routinely infers weekly recurrence from
@@ -3335,7 +3919,7 @@ export function buildCreateEventRequest(
   // authoritative user text so planner disagreement cannot create recurrence.
   const extractedRecurrence = detailRecurrenceLines(args.extractedDetails);
   const recurrence = selectUserAuthorizedRecurrence(
-    args.recurrenceGuardTexts ?? [],
+    args.authorizingUserTexts ?? [],
     args.preferExtractedDetails
       ? [
           extractedRecurrence,
@@ -3355,6 +3939,11 @@ export function buildCreateEventRequest(
     resolvedWindowPreset,
     travelIntent,
     request: {
+      sourceNote: parseCalendarNoteSource(
+        args.details?.sourceNote !== undefined
+          ? args.details.sourceNote
+          : args.fallbackRequest?.sourceNote,
+      ),
       mode: connectorModeDetail(args.details) ?? args.fallbackRequest?.mode,
       side: connectorSideDetail(args.details) ?? args.fallbackRequest?.side,
       grantId: connectorGrantIdDetail(args.details),
@@ -3362,30 +3951,93 @@ export function buildCreateEventRequest(
         calendarIdDetail(args.details) ??
         sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
+      // Scheduling extraction validates timing; it must not paraphrase content
+      // already supplied by the caller (for example an exact saved note body).
       description:
-        pickCreateEventStringField(args, "description") ??
+        detailString(args.details, "description") ??
+        detailString(args.extractedDetails, "description") ??
         args.fallbackRequest?.description,
       location:
         pickCreateEventStringField(args, "location") ??
         args.fallbackRequest?.location,
       startAt: resolvedStartAt,
-      endAt: rawEndAt ?? args.fallbackRequest?.endAt,
+      endAt: args.requireExtractedTiming
+        ? rawEndAt
+        : (rawEndAt ?? args.fallbackRequest?.endAt),
       timeZone:
         pickCreateEventStringField(args, "timeZone") ??
         args.fallbackRequest?.timeZone,
       durationMinutes: resolvedDurationMinutes,
       windowPreset: resolvedWindowPreset,
-      attendees:
+      attendees: userAuthorizedCalendarAttendees(
         normalizeCalendarAttendees(args.details) ??
-        args.fallbackRequest?.attendees,
+          args.fallbackRequest?.attendees,
+        args.authorizingUserTexts ?? [],
+      ),
       recurrence,
     },
   };
 }
 
-function formatCreateEventRecentConversation(state: State | undefined): string {
-  const conversation = planningConversationLines(state).join("\n").trim();
-  return conversation.length > 0 ? conversation : "(none)";
+export function formatCreateEventRecentConversation(
+  state: State | undefined,
+): string {
+  // Keep the provider's complete source, including continuation lines and
+  // source metadata. Parsing line prefixes discards multi-line user evidence.
+  const selected = state?.values?.selectedActionConversation;
+  if (typeof selected === "string") return selected;
+  const conversation = state?.values?.recentMessages;
+  if (typeof conversation === "string" && conversation.length > 0)
+    return conversation;
+  return state?.text || "(none)";
+}
+
+/** Reuse only selected same-room originals authored by this requester.
+ * Raw provider prose and assistant recaps cannot establish user authority. */
+export function calendarAuthorizingUserTexts(
+  state: State | undefined,
+  message: Memory,
+): string[] {
+  const current = messageText(message);
+  const selected = state?.values?.selectedActionConversation;
+  if (typeof selected !== "string") return [current];
+  let sources: unknown;
+  try {
+    sources = JSON.parse(selected);
+  } catch {
+    // error-policy:J3 Malformed optional source evidence grants no authority.
+    return [current];
+  }
+  if (!Array.isArray(sources)) return [current];
+  const originals: string[] = [];
+  for (const source of sources) {
+    if (
+      !source ||
+      typeof source !== "object" ||
+      source.type !== "segment" ||
+      source.source !== "prior-dialogue"
+    )
+      continue;
+    const segment = source.segment;
+    if (
+      segment?.label !== "prior_message:user" ||
+      typeof source.id !== "string" ||
+      segment.id !== source.id ||
+      typeof segment.content !== "string" ||
+      segment.metadata?.roomId !== message.roomId ||
+      segment.metadata?.entityId !== message.entityId
+    )
+      continue;
+    const speaker = segment.metadata.speakerName;
+    const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+    originals.push(
+      prefix && segment.content.startsWith(prefix)
+        ? segment.content.slice(prefix.length)
+        : segment.content,
+    );
+  }
+  // The latest explicit correction wins in ordered recurrence interpretation.
+  return [...originals, current];
 }
 
 function formatUpdateEventTargetContext(
@@ -3428,13 +4080,12 @@ async function inferCreateEventDetails(
   intent: string,
   calendarContext: CreateEventCalendarContext | null,
   fallbackTimeZone = resolveDefaultTimeZone(),
+  proposedDetails?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
   const currentMessage = messageText(message).trim();
-  // Anchor the LLM in the present so relative phrases ("tomorrow", "next
-  // friday", "april 15") and explicit-but-yearless dates resolve to the
-  // correct ISO datetime instead of guessing or returning empty.
-  const now = new Date();
+  // Interpretation shares the request clock with date validation and receipts.
+  const now = new Date(calendarMessageObservedAt(message));
   const nowIso = now.toISOString();
   const timeZone = fallbackTimeZone;
   const calendarTimeZone =
@@ -3451,25 +4102,27 @@ async function inferCreateEventDetails(
     "Use the full recent conversation below, not just the latest message.",
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
-    "Use the calendar context below to ground any timing guess.",
+    "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
+    "Resolve grantId and calendarId from the calendar source identities using the user's requested provider/account and calendar. Copy both identifiers from the same source key; these extracted identifiers determine the write destination. The proposed destination below is only a planner hint, not user authorization. If the user selected an account in this turn, use that account even when the planner omitted its grant. Only an unqualified calendar request may default to eliza-calendar/primary. If the requested destination cannot be uniquely resolved, return null identifiers and requiresInput:true with a clarification. Never substitute the built-in calendar for a named provider, or select an account based on the event's personal/work subject.",
+    "When the user names a provider with multiple connected accounts but has not selected an account for this event, account selection is missing: return grantId:null, calendarId:null, requiresInput:true and ask which account using its accountEmail. A primary calendar is primary only within its own account, not a preferred account. Neither source ordering, an opaque planner grant, nor a calendar named Primary is evidence of the user's account choice. Do not carry an account choice from an unrelated event into this request.",
+    "Calendar availability is not permission to invent a time. Use timing the user stated or clearly accepted for this event in the conversation. A planner intent is only a routing hint, never evidence of user-supplied details.",
     "Preserve names and places in their original language or script when useful.",
-    "Return JSON only as a single object. No prose. Omit optional fields that have no source in the request or conversation; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
+    "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
-    "When the user gives a concrete day or date without an exact time-of-day, use the calendar context to infer a plausible open startAt in the calendar timezone. Avoid obvious overlaps with nearby events. If the calendar context is unavailable or the timing is ambiguous, leave startAt empty.",
-    "Only use windowPreset for explicit 'tomorrow morning|afternoon|evening' phrasing — never as a fallback for arbitrary dates.",
+    "If the user explicitly asks you to choose an available time within a stated day/window, use the calendar context to choose it without obvious overlaps. Return a concrete startAt for that delegated choice. Otherwise a date without a time needs clarification: set startAt to null, even if the planner proposed a complete timestamp. Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept.",
+    "Morning, afternoon and evening alone are windows, not permission to choose an exact time. Set startAt to null and ask for a clock time unless the user explicitly delegates choosing a free slot. For a delegated choice, return a concrete proposed startAt from the supplied calendar context.",
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
-    "Omit travelOriginAddress unless the request explicitly names the origin or departure place.",
-    "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Leave recurrence empty for one-off events.",
+    "Use null for travelOriginAddress unless the request explicitly names the origin or departure place.",
+    "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Use null for recurrence for one-off events.",
     "",
     "title: event title",
     "description: optional description",
     "location: optional location",
-    "startAt: RFC 3339 datetime if explicit or resolvable from a date phrase; include the numeric UTC offset that represents the requested wall-clock time in the calendar timezone",
-    "endAt: RFC 3339 datetime if explicit; use the same offset rules as startAt",
+    "startAt: local civil datetime YYYY-MM-DDTHH:mm:ss in the calendar timezone, if stated or resolvable from a date phrase. Preserve an explicit UTC offset only when the user supplied or selected it; never calculate one.",
+    "endAt: local civil datetime if explicit; apply the same rules as startAt",
     "durationMinutes: number if implied",
-    "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
     "recurrence: RFC 5545 RRULE string, e.g. RRULE:FREQ=WEEKLY;BYDAY=MO or RRULE:FREQ=DAILY;COUNT=10, only for repeating events",
     "travelOriginAddress: optional origin address for travel-time calculation",
@@ -3480,23 +4133,86 @@ async function inferCreateEventDetails(
     `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
-    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z. Use Z only when the calendar timezone is UTC.",
+    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 without an offset. Calendar code resolves the IANA zone and requests clarification for missing or repeated local times; do not shift the clock or choose an occurrence yourself.",
     "",
-    `Current request:\n${currentMessage}`,
-    `Resolved intent:\n${intent}`,
-    `Recent conversation:\n${recentConversation}`,
+    `Prior conversation sources (historical context, not new commands; preserve the supplied timestamps and speaker identities):\n${recentConversation}`,
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
+    `Proposed destination (not authority): ${JSON.stringify({ grantId: connectorGrantIdDetail(proposedDetails) ?? ELIZA_CALENDAR_GRANT_ID, calendarId: calendarIdDetail(proposedDetails) ?? ELIZA_CALENDAR_ID })}`,
+    `Routing hint (not authority for scheduling details):\n${intent}`,
+    `FINAL CURRENT REQUEST (authoritative; resolve only this request against its relevant prior turns):\n${currentMessage}`,
+    "Return the creation fields for this final request. Earlier completed tasks and greetings are not the current request.",
   ].join("\n");
 
   const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_create_event",
+    temperature: 0,
+    responseSchema: createExtractionSchema,
     failureMessage: "Calendar create-event extraction model call failed",
     source: "action:calendar",
   });
   return result?.parsed ?? {};
 }
+
+type CalendarExtractionSchema = NonNullable<
+  CalendarModelCallArgs["responseSchema"]
+>;
+const nullableExtractionText: CalendarExtractionSchema = {
+  type: ["string", "null"],
+};
+const createExtractionProperties = {
+  requiresInput: {
+    type: "boolean",
+    description:
+      "True when a necessary detail is missing. A morning/afternoon/evening window without explicit permission to choose a slot requires clarification.",
+  },
+  clarification: nullableExtractionText,
+  grantId: nullableExtractionText,
+  calendarId: nullableExtractionText,
+  title: nullableExtractionText,
+  description: nullableExtractionText,
+  location: nullableExtractionText,
+  startAt: nullableExtractionText,
+  endAt: nullableExtractionText,
+  timeZone: nullableExtractionText,
+  recurrence: nullableExtractionText,
+  travelOriginAddress: nullableExtractionText,
+  durationMinutes: { type: ["number", "null"] },
+  isShortPreparation: { type: "boolean" },
+} satisfies Record<string, CalendarExtractionSchema>;
+const createExtractionSchema: CalendarExtractionSchema = {
+  type: "object",
+  properties: createExtractionProperties,
+  required: Object.keys(createExtractionProperties),
+  additionalProperties: false,
+};
+
+const updateExtractionProperties = {
+  requiresInput: { type: "boolean" },
+  clarification: nullableExtractionText,
+  title: nullableExtractionText,
+  description: nullableExtractionText,
+  location: nullableExtractionText,
+  startAt: nullableExtractionText,
+  endAt: nullableExtractionText,
+  timeZone: nullableExtractionText,
+  recurrence: nullableExtractionText,
+  recurrenceScope: {
+    type: ["string", "null"],
+    enum: ["instance", "this_and_following", "series", null],
+  },
+  clearFields: {
+    type: "array",
+    items: { type: "string", enum: ["description", "location"] },
+  },
+} satisfies Record<string, CalendarExtractionSchema>;
+const updateExtractionSchema: CalendarExtractionSchema = {
+  type: "object",
+  properties: updateExtractionProperties,
+  required: Object.keys(updateExtractionProperties),
+  additionalProperties: false,
+};
 
 async function inferUpdateEventDetails(
   runtime: IAgentRuntime,
@@ -3508,7 +4224,7 @@ async function inferUpdateEventDetails(
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
   const currentMessage = messageText(message).trim();
-  const now = new Date();
+  const now = new Date(calendarMessageObservedAt(message));
   const nowIso = now.toISOString();
   const timeZone = fallbackTimeZone;
   const nowReadable = new Intl.DateTimeFormat("en-US", {
@@ -3521,22 +4237,24 @@ async function inferUpdateEventDetails(
     "The user may speak in any language.",
     "Use the full recent conversation below, not just the latest message.",
     "The current event below is the source of truth for unchanged fields.",
-    "Only return fields the user is actually changing. Omit unchanged or unknown fields entirely; do not fill them with empty strings or null.",
+    "Extract the proposed values requested by the user. Return all schema fields, using null for unchanged or unknown values, requiresInput:false when the edit is fully specified, and an empty clearFields array when no fields are being cleared.",
     "To remove an existing description or location, include its field name in clearFields only when the user explicitly requests that removal. Never use clearFields for unchanged, unknown, or omitted fields. Do not also return a replacement value for a field being cleared.",
-    "If the user asks to move or reschedule the event, compute absolute ISO datetimes for the updated startAt and endAt using the current event as context.",
+    "If the user asks to move or reschedule the event, return the requested local civil datetimes as YYYY-MM-DDTHH:mm:ss in timeZone. Preserve an explicit UTC offset or instant supplied or selected by the user, including their answer to a repeated-hour clarification. Otherwise calendar code converts local times to instants; do not invent an offset or perform UTC offset arithmetic.",
+    "For a move conditioned on calendar availability, extract the proposed timing too. Extraction does not declare the slot free or authorize a write; the calendar handler checks the proposed interval before committing.",
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
-    "If the user only renames the event, omit startAt, endAt, location, description, and timeZone.",
-    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and omit it when the user does not say.",
+    "For a rename-only request, use null for startAt, endAt, location, description and timeZone.",
+    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and use null when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
+    "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification asking only for the missing detail. Do not claim free or busy times from earlier dialogue; only a fresh availability read can establish openings. Do not guess a time unless the user explicitly delegates choosing it.",
     "Return JSON only as a single object. No prose.",
     "",
     "title: new event title if changed",
     "description: updated description if changed",
     "location: updated location if changed",
     'clearFields: optional array containing "description" and/or "location" only for fields the user explicitly wants removed',
-    "startAt: updated ISO datetime if changed",
-    "endAt: updated ISO datetime if changed",
+    "startAt: updated local civil datetime if changed; include Z or an offset only when the user supplied or selected it",
+    "endAt: updated local civil datetime only if the user changes the end or duration; otherwise use null to preserve the stored duration",
     "timeZone: IANA timezone if changed or needed to interpret the update",
     "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
     "recurrenceScope: instance|this_and_following|series only when the current event is recurring and the user says which",
@@ -3545,16 +4263,18 @@ async function inferUpdateEventDetails(
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     "",
-    `Current request:\n${currentMessage}`,
-    `Resolved intent:\n${intent}`,
-    `Recent conversation:\n${recentConversation}`,
+    `Prior conversation sources (historical context only):\n${recentConversation}`,
     `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
+    `Routing hint:\n${intent}`,
+    `FINAL CURRENT REQUEST (authoritative):\n${currentMessage}`,
   ].join("\n");
 
   const result = await runLifeOpsJsonModel<Record<string, unknown>>({
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_update_event",
+    responseSchema: updateExtractionSchema,
+    temperature: 0,
     failureMessage: "Calendar update-event extraction model call failed",
     source: "action:calendar",
   });
@@ -3912,36 +4632,95 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
+/** Validate address syntax without inferring whether a supplied recipient is intentional. */
+export function attendeeEmailAccepted(email: string): boolean {
+  return basicEmailValid(email);
+}
+
+/** RFC 2606 / RFC 6761 reserved names: documentation examples, never a mailbox. */
+const RESERVED_EXAMPLE_DOMAIN_PATTERN =
+  /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
+
+/** Reject unresolved attendees before any calendar write. */
+function calendarAttendeeIdentityRequired(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was created. A proposed attendee's email address is not verified. Ask whether that guest is intended and for their exact email address, or confirm that no guest should be included; do not guess an address or silently omit an attendee.",
+    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+  );
+}
+
+/** Malformed generated arguments can be repaired without inventing a user clarification. */
+function calendarAttendeeArgumentInvalid(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was created. The generated details.attendees arguments are malformed: each attendee needs a valid email address. Correct the arguments using the original user request. Do not invent guests or put dates, times, or time zones into email fields. If the user requested a guest whose address is missing, ask for that address; if no guest was requested, use no attendees. Never silently drop a user-requested guest.",
+    "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+  );
+}
+
+/** Every proposed attendee needs explicit address evidence before creating an event. */
+export function userAuthorizedCalendarAttendees(
+  attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): CreateLifeOpsCalendarEventAttendee[] | undefined {
+  if (!attendees?.length) return undefined;
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  const words = new Set(
+    spoken
+      .split(/[^\p{L}\p{N}@._+-]+/u)
+      .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
+      .filter((token) => token.length > 0),
+  );
+  for (const attendee of attendees) {
+    const email = attendee.email.trim().toLowerCase();
+    const at = email.lastIndexOf("@");
+    if (
+      at <= 0 ||
+      !words.has(email) ||
+      RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))
+    ) {
+      throw calendarAttendeeIdentityRequired();
+    }
+  }
+  return attendees;
+}
+
 export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
   if (!attendees) {
+    if (details?.attendees != null) throw calendarAttendeeArgumentInvalid();
     return undefined;
   }
-  const mapped: Array<CreateLifeOpsCalendarEventAttendee | null> =
-    attendees.map((attendee) => {
+  const normalized = attendees.map(
+    (attendee): CreateLifeOpsCalendarEventAttendee => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return basicEmailValid(email) ? { email } : null;
+        if (!attendeeEmailAccepted(email))
+          throw calendarAttendeeArgumentInvalid();
+        return { email };
       }
       if (
         !attendee ||
         typeof attendee !== "object" ||
         Array.isArray(attendee)
       ) {
-        return null;
+        throw calendarAttendeeArgumentInvalid();
       }
       const record = attendee as Record<string, unknown>;
-      const email =
-        typeof record.email === "string" && basicEmailValid(record.email.trim())
-          ? record.email.trim()
-          : null;
-      if (!email) {
-        return null;
+      if (
+        typeof record.email !== "string" ||
+        !attendeeEmailAccepted(record.email.trim())
+      ) {
+        throw calendarAttendeeArgumentInvalid();
       }
       return {
-        email,
+        email: record.email.trim(),
         displayName:
           typeof record.displayName === "string" &&
           record.displayName.trim().length > 0
@@ -3950,10 +4729,7 @@ export function normalizeCalendarAttendees(
         optional:
           typeof record.optional === "boolean" ? record.optional : undefined,
       };
-    });
-  const normalized = mapped.filter(
-    (attendee): attendee is CreateLifeOpsCalendarEventAttendee =>
-      attendee !== null,
+    },
   );
   return normalized.length > 0 ? normalized : undefined;
 }
@@ -4168,6 +4944,7 @@ function calendarNextEventReadReceipt(
     event?.id ?? null,
   ]);
   const version = calendarEffectId("calendar-next-event-version-v1", [
+    JSON.stringify(context.readScope),
     context.calendarFeedState,
     event?.externalId ?? null,
     event?.status ?? null,
@@ -4329,6 +5106,12 @@ export function createCalendarActionRunner(
 
 const calendarAction: CalendarHandlerAction = {
   name: "CALENDAR",
+  // These owner-authored producers only observe snapshots; current results
+  // remain complete, while bound historical observations may follow review.
+  historicalObservationOperations: [
+    "calendar.event.next.read",
+    "calendar.feed.read",
+  ],
   // This operation union needs absent optional detail fields to stay absent on the wire.
   toolSchemaStrict: false,
   similes: [
@@ -4394,7 +5177,19 @@ const calendarAction: CalendarHandlerAction = {
     const rawParams = (options as HandlerOptions | undefined)?.parameters as
       | CalendarActionParams
       | undefined;
-    const params = rawParams ?? ({} as CalendarActionParams);
+    const suppliedParams = rawParams ?? ({} as CalendarActionParams);
+    // Promoted mutations identify a target explicitly; legacy umbrella lookup
+    // fields remain supported without an extra target-inference model call.
+    const target = suppliedParams.target;
+    const params: CalendarActionParams =
+      typeof target === "string"
+        ? {
+            ...suppliedParams,
+            ...(suppliedParams.targetKind === "eventId"
+              ? { details: { ...suppliedParams.details, eventId: target } }
+              : { query: target }),
+          }
+        : suppliedParams;
     const intent = resolveCalendarIntentInput(params.intent, message);
 
     const details = normalizeCalendarDetails(params.details, [
@@ -4456,6 +5251,7 @@ const calendarAction: CalendarHandlerAction = {
     const structuredSubaction = resolveStructuredCalendarSubaction(
       params,
       details,
+      planningTimeZone,
     );
     const hasExplicitCalendarExecutionInput = Boolean(
       explicitSubaction ||
@@ -4520,7 +5316,11 @@ const calendarAction: CalendarHandlerAction = {
     // Remembered so the read path does not repeat the same extraction with
     // the same inputs when this one found nothing.
     let searchQueriesInferred = false;
-    if (subaction === "search_events" && searchQueries.length === 0) {
+    if (
+      !explicitSubaction &&
+      subaction === "search_events" &&
+      searchQueries.length === 0
+    ) {
       searchQueries = await inferCalendarSearchQueriesWithLlm({
         runtime,
         message,
@@ -4544,7 +5344,18 @@ const calendarAction: CalendarHandlerAction = {
       intent,
       scenario,
       facts,
-      context: context ?? {},
+      context: {
+        ...context,
+        ...(scenario === "feed_results"
+          ? {
+              asOf: new Date().toISOString(),
+              selection: "bounded_agenda",
+              nextEventLookupPerformed: false,
+              completionBoundary:
+                "This read covers only the stated time window and retains elapsed events. An event ending before asOf is past, never the next event. This feed does not establish the next event or absence of upcoming events outside its bounds. For the single next ongoing or upcoming event, use CALENDAR_NEXT_EVENT; discover that exact operation if it is not loaded.",
+            }
+          : {}),
+      },
     });
     const respond = async <
       T extends NonNullable<ActionResult["data"]> | undefined,
@@ -4557,23 +5368,22 @@ const calendarAction: CalendarHandlerAction = {
     }): Promise<ActionResult> => {
       const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
       if (!payload.interaction || typeof payload.text !== "string") {
-        // `turnComplete:false` is the core contract for "evaluation required";
-        // a settled successful operation with a canonical receipt omits it so
-        // the runtime may phrase the receipt facts directly (owner ruling
-        // 2026-09-05). Pauses for the user and failures keep the evaluation.
-        const pauseData = payload.data as Record<string, unknown> | undefined;
-        const settled =
-          payload.success &&
-          effectReceipt.outcome !== "failed" &&
-          pauseData?.requiresInput !== true &&
-          pauseData?.approvalRequired !== true;
         return {
           success: payload.success,
           transcriptVisibility: "internal",
-          ...(settled ? {} : { turnComplete: false }),
+          turnComplete: false,
+          modelReplyRequired: true,
+          // Applied receipts and complete event facts remain authoritative.
+          // The normal final response model phrases them for the conversation;
+          // a mechanically verified fact sentence is internal evidence only.
           effectReceipts: [effectReceipt],
           data: {
             ...payload.data,
+            // Clarification is a pause for user input, not a failed operation
+            // that another planner pass can complete without new information.
+            ...(payload.data?.requiresInput === true
+              ? { awaitingUserInput: true }
+              : {}),
             // A settled missing/ambiguous lookup must not run again with the
             // same arguments. The planner may still choose a different target
             // or another authorized operation using the complete evidence.
@@ -4660,6 +5470,40 @@ const calendarAction: CalendarHandlerAction = {
     }
 
     try {
+      if (
+        (subaction === "update_event" || subaction === "delete_event") &&
+        (suppliedParams.target !== undefined ||
+          suppliedParams.targetKind !== undefined)
+      ) {
+        const suppliedEventId = detailString(
+          normalizeCalendarDetails(suppliedParams.details, []),
+          "eventId",
+        );
+        if (
+          typeof target !== "string" ||
+          !target.trim() ||
+          !["query", "eventId"].includes(suppliedParams.targetKind ?? "") ||
+          (suppliedEventId &&
+            (suppliedParams.targetKind !== "eventId" ||
+              suppliedEventId !== target.trim()))
+        ) {
+          throw new CalendarServiceError(
+            400,
+            "The event target selectors are missing or contradictory. Supply targetKind=query and the user's event title/source constraints without details.eventId, or targetKind=eventId and an exact ID from a Calendar result. No calendar read or change occurred; do not invent or substitute an ID.",
+            "CALENDAR_TARGET_SELECTOR_INVALID",
+          );
+        }
+      }
+      // A typed search is the planner's selected operation. Missing filters
+      // belong back at that boundary, not in another full-history model call
+      // that can silently reinterpret an agenda range as a title search.
+      if (explicitSubaction === "search_events" && searchQueries.length === 0) {
+        throw new CalendarServiceError(
+          400,
+          'CALENDAR_SEARCH_EVENTS requires a user-supplied event-content filter in query/queries or details.query/details.queries. For an unfiltered agenda, use CALENDAR_FEED (umbrella action=feed), preserving the requested date/range and timezone: details.date with optional endDate for whole days, or timeMin/timeMax for partial days. If CALENDAR_FEED is not loaded, DISCOVER_ACTIONS mode=load names=["CALENDAR_FEED"] loads its schema directly. No calendar read or change occurred.',
+          "CALENDAR_SEARCH_QUERY_REQUIRED",
+        );
+      }
       if (subaction === "next_event") {
         const context = await service.getNextCalendarEventContext(
           INTERNAL_URL,
@@ -4671,15 +5515,15 @@ const calendarAction: CalendarHandlerAction = {
         const fallback = formatNextEventContext(context);
         return respond({
           success: true,
-          text: await renderReply("next_event", fallback, {
-            event: context,
-          }),
+          text: await renderReply("next_event", fallback),
           effectReceipt: calendarNextEventReadReceipt(context),
           data: toActionData(context),
         });
       }
 
       if (subaction === "create_event") {
+        // Reject malformed generated arguments before any lookup or model extraction.
+        normalizeCalendarAttendees(details);
         const calendarContext = await loadCreateEventCalendarContext(
           service,
           details,
@@ -4695,52 +5539,57 @@ const calendarAction: CalendarHandlerAction = {
           );
         }
         requireCompleteFreshCalendarFeed(calendarContext.feed, "create");
-        // When the native planner supplied the minimum executable create
-        // shape, those typed fields are authoritative. The extraction model is
-        // a fallback for umbrella or incomplete calls, not a mandatory second
-        // interpretation of an already-structured planner decision.
-        const plannerStartAt = createStartDetail(details);
-        const plannerEndAt = createEndDetail(details);
-        const plannerTimeZone = detailString(details, "timeZone");
-        // A "Z" instant for an owner who is not in UTC is the planner's most
-        // common mistake (live 2026-09-05: "tuesday at 7am" arrived as
-        // 2026-09-09T07:00:00Z). It is not executable as typed; the
-        // timezone-grounded extractor re-derives the wall time from the
-        // user's words with local-date anchors instead of trusting the
-        // fabricated instant.
-        const utcInstantForNonUtcOwner = Boolean(
-          plannerStartAt?.toUpperCase().endsWith("Z") &&
-            (plannerTimeZone
-              ? plannerTimeZone !== "UTC"
-              : calendarContext.calendarTimeZone !== "UTC"),
-        );
-        const hasExecutablePlannerCreate = Boolean(
-          explicitTitle &&
-            ((plannerStartAt && normalizeIsoDateTime(plannerStartAt)) ||
-              detailString(details, "windowPreset")) &&
-            (!plannerEndAt || normalizeIsoDateTime(plannerEndAt)) &&
-            !utcInstantForNonUtcOwner,
-        );
-        const extractedDetails = hasExecutablePlannerCreate
-          ? {}
-          : await inferCreateEventDetails(
-              runtime,
-              message,
-              state,
-              intent,
-              calendarContext,
-              planningTimeZone,
-            );
-        const createEventBuild = buildCreateEventRequest({
+        // Native tool arguments describe a proposed write, not evidence that
+        // its required timing came from the user. Re-derive scheduling fields
+        // from the authoritative request/conversation and calendar zone before
+        // any mutation. Missing extraction must remain missing (clarification).
+        const extractedDetails = await inferCreateEventDetails(
+          runtime,
+          message,
+          state,
+          intent,
+          calendarContext,
+          planningTimeZone,
           details,
+        );
+        const destination = calendarContext.feed.sources.find(
+          (source) =>
+            source.key.grantId === detailString(extractedDetails, "grantId") &&
+            source.key.calendarId ===
+              detailString(extractedDetails, "calendarId"),
+        );
+        if (extractedDetails.requiresInput === true || !destination) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_create_event_details",
+              "No event was created. Ask for the missing scheduling details.",
+              { clarification: extractedDetails.clarification },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.create",
+              reason: "The requested event needs clarification before writing.",
+            }),
+            data: { requiresInput: true, missing: ["creation details"] },
+          });
+        }
+        const createEventBuild = buildCreateEventRequest({
+          details: {
+            ...details,
+            grantId: destination.key.grantId,
+            calendarId: destination.key.calendarId,
+            side: destination.key.side,
+          },
           extractedDetails,
           explicitTitle,
           inferredTitle,
-          recurrenceGuardTexts: [messageText(message)],
+          authorizingUserTexts: calendarAuthorizingUserTexts(state, message),
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
-          preferExtractedDetails: !hasExecutablePlannerCreate,
+          preferExtractedDetails: true,
+          requireExtractedTiming: true,
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
@@ -4753,10 +5602,12 @@ const calendarAction: CalendarHandlerAction = {
           calendarContext.calendarTimeZone;
         anchorCreateRequestToTimeZone(request, createTimeZone);
         applyStatedDateToCreateRequest({
+          title: title ?? "",
           request,
           currentMessage: messageText(message).trim(),
           intent,
           timeZone: createTimeZone,
+          now: new Date(calendarMessageObservedAt(message)),
         });
         const travelIntent = createEventBuild.travelIntent;
         if (!title) {
@@ -4795,6 +5646,7 @@ const calendarAction: CalendarHandlerAction = {
                 intent,
                 title,
                 calendarContext,
+                now: new Date(calendarMessageObservedAt(message)),
               })
             : null;
           const fallback = suggestedStartAt
@@ -4804,10 +5656,10 @@ const calendarAction: CalendarHandlerAction = {
                   timezone: suggestedStartAt.timeZone,
                 },
                 { includeTimeZoneName: true },
-              )}. if you want a different time, tell me what works better.`
+              )}. Ask whether that exact slot works and wait for confirmation; nothing has been created.`
             : `i need a time for "${title}" in ${
                 calendarContext?.calendarTimeZone ?? planningTimeZone
-              }. try "tomorrow morning", "tomorrow afternoon", "tomorrow evening", or give me a specific date and time.`;
+              }. Ask for the missing date and clock time. A broad morning/afternoon/evening window still needs a chosen time or explicit permission to choose an available slot. Nothing has been created.`;
           return respond({
             success: false,
             text: await renderReply("clarify_create_event_time", fallback, {
@@ -4879,6 +5731,38 @@ const calendarAction: CalendarHandlerAction = {
           INTERNAL_URL,
           request,
         );
+        const availability = await evaluateCalendarWriteAvailability({
+          runtime,
+          startAt: requestToApprove.startAt,
+          endAt: requestToApprove.endAt,
+          timeZone: requestToApprove.timeZone,
+        });
+        if (!availability.definitive || availability.conflicts.length > 0) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "create_event_availability_blocked",
+              availability.definitive
+                ? "Nothing was created: the proposed time overlaps existing calendar commitments. Explain the conflict and offer checked alternatives using availability.localTimes for local dates, clock times and timezone labels. Ask which option they prefer; these are checked options later that day, not bookings. Never invent availability or silently move either event."
+                : "Nothing was created: calendar availability is incomplete. Explain the unavailable coverage; do not claim the slot is free.",
+              { title, proposal: requestToApprove, availability },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.create",
+              discriminator: title,
+              reason:
+                "The availability check blocked the proposed calendar write.",
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["available time"],
+              availability,
+            },
+          });
+        }
         const travel = injectedDeps?.travelBuffer;
         let travelBuffer: CalendarTravelBufferResult | undefined;
         if (travelIntent && travel) {
@@ -4934,10 +5818,29 @@ const calendarAction: CalendarHandlerAction = {
               travelBuffer,
             });
           }
-          const fallback = `Created “${createdEvent.title}” for ${formatCalendarEventDateTime(
-            createdEvent,
-            { includeTimeZoneName: true },
-          )}.`;
+          const verifiedReply = verifyAppliedCalendarMutation({
+            operation: "create",
+            requestText: messageText(message),
+            event: createdEvent,
+            fallbackTimeZone: createTimeZone,
+            now: new Date(calendarMessageObservedAt(message)),
+            // A travel buffer, guests, a recurrence rule, a place or a note
+            // are asked-for details the receipt sentence cannot show; the
+            // evaluator keeps those turns.
+            carriesUnshownDetails:
+              Boolean(travelIntent) ||
+              (requestToApprove.recurrence?.length ?? 0) > 0 ||
+              (requestToApprove.attendees?.length ?? 0) > 0 ||
+              textFieldAddsDetail(createdEvent.location, createdEvent.title) ||
+              textFieldAddsDetail(createdEvent.description, createdEvent.title),
+          });
+          const fallback =
+            verifiedReply ??
+            `Created “${createdEvent.title}” for ${formatVerifiedEventMoment(
+              new Date(createdEvent.startAt),
+              createdEvent.timezone || createTimeZone,
+              new Date(calendarMessageObservedAt(message)),
+            )}.`;
           return respond({
             success: true,
             text: await renderReply("create_event_completed", fallback, {
@@ -4986,7 +5889,8 @@ const calendarAction: CalendarHandlerAction = {
         let resolvedCalendarId = calendarIdDetail(details);
         let targetEvent: LifeOpsCalendarEvent | null = null;
         if (!resolvedEventId) {
-          const titleHint = searchQueries[0];
+          const titleHint =
+            searchQueries[0] ?? impliedMutationTargetHint(messageText(message));
           if (!titleHint) {
             return respond({
               success: false,
@@ -5007,22 +5911,30 @@ const calendarAction: CalendarHandlerAction = {
               }),
               data: {
                 error: "CALENDAR_TARGET_UNRESOLVED",
+                coachingFailure: true,
               },
             });
           }
-          const feedRequest = plannerWindowUsable(details, llmPlan)
-            ? resolveCalendarWindow(
-                intent,
-                details,
-                true,
-                llmPlan,
-                planningTimeZone,
-              ).request
-            : {
-                calendarId: calendarIdDetail(details),
-                timeZone: planningTimeZone,
-                ...buildWideLookupRange(planningTimeZone),
-              };
+          const explicitSourceQuery =
+            suppliedParams.targetKind === "query" &&
+            typeof suppliedParams.target === "string"
+              ? suppliedParams.target
+              : undefined;
+          const feedRequest =
+            !explicitSourceQuery &&
+            plannerWindowUsable(details, llmPlan, planningTimeZone)
+              ? resolveCalendarWindow(
+                  intent,
+                  details,
+                  true,
+                  llmPlan,
+                  planningTimeZone,
+                ).request
+              : {
+                  calendarId: calendarIdDetail(details),
+                  timeZone: planningTimeZone,
+                  ...buildWideLookupRange(planningTimeZone),
+                };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
@@ -5038,15 +5950,20 @@ const calendarAction: CalendarHandlerAction = {
             action: "update",
             events: feed.events,
             titleHint,
-            // An explicit `date` detail names the target's local day ahead of
-            // any date phrase in the prose.
-            texts: mutationTargetTexts({
-              details,
-              currentMessage: messageText(message),
-              intent,
-              timeZone: planningTimeZone,
-            }),
-            explicitDate: detailString(details, "date"),
+            // A promoted target is source-scoped. Follow-up prose can contain
+            // only the destination, so it must not become a source-day filter.
+            // Legacy callers retain their existing prose-based lookup.
+            texts: explicitSourceQuery
+              ? [explicitSourceQuery]
+              : mutationTargetTexts({
+                  details,
+                  currentMessage: messageText(message),
+                  intent,
+                  timeZone: planningTimeZone,
+                }),
+            explicitDate: explicitSourceQuery
+              ? undefined
+              : detailString(details, "date"),
             nonPlannerDateTexts: mutationTargetTexts({
               details,
               currentMessage: messageText(message),
@@ -5063,6 +5980,7 @@ const calendarAction: CalendarHandlerAction = {
             );
             return respond({
               success: false,
+              data: { requiresInput: true, missing: ["event target"] },
               text: await renderReply("update_event_not_found", fallback, {
                 titleHint: userReferenceLogView(titleHint),
               }),
@@ -5084,6 +6002,7 @@ const calendarAction: CalendarHandlerAction = {
             });
             return respond({
               success: false,
+              data: { requiresInput: true, missing: ["event target"] },
               text: await renderReply("clarify_update_event_target", fallback, {
                 candidateCount: candidates.length,
                 titleHint: userReferenceLogView(titleHint),
@@ -5150,9 +6069,6 @@ const calendarAction: CalendarHandlerAction = {
           );
           resolvedCalendarId = targetEvent.calendarId;
         }
-        const newTitle = detailString(details, "newTitle") ?? explicitTitle;
-        const explicitStartAtForUpdate = detailString(details, "startAt");
-        const explicitEndAtForUpdate = detailString(details, "endAt");
         const extractedForUpdate = targetEvent
           ? await inferUpdateEventDetails(
               runtime,
@@ -5163,15 +6079,44 @@ const calendarAction: CalendarHandlerAction = {
               targetEvent.timezone ?? planningTimeZone,
             )
           : ({} as Record<string, unknown>);
+        if (extractedForUpdate.requiresInput === true) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_details",
+              "No event was changed. Ask for the missing update details.",
+              {
+                event: targetEvent,
+                clarification: extractedForUpdate.clarification,
+              },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.update",
+              discriminator: targetEvent.id,
+              reason:
+                "The requested update needs clarification before writing.",
+            }),
+            data: { requiresInput: true, missing: ["update details"] },
+          });
+        }
         const extractedStartAt = detailString(extractedForUpdate, "startAt");
         const extractedEndAt = detailString(extractedForUpdate, "endAt");
         const extractedTimeZoneForUpdate = detailString(
           extractedForUpdate,
           "timeZone",
         );
-        const recurrenceUpdate =
-          detailRecurrenceLines(details) ??
-          detailRecurrenceLines(extractedForUpdate);
+        // Every recurrence source here is model-authored: the planner stamped
+        // RRULE:FREQ=WEEKLY;BYDAY=FR onto "move my tailor appointment to
+        // friday at 4pm" (live 2026-09-14) and the built-in calendar refused
+        // the whole move. The create path's user-text gate decides here too.
+        const recurrenceUpdate = selectUserAuthorizedRecurrence(
+          calendarAuthorizingUserTexts(state, message),
+          [
+            detailRecurrenceLines(details),
+            detailRecurrenceLines(extractedForUpdate),
+          ],
+        );
         let recurrenceScopeForUpdate = resolveRecurrenceScopeIntent({
           details,
           fallbackDetails: extractedForUpdate,
@@ -5234,29 +6179,46 @@ const calendarAction: CalendarHandlerAction = {
             "CALENDAR_MUTATION_TARGET_BINDING_REQUIRED",
           );
         }
+        const updateTimeZone =
+          extractedTimeZoneForUpdate ?? targetEvent?.timezone ?? undefined;
+        for (const field of ["description", "location"] as const) {
+          if (
+            Array.isArray(extractedForUpdate.clearFields) &&
+            extractedForUpdate.clearFields.includes(field) &&
+            detailString(details, field) !== undefined
+          ) {
+            throw new CalendarServiceError(
+              400,
+              `The proposed ${field} replacement conflicts with clearing it; clarify before updating.`,
+              "CALENDAR_UPDATE_FIELD_CONFLICT",
+            );
+          }
+        }
         const updateRequest = {
           side: targetEvent.side,
           grantId,
           calendarId: targetEvent.calendarId,
           eventId: targetEvent.externalId,
-          title: newTitle,
+          // Only the request-grounded extraction authors conversational edits.
+          // Planner fields may contain placeholders or unrelated suggestions.
+          title: detailString(extractedForUpdate, "title"),
           description: calendarUpdateTextField(
-            details,
+            undefined,
             extractedForUpdate,
             "description",
           ),
           location: calendarUpdateTextField(
-            details,
+            undefined,
             extractedForUpdate,
             "location",
           ),
-          startAt: explicitStartAtForUpdate ?? extractedStartAt,
-          endAt: explicitEndAtForUpdate ?? extractedEndAt,
-          timeZone:
-            detailString(details, "timeZone") ??
-            extractedTimeZoneForUpdate ??
-            targetEvent?.timezone ??
-            undefined,
+          ...resolveUpdateTimeRange({
+            extractedStart: extractedStartAt,
+            extractedEnd: extractedEndAt,
+            target: targetEvent,
+            timeZone: updateTimeZone,
+          }),
+          timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,
           // Honor a scope only when the target recurs or the update itself
           // introduces a recurrence rule — the planner emits junk scopes.
@@ -5267,6 +6229,92 @@ const calendarAction: CalendarHandlerAction = {
               : undefined,
           notifyAttendees: shouldNotifyAttendees(details, targetEvent),
         };
+        const hasRequestedChange =
+          (
+            [
+              "title",
+              "description",
+              "location",
+              "startAt",
+              "endAt",
+              "recurrence",
+            ] as const
+          ).some((field) => updateRequest[field] !== undefined) ||
+          (extractedTimeZoneForUpdate !== undefined &&
+            extractedTimeZoneForUpdate !== targetEvent.timezone);
+        if (!hasRequestedChange) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_details",
+              "No event was changed: no requested field change could be resolved. Ask for the intended change; do not report an update.",
+              { event: targetEvent },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.update",
+              discriminator: targetEvent.id,
+              reason:
+                "No requested field change was resolved, so no mutation was attempted.",
+            }),
+            data: { requiresInput: true, missing: ["update details"] },
+          });
+        }
+        if (
+          updateRequest.startAt !== undefined ||
+          updateRequest.endAt !== undefined
+        ) {
+          const zone = updateTimeZone ?? planningTimeZone;
+          const proposedStart = normalizeCalendarDateTimeInTimeZone(
+            updateRequest.startAt ?? targetEvent.startAt,
+            "startAt",
+            zone,
+            "reject",
+          );
+          const proposedEnd = normalizeCalendarDateTimeInTimeZone(
+            updateRequest.endAt ?? targetEvent.endAt,
+            "endAt",
+            zone,
+            "reject",
+          );
+          if (!proposedStart || !proposedEnd) {
+            throw new CalendarServiceError(
+              400,
+              "An exact start and end are required to check the proposed move.",
+            );
+          }
+          const availability = await evaluateCalendarWriteAvailability({
+            runtime,
+            startAt: proposedStart,
+            endAt: proposedEnd,
+            timeZone: zone,
+            excludeEventId: targetEvent.id,
+          });
+          if (!availability.definitive || availability.conflicts.length > 0) {
+            return respond({
+              success: false,
+              text: await renderReply(
+                "update_event_availability_blocked",
+                "No event was changed. Explain the conflict and ask which checked alternative they prefer; availability.localTimes provides the local dates, clock times and timezone labels. These are checked options later that day, not bookings. If none are supplied, ask for another time; never invent availability.",
+                { event: targetEvent, proposal: updateRequest, availability },
+              ),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.update",
+                discriminator: targetEvent.id,
+                reason:
+                  "The availability check blocked the proposed calendar move.",
+              }),
+              data: {
+                actionName: "CALENDAR",
+                subaction: "update_event",
+                requiresInput: true,
+                missing: ["available time"],
+                availability,
+              },
+            });
+          }
+        }
         if (targetEvent.provider === ELIZA_CALENDAR_PROVIDER) {
           const expectedProviderVersion = targetEvent.metadata.etag;
           if (typeof expectedProviderVersion !== "string") {
@@ -5286,10 +6334,32 @@ const calendarAction: CalendarHandlerAction = {
             expectedProviderVersion,
             idempotencyKey,
           });
-          const fallback = `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
-            updatedEvent,
-            { includeTimeZoneName: true },
-          )}.`;
+          const verifiedReply = verifyAppliedCalendarMutation({
+            operation: "update",
+            requestText: messageText(message),
+            event: updatedEvent,
+            previous: targetEvent,
+            fallbackTimeZone: updateTimeZone ?? planningTimeZone,
+            now: new Date(calendarMessageObservedAt(message)),
+            // Only a plain time move is self-verifiable: a rename, a
+            // recurrence edit, a place or note change, or guests are details
+            // the "Moved …" sentence cannot vouch for.
+            carriesUnshownDetails:
+              updateRequest.startAt === undefined ||
+              updatedEvent.title !== targetEvent.title ||
+              Boolean(recurrenceUpdate) ||
+              updateRequest.recurrenceScope !== undefined ||
+              updateRequest.location !== undefined ||
+              updateRequest.description !== undefined ||
+              isRecurringCalendarEvent(targetEvent) ||
+              targetEvent.attendees.length > 0,
+          });
+          const fallback =
+            verifiedReply ??
+            `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
+              updatedEvent,
+              { includeTimeZoneName: true },
+            )}.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("update_event_completed", fallback, {
@@ -5346,7 +6416,10 @@ const calendarAction: CalendarHandlerAction = {
           // A structured deletion title identifies the target too; unlike an
           // update title, it cannot mean a requested rename. Keep explicit
           // query precedence and the existing unique-match checks below.
-          const titleHint = searchQueries[0] ?? explicitTitle;
+          const titleHint =
+            searchQueries[0] ??
+            explicitTitle ??
+            impliedMutationTargetHint(messageText(message));
           if (!titleHint) {
             return respond({
               success: false,
@@ -5365,7 +6438,11 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest = plannerWindowUsable(details, llmPlan)
+          const feedRequest = plannerWindowUsable(
+            details,
+            llmPlan,
+            planningTimeZone,
+          )
             ? resolveCalendarWindow(
                 intent,
                 details,
@@ -5455,7 +6532,7 @@ const calendarAction: CalendarHandlerAction = {
             });
           }
           targetEvent = candidates[0] ?? null;
-        } else {
+        } else if (!targetEvent) {
           targetEvent = await service.getConditionalCalendarMutationTarget(
             INTERNAL_URL,
             {
@@ -5557,7 +6634,21 @@ const calendarAction: CalendarHandlerAction = {
             expectedProviderVersion,
             idempotencyKey,
           });
-          const fallback = `Deleted “${targetEvent.title}” from your calendar.`;
+          const verifiedReply = verifyAppliedCalendarMutation({
+            operation: "delete",
+            requestText: messageText(message),
+            event: targetEvent,
+            titleHint: searchQueries[0] ?? explicitTitle,
+            fallbackTimeZone: planningTimeZone,
+            now: new Date(calendarMessageObservedAt(message)),
+            carriesUnshownDetails:
+              recurrenceScopeForDelete !== null ||
+              isRecurringCalendarEvent(targetEvent) ||
+              targetEvent.attendees.length > 0,
+          });
+          const fallback =
+            verifiedReply ??
+            `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
             text: await renderReply("delete_event_completed", fallback, {
@@ -5617,9 +6708,7 @@ const calendarAction: CalendarHandlerAction = {
           const fallback = `I couldn't find a clear trip window for ${tripWindowIntent.location} in your upcoming calendar.`;
           return respond({
             success: true,
-            text: await renderReply("trip_window_not_found", fallback, {
-              location: tripWindowIntent.location,
-            }),
+            text: await renderReply("trip_window_not_found", fallback),
             effectReceipt: calendarFeedReadReceipt({
               feed,
               events: [],
@@ -5641,10 +6730,7 @@ const calendarAction: CalendarHandlerAction = {
         );
         return respond({
           success: true,
-          text: await renderReply("trip_window_results", fallback, {
-            location: tripWindowIntent.location,
-            events: itineraryEvents,
-          }),
+          text: await renderReply("trip_window_results", fallback),
           effectReceipt: calendarFeedReadReceipt({
             feed,
             events: itineraryEvents,
@@ -5666,8 +6752,11 @@ const calendarAction: CalendarHandlerAction = {
       // events" returns "no events today" even when the calendar has
       // dozens of upcoming items. We apply this regardless of whether the
       // chat LLM picked feed or search_events because both subactions go
-      const baseResolved = resolveCalendarWindow(
-        intent,
+      // Typed searches own their date filters. The complete message may also
+      // contain a destination date for a separate move/proposal; borrowing it
+      // here can hide the very event being looked up.
+      const baseResolved = resolveCalendarReadWindow(
+        explicitSubaction === "search_events" ? "" : intent,
         details,
         subaction === "search_events",
         llmPlan,
@@ -5677,7 +6766,9 @@ const calendarAction: CalendarHandlerAction = {
       const label = baseResolved.label;
       const hasExplicitWindow = baseResolved.explicitWindow;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
-        includeHiddenCalendars: true,
+        includeHiddenCalendars:
+          detailBoolean(details, "includeHiddenCalendars") ??
+          subaction === "search_events",
         mode: connectorModeDetail(details),
         side: connectorSideDetail(details),
         grantId: connectorGrantIdDetail(details),
@@ -5723,9 +6814,6 @@ const calendarAction: CalendarHandlerAction = {
               return respond({
                 success: true,
                 text: await renderReply("search_results", fallback, {
-                  query: userReferenceLogView(queryFallback),
-                  queries: [],
-                  events: filteredEvents,
                   label,
                 }),
                 effectReceipt: calendarFeedReadReceipt({
@@ -5767,7 +6855,6 @@ const calendarAction: CalendarHandlerAction = {
                 success: true,
                 text: await renderReply("feed_results", fallback, {
                   label,
-                  events: feed.events,
                 }),
                 effectReceipt: calendarFeedReadReceipt({
                   feed,
@@ -5788,7 +6875,6 @@ const calendarAction: CalendarHandlerAction = {
               success: true,
               text: await renderReply("feed_results", fallback, {
                 label,
-                events: feed.events,
               }),
               effectReceipt: calendarFeedReadReceipt({
                 feed,
@@ -5865,8 +6951,9 @@ const calendarAction: CalendarHandlerAction = {
               .filter((candidate) => groundedIdSet.has(candidate.event.id))
               .map((candidate) => candidate.event);
           }
-        }
-        if (filteredEvents.length === 0 && feed.events.length > 0) {
+        } else if (filteredEvents.length === 0 && feed.events.length > 0) {
+          // Ground unmatched feed candidates only when ranking has not already
+          // been grounded. An explicit empty match set is a settled result.
           const groundedIds = await groundCalendarSearchMatchesWithLlm(
             runtime,
             state,
@@ -5896,9 +6983,6 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: await renderReply("search_results", fallback, {
-            query: userReferenceLogView(query),
-            queries: queryViews,
-            events: filteredEvents,
             label,
           }),
           effectReceipt: calendarFeedReadReceipt({
@@ -5921,7 +7005,6 @@ const calendarAction: CalendarHandlerAction = {
         success: true,
         text: await renderReply("feed_results", fallback, {
           label,
-          events: feed.events,
         }),
         effectReceipt: calendarFeedReadReceipt({
           feed,
@@ -5931,6 +7014,36 @@ const calendarAction: CalendarHandlerAction = {
         data: toActionData(feed),
       });
     } catch (error) {
+      // error-policy:J1 Source and local-time rejections require user input before dispatch.
+      if (
+        error instanceof ElizaError &&
+        (error.code === "CALENDAR_NOTE_SOURCE_CONFLICT" ||
+          error.code === "CALENDAR_NOTE_SOURCE_INVALID" ||
+          error instanceof CalendarLocalTimeError)
+      ) {
+        return respond({
+          success: false,
+          text: error.message,
+          data: {
+            actionName: "CALENDAR",
+            subaction,
+            error: error.code,
+            ...(error instanceof CalendarLocalTimeError
+              ? { timeClarification: error.context }
+              : {}),
+            requiresInput: true,
+            awaitingUserInput: true,
+            retryable: false,
+          },
+          effectReceipt: calendarFailedReceipt({
+            message,
+            operation: `calendar.${subaction}`,
+            code: error.code,
+            retryable: false,
+            acceptance: "rejected",
+          }),
+        });
+      }
       if (error instanceof CalendarServiceError) {
         if (isAppleCalendarPermissionError(error)) {
           return respond({
@@ -5951,6 +7064,11 @@ const calendarAction: CalendarHandlerAction = {
         // swallowed "mode must be one of ..." surfaced only as
         // CALENDAR_SERVICE_400).
         runtime.reportError("calendar:action", error, {
+          // The action owns this clarification; keep diagnostics without
+          // escalating repeated missing guest details into a second reply.
+          diagnosticOnly:
+            error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
           subaction: subaction ?? "none",
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -5964,8 +7082,8 @@ const calendarAction: CalendarHandlerAction = {
           effectiveCalendarId: calendarIdDetail(details) ?? "unset",
           timeMin: detailString(details, "timeMin") ?? "unset",
           timeMax: detailString(details, "timeMax") ?? "unset",
-          effectiveWindow: plannerWindowDetail(details)
-            ? `${plannerWindowDetail(details)?.timeMin}..${plannerWindowDetail(details)?.timeMax}`
+          effectiveWindow: plannerWindowDetail(details, planningTimeZone)
+            ? `${plannerWindowDetail(details, planningTimeZone)?.timeMin}..${plannerWindowDetail(details, planningTimeZone)?.timeMax}`
             : "unset",
           timeZone: detailString(details, "timeZone") ?? "unset",
           mode: detailString(details, "mode") ?? "unset",
@@ -5973,21 +7091,60 @@ const calendarAction: CalendarHandlerAction = {
           grantId: detailString(details, "grantId") ?? "unset",
         });
         const fallback = buildCalendarServiceErrorFallback(error, intent);
+        const rejectedArgument = rejectedArgumentForCalendarServiceError(
+          error.code,
+        );
         return respond({
           success: false,
           text: await renderReply("service_error", fallback, {
             status: error.status,
             subaction,
           }),
+          data: {
+            // This typed preflight rejection performed no read or effect. Keep
+            // its receipt and evaluation while allowing a corrected plan to finish.
+            ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+            (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
+              explicitSubaction === "search_events" &&
+              searchQueries.length === 0) ||
+            ((subaction === "feed" || subaction === "search_events") &&
+              (error.code === "CALENDAR_READ_DATE_INVALID" ||
+                error.code === "CALENDAR_READ_DATE_CONFLICT"))
+              ? { coachingFailure: true }
+              : {}),
+            actionName: "CALENDAR",
+            subaction,
+            error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+            ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
+              ? {
+                  requiresInput: true,
+                  awaitingUserInput: true,
+                  retryable: false,
+                  missing: ["guest email address"],
+                }
+              : {}),
+            ...(rejectedArgument
+              ? {
+                  parameterErrors: [
+                    { path: rejectedArgument, message: error.message },
+                  ],
+                  invalidParameterNames: [rejectedArgument],
+                }
+              : {}),
+          },
           effectReceipt: calendarFailedReceipt({
             message,
             operation: `calendar.${subaction}`,
             code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
             retryable: error.status >= 500,
             acceptance:
-              subaction === "create_event" ||
-              subaction === "update_event" ||
-              subaction === "delete_event"
+              error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
+              error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
+              error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
+              (subaction === "create_event" ||
+                subaction === "update_event" ||
+                subaction === "delete_event")
                 ? "unknown"
                 : "rejected",
           }),
@@ -6000,7 +7157,7 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "subaction",
       description:
-        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including requests with no title or keyword filter. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the next upcoming event; create_event only when creating a new event.",
+        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including elapsed events; omitted bounds mean today, not the next upcoming event. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the single next ongoing or upcoming event relative to now, including across dates and without a keyword filter; create_event only when creating a new event.",
       required: false,
       schema: {
         type: "string" as const,
@@ -6049,10 +7206,10 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "details",
       description:
-        "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
-        "start/end datetimes must be RFC 3339 with a numeric offset matching timeZone (use Z only for UTC); " +
-        'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
-        '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
+        "Structured calendar fields; only the declared keys are accepted, so omit anything the user did not state. " +
+        "feed/search_events: timeMin/timeMax with timeZone. create_event: start (plus end or durationMinutes) and timeZone; location, description, recurrence and attendees only when the user gives them. " +
+        "update_event/delete_event: locate the target with eventId, oldTitle or query (plus date); the new time goes in start/end and a rename in newTitle. " +
+        "Every wall-clock value is local (no Z, no offset) in timeZone; recurrenceScope is instance, this_and_following or series.",
       required: false,
       schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
@@ -6066,7 +7223,7 @@ const calendarAction: CalendarHandlerAction = {
       name: "calendarId",
       aliases: ["calendar_id", "calendarid"],
       description:
-        "Optional; leave unset. Reads cover all connected calendars automatically and event creation targets the built-in calendar.",
+        "Optional; leave unset. Agenda reads use the selected Calendar feed; searches cover connected calendars. Use details.includeHiddenCalendars to explicitly change that scope. Event creation targets the built-in calendar.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -1,0 +1,137 @@
+#!/usr/bin/env node
+/** Validates confidential runtime pins against an explicit release manifest. */
+import path from "node:path";
+import { validateAgainstSchema } from "./json-schema-lite.ts";
+import { parseArgs, readJson, repoRoot } from "./os-release-lib.ts";
+
+const DEFAULT_PINS = path.join(repoRoot, "linux/confidential/dstack-pins.json");
+const SCHEMA_PATH = path.join(
+  repoRoot,
+  "release/schema/dstack-pins.schema.json",
+);
+
+const REQUIRED_CLAIMS = ["debugDisabled", "productionLifecycle"];
+// Golden manifest measurements the AppAuth allowlist must mirror (§2.3).
+const ALLOWLIST_MEASUREMENTS = ["agent", "container", "compose"];
+
+// Returns { ok, blocked, errors }. `blocked` is reserved for "data is correct
+// but not yet production-ready"; with the track-latest pin confirmed and the
+// allowlist bound to the golden manifest, the shipped data is no longer blocked.
+// `manifest` is the confidential release manifest used to assert the allowlist
+// mirrors the signed golden measurements.
+export function checkDstackPins(pins, schema, manifest) {
+  const structure = validateAgainstSchema(pins, schema);
+  if (!structure.ok) {
+    return {
+      ok: false,
+      blocked: false,
+      errors: structure.errors.map((e) => `schema: ${e}`),
+    };
+  }
+
+  const errors = [];
+
+  // §2.3: every forbidden weakness class must be forbidden.
+  for (const [key, value] of Object.entries(pins.forbid)) {
+    if (value !== true) {
+      errors.push(
+        `forbid.${key} must be true (a forbidden weakness class is not forbidden, §2.3)`,
+      );
+    }
+  }
+  // §2.3: every required hardening must be required.
+  for (const [key, value] of Object.entries(pins.require)) {
+    if (value !== true) {
+      errors.push(
+        `require.${key} must be true (a mandatory hardening is not required, §2.3)`,
+      );
+    }
+  }
+  // §2.3 production claims that must be asserted.
+  for (const claim of REQUIRED_CLAIMS) {
+    if (pins.requiredClaims[claim] !== true) {
+      errors.push(
+        `requiredClaims.${claim} must be true (production claim not asserted, §2.3)`,
+      );
+    }
+  }
+  // §2.3 principle: dstack-KMS is never the sole root of trust.
+  if (pins.rootOfTrust.anchor === "dstack-kms") {
+    errors.push(
+      "rootOfTrust.anchor must NOT be solely dstack-KMS (root of trust is the platform RoT + golden measurements, §2.3)",
+    );
+  }
+  if (pins.rootOfTrust.defaultVerifier === "dstack-kms") {
+    errors.push(
+      "rootOfTrust.defaultVerifier must NOT be dstack-KMS (default verifier is the on-device eliza-local-verifier, §2.3)",
+    );
+  }
+
+  // Release pin: track-latest (>= Secure-by-Default baseline, re-verified every
+  // boot) OR a confirmed frozen tag. Either is a valid confirmed pin.
+  const { pinnedRelease: pin } = pins;
+  const trackLatestValid =
+    pin.track === "latest" &&
+    pin.reverifyOnUpdate === true &&
+    typeof pin.minReleaseDate === "string" &&
+    pin.minReleaseDate.length > 0;
+  const frozenTagValid =
+    pin.confirmed === true && typeof pin.tag === "string" && pin.tag.length > 0;
+  if (!trackLatestValid && !frozenTagValid) {
+    errors.push(
+      'pinnedRelease is INVALID: provide either a track-latest pin (track="latest", reverifyOnUpdate=true, minReleaseDate set) or a confirmed frozen tag (confirmed=true, tag set). FAIL-CLOSED (§2.3/§8.3).',
+    );
+  }
+
+  // §2.3: the AppAuth allowlist must be non-empty (an empty allowlist trusts no
+  // code hash and FAILS CLOSED) and must mirror the signed golden manifest
+  // measurements (agent/container/compose).
+  const codeHashes = pins.appAuthAllowlist.codeHashes;
+  if (!Array.isArray(codeHashes) || codeHashes.length === 0) {
+    errors.push(
+      "appAuthAllowlist.codeHashes must be NON-EMPTY (an empty allowlist trusts no code hash, FAIL-CLOSED, §2.3).",
+    );
+  } else if (manifest) {
+    const measurements = manifest?.tee?.measurements ?? {};
+    for (const name of ALLOWLIST_MEASUREMENTS) {
+      const golden = measurements[name];
+      if (typeof golden !== "string") {
+        errors.push(
+          `appAuthAllowlist consistency: golden manifest is missing tee.measurements.${name} (§2.3).`,
+        );
+      } else if (!codeHashes.includes(golden)) {
+        errors.push(
+          `appAuthAllowlist.codeHashes must include the golden tee.measurements.${name} digest (allowlist must mirror the signed golden manifest, §2.3).`,
+        );
+      }
+    }
+  }
+
+  return { ok: errors.length === 0, blocked: false, errors };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (typeof args.manifest !== "string" || args.manifest.trim() === "") {
+    throw new Error(
+      "--manifest must identify the confidential release being checked.",
+    );
+  }
+  const input = typeof args.input === "string" ? args.input : DEFAULT_PINS;
+  const [pins, schema, manifest] = await Promise.all([
+    readJson(input),
+    readJson(SCHEMA_PATH),
+    readJson(path.resolve(args.manifest)),
+  ]);
+  const result = checkDstackPins(pins, schema, manifest);
+  if (!result.ok) {
+    for (const error of result.errors) console.error(`error: ${error}`);
+    console.error("dstack-pins-check: FAIL-CLOSED");
+    process.exit(1);
+  }
+  console.log(`dstack-pins-check: PASS (${input})`);
+}
+
+if (import.meta.main) {
+  await main();
+}

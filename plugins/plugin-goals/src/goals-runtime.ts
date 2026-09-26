@@ -22,7 +22,7 @@ import {
   type IAgentRuntime,
   resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
-import type { LifeOpsOwnership } from "@elizaos/shared";
+import { type LifeOpsOwnership } from "@elizaos/core/contracts/personal-assistant";
 import { GoalsRepository } from "./db/goals-repository.ts";
 import { requireAgentId } from "./goal-normalize.ts";
 import {

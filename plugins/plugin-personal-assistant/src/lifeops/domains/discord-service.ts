@@ -5,10 +5,27 @@
  * grant/degradation projection only; capture and send happen in the discord plugin.
  */
 import {
+  ElizaError,
   logger,
   requireConfirmedSendHandlerDelivery,
+  type SendHandlerReceipt,
   type TargetInfo,
 } from "@elizaos/core";
+import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
+import {
+  LIFEOPS_DISCORD_CAPABILITIES,
+  type LifeOpsBrowserSession,
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorSide,
+  type LifeOpsDiscordCapability,
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsMessagingConnectorReason,
+  type LifeOpsOwnerBrowserAccessSource,
+  type LifeOpsOwnerBrowserAccessStatus,
+  type LifeOpsOwnerBrowserAuthState,
+  type LifeOpsOwnerBrowserNextAction,
+  type LifeOpsOwnerBrowserTabState,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -18,7 +35,6 @@ import type {
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
-  DISCORD_APP_URL,
   type DiscordDesktopCdpStatus,
   type DiscordMessageSearchResult,
   type DiscordTabProbe,
@@ -26,29 +42,17 @@ import {
   emptyDiscordDmInboxProbe,
   ensureDiscordTab,
   getDiscordDesktopCdpStatus,
-  probeDiscordCapturedPage,
   probeDiscordTab,
   relaunchDiscordDesktopForCdp,
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
-} from "@elizaos/plugin-discord/user-account-scraper";
-import type {
-  LifeOpsBrowserSession,
-  LifeOpsConnectorDegradation,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsDiscordCapability,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsMessagingConnectorReason,
-  LifeOpsOwnerBrowserAccessSource,
-  LifeOpsOwnerBrowserAccessStatus,
-  LifeOpsOwnerBrowserAuthState,
-  LifeOpsOwnerBrowserNextAction,
-  LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared";
-import { asRecord, LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
+} from "@elizaos/plugin-discord";
 import type { CreateLifeOpsBrowserSessionRequest } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import {
+  ConnectorDeliveryEvidenceError,
+  ConnectorSenderChangedError,
+} from "../messaging/connector-delivery-evidence.js";
 import { createLifeOpsConnectorGrant } from "../repository.js";
 import {
   searchDiscordMessagesWithRuntimeService,
@@ -57,7 +61,6 @@ import {
 import { fail } from "../service-normalize.js";
 import { normalizeOptionalConnectorSide } from "../service-normalize-connector.js";
 
-const DISCORD_CONNECTOR_SESSION_TITLE = "Open Discord for LifeOps";
 const DISCORD_CHANNEL_URL_RE = /\/channels\/([^/?#]+)\/([^/?#]+)/;
 const DISCORD_SEND_SETTLE_MS = 1_500;
 const FULL_DISCORD_CAPABILITIES = [...LIFEOPS_DISCORD_CAPABILITIES];
@@ -106,6 +109,8 @@ export type DiscordSendMessageResult = {
   side: LifeOpsConnectorSide;
   ok: true;
   deliveryStatus: "sent" | "sending" | "failed" | "unknown";
+  providerMessageId: string | null;
+  receipt: SendHandlerReceipt | null;
 } & ({ channelId: string } | { userId: string });
 
 export type DiscordConnectorVerification = {
@@ -313,208 +318,10 @@ function workspaceReasonFor(args: {
   return "disconnected";
 }
 
-function browserReasonFor(args: {
-  available: boolean;
-  loggedIn: boolean;
-  authPending: boolean;
-  inProgress: boolean;
-  hasGrant: boolean;
-  hasDiscordTab: boolean;
-}): LifeOpsMessagingConnectorReason {
-  if (!args.available) return "disconnected";
-  if (args.loggedIn) return "connected";
-  if (args.authPending) return "auth_pending";
-  if (args.inProgress || args.hasDiscordTab || args.hasGrant) return "pairing";
-  return "disconnected";
-}
-
 function tabIdFromGrant(grant: LifeOpsConnectorGrant | null): string | null {
   if (!grant) return null;
   const raw = (grant.metadata as Record<string, unknown> | undefined)?.tabId;
   return typeof raw === "string" && raw.length > 0 ? raw : null;
-}
-
-function sessionIdFromGrant(
-  grant: LifeOpsConnectorGrant | null,
-): string | null {
-  if (!grant) return null;
-  const raw = (grant.metadata as Record<string, unknown> | undefined)
-    ?.sessionId;
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
-}
-
-function companionIdFromGrant(
-  grant: LifeOpsConnectorGrant | null,
-): string | null {
-  if (!grant) return null;
-  const raw = (grant.metadata as Record<string, unknown> | undefined)
-    ?.companionId;
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
-}
-
-function companionKey(args: { browser: string; profileId: string }): string {
-  return `${args.browser}:${args.profileId}`;
-}
-
-function companionMap(
-  companions: readonly BrowserBridgeCompanionStatus[],
-): Map<string, BrowserBridgeCompanionStatus> {
-  return new Map(
-    companions.map((companion) => [
-      companionKey({
-        browser: companion.browser,
-        profileId: companion.profileId,
-      }),
-      companion,
-    ]),
-  );
-}
-
-function sortCompanionsByRecency(
-  companions: readonly BrowserBridgeCompanionStatus[],
-): BrowserBridgeCompanionStatus[] {
-  return [...companions].sort((left, right) => {
-    const leftMs = Date.parse(left.lastSeenAt ?? "");
-    const rightMs = Date.parse(right.lastSeenAt ?? "");
-    if (
-      Number.isFinite(leftMs) &&
-      Number.isFinite(rightMs) &&
-      leftMs !== rightMs
-    ) {
-      return rightMs - leftMs;
-    }
-    if (
-      left.lastSeenAt &&
-      right.lastSeenAt &&
-      left.lastSeenAt !== right.lastSeenAt
-    ) {
-      return right.lastSeenAt.localeCompare(left.lastSeenAt);
-    }
-    return left.id.localeCompare(right.id);
-  });
-}
-
-function pickNewestDiscordTab(
-  tabs: readonly BrowserBridgeTabSummary[],
-): BrowserBridgeTabSummary | null {
-  return (
-    [...tabs]
-      .filter((tab) => isDiscordHost(tab.url))
-      .sort((left, right) => {
-        if (left.focusedActive !== right.focusedActive) {
-          return left.focusedActive ? -1 : 1;
-        }
-        if (left.activeInWindow !== right.activeInWindow) {
-          return left.activeInWindow ? -1 : 1;
-        }
-        const leftMs = Date.parse(left.lastFocusedAt ?? left.lastSeenAt);
-        const rightMs = Date.parse(right.lastFocusedAt ?? right.lastSeenAt);
-        if (
-          Number.isFinite(leftMs) &&
-          Number.isFinite(rightMs) &&
-          leftMs !== rightMs
-        ) {
-          return rightMs - leftMs;
-        }
-        return right.lastSeenAt.localeCompare(left.lastSeenAt);
-      })[0] ?? null
-  );
-}
-
-function parseSessionProbe(
-  session: LifeOpsBrowserSession | null,
-): DiscordTabProbe | null {
-  if (!session) return null;
-  const result = asRecord(session.result);
-  if (!result) return null;
-  const actionResults = asRecord(result.actionResults) ?? result;
-  let pageUrl: string | null = null;
-  let pageTitle: string | null = null;
-  let mainText: string | null = null;
-  let links: Array<{ text: string; href: string }> = [];
-  let forms: Array<{ action: string | null; fields: string[] }> = [];
-
-  for (const action of session.actions) {
-    const entry = asRecord(actionResults[action.id]);
-    if (!entry) continue;
-    if (action.kind === "open") {
-      pageUrl =
-        typeof entry.openedUrl === "string" && entry.openedUrl.length > 0
-          ? entry.openedUrl
-          : pageUrl;
-    } else if (action.kind === "navigate") {
-      pageUrl =
-        typeof entry.navigatedUrl === "string" && entry.navigatedUrl.length > 0
-          ? entry.navigatedUrl
-          : pageUrl;
-    } else if (action.kind === "read_page") {
-      pageUrl =
-        typeof entry.url === "string" && entry.url.length > 0
-          ? entry.url
-          : pageUrl;
-      pageTitle =
-        typeof entry.title === "string" && entry.title.length > 0
-          ? entry.title
-          : pageTitle;
-      mainText =
-        typeof entry.mainText === "string" && entry.mainText.length > 0
-          ? entry.mainText
-          : mainText;
-    } else if (action.kind === "extract_links") {
-      const candidateLinks = Array.isArray(entry.links) ? entry.links : [];
-      links = candidateLinks.filter(
-        (candidate): candidate is { text: string; href: string } =>
-          Boolean(candidate) &&
-          typeof candidate === "object" &&
-          typeof (candidate as { href?: unknown }).href === "string" &&
-          typeof (candidate as { text?: unknown }).text === "string",
-      );
-    } else if (action.kind === "extract_forms") {
-      const candidateForms = Array.isArray(entry.forms) ? entry.forms : [];
-      forms = candidateForms.filter(
-        (candidate): candidate is { action: string | null; fields: string[] } =>
-          Boolean(candidate) &&
-          typeof candidate === "object" &&
-          Array.isArray((candidate as { fields?: unknown }).fields),
-      );
-    }
-  }
-
-  if (!pageUrl) return null;
-  return probeDiscordCapturedPage({
-    url: pageUrl,
-    title: pageTitle,
-    mainText,
-    links,
-    forms,
-  });
-}
-
-function sessionError(session: LifeOpsBrowserSession | null): string | null {
-  if (session?.status !== "failed") return null;
-  const result = asRecord(session.result);
-  const error = result?.error;
-  return typeof error === "string" && error.trim().length > 0
-    ? error.trim()
-    : null;
-}
-
-function siteAccessAllowsDiscord(
-  companion: BrowserBridgeCompanionStatus | null,
-  hasDiscordPage: boolean,
-): boolean | null {
-  if (!companion) {
-    return null;
-  }
-  if (hasDiscordPage) {
-    return true;
-  }
-  if (companion.permissions.allOrigins) {
-    return true;
-  }
-  return companion.permissions.grantedOrigins.some((origin) =>
-    isDiscordHost(origin),
-  );
 }
 
 function browserAuthStateFromProbe(
@@ -543,71 +350,6 @@ function browserTabState(args: {
     return "background_discord";
   }
   return "missing";
-}
-
-function browserBridgeAccessStatus(args: {
-  active: boolean;
-  settingsEnabled: boolean;
-  trackingEnabled: boolean;
-  paused: boolean;
-  canControl: boolean;
-  companion: BrowserBridgeCompanionStatus | null;
-  hasAnyCompanion: boolean;
-  hasConnectedCompanion: boolean;
-  probe: DiscordTabProbe | null;
-  hasDiscordTab: boolean;
-  siteAccessOk: boolean | null;
-}): LifeOpsOwnerBrowserAccessStatus {
-  const authState = browserAuthStateFromProbe(args.probe);
-  const tabState = browserTabState({
-    probe: args.probe,
-    hasDiscordTab: args.hasDiscordTab,
-  });
-
-  let nextAction: LifeOpsOwnerBrowserNextAction = "none";
-
-  if (!args.settingsEnabled || !args.trackingEnabled || args.paused) {
-    nextAction = "enable_browser_access";
-  } else if (!args.hasAnyCompanion) {
-    nextAction = "connect_browser";
-  } else if (!args.hasConnectedCompanion) {
-    nextAction = "open_extension_popup";
-  } else if (authState === "logged_out") {
-    nextAction = "log_in";
-  } else if (!args.canControl && tabState === "missing") {
-    nextAction = "enable_browser_control";
-  } else if (!args.canControl && tabState !== "dm_inbox_visible") {
-    nextAction = "focus_dm_inbox_manually";
-  } else if (tabState === "missing") {
-    nextAction = "open_discord";
-  } else if (authState === "logged_in" && tabState !== "dm_inbox_visible") {
-    nextAction = "open_dm_inbox";
-  }
-
-  if (args.siteAccessOk === false && nextAction === "none") {
-    nextAction = "open_discord";
-  }
-
-  return {
-    source: "lifeops_browser",
-    active: args.active,
-    available:
-      args.settingsEnabled &&
-      args.trackingEnabled &&
-      !args.paused &&
-      args.hasConnectedCompanion,
-    browser: args.companion?.browser ?? null,
-    profileId: args.companion?.profileId ?? null,
-    profileLabel: args.companion?.profileLabel ?? null,
-    companionId: args.companion?.id ?? null,
-    companionLabel: args.companion?.label ?? null,
-    canControl: args.canControl,
-    siteAccessOk: args.siteAccessOk,
-    currentUrl: args.probe?.url ?? null,
-    tabState,
-    authState,
-    nextAction,
-  };
 }
 
 function desktopBrowserAccessStatus(args: {
@@ -739,131 +481,6 @@ export class DiscordDomain {
     } catch {
       return null;
     }
-  }
-
-  async lifeOpsDiscordGetOwnerBrowserDiscordState(
-    grant: LifeOpsConnectorGrant | null,
-  ): Promise<{
-    available: boolean;
-    settingsEnabled: boolean;
-    trackingEnabled: boolean;
-    paused: boolean;
-    canControl: boolean;
-    selectedCompanion: BrowserBridgeCompanionStatus | null;
-    hasAnyCompanion: boolean;
-    hasConnectedCompanion: boolean;
-    discordTab: BrowserBridgeTabSummary | null;
-    currentPageUrl: string | null;
-    probe: DiscordTabProbe | null;
-    session: LifeOpsBrowserSession | null;
-    lastError: string | null;
-    reason: LifeOpsMessagingConnectorReason;
-  }> {
-    const settings = await this.deps.getBrowserSettings();
-    const allCompanions = sortCompanionsByRecency(
-      await this.deps.listBrowserCompanions(),
-    );
-    const connectedCompanions = allCompanions.filter(
-      (companion) => companion.connectionState === "connected",
-    );
-    const paused = this.deps.isBrowserPaused(settings);
-    const trackingEnabled = settings.trackingMode !== "off";
-    const settingsEnabled = settings.enabled;
-
-    const available =
-      settingsEnabled &&
-      trackingEnabled &&
-      !paused &&
-      connectedCompanions.length > 0;
-
-    const tabs = await this.deps.listBrowserTabs();
-    const currentPage = await this.deps.getCurrentBrowserPage();
-    const currentPageProbe =
-      currentPage?.url && isDiscordHost(currentPage.url)
-        ? probeDiscordCapturedPage(currentPage)
-        : null;
-    const discordTab = pickNewestDiscordTab(tabs);
-    const session = await this.lifeOpsDiscordGetBrowserSessionById(
-      sessionIdFromGrant(grant),
-    );
-    const sessionProbe = parseSessionProbe(session);
-    const probe =
-      currentPageProbe ??
-      (discordTab &&
-      (session?.status === "done" ||
-        session?.status === "queued" ||
-        session?.status === "running" ||
-        session?.status === "awaiting_confirmation")
-        ? sessionProbe
-        : null);
-    const companionByKey = companionMap(connectedCompanions);
-    let selectedCompanion: BrowserBridgeCompanionStatus | null = null;
-    if (currentPage) {
-      selectedCompanion =
-        companionByKey.get(
-          companionKey({
-            browser: currentPage.browser,
-            profileId: currentPage.profileId,
-          }),
-        ) ?? null;
-    }
-    if (!selectedCompanion && discordTab) {
-      selectedCompanion =
-        companionByKey.get(
-          companionKey({
-            browser: discordTab.browser,
-            profileId: discordTab.profileId,
-          }),
-        ) ?? null;
-    }
-    const grantedCompanionId = companionIdFromGrant(grant);
-    if (!selectedCompanion && grantedCompanionId) {
-      selectedCompanion =
-        connectedCompanions.find(
-          (companion) => companion.id === grantedCompanionId,
-        ) ?? null;
-    }
-    if (!selectedCompanion) {
-      selectedCompanion = connectedCompanions.at(0) ?? null;
-    }
-    if (!selectedCompanion && grantedCompanionId) {
-      selectedCompanion =
-        allCompanions.find(
-          (companion) => companion.id === grantedCompanionId,
-        ) ?? null;
-    }
-    selectedCompanion ??= allCompanions.at(0) ?? null;
-
-    const reason = browserReasonFor({
-      available,
-      loggedIn: probe?.loggedIn === true,
-      authPending:
-        probe?.loggedIn === false &&
-        Boolean(probe.url && isDiscordHost(probe.url)),
-      inProgress:
-        session?.status === "queued" ||
-        session?.status === "running" ||
-        session?.status === "awaiting_confirmation",
-      hasGrant: Boolean(grant),
-      hasDiscordTab: Boolean(discordTab),
-    });
-
-    return {
-      available,
-      settingsEnabled,
-      trackingEnabled,
-      paused,
-      canControl: settings.allowBrowserControl,
-      selectedCompanion,
-      hasAnyCompanion: allCompanions.length > 0,
-      hasConnectedCompanion: connectedCompanions.length > 0,
-      discordTab,
-      currentPageUrl: currentPage?.url ?? null,
-      probe,
-      session,
-      lastError: sessionError(session),
-      reason,
-    };
   }
 
   async lifeOpsDiscordBuildWorkspaceStatus(
@@ -1006,41 +623,16 @@ export class DiscordDomain {
       normalizedSide,
     );
     if (normalizedSide === "owner") {
-      const browserState =
-        await this.lifeOpsDiscordGetOwnerBrowserDiscordState(grant);
       const discordDesktopState = await getDiscordDesktopCdpStatus();
       const workspaceAvailable = discordBrowserWorkspaceAvailable();
       const workspaceTabId = tabIdFromGrant(grant);
       const workspaceProbe = workspaceAvailable
         ? await this.lifeOpsDiscordProbeTab(workspaceTabId)
         : null;
-      const probe = browserState.probe;
-      const connected = probe?.loggedIn === true;
-      const onDiscordPage =
-        Boolean(
-          browserState.currentPageUrl &&
-            isDiscordHost(browserState.currentPageUrl),
-        ) || Boolean(browserState.discordTab);
       const browserAccess = [
         discordDesktopAccessStatus(discordDesktopState),
-        browserBridgeAccessStatus({
-          active: browserState.available,
-          settingsEnabled: browserState.settingsEnabled,
-          trackingEnabled: browserState.trackingEnabled,
-          paused: browserState.paused,
-          canControl: browserState.canControl,
-          companion: browserState.selectedCompanion,
-          hasAnyCompanion: browserState.hasAnyCompanion,
-          hasConnectedCompanion: browserState.hasConnectedCompanion,
-          probe,
-          hasDiscordTab: onDiscordPage,
-          siteAccessOk: siteAccessAllowsDiscord(
-            browserState.selectedCompanion,
-            onDiscordPage || Boolean(browserState.discordTab),
-          ),
-        }),
         desktopBrowserAccessStatus({
-          active: !browserState.available && workspaceAvailable,
+          active: workspaceAvailable,
           available: workspaceAvailable,
           probe: workspaceProbe,
           hasTab: Boolean(workspaceTabId),
@@ -1050,10 +642,7 @@ export class DiscordDomain {
       const desktopDmInboxVisible = desktopProbe?.dmInbox.visible === true;
       const desktopConnected =
         desktopProbe?.loggedIn === true || desktopDmInboxVisible;
-      if (
-        discordDesktopState.cdpAvailable &&
-        (desktopConnected || !browserState.available)
-      ) {
+      if (discordDesktopState.cdpAvailable) {
         const capabilities =
           desktopConnected || desktopProbe?.dmInbox.visible
             ? FULL_DISCORD_CAPABILITIES
@@ -1097,42 +686,6 @@ export class DiscordDomain {
           grant: statusGrant,
         };
       }
-      if (browserState.available) {
-        const capabilities =
-          connected || probe?.dmInbox.visible ? FULL_DISCORD_CAPABILITIES : [];
-        const identity = identityFromProbe(probe, grant?.identity ?? null);
-        const statusGrant =
-          connected || probe?.dmInbox.visible
-            ? await this.lifeOpsDiscordUpsertGrantForActiveSession({
-                side: normalizedSide,
-                grant,
-                identity: identity ?? {},
-                capabilities,
-                metadata: {
-                  source: "lifeops_browser",
-                  tabId: workspaceTabId,
-                  sessionId: sessionIdFromGrant(grant),
-                  companionId: browserState.selectedCompanion?.id ?? null,
-                  browser: browserState.selectedCompanion?.browser ?? null,
-                  profileId: browserState.selectedCompanion?.profileId ?? null,
-                },
-              })
-            : grant;
-        return {
-          provider: "discord",
-          side: normalizedSide,
-          available: true,
-          connected,
-          reason: browserState.reason,
-          identity,
-          dmInbox: probe?.dmInbox ?? emptyDiscordDmInboxProbe(),
-          grantedCapabilities: capabilities,
-          lastError: browserState.lastError,
-          tabId: tabIdFromGrant(grant),
-          browserAccess,
-          grant: statusGrant,
-        };
-      }
       const workspaceStatus = await this.lifeOpsDiscordBuildWorkspaceStatus(
         normalizedSide,
         grant,
@@ -1148,8 +701,7 @@ export class DiscordDomain {
 
   /**
    * Open or focus Discord through the owner browser path so LifeOps can
-   * verify login state and DM visibility, falling back to the desktop
-   * browser workspace when no browser companion is connected.
+   * verify login state and DM visibility through Discord Desktop or the browser workspace.
    */
   async authorizeDiscordConnector(
     side?: LifeOpsConnectorSide,
@@ -1168,6 +720,14 @@ export class DiscordDomain {
       normalizedSide,
     );
 
+    if (source === "lifeops_browser") {
+      throw new ElizaError(
+        "The companion extension has been retired. Choose Discord Desktop or the browser workspace.",
+        {
+          code: "BROWSER_COMPANION_RETIRED",
+        },
+      );
+    }
     if (source === "discord_desktop") {
       if (normalizedSide !== "owner") {
         fail(
@@ -1229,210 +789,10 @@ export class DiscordDomain {
       return this.getDiscordConnectorStatus(normalizedSide);
     }
 
-    if (normalizedSide === "owner" && source !== "desktop_browser") {
-      const browserState =
-        await this.lifeOpsDiscordGetOwnerBrowserDiscordState(existing);
-      const hasConnectedBrowserPath =
-        browserState.hasConnectedCompanion ||
-        Boolean(
-          browserState.currentPageUrl &&
-            isDiscordHost(browserState.currentPageUrl),
-        ) ||
-        Boolean(browserState.discordTab) ||
-        Boolean(browserState.probe);
-      if (hasConnectedBrowserPath) {
-        const probe = browserState.probe;
-        const connected = probe?.loggedIn === true;
-        const dmInboxVisible = probe?.dmInbox.visible === true;
-        const identity =
-          identityFromProbe(probe, existing?.identity ?? null) ?? {};
-        const onDiscordPage = Boolean(probe?.url && isDiscordHost(probe.url));
-        const onDiscordDmPage = Boolean(probe?.url?.includes("/channels/@me"));
-        const needsDiscordOpen = !connected && !onDiscordPage;
-        const needsDmInspection = connected && !dmInboxVisible;
-
-        if (
-          !browserState.canControl &&
-          !browserState.discordTab &&
-          !onDiscordPage
-        ) {
-          fail(
-            409,
-            "Agent Browser Bridge can see your browser, but browser control is disabled. Enable browser control or open Discord manually, then try again.",
-          );
-        }
-
-        let sessionId = sessionIdFromGrant(existing);
-        let companionId = companionIdFromGrant(existing);
-
-        if (needsDiscordOpen || needsDmInspection) {
-          if (browserState.discordTab) {
-            if (!browserState.canControl && !onDiscordDmPage) {
-              fail(
-                409,
-                "Discord is open in your browser, but Agent Browser Bridge control is disabled. Focus the Discord DM tab manually or enable browser control.",
-              );
-            }
-          }
-
-          if (!browserState.selectedCompanion) {
-            fail(
-              503,
-              "No connected Agent Browser Bridge companion is available for Discord.",
-            );
-          }
-          if (!browserState.canControl) {
-            fail(
-              409,
-              "Agent Browser Bridge control is disabled. Enable browser control or open Discord manually so LifeOps can inspect your DMs.",
-            );
-          }
-
-          const session = await this.deps.createBrowserSession({
-            browser: browserState.selectedCompanion.browser,
-            companionId: browserState.selectedCompanion.id,
-            profileId: browserState.selectedCompanion.profileId,
-            tabId: browserState.discordTab?.tabId ?? null,
-            windowId: browserState.discordTab?.windowId ?? null,
-            title: DISCORD_CONNECTOR_SESSION_TITLE,
-            actions: [
-              browserState.discordTab
-                ? {
-                    kind: "focus_tab",
-                    label: "Focus Discord tab",
-                    browser: browserState.selectedCompanion.browser,
-                    url: browserState.discordTab.url,
-                    tabId: browserState.discordTab.tabId,
-                    selector: null,
-                    text: null,
-                    accountAffecting: false,
-                    requiresConfirmation: false,
-                    metadata: {},
-                  }
-                : {
-                    kind: "open",
-                    label: "Open Discord",
-                    browser: browserState.selectedCompanion.browser,
-                    url: DISCORD_APP_URL,
-                    tabId: null,
-                    selector: null,
-                    text: null,
-                    accountAffecting: false,
-                    requiresConfirmation: false,
-                    metadata: {},
-                  },
-              ...(browserState.discordTab
-                ? [
-                    {
-                      kind: "navigate" as const,
-                      label: "Open Discord DMs",
-                      browser: browserState.selectedCompanion.browser,
-                      url: DISCORD_APP_URL,
-                      tabId: browserState.discordTab.tabId,
-                      selector: null,
-                      text: null,
-                      accountAffecting: false,
-                      requiresConfirmation: false,
-                      metadata: {},
-                    },
-                  ]
-                : []),
-              {
-                kind: "read_page",
-                label: "Read Discord page",
-                browser: browserState.selectedCompanion.browser,
-                url: DISCORD_APP_URL,
-                tabId: null,
-                selector: null,
-                text: null,
-                accountAffecting: false,
-                requiresConfirmation: false,
-                metadata: {},
-              },
-              {
-                kind: "extract_links",
-                label: "Extract Discord links",
-                browser: browserState.selectedCompanion.browser,
-                url: DISCORD_APP_URL,
-                tabId: null,
-                selector: null,
-                text: null,
-                accountAffecting: false,
-                requiresConfirmation: false,
-                metadata: {},
-              },
-              {
-                kind: "extract_forms",
-                label: "Inspect Discord login state",
-                browser: browserState.selectedCompanion.browser,
-                url: DISCORD_APP_URL,
-                tabId: null,
-                selector: null,
-                text: null,
-                accountAffecting: false,
-                requiresConfirmation: false,
-                metadata: {},
-              },
-            ],
-          });
-          sessionId = session.id;
-          companionId = browserState.selectedCompanion.id;
-        }
-
-        const capabilities =
-          connected && dmInboxVisible
-            ? FULL_DISCORD_CAPABILITIES
-            : (existing?.capabilities ?? []);
-        const metadata = {
-          ...(existing?.metadata ?? {}),
-          tabId: tabIdFromGrant(existing),
-          sessionId,
-          companionId,
-          browser: browserState.selectedCompanion?.browser ?? null,
-          profileId: browserState.selectedCompanion?.profileId ?? null,
-        };
-
-        const grant = existing
-          ? {
-              ...existing,
-              identity,
-              capabilities,
-              metadata,
-              updatedAt: new Date().toISOString(),
-            }
-          : createLifeOpsConnectorGrant({
-              agentId: this.ctx.agentId(),
-              provider: "discord",
-              identity,
-              grantedScopes: [],
-              capabilities,
-              tokenRef: null,
-              mode: "local",
-              side: normalizedSide,
-              metadata,
-              lastRefreshAt: new Date().toISOString(),
-            });
-
-        await this.ctx.repository.upsertConnectorGrant(grant);
-        await this.ctx.recordConnectorAudit(
-          `discord:${normalizedSide}`,
-          "discord browser companion connector authorized",
-          { side: normalizedSide },
-          {
-            companionId,
-            sessionId,
-            loggedIn: connected,
-          },
-        );
-
-        return this.getDiscordConnectorStatus(normalizedSide);
-      }
-    }
-
     if (!discordBrowserWorkspaceAvailable()) {
       fail(
         503,
-        "Discord connector requires either Your Browser connected through Agent Browser Bridge or Eliza Desktop Browser.",
+        "Discord connector requires Discord Desktop or the Eliza browser workspace.",
       );
     }
 
@@ -1594,6 +954,7 @@ export class DiscordDomain {
 
   async sendDiscordMessage(request: {
     side?: LifeOpsConnectorSide;
+    expectedIdentityId?: string;
     channelId?: string;
     /**
      * Discord user id target. Mutually exclusive with `channelId`; the
@@ -1606,6 +967,16 @@ export class DiscordDomain {
   }): Promise<DiscordSendMessageResult> {
     const normalizedSide =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+    if (
+      request.expectedIdentityId !== undefined &&
+      (normalizedSide !== "agent" || request.userId)
+    ) {
+      throw new ConnectorSenderChangedError(
+        "discord",
+        request.expectedIdentityId,
+        null,
+      );
+    }
     const text = request.text.trim();
     if (!text) {
       fail(400, "text is required");
@@ -1642,7 +1013,7 @@ export class DiscordDomain {
         accountId,
         entityId: userId,
       } as TargetInfo;
-      requireConfirmedSendHandlerDelivery(
+      const delivery = requireConfirmedSendHandlerDelivery(
         await this.ctx.runtime.sendMessageToTarget(target, {
           text,
           source: "lifeops",
@@ -1657,6 +1028,8 @@ export class DiscordDomain {
         // Confirmed-delivered disposition from the send handler; the CDP tab
         // capture below observes the owner's client, not the bot DM.
         deliveryStatus: "sent",
+        providerMessageId: delivery.providerMessageId ?? null,
+        receipt: delivery.receipt ?? null,
       };
     }
 
@@ -1681,6 +1054,9 @@ export class DiscordDomain {
     const useDiscordDesktopCdp =
       status.grant?.executionTarget === "local" &&
       (grantMetadata.source === "discord_desktop" || !status.tabId);
+    let confirmedDelivery: ReturnType<
+      typeof requireConfirmedSendHandlerDelivery
+    > | null = null;
     if (useDiscordDesktopCdp) {
       const result = await sendDiscordViaDesktopCdp({ channelId, text });
       if (!result.ok) {
@@ -1689,11 +1065,17 @@ export class DiscordDomain {
     } else {
       const delegated = await sendDiscordMessageWithRuntimeService({
         runtime: this.ctx.runtime,
+        expectedIdentityId: request.expectedIdentityId,
         grant: status.grant,
         channelId,
         text,
       });
       if (delegated.status !== "handled") {
+        if (
+          delegated.error instanceof ConnectorDeliveryEvidenceError ||
+          delegated.error instanceof ConnectorSenderChangedError
+        )
+          throw delegated.error;
         if (delegated.error) {
           this.ctx.logLifeOpsWarn(
             "runtime_service_delegation_unavailable",
@@ -1715,17 +1097,20 @@ export class DiscordDomain {
           fail(503, "Discord send handler is not available.");
         }
         const accountId = status.grant?.connectorAccountId ?? "default";
-        requireConfirmedSendHandlerDelivery(
+        confirmedDelivery = requireConfirmedSendHandlerDelivery(
           await this.ctx.runtime.sendMessageToTarget(
             { source: "discord", accountId, channelId },
             { text, source: "lifeops", metadata: { accountId } },
           ),
         );
+      } else {
+        confirmedDelivery = delegated.value.delivery;
       }
     }
 
-    let deliveryStatus: "sent" | "sending" | "failed" | "unknown" = "unknown";
-    if (status.tabId) {
+    let deliveryStatus: "sent" | "sending" | "failed" | "unknown" =
+      confirmedDelivery ? "sent" : "unknown";
+    if (!confirmedDelivery && status.tabId) {
       await sleep(DISCORD_SEND_SETTLE_MS);
       const delivery = await captureDiscordDeliveryStatus({
         tabId: status.tabId,
@@ -1740,6 +1125,8 @@ export class DiscordDomain {
       channelId,
       ok: true,
       deliveryStatus,
+      providerMessageId: confirmedDelivery?.providerMessageId ?? null,
+      receipt: confirmedDelivery?.receipt ?? null,
     };
   }
 

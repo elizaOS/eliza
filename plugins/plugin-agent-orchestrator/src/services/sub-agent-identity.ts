@@ -1,11 +1,7 @@
 /**
  * Self-contained operating manual scaffolded into a spawned sub-agent's
- * workspace so every backend (claude reads CLAUDE.md, codex reads AGENTS.md,
- * opencode reads both) receives the same eliza-context + non-interactive
- * directive regardless of where the spawn cwd lands. The ACP spawn path injects
- * nothing but the task string, so without this a sub-agent in a bare/scratch
- * cwd gets zero orientation — codex in particular ("expected identity files are
- * not present") starves because it only reads AGENTS.md.
+ * workspace as AGENTS.md to provide eliza context and non-interactive
+ * instructions. Existing project instruction files are never overwritten.
  *
  * @module services/sub-agent-identity
  */
@@ -24,8 +20,9 @@ import {
   type OrchestratorOwnedArtifact,
 } from "./orchestrator-artifact-ownership.js";
 
-/** The instruction files each coding backend reads from its working directory. */
-const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
+/** Existing project instructions prevent scaffolding into an owned workspace. */
+const EXISTING_IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
+const IDENTITY_FILENAMES = ["AGENTS.md"] as const;
 
 /**
  * The operating manual template. Deliberately self-contained — a sub-agent never
@@ -297,7 +294,7 @@ export async function writeWorkspaceIdentity(
     opts.coAuthorTrailer ??
     renderCoAuthorTrailer(resolveGitIdentityConfig(readConfigEnvKey));
   try {
-    const alreadyHasIdentity = IDENTITY_FILENAMES.some((name) =>
+    const alreadyHasIdentity = EXISTING_IDENTITY_FILENAMES.some((name) =>
       existsSync(join(workdir, name)),
     );
     if (alreadyHasIdentity) {

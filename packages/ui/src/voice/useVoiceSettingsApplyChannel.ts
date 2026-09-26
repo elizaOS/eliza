@@ -14,58 +14,28 @@
  * partial broadcast can only ever write a known continuous mode or a fully
  * numeric VAD pair, never a malformed value into the capture path.
  */
-
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared/events";
+} from "@elizaos/core/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   loadOsIntentAutoStartConsent,
   saveContinuousChatMode,
   saveOsIntentAutoStartConsent,
   saveVadAutoStop,
-  type VadAutoStopValue,
 } from "../state/persistence";
-import {
-  VOICE_CONTINUOUS_MODES,
-  type VoiceContinuousMode,
-} from "./voice-chat-types";
+import { readContinuousMode, readVadAutoStop } from "./voice-settings-payload";
 
-export type { VoiceSettingsApplyPayload } from "@elizaos/shared/events";
+export type { VoiceSettingsApplyPayload } from "@elizaos/core/events";
 export { VOICE_SETTINGS_APPLY_EVENT };
-
-function readContinuousMode(value: unknown): VoiceContinuousMode | null {
-  return typeof value === "string" &&
-    VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
-    ? (value as VoiceContinuousMode)
-    : null;
-}
-
-function readVadAutoStop(value: unknown): VadAutoStopValue | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const { silenceMs, speechRmsThreshold } = value as Record<string, unknown>;
-  if (
-    typeof silenceMs !== "number" ||
-    !Number.isFinite(silenceMs) ||
-    typeof speechRmsThreshold !== "number" ||
-    !Number.isFinite(speechRmsThreshold)
-  ) {
-    return null;
-  }
-  return { silenceMs, speechRmsThreshold };
-}
-
 export function useVoiceSettingsApplyChannel(): void {
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
     const payload = event.payload as VoiceSettingsApplyPayload;
-
     const continuous = readContinuousMode(payload.continuous);
     if (continuous) saveContinuousChatMode(continuous);
-
     const vadAutoStop = readVadAutoStop(payload.vadAutoStop);
     if (vadAutoStop) saveVadAutoStop(vadAutoStop);
-
     if (
       typeof payload.osIntentAutoStartVoice === "boolean" ||
       typeof payload.osIntentAutoStartTranscription === "boolean"

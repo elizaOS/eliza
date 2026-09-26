@@ -1,73 +1,63 @@
 /** Resolves published AOSP model paths and voice bundle slugs from the shared catalog. */
-
+import { BGE_EMBEDDING_MODEL } from "./model-catalog/bge-embedding-model.js";
 import {
   buildHuggingFaceResolveUrlCandidatesForPath,
   ELIZA_1_TIER_IDS,
-  type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
   type HfResolveUrlCandidate,
   tierBundleSlug,
-} from "@elizaos/shared/local-inference";
-
+} from "./model-catalog/catalog.js";
+import { resolveHfDownloadBases } from "./model-catalog/hf-proxy.js";
 export type AospRecommendedModel = {
   id: string;
   ggufFile: string;
   candidates: HfResolveUrlCandidate[];
   expectedSizeBytes?: number;
 };
-
 export type AospModelFetch = (
   input: string,
   init?: RequestInit,
 ) => Promise<Response>;
-
 function isTransientDownloadStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
-
-const AOSP_EMBEDDING_TIER_ID = "eliza-1-4b" satisfies Eliza1TierId;
-const AOSP_CHAT_MODEL_SIZE_BYTES = 4_967_494_592;
-const AOSP_EMBEDDING_MODEL_SIZE_BYTES = 639_150_592;
-
+const AOSP_CHAT_MODEL_SIZE_BYTES = 4967494592;
 export function resolveRecommendedAospModel(
   role: "chat" | "embedding",
 ): AospRecommendedModel {
-  const tierId =
-    role === "chat" ? FIRST_RUN_DEFAULT_MODEL_ID : AOSP_EMBEDDING_TIER_ID;
+  if (role === "embedding") {
+    const model = BGE_EMBEDDING_MODEL;
+    return {
+      id: "bge-small-en-v1.5",
+      ggufFile: model.filename,
+      expectedSizeBytes: model.sizeBytes,
+      candidates: resolveHfDownloadBases().map((source) => ({
+        ...source,
+        url: `${source.base}/${model.repository}/resolve/${model.revision}/${model.filename}`,
+      })),
+    };
+  }
+  const tierId = FIRST_RUN_DEFAULT_MODEL_ID;
   const model = findCatalogModel(tierId);
   if (model?.category !== "chat") {
     throw new Error(
       `[aosp-local-inference] Catalog is missing ${role} source tier ${tierId}.`,
     );
   }
-  if (role === "chat") {
-    const ggufFile = model.hfPathPrefix
-      ? `${model.hfPathPrefix}/${model.ggufFile}`
-      : model.ggufFile;
-    return {
-      id: model.id,
-      ggufFile,
-      candidates: buildHuggingFaceResolveUrlCandidatesForPath(
-        model,
-        model.ggufFile,
-      ),
-      expectedSizeBytes: AOSP_CHAT_MODEL_SIZE_BYTES,
-    };
-  }
-
-  const ggufFile = `bundles/${tierBundleSlug(tierId)}/embedding/eliza-1-embedding.gguf`;
+  const ggufFile = model.hfPathPrefix
+    ? `${model.hfPathPrefix}/${model.ggufFile}`
+    : model.ggufFile;
   return {
-    id: "eliza-1-embedding",
+    id: model.id,
     ggufFile,
     candidates: buildHuggingFaceResolveUrlCandidatesForPath(
-      { ...model, hfPathPrefix: undefined },
-      ggufFile,
+      model,
+      model.ggufFile,
     ),
-    expectedSizeBytes: AOSP_EMBEDDING_MODEL_SIZE_BYTES,
+    expectedSizeBytes: AOSP_CHAT_MODEL_SIZE_BYTES,
   };
 }
-
 export function assertAospModelDownloadSize(
   model: AospRecommendedModel,
   actualSizeBytes: number,
@@ -81,11 +71,13 @@ export function assertAospModelDownloadSize(
     );
   }
 }
-
 export async function fetchRecommendedAospModel(
   model: AospRecommendedModel,
   fetchImpl: AospModelFetch = fetch,
-): Promise<{ response: Response; candidate: HfResolveUrlCandidate }> {
+): Promise<{
+  response: Response;
+  candidate: HfResolveUrlCandidate;
+}> {
   let lastError: unknown;
   for (let index = 0; index < model.candidates.length; index += 1) {
     const candidate = model.candidates[index];
@@ -117,7 +109,6 @@ export async function fetchRecommendedAospModel(
     ? lastError
     : new Error(`[aosp-local-inference] No download source for ${model.id}.`);
 }
-
 // Derive the current HF bundle tier slug (e.g. "e2b") from a stable chat
 // model id or architecture-slugged GGUF filename. The Kokoro voice URL is
 // `bundles/<tier>/tts/kokoro/...`; the old `path.basename(bundleRoot)`

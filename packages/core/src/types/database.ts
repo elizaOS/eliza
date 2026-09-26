@@ -23,8 +23,15 @@ import type {
 	PairingRequest,
 	PairingRequestQuery,
 } from "./pairing";
-import type { JsonValue, Metadata, UUID } from "./primitives";
-import type { Task } from "./task";
+import type { Content, JsonValue, Metadata, UUID } from "./primitives";
+import type { Task, TaskMetadataPatch } from "./task";
+
+/** A vector is valid only for this exact persisted source snapshot. */
+export interface MemoryEmbeddingUpdate {
+	id: UUID;
+	embedding: number[];
+	expected: { agentId: UUID; entityId: UUID; roomId: UUID; text: string };
+}
 
 /**
  * One ranked hit from {@link IDatabaseAdapter.searchMessages}. `ftsRank` is the
@@ -39,6 +46,89 @@ export interface MessageSearchHit {
 	ftsRank: number;
 	trigramSimilarity: number;
 }
+
+/** Selects one immutable source stored under a message parent. */
+export interface MessageContentSourceSelector {
+	kind: "message-text" | "attachment-text";
+	attachmentIdHash?: string;
+}
+
+/** Storage-enforced bounded read that reauthorizes its parent on every call. */
+export interface MessageContentRangeReadParams {
+	agentId: UUID;
+	messageId: UUID;
+	authorizedRoomId: UUID;
+	accessContext: AccessContext;
+	source: MessageContentSourceSelector;
+	offset: number;
+	limit: number;
+	expectedRevision?: string;
+}
+
+export interface MessageContentRangePage {
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	revision: string;
+	sourceSha256: string;
+	sliceSha256: string;
+	returnedSegments: number;
+	returnedBytes: number;
+	sourceQueryCount: number;
+}
+
+export type MessageContentRangeReadResult =
+	| { status: "ok"; parent: Memory; page: MessageContentRangePage }
+	| { status: "inline"; parent: Memory; text: string }
+	| { status: "not_found" }
+	| { status: "forbidden" };
+
+/** Atomic manifest-last create or compare-and-swap parent-content replacement. */
+export type MessageContentPublicationParams =
+	| {
+			mode: "create";
+			parent: Memory & { id: UUID };
+			segments: Memory[];
+	  }
+	| {
+			mode: "replace";
+			agentId: UUID;
+			messageId: UUID;
+			expectedContent: Content;
+			replacementContent: Content;
+			segments: Memory[];
+			removeSegmentIds: UUID[];
+	  };
+
+export type MessageContentPublicationResult =
+	| {
+			status: "created" | "updated";
+			parent: Memory;
+			removedSegmentIds: UUID[];
+	  }
+	| { status: "not_found" | "conflict" };
+
+/** One immutable row that must exist before an atomic head becomes visible. */
+export interface AtomicMemoryDependency {
+	memory: Memory;
+	tableName: string;
+}
+
+/**
+ * Atomically inserts immutable dependencies and publishes a mutable head with
+ * compare-and-swap semantics. `expectedRevision: null` means the head must not
+ * exist; otherwise the stored head metadata must carry that exact revision.
+ */
+export interface AtomicMemoryPublicationParams {
+	head: AtomicMemoryDependency;
+	dependencies: AtomicMemoryDependency[];
+	expectedRevision: string | null;
+}
+
+export type AtomicMemoryPublicationResult =
+	| { status: "published"; head: Memory }
+	| { status: "conflict" };
 
 /**
  * Stable newest-first cursor for document-list pagination. New cursors carry
@@ -95,6 +185,8 @@ export interface DocumentListQueryParams extends DocumentRequesterContext {
 	timeRangeStart?: number;
 	timeRangeEnd?: number;
 	tags?: string[];
+	/** Restrict the storage scan to documents explicitly pinned for provider context. */
+	pinnedOnly?: boolean;
 }
 
 /** Authorized single-document lookup. */
@@ -102,27 +194,27 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized document read. */
-export type DocumentRangeUnit = "line" | "fragment";
+/** Exact unit used by an authorized bounded document read. */
+export type DocumentRangeUnit = "line" | "fragment" | "byte";
 
 /**
- * Authorized document read. Offsets and caller-requested limits count exact
- * retained line or paragraph-like fragment units, never JavaScript string code
- * units. Omitting `limit` returns the complete remainder of the source.
+ * Authorized bounded document read. Offsets and limits count exact retained
+ * line or paragraph-like fragment units, never JavaScript string code units.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
 	unit: DocumentRangeUnit;
 	offset: number;
-	limit?: number;
+	limit: number;
 }
 
 /**
- * Source projection returned by a native adapter. The source
+ * Bounded source projection returned by a native adapter. The source
  * fingerprint is an adapter-internal change detector and must be wrapped in an
  * opaque public revision before it leaves DocumentService.
  */
 export interface DocumentRangeReadResult {
+	unit: DocumentRangeUnit;
 	text: string;
 	start: number;
 	end: number;
@@ -130,6 +222,10 @@ export interface DocumentRangeReadResult {
 	documentRevision: number;
 	revisionAttemptId?: string;
 	sourceFingerprint: string;
+	examinedSourceSegments: number;
+	sourceQueryCount: number;
+	returnedSourceSegments: number;
+	returnedSourceBytes: number;
 }
 
 /**
@@ -152,6 +248,8 @@ export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
  * adapters compare them in the same statement that writes or deletes.
  */
 export interface DocumentMutationSnapshot {
+	/** Exact persisted pin state fences metadata edits independently of content revisions. */
+	pinState?: string;
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
@@ -730,6 +828,22 @@ export interface AgentRunSummaryResult {
 }
 
 /**
+ * Optional durable records in the adapter's own agent database. Domain plugins
+ * own their namespace and schema versions; transactions serialize all callers,
+ * remain atomic across awaits and reject overlapping nested scopes. Records
+ * are trusted plugin data, not an authorization boundary or raw SQL executor.
+ */
+export interface DurableRecordStore {
+	readonly version: 1;
+	readonly agentId: UUID;
+	transaction<T>(operation: () => Promise<T>): Promise<T>;
+	get<T>(namespace: string, key: string): Promise<T | null>;
+	getAll<T>(namespace: string): Promise<T[]>;
+	set<T>(namespace: string, key: string, value: T): Promise<void>;
+	delete(namespace: string, key: string): Promise<boolean>;
+}
+
+/**
  * Interface for database operations.
  *
  * **Design: Batch-First CRUD**
@@ -756,6 +870,8 @@ export interface AgentRunSummaryResult {
  * See DATABASE_BATCH_API.md for the full design rationale and migration guide.
  */
 export interface IDatabaseAdapter<DB extends object = object> {
+	/** Optional transactional domain records in this same agent database. */
+	readonly recordStore?: DurableRecordStore;
 	/** Database instance */
 	db: DB;
 
@@ -885,6 +1001,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	ensureEmbeddingDimension(dimension: number): Promise<void>;
 
+	/** Select an explicit vector representation and return source memories needing re-embedding. */
+	ensureEmbeddingSpace?(spaceId: string): Promise<UUID[]>;
+
 	/**
 	 * Delete every stored embedding whose vector width does not match the
 	 * currently-active embedding dimension, returning the ids of the memories
@@ -927,6 +1046,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	transaction<T>(
 		callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
 		options?: { entityContext?: UUID },
+	): Promise<T>;
+
+	/**
+	 * Runs a trusted lifecycle operation with a separate agent-bound adapter.
+	 * Must retain the connection's tenant/entity authority and leave the caller's
+	 * scope unchanged. Single-agent stores may reject a different agent id.
+	 * The callback must not close or retain the temporary adapter.
+	 */
+	withAgentScope?<T>(
+		agentId: UUID,
+		callback: (scoped: IDatabaseAdapter<DB>) => Promise<T>,
 	): Promise<T>;
 
 	/** Get entities for multiple rooms (one entry per roomId, same order). */
@@ -1144,6 +1274,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		options?: { entityContext?: UUID },
 	): Promise<void>;
 
+	/** Complete distinct memory-type inventory for this adapter's agent; used by trusted exports. */
+	listMemoryTypes?(): Promise<string[]>;
+
 	/**
 	 * Get memories matching criteria
 	 *
@@ -1221,8 +1354,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * authorization, counts, or pagination guarantees.
 	 */
 	readonly documentListQueryCapability: 4;
-	/** Native source projection with optional caller-requested pagination. */
-	readonly documentRangeReadCapability?: 1;
+	/** Native bounded source projection; absent adapters must fail explicitly. */
+	readonly documentRangeReadCapability?: 1 | 2;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
@@ -1258,6 +1391,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<WorldMetadataMutationResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
+
+	/** Native immutable MESSAGE/ATTACHMENT source storage and bounded reads. */
+	readonly messageContentSegmentCapability?: 1;
+	publishMessageContentSegments?(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult>;
+	readMessageContentRange?(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult>;
 
 	/**
 	 * Full-text + trigram message search across a set of rooms, ranked
@@ -1381,8 +1523,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		entityId?: UUID;
 	}): Promise<AgentRunSummaryResult>;
 
+	/** Adapters own retrieval and optional query reranking. Scope and paginate
+	 * vector candidates before reranking; retain semantic-only candidates. */
 	searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors when only message content and scores are needed. */
+		includeEmbedding?: boolean;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
@@ -1391,6 +1537,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName: string;
 		query?: string;
 		roomId?: UUID;
+		/** Exclude these rooms before vector ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		entityId?: UUID;
 		/**
@@ -1418,6 +1566,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]>;
+
+	/** Optional first-party atomic dependency publication capability. */
+	compareAndSwapMemoryPublication?(
+		params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult>;
 	/**
 	 * Batch update memories
 	 *
@@ -1437,6 +1590,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void>;
+	/** Atomically compare source identity/text and persist its vector. False means
+	 * the source changed or was deleted; no write occurred. Never implement with
+	 * an unprotected read followed by updateMemories. */
+	updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean>;
 	deleteMemories(memoryIds: UUID[]): Promise<void>;
 
 	/**
@@ -1676,6 +1833,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getCaches<T>(keys: string[]): Promise<Map<string, T>>;
 	setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
 	deleteCaches(keys: string[]): Promise<boolean>;
+	/** Atomically insert when expected is undefined, otherwise replace only an
+	 * equal JSON value. Null is a stored value, not absence. False means conflict;
+	 * storage failures throw and must never be retried as ordinary conflicts.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	// Only task instance methods - definitions are in-memory
 	/**
@@ -1714,6 +1880,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * are evaluated by storage in the same mutation that applies `task`.
 	 */
 	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/**
+	 * Atomically merges `patch.set` into the task's metadata and removes
+	 * `patch.unset` keys in the same storage mutation. Returns false when no
+	 * task matched. Adapters without an atomic merge leave this undefined and
+	 * callers fall back to a whole-metadata update.
+	 */
+	patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
 

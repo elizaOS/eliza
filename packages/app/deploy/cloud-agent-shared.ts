@@ -1,0 +1,1356 @@
+/**
+ * Shared Cloud Agent Logic
+ *
+ * Single implementation of the cloud-agent runtime, health server, and
+ * bridge server. Both the main entrypoint and the template entrypoint
+ * import from here, passing a config that captures the small differences.
+ */
+import * as crypto from "node:crypto";
+import * as http from "node:http";
+import type { AgentRemoteBrowserController } from "@elizaos/remote-control-host";
+import { sql } from "drizzle-orm";
+import { ElizaError } from "../../core/src/errors";
+import restartExitCodeDefinition from "../../core/src/restart-exit-code.json" with {
+  type: "json",
+};
+
+const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
+// ─── Logger ─────────────────────────────────────────────────────────────
+//
+// This file is bundled with `--external:@elizaos/*` and runs in a minimal
+// container before any `@elizaos/*` package is statically resolvable, so it
+// cannot import the shared structured logger. This tiny shim gives the same
+// `[ClassName]`-prefixed, level-tagged, single-line structured output the
+// logger commandment requires (message + optional context object), without a
+// hard dependency. All cloud-agent runtime logging goes through it.
+const logger = {
+  info(message: string, context?: Record<string, unknown>): void {
+    if (context) console.log(`[cloud-agent] ${message}`, context);
+    else console.log(`[cloud-agent] ${message}`);
+  },
+  warn(message: string, context?: Record<string, unknown>): void {
+    if (context) console.warn(`[cloud-agent] ${message}`, context);
+    else console.warn(`[cloud-agent] ${message}`);
+  },
+  error(message: string, context?: Record<string, unknown>): void {
+    if (context) console.error(`[cloud-agent] ${message}`, context);
+    else console.error(`[cloud-agent] ${message}`);
+  },
+};
+/** Warn that the loopback bridge uses an ephemeral credential without exposing it. */
+export function warnGeneratedBridgeSecret(): void {
+  logger.warn(
+    "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
+  );
+}
+/**
+ * `.catch` handler for an optional plugin dynamic import: keeps the degrade
+ * (agent boots without the plugin) but surfaces the import failure so a broken
+ * build is distinguishable from a plugin that is deliberately absent in this
+ * deploy shape.
+ */
+// error-policy:J4 optional plugin unavailable → degrade; failure surfaced via logger
+function logPluginLoadFailure(id: string): (error: unknown) => null {
+  return (error) => {
+    logger.error(`failed to load ${id}; continuing without it`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  };
+}
+// ─── Types ──────────────────────────────────────────────────────────────
+export interface BridgeRpcParams {
+  text?: string;
+  roomId?: string;
+  mode?: string;
+  channelType?: string;
+  source?: string;
+  sender?: {
+    id?: string;
+    username?: string;
+    displayName?: string;
+    metadata?: Record<string, unknown>;
+  };
+  metadata?: Record<string, unknown>;
+}
+export type NormalizedBridgeMessage = {
+  text: string;
+  roomKey: string;
+  mode: "simple" | "power";
+  channelType: "DM" | "GROUP";
+  source: string;
+  sender?: {
+    id?: string;
+    username?: string;
+    displayName?: string;
+    metadata?: Record<string, unknown>;
+  };
+  metadata?: Record<string, unknown>;
+};
+export type BridgeMessageResult = {
+  text: string;
+  failureKind?: string;
+};
+type BridgeCallbackContent = {
+  text?: unknown;
+  failureKind?: unknown;
+};
+export type DatabaseLivenessPayload = {
+  status: "ok" | "unknown" | "transient_error" | "terminal_error";
+  ok: boolean;
+  terminal: boolean;
+  message?: string;
+};
+export interface AgentRuntimeAdapterLike {
+  isReady?: () => Promise<boolean>;
+  getRawConnection?: () => {
+    query(sql: string): Promise<unknown>;
+  };
+  getConnection?: () => Promise<unknown>;
+  db?: unknown;
+}
+export interface RuntimeWithDatabaseLiveness {
+  adapter?: AgentRuntimeAdapterLike;
+  checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
+}
+/** Projects internal probe diagnostics into the public health-check contract. */
+export function publicDatabaseLiveness(
+  payload: DatabaseLivenessPayload,
+): Omit<DatabaseLivenessPayload, "message"> {
+  return {
+    ok: payload.ok,
+    status: payload.status,
+    terminal: payload.terminal,
+  };
+}
+const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
+  /pglite is closed/i,
+  /database is shutting down/i,
+  /operation rejected/i,
+  /cannot query.*closed/i,
+  /closed database/i,
+] as const;
+const DATABASE_LIVENESS_STATUSES = new Set<DatabaseLivenessPayload["status"]>([
+  "ok",
+  "unknown",
+  "transient_error",
+  "terminal_error",
+]);
+function readProbeDiagnosticProperty(
+  value: unknown,
+  property: PropertyKey,
+): unknown {
+  if (
+    value === null ||
+    (typeof value !== "object" && typeof value !== "function")
+  ) {
+    return undefined;
+  }
+  try {
+    return Reflect.get(value, property);
+  } catch {
+    // error-policy:J7 liveness diagnostics must not mask the probe failure.
+    return undefined;
+  }
+}
+function describeDatabaseProbeError(error: unknown): string {
+  const message = readProbeDiagnosticProperty(error, "message");
+  let text =
+    typeof message === "string" && message.trim() ? message : undefined;
+  if (text === undefined) {
+    try {
+      text = String(error);
+    } catch {
+      // error-policy:J7 hostile coercion still needs a printable marker.
+      text = "[uninspectable thrown value]";
+    }
+  }
+  return Array.from(text, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x2028 && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+      ? `\\u{${code.toString(16)}}`
+      : character;
+  }).join("");
+}
+function isTerminalDatabaseProbeError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const diagnosticMessage = readProbeDiagnosticProperty(current, "message");
+    const message =
+      typeof diagnosticMessage === "string"
+        ? diagnosticMessage
+        : typeof current === "string"
+          ? current
+          : "";
+    if (
+      TERMINAL_DATABASE_LIVENESS_PATTERNS.some((pattern) =>
+        pattern.test(message),
+      )
+    ) {
+      return true;
+    }
+    current = readProbeDiagnosticProperty(current, "cause") ?? null;
+  }
+  return false;
+}
+async function probeDatabaseHandle(handle: unknown): Promise<void> {
+  if (handle && typeof handle === "object") {
+    const queryable = handle as {
+      query?: unknown;
+    };
+    if (typeof queryable.query === "function") {
+      await (queryable.query as (sql: string) => Promise<unknown>)("SELECT 1");
+      return;
+    }
+    const executable = handle as {
+      execute?: unknown;
+    };
+    if (typeof executable.execute === "function") {
+      await (executable.execute as (query: unknown) => Promise<unknown>)(
+        sql`SELECT 1`,
+      );
+      return;
+    }
+  }
+  throw new Error("database connection does not expose query or execute");
+}
+export async function checkRuntimeDatabaseLiveness(
+  runtime: RuntimeWithDatabaseLiveness | null,
+): Promise<DatabaseLivenessPayload> {
+  if (!runtime) return { status: "unknown", ok: false, terminal: false };
+  try {
+    if (typeof runtime.checkDatabaseLiveness === "function") {
+      const result = await runtime.checkDatabaseLiveness();
+      if (
+        !DATABASE_LIVENESS_STATUSES.has(result.status) ||
+        typeof result.ok !== "boolean" ||
+        typeof result.terminal !== "boolean"
+      ) {
+        throw new Error("runtime returned an invalid database liveness result");
+      }
+      return {
+        status: result.status,
+        ok: result.ok,
+        terminal: result.terminal,
+        ...(typeof result.message === "string"
+          ? { message: describeDatabaseProbeError(result.message) }
+          : {}),
+      };
+    }
+    const adapter = runtime.adapter;
+    if (!adapter) return { status: "unknown", ok: true, terminal: false };
+    if (typeof adapter.getRawConnection === "function") {
+      await probeDatabaseHandle(adapter.getRawConnection());
+    } else if (typeof adapter.getConnection === "function") {
+      await probeDatabaseHandle(await adapter.getConnection());
+    } else if (adapter.db) {
+      // Probe the handle before isReady(). PGlite's readiness method returns a
+      // boolean and would otherwise erase the terminal `PGlite is closed`
+      // error that the supervisor needs in order to recover the container.
+      await probeDatabaseHandle(adapter.db);
+    } else if (typeof adapter.isReady === "function") {
+      const ready = await adapter.isReady();
+      if (!ready) throw new Error("adapter.isReady() returned false");
+    } else {
+      throw new Error("database adapter exposes no liveness probe surface");
+    }
+    return { status: "ok", ok: true, terminal: false };
+  } catch (error) {
+    // error-policy:J4 health probe translates database failure into liveness state
+    const terminal = isTerminalDatabaseProbeError(error);
+    logger.error("database liveness probe failed", {
+      error: describeDatabaseProbeError(error),
+      terminal,
+    });
+    return {
+      status: terminal ? "terminal_error" : "transient_error",
+      ok: false,
+      terminal,
+      message: describeDatabaseProbeError(error),
+    };
+  }
+}
+export function appendBridgeCallbackContent(
+  result: BridgeMessageResult,
+  content: BridgeCallbackContent,
+): BridgeMessageResult {
+  if (typeof content.text === "string") result.text += content.text;
+  if (
+    !result.failureKind &&
+    typeof content.failureKind === "string" &&
+    content.failureKind.trim()
+  ) {
+    result.failureKind = content.failureKind.trim();
+  }
+  return result;
+}
+export function bridgeResultText(result: BridgeMessageResult): string {
+  return result.text || "(no response)";
+}
+export function normalizeBridgeMessage(
+  params?: BridgeRpcParams,
+): NormalizedBridgeMessage {
+  const trimmedRoomId =
+    typeof params?.roomId === "string" && params.roomId.trim().length > 0
+      ? params.roomId.trim()
+      : "default";
+  const source =
+    typeof params?.source === "string" && params.source.trim().length > 0
+      ? params.source.trim()
+      : "cloud-bridge";
+  const sender =
+    params?.sender && typeof params.sender === "object"
+      ? {
+          ...(typeof params.sender.id === "string" && params.sender.id.trim()
+            ? { id: params.sender.id.trim() }
+            : {}),
+          ...(typeof params.sender.username === "string" &&
+          params.sender.username.trim()
+            ? { username: params.sender.username.trim() }
+            : {}),
+          ...(typeof params.sender.displayName === "string" &&
+          params.sender.displayName.trim()
+            ? { displayName: params.sender.displayName.trim() }
+            : {}),
+          ...(params.sender.metadata &&
+          typeof params.sender.metadata === "object" &&
+          !Array.isArray(params.sender.metadata)
+            ? { metadata: params.sender.metadata }
+            : {}),
+        }
+      : undefined;
+  return {
+    text: typeof params?.text === "string" ? params.text : "",
+    roomKey: trimmedRoomId,
+    mode: params?.mode === "simple" ? "simple" : "power",
+    channelType: params?.channelType === "GROUP" ? "GROUP" : "DM",
+    source,
+    ...(sender && Object.keys(sender).length > 0 ? { sender } : {}),
+    ...(params?.metadata &&
+    typeof params.metadata === "object" &&
+    !Array.isArray(params.metadata)
+      ? { metadata: params.metadata }
+      : {}),
+  };
+}
+export interface CloudAgentConfig {
+  /** Health endpoint port. Default: 2138 */
+  port?: number;
+  /** Bridge server port. Default: 18790 */
+  bridgePort?: number;
+  /**
+   * If set, the bridge server requires `Authorization: Bearer <secret>`.
+   * Omit or pass empty string to disable auth.
+   */
+  bridgeSecret?: string;
+  /** Max request body size in bytes. Default: 1 MB */
+  maxBodyBytes?: number;
+  /** Legacy option: only 0 (complete history) is supported. */
+  maxMemories?: number;
+  /**
+   * Whether processMessage/processMessageStream accept a chat mode param.
+   * When false the mode parameter is ignored (template behaviour).
+   */
+  enableChatMode?: boolean;
+}
+interface AgentRuntime {
+  processMessage: (params: BridgeRpcParams) => Promise<BridgeMessageResult>;
+  processMessageStream: (
+    params: BridgeRpcParams,
+    onChunk: (chunk: string) => void,
+  ) => Promise<BridgeMessageResult>;
+  getMemories: () => Array<Record<string, unknown>>;
+  getConfig: () => Record<string, unknown>;
+  checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
+}
+// ─── Main entry ─────────────────────────────────────────────────────────
+export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
+  if (userConfig.maxMemories !== undefined && userConfig.maxMemories !== 0) {
+    throw new ElizaError("Cloud agent history must not be truncated", {
+      code: "CLOUD_AGENT_MEMORY_LIMIT_UNSUPPORTED",
+      context: { boundary: "cloud-agent-startup" },
+    });
+  }
+  const PORT = userConfig.port ?? Number(process.env.PORT ?? "2138");
+  const BRIDGE_PORT =
+    userConfig.bridgePort ?? Number(process.env.BRIDGE_PORT ?? "18790");
+  const BRIDGE_SECRET = userConfig.bridgeSecret || crypto.randomUUID();
+  const bridgeSecretGenerated = !userConfig.bridgeSecret;
+  const MAX_BODY_BYTES = userConfig.maxBodyBytes ?? 1048576;
+  const enableChatMode = userConfig.enableChatMode ?? false;
+  let agentRuntime: AgentRuntime | null = null;
+  let remoteBrowser: AgentRemoteBrowserController | null = null;
+
+  /** In-memory state that persists across snapshots. */
+  const state = {
+    memories: [] as Array<Record<string, unknown>>,
+    config: {} as Record<string, unknown>,
+    workspaceFiles: {} as Record<string, string>,
+    startedAt: new Date().toISOString(),
+    lastActivityAt: new Date().toISOString(),
+  };
+  function readBody(req: http.IncomingMessage): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      let body = "";
+      let totalBytes = 0;
+      let failed = false;
+      const decoder = new TextDecoder("utf-8", {
+        fatal: true,
+        ignoreBOM: true,
+      });
+      const invalidEncoding = (cause: unknown) => {
+        failed = true;
+        reject(
+          new ElizaError("Request body must contain complete valid UTF-8", {
+            code: "CLOUD_AGENT_INVALID_UTF8",
+            context: { boundary: "cloud-agent-bridge" },
+            cause,
+          }),
+        );
+      };
+      req.on("data", (chunk: Buffer) => {
+        totalBytes += chunk.length;
+        if (MAX_BODY_BYTES > 0 && totalBytes > MAX_BODY_BYTES) {
+          failed = true;
+          req.destroy();
+          reject(new Error("Request body too large"));
+          return;
+        }
+        if (failed) return;
+        try {
+          body += decoder.decode(chunk, { stream: true });
+        } catch (error) {
+          // error-policy:J2 preserve the decoder cause without accepting replacement text.
+          invalidEncoding(error);
+        }
+      });
+      req.on("end", () => {
+        if (failed) return;
+        try {
+          body += decoder.decode();
+          resolve(body);
+        } catch (error) {
+          // error-policy:J2 an incomplete final code point is invalid request data.
+          invalidEncoding(error);
+        }
+      });
+      req.on("error", reject);
+    });
+  }
+  // ─── elizaOS Runtime ──────────────────────────────────────────────────
+  async function initRuntime(): Promise<void> {
+    const elizaAvailable = await import("@elizaos/core")
+      .then(() => true)
+      .catch(() => false);
+    if (elizaAvailable) {
+      const {
+        AgentRuntime: AgentRuntimeCtor,
+        createCharacter,
+        createMessageMemory,
+        stringToUuid,
+        ChannelType,
+      } = await import("@elizaos/core");
+      const character = createCharacter({
+        name: process.env.AGENT_NAME ?? "CloudAgent",
+        bio: "An elizaOS agent running in the cloud.",
+        settings: {
+          ...(process.env.DATABASE_URL
+            ? {
+                POSTGRES_URL: process.env.DATABASE_URL,
+                DATABASE_URL: process.env.DATABASE_URL,
+              }
+            : {}),
+        },
+        secrets: {
+          ...(process.env.ENCRYPTION_SALT
+            ? { ENCRYPTION_SALT: process.env.ENCRYPTION_SALT }
+            : {}),
+          ...(process.env.ELIZAOS_CLOUD_API_KEY
+            ? { ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY }
+            : {}),
+          ...(process.env.OPENAI_API_KEY
+            ? { OPENAI_API_KEY: process.env.OPENAI_API_KEY }
+            : {}),
+          ...(process.env.ANTHROPIC_API_KEY
+            ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY }
+            : {}),
+          ...(process.env.GOOGLE_API_KEY
+            ? { GOOGLE_API_KEY: process.env.GOOGLE_API_KEY }
+            : {}),
+          ...(process.env.XAI_API_KEY
+            ? { XAI_API_KEY: process.env.XAI_API_KEY }
+            : {}),
+          ...(process.env.GROQ_API_KEY
+            ? { GROQ_API_KEY: process.env.GROQ_API_KEY }
+            : {}),
+          ...(process.env.CEREBRAS_API_KEY
+            ? { CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY }
+            : {}),
+        },
+      });
+      const plugins = [];
+      if (process.env.CEREBRAS_API_KEY || process.env.OPENAI_API_KEY) {
+        const openaiPlugin = await import("@elizaos/plugin-openai")
+          .then((m) => m.default)
+          .catch(logPluginLoadFailure("@elizaos/plugin-openai"));
+        if (openaiPlugin) plugins.push(openaiPlugin);
+      }
+      const cloudPlugin = await import("@elizaos/plugin-elizacloud")
+        .then((m) => m.default)
+        .catch(logPluginLoadFailure("@elizaos/plugin-elizacloud"));
+      if (cloudPlugin) plugins.push(cloudPlugin);
+      const sqlPlugin = await import("@elizaos/plugin-sql")
+        .then((m) => m.default)
+        .catch(logPluginLoadFailure("@elizaos/plugin-sql"));
+      if (sqlPlugin) plugins.push(sqlPlugin);
+      const workflowPlugin = await import("@elizaos/plugin-workflow")
+        .then((m) => m.default)
+        .catch(logPluginLoadFailure("@elizaos/plugin-workflow"));
+      if (workflowPlugin) plugins.push(workflowPlugin);
+
+      const [{ browserPlugin }, { webSearchPlugin }, remoteHost] =
+        await Promise.all([
+          import("@elizaos/plugin-browser"),
+          import("@elizaos/plugin-web-search"),
+          import("@elizaos/remote-control-host"),
+        ]);
+      const { assistantPlugin } = await import("@elizaos/plugin-assistant");
+      plugins.push(assistantPlugin, browserPlugin, webSearchPlugin);
+      if (process.env.ENCRYPTION_SALT) {
+        const { secretsManagerPlugin } = await import(
+          "@elizaos/plugin-assistant"
+        );
+        plugins.push(secretsManagerPlugin);
+      }
+      const runtime = new AgentRuntimeCtor({ character, plugins });
+      await runtime.initialize();
+      remoteBrowser = remoteHost.remoteBrowserController(runtime);
+      await remoteHost.restoreRemoteBrowserController(runtime);
+      const runtimeWithBridge = runtime as typeof runtime & {
+        ensureWorldExists?: (world: Record<string, unknown>) => Promise<void>;
+        ensureRoomExists?: (room: Record<string, unknown>) => Promise<void>;
+        ensureParticipantInRoom?: (
+          entityId: ReturnType<typeof stringToUuid>,
+          roomId: ReturnType<typeof stringToUuid>,
+        ) => Promise<void>;
+        getEntityById?: (
+          entityId: ReturnType<typeof stringToUuid>,
+        ) => Promise<Record<string, unknown> | null>;
+        createEntity?: (entity: Record<string, unknown>) => Promise<void>;
+        updateEntity?: (entity: Record<string, unknown>) => Promise<void>;
+      };
+      const ensureBridgeContext = async (params: BridgeRpcParams) => {
+        const normalized = normalizeBridgeMessage(params);
+        const worldId = stringToUuid(
+          `${normalized.source}-${normalized.channelType.toLowerCase()}-world`,
+        );
+        const serverId = stringToUuid(`${normalized.source}-bridge-server`);
+        const roomId = stringToUuid(
+          `${normalized.source}-bridge-room-${normalized.roomKey}`,
+        );
+        const entityKey =
+          normalized.sender?.id ??
+          normalized.sender?.username ??
+          `${normalized.source}-bridge-user`;
+        const entityId = stringToUuid(
+          `${normalized.source}-bridge-user-${entityKey}`,
+        );
+        const channelType =
+          normalized.channelType === "GROUP"
+            ? ChannelType.GROUP
+            : ChannelType.DM;
+        const displayName =
+          normalized.sender?.displayName ??
+          normalized.sender?.username ??
+          "BridgeUser";
+        if (typeof runtimeWithBridge.ensureWorldExists === "function") {
+          await runtimeWithBridge.ensureWorldExists({
+            id: worldId,
+            name: normalized.source === "discord" ? "Discord" : "Cloud Bridge",
+            agentId: runtime.agentId,
+            serverId,
+          });
+        }
+        if (typeof runtimeWithBridge.ensureRoomExists === "function") {
+          await runtimeWithBridge.ensureRoomExists({
+            id: roomId,
+            name: normalized.roomKey,
+            type: channelType,
+            channelId: normalized.roomKey,
+            worldId,
+            serverId,
+            agentId: runtime.agentId,
+            source: normalized.source,
+          });
+        }
+        const entityMetadata =
+          normalized.sender?.metadata &&
+          typeof normalized.sender.metadata === "object" &&
+          !Array.isArray(normalized.sender.metadata)
+            ? normalized.sender.metadata
+            : undefined;
+        const entityPayload = {
+          id: entityId,
+          agentId: runtime.agentId,
+          names: Array.from(
+            new Set(
+              [displayName, normalized.sender?.username].filter(
+                (value): value is string => Boolean(value),
+              ),
+            ),
+          ),
+          ...(entityMetadata ? { metadata: entityMetadata } : {}),
+        };
+        try {
+          if (
+            typeof runtimeWithBridge.getEntityById === "function" &&
+            typeof runtimeWithBridge.updateEntity === "function"
+          ) {
+            const existingEntity =
+              await runtimeWithBridge.getEntityById(entityId);
+            if (existingEntity) {
+              await runtimeWithBridge.updateEntity({
+                ...existingEntity,
+                ...entityPayload,
+                names:
+                  entityPayload.names.length > 0
+                    ? entityPayload.names
+                    : ((existingEntity.names as string[] | undefined) ?? []),
+              });
+            } else if (typeof runtimeWithBridge.createEntity === "function") {
+              await runtimeWithBridge.createEntity(entityPayload);
+            }
+          } else if (typeof runtimeWithBridge.createEntity === "function") {
+            await runtimeWithBridge.createEntity(entityPayload);
+          }
+        } catch {
+          // Best-effort entity sync. The room flow still works if the entity already exists.
+        }
+        if (typeof runtimeWithBridge.ensureParticipantInRoom === "function") {
+          await Promise.all([
+            runtimeWithBridge.ensureParticipantInRoom(runtime.agentId, roomId),
+            runtimeWithBridge.ensureParticipantInRoom(entityId, roomId),
+          ]);
+        }
+        return { normalized, entityId, roomId, channelType };
+      };
+      agentRuntime = {
+        processMessage: async (
+          params: BridgeRpcParams,
+        ): Promise<BridgeMessageResult> => {
+          const { normalized, entityId, roomId, channelType } =
+            await ensureBridgeContext(params);
+          const message = createMessageMemory({
+            id: crypto.randomUUID() as ReturnType<typeof stringToUuid>,
+            entityId,
+            roomId,
+            content: {
+              text: normalized.text,
+              ...(enableChatMode
+                ? {
+                    mode: normalized.mode,
+                    simple: normalized.mode === "simple",
+                  }
+                : {}),
+              source: normalized.source,
+              channelType,
+              ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+            },
+          });
+          const response: BridgeMessageResult = { text: "" };
+          await runtime.messageService?.handleMessage(
+            runtime,
+            message,
+            async (content) => {
+              appendBridgeCallbackContent(
+                response,
+                content as BridgeCallbackContent,
+              );
+              return [];
+            },
+          );
+          state.lastActivityAt = new Date().toISOString();
+          state.memories.push({
+            role: "user",
+            text: normalized.text,
+            timestamp: Date.now(),
+            source: normalized.source,
+            roomId: normalized.roomKey,
+          });
+          state.memories.push({
+            role: "assistant",
+            text: bridgeResultText(response),
+            timestamp: Date.now(),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
+          });
+          return {
+            text: bridgeResultText(response),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
+          };
+        },
+        processMessageStream: async (
+          params: BridgeRpcParams,
+          onChunk: (chunk: string) => void,
+        ): Promise<BridgeMessageResult> => {
+          const { normalized, entityId, roomId, channelType } =
+            await ensureBridgeContext(params);
+          const message = createMessageMemory({
+            id: crypto.randomUUID() as ReturnType<typeof stringToUuid>,
+            entityId,
+            roomId,
+            content: {
+              text: normalized.text,
+              ...(enableChatMode
+                ? {
+                    mode: normalized.mode,
+                    simple: normalized.mode === "simple",
+                  }
+                : {}),
+              source: normalized.source,
+              channelType,
+              ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+            },
+          });
+          const response: BridgeMessageResult = { text: "" };
+          await runtime.messageService?.handleMessage(
+            runtime,
+            message,
+            async (content) => {
+              const previousTextLength = response.text.length;
+              appendBridgeCallbackContent(
+                response,
+                content as BridgeCallbackContent,
+              );
+              if (response.text.length > previousTextLength) {
+                onChunk(response.text.slice(previousTextLength));
+              }
+              return [];
+            },
+          );
+          state.lastActivityAt = new Date().toISOString();
+          state.memories.push({
+            role: "user",
+            text: normalized.text,
+            timestamp: Date.now(),
+            source: normalized.source,
+            roomId: normalized.roomKey,
+          });
+          state.memories.push({
+            role: "assistant",
+            text: bridgeResultText(response),
+            timestamp: Date.now(),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
+          });
+          return {
+            text: bridgeResultText(response),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
+          };
+        },
+        getMemories: () => state.memories,
+        getConfig: () => state.config,
+        checkDatabaseLiveness: () => checkRuntimeDatabaseLiveness(runtime),
+      };
+      logger.info("elizaOS runtime initialized with real agent");
+    } else {
+      logger.warn("@elizaos/core not available, running in echo mode");
+      agentRuntime = {
+        processMessage: async (
+          params: BridgeRpcParams,
+        ): Promise<BridgeMessageResult> => {
+          const normalized = normalizeBridgeMessage(params);
+          state.memories.push({
+            role: "user",
+            text: normalized.text,
+            timestamp: Date.now(),
+            source: normalized.source,
+            roomId: normalized.roomKey,
+          });
+          const reply = `[echo] ${normalized.text}`;
+          state.memories.push({
+            role: "assistant",
+            text: reply,
+            timestamp: Date.now(),
+          });
+          return { text: reply };
+        },
+        processMessageStream: async (
+          params: BridgeRpcParams,
+          onChunk: (chunk: string) => void,
+        ): Promise<BridgeMessageResult> => {
+          const normalized = normalizeBridgeMessage(params);
+          state.memories.push({
+            role: "user",
+            text: normalized.text,
+            timestamp: Date.now(),
+            source: normalized.source,
+            roomId: normalized.roomKey,
+          });
+          const reply = `[echo] ${normalized.text}`;
+          onChunk(reply);
+          state.memories.push({
+            role: "assistant",
+            text: reply,
+            timestamp: Date.now(),
+          });
+          return { text: reply };
+        },
+        getMemories: () => state.memories,
+        getConfig: () => state.config,
+      };
+    }
+  }
+  // ─── Health endpoint ──────────────────────────────────────────────────
+  /** Consider the runtime hung if no activity for 10 minutes after init. */
+  const HUNG_RUNTIME_THRESHOLD_MS = 10 * 60000;
+  const healthServer = http.createServer(async (req, res) => {
+    if (
+      req.method === "GET" &&
+      (req.url === "/health" || req.url === "/api/health")
+    ) {
+      const runtimeReady = agentRuntime !== null;
+      const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
+      const lastActivityAge =
+        Date.now() - new Date(state.lastActivityAt).getTime();
+      const possiblyHung =
+        runtimeReady &&
+        state.memories.length > 0 &&
+        lastActivityAge > HUNG_RUNTIME_THRESHOLD_MS;
+      let status: string;
+      if (databaseLiveness.terminal) {
+        status = "unhealthy";
+      } else if (!runtimeReady) {
+        status = "initializing";
+      } else if (possiblyHung) {
+        status = "possibly_hung";
+      } else {
+        status = "healthy";
+      }
+      res.writeHead(databaseLiveness.terminal || !runtimeReady ? 503 : 200, {
+        "Content-Type": "application/json",
+      });
+      res.end(
+        JSON.stringify({
+          status,
+          uptime: process.uptime(),
+          startedAt: state.startedAt,
+          lastActivityAt: state.lastActivityAt,
+          memoryUsage: process.memoryUsage().rss,
+          runtimeReady,
+          database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
+        }),
+      );
+      return;
+    }
+    if (req.method === "GET" && req.url === "/") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          service: "elizaos-cloud-agent",
+          status: "running",
+        }),
+      );
+      return;
+    }
+    res.writeHead(404);
+    res.end("Not Found");
+  });
+  healthServer.listen(PORT, "0.0.0.0", () => {
+    logger.info(`Health endpoint listening on port ${PORT}`);
+  });
+  // ─── Bridge HTTP server ───────────────────────────────────────────────
+  const handleBridgeRequest = async (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ) => {
+    res.setHeader("Content-Type", "application/json");
+    // Auth check (only when BRIDGE_SECRET is configured)
+    if (BRIDGE_SECRET) {
+      const authHeader = req.headers.authorization ?? "";
+      if (authHeader !== `Bearer ${BRIDGE_SECRET}`) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+    }
+
+    const remoteBrowserPath =
+      /^\/api\/remote-browser\/(status|pair|confirm|revoke)$/.exec(
+        (req.url ?? "").split("?")[0],
+      );
+    if (remoteBrowserPath) {
+      const operation = remoteBrowserPath[1];
+      const ownerId = process.env.ELIZA_RUNTIME_OWNER_ID;
+      if (!remoteBrowser || !ownerId) {
+        res.writeHead(503);
+        res.end(
+          JSON.stringify({
+            error: "Owner-scoped browser controller is unavailable",
+          }),
+        );
+        return;
+      }
+      if (req.method !== (operation === "status" ? "GET" : "POST")) {
+        res.writeHead(405);
+        res.end(JSON.stringify({ error: "Method not allowed" }));
+        return;
+      }
+      try {
+        remoteBrowser.assertOwner(ownerId);
+        const body =
+          operation === "status" ? null : JSON.parse(await readBody(req));
+        const result =
+          operation === "status"
+            ? remoteBrowser.status()
+            : operation === "pair"
+              ? await remoteBrowser.pair(body, ownerId)
+              : operation === "confirm"
+                ? await remoteBrowser.confirm(body)
+                : await remoteBrowser.revoke();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        logger.error("Remote browser control rejected", {
+          operation,
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+        res.writeHead(409);
+        res.end(
+          JSON.stringify({
+            error: "Browser authorization or device availability changed",
+          }),
+        );
+      }
+      return;
+    }
+
+    // The provisioning worker probes the bridge/tailnet port, not the
+    // host-only REST mapping. Keep this response aligned with the REST health
+    // contract so lifecycle recovery never marks a healthy runtime dead.
+    if (req.method === "GET" && req.url === "/api/health") {
+      const runtimeReady = agentRuntime !== null;
+      const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
+      res.writeHead(databaseLiveness.terminal || !runtimeReady ? 503 : 200);
+      res.end(
+        JSON.stringify({
+          status: runtimeReady ? "healthy" : "initializing",
+          runtimeReady,
+          database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
+          lastActivityAt: state.lastActivityAt,
+        }),
+      );
+      return;
+    }
+    // Server-owned Shared→Dedicated cutover imports the exact personal
+    // conversation before flipping the active runtime. The minimal Cloud image
+    // must expose this boundary too; otherwise provisioning reports `running`
+    // while every cutover retries forever with a 503. Keep unsupported
+    // reminder/Todo payloads fail-closed until their runtime plugins are
+    // installed instead of returning a fabricated receipt.
+    const requestUrl = new URL(req.url ?? "/", "http://cloud-agent.local");
+    const importMatch =
+      req.method === "POST"
+        ? /^\/api\/conversations\/([^/]+)\/import$/.exec(requestUrl.pathname)
+        : null;
+    if (importMatch) {
+      if (!agentRuntime) {
+        res.writeHead(503);
+        res.end(JSON.stringify({ error: "Agent runtime not ready" }));
+        return;
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+      } catch (error) {
+        // error-policy:J3 invalid JSON is rejected; typed body errors reach the HTTP boundary.
+        if (error instanceof ElizaError) throw error;
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      const messages = Array.isArray(body.messages) ? body.messages : null;
+      const tasks = Array.isArray(body.scheduledTasks)
+        ? body.scheduledTasks
+        : [];
+      const todo =
+        body.todoSnapshot && typeof body.todoSnapshot === "object"
+          ? (body.todoSnapshot as Record<string, unknown>)
+          : null;
+      const todos = todo && Array.isArray(todo.todos) ? todo.todos : [];
+      const mutations =
+        todo && Array.isArray(todo.mutations) ? todo.mutations : [];
+      const digest =
+        todo && typeof todo.digest === "string" ? todo.digest : null;
+      if (
+        !messages ||
+        tasks.length > 0 ||
+        todos.length > 0 ||
+        mutations.length > 0 ||
+        !digest
+      ) {
+        res.writeHead(messages ? 501 : 400);
+        res.end(
+          JSON.stringify({
+            error: messages
+              ? "This Cloud image cannot yet import reminders or Todos"
+              : "Body must include a messages array and exact Todo snapshot",
+          }),
+        );
+        return;
+      }
+      const existingSourceIds = new Set(
+        state.memories
+          .map((memory) => memory.sourceId)
+          .filter((value): value is string => typeof value === "string"),
+      );
+      let inserted = 0;
+      for (const value of messages) {
+        if (!value || typeof value !== "object") continue;
+        const message = value as Record<string, unknown>;
+        const role =
+          message.role === "assistant"
+            ? "assistant"
+            : message.role === "user"
+              ? "user"
+              : null;
+        const text =
+          typeof message.text === "string" ? message.text.trim() : "";
+        const sourceId =
+          typeof message.sourceId === "string" ? message.sourceId.trim() : "";
+        if (!role || !text || !sourceId) continue;
+        if (existingSourceIds.has(sourceId)) {
+          continue;
+        }
+        state.memories.push({
+          role,
+          text,
+          sourceId,
+          roomId: decodeURIComponent(importMatch[1]),
+          timestamp:
+            typeof message.timestamp === "number"
+              ? message.timestamp
+              : Date.now(),
+        });
+        existingSourceIds.add(sourceId);
+        inserted += 1;
+      }
+      state.lastActivityAt = new Date().toISOString();
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          conversationId: decodeURIComponent(importMatch[1]),
+          complete: true,
+          sourceMessageCount: messages.length,
+          inserted,
+          skipped: messages.length - inserted,
+          sourceScheduledTaskCount: 0,
+          importedScheduledTasks: 0,
+          skippedScheduledTasks: 0,
+          activatedScheduledTasks: 0,
+          skippedActivatedScheduledTasks: 0,
+          sourceTodoCount: 0,
+          sourceTodoMutationCount: 0,
+          importedTodos: 0,
+          repairedTodos: 0,
+          skippedTodos: 0,
+          removedStaleTodos: 0,
+          importedTodoMutations: 0,
+          skippedTodoMutations: 0,
+          sourceTodoDigest: digest,
+          targetTodoDigest: digest,
+        }),
+      );
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/snapshot") {
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          memories: state.memories,
+          config: state.config,
+          workspaceFiles: state.workspaceFiles,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/restore") {
+      const body = await readBody(req);
+      let incoming: Partial<typeof state>;
+      try {
+        incoming = JSON.parse(body) as Partial<typeof state>;
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      if (incoming.memories) state.memories = incoming.memories;
+      if (incoming.config) state.config = incoming.config;
+      if (incoming.workspaceFiles)
+        state.workspaceFiles = incoming.workspaceFiles;
+      logger.info("State restored from snapshot");
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+    // ── SSE streaming endpoint ────────────────────────────────────────
+    if (req.method === "POST" && req.url === "/bridge/stream") {
+      if (!agentRuntime) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Agent runtime not ready" }));
+        return;
+      }
+      const body = await readBody(req);
+      let rpc: {
+        jsonrpc: string;
+        id?: string | number;
+        method?: string;
+        params?: BridgeRpcParams;
+      };
+      try {
+        rpc = JSON.parse(body);
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      if (rpc.method !== "message.send") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Only message.send is streamable" }));
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      const sendEvent = (event: string, data: unknown) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      sendEvent("connected", { rpcId: rpc.id, timestamp: Date.now() });
+      const response = await agentRuntime.processMessageStream(
+        rpc.params ?? {},
+        (chunk: string) => {
+          sendEvent("chunk", { text: chunk });
+        },
+      );
+      sendEvent("done", {
+        rpcId: rpc.id,
+        timestamp: Date.now(),
+        ...(response.failureKind ? { failureKind: response.failureKind } : {}),
+      });
+      res.end();
+      return;
+    }
+    if (req.method === "POST" && req.url === "/bridge") {
+      const body = await readBody(req);
+      let rpc: {
+        jsonrpc: string;
+        id?: string | number;
+        method?: string;
+        params?: BridgeRpcParams;
+      };
+      try {
+        rpc = JSON.parse(body);
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      if (rpc.method === "message.send") {
+        if (!agentRuntime) {
+          res.writeHead(503);
+          res.end(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: rpc.id,
+              error: {
+                code: -32000,
+                message: "Agent runtime not ready",
+              },
+            }),
+          );
+          return;
+        }
+        const response = await agentRuntime.processMessage(rpc.params ?? {});
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: {
+              text: response.text,
+              ...(response.failureKind
+                ? { failureKind: response.failureKind }
+                : {}),
+              metadata: {
+                timestamp: Date.now(),
+                ...(response.failureKind
+                  ? { failureKind: response.failureKind }
+                  : {}),
+              },
+            },
+          }),
+        );
+        return;
+      }
+      if (rpc.method === "status.get") {
+        const databaseLiveness =
+          await checkRuntimeDatabaseLiveness(agentRuntime);
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: {
+              status: databaseLiveness.terminal
+                ? "unhealthy"
+                : agentRuntime
+                  ? "running"
+                  : "initializing",
+              uptime: process.uptime(),
+              memoriesCount: state.memories.length,
+              startedAt: state.startedAt,
+              database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+              // The bridge RPC is renderer/cloud-readable; project away the
+              // internal probe diagnostic just like the HTTP health boundary.
+              databaseLiveness: publicDatabaseLiveness(databaseLiveness),
+            },
+          }),
+        );
+        return;
+      }
+      if (rpc.method === "heartbeat") {
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "heartbeat.ack",
+            params: { timestamp: Date.now() },
+          }),
+        );
+        return;
+      }
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${rpc.method}`,
+          },
+        }),
+      );
+      return;
+    }
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: "Not Found" }));
+  };
+  const bridgeServer = http.createServer(async (req, res) => {
+    try {
+      await handleBridgeRequest(req, res);
+    } catch (error) {
+      // error-policy:J1 translate body failures before dispatch or state mutation.
+      const invalidUtf8 =
+        error instanceof ElizaError &&
+        error.code === "CLOUD_AGENT_INVALID_UTF8";
+      if (!invalidUtf8)
+        logger.error("Bridge request failed", {
+          errorName:
+            error instanceof ElizaError
+              ? "ElizaError"
+              : error instanceof TypeError
+                ? "TypeError"
+                : error instanceof Error
+                  ? "Error"
+                  : "NonError",
+          code:
+            error instanceof ElizaError &&
+            /^[A-Z][A-Z0-9_]{0,80}$/.test(error.code)
+              ? error.code
+              : "CLOUD_AGENT_REQUEST_FAILED",
+        });
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(invalidUtf8 ? 400 : 500);
+      res.end(
+        JSON.stringify(
+          invalidUtf8
+            ? {
+                error: "Request body must contain complete valid UTF-8",
+                code: "CLOUD_AGENT_INVALID_UTF8",
+              }
+            : { error: "Bridge request failed" },
+        ),
+      );
+    }
+  });
+  const bridgeBindAddress = bridgeSecretGenerated ? "127.0.0.1" : "0.0.0.0";
+  bridgeServer.listen(BRIDGE_PORT, bridgeBindAddress, () => {
+    logger.info(
+      `Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
+    );
+    if (bridgeSecretGenerated) {
+      warnGeneratedBridgeSecret();
+    }
+  });
+  // ─── Startup ──────────────────────────────────────────────────────────
+  function shutdown() {
+    logger.info("Shutting down...");
+    healthServer.close();
+    bridgeServer.close();
+    process.exit(0);
+  }
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+  // Crash guards. This file is bundled by esbuild for the cloud-agent image,
+  // which only installs @elizaos/core + @elizaos/plugin-sql, so we cannot import
+  // @elizaos/core's installProcessCrashGuards here — the guards are inlined.
+  // A rejected background promise must never take down the container; a truly
+  // uncaught exception exits non-zero so the orchestrator (Docker
+  // `--restart unless-stopped` / K8s `restartPolicy: Always`) relaunches a clean
+  // container. Exit code matches @elizaos/core RESTART_EXIT_CODE.
+  process.on("unhandledRejection", (reason) => {
+    logger.error("Unhandled promise rejection (non-fatal)", {
+      err:
+        reason instanceof Error
+          ? (reason.stack ?? reason.message)
+          : String(reason),
+    });
+  });
+  process.on("uncaughtException", (error) => {
+    logger.error("Uncaught exception — exiting for orchestrator restart", {
+      err:
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
+    });
+    process.exit(CLOUD_AGENT_RESTART_EXIT_CODE);
+  });
+  initRuntime()
+    .then(() => {
+      logger.info("Ready");
+    })
+    .catch((err) => {
+      logger.error("Runtime init failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      process.exit(1);
+    });
+}

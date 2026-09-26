@@ -8,8 +8,8 @@
  */
 
 import { ElizaError } from "../errors";
-import type { JsonValue } from "../types";
 import type { UUID } from "../types/primitives";
+import type { JsonValue } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { Task, TaskMetadata, TaskRunStatus } from "../types/task";
@@ -104,7 +104,7 @@ export class TaskService extends Service {
 	 * owner's chat view on every boot.
 	 */
 	private readonly startedAt: number;
-	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
+	/** Closes admission synchronously before runtime teardown; active work still drains. */
 	private stopped = false;
 	/**
 	 * Boot grace window (ms) during which a missing worker is skipped silently
@@ -132,16 +132,6 @@ export class TaskService extends Service {
 	 */
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new TaskService(runtime);
-		// WHY: batcher owns HOW (sections, packing, cache); task system owns WHEN. One scheduler for all periodic drains.
-		runtime.registerTaskWorker({
-			name: "BATCHER_DRAIN",
-			execute: async (rt, options) => {
-				const affinityKey = options.affinityKey as string;
-				if (!rt.promptBatcher || !affinityKey) return undefined;
-				await rt.promptBatcher.drainAffinityGroup(affinityKey);
-				return undefined;
-			},
-		});
 		await service.startTimer();
 		return service;
 	}
@@ -286,6 +276,8 @@ export class TaskService extends Service {
 		const errors: ElizaError[] = [];
 
 		for (const task of tasks) {
+			// Validation can await another worker before reaching this task.
+			if (this.stopped) break;
 			const context = { taskId: task.id, taskName: task.name };
 			const metadata = task.metadata as TaskMetadata | undefined;
 			if (task.tags?.includes("repeat") && metadata?.paused) {
@@ -309,6 +301,17 @@ export class TaskService extends Service {
 					new ElizaError("Scheduled task is missing an id", {
 						code: "TASK_INVALID_ID",
 						context,
+						severity: "fatal",
+					}),
+				);
+				continue;
+			}
+
+			if (task.scheduleError !== undefined) {
+				errors.push(
+					new ElizaError(task.scheduleError, {
+						code: "TASK_SCHEDULE_INVALID",
+						context: { ...context, field: "metadata.scheduledAt" },
 						severity: "fatal",
 					}),
 				);
@@ -624,10 +627,12 @@ export class TaskService extends Service {
 	async runTick(tasks: Task[]): Promise<void> {
 		if (this.stopped) return;
 		const validation = await this.validateTasks(tasks);
+		if (this.stopped) return;
 		const failures: ElizaError[] = [...validation.errors];
 		const now = this.clock.now();
 
 		for (const task of validation.tasks) {
+			if (this.stopped) break;
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
 				// A paused one-shot must not run and must not reach the
@@ -838,12 +843,11 @@ export class TaskService extends Service {
 				}
 				const meta = latestTask.metadata as TaskMetadata | undefined;
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
-				const newMeta: TaskMetadata = {
-					...meta,
+				const bookkeeping: Partial<TaskMetadata> = {
 					updatedAt: this.clock.now(),
 					failureCount: 0,
-					lastError: undefined,
 				};
+				const cleared: (keyof TaskMetadata)[] = ["lastError"];
 				const nextInterval =
 					result != null &&
 					typeof result === "object" &&
@@ -866,12 +870,12 @@ export class TaskService extends Service {
 					);
 				}
 				if (nextInterval != null) {
-					newMeta.updateInterval = nextInterval;
-					delete newMeta.baseInterval;
+					bookkeeping.updateInterval = nextInterval;
+					cleared.push("baseInterval");
 				} else if (baseInterval != null && typeof baseInterval === "number") {
-					newMeta.updateInterval = baseInterval;
+					bookkeeping.updateInterval = baseInterval;
 				}
-				await this.runtime.updateTask(task.id, { metadata: newMeta });
+				await this.persistTaskMetadata(task.id, meta, bookkeeping, cleared);
 			} else {
 				await this.runtime.deleteTask(task.id);
 				this.runtime.logger.debug(
@@ -903,9 +907,9 @@ export class TaskService extends Service {
 					const neverPause =
 						rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0);
 					const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
-					const newMeta: TaskMetadata & Record<string, unknown> = {
-						...(meta ?? {}),
-						updatedAt: this.clock.now(),
+					const failedAt = this.clock.now();
+					const newMeta: Partial<TaskMetadata> = {
+						updatedAt: failedAt,
 						failureCount,
 						lastError: error instanceof Error ? error.message : String(error),
 					};
@@ -932,8 +936,20 @@ export class TaskService extends Service {
 							baseInterval * 2 ** failureCount,
 							300_000,
 						);
+						if (
+							error instanceof ElizaError &&
+							typeof error.retryAt === "number" &&
+							Number.isFinite(error.retryAt)
+						) {
+							// Provider deadlines are floors, not capped exponential backoff.
+							// Compensate for the scheduler's optional early-run tolerance.
+							newMeta.updateInterval = Math.max(
+								newMeta.updateInterval,
+								error.retryAt - failedAt + (meta?.notBefore ?? 0),
+							);
+						}
 					}
-					await this.runtime.updateTask(task.id, { metadata: newMeta });
+					await this.persistTaskMetadata(task.id, meta, newMeta);
 				} else if (task.id) {
 					await this.runtime.deleteTask(task.id);
 					this.runtime.logger.debug(
@@ -1026,6 +1042,31 @@ export class TaskService extends Service {
 	}
 
 	/**
+	 * Writes a key-level metadata change. The adapter's atomic patch keeps a
+	 * concurrent writer's keys intact (an operator pause landing during a run's
+	 * bookkeeping, or vice versa); when the adapter has no atomic patch, the
+	 * change is merged over the freshest snapshot the caller read and written
+	 * whole. `unset` keys are removed in both modes.
+	 */
+	private async persistTaskMetadata(
+		taskId: UUID,
+		snapshot: TaskMetadata | undefined,
+		set: Partial<TaskMetadata>,
+		unset: readonly (keyof TaskMetadata)[] = [],
+	): Promise<void> {
+		const outcome = await this.runtime.patchTaskMetadata(taskId, {
+			set,
+			unset,
+		});
+		if (outcome !== "unsupported") return;
+		const merged: Record<string, unknown> = { ...(snapshot ?? {}), ...set };
+		for (const key of unset) delete merged[key];
+		await this.runtime.updateTask(taskId, {
+			metadata: merged as TaskMetadata,
+		});
+	}
+
+	/**
 	 * Pauses a task. Every scheduler tick AFTER the pause is persisted skips
 	 * the task until it is resumed, and a paused task is never deleted by the
 	 * tick loop.
@@ -1045,9 +1086,7 @@ export class TaskService extends Service {
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
 		}
-		await this.runtime.updateTask(taskId, {
-			metadata: { ...task.metadata, paused: true } as TaskMetadata,
-		});
+		await this.persistTaskMetadata(taskId, task.metadata, { paused: true });
 	}
 
 	/**
@@ -1059,9 +1098,7 @@ export class TaskService extends Service {
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
 		}
-		await this.runtime.updateTask(taskId, {
-			metadata: { ...task.metadata, paused: false } as TaskMetadata,
-		});
+		await this.persistTaskMetadata(taskId, task.metadata, { paused: false });
 		if (runImmediately) {
 			const updated = await this.runtime.getTask(taskId);
 			if (updated) {
@@ -1119,17 +1156,18 @@ export class TaskService extends Service {
 		}
 	}
 
-	/**
-	 * Stops the timer if it is currently running.
-	 */
-
-	async stop() {
+	/** Stop new ticks before the runtime closes room admissions. */
+	prepareStop() {
 		this.stopped = true;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
 		if (this.hasTimer) {
 			this.hasTimer = false;
 			this.clock.clearInterval(this.timer);
 		}
+	}
+
+	async stop() {
+		this.prepareStop();
 		if (this.activeTick) {
 			await this.activeTick;
 		}

@@ -1,0 +1,8 @@
+client_config_backend: file
+client_config_file: evaluation_examples/settings/googledrive/client_secrets.json
+
+save_credentials: True
+save_credentials_backend: file
+save_credentials_file: evaluation_examples/settings/googledrive/credentials.json
+
+get_refresh_token: True

@@ -1,6 +1,6 @@
 /**
  * Worker-safe public web search for stateless Eliza runtimes. This entrypoint
- * owns the genuine WEB_SEARCH action without importing Tavily, Node services,
+ * owns the genuine WEB_SEARCH action without importing Node services,
  * credentials, private data, or browser control.
  */
 
@@ -12,8 +12,9 @@ import type {
     Memory,
     Plugin,
     State,
-} from "@elizaos/core/edge";
-import { isBlockedHostname, isPrivateIpAddress, searchKeylessWeb } from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
+import { searchKeylessWeb } from "./keyless-web-search";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",
@@ -37,12 +38,6 @@ function readQuery(parameters: Record<string, unknown>): string | undefined {
         if (typeof value === "string" && value.trim()) return value.trim();
     }
     return undefined;
-}
-
-function readResultCount(parameters: Record<string, unknown>): number | undefined {
-    const value = parameters.numResults ?? parameters.num_results;
-    const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
-    return Number.isFinite(parsed) && parsed > 0 ? Math.min(10, Math.floor(parsed)) : undefined;
 }
 
 export interface WebSearchSourceEvidence {
@@ -188,9 +183,16 @@ async function fail(
 }
 
 /** Runs the same public-read implementation used by the registered action. */
-export async function runWebSearchEdge(
+export async function runWebSearchEdge(query: string): Promise<ActionResult> {
+    return runWebSearchWith(query, searchKeylessWeb);
+}
+
+/** Common receipt handling; the host supplies its authorized browser-first transport. */
+export async function runWebSearchWith(
     query: string,
-    options: { numResults?: number } = {}
+    search: (
+        query: string
+    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>
 ): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
@@ -202,9 +204,7 @@ export async function runWebSearchEdge(
         );
     }
     const observedAt = Date.now();
-    const result = await searchKeylessWeb(normalizedQuery, {
-        resultCount: options.numResults,
-    });
+    const result = await search(normalizedQuery);
     if (!result) {
         return await fail("Web search is temporarily unavailable.", undefined, normalizedQuery);
     }
@@ -218,7 +218,9 @@ export async function runWebSearchEdge(
             provider: result.provider,
             observedAt,
             sourceUrls: evidence.sourceUrls,
-            sources: evidence.sources,
+            // A Google results-page snapshot is aggregate context, not prose from
+            // the individual linked sites. Retain all text without misattribution.
+            sources: result.provider === "browser" ? [] : evidence.sources,
             evidenceOverflowed: evidence.overflowed,
             truncated: result.truncated,
             value: result.text,
@@ -226,10 +228,7 @@ export async function runWebSearchEdge(
     };
 }
 
-export type WebSearchEdgeRunner = (
-    query: string,
-    options?: { numResults?: number }
-) => Promise<ActionResult>;
+export type WebSearchEdgeRunner = (query: string) => Promise<ActionResult>;
 
 function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
     return {
@@ -247,12 +246,6 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
                 required: true,
                 schema: { type: "string" },
             },
-            {
-                name: "numResults",
-                description: "Optional result count, from 1 through 10.",
-                required: false,
-                schema: { type: "number" },
-            },
         ],
         validate: async () => true,
         handler: async (
@@ -266,9 +259,7 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const query = readQuery(parameters);
             if (!query) return await fail("A web search query is required.", callback);
 
-            const result = await runner(query, {
-                numResults: readResultCount(parameters),
-            });
+            const result = await runner(query);
             if (result.success !== true && result.text) {
                 await callback?.({ text: result.text });
             }

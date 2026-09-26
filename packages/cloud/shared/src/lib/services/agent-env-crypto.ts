@@ -68,7 +68,7 @@ const NEVER_ENCRYPT_ENV_KEYS: ReadonlySet<string> = new Set(
 /** Whether a caller-supplied env key should be encrypted at rest. */
 export function isSensitiveAgentEnvKey(key: string): boolean {
   if (NEVER_ENCRYPT_ENV_KEYS.has(key.toUpperCase())) return false;
-  return SENSITIVE_ENV_KEY_PATTERN.test(key);
+  return key.toUpperCase() === "ENCRYPTION_SALT" || SENSITIVE_ENV_KEY_PATTERN.test(key);
 }
 
 /**

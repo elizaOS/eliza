@@ -1,0 +1,67 @@
+/**
+ * Registers the `db` CLI command group. `db reset` deletes the local agent
+ * database directory (`<stateDir>/workspace/.elizadb`), which is re-created on
+ * the next start, after an interactive confirmation prompt unless `--yes` is
+ * passed. Runs inside `runCommandWithRuntime` for consistent error/exit handling.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
+import { type Command } from "commander";
+import { theme } from "../../terminal/theme.js";
+import { runCommandWithRuntime } from "../cli-utils";
+
+const defaultRuntime = { error: console.error, exit: process.exit };
+function resolveDbDir(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveStateDir(env), "workspace", ".elizadb");
+}
+export function registerDbCommand(program: Command) {
+  const db = program.command("db").description("Database management");
+  db.command("reset")
+    .description(
+      "Delete the local agent database (will be re-created on next start)",
+    )
+    .option("--yes", "Skip confirmation prompt")
+    .action(async (opts: { yes: boolean }) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        const dbDir = resolveDbDir();
+        if (!fs.existsSync(dbDir)) {
+          console.log(
+            `${theme.muted("→")} Database not found at ${dbDir} — nothing to reset.`,
+          );
+          return;
+        }
+        if (!opts.yes) {
+          if (!process.stdin.isTTY) {
+            throw new Error(
+              "Database reset requires an interactive terminal or --yes",
+            );
+          }
+          const { createInterface } = await import("node:readline");
+          const rl = createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+          const confirmed = await new Promise<boolean>((resolve) => {
+            rl.once("close", () => resolve(false));
+            rl.question(
+              `${theme.warn("⚠")}  This will delete ${theme.command(dbDir)}.\n   All agent memory and conversation history will be lost.\n   Continue? ${theme.muted("(y/N) ")}`,
+              (answer) => {
+                resolve(answer.trim().toLowerCase() === "y");
+                rl.close();
+              },
+            );
+          });
+          if (!confirmed) {
+            console.log(`${theme.muted("→")} Cancelled.`);
+            return;
+          }
+        }
+        fs.rmSync(dbDir, { recursive: true, force: true });
+        console.log(`${theme.success("✓")} Database deleted: ${dbDir}`);
+        console.log(
+          `${theme.muted("→")} Run ${theme.command("eliza start")} to initialize a fresh database.`,
+        );
+      });
+    });
+}

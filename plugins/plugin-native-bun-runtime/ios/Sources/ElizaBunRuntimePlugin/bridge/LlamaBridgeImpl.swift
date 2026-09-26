@@ -27,7 +27,7 @@ import os
 // We call llama.cpp's C symbols directly through @_silgen_name rather than
 // importing a generated module. This keeps us provider-agnostic: the same
 // Swift code works whether the binary slice came from `LlamaCpp.xcframework`
-// (built by the app-core iOS local-inference pipeline) or from a different
+// (built by the app iOS local-inference pipeline) or from a different
 // distribution. The contract is the linker — at link time
 // the symbols must resolve, otherwise we get a clear "Undefined symbol"
 // error.
@@ -159,7 +159,7 @@ private func c_llama_sampler_free(_ smpl: LlamaSamplerPtr)
 // llama.cpp's `llama_model_params`, `llama_context_params`, and `llama_batch`
 // are POD structs but their layouts drift across upstream releases. We treat
 // the params structs as opaque byte bags sized generously, and use a tiny C
-// shim (LlamaShim.c) for the few field reads/writes Swift needs. That keeps
+// shim (runtime-symbol-shim.c) for the few field reads/writes Swift needs. That keeps
 // Swift agnostic to layout drift.
 //
 // `LlamaBatch` we mirror in Swift because its layout has been stable since
@@ -201,7 +201,7 @@ struct LlamaBatch {
     var logits: UnsafeMutablePointer<Int8>? = nil
 }
 
-// Shim symbols — implemented in LlamaShim.c. The shim folds into libllama.a
+// Shim symbols — implemented in runtime-symbol-shim.c. The shim folds into libllama.a
 // by `vendor-deps/llama.cpp/build-ios.sh`.
 
 @_silgen_name("eliza_llama_model_params_set_n_gpu_layers")
@@ -514,7 +514,7 @@ private final class CachedVoiceContext {
 /// integer value of llama.cpp's `ggml_type` enum. Returns nil for unknown
 /// types so the caller can leave the params struct at default. Fork-specific
 /// TBQ / QJL / Q4_POLAR codes mirror the patched ggml_type enum values
-/// introduced by `packages/app-core/scripts/build-llama-cpp-mtp.mjs`;
+/// introduced by `packages/app/scripts/build-llama-cpp-mtp.ts`;
 /// when the linked slice doesn't have those kernels compiled in, llama.cpp
 /// reports the error at context-init time and we surface it through
 /// `loadModel`'s failure path.
@@ -535,7 +535,7 @@ private func ggmlTypeFromString(_ raw: String?) -> Int32? {
     case "q5_k": return 13
     case "q6_k": return 14
     case "q8_k": return 15
-    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-mtp.mjs.
+    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-mtp.ts.
     case "tbq3", "q4_tq3": return 64
     case "tbq4", "q4_tq4": return 65
     case "qjl4": return 66

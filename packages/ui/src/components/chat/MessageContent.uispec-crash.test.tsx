@@ -5,10 +5,10 @@
  */
 // @vitest-environment jsdom
 
+import type { UiSpec } from "@elizaos/core/config/ui-spec";
 import { cleanup, render, screen } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UiSpec } from "../../config/ui-spec";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 import { MessageUiSpecBlock } from "./MessageContent";
@@ -24,14 +24,11 @@ function withApp(node: React.ReactElement) {
     React.createElement(AppContext.Provider, { value: appValue }, node),
   );
 }
-
 const asSpec = (o: unknown) => o as unknown as UiSpec;
-
 afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
 });
-
 describe("MessageUiSpecBlock — a malformed model spec never bricks the app", () => {
   it("renders an element that omits props and children without throwing", () => {
     // LLMs routinely emit leaf elements with no `props`/`children`. Pre-fix
@@ -46,7 +43,6 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
       ),
     ).not.toThrow();
   });
-
   it("contains a renderer crash (non-array array-prop) to the widget fallback instead of propagating to the app root", () => {
     // A Table whose `rows`/`columns` are strings, not arrays: the `?? []` cast
     // doesn't guard wrong types, so `.map` throws. The ErrorBoundary must catch

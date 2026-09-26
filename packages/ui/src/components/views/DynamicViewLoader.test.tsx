@@ -4,10 +4,12 @@
  *
  * @vitest-environment jsdom
  */
+
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ElizaError, resolveSurfaceManifest } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
 import {
   act,
   cleanup,
@@ -23,6 +25,8 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
+import { logger } from "../../logger.ts";
+import { DATABASE_VECTOR_VIEW } from "../../navigation/builtin-route-descriptors";
 import { Field } from "../../spatial/primitives";
 import {
   SurfaceRealmDeniedError,
@@ -41,14 +45,12 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   beforeEach(() => {
     activeApiBase.value = "";
   });
-
   it("accepts same-origin and root-relative /api/views bundle URLs", () => {
     expect(isSameOriginBundleUrl("/api/views/x/bundle.js")).toBe(true);
     expect(
       isSameOriginBundleUrl(`${window.location.origin}/api/views/x/bundle.js`),
     ).toBe(true);
   });
-
   it("rejects cross-origin bundle URLs (the RCE vector)", () => {
     expect(
       isSameOriginBundleUrl("https://capability.example.test/assets/x.js"),
@@ -57,10 +59,8 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     // A protocol-relative URL resolves to a different origin → rejected.
     expect(isSameOriginBundleUrl("//evil.example/x.js")).toBe(false);
   });
-
   it("accepts the active authenticated API origin used by paired previews", () => {
     activeApiBase.value = "http://127.0.0.1:12488";
-
     expect(
       isSameOriginBundleUrl(
         "http://127.0.0.1:12488/api/views/calendar/bundle.js",
@@ -72,14 +72,15 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
       ),
     ).toBe(false);
   });
-
   it("erases the test import hook from production builds before the origin gate", async () => {
     // jsdom and Node can expose different typed-array realms. esbuild validates
     // TextEncoder against the active Uint8Array constructor when it loads.
     const jsdomUint8Array = globalThis.Uint8Array;
     globalThis.Uint8Array = new TextEncoder().encode("")
       .constructor as typeof Uint8Array;
-    let output: { code: string };
+    let output: {
+      code: string;
+    };
     try {
       const { transform } = await import("esbuild");
       const packageRoot = existsSync(resolve(process.cwd(), "packages/ui"))
@@ -103,13 +104,11 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     } finally {
       globalThis.Uint8Array = jsdomUint8Array;
     }
-
     expect(output.code).not.toContain("__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__");
     expect(output.code).not.toMatch(/import\((["'])@elizaos\/core\1\)/u);
     expect(output.code).toContain("isSameOriginBundleUrl");
   });
 });
-
 describe("host-external importer resolution (factory hostImport)", () => {
   // The served view-bundle factory receives `hostImport` as its parameter; it
   // resolves a specifier to the host shell's live singleton with no globalThis
@@ -117,7 +116,6 @@ describe("host-external importer resolution (factory hostImport)", () => {
   const resolveHostExternal = (
     specifier: string,
   ): Promise<Record<string, unknown>> => hostImport(specifier);
-
   it("consults an importer contributed through registerHostExternalImporter", async () => {
     const { registerHostExternalImporter } = await import(
       "../../app-shell-registry"
@@ -127,37 +125,45 @@ describe("host-external importer resolution (factory hostImport)", () => {
       "@test/plugin-registered-external",
       async () => marker,
     );
-
     await expect(
       resolveHostExternal("@test/plugin-registered-external"),
     ).resolves.toBe(marker);
   });
-
   it("still resolves a framework module from the trunk map", async () => {
     const react = await resolveHostExternal("react");
     expect(typeof react.useState).toBe("function");
   });
-
   it("exposes only the browser-safe core view contract", async () => {
     const core = await resolveHostExternal("@elizaos/core");
-
     expect(core).toEqual({ ElizaError });
     expect(core.ElizaError).toBe(ElizaError);
     expect(Object.isFrozen(core)).toBe(true);
   });
-
   it("provides the authenticated fetch helper to plugin view bundles", async () => {
     const api = await resolveHostExternal("@elizaos/ui/api/csrf-client");
     expect(typeof api.fetchWithCsrf).toBe("function");
   });
-
+  it("resolves explicit time-zone helpers without exposing host mutation APIs", async () => {
+    const shared = await resolveHostExternal(
+      "@elizaos/core/lifeops-normalize/time-zone",
+    );
+    const normalize = shared.normalizeTimeZone;
+    const isValid = shared.isValidTimeZone;
+    if (typeof normalize !== "function" || typeof isValid !== "function") {
+      throw new Error("Shared view time-zone helpers are unavailable");
+    }
+    expect(normalize("Zulu")).toBe("UTC");
+    expect(normalize("America/Los_Angeles")).toBe("America/Los_Angeles");
+    expect(isValid("not-a-time-zone")).toBe(false);
+    expect(shared.registerOverlayApp).toBeUndefined();
+    expect(shared.loadElizaConfig).toBeUndefined();
+  });
   it("provides the canonical view header to plugin view bundles", async () => {
     const header = await resolveHostExternal(
       "@elizaos/ui/components/shared/ViewHeader",
     );
     expect(typeof header.ViewHeader).toBe("function");
   });
-
   it("provides the scoped capability recovery hooks used by plugin views", async () => {
     const recovery = await resolveHostExternal(
       "@elizaos/ui/hooks/runtime-capability-retry",
@@ -165,18 +171,15 @@ describe("host-external importer resolution (factory hostImport)", () => {
     const authority = await resolveHostExternal(
       "@elizaos/ui/hooks/useActiveAgentAuthority",
     );
-
     expect(typeof recovery.loadAfterCapabilityWarmup).toBe("function");
     expect(typeof authority.useActiveAgentAuthority).toBe("function");
   });
-
   it("throws for an unknown specifier that is neither framework nor registered", async () => {
     await expect(
       resolveHostExternal("@test/never-registered-external"),
     ).rejects.toThrow(/unsupported host external/);
   });
 });
-
 const { activeApiBase, activeCredential, rawRequest, sendWsMessage } =
   vi.hoisted(() => ({
     activeApiBase: { value: "" },
@@ -184,7 +187,6 @@ const { activeApiBase, activeCredential, rawRequest, sendWsMessage } =
     rawRequest: vi.fn(),
     sendWsMessage: vi.fn(),
   }));
-
 vi.mock("../../api", () => ({
   client: {
     get baseUrl() {
@@ -193,23 +195,26 @@ vi.mock("../../api", () => ({
     apiToken: activeCredential,
     rawRequest,
     sendWsMessage,
+    fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
+    clientId: "fixture-client",
   },
 }));
-
+// Host-external authority hooks use the same mocked transport as the loader.
+// Importing a second, real client here starts unrelated network/bootstrap work.
+vi.mock("../../api/client", async () => ({
+  client: (await import("../../api")).client,
+}));
 describe("authenticated protected view bundle loading", () => {
   const secret = activeCredential;
-
   beforeEach(() => {
     activeApiBase.value = "";
     rawRequest.mockReset();
   });
-
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
-
   it("fails closed on 401 without importing the response body", async () => {
     rawRequest.mockResolvedValue(
       new Response('{"error":"unauthorized"}', {
@@ -218,17 +223,14 @@ describe("authenticated protected view bundle loading", () => {
       }),
     );
     const moduleImporter = vi.fn();
-
     await expect(
       importAuthenticatedViewBundle(
         "/api/views/calendar/bundle.js?hostExternalRuntime=1",
         moduleImporter,
       ),
     ).rejects.toThrow("HTTP 401");
-
     expect(moduleImporter).not.toHaveBeenCalled();
   });
-
   it("imports a valid JavaScript response from a temporary URL and always revokes it", async () => {
     rawRequest.mockResolvedValue(
       new Response("export default () => null", {
@@ -242,14 +244,12 @@ describe("authenticated protected view bundle loading", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     const loaded = { default: () => null };
     const moduleImporter = vi.fn(async () => loaded);
-
     await expect(
       importAuthenticatedViewBundle(
         "/api/views/calendar/bundle.js?hostExternalRuntime=1",
         moduleImporter,
       ),
     ).resolves.toBe(loaded);
-
     expect(createObjectURL).toHaveBeenCalledOnce();
     expect(moduleImporter).toHaveBeenCalledWith(
       "blob:http://localhost/view-bundle",
@@ -258,14 +258,15 @@ describe("authenticated protected view bundle loading", () => {
       "blob:http://localhost/view-bundle",
     );
   });
-
   it("allows a slow authenticated bundle download beyond the generic read timeout", async () => {
     vi.useFakeTimers();
     rawRequest.mockImplementation(
       async (
         _path: string,
         _init: RequestInit,
-        options: { timeoutMs?: number },
+        options: {
+          timeoutMs?: number;
+        },
       ) =>
         new Promise<Response>((resolve, reject) => {
           let timeoutId: ReturnType<typeof setTimeout>;
@@ -277,11 +278,11 @@ describe("authenticated protected view bundle loading", () => {
                 headers: { "content-type": "application/javascript" },
               }),
             );
-          }, 11_000);
+          }, 11000);
           timeoutId = setTimeout(() => {
             clearTimeout(responseId);
             reject(new Error("bundle download timed out"));
-          }, options.timeoutMs ?? 10_000);
+          }, options.timeoutMs ?? 10000);
         }),
     );
     vi.spyOn(URL, "createObjectURL").mockReturnValue(
@@ -290,16 +291,13 @@ describe("authenticated protected view bundle loading", () => {
     vi.spyOn(URL, "revokeObjectURL");
     const loaded = { default: () => null };
     const moduleImporter = vi.fn(async () => loaded);
-
     const importPromise = importAuthenticatedViewBundle(
       "/api/views/calendar/bundle.js?hostExternalRuntime=1",
       moduleImporter,
     );
-    await vi.advanceTimersByTimeAsync(11_000);
-
+    await vi.advanceTimersByTimeAsync(11000);
     await expect(importPromise).resolves.toBe(loaded);
   });
-
   it.each([
     ["HTML", { "content-type": "text/html; charset=utf-8" }],
     ["a missing content type", {}],
@@ -310,33 +308,27 @@ describe("authenticated protected view bundle loading", () => {
         new Response("export default () => null", { status: 200, headers }),
       );
       const moduleImporter = vi.fn();
-
       await expect(
         importAuthenticatedViewBundle(
           "/api/views/calendar/bundle.js?hostExternalRuntime=1",
           moduleImporter,
         ),
       ).rejects.toThrow("response was not JavaScript");
-
       expect(moduleImporter).not.toHaveBeenCalled();
     },
   );
-
   it("refuses an unrelated absolute origin before the API client sees it", async () => {
     activeApiBase.value = "http://127.0.0.1:12488";
     const moduleImporter = vi.fn();
-
     await expect(
       importAuthenticatedViewBundle(
         "https://untrusted.example/api/views/calendar/bundle.js",
         moduleImporter,
       ),
     ).rejects.toThrow("cross-origin view bundle");
-
     expect(rawRequest).not.toHaveBeenCalled();
     expect(moduleImporter).not.toHaveBeenCalled();
   });
-
   it("routes an active API-origin URL through the authenticated path transport", async () => {
     activeApiBase.value = "http://127.0.0.1:12488";
     rawRequest.mockResolvedValue(
@@ -350,19 +342,16 @@ describe("authenticated protected view bundle loading", () => {
     );
     vi.spyOn(URL, "revokeObjectURL");
     const moduleImporter = vi.fn(async () => ({ default: () => null }));
-
     await importAuthenticatedViewBundle(
       "http://127.0.0.1:12488/api/views/notes/bundle.js?v=paired",
       moduleImporter,
     );
-
     expect(rawRequest).toHaveBeenCalledWith(
       "/api/views/notes/bundle.js?v=paired",
       { headers: { Accept: "application/javascript" } },
       expect.objectContaining({ allowNonOk: true }),
     );
   });
-
   it("revokes the temporary URL when module evaluation fails", async () => {
     rawRequest.mockResolvedValue(
       new Response("throw new Error('invalid bundle')", {
@@ -377,19 +366,16 @@ describe("authenticated protected view bundle loading", () => {
     const moduleImporter = vi.fn(async () => {
       throw new Error("module evaluation failed");
     });
-
     await expect(
       importAuthenticatedViewBundle(
         "/api/views/calendar/bundle.js?hostExternalRuntime=1",
         moduleImporter,
       ),
     ).rejects.toThrow("module evaluation failed");
-
     expect(revokeObjectURL).toHaveBeenCalledWith(
       "blob:http://localhost/invalid-view-bundle",
     );
   });
-
   it("re-fetches on reload without putting the active credential in any URL", async () => {
     rawRequest.mockImplementation(
       async () =>
@@ -405,10 +391,8 @@ describe("authenticated protected view bundle loading", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     const moduleImporter = vi.fn(async () => ({ default: () => null }));
     const bundleUrl = "/api/views/notes/bundle.js?v=known-content";
-
     await importAuthenticatedViewBundle(bundleUrl, moduleImporter);
     await importAuthenticatedViewBundle(bundleUrl, moduleImporter);
-
     expect(rawRequest).toHaveBeenCalledTimes(2);
     expect(rawRequest).toHaveBeenNthCalledWith(
       1,
@@ -424,24 +408,19 @@ describe("authenticated protected view bundle loading", () => {
     expect(serializedCalls).not.toContain(secret);
     expect(revokeObjectURL).toHaveBeenCalledTimes(2);
   });
-
   it("rejects credential-bearing query parameters before the API client sees them", async () => {
     const moduleImporter = vi.fn();
-
     await expect(
       importAuthenticatedViewBundle(
         `/api/views/notes/bundle.js?access_token=${secret}`,
         moduleImporter,
       ),
     ).rejects.toThrow("embedded credentials");
-
     expect(rawRequest).not.toHaveBeenCalled();
     expect(moduleImporter).not.toHaveBeenCalled();
   });
 });
-
 const AGENT_SURFACE_MANIFEST = { capabilities: ["agent-surface"] } as const;
-
 describe("DynamicViewLoader", () => {
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, "innerText", {
@@ -457,19 +436,18 @@ describe("DynamicViewLoader", () => {
       },
     });
   });
-
   afterEach(() => {
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
     sendWsMessage.mockClear();
     rawRequest.mockReset();
     cleanup();
+    setActiveSurfaceRealmScope(null);
     __resetDynamicViewLoaderCacheForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.clearAllTimers();
     vi.useRealTimers();
   });
-
   it("keeps a retained inactive module from acquiring the foreground owner's handles", async () => {
     const navigations: string[] = [];
     const makeScope = (id: string) =>
@@ -500,15 +478,27 @@ describe("DynamicViewLoader", () => {
     try {
       const rendered = render(
         <div>
-          <DynamicViewLoader bundleUrl={firstUrl} viewId="retained-a" />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl={firstUrl}
+            viewId="retained-a"
+          />
         </div>,
       );
       await screen.findByRole("button", { name: firstUrl });
       act(() => setActiveSurfaceRealmScope(makeScope("foreground-b")));
       rendered.rerender(
         <div>
-          <DynamicViewLoader bundleUrl={firstUrl} viewId="retained-a" />
-          <DynamicViewLoader bundleUrl={secondUrl} viewId="foreground-b" />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl={firstUrl}
+            viewId="retained-a"
+          />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl={secondUrl}
+            viewId="foreground-b"
+          />
         </div>,
       );
       fireEvent.click(await screen.findByRole("button", { name: secondUrl }));
@@ -521,8 +511,7 @@ describe("DynamicViewLoader", () => {
       cleanup();
       setActiveSurfaceRealmScope(null);
     }
-  }, 120_000);
-
+  }, 120000);
   it("loads both admitted split-layout members with default-deny handles", async () => {
     const navigations: Array<(path: string) => void> = [];
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (url) => {
@@ -543,8 +532,16 @@ describe("DynamicViewLoader", () => {
     try {
       render(
         <>
-          <DynamicViewLoader bundleUrl="/api/views/a/bundle.js" viewId="a" />
-          <DynamicViewLoader bundleUrl="/api/views/b/bundle.js" viewId="b" />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl="/api/views/a/bundle.js"
+            viewId="a"
+          />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl="/api/views/b/bundle.js"
+            viewId="b"
+          />
         </>,
       );
       await screen.findByText("/api/views/a/bundle.js");
@@ -555,8 +552,7 @@ describe("DynamicViewLoader", () => {
       cleanup();
       setActiveSurfaceRealmScope(null);
     }
-  }, 120_000);
-
+  }, 120000);
   it("re-evaluates mounted namespace handles when the same URL gets a new scope", async () => {
     const navigations: string[] = [];
     const manifest = resolveSurfaceManifest({
@@ -607,6 +603,7 @@ describe("DynamicViewLoader", () => {
     try {
       render(
         <DynamicViewLoader
+          installationId="fixture-installation"
           bundleUrl="/api/views/scope-panel/bundle.js"
           viewId="scope-panel"
         />,
@@ -634,8 +631,7 @@ describe("DynamicViewLoader", () => {
       setActiveSurfaceRealmScope(null);
       window.localStorage.removeItem("scope-probe");
     }
-  }, 120_000);
-
+  }, 120000);
   it("imports absolute remote bundleUrl directly", async () => {
     const bundleUrl = "https://capability.example.test/assets/remote-panel.js";
     const importBundle = vi.fn(async () => ({
@@ -644,16 +640,334 @@ describe("DynamicViewLoader", () => {
       },
     }));
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
-
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="remote.panel" />);
-
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="remote.panel"
+      />,
+    );
     await screen.findByText("Remote capability panel loaded");
-    expect(importBundle).toHaveBeenCalledWith(bundleUrl);
+    expect(importBundle).toHaveBeenCalledWith(bundleUrl, expect.any(Function));
     expect(importBundle).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/views/remote.panel/bundle.js"),
     );
   });
-
+  it("rebinds current controls on scope rotation while old callbacks remain denied", async () => {
+    const makeScope = (navigate: (path: string) => void, granted = true) =>
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({
+          surface: { capabilities: granted ? ["navigate"] : [] },
+        }),
+        "cloud",
+        window.localStorage,
+        navigate,
+      );
+    const firstNavigate = vi.fn();
+    const firstScope = makeScope(firstNavigate);
+    setActiveSurfaceRealmScope(firstScope);
+    const callbacks: Array<(path: string) => void> = [];
+    const cleanups: Array<ReturnType<typeof vi.fn>> = [];
+    const importBundle = vi.fn(async (_url, importHost) => {
+      const { navigateBrowserPath } = await importHost(
+        "@elizaos/ui/app-navigate-view",
+      );
+      const navigate = navigateBrowserPath as (path: string) => void;
+      callbacks.push(navigate);
+      const generation = callbacks.length;
+      const dispose = vi.fn();
+      cleanups.push(dispose);
+      return {
+        default: function CurrentControl() {
+          const [denied, setDenied] = useState(false);
+          return (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    navigate("/settings");
+                  } catch {
+                    setDenied(true);
+                  }
+                }}
+              >
+                Open settings {generation}
+              </button>
+              {denied ? <p role="alert">Navigation denied</p> : null}
+            </>
+          );
+        },
+        cleanup: dispose,
+      };
+    });
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    const { rerender } = render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl="/api/views/cloud/bundle.js"
+        viewId="cloud"
+        surface={{ capabilities: ["navigate"] }}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open settings 1" }),
+    );
+    expect(firstNavigate).toHaveBeenCalledWith("/settings");
+    act(() => setActiveSurfaceRealmScope(firstScope));
+    rerender(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl="/api/views/cloud/bundle.js"
+        viewId="cloud"
+        surface={{ capabilities: ["navigate"] }}
+      />,
+    );
+    expect(importBundle).toHaveBeenCalledTimes(1);
+    const nextNavigate = vi.fn();
+    act(() => setActiveSurfaceRealmScope(makeScope(nextNavigate)));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open settings 2" }),
+    );
+    expect(nextNavigate).toHaveBeenCalledWith("/settings");
+    expect(() => callbacks[0]("/stale")).toThrow(SurfaceRealmDeniedError);
+    await waitFor(() => expect(cleanups[0]).toHaveBeenCalledTimes(1));
+    act(() => setActiveSurfaceRealmScope(makeScope(nextNavigate, false)));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open settings 3" }),
+    );
+    expect(screen.getByRole("alert").textContent).toBe("Navigation denied");
+    expect(() => callbacks[1]("/stale")).toThrow(SurfaceRealmDeniedError);
+    expect(nextNavigate).toHaveBeenCalledTimes(1);
+    act(() => setActiveSurfaceRealmScope(makeScope(nextNavigate)));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open settings 4" }),
+    );
+    expect(nextNavigate).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("does not let a retired async import borrow the new scope or replace its view", async () => {
+    const makeScope = () =>
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({ surface: { capabilities: ["navigate"] } }),
+        "cloud",
+        window.localStorage,
+        vi.fn(),
+      );
+    setActiveSurfaceRealmScope(makeScope());
+    let resume: (() => void) | undefined;
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let oldImport:
+      | ((specifier: string) => Promise<Record<string, unknown>>)
+      | undefined;
+    let generation = 0;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(
+      async (_url, importHost) => {
+        const current = ++generation;
+        if (current === 1) {
+          oldImport = importHost;
+          await paused;
+        }
+        const module = await importHost("@elizaos/ui/app-navigate-view");
+        return {
+          default: () => (
+            <button
+              type="button"
+              onClick={() =>
+                (module.navigateBrowserPath as (path: string) => void)(
+                  "/settings",
+                )
+              }
+            >
+              Current {current}
+            </button>
+          ),
+        };
+      },
+    );
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl="/api/views/cloud/bundle.js"
+        viewId="cloud"
+      />,
+    );
+    await waitFor(() => expect(oldImport).toBeDefined());
+    act(() => setActiveSurfaceRealmScope(makeScope()));
+    await screen.findByRole("button", { name: "Current 2" });
+    await act(async () => {
+      resume?.();
+      await paused;
+    });
+    await expect(oldImport?.("@elizaos/ui/app-navigate-view")).rejects.toThrow(
+      SurfaceRealmDeniedError,
+    );
+    expect(screen.queryByRole("button", { name: "Current 1" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Current 2" })).toBeTruthy();
+  });
+  it("keeps a retained inactive view from borrowing the foreground scope and reloads on return", async () => {
+    const navigate = vi.fn();
+    const makeScope = (viewId: string) =>
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({ surface: { capabilities: ["navigate"] } }),
+        viewId,
+        window.localStorage,
+        navigate,
+      );
+    setActiveSurfaceRealmScope(makeScope("cloud"));
+    const callbacks: Array<(path: string) => void> = [];
+    const importBundle = vi.fn(async (_url, importHost) => {
+      const module = await importHost("@elizaos/ui/app-navigate-view");
+      const callback = module.navigateBrowserPath as (path: string) => void;
+      callbacks.push(callback);
+      return {
+        default: () => (
+          <button type="button" onClick={() => callback("/settings")}>
+            Connect
+          </button>
+        ),
+      };
+    });
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl="/api/views/cloud/bundle.js"
+        viewId="cloud"
+      />,
+    );
+    await screen.findByRole("button", { name: "Connect" });
+    act(() => setActiveSurfaceRealmScope(makeScope("another-view")));
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(importBundle).toHaveBeenCalledTimes(1);
+    expect(() => callbacks[0]("/stale")).toThrow(SurfaceRealmDeniedError);
+    act(() => setActiveSurfaceRealmScope(makeScope("cloud")));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+    expect(importBundle).toHaveBeenCalledTimes(2);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith("/settings");
+    expect(() => callbacks[0]("/stale")).toThrow(SurfaceRealmDeniedError);
+  });
+  it("loads explicit layout members without adding grants and revokes removed children", async () => {
+    const navigate = vi.fn();
+    const makeScope = (members: readonly string[]) =>
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({}),
+        "composed-owner",
+        window.localStorage,
+        navigate,
+        members,
+      );
+    const initialMembers = ["notes", "calendar"];
+    const firstScope = makeScope(initialMembers);
+    // The shell's caller-owned collection cannot mutate published authority.
+    initialMembers.push("unrelated");
+    setActiveSurfaceRealmScope(firstScope);
+    const callbacks: Array<(path: string) => void> = [];
+    const importBundle = vi.fn(async (url, importHost) => {
+      const module = await importHost("@elizaos/ui/app-navigate-view");
+      callbacks.push(module.navigateBrowserPath as (path: string) => void);
+      const label = url.includes("calendar") ? "Calendar" : "Notes";
+      return {
+        default: function PaneControl() {
+          const [count, setCount] = useState(0);
+          return (
+            <button type="button" onClick={() => setCount(count + 1)}>
+              {label} {count}
+            </button>
+          );
+        },
+      };
+    });
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    render(
+      <>
+        <DynamicViewLoader
+          installationId="fixture-installation"
+          viewId="notes"
+          bundleUrl="/api/views/notes/bundle.js"
+        />
+        <DynamicViewLoader
+          installationId="fixture-installation"
+          viewId="calendar"
+          bundleUrl="/api/views/calendar/bundle.js"
+        />
+        <DynamicViewLoader
+          installationId="fixture-installation"
+          viewId="unrelated"
+          bundleUrl="/api/views/unrelated/bundle.js"
+        />
+      </>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notes 0" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Calendar 0" }));
+    expect(screen.getByRole("button", { name: "Notes 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Calendar 1" })).toBeTruthy();
+    expect(importBundle).toHaveBeenCalledTimes(2);
+    expect(() => callbacks[0]("/settings")).toThrow(/no "navigate" grant/);
+    expect(navigate).not.toHaveBeenCalled();
+    act(() => setActiveSurfaceRealmScope(makeScope(["notes"])));
+    await screen.findByRole("button", { name: "Notes 0" });
+    expect(screen.queryByRole("button", { name: /Calendar/ })).toBeNull();
+    expect(importBundle).toHaveBeenCalledTimes(3);
+    expect(() => callbacks[0]("/stale")).toThrow(/stale host external/);
+    expect(() => callbacks[1]("/stale")).toThrow(/stale host external/);
+    act(() => setActiveSurfaceRealmScope(makeScope(["notes", "calendar"])));
+    fireEvent.click(await screen.findByRole("button", { name: "Calendar 0" }));
+    expect(screen.getByRole("button", { name: "Calendar 1" })).toBeTruthy();
+    expect(importBundle).toHaveBeenCalledTimes(5);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+  it("loads the explicitly declared Database vector child and retires it on navigation", async () => {
+    setActiveSurfaceRealmScope(
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({}),
+        "database",
+        window.localStorage,
+        vi.fn(),
+        [DATABASE_VECTOR_VIEW.viewId],
+      ),
+    );
+    const importBundle = vi.fn(async () => ({
+      [DATABASE_VECTOR_VIEW.componentExport]: function VectorControl() {
+        const [selected, setSelected] = useState(false);
+        return (
+          <button type="button" onClick={() => setSelected(true)}>
+            {selected ? "Vector selected" : "Select vector"}
+          </button>
+        );
+      },
+    }));
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        {...DATABASE_VECTOR_VIEW}
+        bundleUrl="/api/views/vector-browser/installations/fixture-installation/gui/bundle/bundle.js"
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Select vector" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Vector selected" }),
+    ).toBeTruthy();
+    act(() =>
+      setActiveSurfaceRealmScope(
+        new SurfaceRealmScope(
+          resolveSurfaceManifest({}),
+          "settings",
+          window.localStorage,
+          vi.fn(),
+        ),
+      ),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Vector selected" }),
+    ).toBeNull();
+    expect(importBundle).toHaveBeenCalledTimes(1);
+  });
   it("renders sandboxed iframe views from frameUrl and does not import bundleUrl", () => {
     const importBundle = vi.fn(async () => ({
       default: function ShouldNotLoad() {
@@ -661,16 +975,15 @@ describe("DynamicViewLoader", () => {
       },
     }));
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/sandboxed.panel/bundle.js"
         frameUrl="/api/views/sandboxed.panel/frame.html"
         viewId="sandboxed.panel"
         surface={{ isolation: "sandboxed-iframe" }}
       />,
     );
-
     const frame = screen.getByTestId("sandboxed-view-frame-sandboxed.panel");
     expect(frame.getAttribute("src")).toBe(
       "/api/views/sandboxed.panel/frame.html",
@@ -678,7 +991,6 @@ describe("DynamicViewLoader", () => {
     expect(importBundle).not.toHaveBeenCalled();
     expect(screen.queryByText("Host realm bundle loaded")).toBeNull();
   });
-
   it("fails closed when sandboxed iframe views omit frameUrl", () => {
     const importBundle = vi.fn(async () => ({
       default: function ShouldNotLoad() {
@@ -686,15 +998,14 @@ describe("DynamicViewLoader", () => {
       },
     }));
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/sandboxed.panel/bundle.js"
         viewId="sandboxed.panel"
         surface={{ isolation: "sandboxed-iframe" }}
       />,
     );
-
     expect(screen.getByText("This view couldn’t open")).toBeTruthy();
     expect(screen.queryByText(/require a frameUrl HTML document/)).toBeNull();
     expect(
@@ -702,7 +1013,6 @@ describe("DynamicViewLoader", () => {
     ).toBeNull();
     expect(importBundle).not.toHaveBeenCalled();
   });
-
   it("registers remote view interact handlers after the bundle loads", async () => {
     const bundleUrl = "https://capability.example.test/assets/interactive.js";
     const interact = vi.fn(async (capability: string) => ({ capability }));
@@ -712,18 +1022,16 @@ describe("DynamicViewLoader", () => {
       },
       interact,
     }));
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="remote.interactive"
         viewType="gui"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
-
     await screen.findByText("Interactive remote panel");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "remote.interactive",
@@ -731,19 +1039,22 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-remote",
+      "fixture-installation",
     );
-
     await waitFor(() => {
       expect(interact).toHaveBeenCalledWith("custom-capability", undefined);
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "remote.interactive",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-remote",
       success: true,
       result: { capability: "custom-capability" },
     });
   });
-
   it("handles standard get-text and get-state capabilities from the mounted DOM", async () => {
     const bundleUrl = "https://capability.example.test/assets/stateful.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -756,10 +1067,14 @@ describe("DynamicViewLoader", () => {
         );
       },
     }));
-
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="window.manager" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="window.manager"
+      />,
+    );
     await screen.findByText("Window manager state");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "window.manager",
@@ -767,6 +1082,7 @@ describe("DynamicViewLoader", () => {
       "get-text",
       undefined,
       "req-text",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "window.manager",
@@ -774,8 +1090,8 @@ describe("DynamicViewLoader", () => {
       "get-state",
       undefined,
       "req-state",
+      "fixture-installation",
     );
-
     expect(sendWsMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: "req-text",
@@ -784,13 +1100,16 @@ describe("DynamicViewLoader", () => {
       }),
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "window.manager",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-state",
       success: true,
       result: { viewId: "window.manager", open: true },
     });
   });
-
   it("falls back to empty state for invalid data-view-state JSON", async () => {
     const bundleUrl = "https://capability.example.test/assets/bad-state.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -798,10 +1117,14 @@ describe("DynamicViewLoader", () => {
         return <div data-view-state="{not-json">Bad state panel</div>;
       },
     }));
-
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="bad.state" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="bad.state"
+      />,
+    );
     await screen.findByText("Bad state panel");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "bad.state",
@@ -809,16 +1132,19 @@ describe("DynamicViewLoader", () => {
       "get-state",
       undefined,
       "req-bad-state",
+      "fixture-installation",
     );
-
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "bad.state",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-bad-state",
       success: true,
       result: {},
     });
   });
-
   it("focuses elements by selector and by name through standard interact", async () => {
     const bundleUrl = "https://capability.example.test/assets/focus.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -833,16 +1159,15 @@ describe("DynamicViewLoader", () => {
         );
       },
     }));
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="focus.view"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
     await screen.findByRole("button", { name: "Create view" });
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await act(async () => {
       await dispatchViewInteract(
@@ -851,12 +1176,12 @@ describe("DynamicViewLoader", () => {
         "focus-element",
         { selector: ".primary-action" },
         "req-focus-selector",
+        "fixture-installation",
       );
     });
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Create view" }),
     );
-
     await act(async () => {
       await dispatchViewInteract(
         "focus.view",
@@ -864,6 +1189,7 @@ describe("DynamicViewLoader", () => {
         "focus-element",
         { name: "view-title" },
         "req-focus-name",
+        "fixture-installation",
       );
     });
     expect(document.activeElement).toBe(screen.getByLabelText("View title"));
@@ -882,7 +1208,6 @@ describe("DynamicViewLoader", () => {
       }),
     );
   });
-
   it("fills inputs and clicks buttons through standard interact against the mounted DOM", async () => {
     const bundleUrl = "https://capability.example.test/assets/form.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -917,16 +1242,15 @@ describe("DynamicViewLoader", () => {
         );
       },
     }));
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="form.view"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
     await screen.findByRole("button", { name: "Save view" });
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await act(async () => {
       await dispatchViewInteract(
@@ -935,10 +1259,10 @@ describe("DynamicViewLoader", () => {
         "fill-input",
         { name: "view-title", value: "Remote Ledger Updated" },
         "req-fill",
+        "fixture-installation",
       );
     });
     expect(screen.getByDisplayValue("Remote Ledger Updated")).toBeTruthy();
-
     await act(async () => {
       await dispatchViewInteract(
         "form.view",
@@ -946,6 +1270,7 @@ describe("DynamicViewLoader", () => {
         "click-element",
         { selector: ".submit-view" },
         "req-click",
+        "fixture-installation",
       );
     });
     await waitFor(() =>
@@ -953,16 +1278,19 @@ describe("DynamicViewLoader", () => {
         "Remote Ledger Updated",
       ),
     );
-
     await dispatchViewInteract(
       "form.view",
       "gui",
       "get-state",
       undefined,
       "req-form-state",
+      "fixture-installation",
     );
-
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill",
       success: true,
@@ -973,12 +1301,20 @@ describe("DynamicViewLoader", () => {
       },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-click",
       success: true,
       result: { clicked: true, selector: ".submit-view" },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-form-state",
       success: true,
@@ -988,7 +1324,6 @@ describe("DynamicViewLoader", () => {
       },
     });
   });
-
   it("reports invalid click and fill requests without mutating the view", async () => {
     const bundleUrl = "https://capability.example.test/assets/form-errors.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -1001,16 +1336,15 @@ describe("DynamicViewLoader", () => {
         );
       },
     }));
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="form.errors.view"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
     await screen.findByDisplayValue("Original");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "form.errors.view",
@@ -1018,6 +1352,7 @@ describe("DynamicViewLoader", () => {
       "click-element",
       { selector: ".missing" },
       "req-click-missing",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "form.errors.view",
@@ -1025,6 +1360,7 @@ describe("DynamicViewLoader", () => {
       "fill-input",
       { selector: ".not-fillable", value: "Changed" },
       "req-fill-not-fillable",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "form.errors.view",
@@ -1032,29 +1368,40 @@ describe("DynamicViewLoader", () => {
       "fill-input",
       { name: "view-title", value: 12 },
       "req-fill-bad-value",
+      "fixture-installation",
     );
-
     expect(screen.getByDisplayValue("Original")).toBeTruthy();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.errors.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-click-missing",
       success: true,
       result: { clicked: false, reason: "element not found" },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.errors.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-not-fillable",
       success: true,
       result: { filled: false, reason: "element is not fillable" },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.errors.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-bad-value",
       success: true,
       result: { filled: false, reason: "value must be a string" },
     });
   });
-
   it("filters a spatial view through the real agent-fill bridge", async () => {
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
       default: function StatusPanel() {
@@ -1077,6 +1424,7 @@ describe("DynamicViewLoader", () => {
     }));
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="https://capability.example.test/assets/status.js"
         viewId="status.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1090,8 +1438,13 @@ describe("DynamicViewLoader", () => {
       "list-elements",
       undefined,
       "req-status-unselected",
+      "fixture-installation",
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "status.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-status-unselected",
       success: true,
@@ -1110,11 +1463,16 @@ describe("DynamicViewLoader", () => {
         "agent-fill",
         { id: "goal-status-filter", value: "Active" },
         "req-status-active",
+        "fixture-installation",
       );
     });
     expect(screen.queryByText("Learn conversational Spanish")).toBeNull();
     expect(screen.getByText("Run a half marathon")).toBeTruthy();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "status.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-status-active",
       success: true,
@@ -1127,12 +1485,12 @@ describe("DynamicViewLoader", () => {
         "agent-fill",
         { id: "goal-status-filter", value: "Paused" },
         "req-status-paused",
+        "fixture-installation",
       );
     });
     expect(screen.queryByText("Run a half marathon")).toBeNull();
     expect(screen.getByText("Learn conversational Spanish")).toBeTruthy();
   });
-
   it("redacts and refuses raw DOM sensitive fields", async () => {
     const bundleUrl = "https://capability.example.test/assets/sensitive.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -1150,16 +1508,15 @@ describe("DynamicViewLoader", () => {
         );
       },
     }));
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="sensitive.view"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
     await screen.findByDisplayValue("existing-secret");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "sensitive.view",
@@ -1167,6 +1524,7 @@ describe("DynamicViewLoader", () => {
       "list-elements",
       undefined,
       "req-list-sensitive",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "sensitive.view",
@@ -1174,6 +1532,7 @@ describe("DynamicViewLoader", () => {
       "agent-fill",
       { id: "owner-password", value: "changed-secret" },
       "req-fill-sensitive-agent",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "sensitive.view",
@@ -1181,10 +1540,14 @@ describe("DynamicViewLoader", () => {
       "fill-input",
       { selector: "[data-agent-id='owner-password']", value: "changed-secret" },
       "req-fill-sensitive-selector",
+      "fixture-installation",
     );
-
     expect(screen.getByDisplayValue("existing-secret")).toBeTruthy();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "sensitive.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-list-sensitive",
       success: true,
@@ -1205,6 +1568,10 @@ describe("DynamicViewLoader", () => {
       );
     expect(JSON.stringify(listCall?.[0])).not.toContain("existing-secret");
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "sensitive.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-sensitive-agent",
       success: true,
@@ -1214,6 +1581,10 @@ describe("DynamicViewLoader", () => {
       }),
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "sensitive.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-sensitive-selector",
       success: true,
@@ -1223,7 +1594,6 @@ describe("DynamicViewLoader", () => {
       }),
     });
   });
-
   it("reports missing focus targets without throwing", async () => {
     const bundleUrl = "https://capability.example.test/assets/missing-focus.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -1231,16 +1601,15 @@ describe("DynamicViewLoader", () => {
         return <div>No inputs here</div>;
       },
     }));
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="missing.focus"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
     await screen.findByText("No inputs here");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "missing.focus",
@@ -1248,16 +1617,19 @@ describe("DynamicViewLoader", () => {
       "focus-element",
       { selector: ".does-not-exist" },
       "req-missing-focus",
+      "fixture-installation",
     );
-
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "missing.focus",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-missing-focus",
       success: true,
       result: { focused: false, reason: "element not found" },
     });
   });
-
   it("standard capabilities take precedence over module interact and refresh re-imports", async () => {
     const bundleUrl = "https://capability.example.test/assets/refresh.js";
     let importCount = 0;
@@ -1271,16 +1643,15 @@ describe("DynamicViewLoader", () => {
         interact,
       };
     });
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="refresh.view"
         surface={AGENT_SURFACE_MANIFEST}
       />,
     );
     await screen.findByText("Refresh version 1");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await act(async () => {
       await dispatchViewInteract(
@@ -1289,19 +1660,22 @@ describe("DynamicViewLoader", () => {
         "refresh",
         undefined,
         "req-refresh",
+        "fixture-installation",
       );
     });
-
     await screen.findByText("Refresh version 2");
     expect(interact).not.toHaveBeenCalled();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "refresh.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-refresh",
       success: true,
       result: { refreshed: true },
     });
   });
-
   it("polls bundle HEAD in dev mode and reloads when the ETag changes", async () => {
     vi.useFakeTimers();
     async function flushViewLoader() {
@@ -1311,7 +1685,6 @@ describe("DynamicViewLoader", () => {
         await Promise.resolve();
       });
     }
-
     const bundleUrl = `${window.location.origin}/assets/hmr.js`;
     const cleanupVersion1 = vi.fn();
     const interactVersion1 = vi.fn(async () => ({ version: 1 }));
@@ -1337,9 +1710,9 @@ describe("DynamicViewLoader", () => {
         ok: true,
         headers: { get: (name: string) => (name === "etag" ? "v2" : null) },
       });
-
     const rendered = render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="hmr.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1347,7 +1720,6 @@ describe("DynamicViewLoader", () => {
     );
     await flushViewLoader();
     expect(screen.getByText("HMR version 1")).toBeTruthy();
-
     await act(async () => {
       vi.advanceTimersByTime(2000);
       await Promise.resolve();
@@ -1359,20 +1731,17 @@ describe("DynamicViewLoader", () => {
       { allowNonOk: true },
     );
     expect(screen.getByText("HMR version 1")).toBeTruthy();
-
     await act(async () => {
       vi.advanceTimersByTime(2000);
       await Promise.resolve();
       await Promise.resolve();
     });
     await flushViewLoader();
-
     expect(screen.getByText("HMR version 2")).toBeTruthy();
     expect(cleanupVersion1).toHaveBeenCalledTimes(1);
     expect(window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__).toHaveBeenCalledTimes(
       2,
     );
-
     sendWsMessage.mockClear();
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
@@ -1381,6 +1750,7 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-hmr-interact",
+      "fixture-installation",
     );
     expect(interactVersion2).toHaveBeenCalledWith(
       "custom-capability",
@@ -1388,12 +1758,15 @@ describe("DynamicViewLoader", () => {
     );
     expect(interactVersion1).not.toHaveBeenCalled();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "hmr.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-hmr-interact",
       success: true,
       result: { version: 2 },
     });
-
     rawRequest.mockClear();
     rendered.unmount();
     await act(async () => {
@@ -1402,14 +1775,12 @@ describe("DynamicViewLoader", () => {
     });
     expect(rawRequest).not.toHaveBeenCalled();
   });
-
   it("unregisters the previous interact handler when the loaded view is replaced", async () => {
     const cleanupFirst = vi.fn();
     const firstInteract = vi.fn(async () => ({ version: "first" }));
     const secondInteract = vi.fn(async () => ({ version: "second" }));
     const firstUrl = "https://capability.example.test/assets/first.js";
     const secondUrl = "https://capability.example.test/assets/second.js";
-
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async (url) => {
       if (url === firstUrl) {
         return {
@@ -1427,9 +1798,9 @@ describe("DynamicViewLoader", () => {
         interact: secondInteract,
       };
     });
-
     const rendered = render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={firstUrl}
         viewId="replace.first"
         viewType="gui"
@@ -1437,9 +1808,9 @@ describe("DynamicViewLoader", () => {
       />,
     );
     await screen.findByText("First dynamic panel");
-
     rendered.rerender(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={secondUrl}
         viewId="replace.second"
         viewType="gui"
@@ -1447,7 +1818,6 @@ describe("DynamicViewLoader", () => {
       />,
     );
     await screen.findByText("Second dynamic panel");
-
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
       "replace.first",
@@ -1455,6 +1825,7 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-old-view",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "replace.second",
@@ -1462,8 +1833,8 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-new-view",
+      "fixture-installation",
     );
-
     expect(firstInteract).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(secondInteract).toHaveBeenCalledWith(
@@ -1477,37 +1848,41 @@ describe("DynamicViewLoader", () => {
       }),
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "replace.second",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-new-view",
       success: true,
       result: { version: "second" },
     });
     expect(cleanupFirst).not.toHaveBeenCalled();
-
     window.dispatchEvent(new Event("memorypressure"));
     await waitFor(() => expect(cleanupFirst).toHaveBeenCalledTimes(1));
   });
-
   it("renders the error state when a bundle does not export a component", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     const bundleUrl = "https://capability.example.test/assets/no-component.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
       default: "not a component",
     }));
-
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="broken.view" />);
-
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="broken.view"
+      />,
+    );
     await screen.findByText("This view couldn’t open");
     expect(screen.queryByText("View ID: broken.view")).toBeNull();
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
+    expect(diagnosticError).toHaveBeenCalledWith(
+      expect.anything(),
       expect.stringContaining("[RendererDiagnostic] dynamic-view.load"),
     );
   });
-
   it("shows the recoverable card (never a blank screen) when the bundle import rejects, and Retry re-imports", async () => {
     // Mode 1: a rejected dynamic import (bundle 404 / network / fetch error)
     // must land on the same plain-language recovery card with a working Retry —
@@ -1528,11 +1903,13 @@ describe("DynamicViewLoader", () => {
         },
       };
     });
-
     const { container } = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="network.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="network.view"
+      />,
     );
-
     const retry = await screen.findByRole("button", { name: /retry/i });
     // The actual card is in the DOM (not an empty container).
     expect(screen.getByText("This view couldn’t open")).toBeTruthy();
@@ -1541,11 +1918,9 @@ describe("DynamicViewLoader", () => {
       screen.queryByText("Failed to fetch dynamically imported module"),
     ).toBeNull();
     expect(container.textContent).not.toBe("");
-
     await act(async () => {
       retry.click();
     });
-
     // Retry actually re-attempts the import — the fixed bundle mounts.
     await screen.findByText("Network recovered v2");
     expect(screen.queryByText("This view couldn’t open")).toBeNull();
@@ -1554,7 +1929,6 @@ describe("DynamicViewLoader", () => {
     );
     consoleError.mockRestore();
   });
-
   it("recovers a view that crashes at render when Retry re-imports a fixed bundle", async () => {
     // A render crash must not latch the ErrorBoundary forever: clicking Retry
     // evicts the cached module, bumps reloadKey (which re-keys the boundary so
@@ -1576,24 +1950,25 @@ describe("DynamicViewLoader", () => {
         },
       };
     });
-
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="crashy.view" />);
-
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="crashy.view"
+      />,
+    );
     // First import renders a component that throws → ErrorBoundary fallback.
     const retry = await screen.findByRole("button", { name: /retry/i });
     expect(screen.getByText("This view couldn’t open")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /back to views/i })).toBeNull();
-
     await act(async () => {
       retry.click();
     });
-
     // Second import returns a component that renders cleanly.
     await screen.findByText("Recovered panel v2");
     expect(screen.queryByText("This view couldn’t open")).toBeNull();
     consoleError.mockRestore();
   });
-
   it("keeps a launcher escape action when fullscreen chrome owns no back button", async () => {
     const consoleError = vi
       .spyOn(console, "error")
@@ -1601,22 +1976,20 @@ describe("DynamicViewLoader", () => {
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
       throw new Error("fullscreen bundle unavailable");
     });
-
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="https://capability.example.test/assets/fullscreen-fail.js"
         viewId="fullscreen.view"
         surface={{ header: "fullscreen" }}
       />,
     );
-
     expect(
       await screen.findByRole("button", { name: /back to views/i }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
     consoleError.mockRestore();
   });
-
   it("retains inactive bundles after unmount and cleans them up under pressure", async () => {
     const bundleUrl = "https://capability.example.test/assets/cleanup.js";
     const cleanupBundle = vi.fn(() => {
@@ -1628,18 +2001,19 @@ describe("DynamicViewLoader", () => {
       },
       cleanup: cleanupBundle,
     }));
-
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="cleanup.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="cleanup.view"
+      />,
     );
     await screen.findByText("Cleanup panel");
-
     expect(() => rendered.unmount()).not.toThrow();
     expect(cleanupBundle).not.toHaveBeenCalled();
     window.dispatchEvent(new Event("memorypressure"));
     await waitFor(() => expect(cleanupBundle).toHaveBeenCalledTimes(1));
   });
-
   it("retains then evicts a bundle that resolves after the loader has unmounted", async () => {
     const bundleUrl = "https://capability.example.test/assets/late.js";
     const cleanupLateBundle = vi.fn();
@@ -1652,16 +2026,18 @@ describe("DynamicViewLoader", () => {
           resolveImport = resolve;
         }),
     );
-
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="late.cleanup.view"
+      />,
     );
     expect(
       screen
         .getByText("Loading view…")
         .closest('[role="status"][aria-busy="true"]'),
     ).toBeTruthy();
-
     rendered.unmount();
     expect(resolveImport).toBeTruthy();
     act(() => {
@@ -1672,13 +2048,11 @@ describe("DynamicViewLoader", () => {
         cleanup: cleanupLateBundle,
       });
     });
-
     await waitFor(() => expect(cleanupLateBundle).not.toHaveBeenCalled());
     window.dispatchEvent(new Event("memorypressure"));
     await waitFor(() => expect(cleanupLateBundle).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("Late panel")).toBeNull();
   });
-
   it("cleans up a pending bundle that is evicted before import resolution", async () => {
     const bundleUrl = "https://capability.example.test/assets/late-pressure.js";
     const cleanupLateBundle = vi.fn();
@@ -1691,13 +2065,15 @@ describe("DynamicViewLoader", () => {
           resolveImport = resolve;
         }),
     );
-
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.pressure.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="late.pressure.view"
+      />,
     );
     rendered.unmount();
     window.dispatchEvent(new Event("memorypressure"));
-
     act(() => {
       resolveImport?.({
         default: function LatePressurePanel() {
@@ -1706,11 +2082,9 @@ describe("DynamicViewLoader", () => {
         cleanup: cleanupLateBundle,
       });
     });
-
     await waitFor(() => expect(cleanupLateBundle).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("Late pressure panel")).toBeNull();
   });
-
   it("evicts inactive bundles on app pause and emits cache telemetry", async () => {
     const bundleUrl = "https://capability.example.test/assets/pause.js";
     const cleanupBundle = vi.fn();
@@ -1725,59 +2099,60 @@ describe("DynamicViewLoader", () => {
       },
       cleanup: cleanupBundle,
     }));
-
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="pause.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="pause.view"
+      />,
     );
     await screen.findByText("Pause panel");
     rendered.unmount();
-
     document.dispatchEvent(new Event(APP_PAUSE_EVENT));
     await waitFor(() => expect(cleanupBundle).toHaveBeenCalledTimes(1));
     window.removeEventListener(MODULE_CACHE_TELEMETRY_EVENT, onTelemetry);
-
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: "dynamic-view",
           action: "load",
-          key: `${bundleUrl}::default`,
+          key: `${bundleUrl}::default::fixture-installation`,
         }),
         expect.objectContaining({
           source: "dynamic-view",
           action: "evict",
           reason: "app-pause",
-          key: `${bundleUrl}::default`,
+          key: `${bundleUrl}::default::fixture-installation`,
         }),
         expect.objectContaining({
           source: "dynamic-view",
           action: "cleanup",
           reason: "app-pause",
-          key: `${bundleUrl}::default`,
+          key: `${bundleUrl}::default::fixture-installation`,
         }),
       ]),
     );
   });
-
   it("removes global lifecycle listeners when the dynamic-view cache is reset", async () => {
     const bundleUrl = "https://capability.example.test/assets/listeners.js";
     const addWindowListener = vi.spyOn(window, "addEventListener");
     const removeWindowListener = vi.spyOn(window, "removeEventListener");
     const addDocumentListener = vi.spyOn(document, "addEventListener");
     const removeDocumentListener = vi.spyOn(document, "removeEventListener");
-
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
       default: function ListenerPanel() {
         return <div>Listener panel</div>;
       },
     }));
-
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="listener.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="listener.view"
+      />,
     );
     await screen.findByText("Listener panel");
     rendered.unmount();
-
     const memoryPressureHandler = addWindowListener.mock.calls.find(
       ([name]) => name === "memorypressure",
     )?.[1];
@@ -1787,13 +2162,10 @@ describe("DynamicViewLoader", () => {
     const appPauseHandler = addDocumentListener.mock.calls.find(
       ([name]) => name === APP_PAUSE_EVENT,
     )?.[1];
-
     expect(memoryPressureHandler).toEqual(expect.any(Function));
     expect(visibilityHandler).toEqual(expect.any(Function));
     expect(appPauseHandler).toEqual(expect.any(Function));
-
     __resetDynamicViewLoaderCacheForTests();
-
     expect(removeWindowListener).toHaveBeenCalledWith(
       "memorypressure",
       memoryPressureHandler,
@@ -1806,5 +2178,75 @@ describe("DynamicViewLoader", () => {
       APP_PAUSE_EVENT,
       appPauseHandler,
     );
+  });
+  it("loads a replacement installation before admitting its interactions at the same URL", async () => {
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    const effects = [vi.fn(async () => "old"), vi.fn(async () => "new")];
+    let resume!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let loads = 0;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
+      const generation = loads++;
+      if (generation === 1) await paused;
+      return {
+        default: () => <div>Installation {generation}</div>,
+        interact: effects[generation],
+      };
+    });
+    const props = {
+      bundleUrl: "/api/views/reloaded/bundle.js",
+      viewId: "reloaded",
+      surface: AGENT_SURFACE_MANIFEST,
+    };
+    const mounted = render(
+      <DynamicViewLoader {...props} installationId="old" />,
+    );
+    try {
+      await screen.findByText("Installation 0");
+      mounted.rerender(<DynamicViewLoader {...props} installationId="new" />);
+      await waitFor(() => expect(loads).toBe(2));
+      await dispatchViewInteract(
+        "reloaded",
+        "gui",
+        "save",
+        {},
+        "before-load",
+        "new",
+      );
+      expect(effects[0]).not.toHaveBeenCalled();
+      expect(effects[1]).not.toHaveBeenCalled();
+      await act(async () => resume());
+      await screen.findByText("Installation 1");
+      await dispatchViewInteract(
+        "reloaded",
+        "gui",
+        "save",
+        {},
+        "retired-request",
+        "old",
+      );
+      await dispatchViewInteract(
+        "reloaded",
+        "gui",
+        "save",
+        {},
+        "current-request",
+        "new",
+      );
+      expect(effects[0]).not.toHaveBeenCalled();
+      expect(effects[1]).toHaveBeenCalledTimes(1);
+      expect(sendWsMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installationId: "new",
+          requestId: "current-request",
+          result: "new",
+        }),
+      );
+    } finally {
+      resume();
+      mounted.unmount();
+    }
   });
 });

@@ -7,23 +7,21 @@
 import type { TriggerConfig, TriggerRunRecord } from "@elizaos/core";
 
 export {
+  type CreateTriggerRequest,
   type PromptTriggerConfig,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
+  type TriggerHealthSnapshot,
   type TriggerKind,
   type TriggerLastStatus,
   type TriggerRunRecord,
+  type TriggerSummary,
+  type TriggerTaskMetadata as TriggerTaskMetadataBase,
   type TriggerType,
   type TriggerWakeMode,
+  type UpdateTriggerRequest,
   type WorkflowTriggerConfig,
 } from "@elizaos/core";
-export type {
-  CreateTriggerRequest,
-  TriggerHealthSnapshot,
-  TriggerSummary,
-  TriggerTaskMetadata as TriggerTaskMetadataBase,
-  UpdateTriggerRequest,
-} from "@elizaos/shared";
 
 export interface TriggerTaskMetadata {
   updatedAt?: number;

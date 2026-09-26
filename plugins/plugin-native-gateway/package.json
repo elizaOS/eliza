@@ -13,9 +13,8 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
@@ -49,9 +48,9 @@
     "format:check": "bunx @biomejs/biome format .",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-gateway -- bun run build:unlocked",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-gateway -- bun run build:unlocked",
     "build:docs": "bun run clean && bun run docgen && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "vitest run",
     "watch": "tsc6 --watch",
     "prepublishOnly": "bun run build",
@@ -59,14 +58,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
-    "rollup": "^4.62.4",
+    "rollup": "^4.63.4",
     "swiftlint": "^2.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

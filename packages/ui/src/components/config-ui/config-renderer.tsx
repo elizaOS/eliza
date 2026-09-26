@@ -582,7 +582,9 @@ export const ConfigRenderer = forwardRef<
   if (!schema) {
     return (
       <div className="text-xs text-muted italic py-3">
-        {tFn("config-renderer.NoSchemaProvided")}
+        {tFn("config-renderer.NoSchemaProvided", {
+          defaultValue: "Configuration settings are unavailable.",
+        })}
       </div>
     );
   }
@@ -690,7 +692,7 @@ function ConfigProgressText({
           defaultValue: "required fields configured",
         })}
       </span>
-      <span className="text-xs-tight text-muted">
+      <span className="text-xs-tight text-muted-strong">
         {configProgress.configured}/{configProgress.total}{" "}
         {t("config-renderer.total", { defaultValue: "total" })}
       </span>

@@ -45,10 +45,11 @@
  * down (the background layer is mounted once at the shell root for the whole
  * session).
  */
-
-import type { BackgroundConfig } from "../state/ui-preferences";
-import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
+import {
+  type BackgroundConfig,
+  DEFAULT_BACKGROUND_COLOR,
+} from "../state/ui-preferences";
+import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url.js";
 
 /**
  * Resolve a wallpaper `imageUrl` into one reachable from the renderer in every
@@ -73,7 +74,6 @@ function resolveWallpaperUrl(url: string): string {
   }
   return resolveAppAssetUrl(url);
 }
-
 /** What to write onto the root element's background to drive the canvas paint. */
 export interface RootCanvasPaint {
   /** `background-image` value (a `url("…")`) when an image wallpaper is active. */
@@ -83,7 +83,6 @@ export interface RootCanvasPaint {
    *  canvas never falls back to the near-black launch-bg. */
   backgroundColor: string;
 }
-
 export interface RootCanvasPaintOptions {
   /**
    * True while the native shell hosts the image wallpaper below the WebView
@@ -95,7 +94,6 @@ export interface RootCanvasPaintOptions {
    */
   nativeImageHosted?: boolean;
 }
-
 /**
  * Compute the root-canvas paint for a background config.
  *
@@ -116,7 +114,6 @@ export function computeRootCanvasPaint(
     config && typeof config.color === "string" && config.color.length > 0
       ? config.color
       : DEFAULT_BACKGROUND_COLOR;
-
   if (config?.mode === "image" && config.imageUrl) {
     // Native-hosted: the wallpaper lives BELOW the WebView, so every canvas
     // layer must be transparent — mirroring the image here would paint an
@@ -129,11 +126,9 @@ export function computeRootCanvasPaint(
       backgroundColor: baseColor,
     };
   }
-
   // shader / glsl / color, or a malformed/empty config: no image to mirror.
   return { backgroundImage: null, backgroundColor: baseColor };
 }
-
 /**
  * Apply the computed paint onto `document.documentElement` as INLINE styles.
  * Inline wins over the `:root { --launch-bg }` stylesheet rule by specificity,
@@ -154,7 +149,6 @@ export function applyRootCanvasPaint(
   if (typeof document === "undefined") return paint;
   const root = document.documentElement;
   if (!root) return paint;
-
   // body/#root also carry the launch-bg fill; the class rule (styles.css)
   // clears them in lockstep with the inline canvas paint below.
   root.classList.toggle(
@@ -163,7 +157,6 @@ export function applyRootCanvasPaint(
       options?.nativeImageHosted && config?.mode === "image" && config.imageUrl,
     ),
   );
-
   root.style.backgroundColor = paint.backgroundColor;
   if (paint.backgroundImage) {
     root.style.backgroundImage = paint.backgroundImage;

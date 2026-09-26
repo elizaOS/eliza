@@ -11,7 +11,8 @@
  * `NATIVE_TOOL_NAME_PATTERN` or conversion throws.
  */
 import { ElizaError } from "../errors";
-import type { Action } from "../types";
+import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context";
+import type { Action } from "../types/components.js";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
 	type ActionParametersJsonSchema,
@@ -36,6 +37,19 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * The model picks the action by name and calls it directly.
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
+
+/** Reserved planner protocol for loading authorized schemas without domain effects. */
+export const DISCOVER_ACTIONS_NAME = "DISCOVER_ACTIONS" as const;
+/** Legacy discovery name retained as the canonical action's declared simile. */
+export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
+
+/** Recognize current and persisted legacy planner discovery calls. */
+export function isDiscoveryActionName(name: string): boolean {
+	const normalized = name.trim().toUpperCase();
+	return (
+		normalized === DISCOVER_ACTIONS_NAME || normalized === DISCOVER_TOOLS_NAME
+	);
+}
 
 /** Shared should-respond contract for static and registry-composed schemas. */
 export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =
@@ -62,11 +76,13 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			description:
 				"Context ids from available_contexts. 'simple'=direct reply, no planner.",
 		},
+		contextRequests: { type: "array", items: { type: "string" } },
 		intents: {
 			type: "array",
 			items: { type: "string" },
 			description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
 		},
+		completionContext: COMPLETION_CONTEXT_SCHEMA,
 		replyText: {
 			type: "string",
 			description:
@@ -76,7 +92,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome with no work remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
 		},
 		candidateActionNames: {
 			type: "array",
@@ -133,7 +149,9 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 	required: [
 		"shouldRespond",
 		"contexts",
+		"contextRequests",
 		"intents",
+		"completionContext",
 		"replyText",
 		"replyEffectStatus",
 		"candidateActionNames",
@@ -165,10 +183,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, contextRequests, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, contextRequests, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /
@@ -370,8 +388,9 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 	/**
 	 * Expand registered child actions into first-class native tools. Defaults to
 	 * true. A caller may disable expansion only when it still exposes every
-	 * authorized umbrella parent and keeps explicit turn candidates direct; the
-	 * parent schema remains the lossless dispatch surface for its children.
+	 * authorized umbrella parent and keeps independently implemented children
+	 * direct; the parent schema plus its alias contracts remain the lossless
+	 * dispatch surface for its promoted children.
 	 */
 	expandSubActions?: boolean;
 }

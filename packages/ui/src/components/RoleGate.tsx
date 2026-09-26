@@ -9,7 +9,8 @@
  *   <RoleGate minRole="OWNER"><WalletPanel /></RoleGate>
  */
 
-import { type RoleGateRole, satisfiesRoleGate } from "@elizaos/core";
+import type { RoleGateRole } from "@elizaos/core";
+import { satisfiesRoleGate } from "@elizaos/core/access-control/role-primitives";
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRole } from "../hooks/useRole.tsx";
@@ -53,7 +54,7 @@ export function OwnerOnlyNotice({
   return (
     <Card variant="insetPadded" flow="row" gap="compact">
       <Lock className="size-3.5 shrink-0" aria-hidden />
-      <span className="text-xs text-muted">{message}</span>
+      <span className="text-xs text-muted-strong">{message}</span>
     </Card>
   );
 }

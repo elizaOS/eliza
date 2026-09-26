@@ -34,7 +34,7 @@ import {
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 import { shutdownRuntime } from "../src/runtime/eliza.ts";
 import {
@@ -66,9 +66,12 @@ export async function finalizeBenchmarkReport<
     report: Omit<T, "status"> & {
       status: "success" | "failed";
       teardown: BenchmarkTeardown;
+      finalization: BenchmarkTeardown;
     },
   ) => Promise<void>,
+  finalize?: (report: T) => void,
 ): Promise<void> {
+  let finalizationFailure: ElizaError | null = null;
   let failure: ElizaError | null = null;
   try {
     await shutdown();
@@ -79,9 +82,27 @@ export async function finalizeBenchmarkReport<
       cause,
     });
   }
+  try {
+    finalize?.(report);
+  } catch (cause) {
+    // error-policy:J1 Publish all settled observations before rejecting invalid final evidence.
+    finalizationFailure = new ElizaError(
+      "Benchmark final evidence validation failed",
+      {
+        code: "BENCHMARK_FINALIZATION_FAILED",
+        cause,
+      },
+    );
+  }
   await publish({
     ...report,
-    status: failure ? "failed" : report.status,
+    status: failure || finalizationFailure ? "failed" : report.status,
+    finalization: {
+      status: finalizationFailure ? "failed" : "success",
+      error: finalizationFailure
+        ? `${finalizationFailure.message}: ${finalizationFailure.cause instanceof Error ? finalizationFailure.cause.message : String(finalizationFailure.cause)}`
+        : null,
+    },
     teardown: {
       status: failure ? "failed" : "success",
       error: failure
@@ -90,6 +111,42 @@ export async function finalizeBenchmarkReport<
     },
   });
   if (failure) throw failure;
+  if (finalizationFailure) throw finalizationFailure;
+}
+
+/** Account for the complete settled wire inventory before validating its cache policy. */
+export function finalizeBenchmarkWireEvidence<
+  T extends { status: "success" | "failed" },
+>(
+  report: T,
+  evidence: readonly ProviderWireEvidence[],
+  mode: CacheExperimentMode,
+  keyCapabilityConfirmed: boolean,
+): void {
+  const wireEvidence = [...evidence];
+  const cacheExperiment: {
+    mode: CacheExperimentMode;
+    keyCapabilityConfirmed: boolean;
+    validatedWireRequests: number | null;
+  } = {
+    mode,
+    keyCapabilityConfirmed,
+    validatedWireRequests: null,
+  };
+  Object.assign(report, {
+    wireEvidence,
+    wireAttemptStats: {
+      total: wireEvidence.length,
+      http429: wireEvidence.filter((wire) => wire.status === 429).length,
+      transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
+        .length,
+    },
+    cacheExperiment,
+  });
+  cacheExperiment.validatedWireRequests = verifyCacheExperimentWire(
+    wireEvidence,
+    mode,
+  );
 }
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
   ".ts",
@@ -111,13 +168,12 @@ const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
-  "packages/logger/src",
-  "packages/prompts/src",
-  "packages/registry/src",
-  "packages/shared/src",
-  "packages/vault/src",
+  "plugins/plugin-assistant/src/prompts",
+  "packages/core/src/catalog",
+  "packages/core/src",
+  "packages/auth/src/vault",
   "plugins/plugin-aosp-local-inference/src",
-  "plugins/plugin-capacitor-bridge/src",
+  "plugins/plugin-native-inference/src",
   "plugins/plugin-local-inference/src",
   "plugins/plugin-openai",
   "plugins/plugin-sql/src",
@@ -132,7 +188,7 @@ const IGNORED_SOURCE_ARTIFACT_SEGMENTS = new Set([
 ]);
 const GENERATED_SOURCE_OUTPUT_PATHS = [
   "packages/core/src/i18n/generated",
-  "packages/shared/src/i18n/generated",
+  "packages/core/src/i18n/generated",
 ] as const;
 
 export interface Distribution {
@@ -217,6 +273,7 @@ export interface BenchmarkTurnObservation<T> {
     | "post-delivery"
     | "usage-validation"
     | "persistence-validation"
+    | "behavior-validation"
     | "complete";
   elapsedMs: number | null;
   observedIdleMs: number | null;
@@ -227,6 +284,7 @@ export interface BenchmarkTurnObservation<T> {
   output: string | null;
   streamedOutput: string;
   persistedResponse: PersistedTurnResponse | null;
+  behavior: "not-evaluated" | "passed" | "failed";
   receipt: T | null;
   error: string | null;
 }
@@ -251,6 +309,7 @@ export async function observeBenchmarkTurn<T>(
     output: null,
     streamedOutput: "",
     persistedResponse: null,
+    behavior: "not-evaluated",
     receipt: null,
     error: null,
   };
@@ -590,6 +649,57 @@ export function verifyProofResponse(response: string, proof: string): void {
       `Live model response did not contain the requested proof ${proof}: ${JSON.stringify(response)}`,
     );
   }
+}
+
+/** Validate the explicit exact-reference task after preserving the complete delivered record. */
+export function verifyBenchmarkBehavior<T>(
+  observation: BenchmarkTurnObservation<T>,
+): void {
+  observation.stage = "behavior-validation";
+  const persisted = observation.persistedResponse;
+  if (
+    !persisted ||
+    persisted.text !== observation.output ||
+    observation.streamedOutput !== observation.output
+  ) {
+    throw new Error(
+      "Behavior validation requires matching returned, streamed and persisted responses",
+    );
+  }
+  observation.behavior =
+    observation.output?.trim() === observation.context.proof
+      ? "passed"
+      : "failed";
+  if (observation.behavior === "failed") {
+    throw new Error(
+      `Exact-reference behavior failed: ${JSON.stringify({ proof: observation.context.proof, response: observation.output })}`,
+    );
+  }
+}
+
+/** Report measured task compliance independently from proof-token and transport integrity. */
+export function benchmarkBehaviorSummary<T>(
+  observations: BenchmarkTurnObservation<T>[],
+) {
+  const samples = observations.filter(
+    (observation) => observation.context.phase === "sample",
+  );
+  const passed = samples.filter(
+    (observation) => observation.behavior === "passed",
+  ).length;
+  const failed = samples.filter(
+    (observation) => observation.behavior === "failed",
+  ).length;
+  return {
+    contract: "exact-reference-v1",
+    scope:
+      "Measured samples must answer with only the exact reference, ignoring surrounding whitespace; this does not certify general conversational behavior",
+    passed,
+    failed,
+    notEvaluated: samples.length - passed - failed,
+    errorRatePercent:
+      passed + failed === 0 ? null : (100 * failed) / (passed + failed),
+  };
 }
 
 export function verifyExactResponseParity(
@@ -983,9 +1093,7 @@ async function main(): Promise<void> {
       fixture?: { proof: string; prompt: string },
     ) => {
       const proof = fixture?.proof ?? `SPEED-${warmup ? "W" : "S"}-${index}`;
-      const prompt =
-        fixture?.prompt ??
-        `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
+      const prompt = `${fixture?.prompt ?? `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`} Reply with only the exact reference, without commentary, quotes, or formatting.`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
@@ -1141,6 +1249,7 @@ async function main(): Promise<void> {
               )}`,
             );
           }
+          verifyBenchmarkBehavior(observation);
           lastRoomCompletion.set(turnRoomId, performance.now());
           return {
             index,
@@ -1452,10 +1561,6 @@ async function main(): Promise<void> {
       }
     }
     runStage = "wire-verification";
-    const validatedWireRequests = verifyCacheExperimentWire(
-      wireEvidence,
-      cacheMode,
-    );
     const report = {
       status: "success" as const,
       turnObservations,
@@ -1467,11 +1572,6 @@ async function main(): Promise<void> {
       reasoningEffort:
         process.env.OPENAI_REASONING_EFFORT?.trim() || "provider-default",
       embedding: { ...embedding, nativeProvenance },
-      cacheExperiment: {
-        mode: cacheMode,
-        keyCapabilityConfirmed,
-        validatedWireRequests,
-      },
       workload: {
         condition,
         requestedIdleMs: idleMs,
@@ -1480,7 +1580,8 @@ async function main(): Promise<void> {
       },
       errorRatePercent: 0,
       errorRateScope:
-        "All samples passed; any failure aborts this command and cannot produce a successful report",
+        "All measured samples passed transport, persistence, proof-token integrity and the explicit exact-reference task; this is not a general behavioral error rate",
+      behavior: benchmarkBehaviorSummary(turnObservations),
       wireEvidence,
       modelExecutions,
       path: {
@@ -1514,12 +1615,6 @@ async function main(): Promise<void> {
         "generateChatResponse command return including its room post-delivery drain",
       backgroundQuiescenceBoundary:
         "additional residual drain after generateChatResponse already drained room tasks",
-      wireAttemptStats: {
-        total: wireEvidence.length,
-        http429: wireEvidence.filter((wire) => wire.status === 429).length,
-        transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
-          .length,
-      },
       backgroundQuiescenceMs: distribution(
         turns.map((turn) => turn.backgroundQuiescenceMs),
       ),
@@ -1577,6 +1672,7 @@ async function main(): Promise<void> {
       requestedSamples: sampleCount,
       requestedWarmups: warmupCount,
       requestedIdleMs: idleMs,
+      behavior: benchmarkBehaviorSummary(turnObservations),
       failedStage: runStage,
       elapsedMs: rounded(performance.now() - runStartedAt),
       error: error instanceof Error ? error.message : String(error),
@@ -1597,6 +1693,13 @@ async function main(): Promise<void> {
             });
           process.stdout.write(json);
         },
+        (report) =>
+          finalizeBenchmarkWireEvidence(
+            report,
+            wireEvidence,
+            cacheMode,
+            keyCapabilityConfirmed,
+          ),
       );
     } finally {
       globalThis.fetch = originalFetch;

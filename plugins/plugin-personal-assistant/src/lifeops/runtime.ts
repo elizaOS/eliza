@@ -66,6 +66,9 @@ export async function executeLifeOpsSchedulerTask(
   scheduledTaskCompletionTimeouts: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["scheduledTaskCompletionTimeouts"];
+  sleepCycleCheckins: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["sleepCycleCheckins"];
   subsystemFailures: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["subsystemFailures"];
@@ -161,9 +164,33 @@ export async function executeLifeOpsSchedulerTask(
     scheduledTaskFires: scheduledWork.scheduledTaskFires,
     scheduledTaskCompletionTimeouts:
       scheduledWork.scheduledTaskCompletionTimeouts,
+    sleepCycleCheckins: scheduledWork.sleepCycleCheckins,
     subsystemFailures,
     householdGrantWarningReceipts,
   };
+}
+
+/** Runs only the production reminder-delivery processor for focused harnesses. */
+export async function executeLifeOpsReminderTask(
+  runtime: IAgentRuntime,
+  options: { now?: string; limit?: number } = {},
+): Promise<Awaited<ReturnType<LifeOpsService["processReminders"]>>> {
+  const service = new LifeOpsService(runtime);
+  const request = { ...options, scope: "definitions" as const };
+  try {
+    return await service.processReminders(request);
+  } catch (error) {
+    // The focused entrypoint can be the first LifeOps work invoked after
+    // startup, so it preserves the scheduler worker's migration retry.
+    if (!isMissingLifeOpsRelationError(error)) {
+      throw error;
+    }
+    logger.warn(
+      "[lifeops-reminders] LifeOps schema not ready; running plugin migrations and retrying reminder tick",
+    );
+    await rerunLifeOpsPluginMigrations(runtime);
+    return service.processReminders(request);
+  }
 }
 
 export function registerLifeOpsTaskWorker(

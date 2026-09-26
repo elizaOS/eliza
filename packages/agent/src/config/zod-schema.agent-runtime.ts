@@ -9,7 +9,7 @@
  * agent). `.strict()` throughout, so unknown keys surface as validation errors.
  */
 
-import { parseDurationMs } from "@elizaos/shared";
+import { parseDurationMs } from "@elizaos/core";
 import * as zod from "zod";
 import {
   BlockStreamingChunkSchema,
@@ -205,6 +205,10 @@ const makeToolPolicySchema = (scope: string) =>
     validateToolPolicyConflict(scope, value, ctx);
   });
 
+// `provider`, `apiKey` and `perplexity` are retired: WEB_SEARCH is keyless and
+// no runtime path reads them. They stay accepted so an existing config file
+// that still carries them keeps validating; the settings surface no longer
+// offers them.
 export const ToolsWebSearchSchema = z
   .object({
     enabled: z.boolean().optional(),

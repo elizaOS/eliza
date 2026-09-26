@@ -1,7 +1,8 @@
 /**
- * WEB_SEARCH — keyless inline general web search.
+ * WEB_SEARCH — owner-selected browser search with keyless provider fallback.
  *
- * Queries the keyless Parallel.ai search MCP (with an Exa fallback) — the same
+ * Searches in the agent’s selected Chromium profile when available. Otherwise
+ * queries the keyless Parallel.ai search MCP — the same
  * backends the bundled opencode `websearch` tool uses — but INLINE this turn,
  * with no coding sub-agent spawn. Gives every runtime a fast, general web
  * search ("find me X", "latest on Y", "best Z", "who/what/where is …") that
@@ -20,17 +21,16 @@
  * @module runtime/actions/web-search
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  searchKeylessWeb,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
-const DEFAULT_NUM_RESULTS = 6;
+import { searchBrowserFirstWeb } from "@elizaos/plugin-web-search/browser-web-search";
 
 function readBooleanEnv(name: string): boolean | undefined {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -63,7 +63,6 @@ export function isWebSearchEnabled(): boolean {
 
 interface WebSearchParams {
   query?: string;
-  numResults?: number;
 }
 
 function readParams(options: unknown): WebSearchParams {
@@ -71,25 +70,11 @@ function readParams(options: unknown): WebSearchParams {
     ?.parameters;
   if (!params || typeof params !== "object") return {};
   const query = params.query ?? params.q ?? params.objective;
-  const rawNum = params.numResults ?? params.num_results;
-  const n =
-    typeof rawNum === "number"
-      ? rawNum
-      : Number.parseInt(String(rawNum ?? ""), 10);
   return {
     query: typeof query === "string" ? query.trim() : undefined,
-    numResults: Number.isFinite(n) && n > 0 ? Math.min(n, 10) : undefined,
   };
 }
 
-/**
- * Extract the human-readable result text from an MCP `tools/call` response. The
- * body is either a JSON-RPC object or an SSE stream of `data:` lines; both wrap
- * the payload at `result.content[].text`. A JSON-RPC `error` envelope or a
- * tool-level `result.isError` is treated as a failure (returns undefined) — NOT
- * mistaken for a search result — so the caller falls back to the other provider
- * instead of handing the model an error string as if it were results.
- */
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
   similes: [
@@ -123,31 +108,18 @@ export const webSearch: Action & Record<string, unknown> = {
       required: true,
       schema: { type: "string" },
     },
-    {
-      name: "numResults",
-      description: "Optional number of results to return (default 6, max 10).",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "num_results",
-      description:
-        "Optional snake_case alias for numResults (default 6, max 10).",
-      required: false,
-      schema: { type: "number" },
-    },
   ],
 
   validate: async (): Promise<boolean> => isWebSearchEnabled(),
 
   handler: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const { query, numResults } = readParams(options);
+    const { query } = readParams(options);
 
     if (!query) {
       const text = "Missing required parameter 'query'.";
@@ -155,10 +127,8 @@ export const webSearch: Action & Record<string, unknown> = {
       return { text, success: false, data: { actionName: "WEB_SEARCH" } };
     }
 
-    const n = numResults ?? DEFAULT_NUM_RESULTS;
-
     try {
-      const result = await searchKeylessWeb(query, { resultCount: n });
+      const result = await searchBrowserFirstWeb(runtime, query);
       if (!result) {
         const text = `No web search results for "${query}".`;
         callback?.({ text });

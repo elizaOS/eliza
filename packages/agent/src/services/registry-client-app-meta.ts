@@ -6,8 +6,8 @@
  * (e.g. pointing `@elizaos/app-hyperfy` at its dev server). Consumed by
  * registry-client-local.ts when building catalog entries for discovered apps.
  */
-import { logger } from "@elizaos/core";
-import { packageNameToAppDisplayName } from "@elizaos/shared";
+import { logger, packageNameToAppDisplayName } from "@elizaos/core";
+
 import type {
   AppUiExtensionConfig,
   RegistryAppMeta,

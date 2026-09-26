@@ -8,53 +8,32 @@
  *
  * Config-load failures propagate to the runtime error handler.
  */
-
 import type http from "node:http";
-import type { Route } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core";
+import { getHttpRuntime, type Route, sendJsonError } from "@elizaos/core";
+
+import { matchPluginRoutePath } from "../plugin-route-path.ts";
 import {
   findProtectedNamespace,
   findRouteModeRule,
 } from "./route-mode-matrix.ts";
-import { getRuntimeModeSnapshot, type RuntimeMode } from "./runtime-mode.ts";
-
+import {
+  getRuntimeModeSnapshot,
+  type RuntimeMode,
+  type RuntimeModeSnapshot,
+} from "./runtime-mode.ts";
 export interface ModeGateOutcome {
   /** True when the dispatcher should stop — guard wrote a 404. */
   handled: boolean;
   /** The active runtime mode at gate time. */
   mode: RuntimeMode;
 }
-
 export interface RuntimeRouteModeRule {
   path: string;
   method: Route["type"];
   modes: ReadonlyArray<RuntimeMode>;
   reason: string;
 }
-
-export interface RouteModeRuntimeLike {
-  routes?: ReadonlyArray<Route>;
-}
-
-function matchPluginRoutePath(pattern: string, pathname: string): boolean {
-  const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
-  const patternSegments = norm(pattern);
-  const pathSegments = norm(pathname);
-
-  for (let i = 0; i < patternSegments.length; i++) {
-    const patternSegment = patternSegments[i];
-    const pathSegment = pathSegments[i];
-    if (!patternSegment) return false;
-    if (patternSegment.startsWith(":") && patternSegment.endsWith("*")) {
-      return pathSegments.slice(i).length > 0;
-    }
-    if (pathSegment === undefined) return false;
-    if (patternSegment.startsWith(":")) continue;
-    if (patternSegment !== pathSegment) return false;
-  }
-  return patternSegments.length === pathSegments.length;
-}
-
+export type RouteModeRuntimeLike = object;
 function isRuntimeModeList(
   value: unknown,
 ): value is ReadonlyArray<RuntimeMode> {
@@ -69,19 +48,18 @@ function isRuntimeModeList(
     )
   );
 }
-
 export function findRegisteredRouteModeRule(args: {
   runtime?: RouteModeRuntimeLike | null;
   pathname: string;
   method: string;
 }): RuntimeRouteModeRule | null {
   const method = args.method.toUpperCase();
-  const routes = args.runtime?.routes;
+  const routes = args.runtime ? getHttpRuntime(args.runtime).routes : undefined;
   if (!routes) return null;
   for (const route of routes) {
     if (route.type === "STATIC" || route.type !== method) continue;
     if (!isRuntimeModeList(route.modes) || route.modes.length === 0) continue;
-    if (!matchPluginRoutePath(route.path, args.pathname)) continue;
+    if (matchPluginRoutePath(route.path, args.pathname) === null) continue;
     return {
       path: route.path,
       method: route.type,
@@ -91,7 +69,6 @@ export function findRegisteredRouteModeRule(args: {
   }
   return null;
 }
-
 /**
  * Pure decision core: given the resolved runtime mode and request, decide
  * whether the mode gate hides the route. Exported so the fail-closed drift
@@ -106,7 +83,9 @@ export function evaluateRouteModeGate(args: {
   method: string;
   mode: RuntimeMode;
   runtime?: RouteModeRuntimeLike | null;
-}): { hidden: boolean } {
+}): {
+  hidden: boolean;
+} {
   const method = args.method.toUpperCase();
   const rule =
     findRegisteredRouteModeRule({
@@ -114,11 +93,9 @@ export function evaluateRouteModeGate(args: {
       pathname: args.pathname,
       method,
     }) ?? findRouteModeRule(args.pathname, method);
-
   if (rule) {
     return { hidden: !rule.modes.includes(args.mode) };
   }
-
   // No explicit rule (neither handler-declared nor static matrix). Fail
   // CLOSED when the path sits inside an owner-declared mode-sensitive
   // namespace: a forgotten sub-route under a gated prefix must hide, never
@@ -126,29 +103,25 @@ export function evaluateRouteModeGate(args: {
   // namespace default-allows — the matrix is a targeted gate, not an ACL.
   return { hidden: findProtectedNamespace(args.pathname) !== null };
 }
-
 export function applyRouteModeGuard(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime?: RouteModeRuntimeLike | null,
+  snapshot: RuntimeModeSnapshot = getRuntimeModeSnapshot(),
 ): ModeGateOutcome {
   const url = new URL(req.url ?? "/", "http://localhost");
   const method = (req.method ?? "GET").toUpperCase();
-  const snapshot = getRuntimeModeSnapshot();
-
   const { hidden } = evaluateRouteModeGate({
     pathname: url.pathname,
     method,
     mode: snapshot.mode,
     runtime,
   });
-
   if (hidden) {
     // Hidden — not forbidden. Don't include the mode or rule reason in the
     // body; cloud mode must not be able to probe local-inference state.
     sendJsonError(res, "Not found", 404);
     return { handled: true, mode: snapshot.mode };
   }
-
   return { handled: false, mode: snapshot.mode };
 }

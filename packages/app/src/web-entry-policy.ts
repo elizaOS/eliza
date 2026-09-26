@@ -1,14 +1,12 @@
 /**
- * Selects the lightweight hosted-public renderer entry without changing the
+ * Selects the lightweight hosted public and account-management renderer without changing the
  * native, desktop, chat-harness, or agent-application boot paths.
  *
  * Keep these exact pathname patterns aligned with the routes registered by
  * `@elizaos/ui/cloud/register-public`. Near misses deliberately fall through
- * to the full application so an unknown URL cannot reload-loop at the public
+ * to the full application outside the managed Cloud namespace so an unknown URL cannot reload-loop at the public
  * shell catch-all.
  */
-
-import { classifyElizaHostname } from "@elizaos/shared/elizacloud/domain-contract";
 
 export interface WebEntryDecisionInput {
   pathname: string;
@@ -17,7 +15,6 @@ export interface WebEntryDecisionInput {
   chatHarnessEnabled: boolean;
   desktopShell: boolean;
   forceApexConsole: boolean;
-  forceMarketingHome: boolean;
 }
 
 const EXACT_PUBLIC_PATHS = new Set([
@@ -30,12 +27,12 @@ const EXACT_PUBLIC_PATHS = new Set([
   "/auth/error",
   "/auth/success",
   "/bsc",
-  "/downloads",
   "/get-started",
   "/invite/accept",
   "/join",
   "/login",
   "/oidc/continue",
+  "/pricing",
   "/privacy-policy",
   "/terms-of-service",
 ]);
@@ -63,31 +60,6 @@ export function isHostedPublicPath(pathname: string): boolean {
   );
 }
 
-/** Whether the URL can use the marketing-only root without the auth router. */
-export function shouldUseMarketingHomeEntry(
-  input: WebEntryDecisionInput,
-): boolean {
-  const isRootPath = normalizePathname(input.pathname) === "/";
-  if (
-    input.forceMarketingHome &&
-    !input.chatHarnessEnabled &&
-    !input.desktopShell &&
-    isRootPath
-  ) {
-    return true;
-  }
-  if (
-    !input.webShellEnabled ||
-    input.chatHarnessEnabled ||
-    input.desktopShell ||
-    !isRootPath
-  ) {
-    return false;
-  }
-  const role = classifyElizaHostname(input.hostname).role;
-  return role === "marketing" || role === "legacy-marketing";
-}
-
 /** Decide which renderer entry may execute before any application modules load. */
 export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
   if (
@@ -98,7 +70,14 @@ export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
     return false;
   }
   if (isHostedPublicPath(input.pathname)) return true;
+  const pathname = normalizePathname(input.pathname);
+  if (
+    pathname === "/cloud" ||
+    pathname.startsWith("/cloud/") ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/")
+  )
+    return true;
   if (normalizePathname(input.pathname) !== "/") return false;
-  if (input.forceApexConsole) return true;
-  return shouldUseMarketingHomeEntry(input);
+  return input.forceApexConsole;
 }

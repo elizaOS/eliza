@@ -9,8 +9,8 @@
  * local-inference vision input (#18760); keep the two in sync by importing
  * this module rather than re-deriving the pattern.
  */
-import { getLocalServerUrl } from "../utils/node.ts";
-import { MediaFetchError } from "./fetch.ts";
+import { getLocalServerUrl } from "../utils/node.js";
+import { MediaFetchError } from "./fetch.js";
 
 /** Shared byte cap for vision image inputs across caller and handler paths. */
 export const VISION_IMAGE_MAX_BYTES = 20 * 1024 * 1024;

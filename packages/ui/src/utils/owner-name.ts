@@ -1,4 +1,8 @@
-/**
- * Re-exports the shared lossless owner-name normalizer.
- */
-export { normalizeOwnerName } from "@elizaos/shared";
+/** Normalizes a user-supplied owner name without shortening its content. */
+import { toWellFormedUnicode } from "@elizaos/core/utils/unicode";
+export function normalizeOwnerName(value: string | null | undefined): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return toWellFormedUnicode(value.trim());
+}

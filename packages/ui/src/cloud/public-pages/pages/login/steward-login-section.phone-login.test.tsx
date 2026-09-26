@@ -66,34 +66,37 @@ vi.mock("../../../../components/primitives", async () => {
   return { Alert, AlertDescription };
 });
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/shared/steward-session-client")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
-    readStoredStewardToken: () => sessionSpies.storedToken,
-    clearStoredStewardToken: async () => {
-      sessionSpies.storedToken = null;
-      sessionSpies.clear();
-    },
-    writeStoredStewardToken: (token: string) => {
-      sessionSpies.storedToken = token;
-      sessionSpies.write(token);
-    },
-    StewardSessionError: class StewardSessionError extends Error {
-      status: number;
-      constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
-      }
-    },
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
+      readStoredStewardToken: () => sessionSpies.storedToken,
+      clearStoredStewardToken: async () => {
+        sessionSpies.storedToken = null;
+        sessionSpies.clear();
+      },
+      writeStoredStewardToken: (token: string) => {
+        sessionSpies.storedToken = token;
+        sessionSpies.write(token);
+      },
+      StewardSessionError: class StewardSessionError extends Error {
+        status: number;
+        constructor(message: string, status: number) {
+          super(message);
+          this.status = status;
+        }
+      },
+    };
+  },
+);
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     constructor(config: {
       storage: {
@@ -347,17 +350,11 @@ describe("StewardLoginSection phone login", () => {
     const countrySelect = await screen.findByLabelText("Country calling code");
     expect(countrySelect.textContent).toContain("US +1");
     expect(countrySelect.textContent).not.toContain("United States");
-    fireEvent.pointerDown(countrySelect, {
-      button: 0,
-      ctrlKey: false,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.click(
-      await screen.findByRole("option", {
-        name: "GB +44 — United Kingdom",
-      }),
-    );
+    // Use real keyboard selection without mounting the full country popover in jsdom.
+    act(() => countrySelect.focus());
+    fireEvent.keyDown(countrySelect, { key: "g" });
+    fireEvent.keyDown(countrySelect, { key: "b" });
+    expect(countrySelect.textContent).toContain("GB +44");
     fireEvent.change(screen.getByLabelText("Phone number"), {
       target: { value: "020 7946 0018" },
     });

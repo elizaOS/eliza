@@ -3,8 +3,12 @@
  * health inference and personal-assistant scheduling. The cases preserve exact
  * offset handling across DST boundaries and dependency-free browser behavior.
  */
+
+import {
+  parseIsoMs,
+  roundConfidence,
+} from "@elizaos/core/lifeops-normalize/time-util";
 import { describe, expect, it } from "vitest";
-import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 describe("parseIsoMs", () => {
   it("preserves explicit offsets on both sides of a DST transition", () => {
@@ -15,7 +19,6 @@ describe("parseIsoMs", () => {
       Date.UTC(2026, 2, 8, 7, 30),
     );
   });
-
   it("returns null for missing, blank, and invalid input", () => {
     expect(parseIsoMs(undefined)).toBeNull();
     expect(parseIsoMs(null)).toBeNull();
@@ -23,7 +26,6 @@ describe("parseIsoMs", () => {
     expect(parseIsoMs("not-a-date")).toBeNull();
   });
 });
-
 describe("roundConfidence", () => {
   it("rounds finite values and clamps the result to the unit interval", () => {
     expect(roundConfidence(0.126)).toBe(0.13);

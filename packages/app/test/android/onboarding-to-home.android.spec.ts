@@ -12,43 +12,44 @@
 // flow). Replaces the lane quarantined in #10322.
 //
 // The deterministic host agent binds a kernel-assigned host port and is
-// exposed on a non-reserved device loopback port through `adb reverse`;
-// loopback needs no confirm prompt.
+// reached through the emulator host address. This exercises remote consent and
+// authentication; adb reverse loopback would bypass the pairing requirement.
 //
 // Liveness contract (#14359): this lane is STUB-BACKED by default — the host
 // agent is the deterministic ui-smoke stub, so a "real model" reply cannot be
 // asserted and the lane ends by proving the stub reply renders. Point the host
 // at a live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to promote
 // the final turn to the shared liveness assertion (non-empty, non-stub reply).
+
 import path from "node:path";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import {
+  captureAndroidScreenshot,
+  startAndroidScreenRecord,
+} from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   adbDevice,
-  adbReverse,
   resolveAdb,
-} from "../../scripts/lib/android-device.mjs";
-import { parsePort } from "../../scripts/lib/host-agent.mjs";
+} from "../../scripts/lib/android-device.ts";
 import {
   assertOnboardingLiveness,
   sendChatAndReadReply,
 } from "../liveness-contract";
-import { expect, ORIGIN, test } from "./android-harness";
+import {
+  expect,
+  hostedAgentBase,
+  ORIGIN,
+  pairHostedAgent,
+  test,
+} from "./android-harness";
 
 // When the host is a live-provider backend, the final onboarding turn must
 // prove a real model answered. Off by default because the shared host agent is
 // the deterministic stub.
 const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
-const HOST_AGENT_PORT = parsePort(
-  process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
-  "ELIZA_ANDROID_HOST_AGENT_PORT",
-);
-// Android reserves loopback:31337 for the bundled local agent. Expose the host
-// on a distinct device port so remote adoption exercises HTTP through adb
-// reverse instead of being classified as local IPC.
-const DEVICE_REMOTE_PORT = 31338;
-const HOST_AGENT_BASE = `http://127.0.0.1:${DEVICE_REMOTE_PORT}`;
+const HOST_AGENT_BASE = hostedAgentBase();
 // app.config.ts `desktop.urlScheme`; the Android manifest registers it as the
 // BROWSABLE `@string/custom_url_scheme` intent-filter.
 const URL_SCHEME = "elizaos";
@@ -56,24 +57,8 @@ const FIRST_RUN_REMOTE_DEEPLINK = `${URL_SCHEME}://first-run/runtime/remote?api=
   HOST_AGENT_BASE,
 )}`;
 
-async function readHostPairingCode(): Promise<string> {
-  const response = await fetch(
-    `http://127.0.0.1:${HOST_AGENT_PORT}/api/auth/pair-code`,
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Host pairing-code request failed (${response.status}): ${await response.text()}`,
-    );
-  }
-  const body = (await response.json()) as { code?: unknown };
-  if (typeof body.code !== "string" || !body.code.trim()) {
-    throw new Error("Host pairing-code response did not contain a code.");
-  }
-  return body.code;
-}
 const ARTIFACT_DIR = path.join(
-  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(process.cwd(), "test-results", "android"),
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ?? testOutputPath("app", "android"),
   "onboarding-to-home",
 );
 
@@ -87,9 +72,6 @@ test.describe
 
       const adbBin = resolveAdb();
       const serial = device.serial();
-      // The device-side remote port must reach the host's deterministic agent.
-      adbReverse(adbBin, serial, DEVICE_REMOTE_PORT, HOST_AGENT_PORT);
-
       const recording = await startAndroidScreenRecord({
         serial,
         artifactDir: ARTIFACT_DIR,
@@ -108,6 +90,27 @@ test.describe
         // Fire the real OS deep link. `am start` delivers it to the running
         // WebView via Capacitor `appUrlOpen` (singleTask onNewIntent), so the
         // CDP page survives and observes the connect → home transition.
+        const confirmation =
+          new URL(HOST_AGENT_BASE).hostname === "10.0.2.2"
+            ? new Promise<void>((resolve, reject) => {
+                page.once("dialog", async (dialog) => {
+                  try {
+                    expect(dialog.type()).toBe("confirm");
+                    expect(dialog.message()).toContain(
+                      new URL(HOST_AGENT_BASE).host,
+                    );
+                    // Keep the listener to prevent CDP auto-dismissal, but
+                    // accept through Android itself: CDP acceptance can leave
+                    // WebChromeClient's native AlertDialog covering the app.
+                    await device.tap({ text: "OK" });
+                    await dialog.accept();
+                    resolve();
+                  } catch (error) {
+                    reject(error);
+                  }
+                });
+              })
+            : Promise.resolve();
         adbDevice(adbBin, serial, [
           "shell",
           "am",
@@ -121,18 +124,53 @@ test.describe
           APP_ID,
         ]);
 
+        await confirmation;
+        // Inspect Android's active accessibility window, not just DOM behind
+        // a native modal. Native field placeholders are not accessibility text.
+        await expect(async () => {
+          const label = await device.info({ text: "Get a one-time code" });
+          expect(label.pkg).toBe(APP_ID);
+          expect(label.bounds.width).toBeGreaterThan(0);
+        }).toPass({ timeout: 15_000 });
+
         // OS deep links deliberately never carry bearer credentials. Complete
         // the production remote-device pairing flow against the real host,
         // obtaining the short-lived code through its loopback-only operator
         // endpoint and entering it through the rendered device UI.
         const pairingInput = page.getByPlaceholder("Enter pairing code");
         await expect(pairingInput).toBeVisible({ timeout: 60_000 });
-        await pairingInput.fill(await readHostPairingCode());
-        await page.getByRole("button", { name: "Submit" }).click();
+        await testInfo.attach("connection state before pairing", {
+          body: JSON.stringify(
+            await page.evaluate(() => {
+              const store = (
+                window as unknown as {
+                  __ELIZAOS_UI_APP_STORE__?: {
+                    value?: Record<string, unknown>;
+                  };
+                }
+              ).__ELIZAOS_UI_APP_STORE__?.value;
+              return {
+                remoteError: store?.firstRunRemoteError,
+                remoteTarget: store?.firstRunRuntimeTarget,
+                remoteConnected: store?.firstRunRemoteConnected,
+                phase: (
+                  store?.startupCoordinator as { phase?: string } | undefined
+                )?.phase,
+              };
+            }),
+            null,
+            2,
+          ),
+          contentType: "application/json",
+        });
+        await pairHostedAgent(page);
 
         const surface = page.getByTestId("home-launcher-surface");
         await expect(surface).toBeVisible({ timeout: 90_000 });
         await expect(surface).toHaveAttribute("data-page", "home");
+        const skipPermissions = page.getByTestId("priming-skip-all");
+        if (await skipPermissions.isVisible()) await skipPermissions.click();
+        await page.getByTestId("chat-composer-textarea").click();
         await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
           timeout: 60_000,
         });
@@ -206,8 +244,27 @@ test.describe
             contentType: "text/plain",
           });
         }
+        const replyScreenshot = path.join(ARTIFACT_DIR, "connected-chat.png");
+        await page.screenshot({ path: replyScreenshot, fullPage: true });
+        await testInfo.attach("connected chat screenshot", {
+          path: replyScreenshot,
+          contentType: "image/png",
+        });
+        const nativeScreenshot = captureAndroidScreenshot({
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "connected-chat-native.png",
+        });
+        await testInfo.attach("connected chat native display", {
+          path: nativeScreenshot,
+          contentType: "image/png",
+        });
       } finally {
         const videoPath = await recording.stop();
+        expect(
+          videoPath,
+          "native walkthrough must be a finalized video",
+        ).not.toBeNull();
         if (videoPath) {
           await testInfo.attach("onboarding walkthrough video", {
             path: videoPath,

@@ -733,7 +733,6 @@ export const liquidityAction: Action = {
         "Liquidity amount for open, close, or reposition operations.",
       required: false,
       schema: {
-        type: "string",
         anyOf: [{ type: "string" }, { type: "number" }],
       },
     },

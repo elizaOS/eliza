@@ -16,16 +16,30 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import {
+  createSchedulingSqlScheduledTaskStore,
+  type ScheduledTask,
+  SchedulingMigrationService,
+} from "@elizaos/plugin-scheduling";
+import {
+  PGliteClientManager,
+  PgliteDatabaseAdapter,
+  schema as runtimeSchema,
+} from "@elizaos/plugin-sql";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
-import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
+import type { CaptureLifeOpsActivitySignalRequest } from "../contracts/index.js";
 import {
   activateLifeOpsActivitySignals,
   deactivateLifeOpsActivitySignals,
 } from "../lifeops/activity-signal-lifecycle.js";
 import { getSignalSourceRegistry } from "../lifeops/registries/signal-source-registry.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
+import {
+  DOSSIER_ACTIVITY_ANCHOR_KEY,
+  readDossierActivityState,
+} from "../lifeops/scheduled-task/dossier-activity-policy.js";
+import { createDossierActivityMutationPolicy } from "../lifeops/scheduled-task/dossier-activity-runtime.js";
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,
@@ -130,6 +144,214 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
     deactivateLifeOpsActivitySignals(runtime);
     await adapter.close();
     await manager.close();
+  });
+
+  it("admits authenticated foreground and explicit Android unlock events using server time, never passive snapshots", async () => {
+    await adapter.runPluginMigrations([
+      { name: "@elizaos/plugin-sql", schema: runtimeSchema },
+    ]);
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    await SchedulingMigrationService.start(runtime);
+    const store = createSchedulingSqlScheduledTaskStore({ runtime, agentId });
+    const ownerId = crypto.randomUUID() as UUID;
+    const seed: ScheduledTask = {
+      taskId: crypto.randomUUID(),
+      kind: "recap",
+      promptInstructions: "Prepare the daily dossier",
+      source: "first_run",
+      idempotencyKey: "lifeops:first-run:default:morning-brief",
+      trigger: {
+        kind: "relative_to_anchor",
+        anchorKey: DOSSIER_ACTIVITY_ANCHOR_KEY,
+        offsetMinutes: 0,
+      },
+      state: { status: "scheduled", followupCount: 0 },
+      priority: "medium",
+      respectsGlobalPause: true,
+      createdBy: "agent",
+      ownerVisible: true,
+    };
+    const prepare = createDossierActivityMutationPolicy({
+      ownerFacts: () => ({ timezone: "UTC" }),
+    });
+    const initialized = await prepare({
+      previous: null,
+      proposed: seed,
+      verb: "schedule",
+      nowIso: new Date(Date.now() - 60_000).toISOString(),
+    });
+    if (!initialized)
+      throw new Error("Expected managed dossier initialization");
+    await store.upsert(initialized);
+
+    const post = (
+      principal: LifeOpsRouteContext["state"]["authenticatedPrincipal"],
+      state = "active",
+      overrides: Partial<CaptureLifeOpsActivitySignalRequest> = {},
+    ) => {
+      const request = buildCtx({
+        method: "POST",
+        pathname: "/api/lifeops/activity-signals",
+        runtime,
+        body: {
+          source: "page_visibility",
+          platform: "web_app",
+          state,
+          observedAt: "2000-01-01T00:00:00.000Z",
+          metadata: {
+            principalId: ownerId,
+            receivedAtIso: "2099-01-01T00:00:00Z",
+          },
+          ...overrides,
+        },
+      });
+      request.ctx.state.adminEntityId = ownerId;
+      request.ctx.state.requestEntityId = ownerId;
+      request.ctx.state.authenticatedPrincipal = principal;
+      return request;
+    };
+    const owner = {
+      kind: "owner" as const,
+      entityId: ownerId,
+      authIdentityId: "verified-owner-session",
+    };
+    const androidUnlock: Partial<CaptureLifeOpsActivitySignalRequest> = {
+      source: "mobile_device",
+      platform: "android",
+      state: "active",
+      idleState: "active",
+      metadata: {
+        reason: "broadcast:android.intent.action.USER_PRESENT",
+        isDeviceLocked: false,
+        isInteractive: true,
+      },
+    };
+    const passive: Partial<CaptureLifeOpsActivitySignalRequest>[] = [
+      ...[
+        "start",
+        "snapshot",
+        "broadcast:android.intent.action.SCREEN_ON",
+        "broadcast:android.intent.action.SCREEN_OFF",
+        "broadcast:android.intent.action.BATTERY_CHANGED",
+        "broadcast:android.os.action.POWER_SAVE_MODE_CHANGED",
+      ].map((reason) => ({
+        ...androidUnlock,
+        metadata: { ...androidUnlock.metadata, reason },
+      })),
+      { ...androidUnlock, platform: "ios" },
+      { ...androidUnlock, platform: "web" },
+      { ...androidUnlock, state: "locked" },
+      { ...androidUnlock, state: "sleeping" },
+      { ...androidUnlock, idleState: "locked" },
+      {
+        ...androidUnlock,
+        metadata: { ...androidUnlock.metadata, isDeviceLocked: true },
+      },
+      {
+        ...androidUnlock,
+        metadata: { ...androidUnlock.metadata, isInteractive: false },
+      },
+      {
+        ...androidUnlock,
+        metadata: { reason: androidUnlock.metadata?.reason },
+      },
+      {
+        source: "mobile_device",
+        platform: "ios",
+        state: "active",
+        idleState: "active",
+        metadata: { reason: "start" },
+      },
+      {
+        source: "desktop_power",
+        state: "active",
+        idleState: "active",
+        metadata: {},
+      },
+      {
+        source: "desktop_power",
+        state: "active",
+        idleState: "active",
+        metadata: { windowFocused: false, documentVisibility: "visible" },
+      },
+      {
+        source: "desktop_power",
+        state: "active",
+        idleState: "active",
+        metadata: { windowFocused: true, documentVisibility: "hidden" },
+      },
+    ];
+    // This inner-route harness supplies the wrapper's typed principal. These
+    // reads prove fallback IDs and client metadata cannot replace that input.
+    for (const request of [
+      post(undefined),
+      post({
+        kind: "guest",
+        entityId: ownerId,
+        authIdentityId: "guest-session",
+      }),
+      post(owner, "background"),
+      post(undefined, "active", androidUnlock),
+      ...passive.map((signal) => post(owner, "active", signal)),
+    ]) {
+      expect(await handleLifeOpsRoutes(request.ctx)).toBe(true);
+      expect(request.res.statusCode).toBe(201);
+      expect(
+        readDossierActivityState((await store.get(seed.taskId))?.metadata)
+          ?.admitted,
+      ).toBeNull();
+    }
+
+    for (const positive of [
+      {},
+      { source: "app_lifecycle" },
+      {
+        source: "desktop_power",
+        state: "active",
+        idleState: "active",
+        metadata: { windowFocused: true, documentVisibility: "visible" },
+      },
+      androidUnlock,
+      {
+        ...androidUnlock,
+        state: "idle",
+        idleState: "idle",
+        metadata: { ...androidUnlock.metadata, isPowerSaveMode: true },
+      },
+    ] satisfies Partial<CaptureLifeOpsActivitySignalRequest>[]) {
+      await store.upsert(initialized);
+      const before = Date.now();
+      const first = post(owner, "active", positive);
+      expect(await handleLifeOpsRoutes(first.ctx)).toBe(true);
+      expect(first.res.statusCode).toBe(201);
+      const after = Date.now();
+      const response = JSON.parse(first.res.body ?? "{}") as {
+        signal: { id: string; observedAt: string };
+      };
+      const admitted = readDossierActivityState(
+        (await store.get(seed.taskId))?.metadata,
+      )?.admitted;
+      expect(admitted).toMatchObject({
+        principalId: ownerId,
+        signalId: response.signal.id,
+      });
+      if (!admitted) throw new Error("Expected persisted owner admission");
+      expect(Date.parse(admitted.atIso)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(admitted.atIso)).toBeLessThanOrEqual(after);
+      expect(response.signal.observedAt).toBe("2000-01-01T00:00:00.000Z");
+
+      const repeated = post(owner, "active", positive);
+      expect(await handleLifeOpsRoutes(repeated.ctx)).toBe(true);
+      expect(repeated.res.statusCode).toBe(201);
+      const persisted = await store.get(seed.taskId);
+      expect(readDossierActivityState(persisted?.metadata)?.admitted).toEqual(
+        admitted,
+      );
+      expect(
+        readDossierActivityState(persisted?.metadata)?.consumedDay,
+      ).toBeNull();
+      expect(persisted?.state.status).toBe("scheduled");
+    }
   });
 
   it("persists a native mobile activity event end-to-end and lists it back", async () => {
@@ -353,6 +575,29 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
       .getDatabase()
       .execute(sql.raw("SELECT id FROM app_lifeops.life_activity_signals"));
     expect(rows.rows).toEqual([]);
+  });
+
+  it("rejects client-authored dossier admission before storing telemetry", async () => {
+    const post = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+      body: {
+        source: "app_lifecycle",
+        state: "active",
+        metadata: { dossierActivity: { principalId: "owner", admitted: true } },
+      },
+    });
+    expect(await handleLifeOpsRoutes(post.ctx)).toBe(true);
+    expect(post.res.statusCode).toBe(400);
+    const get = buildCtx({
+      method: "GET",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+    });
+    expect(await handleLifeOpsRoutes(get.ctx)).toBe(true);
+    expect(get.res.statusCode).toBe(200);
+    expect(JSON.parse(get.res.body ?? "{}").signals).toEqual([]);
   });
 
   it("rejects an invalid state with 400", async () => {

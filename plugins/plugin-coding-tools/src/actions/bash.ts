@@ -7,11 +7,14 @@
  * coding sub-agent is exempted from those rewrites so its explicit commands run
  * verbatim. Gated to coding contexts with OWNER role.
  */
+
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
+  buildReadView,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
   getCapabilityRouter,
@@ -21,7 +24,7 @@ import {
   type State,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import { resolveRuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
 import {
   consumeDestructiveChallenge,
   issueDestructiveChallenge,
@@ -34,6 +37,7 @@ import {
   readBoolParam,
   readBoundedIntSetting,
   readNumberParam,
+  readParam,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
@@ -43,6 +47,7 @@ import {
   type ShellOutputArtifactStream,
 } from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
+import { shellVerificationReceipt } from "../lib/verification";
 import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
@@ -72,7 +77,6 @@ const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
-const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 const COINGECKO_SIMPLE_PRICE_BASE =
@@ -386,13 +390,6 @@ function clampTimeout(value: number | undefined, fallback: number): number {
     : DEFAULT_TIMEOUT_MS;
   if (value === undefined || !Number.isFinite(value)) return boundedFallback;
   return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
-}
-
-function clampHistoryLimit(value: number | undefined): number {
-  if (value === undefined || !Number.isFinite(value)) {
-    return SHELL_HISTORY_DEFAULT_LIMIT;
-  }
-  return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
 function readNonNegativeOffset(
@@ -1207,7 +1204,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved. For coding completion verification, run the test, typecheck, lint, or build as a standalone foreground command without pipes or failure-masking operators; use cwd or cd directory && verifier.",
   descriptionCompressed:
     "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
@@ -1260,7 +1257,8 @@ export const shellAction: Action = {
     },
     {
       name: "limit",
-      description: "For action=view_history: max recorded commands.",
+      description:
+        "For action=view_history: optional positive integer maximum. Omit to read complete recorded history.",
       required: false,
       schema: { type: "number" },
     },
@@ -1391,6 +1389,40 @@ export const shellAction: Action = {
         });
       }
       const value = page.value;
+      const readView = value.contentRevision
+        ? buildReadView({
+            reference: {
+              kind: "tool-result",
+              ref: `shell:${value.handle}:${value.stream}`,
+              revision: value.contentRevision,
+              resumability: "restart-safe",
+              expiresAt: value.expiresAt,
+            },
+            slice: {
+              range: {
+                unit: "fragment",
+                start: value.startOffset,
+                end: value.endOffset,
+                total: value.totalCharacters,
+              },
+              hasPrevious: value.startOffset > 0,
+              hasMore: !value.complete,
+              ...(!value.complete ? { nextOffset: value.endOffset } : {}),
+              revision: value.contentRevision,
+              completeness: value.complete ? "complete" : "partial-recoverable",
+              sliceSha256: createHash("sha256")
+                .update(value.text)
+                .digest("hex"),
+              ...(value.complete && value.startOffset === 0
+                ? {
+                    sourceSha256: createHash("sha256")
+                      .update(value.text)
+                      .digest("hex"),
+                  }
+                : {}),
+            },
+          })
+        : undefined;
       const text = [
         `Shell artifact ${value.handle} ${value.stream} characters ${value.startOffset}..${value.endOffset} of ${value.totalCharacters} complete=${value.complete}`,
         value.text
@@ -1407,6 +1439,7 @@ export const shellAction: Action = {
         actionName: "SHELL",
         [CANONICAL_SUBACTION_KEY]: "read_output_artifact",
         ...value,
+        ...(readView ? { readView } : {}),
       });
     }
 
@@ -1447,7 +1480,17 @@ export const shellAction: Action = {
           message: "Shell history reading is unavailable.",
         });
       }
-      const limit = clampHistoryLimit(readNumberParam(options, "limit"));
+      const limit = readNumberParam(options, "limit");
+      if (
+        readParam(options, "limit") !== undefined &&
+        (limit === undefined || !Number.isSafeInteger(limit) || limit <= 0)
+      ) {
+        return failureToActionResult({
+          reason: "invalid_param",
+          message:
+            "History limit must be a positive safe integer when supplied.",
+        });
+      }
       const entries = shellHistoryService.getCommandHistory(
         String(conversationId),
         limit,
@@ -1689,6 +1732,13 @@ export const shellAction: Action = {
         `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
       );
     }
+    const codingSubAgentShell =
+      state?.data?.elizaTrustedCodingMode === true ||
+      ((): boolean => {
+        const v =
+          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+      })();
     const cwdParam = readStringParam(options, "cwd");
 
     if (!message.roomId) {
@@ -1761,6 +1811,7 @@ export const shellAction: Action = {
       }
       const sessionCwd = await session.getExistingCwd(conversationId);
       if (
+        !codingSubAgentShell &&
         shouldIgnoreUngroundedRuntimeCwd({
           message,
           requestedCwd: v.resolved,
@@ -1800,11 +1851,13 @@ export const shellAction: Action = {
       }
     }
 
-    const groundedCommand = rewriteUngroundedRuntimeDirectoryOverrides({
-      command,
-      message,
-      sessionCwd: cwd,
-    });
+    const groundedCommand = codingSubAgentShell
+      ? command
+      : rewriteUngroundedRuntimeDirectoryOverrides({
+          command,
+          message,
+          sessionCwd: cwd,
+        });
     if (groundedCommand !== command) {
       command = groundedCommand;
       coreLogger.warn(
@@ -1822,13 +1875,6 @@ export const shellAction: Action = {
     // of real output and inflating a 30s build past 90s. Skip all
     // message-text-keyed rewrites for the coding sub-agent; its commands run
     // verbatim.
-    const codingSubAgentShell =
-      state?.data?.elizaTrustedCodingMode === true ||
-      ((): boolean => {
-        const v =
-          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-        return v === "1" || v === "true" || v === "yes" || v === "on";
-      })();
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
@@ -2080,7 +2126,15 @@ export const shellAction: Action = {
 
     let result: ShellResult;
     try {
-      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+      result = await runShell(runtime, {
+        command,
+        cwd,
+        timeoutMs: timeout,
+        captureScope: {
+          ownerAgentId: String(runtime.agentId),
+          ownerConversationId: String(message.roomId),
+        },
+      });
     } catch (err) {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
@@ -2118,16 +2172,18 @@ export const shellAction: Action = {
     );
 
     const took = Date.now() - startedAt;
-    if (result.outputLimitExceeded) {
+    if (result.sourceLoss) {
       return failureToActionResult(
         {
-          reason: "internal",
-          message:
-            "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
+          reason: "source_loss",
+          message: result.sourceLoss.message,
         },
         {
           command: redactShellText(runtime, command),
           cwd: redactedCwd,
+          source_loss: true,
+          source_loss_code: result.sourceLoss.code,
+          source_loss_backend: result.sourceLoss.backend,
           ...workspaceDeltaData,
         },
       );
@@ -2140,6 +2196,20 @@ export const shellAction: Action = {
     const head = timedOut
       ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${redactedCwd}, took=${took}ms)`
       : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${redactedCwd}, took=${took}ms)`;
+    const artifact = result.artifact;
+    if (!artifact || !result.projection) {
+      return failureToActionResult({
+        reason: "internal",
+        message:
+          "host shell capture completed without a private output artifact",
+      });
+    }
+    const artifactNotice = [
+      `[private output artifact ${artifact.handle}; expires=${artifact.expiresAt}; revision=${artifact.contentRevision}]`,
+      `stdout source=${artifact.source.stdout.bytes} bytes/${artifact.source.stdout.lines} lines, stored=${artifact.stdout.bytes} bytes/${artifact.stdout.lines} lines, completeInModel=${result.projection.stdoutComplete}`,
+      `stderr source=${artifact.source.stderr.bytes} bytes/${artifact.source.stderr.lines} lines, stored=${artifact.stderr.bytes} bytes/${artifact.stderr.lines} lines, completeInModel=${result.projection.stderrComplete}`,
+      "Use SHELL action=read_output_artifact with handle, artifact_stream, and artifact_offset for exact continuation.",
+    ].join("\n");
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
@@ -2147,7 +2217,38 @@ export const shellAction: Action = {
     // this boundary. Every accepted result therefore remains complete after
     // redaction; the planner must never receive a preview or optional handle
     // in place of stdout/stderr it would otherwise reason over.
-    const text = streams.length > 0 ? `${head}\n${streams}` : head;
+    const text =
+      streams.length > 0
+        ? `${head}\n${artifactNotice}\n${streams}`
+        : `${head}\n${artifactNotice}`;
+    const artifactReadViews = (
+      [
+        ["stdout", redactedStdout, artifact.stdout.characters],
+        ["stderr", redactedStderr, artifact.stderr.characters],
+      ] as const
+    ).map(([stream, streamText, total]) =>
+      buildReadView({
+        reference: {
+          kind: "tool-result",
+          ref: `shell:${artifact.handle}:${stream}`,
+          revision: artifact.contentRevision,
+          resumability: "restart-safe",
+          expiresAt: artifact.expiresAt,
+        },
+        slice: {
+          range: { unit: "fragment", start: 0, end: total, total },
+          hasPrevious: false,
+          hasMore: false,
+          revision: artifact.contentRevision,
+          completeness: "complete",
+          sliceSha256: createHash("sha256").update(streamText).digest("hex"),
+          sourceSha256: createHash("sha256").update(streamText).digest("hex"),
+        },
+      }),
+    );
+    const artifactContinuity = {
+      output_artifact_read_views: artifactReadViews,
+    };
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -2187,36 +2288,78 @@ export const shellAction: Action = {
           signal,
           output_truncated: false,
           ...workspaceDeltaData,
+          output_projected:
+            !result.projection.stdoutComplete ||
+            !result.projection.stderrComplete,
+          output_artifact_handle: artifact.handle,
+          output_artifact_revision: artifact.contentRevision,
+          ...artifactContinuity,
         },
       );
     }
-    if (result.exitCode !== 0) {
-      return failureToActionResult(
-        {
-          reason: "command_failed",
-          message: `command exited with code ${result.exitCode}`,
-        },
-        {
-          command: redactedCommand,
-          exit_code: result.exitCode,
-          cwd: redactedCwd,
-          output: text,
-          signal,
-          output_truncated: false,
-          ...workspaceDeltaData,
-        },
-      );
-    }
-    const actionResult = successActionResult(text, {
+    const verification = shellVerificationReceipt({
       command: redactedCommand,
-      exit_code: result.exitCode,
-      cwd: redactedCwd,
-      execution_route: result.sandbox === "host" ? "host" : "sandbox",
-      sandbox_backend: result.sandbox,
+      exitCode: result.exitCode,
+      output: text,
       signal,
-      output_truncated: false,
-      ...workspaceDeltaData,
     });
+    if (result.exitCode !== 0) {
+      return {
+        verification,
+        ...failureToActionResult(
+          {
+            reason: "command_failed",
+            message: `command exited with code ${result.exitCode}`,
+          },
+          {
+            command: redactedCommand,
+            exit_code: result.exitCode,
+            cwd: redactedCwd,
+            output: text,
+            signal,
+            output_truncated: false,
+            ...workspaceDeltaData,
+            output_projected:
+              !result.projection.stdoutComplete ||
+              !result.projection.stderrComplete,
+            source_loss: false,
+            output_artifact_handle: artifact.handle,
+            output_artifact_revision: artifact.contentRevision,
+            output_artifact_expires_at: artifact.expiresAt,
+            ...artifactContinuity,
+            stdout_source_bytes: artifact.source.stdout.bytes,
+            stdout_source_lines: artifact.source.stdout.lines,
+            stderr_source_bytes: artifact.source.stderr.bytes,
+            stderr_source_lines: artifact.source.stderr.lines,
+          },
+        ),
+      };
+    }
+    const actionResult = {
+      verification,
+      ...successActionResult(text, {
+        command: redactedCommand,
+        exit_code: result.exitCode,
+        cwd: redactedCwd,
+        execution_route: result.sandbox === "host" ? "host" : "sandbox",
+        sandbox_backend: result.sandbox,
+        signal,
+        output_truncated: false,
+        ...workspaceDeltaData,
+        output_projected:
+          !result.projection.stdoutComplete ||
+          !result.projection.stderrComplete,
+        source_loss: false,
+        output_artifact_handle: artifact.handle,
+        output_artifact_revision: artifact.contentRevision,
+        output_artifact_expires_at: artifact.expiresAt,
+        ...artifactContinuity,
+        stdout_source_bytes: artifact.source.stdout.bytes,
+        stdout_source_lines: artifact.source.stdout.lines,
+        stderr_source_bytes: artifact.source.stderr.bytes,
+        stderr_source_lines: artifact.source.stderr.lines,
+      }),
+    };
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is
     // its task brief plus the "you make real changes on disk" preamble — which

@@ -3,33 +3,21 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
-  CapabilityError,
   type ElizaCapabilityRouter,
   type FileWriteTextParams,
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { writeFileHandler } from "./write.js";
-
-function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model",
-  method: string,
-): never {
-  throw new CapabilityError({
-    code: "CAPABILITY_UNAVAILABLE",
-    message: `${capability} unavailable`,
-    capability,
-    method,
-  });
-}
 
 function makeWriteRouter(
   writeText: ElizaCapabilityRouter["fs"]["writeText"],
 ): ElizaCapabilityRouter {
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -41,23 +29,7 @@ function makeWriteRouter(
         plugin: false,
       },
     }),
-    fs: {
-      list: async () => unavailableCapability("fs", "fs.list"),
-      readText: async () => unavailableCapability("fs", "fs.readText"),
-      writeText,
-    },
-    pty: {
-      runCommand: async () => unavailableCapability("pty", "pty.command.run"),
-    },
-    git: {
-      status: async () => unavailableCapability("git", "git.status"),
-      diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () => unavailableCapability("git", "git.command.run"),
-    },
-    model: {
-      status: async () => unavailableCapability("model", "model.status"),
-    },
-    plugin: new UnavailableCapabilityRouter("desktop").plugin,
+    fs: { ...router.fs, writeText },
   };
 }
 

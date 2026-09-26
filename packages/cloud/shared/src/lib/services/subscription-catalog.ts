@@ -276,7 +276,7 @@ function requiredProviderId(
   return result.data;
 }
 
-function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
+function parseProviderAuthority(env: NodeJS.ProcessEnv) {
   const parsedSecret = stripeSecretSchema.safeParse(env.STRIPE_SECRET_KEY);
   let secret = parsedSecret.success ? parsedSecret.data : null;
   if (secret === null) {
@@ -310,6 +310,11 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
     );
   }
 
+  return { expectedLivemode, credential: secret };
+}
+
+function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
+  const { expectedLivemode, credential } = parseProviderAuthority(env);
   const plans = {
     plus_monthly: {
       priceId: requiredProviderId(env, "STRIPE_PLUS_MONTHLY_PRICE_ID", "price"),
@@ -333,7 +338,7 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
       "Subscription plans cannot share an approved provider product",
     );
   }
-  return deepFreeze({ expectedLivemode, credential: secret, plans });
+  return deepFreeze({ expectedLivemode, credential, plans });
 }
 
 /** Resolves server-owned provider identity without publishing policy or accepting caller bindings. */
@@ -343,8 +348,13 @@ export function resolveSubscriptionProviderBinding(
   catalogVersion: string,
 ): Readonly<PlanBinding> & { expectedLivemode: boolean } {
   resolveSubscriptionPlanDefinition(planKey, catalogVersion);
-  const bindings = parseBindings(env);
-  return { ...bindings.plans[planKey], expectedLivemode: bindings.expectedLivemode };
+  const { expectedLivemode } = parseProviderAuthority(env);
+  const prefix = planKey === "plus_monthly" ? "STRIPE_PLUS" : "STRIPE_PRO";
+  return {
+    priceId: requiredProviderId(env, `${prefix}_MONTHLY_PRICE_ID`, "price"),
+    productId: requiredProviderId(env, `${prefix}_PRODUCT_ID`, "product"),
+    expectedLivemode,
+  };
 }
 
 function mismatch(planKey: SubscriptionPlanKey, field: string): never {

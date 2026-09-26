@@ -3,13 +3,16 @@
  * mixin that composes the telegram domain's search/send/verify methods onto the
  * LifeOpsService base.
  */
+import {
+  type LifeOpsConnectorSide,
+  type LifeOpsTelegramConnectorStatus,
+  type VerifyLifeOpsTelegramConnectorRequest,
+  type VerifyLifeOpsTelegramConnectorResponse,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
-  LifeOpsConnectorSide,
-  LifeOpsTelegramConnectorStatus,
-  VerifyLifeOpsTelegramConnectorRequest,
-  VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared";
-import type { TelegramMessageSearchResult } from "./domains/telegram-service.js";
+  TelegramMessageSearchResult,
+  TelegramSendMessageResult,
+} from "./domains/telegram-service.js";
 
 /** Public surface added by {@link withTelegram}; listed on the LifeOpsService
  * declaration-merge (mixin composition exceeds TS inference depth). Type-only. */
@@ -19,9 +22,10 @@ export interface LifeOpsTelegramService {
   ): Promise<LifeOpsTelegramConnectorStatus>;
   sendTelegramMessage(request: {
     side?: LifeOpsConnectorSide;
+    expectedIdentityId?: string;
     target: string;
     message: string;
-  }): Promise<{ ok: true; messageId: string | null }>;
+  }): Promise<TelegramSendMessageResult>;
   verifyTelegramConnector(
     request: VerifyLifeOpsTelegramConnectorRequest,
   ): Promise<VerifyLifeOpsTelegramConnectorResponse>;

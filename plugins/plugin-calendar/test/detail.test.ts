@@ -13,6 +13,7 @@ import {
   normalizePlannerCalendarWindow,
   parseCalendarJsonRecord,
   sanitizeCalendarId,
+  sanitizeWindowPreset,
 } from "../src/internal/detail.js";
 
 /**
@@ -74,13 +75,29 @@ describe("sanitizeCalendarId (#18946)", () => {
       "any",
       "AUTO",
       "  Auto  ",
+      "cal_primary",
+      "CAL_PRIMARY",
+      "primary_calendar",
+      "default_calendar",
+      "my_calendar",
+      "calendar",
+      "cal_1",
+      "calendar_id",
+      "placeholder",
     ]) {
       expect(sanitizeCalendarId(junk)).toBeUndefined();
     }
   });
 
   it("passes real calendar ids through trimmed", () => {
-    expect(sanitizeCalendarId("primary")).toBe("primary");
+    for (const id of [
+      "primary",
+      "nubs@example.com",
+      "AAMkAGI2TGuLAAA=",
+      "family-shared",
+    ]) {
+      expect(sanitizeCalendarId(id)).toBe(id);
+    }
     expect(sanitizeCalendarId(" user@example.com ")).toBe("user@example.com");
     expect(sanitizeCalendarId("AQMkADAwATM3ZmYAZS0xYjIz")).toBe(
       "AQMkADAwATM3ZmYAZS0xYjIz",
@@ -113,5 +130,65 @@ describe("normalizePlannerCalendarWindow (#18946)", () => {
       timeMin: "2026-08-05T16:00:00.000Z",
       timeMax: "2026-08-05T17:00:00.000Z",
     });
+  });
+});
+
+describe("sanitizeWindowPreset", () => {
+  it("passes the declared presets through, case-insensitively", () => {
+    expect(sanitizeWindowPreset("tomorrow_morning")).toBe("tomorrow_morning");
+    expect(sanitizeWindowPreset(" Tomorrow_Evening ")).toBe("tomorrow_evening");
+  });
+
+  it("drops planner-invented presets so the timestamp path decides instead", () => {
+    // The live regression: "gym session tuesday at 7am" produced a preset the
+    // service rejected with a 400 that aborted the whole create.
+    for (const junk of ["tuesday_morning", "morning", "next_week", "auto"]) {
+      expect(sanitizeWindowPreset(junk)).toBeUndefined();
+    }
+    expect(sanitizeWindowPreset(undefined)).toBeUndefined();
+    expect(sanitizeWindowPreset("   ")).toBeUndefined();
+  });
+});
+
+describe("detailString literal values", () => {
+  it.each([
+    "n/a",
+    "na",
+    "None",
+    "null",
+    "undefined",
+    "Unknown",
+    "unset",
+    "missing",
+    "not specified",
+    "not provided",
+    "TBD",
+    "placeholder",
+    "location_missing",
+    "traveloriginaddress_missing",
+    "unknown_missing",
+    "Missing Persons rehearsal",
+    "Nana's house",
+  ])("preserves the user-authored value %s in text fields", (value) => {
+    for (const key of [
+      "title",
+      "description",
+      "query",
+      "location",
+      "travelOriginAddress",
+    ]) {
+      expect(detailString({ [key]: value }, key)).toBe(value);
+    }
+  });
+
+  it("omits only absent, non-string, and blank values", () => {
+    for (const value of [undefined, null, false, 0, {}, [], "", "   "]) {
+      expect(detailString({ title: value }, "title")).toBeUndefined();
+    }
+    expect(detailString(undefined, "title")).toBeUndefined();
+    expect(detailString({}, "travelOriginAddress")).toBeUndefined();
+    expect(detailString({ location: "  Golden Gate Park  " }, "location")).toBe(
+      "Golden Gate Park",
+    );
   });
 });

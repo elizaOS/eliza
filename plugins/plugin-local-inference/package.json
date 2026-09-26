@@ -7,93 +7,57 @@
 	"types": "src/index.ts",
 	"exports": {
 		".": {
+			"eliza-source": "./src/index.ts",
 			"types": "./src/index.ts",
-			"eliza-source": {
-				"types": "./src/index.ts",
-				"import": "./src/index.ts",
-				"default": "./src/index.ts"
-			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./voice-wake": {
+			"eliza-source": "./src/voice-wake.ts",
 			"types": "./src/voice-wake.ts",
-			"eliza-source": {
-				"types": "./src/voice-wake.ts",
-				"import": "./src/voice-wake.ts",
-				"default": "./src/voice-wake.ts"
-			},
 			"import": "./dist/voice-wake.js",
 			"default": "./dist/voice-wake.js"
 		},
 		"./runtime": {
+			"eliza-source": "./src/runtime/index.ts",
 			"types": "./src/runtime/index.ts",
-			"eliza-source": {
-				"types": "./src/runtime/index.ts",
-				"import": "./src/runtime/index.ts",
-				"default": "./src/runtime/index.ts"
-			},
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
 		"./runtime/embedding-presets": {
+			"eliza-source": "./src/runtime/embedding-presets.ts",
 			"types": "./src/runtime/embedding-presets.ts",
-			"eliza-source": {
-				"types": "./src/runtime/embedding-presets.ts",
-				"import": "./src/runtime/embedding-presets.ts",
-				"default": "./src/runtime/embedding-presets.ts"
-			},
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
 		"./routes": {
+			"eliza-source": "./src/routes/index.ts",
 			"types": "./src/routes/index.ts",
-			"eliza-source": {
-				"types": "./src/routes/index.ts",
-				"import": "./src/routes/index.ts",
-				"default": "./src/routes/index.ts"
-			},
 			"import": "./dist/routes/index.js",
 			"default": "./dist/routes/index.js"
 		},
 		"./local-inference-routes": {
+			"eliza-source": "./src/local-inference-routes.ts",
 			"types": "./src/local-inference-routes.ts",
-			"eliza-source": {
-				"types": "./src/local-inference-routes.ts",
-				"import": "./src/local-inference-routes.ts",
-				"default": "./src/local-inference-routes.ts"
-			},
 			"import": "./dist/local-inference-routes.js",
 			"default": "./dist/local-inference-routes.js"
 		},
 		"./services": {
+			"eliza-source": "./src/services/index.ts",
 			"types": "./src/services/index.ts",
-			"eliza-source": {
-				"types": "./src/services/index.ts",
-				"import": "./src/services/index.ts",
-				"default": "./src/services/index.ts"
-			},
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
 		"./voice-workbench": {
+			"eliza-source": "./src/voice-workbench.ts",
 			"types": "./src/voice-workbench.ts",
-			"eliza-source": {
-				"types": "./src/voice-workbench.ts",
-				"import": "./src/voice-workbench.ts",
-				"default": "./src/voice-workbench.ts"
-			},
 			"import": "./dist/voice-workbench.js",
 			"default": "./dist/voice-workbench.js"
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {
+			"eliza-source": "./src/*.ts",
 			"types": "./src/*.ts",
-			"eliza-source": {
-				"types": "./src/*.ts",
-				"import": "./src/*.ts",
-				"default": "./src/*.ts"
-			},
 			"import": "./dist/*.js",
 			"default": "./dist/*.js"
 		}
@@ -107,52 +71,63 @@
 		"build": "bun run build.ts",
 		"dev": "bun run build.ts",
 		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run && bun test native/verify/asr_bench.test.ts native/verify/bargein_endurance_harness.test.mjs native/verify/eliza1_vision_smoke.test.mjs native/verify/mtp_runtime_smoke.test.mjs native/verify/speculative_benchmark_report.test.mjs native/verify/voice_profile_emotion_status.test.mjs native/voice-bench/src/__tests__",
-		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
-		"meetingstress:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/meeting-acoustic-stress-real.ts",
-		"test:kokoro:real": "bun scripts/kokoro-real-smoke.ts",
-		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
-		"memory:benchmark": "bun run scripts/memory-benchmark.ts",
-		"voice:workbench": "bun run scripts/voice-workbench.ts",
+		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/asr-real-smoke.ts",
+		"meetingstress:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/meeting-acoustic-stress-real.ts",
+		"test:kokoro:real": "bun ../../packages/scripts/plugins/plugin-local-inference/kokoro-real-smoke.ts",
+		"probe:sd-cpp": "node ../../packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts --human",
+		"memory:benchmark": "bun run ../../packages/scripts/plugins/plugin-local-inference/memory-benchmark.ts",
+		"voice:workbench": "bun run ../../packages/scripts/plugins/plugin-local-inference/voice-workbench.ts",
 		"voice:bargein-bench": "node native/verify/bargein_latency_harness.mjs",
 		"voice:endurance": "node native/verify/thirty_turn_endurance_harness.mjs",
 		"voice:mobile-rss": "node native/verify/mobile_peak_rss_harness.mjs",
 		"eliza1:gates": "node native/verify/eliza1_gates_collect.mjs",
-		"lifecycle:matrix": "bun scripts/local-model-lifecycle-matrix.ts",
-		"corpus:generate": "bun run scripts/generate-voice-corpus.ts",
-		"sttquant:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/stt-quant-bench-real.ts",
-		"noise:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/noise-rejection-real.ts",
-		"speakeriso:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/speaker-isolation-real.ts",
-		"roundtrip:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/mixed-real-roundtrip.ts",
-		"robustness:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-robustness-asr.ts",
-		"voicestack:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-voice-stack.ts",
-		"agentvoice:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-agent-voice-overlap.ts",
-		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
+		"lifecycle:matrix": "bun ../../packages/scripts/plugins/plugin-local-inference/local-model-lifecycle-matrix.ts",
+		"corpus:generate": "bun run ../../packages/scripts/plugins/plugin-local-inference/generate-voice-corpus.ts",
+		"sttquant:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/stt-quant-bench-real.ts",
+		"noise:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/noise-rejection-real.ts",
+		"speakeriso:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/speaker-isolation-real.ts",
+		"roundtrip:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/mixed-real-roundtrip.ts",
+		"robustness:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/real-robustness-asr.ts",
+		"voicestack:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/real-voice-stack.ts",
+		"agentvoice:real": "NODE_OPTIONS='--experimental-sqlite' bun ../../packages/scripts/plugins/plugin-local-inference/real-agent-voice-overlap.ts",
+		"clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"typecheck": "tsc --noEmit -p tsconfig.json"
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"native:verify:contract": "make -C native/verify kernel-contract",
+		"native:verify:reference": "make -C native/verify reference-test",
+		"native:verify:vulkan": "make -C native/verify vulkan && cd native/verify && ./vulkan_verify",
+		"native:verify:metal": "make -C native/verify metal && cd native/verify && ./metal_verify",
+		"native:clean": "make -C native/verify clean"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-native-inference": "workspace:*",
-		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
-		"@elizaos/shared": "workspace:*",
 		"phonemizer": "^1.2.1",
-		"ws": "^8.21.3"
+		"ws": "^8.21.3",
+		"@elizaos/cloud-routing": "workspace:*",
+		"@elizaos/plugin-assistant": "workspace:*",
+		"zod": "^4.4.3",
+		"@elizaos/plugin-elizacloud": "workspace:*",
+		"yaml": "^2.8.2",
+		"@huggingface/tokenizers": "0.1.3"
 	},
 	"peerDependencies": {
-		"@elizaos/core": "workspace:*",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.8",
+		"@biomejs/biome": "2.5.14",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^4.1.10"
+		"vitest": "^5.0.1",
+		"yaml": "^2.8.2",
+		"@elizaos/plugin-elizacloud": "workspace:*",
+		"@elizaos/testing": "workspace:*"
 	},
 	"publishConfig": {
 		"access": "public"

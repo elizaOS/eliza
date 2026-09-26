@@ -14,24 +14,16 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.mjs",
       "default": "./dist/index.mjs"
     },
     "./package.json": "./package.json",
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -61,9 +53,9 @@
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-wallet -- bun run build:unlocked",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-wallet -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:ui-types && bun run build:views",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:ui-types": "tsc6 --noCheck -p tsconfig.ui.json",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.ui.json",
     "check": "bun run typecheck",
@@ -73,7 +65,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist"
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
@@ -88,7 +80,6 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@lifi/sdk": "^3.7.9",
     "lucide-react": "^1.0.0",
@@ -105,24 +96,25 @@
     "tweetnacl": "^1.0.3",
     "uuid": "^11.1.0",
     "viem": "^2.48.8",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
-    "@testing-library/react": "^16.3.2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^24.0.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "jsdom": "^29.0.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

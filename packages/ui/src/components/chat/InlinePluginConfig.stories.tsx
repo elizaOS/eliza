@@ -11,7 +11,7 @@
  * window.fetch answering that route with a Telegram-shaped connector fixture.
  */
 
-import type { PluginParamDef } from "@elizaos/shared";
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import type { PluginInfo } from "../../api/client-types-config";
 import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
@@ -19,7 +19,9 @@ import { MockAppProvider } from "../../storybook/mock-providers";
 import { InlinePluginConfig } from "./MessageContent";
 
 function param(
-  over: Partial<PluginParamDef> & { key: string },
+  over: Partial<PluginParamDef> & {
+    key: string;
+  },
 ): PluginParamDef {
   return {
     type: "string",
@@ -31,7 +33,6 @@ function param(
     ...over,
   };
 }
-
 function telegram(over: Partial<PluginInfo> = {}): PluginInfo {
   return {
     id: "telegram",
@@ -61,7 +62,6 @@ function telegram(over: Partial<PluginInfo> = {}): PluginInfo {
     ...over,
   };
 }
-
 /** Install a window.fetch that answers `/api/plugins` with the fixture. */
 function withPlugins(plugin: PluginInfo): Decorator {
   return (Story) => {
@@ -84,7 +84,7 @@ function withPlugins(plugin: PluginInfo): Decorator {
     // in its own iframe so this cannot leak across stories.
     setTimeout(() => {
       window.fetch = originalFetch;
-    }, 4_000);
+    }, 4000);
     return (
       <MockAppProvider>
         <div className="max-w-xl">
@@ -94,17 +94,14 @@ function withPlugins(plugin: PluginInfo): Decorator {
     );
   };
 }
-
 const meta = {
   title: "Chat/ConnectorSetupWidget",
   component: InlinePluginConfig,
   parameters: { layout: "padded" },
   args: { pluginId: "telegram" },
 } satisfies Meta<typeof InlinePluginConfig>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 /**
  * Fresh setup: unconfigured connector mounts EXPANDED with only the required
  * (minimal) field visible; the optional params sit behind the closed Advanced
@@ -135,7 +132,6 @@ export const FreshSetup: Story = {
     );
   },
 };
-
 /** Advanced disclosure open: the optional params are revealed below the fold. */
 export const AdvancedExpanded: Story = {
   decorators: [withPlugins(telegram())],
@@ -160,7 +156,6 @@ export const AdvancedExpanded: Story = {
     assert(revealed !== null, "optional fields render once Advanced is open");
   },
 };
-
 /**
  * Connected: enabled + configured connector mounts COLLAPSED to the compact
  * status row ("Telegram is enabled.") with the chevron as the re-expand

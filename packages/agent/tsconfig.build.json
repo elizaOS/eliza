@@ -1,8 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "allowSyntheticDefaultImports": true,
-    "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": false,
     "esModuleInterop": true,
@@ -13,34 +13,8 @@
     "rewriteRelativeImportExtensions": true,
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "paths": {
-      "@elizaos/ui": ["../ui/dist/index.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
-      "@elizaos/skills": ["../skills/dist/index.d.ts"],
-      "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/agent": ["./src/index.ts"],
-      "@elizaos/plugin-coding-tools": [
-        "../../plugins/plugin-coding-tools/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-app-manager": [
-        "../../plugins/plugin-app-manager/dist/index.d.ts"
-      ]
-    },
-    "types": ["node", "bun-types", "react", "react-dom"],
-    "typeRoots": [
-      "../../node_modules/@types",
-      "../../node_modules/.bun/node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "node_modules/@types",
-      "../../node_modules",
-      "../../node_modules/.bun/node_modules",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
-    ]
+    "paths": {},
+    "types": ["node", "bun-types", "react", "react-dom"]
   },
   "exclude": [
     "src/**/*.test.ts",

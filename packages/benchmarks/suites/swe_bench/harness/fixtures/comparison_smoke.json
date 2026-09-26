@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-18T00:00:00+00:00",
+  "totals": {
+    "instances": 2,
+    "elizaos_resolved": 0,
+    "opencode_resolved": 0,
+    "elizaos_wins": 0,
+    "opencode_wins": 0,
+    "ties_resolved": 0,
+    "ties_failed": 2
+  },
+  "records": [
+    {
+      "instance_id": "django__django-11099",
+      "repo": "",
+      "base_commit": "",
+      "path_a": {
+        "path": "elizaos",
+        "status": "not_run_yet",
+        "patch": "",
+        "resolved": false,
+        "time_s": 0.0,
+        "error": null,
+        "patch_status": null,
+        "tests_passed": [],
+        "tests_failed": []
+      },
+      "path_b": {
+        "path": "opencode",
+        "status": "not_run_yet",
+        "patch": "",
+        "resolved": false,
+        "time_s": 0.0,
+        "error": null,
+        "patch_status": null,
+        "tests_passed": [],
+        "tests_failed": []
+      },
+      "winner": "tie_failed"
+    },
+    {
+      "instance_id": "sympy__sympy-20590",
+      "repo": "",
+      "base_commit": "",
+      "path_a": {
+        "path": "elizaos",
+        "status": "not_run_yet",
+        "patch": "",
+        "resolved": false,
+        "time_s": 0.0,
+        "error": null,
+        "patch_status": null,
+        "tests_passed": [],
+        "tests_failed": []
+      },
+      "path_b": {
+        "path": "opencode",
+        "status": "not_run_yet",
+        "patch": "",
+        "resolved": false,
+        "time_s": 0.0,
+        "error": null,
+        "patch_status": null,
+        "tests_passed": [],
+        "tests_failed": []
+      },
+      "winner": "tie_failed"
+    }
+  ]
+}

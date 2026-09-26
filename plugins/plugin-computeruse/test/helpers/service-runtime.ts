@@ -5,25 +5,24 @@
  */
 
 import {
-  AgentRuntime,
+  type AgentRuntime,
   createCharacter,
-  InMemoryDatabaseAdapter,
   stringToUuid,
 } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { ComputerUseService } from "../../src/services/computer-use-service.js";
 
 /** Starts the service through the same AgentRuntime registration path used in production. */
 export async function startComputerUseRuntime(
   settings: Record<string, string> = {},
 ): Promise<{ runtime: AgentRuntime; service: ComputerUseService }> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: createCharacter({
       id: stringToUuid(`computeruse-service-${crypto.randomUUID()}`),
       name: "ComputerUseServiceTestAgent",
       settings,
     }),
-    adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
+
     enableAutonomy: false,
     enableDocuments: false,
     enableRelationships: false,

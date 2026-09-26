@@ -1,22 +1,3 @@
-/**
- * Public barrel for the agent HTTP API surface (`@elizaos/agent/api`):
- * re-exports the route handlers, dispatch helpers, and transport types the
- * server dispatcher and sibling `@elizaos/plugin-*` packages consume.
- *
- * App-manager and wallet routes live in their own plugins; the re-exports here
- * preserve the historical `@elizaos/agent` import path. Wallet loads lazily so
- * importing this barrel during server startup does not drag in the full
- * wallet/trading stack before any wallet route is used.
- */
-
-// Compatibility re-export: apps routes live in @elizaos/plugin-app-manager;
-// new callers should import from that package directly.
-export {
-  type AppManagerLike,
-  type AppsRouteContext,
-  type FavoriteAppsStore,
-  handleAppsRoutes,
-} from "@elizaos/plugin-app-manager";
 // Compatibility re-export: wallet routes live in @elizaos/plugin-wallet.
 // Lazy-load the implementation — this barrel is imported during local-server
 // startup, and a static re-export would force every runtime to pull in the
@@ -32,6 +13,11 @@ export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleW
     const walletApi = await import(/* @vite-ignore */ "@elizaos/plugin-wallet");
     return walletApi.handleWalletRoutes(context);
   };
+export {
+  isInsufficientCreditsError,
+  isInsufficientCreditsMessage,
+  isRateLimitError,
+} from "@elizaos/core";
 export * from "./accounts-routes.ts";
 export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
@@ -44,15 +30,14 @@ export * from "./bug-report-routes.ts";
 export * from "./character-routes.ts";
 export * from "./compat-utils.ts";
 export * from "./connector-health.ts";
+export * from "./context-inspector-routes.ts";
 export * from "./conversation-restore.ts";
-export * from "./credit-detection.ts";
 export * from "./database.ts";
 export * from "./diagnostics-routes.ts";
 export {
   type DispatchRouteArgs,
   dispatchRoute,
 } from "./dispatch-route.ts";
-export * from "./documents-service-loader.ts";
 export * from "./early-logs.ts";
 export { dispatchApiRoute } from "./in-process-api.ts";
 export * from "./memory-bounds.ts";

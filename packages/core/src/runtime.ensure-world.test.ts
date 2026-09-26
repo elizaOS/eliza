@@ -3,48 +3,47 @@
  * adapter, including repeated updates after the persisted revision advances.
  */
 
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError } from "./errors";
 import { AgentRuntime } from "./runtime";
-import type { Character, UUID, World } from "./types";
+import type { Character } from "./types/agent.js";
+import type { World } from "./types/environment.js";
+import type { UUID } from "./types/primitives.js";
 import { stringToUuid } from "./utils";
+import { stringToUuid as sqliteTestAgentId } from "./utils.js";
 
 describe("AgentRuntime.ensureWorldExists", () => {
 	it("rereads and merges after a concurrent creator wins the unique insert", async () => {
-		class CreateRaceAdapter extends InMemoryDatabaseAdapter {
-			private arrivals = 0;
-			private release!: () => void;
-			private readonly bothArrived = new Promise<void>((resolve) => {
-				this.release = resolve;
-			});
-
-			override async upsertWorlds(worlds: World[]): Promise<void> {
-				this.arrivals += 1;
-				const arrival = this.arrivals;
-				if (arrival > 2) {
-					await super.upsertWorlds(worlds);
-					return;
-				}
-				if (this.arrivals === 2) this.release();
-				await this.bothArrived;
-				if (arrival === 1) {
-					await this.createWorlds(worlds);
-					return;
-				}
-				throw new ElizaError("World already exists", {
-					code: "WORLD_ALREADY_EXISTS",
-					context: { worldId: worlds[0]?.id },
-				});
-			}
-		}
-
 		const runtime = new AgentRuntime({
 			character: { name: "ensure-world-create-race" } as Character,
 		});
-		const adapter = new CreateRaceAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+		let arrivals = 0;
+		let release!: () => void;
+		const bothArrived = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const racingAdapter = new Proxy(adapter, {
+			get(target, property) {
+				if (property === "upsertWorlds")
+					return async (worlds: World[]) => {
+						const arrival = ++arrivals;
+						if (arrival > 2) return target.upsertWorlds(worlds);
+						if (arrival === 2) release();
+						await bothArrived;
+						if (arrival === 1) return target.createWorlds(worlds);
+						throw new ElizaError("World already exists", {
+							code: "WORLD_ALREADY_EXISTS",
+							context: { worldId: worlds[0]?.id },
+						});
+					};
+				const value = Reflect.get(target, property);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
 		await adapter.init();
-		runtime.registerDatabaseAdapter(adapter);
+		runtime.registerDatabaseAdapter(racingAdapter);
 		const worldId = stringToUuid("ensure-world-create-race") as UUID;
 
 		await Promise.all([
@@ -67,7 +66,7 @@ describe("AgentRuntime.ensureWorldExists", () => {
 	});
 
 	it("reports a typed failure after bounded create-race retries", async () => {
-		class PermanentlyRacedAdapter extends InMemoryDatabaseAdapter {
+		class PermanentlyRacedAdapter extends SQLiteDatabaseAdapter {
 			override async upsertWorlds(worlds: World[]): Promise<void> {
 				throw new ElizaError("World already exists", {
 					code: "WORLD_ALREADY_EXISTS",
@@ -78,7 +77,7 @@ describe("AgentRuntime.ensureWorldExists", () => {
 		const runtime = new AgentRuntime({
 			character: { name: "ensure-world-create-race-exhausted" } as Character,
 		});
-		const adapter = new PermanentlyRacedAdapter();
+		const adapter = PermanentlyRacedAdapter.create(":memory:", runtime.agentId);
 		await adapter.init();
 		runtime.registerDatabaseAdapter(adapter);
 
@@ -95,7 +94,10 @@ describe("AgentRuntime.ensureWorldExists", () => {
 		const runtime = new AgentRuntime({
 			character: { name: "ensure-world-test" } as Character,
 		});
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("ensure-world-test"),
+		);
 		await adapter.init();
 		runtime.registerDatabaseAdapter(adapter);
 		const worldId = stringToUuid("ensure-world-revision") as UUID;
@@ -134,7 +136,10 @@ describe("AgentRuntime.ensureWorldExists", () => {
 		const runtime = new AgentRuntime({
 			character: { name: "ensure-world-authority-test" } as Character,
 		});
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("ensure-world-authority-test"),
+		);
 		await adapter.init();
 		runtime.registerDatabaseAdapter(adapter);
 		const worldId = stringToUuid("ensure-world-authority") as UUID;

@@ -2,7 +2,7 @@
  * Live-model scenario: a health check-in grounds its reply in the owner's sleep
  * and recovery signals.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +12,7 @@ export default scenario({
   tags: ["health", "lifeops", "health_checkin"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-health", "@elizaos/plugin-agent-skills"],
+    plugins: ["@elizaos/plugin-health"],
   },
   turns: [
     {
@@ -23,7 +23,7 @@ export default scenario({
   ],
   // Load-bearing assertion. The previous turn-level
   // plannerIncludesAny/responseIncludesAny/plannerExcludes are NOT registered
-  // final-check handlers (packages/scenario-runner/src/final-checks/index.ts),
+  // final-check handlers (packages/testing/scenario-runner/src/final-checks/index.ts),
   // so a regression in the optimized `health_checkin` prompt path would not fail
   // the run. `selectedActionArguments` IS consumed by the executor: it requires
   // OWNER_HEALTH to be selected AND a resolved subaction token to appear in the

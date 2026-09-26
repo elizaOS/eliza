@@ -1,3 +1,4 @@
+import type { ViewCapability } from "@elizaos/core";
 /** Verifies isReadOnlyViewCapability through the package's configured test harness. */
 // @vitest-environment jsdom
 //
@@ -9,13 +10,16 @@
 //      result). No mock stands in for the broker: the assertions are on the
 //      real `view:interact:result` payload the agent receives.
 
+import type { SurfaceManifest } from "@elizaos/core";
 import {
   IMMERSIVE_WALLPAPER_SURFACE,
   resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/core/views/surface-manifest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-contacts/src/view-capabilities";
+import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-messages/src/view-capabilities";
+import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-phone/src/view-capabilities";
 import {
   brokerViewInteract,
   isReadOnlyViewCapability,
@@ -103,6 +107,21 @@ describe("brokerViewInteract", () => {
       },
     );
     expect(inner).toHaveBeenCalledWith("agent-fill", { id: "x", value: "y" });
+  });
+
+  it("denies declared human authority even when a broad surface grant is present", async () => {
+    const handler = vi.fn(async () => ({ mutated: true }));
+    const gated = brokerViewInteract(
+      "contacts",
+      resolveSurfaceManifest({ surface: AGENT_SURFACE_GRANT }),
+      handler,
+      CONTACTS_VIEW_CAPABILITIES,
+    );
+    await expect(
+      gated("create-contact", { displayName: "Unauthorized" }),
+    ).rejects.toThrow(ViewCapabilityDeniedError);
+    await expect(gated("get-text")).rejects.toThrow(ViewCapabilityDeniedError);
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it("throws ViewCapabilityDeniedError for a denied capability, never calling the handler", async () => {
@@ -194,7 +213,13 @@ describe("ViewCapabilityDeniedError", () => {
 
 // ── Real-path: a mounted DynamicViewLoader gated by its manifest ─────────────
 const { sendWsMessage } = vi.hoisted(() => ({ sendWsMessage: vi.fn() }));
-vi.mock("../../api", () => ({ client: { sendWsMessage } }));
+vi.mock("../../api", () => ({
+  client: {
+    sendWsMessage,
+    fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
+    clientId: "fixture-client",
+  },
+}));
 
 // Import after the api mock so DynamicViewLoader binds the mocked client.
 const { __resetDynamicViewLoaderCacheForTests, DynamicViewLoader } =
@@ -232,6 +257,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
       capability: string,
       params?: Record<string, unknown>,
     ) => Promise<unknown>,
+    capabilities?: readonly ViewCapability[],
   ) {
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
       default: function Panel() {
@@ -247,13 +273,74 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
     }));
     return render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={`https://capability.example.test/assets/${viewId}.js`}
         viewId={viewId}
         viewType="gui"
         surface={surface}
+        capabilities={capabilities}
       />,
     );
   }
+
+  it.each([
+    ["contacts", "list-contacts", CONTACTS_VIEW_CAPABILITIES],
+    ["messages", "list-threads", MESSAGES_VIEW_CAPABILITIES],
+    ["phone", "phone-state", PHONE_VIEW_CAPABILITIES],
+  ] as const)(
+    "dispatches the declared %s semantic read and denies alternate native and DOM operations",
+    async (viewId, read, capabilities) => {
+      const records = [{ id: "last-record", text: "complete native result" }];
+      const moduleInteract = vi.fn(async () => records);
+      mountView(viewId, undefined, moduleInteract, capabilities);
+      await screen.findByText(`Panel ${viewId}`);
+      const { dispatchViewInteract } = await import("./view-interact-registry");
+      await act(async () => {
+        await dispatchViewInteract(
+          viewId,
+          "gui",
+          read,
+          undefined,
+          `${viewId}-semantic-read`,
+          "fixture-installation",
+        );
+      });
+      expect(sendWsMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          requestId: `${viewId}-semantic-read`,
+          success: true,
+          result: records,
+        }),
+      );
+      expect(moduleInteract).toHaveBeenCalledOnce();
+      for (const capability of [
+        ...capabilities
+          .filter((entry) => entry.authority === "human")
+          .map((entry) => entry.id),
+        "fill-input",
+        "agent-click",
+      ]) {
+        await act(async () => {
+          await dispatchViewInteract(
+            viewId,
+            "gui",
+            capability,
+            { name: "field", value: "changed", id: "field" },
+            `${viewId}-denied-${capability}`,
+            "fixture-installation",
+          );
+        });
+        expect(sendWsMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            requestId: `${viewId}-denied-${capability}`,
+            success: false,
+          }),
+        );
+      }
+      expect(moduleInteract).toHaveBeenCalledOnce();
+      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
+    },
+  );
 
   it("DENIES a mutating capability on a view WITHOUT the agent-surface grant — agent sees an explicit failure, module never runs", async () => {
     const moduleInteract = vi.fn(async () => ({ moduleRan: true }));
@@ -268,6 +355,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "agent-fill",
         { id: "field", value: "pwn" },
         "req-denied",
+        "fixture-installation",
       );
     });
 
@@ -276,6 +364,10 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
     await waitFor(() => {
       expect(sendWsMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          viewId: "ungranted.view",
+          viewType: "gui",
+          installationId: "fixture-installation",
+          claimId: "execution-claim",
           type: "view:interact:result",
           requestId: "req-denied",
           success: false,
@@ -306,12 +398,17 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "fill-input",
         { name: "field", value: "hello" },
         "req-allowed",
+        "fixture-installation",
       );
     });
 
     await waitFor(() => {
       expect(sendWsMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          viewId: "granted.view",
+          viewType: "gui",
+          installationId: "fixture-installation",
+          claimId: "execution-claim",
           type: "view:interact:result",
           requestId: "req-allowed",
           success: true,
@@ -334,12 +431,17 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "get-text",
         undefined,
         "req-read",
+        "fixture-installation",
       );
     });
 
     await waitFor(() => {
       expect(sendWsMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          viewId: "readonly.view",
+          viewType: "gui",
+          installationId: "fixture-installation",
+          claimId: "execution-claim",
           type: "view:interact:result",
           requestId: "req-read",
           success: true,
@@ -364,6 +466,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "agent-click",
         { id: "field" },
         "req-immersive",
+        "fixture-installation",
       );
     });
 

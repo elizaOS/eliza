@@ -2,10 +2,7 @@
  * Usage chart: time-series analytics with a toggleable focus metric
  * (requests / cost / success rate).
  */
-
 "use client";
-
-import { formatUsd } from "@elizaos/shared/utils/format";
 import { format } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -16,10 +13,10 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "../../../cloud-ui";
+import { formatUsd } from "../../../utils/format.js";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 type MetricKey = "requests" | "cost" | "successRate";
-
 interface UsageChartProps {
   data: Array<{
     timestamp: Date | string;
@@ -29,7 +26,6 @@ interface UsageChartProps {
   }>;
   granularity: "hour" | "day" | "week" | "month";
 }
-
 export function UsageChart({ data, granularity }: UsageChartProps) {
   const t = useCloudT();
   const chartConfig = {
@@ -55,7 +51,6 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
     },
   } as const;
   const [activeMetric, setActiveMetric] = useState<MetricKey>("requests");
-
   const formatDate = useCallback(
     (date: Date) => {
       const formatMap = {
@@ -68,12 +63,10 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
     },
     [granularity],
   );
-
   const detailedDate = useCallback(
     (date: Date) => format(date, "MMM d, yyyy · HH:mm"),
     [],
   );
-
   const chartData = useMemo(
     () =>
       data.map((point) => {
@@ -90,11 +83,8 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
     // formatDate depends on granularity, so both are needed
     [data, formatDate, detailedDate],
   );
-
   const latestPoint = chartData.at(-1);
-
   const activeColor = chartConfig[activeMetric].color;
-
   const formatMetricValue = (value: number | undefined) => {
     if (value === undefined) return "–";
     if (activeMetric === "successRate") {
@@ -105,7 +95,6 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
     }
     return value.toLocaleString();
   };
-
   const yAxisProps = useMemo(() => {
     if (activeMetric === "successRate") {
       return {
@@ -118,7 +107,6 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
         value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${value}`,
     };
   }, [activeMetric]);
-
   return (
     <div className="flex flex-col gap-7 lg:gap-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -145,7 +133,6 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
         <div className="flex flex-wrap items-center gap-3">
           {(Object.keys(chartConfig) as MetricKey[]).map((metric) => {
             const isActive = metric === activeMetric;
-
             return (
               <Button
                 key={metric}
@@ -210,7 +197,9 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
                     "payload" in source
                   ) {
                     interface TooltipPayload {
-                      payload?: { fullLabel?: string };
+                      payload?: {
+                        fullLabel?: string;
+                      };
                     }
                     const inner = (source as TooltipPayload).payload;
                     return inner?.fullLabel ?? "";

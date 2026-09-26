@@ -4,13 +4,13 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,
@@ -19,6 +19,7 @@ import {
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
+import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { isLoopbackStagingStewardDevelopment } from "../state/loopback-steward-development";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
@@ -571,11 +572,16 @@ function throwIfDirectCloudDispatchDeadlineElapsed(
 async function directCloudFetch(
   url: string,
   init?: RequestInit,
+  timeoutMs?: number,
 ): Promise<Response> {
   throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
   const transport = desktopHttpTransportForUrl(url);
   if (transport) {
-    return transport.request(url, init ?? {}, undefined);
+    return transport.request(
+      url,
+      init ?? {},
+      timeoutMs === undefined ? undefined : { timeoutMs },
+    );
   }
   return fetchAgentTransport.request(url, init ?? {}, undefined);
 }
@@ -663,6 +669,11 @@ export function hasDirectCloudAccountTransport(client: ElizaClient): boolean {
 export function getCloudAuthToken(client?: ElizaClient): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
+
+  // The native IPC/loopback bearer authenticates only the on-device agent.
+  // Treating it as a Cloud session skips interactive login and sends that
+  // unrelated credential to the Cloud control plane.
+  if (client && isMobileLocalAgentUrl(client.getBaseUrl())) return null;
 
   const clientToken = client?.getRestAuthToken()?.trim();
   return clientToken || null;
@@ -1015,7 +1026,11 @@ async function fetchDirectCloudWithTimeout<T>(
 
   try {
     response = await Promise.race([
-      directCloudFetch(url, { ...init, signal: controller.signal }),
+      directCloudFetch(
+        url,
+        { ...init, signal: controller.signal },
+        DIRECT_CLOUD_HTTP_TIMEOUT_MS,
+      ),
       aborted,
     ]);
     // Keep the same request deadline alive until the body is fully consumed.
@@ -2234,8 +2249,19 @@ declare module "./client-base" {
 ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
   const directBase = resolveDirectCloudClientApiBase(this);
   if (directBase) {
+    const slotKey = getBootConfig().applicationBillingSlot?.trim();
+    const applicationBilling: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection =
+      !slotKey
+        ? { kind: "unconfigured" }
+        : /^[a-z][a-z0-9_-]{0,99}$/.test(slotKey)
+          ? { kind: "configured", slotKey }
+          : {
+              kind: "unavailable",
+              reason: "The host's application billing product is invalid.",
+            };
     if (!readDirectCloudToken(this)) {
       return {
+        applicationBilling,
         connected: false,
         enabled: true,
         hasApiKey: false,
@@ -2253,6 +2279,7 @@ ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
           ? (user.data as Record<string, unknown>)
           : user;
       return {
+        applicationBilling,
         connected: true,
         enabled: true,
         hasApiKey: true,
@@ -2267,6 +2294,7 @@ ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
     } catch (err) {
       if (isDirectCloudAuthError(err)) {
         return {
+          applicationBilling,
           connected: false,
           enabled: true,
           hasApiKey: true,
@@ -3552,18 +3580,27 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       };
     }
 
-    const res = await directCloudFetch(
-      resolveBrowserCloudApiRequestUrl(`${authApiBase}/api/auth/cli-session`),
+    const url = resolveBrowserCloudApiRequestUrl(
+      `${authApiBase}/api/auth/cli-session`,
+    );
+    const result = await fetchDirectCloudWithTimeout(
+      url,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: requestSessionId }),
       },
+      { method: "POST", url },
+      async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        data: response.ok ? recordOrNull(await response.json()) : null,
+      }),
     );
-    if (!res.ok) {
-      return { ok: false, error: `Login failed (${res.status})` };
+    if (!result.ok) {
+      return { ok: false, error: `Login failed (${result.status})` };
     }
-    const responseData = recordOrNull(await res.json());
+    const responseData = result.data;
     const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
     if (!sessionId) {
       return {
@@ -4558,6 +4595,9 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     },
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  if (response.status === 401) {
+    await clearStoredStewardTokenIfCurrent(options.authToken);
+  }
   if (!response.ok) {
     throw Object.assign(
       new Error(

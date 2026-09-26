@@ -14,8 +14,8 @@ import {
   type ConnectorAccountStorage,
   getConnectorAccountManager,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
 } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
@@ -330,7 +330,7 @@ describe("accountId 'default' resolution", () => {
 describe("manager-path durability across restart (real core manager + adapter)", () => {
   function createManagerRuntime(
     services: Record<string, unknown>,
-    adapter?: InMemoryDatabaseAdapter
+    adapter?: SQLiteDatabaseAdapter
   ): IAgentRuntime {
     return {
       agentId: AGENT_ID,
@@ -362,9 +362,9 @@ describe("manager-path durability across restart (real core manager + adapter)",
     const bootRuntime = createManagerRuntime(bootServices);
     const bootManager = getConnectorAccountManager(bootRuntime);
 
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await adapter.initialize();
-    (bootRuntime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter = adapter;
+    (bootRuntime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter = adapter;
 
     // OAuth completion writes the connected account with its credential refs.
     await bootManager.upsertAccount("google", {
@@ -390,5 +390,107 @@ describe("manager-path durability across restart (real core manager + adapter)",
     ).credentials;
     expect(credentials?.access_token).toBe("test-access-token");
     expect(credentials?.refresh_token).toBe("test-refresh-token");
+  });
+});
+
+describe("registered credential store startup", () => {
+  async function fixture() {
+    const state = newDurableState();
+    state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
+    const storage = createStorage(state);
+    const store = createDurableStoreService(state.vaultEntries);
+    await persistTokens(createRuntime(storage, { connector_credential_store: store }));
+    const services: Record<string, unknown> = { SECRETS: createVolatileSecretsService() };
+    const runtime = createRuntime(storage, services);
+    const request = {
+      provider: "google" as const,
+      accountId: ACCOUNT_ID,
+      scopes: [],
+      capabilities: [],
+      reason: "startup regression",
+    };
+    return { storage, store, services, runtime, request };
+  }
+
+  it("waits for the registered store before reading a persisted credential", async () => {
+    const source = await fixture();
+    let finish!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    source.runtime.hasService = (name) => name === "connector_credential_store";
+    source.runtime.getServiceLoadPromise = async () => {
+      await ready;
+      source.services.connector_credential_store = source.store;
+      return source.store as never;
+    };
+    const resolver = new DefaultGoogleCredentialResolver({
+      runtime: source.runtime,
+      storage: source.storage,
+    });
+    const result = resolver.getAuthClient(source.request);
+    const observed = await Promise.race([
+      result.then(
+        () => "resolved",
+        () => "rejected"
+      ),
+      new Promise<string>((resolve) => setTimeout(() => resolve("waiting"), 0)),
+    ]);
+    finish();
+    expect(observed).toBe("waiting");
+    const client = await result;
+    expect((client as { credentials: { access_token: string } }).credentials.access_token).toBe(
+      "test-access-token"
+    );
+  });
+
+  it("surfaces a failed registered store startup instead of a missing-credential result", async () => {
+    const source = await fixture();
+    const cause = new Error("durable store startup failed");
+    source.runtime.hasService = (name) => name === "connector_credential_store";
+    source.runtime.getServiceLoadPromise = async () => {
+      throw cause;
+    };
+    const resolver = new DefaultGoogleCredentialResolver({
+      runtime: source.runtime,
+      storage: source.storage,
+    });
+    await expect(resolver.getAuthClient(source.request)).rejects.toMatchObject({
+      code: "GOOGLE_CREDENTIAL_STORE_START_FAILED",
+      cause,
+    });
+  });
+
+  it("keeps an injected store independent of runtime lazy services", async () => {
+    const source = await fixture();
+    source.runtime.hasService = () => true;
+    source.runtime.getServiceLoadPromise = async () => {
+      throw new Error("unexpected runtime startup");
+    };
+    const resolver = new DefaultGoogleCredentialResolver({
+      runtime: source.runtime,
+      storage: source.storage,
+      credentialStore: source.store,
+    });
+    const client = await resolver.getAuthClient(source.request);
+    expect((client as { credentials: { access_token: string } }).credentials.access_token).toBe(
+      "test-access-token"
+    );
+  });
+
+  it("does not start an unregistered store", async () => {
+    const source = await fixture();
+    source.runtime.hasService = () => false;
+    let started = false;
+    source.runtime.getServiceLoadPromise = async () => {
+      started = true;
+      throw new Error("unregistered");
+    };
+    const resolver = new DefaultGoogleCredentialResolver({
+      runtime: source.runtime,
+      storage: source.storage,
+    });
+    await expect(resolver.getAuthClient(source.request)).rejects.toThrow("could not be read");
+    expect(started).toBe(false);
   });
 });

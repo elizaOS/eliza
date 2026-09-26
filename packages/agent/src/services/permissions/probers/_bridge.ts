@@ -7,7 +7,7 @@
  *   - bundle identifier resolution and TCC.db reads
  *   - bun:ffi loader for the existing macOS permissions dylib
  *     (`libMacWindowEffects.dylib`, built under
- *     `packages/app-core/platforms/electrobun/src/`)
+ *     `packages/app/platforms/electrobun/src/`)
  *
  * The TCC.db read trick lets us answer `check()` without triggering an OS
  * dialog: TCC's authorization database is readable via sqlite3 for the
@@ -21,14 +21,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { ElizaError } from "@elizaos/core";
-
-import type {
-  PermissionId,
-  PermissionPlatform,
-  PermissionState,
-  PermissionStatus,
-} from "../contracts.js";
+import {
+  ElizaError,
+  type PermissionId,
+  type Platform as PermissionPlatform,
+  type PermissionState,
+  type PermissionStatus,
+} from "@elizaos/core";
 
 export const PLATFORM: PermissionPlatform =
   process.platform as PermissionPlatform;
@@ -300,11 +299,11 @@ const DYLIB_CANDIDATES = [
   // Packaged Electrobun layout — the permission caller is Contents/MacOS/bun.
   resolvePackagedNativePermissionsDylib(),
   // Source worktree layout — relative to this prober file
-  "../../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../../../app/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Worktree layout — relative to the agent package
-  "../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../../app/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Installed package layout
-  "../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../app/platforms/electrobun/src/libMacWindowEffects.dylib",
 ].filter(Boolean);
 
 export async function getNativeDylib(): Promise<NativePermissionsLib | null> {

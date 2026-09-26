@@ -9,16 +9,14 @@
  * eligibility requires a canonical executable-backend mapping. No hardcoded
  * provider-name copy leaks into components.
  */
-
 import {
   codingAgentSpawnCapabilityForProvider,
   codingProviderDescriptorForProvider,
-  type LinkedAccountProviderId,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
 import type { AccountsListProvider } from "../../api/client-agent";
 import type { AccountProviderOption } from "./account-provider-options";
-
 export interface ResolvedEligibility {
   chat: boolean;
   codingAgent: boolean;
@@ -26,7 +24,6 @@ export interface ResolvedEligibility {
   source: "runtime" | "inferred";
   note?: string;
 }
-
 /**
  * Conservative fallback: infer capability from the canonical descriptor.
  *  - descriptor inference support → chat
@@ -45,7 +42,6 @@ function inferEligibility(option: AccountProviderOption): ResolvedEligibility {
     source: "inferred",
   };
 }
-
 export function resolveProviderEligibility(
   option: AccountProviderOption,
   runtime: ProviderRuntimeEligibility | undefined,
@@ -63,13 +59,11 @@ export function resolveProviderEligibility(
   }
   return inferEligibility(option);
 }
-
 export interface EligibilityChip {
   key: string;
   label: string;
   tone: "chat" | "coding" | "muted";
 }
-
 /**
  * Render-ready capability chips. One chip per real capability the provider
  * can serve — no auth-method noise (that lives in the add flow). Keeps the
@@ -90,25 +84,25 @@ export function eligibilityChips(
   }
   return chips;
 }
-
 /** Fast lookup of the runtime eligibility payload from a providers list. */
 export function runtimeEligibilityFor(
   provider: AccountsListProvider | undefined,
 ): ProviderRuntimeEligibility | undefined {
   return provider?.runtimeEligibility;
 }
-
 export type ProviderConnectionState =
   | "connected-healthy"
   | "connected-attention"
   | "disconnected";
-
 /**
  * ONE status signal per row (skill rule: kill the pill maze). Collapses
  * health counts into a single state; details live on expand.
  */
 export function providerConnectionState(
-  accounts: { enabled: boolean; health: string }[],
+  accounts: {
+    enabled: boolean;
+    health: string;
+  }[],
 ): ProviderConnectionState {
   if (accounts.length === 0) return "disconnected";
   const needsAttention = accounts.some(
@@ -120,7 +114,6 @@ export function providerConnectionState(
   if (needsAttention) return "connected-attention";
   return "connected-healthy";
 }
-
 export function isProviderId(value: string): value is LinkedAccountProviderId {
   return typeof value === "string" && value.length > 0;
 }

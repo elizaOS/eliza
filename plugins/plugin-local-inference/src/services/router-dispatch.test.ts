@@ -1,12 +1,13 @@
 /** Proves the router dispatches via runtime introspection rather than a prototype patch. Deterministic, fake runtime. */
+
 import {
-	AgentRuntime,
+	type AgentRuntime,
 	type Character,
 	type IAgentRuntime,
-	InMemoryDatabaseAdapter,
 	ModelType,
 	runWithStreamingContext,
 } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Force a deterministic manual policy pinned to our fake cloud provider so the
@@ -122,9 +123,9 @@ describe("router dispatches via runtime introspection, not a prototype patch", (
 				finishReason: Promise.resolve("stop"),
 			}),
 		);
-		const runtime = new AgentRuntime({
+		const runtime = createSQLiteTestRuntime({
 			character: { name: "RouterStreamAgent", bio: "test" } as Character,
-			adapter: new InMemoryDatabaseAdapter(),
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(

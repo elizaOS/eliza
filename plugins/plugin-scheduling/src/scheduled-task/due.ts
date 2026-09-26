@@ -9,11 +9,11 @@
  * scheduler tick and the runner.
  */
 
-import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
+import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
-import { isRepresentableMs } from "./time-range.js";
+import { resolveAnchorOccurrences } from "./anchor-occurrences.js";
+import { InvalidLocalTimeError } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -115,11 +115,6 @@ function metadataCreatedAtMs(task: ScheduledTask): number | null {
     parseIsoMs(task.metadata?.createdAt) ??
     parseIsoMs(task.metadata?.scheduledAtIso)
   );
-}
-
-function wasFiredOnOrAfter(task: ScheduledTask, occurrenceMs: number): boolean {
-  const firedAtMs = parseIsoMs(task.state.firedAt);
-  return firedAtMs !== null && firedAtMs >= occurrenceMs;
 }
 
 function scheduledOverrideDue(
@@ -229,88 +224,33 @@ function cronDue(
     : { due: false, reason: "cron_pending" };
 }
 
-async function resolveAnchorIso(
-  trigger: Extract<ScheduledTaskTrigger, { kind: "relative_to_anchor" }>,
-  context: ScheduledTaskDueContext,
-): Promise<string | null> {
-  const ownerFacts = context.ownerFacts ?? {};
-  const registryAnchor = context.anchors?.get(trigger.anchorKey) as {
-    resolve?: (
-      ctx: unknown,
-    ) => Promise<{ atIso: string } | null> | { atIso: string } | null;
-  } | null;
-  if (typeof registryAnchor?.resolve === "function") {
-    const resolved = await registryAnchor.resolve({
-      nowIso: context.now.toISOString(),
-      ownerFacts,
-    });
-    if (resolved?.atIso && Number.isFinite(Date.parse(resolved.atIso))) {
-      return resolved.atIso;
-    }
-  }
-
-  const timeZone = ownerFacts.timezone ?? "UTC";
-  if (
-    trigger.anchorKey === "wake.confirmed" ||
-    trigger.anchorKey === "wake.observed" ||
-    trigger.anchorKey === "morning.start"
-  ) {
-    return resolveLocalHHMMToIso(
-      context.now,
-      ownerFacts.morningWindow?.start,
-      timeZone,
-    );
-  }
-  if (trigger.anchorKey === "bedtime.target") {
-    return (
-      resolveLocalHHMMToIso(
-        context.now,
-        ownerFacts.eveningWindow?.end,
-        timeZone,
-      ) ?? resolveLocalHHMMToIso(context.now, "22:30", timeZone)
-    );
-  }
-  if (trigger.anchorKey === "night.start") {
-    return resolveLocalHHMMToIso(
-      context.now,
-      ownerFacts.eveningWindow?.start,
-      timeZone,
-    );
-  }
-  if (trigger.anchorKey === "lunch.start") {
-    return resolveLocalHHMMToIso(context.now, "12:00", timeZone);
-  }
-  return null;
-}
-
 async function relativeAnchorDue(
   task: ScheduledTask,
   trigger: Extract<ScheduledTaskTrigger, { kind: "relative_to_anchor" }>,
   context: ScheduledTaskDueContext,
-  nowMs: number,
 ): Promise<ScheduledTaskDueDecision> {
-  const anchorIso = await resolveAnchorIso(trigger, context);
-  const anchorMs = parseIsoMs(anchorIso);
-  if (anchorMs === null) {
+  const occurrences = await resolveAnchorOccurrences(trigger, {
+    now: context.now,
+    ownerFacts: context.ownerFacts ?? {},
+    anchors: context.anchors,
+    firedAtIso: task.state.firedAt,
+  });
+  if (occurrences.kind === "unresolved") {
     return { due: false, reason: "anchor_unresolved" };
   }
-  const occurrenceMs = anchorMs + trigger.offsetMinutes * MINUTE_MS;
-  // `offsetMinutes` is only schema-bounded to an integer; an extreme value
-  // pushes the ms product outside the representable Date range and
-  // `new Date(...).toISOString()` below would throw mid-tick.
-  if (!isRepresentableMs(occurrenceMs)) {
+  if (occurrences.kind === "out_of_range") {
     return { due: false, reason: "anchor_offset_out_of_range" };
   }
-  if (occurrenceMs > nowMs) {
+  if (occurrences.currentMs === null) {
     return { due: false, reason: "anchor_pending" };
   }
-  if (wasFiredOnOrAfter(task, occurrenceMs)) {
+  if (occurrences.currentFired) {
     return { due: false, reason: "anchor_already_fired" };
   }
   return {
     due: true,
     reason: "anchor_due",
-    occurrenceAtIso: new Date(occurrenceMs).toISOString(),
+    occurrenceAtIso: new Date(occurrences.currentMs).toISOString(),
   };
 }
 
@@ -412,7 +352,7 @@ export async function isScheduledTaskDue(
     case "cron":
       return cronDue(task, task.trigger, nowMs, context.ownerFacts);
     case "relative_to_anchor":
-      return relativeAnchorDue(task, task.trigger, context, nowMs);
+      return relativeAnchorDue(task, task.trigger, context);
     case "during_window":
       return duringWindowDue(task, task.trigger, context);
     case "manual":

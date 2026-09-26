@@ -8,7 +8,10 @@
  * without standing up a renderer.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/utils/unicode";
 
 export function formatAddressForDisplay(address: string): string {
   if (!address) return "(unknown)";

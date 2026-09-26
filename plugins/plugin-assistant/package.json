@@ -1,0 +1,89 @@
+{
+  "name": "@elizaos/plugin-assistant",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./prompts/response-policy": {
+      "eliza-source": "./src/prompts/response-policy.ts",
+      "types": "./dist/prompts/response-policy.d.ts",
+      "import": "./dist/prompts/response-policy.js",
+      "default": "./dist/prompts/response-policy.js"
+    },
+    "./actions/generate-media": {
+      "eliza-source": "./src/features/advanced-capabilities/actions/generateMedia.ts",
+      "types": "./dist/actions/generate-media.d.ts",
+      "import": "./dist/actions/generate-media.js",
+      "default": "./dist/actions/generate-media.js"
+    },
+    "./character-persistence": {
+      "eliza-source": "./src/features/advanced-capabilities/personality/character-persistence.ts",
+      "types": "./dist/character-persistence.d.ts",
+      "import": "./dist/character-persistence.js",
+      "default": "./dist/character-persistence.js"
+    },
+    "./text/template-engine": {
+      "eliza-source": "./src/text/template-engine.ts",
+      "types": "./dist/text/template-engine.d.ts",
+      "import": "./dist/text/template-engine.js",
+      "default": "./dist/text/template-engine.js"
+    },
+    "./text/template-rendering": {
+      "eliza-source": "./src/text/template-rendering.ts",
+      "types": "./dist/text/template-rendering.d.ts",
+      "import": "./dist/text/template-rendering.js",
+      "default": "./dist/text/template-rendering.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write src",
+    "lint:check": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format --write src",
+    "format:check": "bunx @biomejs/biome format src",
+    "test:templates": "node --test test/templates/*.test.js"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@ai-sdk/anthropic": "^3.0.13",
+    "@ai-sdk/google": "^3.0.8",
+    "@ai-sdk/openai": "^3.0.9",
+    "@openrouter/ai-sdk-provider": "^2.0.0",
+    "ai": "^6.0.30",
+    "drizzle-orm": "0.45.2",
+    "dedent": "^1.7.1",
+    "mammoth": "^1.9.0",
+    "unpdf": "^1.4.0",
+    "zod": "^4.6.5",
+    "uuid": "^14.0.0",
+    "yaml": "^2.7.0",
+    "handlebars": "^4.7.8",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsup": "^8.5.1",
+    "vitest": "^5.0.1",
+    "@elizaos/testing": "workspace:*",
+    "@biomejs/biome": "2.5.14",
+    "@elizaos/plugin-sql": "workspace:*",
+    "esbuild": "^0.28.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

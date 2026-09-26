@@ -3,7 +3,9 @@
   "name": "Elizacloud",
   "description": "elizaOS plugin to connect with elizaOS Cloud services",
   "npmName": "@elizaos/plugin-elizacloud",
-  "shortIds": ["elizacloud"],
+  "shortIds": [
+    "elizacloud"
+  ],
   "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
@@ -117,9 +119,8 @@
       "type": "secret",
       "required": false,
       "sensitive": true,
-      "default": "8192",
       "label": "Cloud Image Description Max Tokens",
-      "help": "Maximum number of tokens allowed in the image-description model response.",
+      "help": "Optional positive-integer image-description output limit; unset sends no provider cap.",
       "advanced": false
     },
     "ELIZAOS_CLOUD_TTS_MODEL": {
@@ -157,22 +158,6 @@
       "label": "Cloud Experimental Telemetry",
       "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
       "advanced": true
-    },
-    "ELIZAOS_CLOUD_BROWSER_BASE_URL": {
-      "type": "url",
-      "required": false,
-      "sensitive": false,
-      "label": "Cloud Browser Base Url",
-      "help": "Browser-only proxy endpoint base URL for ElizaOS Cloud requests (no secrets in the client).",
-      "advanced": false
-    },
-    "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL": {
-      "type": "url",
-      "required": false,
-      "sensitive": false,
-      "label": "Cloud Browser Embedding Url",
-      "help": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
-      "advanced": false
     },
     "ELIZAOS_CLOUD_ENABLED": {
       "type": "boolean",

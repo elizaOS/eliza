@@ -4,7 +4,6 @@
  * and surface-realm guards; older event cases retain their tab spy.
  */
 // @vitest-environment jsdom
-
 /**
  * Unit coverage for App-level navigate-view event wiring: a dispatched
  * navigate-view event drives the tab switch through the rendered shell. Boot
@@ -13,10 +12,6 @@
 
 import { Capacitor } from "@capacitor/core";
 import type { PluginAppNavTab } from "@elizaos/core";
-import {
-  createNavigateViewEvent,
-  NAVIGATE_VIEW_EVENT,
-} from "@elizaos/shared/events";
 import {
   act,
   cleanup,
@@ -27,11 +22,18 @@ import {
 } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { App } from "./App";
 import { AgentButton, getViewRegistry } from "./agent-surface";
-import { registerAppShellPage } from "./app-shell-registry";
+import { listAppShellPages, registerAppShellPage } from "./app-shell-registry";
+import {
+  navigateBackToLauncher,
+  ViewBackButton,
+} from "./components/shared/ViewHeader";
+import { invokeViewInteract } from "./components/views/view-interact-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import { DEFAULT_BRANDING } from "./config/branding-base";
 import { BrandingContext } from "./config/branding-react.hooks";
+import { createNavigateViewEvent, NAVIGATE_VIEW_EVENT } from "./events";
 import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import {
@@ -39,7 +41,7 @@ import {
   resolveInitialTabForPath,
   type Tab,
 } from "./navigation";
-import { resetUiRegistryHostForTests } from "./registry-host";
+import { resetUiRegistryHostForTests } from "./registry-host.js";
 import { useNavigationPathSync } from "./state/useAppProviderEffects";
 import { useNavigationState } from "./state/useNavigationState";
 import {
@@ -53,7 +55,6 @@ const NavigationHarnessContext = React.createContext<{
   setTab: ReturnType<typeof useNavigationState>["setTab"];
   navigation: ReturnType<typeof useNavigationState>["navigation"];
 } | null>(null);
-
 function AppWithRealNavigation() {
   // Match AppProvider's actual state + navigation composition. No test event
   // listener or manual rerender may stand in for the production path sync.
@@ -77,6 +78,14 @@ function AppWithRealNavigation() {
     </NavigationHarnessContext.Provider>
   );
 }
+const nativeContacts = vi.hoisted(() => ({
+  listContacts: vi.fn(),
+  createContact: vi.fn(),
+  importVCard: vi.fn(),
+}));
+vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({
+  Contacts: nativeContacts,
+}));
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
@@ -87,10 +96,11 @@ const appState = vi.hoisted(() => ({
   tab: "chat",
   plugins: [] as Array<{
     id: string;
-    app?: { navTabs?: PluginAppNavTab[] };
+    app?: {
+      navTabs?: PluginAppNavTab[];
+    };
   }>,
 }));
-
 const authStatusMock = vi.hoisted(() => ({
   phase: "authenticated" as
     | "authenticated"
@@ -99,7 +109,6 @@ const authStatusMock = vi.hoisted(() => ({
   refetch: vi.fn(),
   use: vi.fn(),
 }));
-
 const authenticatedAuthStatus = vi.hoisted(
   () =>
     ({
@@ -121,16 +130,13 @@ const authenticatedAuthStatus = vi.hoisted(
       },
     }) satisfies AuthStatusState,
 );
-
 const cloudSessionState = vi.hoisted(() => ({
   authenticated: false,
 }));
-
 const desktopTabsMock = vi.hoisted(() => ({
   closeTab: vi.fn(),
   openTab: vi.fn(),
 }));
-
 const desktopTabsState = vi.hoisted(() => ({
   tabs: [] as Array<{
     viewId: string;
@@ -140,15 +146,12 @@ const desktopTabsState = vi.hoisted(() => ({
     pinned: boolean;
   }>,
 }));
-
 const mediaQueryState = vi.hoisted(() => ({
   matches: false,
 }));
-
 const electrobunRuntimeState = vi.hoisted(() => ({
   enabled: true,
 }));
-
 const desktopBridgeMock = vi.hoisted(() => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
@@ -159,7 +162,6 @@ const desktopBridgeMock = vi.hoisted(() => ({
   openDesktopAppWindow: vi.fn(async () => ({ id: "window-1" })),
   openDesktopLauncherWindow: vi.fn(async () => ({ id: "launcher-1" })),
 }));
-
 const dynamicViewLoaderMock = vi.hoisted(() => ({
   render: vi.fn(
     ({
@@ -190,7 +192,6 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
     ),
   ),
 }));
-
 const settingsViewMock = vi.hoisted(() => ({
   render: vi.fn(
     (_props: {
@@ -200,7 +201,6 @@ const settingsViewMock = vi.hoisted(() => ({
     }) => <div data-testid="settings-view" />,
   ),
 }));
-
 const remoteLedgerView = {
   id: "remote-ledger",
   label: "Remote Ledger",
@@ -210,7 +210,6 @@ const remoteLedgerView = {
   bundleUrl: "/api/views/remote-ledger/bundle.js",
   viewType: "gui" as const,
 };
-
 const viewsManagerView = {
   id: "views-manager",
   label: "View Manager",
@@ -220,7 +219,6 @@ const viewsManagerView = {
   bundleUrl: "/api/views/views-manager/bundle.js",
   viewType: "gui" as const,
 };
-
 const projectBoardView = {
   id: "project-board",
   label: "Project Board",
@@ -230,12 +228,10 @@ const projectBoardView = {
   bundleUrl: "/api/views/project-board/bundle.js",
   viewType: "gui" as const,
 };
-
 const projectBoardAgentSurfaceView = {
   ...projectBoardView,
   surface: { capabilities: ["agent-surface" as const] },
 };
-
 const calendarView = {
   id: "calendar",
   label: "Calendar",
@@ -245,7 +241,6 @@ const calendarView = {
   bundleUrl: "/api/views/calendar/bundle.js",
   viewType: "gui" as const,
 };
-
 const notesFullscreenView = {
   id: "notes",
   label: "Notes",
@@ -256,7 +251,6 @@ const notesFullscreenView = {
   surface: { header: "fullscreen" as const },
   viewType: "gui" as const,
 };
-
 const modalView = {
   id: "modal-tool",
   label: "Modal Tool",
@@ -267,7 +261,6 @@ const modalView = {
   surface: { header: "modal" as const },
   viewType: "gui" as const,
 };
-
 const sharedCanvasView = {
   id: "shared-canvas",
   label: "Shared Canvas",
@@ -285,17 +278,15 @@ const sharedCanvasView = {
     capabilities: ["wallpaper"] as const,
   },
 };
-
 const documentsView = {
   id: "documents",
   label: "Knowledge",
   available: true,
-  pluginName: "@elizaos/plugin-documents",
+  pluginName: "@elizaos/plugin-knowledge",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,
 };
-
 const walletMarketView = {
   id: "wallet-market-test",
   label: "Wallet Market Test",
@@ -305,7 +296,6 @@ const walletMarketView = {
   bundleUrl: "/api/views/wallet-market-test/bundle.js",
   viewType: "gui" as const,
 };
-
 const sandboxedFrameView = {
   id: "sandboxed-frame",
   label: "Sandboxed Frame",
@@ -316,7 +306,6 @@ const sandboxedFrameView = {
   surface: { isolation: "sandboxed-iframe" as const },
   viewType: "gui" as const,
 };
-
 const mockAvailableViews: ViewRegistryEntry[] = [
   remoteLedgerView,
   viewsManagerView,
@@ -325,7 +314,6 @@ const mockAvailableViews: ViewRegistryEntry[] = [
   sharedCanvasView,
   documentsView,
 ];
-
 function resetMockAvailableViews() {
   mockAvailableViews.splice(
     0,
@@ -338,25 +326,21 @@ function resetMockAvailableViews() {
     documentsView,
   );
 }
-
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
 }));
-
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
-
 vi.mock("./bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => electrobunRuntimeState.enabled,
 }));
-
 vi.mock("./platform/init", () => ({
   isDesktopPlatform: () => false,
+  isElizaOS: () => true,
   isIOS: false,
   isNative: false,
   isStandalonePwa: () => false,
   isWebPlatform: () => true,
 }));
-
 vi.mock("./hooks/useDesktopTabs", () => ({
   useDesktopTabs: () => ({
     tabs: desktopTabsState.tabs,
@@ -364,7 +348,6 @@ vi.mock("./hooks/useDesktopTabs", () => ({
     openTab: desktopTabsMock.openTab,
   }),
 }));
-
 vi.mock("./hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({
     views: mockAvailableViews,
@@ -373,7 +356,6 @@ vi.mock("./hooks/useAvailableViews", () => ({
     views: mockAvailableViews,
   }),
 }));
-
 vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: (options: { skip?: boolean } = {}) => {
     authStatusMock.use(options);
@@ -403,7 +385,6 @@ vi.mock("./hooks/useAuthStatus", () => ({
       : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));
-
 vi.mock("./cloud/lib/use-session-auth", () => ({
   useSessionAuth: () => ({
     ready: true,
@@ -413,37 +394,27 @@ vi.mock("./cloud/lib/use-session-auth", () => ({
       : null,
   }),
 }));
-
 vi.mock("./first-run/use-first-run-conductor", () => ({
   FirstRunConductorMount: () => <div data-testid="first-run-conductor-mount" />,
   surfaceCloudLoginRetryTurn: vi.fn(),
   useFirstRunConductor: vi.fn(),
 }));
-
 vi.mock("./hooks/useMediaQuery", () => ({
   useMediaQuery: () => mediaQueryState.matches,
 }));
-
 vi.mock("./hooks/useActivityEvents", () => ({
   useActivityEvents: () => ({ events: [], clearEvents: vi.fn() }),
 }));
-
 vi.mock("./hooks", () => ({
   BugReportProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
   useOptionalBugReport: () => null,
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
-
 vi.mock("./state", async () => {
   // Pure static constants pass through from the real leaf module (side-effect
   // free by design) so the mock never drifts from product preset data.
@@ -494,8 +465,12 @@ vi.mock("./state", async () => {
     startupError: null,
     systemWarnings: [],
     tab: appState.tab,
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? "",
+    t: (
+      _key: string,
+      options?: {
+        defaultValue?: string;
+      },
+    ) => options?.defaultValue ?? "",
     uiLanguage: "en",
     uiShellMode: "default",
     uiTheme: "light",
@@ -516,11 +491,9 @@ vi.mock("./state", async () => {
     ): T => selector(useAppValue()),
   };
 });
-
 vi.mock("./config/boot-config-react.hooks", () => ({
   useBootConfig: () => ({}),
 }));
-
 vi.mock("./components/shell/ShellControllerContext", () => ({
   ShellControllerProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -539,46 +512,33 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
     waveformMode: "idle",
   }),
 }));
-
 vi.mock("./components/views/DynamicViewLoader", () => ({
   DynamicViewLoader: dynamicViewLoaderMock.render,
 }));
-
 vi.mock("./components/shell/BugReportModal", () => ({
   BugReportModal: () => null,
 }));
-
 vi.mock("./components/shell/ChatSurface", () => ({
   ChatSurface: () => <div data-testid="chat-surface" />,
 }));
-
 vi.mock("./components/shell/HomePill", () => ({
   HomePill: () => <button type="button">home pill</button>,
 }));
-
 vi.mock("./components/shell/AssistantOverlay", () => ({
   AssistantOverlay: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="assistant-overlay">{children}</div>
   ),
 }));
-
 vi.mock("./components/shell/SystemWarningBanner", () => ({
   SystemWarningBanner: () => null,
 }));
-
 vi.mock("./components/shell/ShellOverlays", () => ({
   ShellOverlays: () => null,
 }));
-
-vi.mock("./components/chat/SaveCommandModal", () => ({
-  SaveCommandModal: () => null,
-}));
-
 vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,
   __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
-
 vi.mock("./components/pages/SettingsView", () => ({
   SettingsView: (props: {
     initialSection?: string;
@@ -586,7 +546,6 @@ vi.mock("./components/pages/SettingsView", () => ({
     navigateSequence?: number;
   }) => settingsViewMock.render(props),
 }));
-
 vi.mock("./components/character/CharacterEditor", () => ({
   CharacterEditor: ({ initialPage }: { initialPage?: string }) => (
     <div
@@ -597,49 +556,36 @@ vi.mock("./components/character/CharacterEditor", () => ({
     />
   ),
 }));
-
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
 }));
-
 vi.mock("./widgets/WidgetHost", () => ({
   WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
-
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,
 }));
-
 vi.mock("./components/custom-actions/CustomActionEditor", () => ({
   CustomActionEditor: () => null,
 }));
-
 vi.mock("./components/shell/ConnectionLostOverlay", () => ({
   ConnectionLostOverlay: () => null,
 }));
-
 vi.mock("./hooks/useSecretsManagerShortcut", () => ({
   useSecretsManagerShortcut: vi.fn(),
 }));
-
 vi.mock("./hooks/useIsDeveloperMode", () => ({
   useIsDeveloperMode: () => false,
 }));
-
-import { App } from "./App";
-import { navigateBackToLauncher } from "./components/shared/ViewHeader";
-
 function navigateView(detail: Record<string, unknown>) {
   act(() => {
     window.dispatchEvent(createNavigateViewEvent(detail));
   });
 }
-
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
 );
-
 function setWindowLocation(url: string): void {
   const parsed = new URL(url);
   Object.defineProperty(window, "location", {
@@ -661,7 +607,6 @@ function setWindowLocation(url: string): void {
     },
   });
 }
-
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
@@ -671,7 +616,6 @@ describe("App navigate-view event wiring", () => {
     window.localStorage.setItem("eliza:permissions-primed", "1");
     window.localStorage.removeItem("steward_session_token");
     setBootConfig(DEFAULT_BOOT_CONFIG);
-    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.firstRunComplete = true;
@@ -696,7 +640,6 @@ describe("App navigate-view event wiring", () => {
     dynamicViewLoaderMock.render.mockClear();
     settingsViewMock.render.mockClear();
   });
-
   afterEach(() => {
     cleanup();
     resetUiRegistryHostForTests();
@@ -705,7 +648,6 @@ describe("App navigate-view event wiring", () => {
       Object.defineProperty(window, "location", originalLocationDescriptor);
     }
   });
-
   async function mountedRemoteNavigation() {
     mockAvailableViews[0] = {
       ...remoteLedgerView,
@@ -726,7 +668,6 @@ describe("App navigate-view event wiring", () => {
       throw new Error("Host navigation external is unavailable");
     return { rendered, navigate };
   }
-
   it("keeps a mounted remote view's real navigation handle through an equivalent registry refresh", async () => {
     const { rendered, navigate } = await mountedRemoteNavigation();
     await act(async () => {
@@ -746,7 +687,6 @@ describe("App navigate-view event wiring", () => {
     act(() => navigate("/settings"));
     expect(window.location.pathname).toBe("/settings");
   });
-
   it.each(["view", "policy", "bundle", "plugin"] as const)(
     "revokes a mounted remote handle after actual %s replacement",
     async (change) => {
@@ -786,7 +726,6 @@ describe("App navigate-view event wiring", () => {
       }
     },
   );
-
   it.each(["component", "loader"] as const)(
     "revokes old host navigation after registered %s replacement",
     async (change) => {
@@ -829,7 +768,6 @@ describe("App navigate-view event wiring", () => {
       expect(window.location.pathname).toBe("/apps/owned-host");
     },
   );
-
   it.each(["base", "credential"] as const)(
     "revokes a remote handle on actual client %s authority replacement",
     async (change) => {
@@ -854,7 +792,6 @@ describe("App navigate-view event wiring", () => {
       }
     },
   );
-
   it("keeps the exact branded staging Pages alias inside first-run onboarding", () => {
     window.history.replaceState(null, "", "/?shellMode=full");
     setWindowLocation("https://develop.eliza-app.pages.dev/?shellMode=full");
@@ -865,7 +802,6 @@ describe("App navigate-view event wiring", () => {
       "steward_session_token",
       "existing-steward-session",
     );
-
     render(
       <BrandingContext.Provider
         value={{ ...DEFAULT_BRANDING, cloudOnly: true }}
@@ -873,14 +809,12 @@ describe("App navigate-view event wiring", () => {
         <App />
       </BrandingContext.Provider>,
     );
-
     expect(authStatusMock.use).toHaveBeenCalledWith(
       expect.objectContaining({ skip: true }),
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
   });
-
   it.each([
     ["unbranded Pages alias", "https://develop.eliza-app.pages.dev/", false],
     ["arbitrary branded self-host", "https://agent.example.com/", true],
@@ -894,53 +828,42 @@ describe("App navigate-view event wiring", () => {
       "steward_session_token",
       "existing-steward-session",
     );
-
     render(
       <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, cloudOnly }}>
         <App />
       </BrandingContext.Provider>,
     );
-
     expect(authStatusMock.use).toHaveBeenCalledWith(
       expect.objectContaining({ skip: false }),
     );
     expect(screen.queryByTestId("first-run-conductor-mount")).toBeNull();
   });
-
   it("restores a deep route after an auth-startup retry commits the default chat path", async () => {
     window.history.replaceState(null, "", "/cloud/agents");
     authStatusMock.phase = "server_unavailable";
-
     const rendered = render(<App />);
     fireEvent.click(screen.getByTestId("startup-retry"));
-
     expect(authStatusMock.refetch).toHaveBeenCalledTimes(1);
     expect(appState.retryStartup).toHaveBeenCalledTimes(1);
-
     // Reproduce the startup shell's intermediate default-tab commit observed
     // in the real hosted browser before auth/startup settle.
     shellHistory.replaceState(null, "", "/chat");
     authStatusMock.phase = "authenticated";
     rendered.rerender(<App />);
-
     await waitFor(() => {
       expect(window.location.pathname).toBe("/cloud/agents");
     });
   });
-
   it("routes view-manager events through the mounted App listener", async () => {
     render(<App />);
-
     navigateView({ viewPath: "/views" });
     navigateView({ viewId: "views-manager", viewType: "gui" });
-
     await waitFor(() => {
       expect(appState.setTab).toHaveBeenCalledWith("views");
     });
     expect(appState.setTab).toHaveBeenCalledTimes(2);
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
   });
-
   it("preserves plugin nav surface layout as the active cross-host contract", async () => {
     appState.plugins = [
       {
@@ -966,9 +889,7 @@ describe("App navigate-view event wiring", () => {
     ];
     appState.tab = "plugin-layout";
     window.history.replaceState(null, "", "/plugin-layout");
-
     render(<App />);
-
     await waitFor(() => {
       expect(getActiveSurfaceRealmScope()?.viewId).toBe("plugin-layout");
     });
@@ -983,13 +904,10 @@ describe("App navigate-view event wiring", () => {
     expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
     expect(document.querySelectorAll("main")).toHaveLength(1);
   });
-
   it("renders inventory with one shell-owned page-frame scroller", async () => {
     appState.tab = "inventory";
     window.history.replaceState(null, "", "/wallet");
-
     const { container } = render(<App />);
-
     await waitFor(() => {
       expect(
         container.querySelector('[data-scroll-owner="shell"]'),
@@ -1003,13 +921,10 @@ describe("App navigate-view event wiring", () => {
         ?.className.includes("overflow-y-auto"),
     ).toBe(true);
   });
-
   it("renders Files with its canonical shell-owned page scroller", async () => {
     appState.tab = "files";
     window.history.replaceState(null, "", "/apps/files");
-
     const { container } = render(<App />);
-
     await waitFor(() => {
       expect(
         container.querySelector('[data-page-kind="content"]'),
@@ -1026,23 +941,20 @@ describe("App navigate-view event wiring", () => {
     expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
     expect(frame?.className.includes("overflow-y-auto")).toBe(true);
   });
-
   it("renders Automations with one framed gutter, clearance, and view scroller", async () => {
     appState.tab = "automations";
     window.history.replaceState(null, "", "/automations");
-
     const { container } = render(<App />);
     const automations = await screen.findByTestId(
       "automations-layout",
       {},
-      { timeout: 10_000 },
+      { timeout: 10000 },
     );
     const frame = automations.closest<HTMLElement>("[data-page-kind]");
     const pageContent = frame?.querySelector<HTMLElement>(
       ":scope > [data-page-content]",
     );
     const body = screen.getByTestId("automations-scroll-region");
-
     expect(frame?.getAttribute("data-page-kind")).toBe("content");
     expect(frame?.getAttribute("data-page-width")).toBe("standard");
     expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
@@ -1050,7 +962,6 @@ describe("App navigate-view event wiring", () => {
     expect(pageContent?.className).not.toContain("px-4");
     expect(body.className).toContain("max-w-5xl");
     expect(body.className).toContain("px-4");
-
     const clearanceOwners = Array.from(
       frame?.querySelectorAll<HTMLElement>("*") ?? [],
     ).filter((element) =>
@@ -1066,7 +977,6 @@ describe("App navigate-view event wiring", () => {
     expect(automations.className).not.toContain(
       "[@media(orientation:landscape)_and_(max-height:520px)]:pb-0",
     );
-
     expect(body.getAttribute("data-framed-page-scroll")).toBe("page");
     expect(body.getAttribute("data-shell-scroll-region")).toBeNull();
     expect(body.className).toContain("overflow-y-auto");
@@ -1075,23 +985,17 @@ describe("App navigate-view event wiring", () => {
     ).toHaveLength(0);
     expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
   });
-
   it("keeps the ambient chat route outside canonical page framing", () => {
     appState.tab = "chat";
     window.history.replaceState(null, "", "/chat");
-
     const { container } = render(<App />);
-
     expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(0);
     expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(0);
   });
-
   it("renders an explicit unavailable state instead of healthy Home for an absent surface", async () => {
     appState.tab = "phone";
     window.history.replaceState(null, "", "/phone");
-
     const { container } = render(<App />);
-
     await waitFor(() => {
       expect(
         container.querySelector(
@@ -1101,13 +1005,10 @@ describe("App navigate-view event wiring", () => {
     });
     expect(container.querySelector('[data-testid="home-screen"]')).toBeNull();
   });
-
   it("frames the immersive background editor exactly once", async () => {
     appState.tab = "background";
     window.history.replaceState(null, "", "/background");
-
     const { container } = render(<App />);
-
     await waitFor(() => {
       expect(
         container.querySelector('[data-page-kind="immersive"]'),
@@ -1116,7 +1017,6 @@ describe("App navigate-view event wiring", () => {
     expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
   });
-
   it("acknowledges a cancelable completed-action handoff only after handling it", () => {
     render(<App />);
     const event = new CustomEvent(NAVIGATE_VIEW_EVENT, {
@@ -1127,22 +1027,17 @@ describe("App navigate-view event wiring", () => {
         completedActionHandoffId: "handoff-app-observed",
       },
     });
-
     act(() => window.dispatchEvent(event));
-
     expect(event.defaultPrevented).toBe(true);
     expect(appState.setTab).toHaveBeenCalledWith("views");
   });
-
   it("routes a settings subview navigate to the settings tab (#9945)", async () => {
     render(<App />);
-
     navigateView({
       viewId: "settings",
       viewPath: "/settings",
       subview: "voice",
     });
-
     // A settings deep-link with a subview switches to the settings tab (the
     // section itself is applied via SettingsView's initialSection prop) and
     // does NOT fall through to a desktop-tab open.
@@ -1151,13 +1046,11 @@ describe("App navigate-view event wiring", () => {
     });
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
   });
-
   it("passes settings navigate payloads into SettingsView for targeted permission priming", async () => {
     appState.tab = "settings";
     window.history.replaceState(null, "", "/?shellMode=full");
     const payload = { permissionRequest: { permission: "microphone" } };
     render(<App />);
-
     fireEvent(
       window,
       createNavigateViewEvent({
@@ -1167,7 +1060,6 @@ describe("App navigate-view event wiring", () => {
         payload,
       }),
     );
-
     await waitFor(() => {
       expect(settingsViewMock.render).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1204,25 +1096,20 @@ describe("App navigate-view event wiring", () => {
         .closest<HTMLElement>("[data-app-shell-root]")?.style.paddingTop,
     ).toBe("0px");
   });
-
   it("pins remote views and opens remote view windows through App wiring", async () => {
     render(<App />);
-
     navigateView({ action: "pin-tab", viewId: "remote-ledger" });
-
     await waitFor(() => {
       expect(desktopTabsMock.openTab).toHaveBeenCalledWith(remoteLedgerView, {
         pinned: true,
       });
     });
     expect(window.location.pathname).toBe("/apps/remote-ledger");
-
     navigateView({
       action: "open-window",
       viewId: "remote-ledger",
       alwaysOnTop: true,
     });
-
     await waitFor(() => {
       expect(desktopBridgeMock.invokeDesktopBridgeRequest).toHaveBeenCalledWith(
         {
@@ -1237,13 +1124,10 @@ describe("App navigate-view event wiring", () => {
       );
     });
   });
-
   it("renders a remote module route through DynamicViewLoader in the mounted App", async () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/remote-ledger");
-
     const { container, getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1255,13 +1139,13 @@ describe("App navigate-view event wiring", () => {
         undefined,
       );
     });
-
     const loader = getByTestId("dynamic-view-loader");
     expect(loader.getAttribute("data-bundle-url")).toBe(
       "/api/views/remote-ledger/bundle.js",
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
+    expect(queryByTestId("view-header")).toBeNull();
     expect(
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
@@ -1275,14 +1159,32 @@ describe("App navigate-view event wiring", () => {
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
   });
-
+  it("keeps an in-process page's own header without adding a duplicate shell header", async () => {
+    registerAppShellPage({
+      id: "signed-normal",
+      pluginId: "@local/plugin-signed-normal",
+      label: "Signed Normal",
+      path: "/apps/signed-normal",
+      Component: () => (
+        <section data-testid="signed-normal-content">
+          <h1>Signed Normal</h1>
+        </section>
+      ),
+    });
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/apps/signed-normal");
+    const { getByTestId, getAllByRole, queryByTestId } = render(<App />);
+    await waitFor(() => getByTestId("signed-normal-content"));
+    expect(getAllByRole("heading", { name: "Signed Normal" })).toHaveLength(1);
+    expect(queryByTestId("view-header")).toBeNull();
+  });
   it.each([
     { strictMode: false, entry: "direct" },
     { strictMode: true, entry: "direct" },
     { strictMode: false, entry: "navigate-view" },
     { strictMode: true, entry: "navigate-view" },
   ])(
-    "returns from Notes to the launcher through guarded history navigation ($entry, StrictMode=$strictMode)",
+    "returns a registered fixture to the launcher using its own back control ($entry, StrictMode=$strictMode)",
     async ({ strictMode, entry }) => {
       electrobunRuntimeState.enabled = false;
       registerAppShellPage({
@@ -1292,7 +1194,13 @@ describe("App navigate-view event wiring", () => {
         path: "/notes",
         surface: { header: "normal", capabilities: [] },
         Component: () => (
-          <section aria-label="Notes fixture">A saved note</section>
+          // This fixture exercises a view-owned control's real guarded-history
+          // path; it does not assert that the production Notes page has one.
+          <section aria-label="Notes fixture">
+            <h1>Notes</h1>
+            <ViewBackButton />
+            <p>A saved note</p>
+          </section>
         ),
       });
       window.history.replaceState(
@@ -1313,17 +1221,16 @@ describe("App navigate-view event wiring", () => {
         await screen.findByTestId("launcher-surface");
         navigateView({ viewId: "notes", viewPath: "/notes" });
       }
-
       await screen.findByRole("region", { name: "Notes fixture" });
+      expect(screen.getAllByRole("heading", { name: "Notes" })).toHaveLength(1);
+      expect(screen.queryByTestId("view-header")).toBeNull();
       expect(getActiveSurfaceRealmScope()?.viewId).toBe("notes");
       // Prove the guard is armed, not just that a scope-shaped object exists.
       expect(() => window.history.pushState(null, "", "/views")).toThrow(
         SurfaceRealmDeniedError,
       );
       expect(window.location.pathname).toBe("/notes");
-
       act(() => navigateBackToLauncher());
-
       await waitFor(() => {
         expect(window.location.pathname).toBe("/views");
         expect(screen.getByTestId("launcher-surface")).toBeTruthy();
@@ -1342,14 +1249,11 @@ describe("App navigate-view event wiring", () => {
       expect(appState.setTab).not.toHaveBeenCalled();
     },
   );
-
   it("keeps modal remote pages headerless without treating them as fullscreen", async () => {
     mockAvailableViews.push(modalView);
     appState.tab = "apps";
     window.history.replaceState(null, "", modalView.path);
-
     const { container, getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(queryByTestId("view-header")).toBeNull();
     expect(
@@ -1362,13 +1266,12 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).not.toBe("0px");
   });
-
   it.each(["/documents", "/knowledge"])(
     "keeps the legacy Knowledge route %s on the canonical plugin surface",
     async (path) => {
       registerAppShellPage({
         id: "documents",
-        pluginId: "@elizaos/plugin-documents",
+        pluginId: "@elizaos/plugin-knowledge",
         label: "Knowledge",
         path: "/documents",
         pathPatterns: ["/character/documents"],
@@ -1378,16 +1281,13 @@ describe("App navigate-view event wiring", () => {
       });
       appState.tab = "documents";
       window.history.replaceState(null, "", path);
-
       const { findByTestId, queryByTestId } = render(<App />);
-
       expect(
-        await findByTestId("documents-view", undefined, { timeout: 5_000 }),
+        await findByTestId("documents-view", undefined, { timeout: 5000 }),
       ).toBeTruthy();
       expect(queryByTestId("dynamic-view-loader")).toBeNull();
     },
   );
-
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
     mockAvailableViews.push(walletMarketView);
     registerAppShellPage({
@@ -1400,16 +1300,13 @@ describe("App navigate-view event wiring", () => {
     });
     appState.tab = "inventory";
     window.history.replaceState(null, "", walletMarketView.path);
-
     const { getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(
       getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
     ).toBe(walletMarketView.id);
     expect(queryByTestId("native-wallet-fallback")).toBeNull();
   });
-
   it("keeps signed-out remote Cloud rendering and capability ownership together for the plugin audit fixture", async () => {
     registerAppShellPage({
       id: "cloud",
@@ -1432,9 +1329,7 @@ describe("App navigate-view event wiring", () => {
     });
     appState.tab = "cloud";
     window.history.replaceState(null, "", "/cloud/agents/missing-agent");
-
     const { getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(queryByTestId("managed-cloud-page")).toBeNull();
     expect(
@@ -1449,7 +1344,6 @@ describe("App navigate-view event wiring", () => {
       ...(getActiveSurfaceRealmScope()?.manifest.capabilities ?? []),
     ]).toEqual([]);
   });
-
   it.each([
     ["root", "/cloud"],
     ["nested", "/cloud/billing"],
@@ -1487,10 +1381,9 @@ describe("App navigate-view event wiring", () => {
       cloudSessionState.authenticated = true;
       appState.tab = "cloud";
       window.history.replaceState(null, "", path);
-
       const { container, getByTestId, queryByTestId } = render(<App />);
-
       await waitFor(() => getByTestId("managed-cloud-page"));
+      expect(getByTestId("first-run-conductor-mount")).toBeTruthy();
       expect(queryByTestId("dynamic-view-loader")).toBeNull();
       expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(0);
       await waitFor(() => {
@@ -1504,13 +1397,13 @@ describe("App navigate-view event wiring", () => {
       );
     },
   );
-
   it.each([
     "restoring-session",
     "polling-backend",
     "pairing-required",
     "error",
     "starting-runtime",
+    "first-run-required",
     "ready",
   ])(
     "keeps authenticated account management available during agent %s",
@@ -1527,17 +1420,17 @@ describe("App navigate-view event wiring", () => {
       cloudSessionState.authenticated = true;
       authStatusMock.phase = "unauthenticated";
       appState.startupPhase = phase;
+      appState.firstRunComplete = false;
       appState.backendConnectionState = "disconnected";
       appState.tab = "cloud";
       window.history.replaceState(null, "", "/cloud/agents");
-
       render(<App />);
-
       await screen.findByTestId("managed-cloud-page");
+      expect(screen.queryByTestId("first-run-conductor-mount")).toBeNull();
+      expect(screen.queryByTestId("chat-overlay")).toBeNull();
       expect(appState.retryStartup).not.toHaveBeenCalled();
     },
   );
-
   it.each([
     { authenticated: false, owner: "@elizaos/ui" },
     { authenticated: true, owner: "@elizaos/plugin-elizacloud" },
@@ -1556,13 +1449,10 @@ describe("App navigate-view event wiring", () => {
       appState.startupPhase = "polling-backend";
       appState.tab = "cloud";
       window.history.replaceState(null, "", "/cloud/agents");
-
       render(<App />);
-
       expect(screen.queryByTestId("managed-cloud-page")).toBeNull();
     },
   );
-
   it("gives an in-process wallet page a live agent-surface registry", async () => {
     registerAppShellPage({
       id: "wallet.inventory",
@@ -1576,9 +1466,7 @@ describe("App navigate-view event wiring", () => {
     });
     appState.tab = "inventory";
     window.history.replaceState(null, "", "/inventory");
-
     render(<App />);
-
     await waitFor(() => {
       expect(getViewRegistry("wallet.inventory", "gui")?.size()).toBe(1);
     });
@@ -1604,17 +1492,77 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).toBe("0px");
   });
-
+  it("routes the registered native Contacts read through App without granting native writes or DOM control", async () => {
+    electrobunRuntimeState.enabled = false;
+    const platform = vi
+      .spyOn(Capacitor, "getPlatform")
+      .mockReturnValue("android");
+    await import("../../../plugins/plugin-native-contacts/src/register");
+    const registration = listAppShellPages().find(
+      (entry) => entry.id === "contacts",
+    );
+    if (!registration) throw new Error("Native Contacts page did not register");
+    const onClick = vi.fn();
+    registerAppShellPage({
+      ...registration,
+      Component: () => (
+        <AgentButton agentId="create-contact" onClick={onClick}>
+          Create contact
+        </AgentButton>
+      ),
+    });
+    const contacts = Array.from({ length: 1001 }, (_, index) => ({
+      id: `contact-${index}`,
+      lookupKey: `lookup-${index}`,
+      displayName: `Person ${index}`,
+      phoneNumbers: [],
+      emailAddresses: [],
+      starred: false,
+    }));
+    nativeContacts.listContacts.mockResolvedValue({ contacts });
+    appState.tab = "contacts";
+    window.history.replaceState(null, "", "/contacts");
+    try {
+      render(<App />);
+      await screen.findByRole("button", { name: "Create contact" });
+      await expect(
+        invokeViewInteract("contacts", "gui", "list-contacts"),
+      ).resolves.toEqual({
+        query: "",
+        count: contacts.length,
+        contacts,
+      });
+      for (const operation of [
+        "create-contact",
+        "import-vcard",
+        "agent-click",
+        "get-text",
+      ]) {
+        await expect(
+          invokeViewInteract("contacts", "gui", operation, {
+            id: "create-contact",
+            displayName: "Unauthorized",
+            vcardText: "BEGIN:VCARD",
+          }),
+        ).rejects.toThrow(/not granted capability/);
+      }
+      expect(nativeContacts.createContact).not.toHaveBeenCalled();
+      expect(nativeContacts.importVCard).not.toHaveBeenCalled();
+      expect(onClick).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Create contact" }));
+      expect(onClick).toHaveBeenCalledOnce();
+    } finally {
+      // error-policy:J6 restore the platform fixture after the mounted boundary proof.
+      platform.mockRestore();
+    }
+  });
   it("hands a cold wallet deep link to a deferred app-shell registration", async () => {
     appState.tab = "inventory";
     window.history.replaceState(null, "", "/wallet");
-
     render(<App />);
-
     expect(
       (await screen.findByTestId("dynamic-plugin-page-loading")).textContent,
     ).toBe("Loading wallet.inventory…");
-
     act(() => {
       registerAppShellPage({
         id: "wallet.inventory",
@@ -1627,13 +1575,11 @@ describe("App navigate-view event wiring", () => {
         ),
       });
     });
-
     expect(
       (await screen.findByTestId("deferred-wallet-page")).textContent,
     ).toBe("Wallet ready");
     expect(screen.queryByTestId("dynamic-plugin-page-loading")).toBeNull();
   });
-
   it.each(["/inventory", "/wallet/activity", "/wallet/markets"])(
     "does not canonicalize a cold exact wallet-family route through tab affinity: %s",
     async (path) => {
@@ -1665,20 +1611,16 @@ describe("App navigate-view event wiring", () => {
       if (!owningRegistration) {
         throw new Error(`Missing test registration for ${path}`);
       }
-
       registerAppShellPage({
         ...owningRegistration,
         tabAffinity: "inventory",
         Component: () => null,
       });
-
       render(<App />);
-
       expect(window.location.pathname).toBe(path);
       expect(appState.setTab).not.toHaveBeenCalled();
     },
   );
-
   it("mounts an exact signed native renderer when stale registry metadata still advertises a remote bundle", async () => {
     electrobunRuntimeState.enabled = false;
     const platform = vi
@@ -1695,10 +1637,8 @@ describe("App navigate-view event wiring", () => {
     });
     appState.tab = "views";
     window.history.replaceState(null, "", "/notes");
-
     try {
       const { container, getByTestId, queryByTestId } = render(<App />);
-
       await waitFor(() => getByTestId("signed-notes"));
       expect(queryByTestId("dynamic-view-loader")).toBeNull();
       expect(queryByTestId("view-header")).toBeNull();
@@ -1715,14 +1655,11 @@ describe("App navigate-view event wiring", () => {
       platform.mockRestore();
     }
   });
-
   it("lets a fullscreen plugin view fill behind the floating composer", async () => {
     mockAvailableViews.push(notesFullscreenView);
     appState.tab = "views";
     window.history.replaceState(null, "", "/notes");
-
     const { container, getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(queryByTestId("view-header")).toBeNull();
     const frame = container.querySelector('[data-page-kind="workspace"]');
@@ -1756,14 +1693,11 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).toBe("0px");
   });
-
   it("routes frame-only sandboxed views through DynamicViewLoader with frameUrl", async () => {
     mockAvailableViews.push(sandboxedFrameView);
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/sandboxed-frame");
-
     const { getByTestId } = render(<App />);
-
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1775,14 +1709,12 @@ describe("App navigate-view event wiring", () => {
         undefined,
       );
     });
-
     const loader = getByTestId("dynamic-view-loader");
     expect(loader.getAttribute("data-bundle-url")).toBe("");
     expect(loader.getAttribute("data-frame-url")).toBe(
       "/api/views/sandboxed-frame/frame.html",
     );
   });
-
   it("keeps an unavailable registered route in its loader for retry instead of the view manager", async () => {
     mockAvailableViews.push({
       ...remoteLedgerView,
@@ -1801,19 +1733,15 @@ describe("App navigate-view event wiring", () => {
     });
     expect(window.location.pathname).toBe("/unavailable-ledger");
   });
-
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/chat");
     window.history.pushState(null, "", "/apps/remote-ledger");
-
     const { queryByTestId } = render(<App />);
-
     // The route mounts (its remote view loader is requested)…
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalled();
     });
-
     // …but the floating top-left corner back button that used to overlap page
     // content (Apps gallery section headings, the Character/Knowledge
     // breadcrumb) is gone. Pages that need a back affordance render their own
@@ -1821,13 +1749,10 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("shell-back-button")).toBeNull();
     expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
   });
-
   it("lets a view explicitly share the Home/Launcher background", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/shared-canvas");
-
     const { getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1837,11 +1762,9 @@ describe("App navigate-view event wiring", () => {
         undefined,
       );
     });
-
     expect(getByTestId("app-background-shader")).toBeTruthy();
     expect(queryByTestId("app-opaque-background")).toBeNull();
   });
-
   it("reports user desktop-tab clicks to the agent without a navigation echo", async () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps");
@@ -1858,12 +1781,6 @@ describe("App navigate-view event wiring", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/commands")) {
-          return new Response(JSON.stringify({ commands: [] }), {
-            headers: { "Content-Type": "application/json" },
-            status: 200,
-          });
-        }
         if (url.includes("/api/custom-actions")) {
           return new Response(JSON.stringify({ actions: [] }), {
             headers: { "Content-Type": "application/json" },
@@ -1873,11 +1790,8 @@ describe("App navigate-view event wiring", () => {
         return new Response("{}", { status: 200 });
       }),
     );
-
     render(<App />);
-
     fireEvent.click(screen.getByRole("button", { name: "Remote Ledger" }));
-
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
         "http://agent.local/api/views/remote-ledger/navigate",
@@ -1892,7 +1806,6 @@ describe("App navigate-view event wiring", () => {
     });
     expect(window.location.pathname).toBe("/apps/remote-ledger");
   });
-
   it("replays a failed cold-start view report once after reconnect and still clears Home", async () => {
     appState.tab = "views";
     appState.startupPhase = "polling-backend";
@@ -1900,16 +1813,9 @@ describe("App navigate-view event wiring", () => {
     window.history.replaceState(null, "", "/notes");
     mockAvailableViews.push(notesFullscreenView);
     setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "http://agent.local" });
-
     let viewNavigationAttempts = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/commands")) {
-        return new Response(JSON.stringify({ commands: [] }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        });
-      }
       if (url.includes("/api/custom-actions")) {
         return new Response(JSON.stringify({ actions: [] }), {
           headers: { "Content-Type": "application/json" },
@@ -1925,30 +1831,23 @@ describe("App navigate-view event wiring", () => {
       return new Response("{}", { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
-
     const rendered = render(<App />);
     const viewNavigationCalls = () =>
       fetchMock.mock.calls.filter(([input]) =>
         String(input).includes("/api/views/"),
       );
-
     expect(viewNavigationCalls()).toHaveLength(0);
-
     appState.startupPhase = "ready";
     appState.backendConnectionState = "connected";
     rendered.rerender(<App />);
-
     await waitFor(() => {
       expect(viewNavigationCalls()).toHaveLength(1);
     });
-
     appState.backendConnectionState = "reconnecting";
     rendered.rerender(<App />);
     expect(viewNavigationCalls()).toHaveLength(1);
-
     appState.backendConnectionState = "connected";
     rendered.rerender(<App />);
-
     await waitFor(() => {
       expect(viewNavigationCalls()).toHaveLength(2);
     });
@@ -1959,16 +1858,13 @@ describe("App navigate-view event wiring", () => {
         body: JSON.stringify({ source: "user", path: "/notes" }),
       }),
     ]);
-
     rendered.rerender(<App />);
     await act(async () => Promise.resolve());
     expect(viewNavigationCalls()).toHaveLength(2);
-
     act(() => {
       shellHistory.replaceState(null, "", "/chat");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-
     await waitFor(() => {
       expect(viewNavigationCalls()).toHaveLength(3);
     });
@@ -1980,16 +1876,12 @@ describe("App navigate-view event wiring", () => {
       }),
     ]);
   });
-
   it("renders split-view events as a live dynamic view layout", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
-
     const { getAllByTestId, getByTestId } = render(<App />);
-
     const splitViews = [projectBoardAgentSurfaceView, calendarView];
     mockAvailableViews.splice(0, mockAvailableViews.length, ...splitViews);
-
     navigateView({
       action: "split-view",
       viewId: "project-board",
@@ -1997,7 +1889,6 @@ describe("App navigate-view event wiring", () => {
       layout: "horizontal",
       placement: "right",
     });
-
     await waitFor(() => {
       expect(getByTestId("view-layout-surface")).toBeTruthy();
     });
@@ -2023,20 +1914,16 @@ describe("App navigate-view event wiring", () => {
       pinned: false,
     });
   });
-
   it("renders registered documents bundles inside split-view when registry wins", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
-
     const { getAllByTestId, getByTestId } = render(<App />);
-
     navigateView({
       action: "split-view",
       viewId: "documents",
       views: ["documents", "calendar"],
       layout: "horizontal",
     });
-
     await waitFor(() => {
       expect(getByTestId("view-layout-surface")).toBeTruthy();
     });
@@ -2053,13 +1940,10 @@ describe("App navigate-view event wiring", () => {
       pinned: false,
     });
   });
-
   it("keeps /views on the built-in Launcher instead of the remote manager bundle", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
-
     const { getByTestId, queryByTestId } = render(<App />);
-
     await waitFor(() => {
       expect(getByTestId("launcher-surface")).toBeTruthy();
     });
@@ -2068,7 +1952,6 @@ describe("App navigate-view event wiring", () => {
     expect(getByTestId("app-background-shader")).toBeTruthy();
     expect(queryByTestId("app-opaque-background")).toBeNull();
   });
-
   it("lands on the designed not-found state for a navigate-view id nothing serves (#17033)", async () => {
     window.history.replaceState(null, "", "/?shellMode=full");
     // The handler calls setTab before pushing the path; mirroring the tab into
@@ -2078,9 +1961,7 @@ describe("App navigate-view event wiring", () => {
       appState.tab = tab;
     });
     render(<App />);
-
     navigateView({ viewId: "definitely-not-a-view" });
-
     // The settled-unclaimed slug must survive AppsPageView's ~1.5s
     // idle-registration grace window before not-found renders, so the wait
     // outlasts it (this suite runs real timers).

@@ -1,3 +1,15 @@
+import type {
+	ReadJsonBodyOptions,
+	ReadTextBodyOptions,
+	RequestBodyOptions,
+} from "./route-helpers.js";
+
+export type {
+	ReadJsonBodyOptions,
+	ReadTextBodyOptions,
+	RequestBodyOptions,
+} from "./route-helpers.js";
+
 /**
  * Shared HTTP request/response plumbing for the API and benchmark route layers:
  * bounded body reads (size-guarded, with optional size/error-to-null fallbacks)
@@ -22,21 +34,6 @@ type CachedRequest = http.IncomingMessage & {
  * Common request body size guard used across API/benchmark endpoints.
  */
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
-
-export interface RequestBodyOptions {
-	/** Maximum accepted body size in bytes. */
-	maxBytes?: number;
-	/** String conversion encoding for body text helpers. */
-	encoding?: BufferEncoding;
-	/** Error message returned when the request body exceeds `maxBytes`. */
-	tooLargeMessage?: string;
-	/** When true, resolves to `null` instead of rejecting on body read failure. */
-	returnNullOnError?: boolean;
-	/** When true, resolves to `null` instead of rejecting on size limit exceed. */
-	returnNullOnTooLarge?: boolean;
-	/** Whether to destroy the request stream as soon as the body limit is exceeded. */
-	destroyOnTooLarge?: boolean;
-}
 
 function defaultTooLargeMessage(maxBytes: number, explicit?: string): string {
 	return explicit ?? `Request body exceeds maximum size (${maxBytes} bytes)`;
@@ -152,10 +149,6 @@ export async function readRequestBodyBuffer(
 	});
 }
 
-export interface ReadTextBodyOptions extends RequestBodyOptions {
-	/** Optional response-timeout behavior handled by caller; kept for parity with legacy wrappers. */
-}
-
 export async function readRequestBody(
 	req: http.IncomingMessage,
 	options: ReadTextBodyOptions = {},
@@ -164,23 +157,6 @@ export async function readRequestBody(
 	const body = await readRequestBodyBuffer(req, rawOptions);
 	if (body === null) return null;
 	return body.toString(encoding);
-}
-
-export interface ReadJsonBodyOptions extends ReadTextBodyOptions {
-	/** Whether to require JSON object shape (not arrays/null). */
-	requireObject?: boolean;
-	/** Response status used for parse/read failures. */
-	readErrorStatus?: number;
-	/** Response status used for non-object body when `requireObject` is true. */
-	nonObjectStatus?: number;
-	/** Response status used for invalid JSON syntax. */
-	parseErrorStatus?: number;
-	/** Override for read errors (including size / stream errors). */
-	readErrorMessage?: string;
-	/** Override when JSON is valid but not an object. */
-	nonObjectMessage?: string;
-	/** Override for malformed JSON parse errors. */
-	parseErrorMessage?: string;
 }
 
 export function isJsonObjectBody(
@@ -194,9 +170,10 @@ export async function writeJsonResponse(
 	body: unknown,
 	status = 200,
 ): Promise<void> {
+	const serializedBody = JSON.stringify(body);
 	res.statusCode = status;
 	res.setHeader("Content-Type", "application/json");
-	res.end(JSON.stringify(body));
+	res.end(serializedBody);
 }
 
 export async function writeJsonError(
@@ -213,8 +190,15 @@ export function writeJsonResponseSafe(
 	status = 200,
 ): void {
 	void writeJsonResponse(res, body, status).catch((err) => {
-		// error-policy:J1 The response is already committed; logging is the only
-		// remaining observable transport-boundary signal.
+		// error-policy:J1 Pre-commit write failures become a terminated 500
+		// response; committed failures can only be emitted as boundary logs.
+		if (!res.headersSent && !res.writableEnded) {
+			logger.warn(
+				`[http] JSON response write failed before commit; returning 500: ${err}`,
+			);
+			writeJsonErrorSafe(res, "Failed to serialize response", 500);
+			return;
+		}
 		logger.warn(`[http] JSON response write failed: ${err}`);
 	});
 }

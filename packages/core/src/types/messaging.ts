@@ -69,20 +69,31 @@ export type SendHandlerPersistence =
 	  };
 
 /**
- * Provider-backed evidence for one logical send. Multi-chunk transports retain
- * every provider id in provider order; the final id is only a convenience for
+ * Transport evidence for one logical send. Multi-chunk transports retain
+ * every completion id in send order; the final id is only a convenience for
  * single-id APIs and must not replace the full receipt.
  */
 export interface SendHandlerReceipt {
 	providerMessageIds: readonly [string, ...string[]];
 	acceptedAt: number;
 	persistence: SendHandlerPersistence;
+	/**
+	 * What the ids above actually are. `"provider"` (the documented default)
+	 * means ids issued by the remote provider and reconcilable against it.
+	 * `"local-effect"` means ids that are locally generated completion
+	 * markers for sends whose transport returns no provider identity at all
+	 * (e.g. AppleScript-driven Messages.app); they are unique per send and
+	 * evidence that the local transport completed, not recipient delivery. They must never
+	 * be treated as provider-backed message ids for reconciliation.
+	 */
+	evidenceKind?: "provider" | "local-effect";
 }
 
 /** The final provider id from a non-empty delivery receipt. */
 export function primarySendHandlerProviderMessageId(
 	receipt: SendHandlerReceipt,
-): string {
+): string | undefined {
+	if (receipt.evidenceKind === "local-effect") return undefined;
 	return receipt.providerMessageIds[receipt.providerMessageIds.length - 1];
 }
 
@@ -192,13 +203,21 @@ function isSendHandlerPersistence(
 function isSendHandlerReceipt(value: unknown): value is SendHandlerReceipt {
 	if (typeof value !== "object" || value === null) return false;
 	const candidate = value as Partial<SendHandlerReceipt>;
-	return (
-		isStringArray(candidate.providerMessageIds) &&
-		candidate.providerMessageIds.length > 0 &&
-		typeof candidate.acceptedAt === "number" &&
-		Number.isFinite(candidate.acceptedAt) &&
-		isSendHandlerPersistence(candidate.persistence)
-	);
+	if (!isStringArray(candidate.providerMessageIds)) return false;
+	if (candidate.providerMessageIds.length <= 0) return false;
+	if (typeof candidate.acceptedAt !== "number") return false;
+	if (!Number.isFinite(candidate.acceptedAt)) return false;
+	// The evidence-kind discriminator decides whether the ids are
+	// provider-reconcilable; an unrecognized value must invalidate the
+	// receipt rather than silently default to "provider".
+	if (
+		candidate.evidenceKind !== undefined &&
+		candidate.evidenceKind !== "provider" &&
+		candidate.evidenceKind !== "local-effect"
+	) {
+		return false;
+	}
+	return isSendHandlerPersistence(candidate.persistence);
 }
 
 /** Narrow an untrusted connector return to a complete structural outcome. */
@@ -255,7 +274,7 @@ export type SendHandlerDisposition =
 			kind: "partially_delivered";
 			replayed: boolean;
 			receipt: SendHandlerReceipt;
-			providerMessageId: string;
+			providerMessageId?: string;
 			memories: readonly Memory[];
 			code: string;
 			message: string;
@@ -370,13 +389,13 @@ export function inspectSendHandlerResult(
 		memories: [],
 		code: "CONNECTOR_PARTIAL_DELIVERY_REPLAY",
 		message:
-			"A prior matching attempt reached only part of the provider payload.",
+			"A prior matching attempt completed only part of the transport payload.",
 	};
 }
 
 /**
- * Require a complete provider delivery before a caller reports success.
- * Provider-accepted/local-persistence failures throw with a do-not-retry
+ * Require complete transport delivery before a caller reports success.
+ * Transport-completed/local-persistence failures throw with a do-not-retry
  * warning so outer boundaries cannot accidentally duplicate an external send.
  */
 export function requireConfirmedSendHandlerDelivery(
@@ -393,8 +412,12 @@ export function requireConfirmedSendHandlerDelivery(
 		(disposition.receipt.persistence.status === "partial" ||
 			disposition.receipt.persistence.status === "failed")
 	) {
+		const acceptance =
+			disposition.receipt.evidenceKind === "local-effect"
+				? "The local transport reported completion without provider message IDs"
+				: `The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}`;
 		throw new Error(
-			`The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+			`${acceptance}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
 		);
 	}
 	return disposition;

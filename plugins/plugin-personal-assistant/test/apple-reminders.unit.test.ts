@@ -9,7 +9,10 @@
  *   - successful native response -> { ok: true, data: { provider, reminderId } }
  */
 
-import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
+import {
+  type IPermissionsRegistry,
+  type PermissionState,
+} from "@elizaos/core/contracts/permissions";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __testing,
@@ -96,7 +99,7 @@ describe("native Apple Reminders bridge dylib candidates", () => {
       "../../../../../../../libMacWindowEffects.dylib",
     );
     expect(candidatePaths).toContain(
-      "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+      "../../../../packages/app/platforms/electrobun/src/libMacWindowEffects.dylib",
     );
   });
 });

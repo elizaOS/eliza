@@ -8,17 +8,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentWeb } from "./web";
 
 function setWindow(overrides: Partial<Window> = {}): void {
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: {
-      location: { protocol: "https:", origin: "https://app.example" },
-      sessionStorage: {
-        getItem: vi.fn(),
-        setItem: vi.fn(),
-        removeItem: vi.fn(),
-      },
-      ...overrides,
+  vi.stubGlobal("window", {
+    location: { protocol: "https:", origin: "https://app.example" },
+    sessionStorage: {
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
     },
+    ...overrides,
   });
 }
 
@@ -247,62 +244,39 @@ describe("AgentWeb fallback", () => {
     },
   );
 
-  it("keeps the request deadline active while the response body stalls", async () => {
-    const server = createServer((_request, response) => {
-      response.writeHead(200, { "content-type": "text/plain" });
-      response.write("partial");
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      server.close();
-      throw new Error("Loopback server did not expose a TCP address");
-    }
-    setWindow({
-      __ELIZAOS_APP_BOOT_CONFIG__: {
-        apiBase: `http://127.0.0.1:${address.port}`,
-      },
-    } as Partial<Window>);
+  it.each(["headers", "body"])(
+    "aborts a response stalled at %s",
+    async (stage) => {
+      const server = createServer((_request, response) => {
+        if (stage === "body") {
+          response.writeHead(200, { "content-type": "text/plain" });
+          response.write("partial");
+        }
+      });
+      await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        throw new Error("Loopback server did not expose a TCP address");
+      }
+      setWindow({
+        __ELIZAOS_APP_BOOT_CONFIG__: {
+          apiBase: `http://127.0.0.1:${address.port}`,
+        },
+      } as Partial<Window>);
 
-    try {
-      await expect(
-        new AgentWeb().request({ path: "/stall", timeoutMs: 50 }),
-      ).rejects.toMatchObject({ name: "TimeoutError" });
-    } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  });
-
-  it("aborts when a connected server never sends response headers", async () => {
-    const server = createServer(() => {
-      // Deliberately accept the socket without sending a response head.
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      server.close();
-      throw new Error("Loopback server did not expose a TCP address");
-    }
-    setWindow({
-      __ELIZAOS_APP_BOOT_CONFIG__: {
-        apiBase: `http://127.0.0.1:${address.port}`,
-      },
-    } as Partial<Window>);
-
-    try {
-      await expect(
-        new AgentWeb().request({ path: "/stall", timeoutMs: 50 }),
-      ).rejects.toMatchObject({ name: "TimeoutError" });
-    } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  });
+      try {
+        await expect(
+          new AgentWeb().request({ path: "/stall", timeoutMs: 50 }),
+        ).rejects.toMatchObject({ name: "TimeoutError" });
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
 
   it("fails closed for local-agent IPC base in the web fallback", async () => {
     setWindow({

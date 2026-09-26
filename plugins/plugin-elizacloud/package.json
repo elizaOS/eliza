@@ -5,7 +5,6 @@
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
   "types": "dist/index.node.d.ts",
-  "browser": "dist/browser/index.browser.js",
   "sideEffects": [
     "./src/register.ts",
     "./dist/register.js"
@@ -17,27 +16,14 @@
   "exports": {
     "./package.json": "./package.json",
     "./endpoint-config": {
+      "eliza-source": "./src/utils/config.ts",
       "types": "./dist/utils/config.d.ts",
-      "eliza-source": {
-        "types": "./src/utils/config.ts",
-        "import": "./src/utils/config.ts",
-        "default": "./src/utils/config.ts"
-      },
       "import": "./dist/utils/config.js",
       "default": "./dist/utils/config.js"
     },
     ".": {
+      "eliza-source": "./src/index.node.ts",
       "types": "./dist/index.node.d.ts",
-      "eliza-source": {
-        "types": "./src/index.node.ts",
-        "import": "./src/index.node.ts",
-        "default": "./src/index.node.ts"
-      },
-      "browser": {
-        "types": "./dist/index.browser.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
       "node": {
         "types": "./dist/index.node.d.ts",
         "import": "./dist/node/index.node.js",
@@ -47,14 +33,70 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./cloud-config/base-url": {
+      "eliza-source": "./src/cloud-config/base-url.ts",
+      "types": "./dist/cloud-config/base-url.d.ts",
+      "import": "./dist/cloud-config/base-url.js",
+      "default": "./dist/cloud-config/base-url.js"
+    },
+    "./cloud-config/cloud-provisioning": {
+      "eliza-source": "./src/cloud-config/cloud-provisioning.ts",
+      "types": "./dist/cloud-config/cloud-provisioning.d.ts",
+      "import": "./dist/cloud-config/cloud-provisioning.js",
+      "default": "./dist/cloud-config/cloud-provisioning.js"
+    },
+    "./cloud-config/cloud-secrets": {
+      "eliza-source": "./src/cloud-config/cloud-secrets.ts",
+      "types": "./dist/cloud-config/cloud-secrets.d.ts",
+      "import": "./dist/cloud-config/cloud-secrets.js",
+      "default": "./dist/cloud-config/cloud-secrets.js"
+    },
+    "./cloud-config/dev-cloud-env-authority": {
+      "eliza-source": "./src/cloud-config/dev-cloud-env-authority.ts",
+      "types": "./dist/cloud-config/dev-cloud-env-authority.d.ts",
+      "import": "./dist/cloud-config/dev-cloud-env-authority.js",
+      "default": "./dist/cloud-config/dev-cloud-env-authority.js"
+    },
+    "./cloud-config/domain-contract": {
+      "eliza-source": "./src/cloud-config/domain-contract.ts",
+      "types": "./dist/cloud-config/domain-contract.d.ts",
+      "import": "./dist/cloud-config/domain-contract.js",
+      "default": "./dist/cloud-config/domain-contract.js"
+    },
+    "./cloud-config": {
+      "eliza-source": "./src/cloud-config/index.ts",
+      "types": "./dist/cloud-config/index.d.ts",
+      "import": "./dist/cloud-config/index.js",
+      "default": "./dist/cloud-config/index.js"
+    },
+    "./cloud-config/is-cloud-reachable": {
+      "eliza-source": "./src/cloud-config/is-cloud-reachable.ts",
+      "types": "./dist/cloud-config/is-cloud-reachable.d.ts",
+      "import": "./dist/cloud-config/is-cloud-reachable.js",
+      "default": "./dist/cloud-config/is-cloud-reachable.js"
+    },
+    "./cloud-config/server-cloud-tts": {
+      "eliza-source": "./src/cloud-config/server-cloud-tts.ts",
+      "types": "./dist/cloud-config/server-cloud-tts.d.ts",
+      "import": "./dist/cloud-config/server-cloud-tts.js",
+      "default": "./dist/cloud-config/server-cloud-tts.js"
+    },
+    "./steward-session-client": {
+      "eliza-source": "./src/steward-session-client/index.ts",
+      "types": "./dist/steward-session-client/index.d.ts",
+      "import": "./dist/steward-session-client/index.js",
+      "default": "./dist/steward-session-client/index.js"
+    },
+    "./steward-session-client/steward-oauth-pkce": {
+      "eliza-source": "./src/steward-session-client/steward-oauth-pkce.ts",
+      "types": "./dist/steward-session-client/steward-oauth-pkce.d.ts",
+      "import": "./dist/steward-session-client/steward-oauth-pkce.js",
+      "default": "./dist/steward-session-client/steward-oauth-pkce.js"
     }
   },
   "files": [
@@ -87,7 +129,6 @@
     "@ai-sdk/provider-utils": "5.0.5",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "1.8.0",
     "@opentelemetry/api": "1.9.1",
@@ -98,32 +139,33 @@
     "isows": "1.0.7",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
-    "ox": "1.6.0",
+    "ox": "1.7.5",
     "undici": "8.10.0",
     "viem": "^2.48.8",
-    "ws": "8.21.3"
+    "ws": "8.21.3",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
-    "@storybook/react": "^10.0.0",
+    "@biomejs/biome": "2.5.14",
+    "@storybook/react": "^10.6.0",
     "@clack/prompts": "^1.5.1",
-    "@types/bun": "^1.3.5",
+    "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "lucide-react": "^1.0.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "@elizaos/ui": "workspace:*",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "peerDependenciesMeta": {
     "@elizaos/ui": {
@@ -140,18 +182,16 @@
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run && bun test __tests__/dist-packaging.test.ts",
     "test:unit": "vitest run __tests__/unit/",
     "lint:check": "bunx @biomejs/biome check .",
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
-    "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-elizacloud -- bun run build:unlocked",
+    "build:unlocked": "bun run build.ts && bun run build:views && node ../../packages/scripts/plugins/plugin-elizacloud/verify-built-package.ts",
     "build:ts": "bun run build.ts",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
-    "test:live": "bun run test:e2e"
+    "build:views": "vite build --config vite.config.views.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -301,9 +341,8 @@
       },
       "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS": {
         "type": "number",
-        "description": "Maximum number of tokens allowed in the image-description model response.",
+        "description": "Optional positive-integer image-description output limit; unset sends no provider cap.",
         "required": false,
-        "default": 8192,
         "sensitive": false
       },
       "ELIZAOS_CLOUD_TTS_MODEL": {
@@ -333,18 +372,6 @@
         "default": false,
         "sensitive": false
       },
-      "ELIZAOS_CLOUD_BROWSER_BASE_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud requests (no secrets in the client).",
-        "required": false,
-        "sensitive": false
-      },
-      "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
-        "required": false,
-        "sensitive": false
-      },
       "ELIZAOS_CLOUD_ENABLED": {
         "type": "boolean",
         "description": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
@@ -364,12 +391,10 @@
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
   "eliza": {
     "platforms": [
-      "browser",
       "node"
     ],
-    "runtime": "both",
+    "runtime": "node",
     "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
       "node": "Node.js build available via exports.node"
     }
   }

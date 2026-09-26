@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": ["node", "vitest"],
     "strict": true,
     "esModuleInterop": true,
@@ -15,12 +16,14 @@
     "declaration": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/vault": ["../vault/src/index.ts"]
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/auth/**/*",
+    "src/vault/**/*",
+    "src/kms/**/*",
+    "src/index.ts",
+    "test/*.ts"
+  ]
 }

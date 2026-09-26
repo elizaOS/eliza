@@ -1,18 +1,31 @@
 /**
- * Terminal theme built on the CLI palette via chalk, honoring FORCE_COLOR.
+ * Chalk-based color theme for CLI output, built from the shared `CLI_PALETTE`.
+ * Honors `NO_COLOR` and `FORCE_COLOR` when deciding whether to emit ANSI colors.
  */
+
 import chalk, { Chalk } from "chalk";
 import { CLI_PALETTE } from "./palette";
 
-const hasForceColor =
-  typeof process.env.FORCE_COLOR === "string" &&
-  process.env.FORCE_COLOR.trim().length > 0 &&
-  process.env.FORCE_COLOR.trim() !== "0";
+// The shared barrel is imported by browser bundles; a bare `process`
+// identifier at module scope throws ReferenceError there and kills the whole
+// graph before any consumer mounts.
+// Without a process, take the same no-color path as dev-settings-banner-style
+// and self-edit: a browser context cannot honor CLI color env vars.
+const terminalEnv: NodeJS.ProcessEnv | undefined =
+  typeof process === "undefined" ? undefined : process.env;
 
-const hasNoColor = process.env.NO_COLOR !== undefined;
+const forceColor = terminalEnv?.FORCE_COLOR;
+const hasForceColor =
+  typeof forceColor === "string" &&
+  forceColor.trim().length > 0 &&
+  forceColor.trim() !== "0";
+
+const hasNoColor = terminalEnv?.NO_COLOR !== undefined;
 
 const baseChalk =
-  hasNoColor && !hasForceColor ? new Chalk({ level: 0 }) : chalk;
+  terminalEnv === undefined || (hasNoColor && !hasForceColor)
+    ? new Chalk({ level: 0 })
+    : chalk;
 
 const hex = (value: string) => baseChalk.hex(value);
 

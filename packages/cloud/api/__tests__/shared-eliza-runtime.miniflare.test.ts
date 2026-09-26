@@ -6,9 +6,23 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { z } from "zod";
+import { createPrivateWorkerdFailureCapture } from "../test/workerd-failure-capture";
+
+function modelSystemContent(requests: Array<Record<string, unknown>>): string {
+  return requests
+    .flatMap((request) =>
+      z
+        .array(z.object({ role: z.string(), content: z.unknown() }))
+        .parse(request.messages),
+    )
+    .filter((message) => message.role === "system")
+    .map((message) => z.string().parse(message.content))
+    .join("\n\n");
+}
 
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
@@ -35,6 +49,122 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        const reviewPrompt = z
+          .array(
+            z
+              .object({
+                content: z.unknown(),
+              })
+              .passthrough(),
+          )
+          .parse(body.messages)
+          .flatMap((message) =>
+            typeof message.content === "string" &&
+            message.content.startsWith("Review recovered reply grounding.")
+              ? [message.content]
+              : [],
+          );
+        if (reviewPrompt.length > 0) {
+          expect(reviewPrompt).toHaveLength(1);
+          const lines = reviewPrompt[0].split("\n");
+          const field = (prefix: string): unknown => {
+            const matches = lines.filter((line) => line.startsWith(prefix));
+            expect(matches).toHaveLength(1);
+            return JSON.parse(matches[0].slice(prefix.length));
+          };
+          expect(field("Candidate reply: ")).toBe(
+            "I added Buy milk to your todo list.",
+          );
+          const selected = z
+            .array(z.string())
+            .length(1)
+            .parse(field("Selected effect receipt IDs: "));
+          const evidence = z
+            .object({
+              request: z.object({ text: z.string() }).passthrough(),
+              results: z.string(),
+            })
+            .passthrough()
+            .parse(field("Complete turn evidence: "));
+          expect(evidence.request.text).toBe("add buy milk to my todo list");
+          const results = evidence.results
+            .split("\n")
+            .filter((line) => line.startsWith("{"))
+            .map((line): unknown => JSON.parse(line));
+          expect(results).toHaveLength(1);
+          const result = z
+            .object({
+              success: z.literal(true),
+              data: z
+                .object({
+                  actionName: z.literal("TODO"),
+                  action: z.literal("create"),
+                  todo: z
+                    .object({
+                      id: z.string().min(1),
+                      content: z.literal("Buy milk"),
+                      status: z.literal("pending"),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+              effectReceipts: z
+                .array(
+                  z
+                    .object({
+                      receiptId: z.string(),
+                      operation: z.literal("todos.create"),
+                      outcome: z.literal("applied"),
+                      resource: z
+                        .object({
+                          kind: z.literal("todos.todo"),
+                          id: z.string(),
+                        })
+                        .passthrough(),
+                      commit: z
+                        .object({
+                          kind: z.literal("durable"),
+                          id: z.string().min(1),
+                        })
+                        .passthrough(),
+                    })
+                    .passthrough(),
+                )
+                .length(1),
+            })
+            .passthrough()
+            .parse(results[0]);
+          expect(selected).toEqual([result.effectReceipts[0].receiptId]);
+          expect(result.effectReceipts[0].resource.id).toBe(
+            result.data.todo.id,
+          );
+          return Response.json({
+            id: "chatcmpl-workerd-todo-grounding-review",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    grounded: true,
+                    completedChangeClaim: true,
+                    reason:
+                      "The selected durable todos.create receipt identifies the pending Buy milk item in this turn's real action result.",
+                  }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 50,
+              completion_tokens: 14,
+              total_tokens: 64,
+            },
+          });
+        }
         if (JSON.stringify(body).includes("add buy milk to my todo list")) {
           todoPlannerRequests += 1;
           if (todoPlannerRequests === 1) {
@@ -472,15 +602,22 @@ describe("Shared Eliza runtime in Workerd", () => {
                 index: 0,
                 message: {
                   role: "assistant",
-                  content: JSON.stringify({
-                    success: true,
-                    decision: "FINISH",
-                    thought: "The untrusted sender cannot use a USER action.",
-                    messageToUser:
-                      "Image generation requires an authenticated Personal Shared user.",
-                  }),
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `workerd-image-${probe}-refusal`,
+                      type: "function",
+                      function: {
+                        name: "REPLY",
+                        arguments: JSON.stringify({
+                          text: "Image generation requires an authenticated Personal Shared user.",
+                          eliza_turn_scope: "final",
+                        }),
+                      },
+                    },
+                  ],
                 },
-                finish_reason: "stop",
+                finish_reason: "tool_calls",
               },
             ],
             usage: {
@@ -652,7 +789,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       new URL("../../../core/", import.meta.url),
     );
     const coreBuild = Bun.spawn({
-      cmd: [process.execPath, "build.ts", "--edge-only"],
+      cmd: [process.execPath, "build.ts"],
       cwd: coreDirectory,
       stderr: "pipe",
       stdout: "pipe",
@@ -662,9 +799,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       new Response(coreBuild.stderr).text(),
     ]);
     if (coreBuildExitCode !== 0) {
-      throw new Error(
-        `Failed to build @elizaos/core/edge:\n${coreBuildStderr}`,
-      );
+      throw new Error(`Failed to build @elizaos/core:\n${coreBuildStderr}`);
     }
 
     const entrypoint = fileURLToPath(
@@ -673,66 +808,68 @@ describe("Shared Eliza runtime in Workerd", () => {
         import.meta.url,
       ),
     );
-    const outputPath = join(buildDirectory, "worker.mjs");
-    const repositoryDirectory = fileURLToPath(
-      new URL("../../../../", import.meta.url),
+    const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
+    const workerConfig = z
+      .object({
+        compatibility_date: z.string(),
+        compatibility_flags: z.array(z.string()),
+        define: z.record(z.string(), z.string()),
+        alias: z.record(z.string(), z.string()),
+      })
+      .parse(
+        Bun.TOML.parse(
+          await readFile(join(apiDirectory, "wrangler.toml"), "utf8"),
+        ),
+      );
+    const configPath = join(buildDirectory, "wrangler.json");
+    await Bun.write(
+      configPath,
+      JSON.stringify({
+        name: "shared-eliza-runtime-test",
+        main: entrypoint,
+        compatibility_date: workerConfig.compatibility_date,
+        compatibility_flags: workerConfig.compatibility_flags,
+        define: workerConfig.define,
+        alias: Object.fromEntries(
+          Object.entries(workerConfig.alias).map(([name, target]) => [
+            name,
+            target.startsWith(".") ? resolve(apiDirectory, target) : target,
+          ]),
+        ),
+      }),
     );
-    const coreEdgeArtifact = join(coreDirectory, "dist/edge/index.edge.js");
-    const todosEdgeSource = fileURLToPath(
-      new URL("../../../../plugins/plugin-todos/src/edge.ts", import.meta.url),
-    );
+    const outputPath = join(buildDirectory, "shared-eliza-runtime-worker.js");
     const bundle = Bun.spawn({
       cmd: [
         process.execPath,
-        "-e",
-        `const result = await Bun.build({
-          entrypoints: [process.env.SHARED_ELIZA_ENTRY],
-          target: "browser",
-          format: "esm",
-          conditions: ["worker"],
-          external: ["node:*"],
-          plugins: [{
-            name: "eliza-core-edge-boundary",
-            setup(build) {
-              build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
-                path: process.env.ELIZA_CORE_EDGE_ARTIFACT,
-              }));
-              build.onResolve({ filter: /^@elizaos\\/plugin-todos\\/edge$/ }, () => ({
-                path: process.env.ELIZA_TODOS_EDGE_SOURCE,
-              }));
-            },
-          }],
-        });
-        if (!result.success) {
-          for (const log of result.logs) console.error(log);
-          process.exit(1);
-        }
-        const output = result.outputs[0];
-        if (!output) throw new Error("Shared Eliza runtime bundle was not emitted");
-        await Bun.write(process.env.SHARED_ELIZA_OUTPUT, output);`,
+        "x",
+        "--no-install",
+        "wrangler",
+        "deploy",
+        "--dry-run",
+        "--config",
+        configPath,
+        "--outdir",
+        buildDirectory,
       ],
-      cwd: repositoryDirectory,
-      env: {
-        ...process.env,
-        ELIZA_CORE_EDGE_ARTIFACT: coreEdgeArtifact,
-        ELIZA_TODOS_EDGE_SOURCE: todosEdgeSource,
-        SHARED_ELIZA_ENTRY: entrypoint,
-        SHARED_ELIZA_OUTPUT: outputPath,
-      },
+      cwd: apiDirectory,
       stderr: "pipe",
       stdout: "pipe",
     });
     const [bundleExitCode, bundleStderr] = await Promise.all([
       bundle.exited,
       new Response(bundle.stderr).text(),
+      new Response(bundle.stdout).text(),
     ]);
     if (bundleExitCode !== 0) {
       throw new Error(`Failed to bundle Shared Eliza runtime: ${bundleStderr}`);
     }
 
+    const failureCapture = await createPrivateWorkerdFailureCapture();
     miniflare = new Miniflare({
-      compatibilityDate: "2026-04-01",
-      compatibilityFlags: ["nodejs_compat"],
+      compatibilityDate: workerConfig.compatibility_date,
+      compatibilityFlags: workerConfig.compatibility_flags,
+      serviceBindings: { FAILURE_DIAGNOSTICS: failureCapture.fetch },
       outboundService: async (request: Request) => {
         outboundRequests.push(request.url);
         return await fetch(request.url, {
@@ -827,9 +964,9 @@ describe("Shared Eliza runtime in Workerd", () => {
       reply: "I added Buy milk to your todo list.",
       degraded: false,
       usage: {
-        promptTokens: 170,
-        completionTokens: 50,
-        totalTokens: 220,
+        promptTokens: 220,
+        completionTokens: 64,
+        totalTokens: 284,
       },
     });
     expect(payload.result.actionResults).toHaveLength(1);
@@ -855,11 +992,12 @@ describe("Shared Eliza runtime in Workerd", () => {
       }),
     ]);
     const todoRequests = modelRequests.slice(requestsBefore);
-    expect(todoRequests).toHaveLength(4);
+    expect(todoRequests).toHaveLength(5);
     const receipts = payload.result.actionResults?.[0]?.effectReceipts;
     if (!Array.isArray(receipts) || typeof receipts[0]?.receiptId !== "string")
       throw new Error("Applied Todo receipt is missing");
     expect(JSON.stringify(todoRequests[3])).toContain(receipts[0].receiptId);
+    expect(JSON.stringify(todoRequests[4])).toContain(receipts[0].receiptId);
     const todoPlanTools = todoRequests[1]?.tools as
       | Array<{ function?: { name?: string } }>
       | undefined;
@@ -953,7 +1091,7 @@ describe("Shared Eliza runtime in Workerd", () => {
 
     const imageRequests = modelRequests.slice(requestsBefore);
     expect(imageRequests).toHaveLength(2);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nUSER:");
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1028,11 +1166,9 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(done.text).toBe(
       "Image generation requires an authenticated Personal Shared user.",
     );
-    expect(done.actionResults?.[0]).toMatchObject({
-      success: false,
-      error: "Action GENERATE_MEDIA is not allowed for the current role",
-      data: { actionName: "GENERATE_MEDIA" },
-    });
+    // Admission rejects the unavailable tool before dispatch; the refusal
+    // must not acquire an execution receipt for an action that never ran.
+    expect(done.actionResults ?? []).toEqual([]);
     expect(payload.coordinatorRequests).toEqual([
       {
         name: "70000000-0000-5000-8000-000000000075:70000000-0000-5000-8000-000000000075",
@@ -1054,8 +1190,10 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.mediaRequests).toEqual([]);
 
     const imageRequests = modelRequests.slice(requestsBefore);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(imageRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nGUEST:");
+    expect(modelSystemContent(imageRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1110,8 +1248,12 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(toolNames).not.toContain("WEB_SEARCH");
     expect(toolNames).not.toContain("REMINDERS");
     expect(toolNames).not.toContain("TODO");
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     expect(systemLifecyclePlannerRequests).toBeGreaterThanOrEqual(2);
   }, 120_000);
 
@@ -1133,13 +1275,18 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(result.actionResults).toBeUndefined();
     const lifecycleRequests = modelRequests.slice(requestsBefore);
     expect(lifecycleRequests).toHaveLength(1);
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = (
       (lifecycleRequests[0]?.tools as
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
+    // This first lifecycle turn has no authorized context references to read.
     expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 

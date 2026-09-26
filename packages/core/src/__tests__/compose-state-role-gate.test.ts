@@ -5,13 +5,19 @@
  * senders, and both unassigned humans AND relay/webhook bridges resolve to
  * GUEST by default — so gate enforcement here would strip cross-turn recall
  * from relayed human conversation (the ZenithProxy pattern). Uses a real
- * AgentRuntime + InMemoryDatabaseAdapter with a real world and room; no model.
+ * AgentRuntime + SQLiteDatabaseAdapter with a real world and room; no model.
  */
+
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { AgentRuntime } from "../runtime";
-import type { Character, Memory, Provider, UUID } from "../types";
-import { ChannelType } from "../types";
+import type { AgentRuntime } from "../runtime";
+import type { Character } from "../types/agent.js";
+import type { Provider } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import { ChannelType } from "../types/primitives.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "11111111-1111-1111-1111-111111111110" as UUID;
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -26,8 +32,11 @@ function staticProvider(name: string, extra: Partial<Provider> = {}): Provider {
 }
 
 async function makeRuntime(): Promise<AgentRuntime> {
-	const adapter = new InMemoryDatabaseAdapter();
-	const runtime = new AgentRuntime({
+	const adapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("role-gate-test"),
+	);
+	const runtime = await createInitializedRuntime({
 		character: { name: "role-gate-test" } as Character,
 		adapter,
 		logLevel: "fatal",

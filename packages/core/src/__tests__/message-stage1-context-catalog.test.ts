@@ -5,17 +5,19 @@
  * runtime with a canned tool-call response; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
-import { ContextRegistry } from "../runtime/context-registry";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { currentMessageContentForContext } from "../../../../plugins/plugin-assistant/src/services/message/dialogue-context.ts";
 import {
+	__buildV5ExecutorContextForTests,
 	formatAvailableContextsForPrompt,
 	runV5MessageRuntimeStage1,
-} from "../services/message";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
+import { ContextRegistry } from "../runtime/context-registry";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
-import type { UUID } from "../types/primitives";
+import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
@@ -107,7 +109,11 @@ function makeRuntimeWithContexts(
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: [],
-		providers: [],
+		providers: contexts.map(({ id }) => ({
+			name: `${id}-support`,
+			contexts: [id],
+			get: async () => ({ text: "" }),
+		})),
 		getRoom: vi.fn(async () => null),
 		// Stage 1 resolves the structural always-respond bypass through
 		// `runtime.getSetting`, which every real runtime implements; the fake
@@ -159,25 +165,122 @@ const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
 	},
 ];
 
+describe("client-chat model context preserves executor transport state", () => {
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"preserves the complete structured %s message and executor transport state",
+		async (channelType) => {
+			const message = makeMessage();
+			message.content = {
+				text: 'Open Notes; keep the exact value "chatIdempotency" in mind.',
+				source: "client_chat",
+				channelType,
+				chatIdempotency: {
+					version: 1,
+					scope: "agent:room:speaker",
+					clientMessageId: "request-1",
+					fingerprint: "transport-fingerprint",
+				},
+				metadata: {
+					viewClientId: "target-client-tab",
+					uiView: "calendar",
+					uiViewPath: "/calendar",
+					uiTimeZone: "America/New_York",
+					customEvidence: {
+						text: "complete plugin evidence",
+						values: [1, 2, 3],
+					},
+				},
+				replyToMessageText:
+					"Keep Calendar unchanged unless I explicitly navigate.",
+			};
+			const original = structuredClone(message);
+			const runtime = makeRuntimeWithContexts(
+				FIXTURE_CONTEXTS,
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			);
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages: Array<{ role: string; content: string }>;
+			};
+			const wire = params.messages.find(
+				(entry) => entry.role === "user",
+			)?.content;
+			expect(wire).toBeDefined();
+			// Extended connector evidence retains its complete structured envelope.
+			expect(wire).toContain(JSON.stringify(original.content));
+			expect(wire).toContain(original.content.replyToMessageText);
+			const executor = __buildV5ExecutorContextForTests({
+				message,
+				state: makeState(),
+				selectedContexts: ["general"],
+				senderRole: "OWNER",
+				previousResults: [],
+			});
+			expect(executor.message).toBe(message);
+			expect(executor.message.content).toEqual(original.content);
+			expect(message).toEqual(original);
+		},
+	);
+
+	it.each([
+		{ source: "discord", channelType: ChannelType.DM },
+		{ source: "client_chat", channelType: ChannelType.GROUP },
+		{ source: "client_chat", channelType: undefined },
+	])(
+		"preserves other transport contracts: $source / $channelType",
+		(channel) => {
+			const message = makeMessage();
+			message.content = {
+				text: "complete original request",
+				...channel,
+				chatIdempotency: { custom: "provider-owned data" },
+				metadata: { viewClientId: "provider-owned reference" },
+			};
+			expect(currentMessageContentForContext(message)).toEqual(message.content);
+		},
+	);
+});
+
 describe("formatAvailableContextsForPrompt", () => {
-	it("renders id, metadata, and description per line", () => {
+	it("renders concise IDs and authored descriptions without registry metadata", () => {
 		const block = formatAvailableContextsForPrompt(FIXTURE_CONTEXTS);
-		expect(block).toContain("- general [label=General]: Normal conversation.");
-		expect(block).toContain(
-			"- calendar [label=Calendar; role>=ADMIN]: Manage calendar events.",
-		);
-		expect(block).toContain(
-			"- memory [label=Memory; role>=USER]: Long-term agent memory.",
-		);
+		expect(block).toContain("- general: Normal conversation.");
+		expect(block).toContain("- calendar: Manage calendar events.");
+		expect(block).toContain("- memory: Long-term agent memory.");
 	});
 
-	it("falls back to a placeholder when no contexts are registered", () => {
-		expect(formatAvailableContextsForPrompt([])).toBe(
-			"(no contexts registered)",
+	it("keeps authorization and search metadata internal", () => {
+		// Authorization precedes rendering; routing metadata remains complete.
+		const block = formatAvailableContextsForPrompt([
+			{
+				id: "terminal",
+				label: "Terminal",
+				aliases: ["shell"],
+				parent: "code",
+				description: "Execute shell commands.",
+				roleGate: { minRole: "OWNER" },
+				sensitivity: "private",
+				cacheScope: "turn",
+			},
+			{ id: "wallet", parents: ["finance"], roleGate: { anyOf: ["OWNER"] } },
+		]);
+		expect(block).toBe(
+			["- terminal: Execute shell commands.", "- wallet"].join("\n"),
 		);
+		expect(block).not.toContain("role");
+		expect(block).not.toContain("cache");
 	});
 
-	it("renders the COMPLETE description even when a compressed hint exists (compact tier retired by #24134)", () => {
+	it("renders no catalog entries when no contexts are registered", () => {
+		expect(formatAvailableContextsForPrompt([])).toBe("");
+	});
+
+	it("renders an authored brief description while retaining the full registry definition", () => {
 		const contexts: readonly ContextDefinition[] = [
 			{
 				id: "general",
@@ -192,13 +295,12 @@ describe("formatAvailableContextsForPrompt", () => {
 			},
 		];
 		const block = formatAvailableContextsForPrompt(contexts);
-		// The complete description always renders; the compressed hint never
-		// substitutes for it in model-facing context (prompt-integrity).
-		expect(block).toContain(
-			"- tasks [label=Tasks]: The complete long-form routing description.",
+		// Authored routing hints are presentation, not clipping of provider evidence.
+		expect(block).toContain("- tasks: reminders/habits/todos");
+		expect(block).toContain("- general: Normal conversation.");
+		expect(contexts[1].description).toBe(
+			"The complete long-form routing description.",
 		);
-		expect(block).toContain("- general [label=General]: Normal conversation.");
-		expect(block).not.toContain("reminders/habits/todos");
 	});
 });
 
@@ -225,22 +327,23 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		const params = firstCall?.[1] as
 			| { messages?: Array<{ role?: string; content?: string }> }
 			| undefined;
-		const systemContent = params?.messages?.[0]?.content ?? "";
+		const systemContent =
+			params?.messages?.map((message) => message.content).join("\n") ?? "";
 
-		expect(systemContent).toContain("available_contexts:");
+		expect(systemContent).toContain("# Available Contexts");
 		const catalog = systemContent.match(
-			/available_contexts:\n([\s\S]*?)\n\n/,
+			/# Available Contexts\n([\s\S]*?)\n\n/,
 		)?.[1];
 		expect(catalog).toBeDefined();
 		// `general` (no gate) and `memory` (USER) are visible to USER role.
-		expect(catalog).toContain("- general ");
-		expect(catalog).toContain("- memory ");
+		expect(catalog).toContain("- general:");
+		expect(catalog).toContain("- memory:");
 		// `wallet` (OWNER-only) and `calendar` (ADMIN-only) must NOT appear.
 		expect(catalog).not.toMatch(/^- wallet\b/m);
 		expect(catalog).not.toMatch(/^- calendar\b/m);
 	});
 
-	it("falls back to the placeholder line when no context registry is attached", async () => {
+	it("renders no domain entries when no context registry is attached", async () => {
 		const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 		const runtime = {
 			agentId: "00000000-0000-0000-0000-000000000003" as UUID,
@@ -285,8 +388,9 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		const params = firstCall?.[1] as
 			| { messages?: Array<{ role?: string; content?: string }> }
 			| undefined;
-		const systemContent = params?.messages?.[0]?.content ?? "";
-		expect(systemContent).toContain("available_contexts:");
-		expect(systemContent).toContain("(no contexts registered)");
+		const systemContent =
+			params?.messages?.map((message) => message.content).join("\n") ?? "";
+		expect(systemContent).toContain("# Available Contexts");
+		expect(systemContent).toMatch(/# Available Contexts\n\n/);
 	});
 });

@@ -4,8 +4,14 @@
  * `EVMService`, the EVM wallet/balance providers, the sign HTTP routes, and
  * the `WALLET` subactions promoted from `walletRouterAction`.
  */
-import type { Action, IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import { promoteSubactionsToActions } from "@elizaos/core";
+
+import {
+  type Action,
+  type IAgentRuntime,
+  promoteSubactionsToActions,
+  type ServiceClass,
+} from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { walletRouterAction } from "../wallet-action";
 import { tokenBalanceProvider } from "./providers/get-balance";
 import { evmWalletProvider } from "./providers/wallet";
@@ -24,7 +30,6 @@ export {
 } from "./chain-handler";
 export { initWalletProvider, WalletProvider } from "./providers/wallet";
 export type { SupportedChain } from "./types";
-
 export const evmPlugin: Plugin = {
   name: "evm",
   description: "EVM blockchain integration plugin",
@@ -37,5 +42,4 @@ export const evmPlugin: Plugin = {
     await svc?.stop();
   },
 };
-
 export default evmPlugin;

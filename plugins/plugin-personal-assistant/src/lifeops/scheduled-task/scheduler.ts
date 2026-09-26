@@ -15,14 +15,18 @@
  * effective intensity one notch down so a silent owner gets backed off, not
  * chased harder.
  */
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
   ElizaError,
+  hasRoleAccess,
   type IAgentRuntime,
   logger,
   type Memory,
   type MessagePayload,
 } from "@elizaos/core";
+import {
+  type RecordedPendingPrompt,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 import type { ScheduledTask, TerminalState } from "@elizaos/plugin-scheduling";
 import {
   expectedReplyKindForTask,
@@ -48,10 +52,6 @@ import {
   type ReminderIntensity,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
-import {
-  type RecordedPendingPrompt,
-  resolvePendingPromptsStore,
-} from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
 import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 import {
@@ -584,6 +584,7 @@ export async function processDueScheduledTasks(
       // There is deliberately no reopen write: reopen-then-claim lets two
       // workers claim one another's reopen and double-dispatch.
       const fireResult = await runner.fireWithResult(task.taskId, {
+        cause: "automatic",
         recoverFiredAtIso: task.state.firedAt,
       } as never);
       const recovered = await handleFireResult({
@@ -705,6 +706,7 @@ export async function processDueScheduledTasks(
     if (!decision.due) continue;
     try {
       const fireResult = await runner.fireWithResult(task.taskId, {
+        cause: "automatic",
         allowTerminalRefire: isRecurringTrigger(task.trigger),
       });
       const fired = await handleFireResult({
@@ -865,7 +867,8 @@ export async function processScheduledTaskInboundMessage(
       : null;
   if (!roomId) return result;
   if (request.message.entityId === request.agentId) return result;
-  if (!(await hasOwnerAccess(request.runtime, request.message))) return result;
+  if (!(await hasRoleAccess(request.runtime, request.message, "OWNER")))
+    return result;
 
   const now = request.now ?? readMessageOccurredAt(request.message, new Date());
   const repliedAtIso = now.toISOString();

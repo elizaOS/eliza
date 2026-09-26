@@ -14,17 +14,19 @@
 import type {
 	LongTermMemory,
 	LongTermMemoryCategory,
-} from "../features/advanced-memory/types.ts";
+} from "./long-term-memory.ts";
 import type { UUID } from "./primitives.ts";
 
 export interface MemoryStorageProvider {
 	// ── Long-term memories ──────────────────────────────────────────────
+	/** Supplied IDs are insert-once identities; replay returns the original row. */
+	readonly supportsIdempotentWrites?: true;
 
 	storeLongTermMemory(
 		memory: Omit<
 			LongTermMemory,
 			"id" | "createdAt" | "updatedAt" | "accessCount"
-		>,
+		> & { id?: UUID },
 	): Promise<LongTermMemory>;
 
 	getLongTermMemories(

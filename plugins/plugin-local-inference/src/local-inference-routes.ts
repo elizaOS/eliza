@@ -1,7 +1,7 @@
 /**
  * HTTP handler for the local-inference catalog, download orchestration, active-
  * model status, hardware detection, and chat-command routes — the root
- * `@elizaos/plugin-local-inference` subpath (app-core mounts the compat variant
+ * `@elizaos/plugin-local-inference` subpath (app mounts the compat variant
  * in `routes/local-inference-compat-routes.ts`). The heavy service graph
  * (engine / voice / catalog / downloader) is imported lazily on first route use
  * to keep it off the boot critical path (#9565).
@@ -14,33 +14,35 @@ import * as http from "node:http";
 import * as https from "node:https";
 import os from "node:os";
 import path from "node:path";
+import { type ContentValue, logger, resolveStateDir } from "@elizaos/core";
 import {
-	type ContentValue,
-	logger,
 	readJsonBody,
-	resolveStateDir,
 	sendJson,
 	sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/core/api/http-helpers";
+import { resolveElizaCloudTopology } from "@elizaos/core/contracts/cloud-topology";
 import {
 	AGENT_MODEL_SLOTS,
 	type AgentModelSlot,
+	type CatalogModel as SharedCatalogModel,
+} from "@elizaos/core/contracts/local-inference";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import {
 	buildHuggingFaceResolveUrl,
-	isMobilePlatform,
+	MODEL_CATALOG as SHARED_MODEL_CATALOG,
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import { resolveHubAuthHeaders } from "@elizaos/plugin-native-inference/model-catalog/hub-auth";
+import {
 	isRoutingPolicy,
 	ROUTING_POLICIES,
 	type RoutingPreferences,
-	resolveElizaCloudTopology,
-	resolveHubAuthHeaders,
-	MODEL_CATALOG as SHARED_MODEL_CATALOG,
-	type CatalogModel as SharedCatalogModel,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import {
 	readRoutingPreferences,
 	setPolicy,
 	setPreferredProvider,
 	setTextRouting,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
 import {
 	LOCAL_INFERENCE_MODEL_TYPES,
 	LOCAL_INFERENCE_PROVIDER_ID,
@@ -76,7 +78,6 @@ async function prewarmLocalVoiceStackLazy(modelId: string): Promise<void> {
 	);
 	await prewarmLocalVoiceStackForModel(modelId);
 }
-
 type ModelRole = "chat" | "embedding";
 type DownloadState =
 	| "queued"
@@ -84,7 +85,6 @@ type DownloadState =
 	| "completed"
 	| "failed"
 	| "cancelled";
-
 type MobileDeviceBridgeApi = {
 	getMobileDeviceBridgeStatus: () => MobileDeviceBridgeStatus;
 	getMobileDeviceBridgeServingStatus: () => Promise<MobileDeviceBridgeServingStatus>;
@@ -94,20 +94,19 @@ type MobileDeviceBridgeApi = {
 	) => Promise<void>;
 	unloadMobileDeviceBridgeModel: () => Promise<void>;
 };
-
 type MobileDeviceBridgeServingStatus = {
 	registeredTrigger: "bionic-host" | "device-bridge" | null;
 	/** True only when handlers are bound via bionic-host AND the host socket serves. */
 	bionicHostServing: boolean;
 };
-
 type MobileDeviceBridgeStatus = {
 	enabled?: boolean;
 	connected?: boolean;
 	reason?: string;
-	devices: Array<{ loadedPath?: string | null }>;
+	devices: Array<{
+		loadedPath?: string | null;
+	}>;
 };
-
 type AospLocalInferenceApi = {
 	buildAospLoadModelArgs: (
 		role: "chat" | "embedding",
@@ -120,29 +119,24 @@ type AospLocalInferenceApi = {
 	}) => Promise<typeof activeModelState>;
 	clearAospLocalInferenceModel: () => Promise<typeof activeModelState>;
 };
-
 let mobileDeviceBridgeApiPromise: Promise<MobileDeviceBridgeApi> | null = null;
 let aospLocalInferenceApiPromise: Promise<AospLocalInferenceApi> | null = null;
-
 function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 	mobileDeviceBridgeApiPromise ??= import(
-		"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+		"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
 	) as Promise<MobileDeviceBridgeApi>;
 	return mobileDeviceBridgeApiPromise;
 }
-
 function getAospLocalInferenceApi(): Promise<AospLocalInferenceApi> {
 	aospLocalInferenceApiPromise ??= import(
 		"@elizaos/plugin-native-inference"
 	) as Promise<AospLocalInferenceApi>;
 	return aospLocalInferenceApiPromise;
 }
-
 function shouldUseAospLocalInference(): boolean {
 	const value = process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "yes";
 }
-
 function getMobileDeviceBridgeStatusUnavailable(): MobileDeviceBridgeStatus {
 	return {
 		enabled: false,
@@ -151,7 +145,6 @@ function getMobileDeviceBridgeStatusUnavailable(): MobileDeviceBridgeStatus {
 		devices: [],
 	};
 }
-
 export type LocalInferenceCommandIntent =
 	| "retry"
 	| "resume"
@@ -162,11 +155,9 @@ export type LocalInferenceCommandIntent =
 	| "status"
 	| "use_cloud"
 	| "use_local";
-
 interface CatalogModel extends SharedCatalogModel {
 	role: ModelRole;
 }
-
 const ASSIGNMENT_SLOTS = new Set<keyof Assignments>([
 	"TEXT_SMALL",
 	"TEXT_LARGE",
@@ -174,7 +165,6 @@ const ASSIGNMENT_SLOTS = new Set<keyof Assignments>([
 	"TEXT_TO_SPEECH",
 	"TRANSCRIPTION",
 ]);
-
 interface InstalledModel {
 	id: string;
 	displayName: string;
@@ -187,7 +177,6 @@ interface InstalledModel {
 	sha256?: string;
 	lastVerifiedAt?: string;
 }
-
 interface DownloadJob {
 	jobId: string;
 	modelId: string;
@@ -200,7 +189,6 @@ interface DownloadJob {
 	updatedAt: string;
 	error?: string;
 }
-
 export interface LocalInferenceChatMetadata {
 	[key: string]: ContentValue;
 	intent?: LocalInferenceCommandIntent;
@@ -226,23 +214,19 @@ export interface LocalInferenceChatMetadata {
 		etaMs?: number | null;
 	};
 }
-
 export interface LocalInferenceChatResult {
 	text: string;
 	localInference: LocalInferenceChatMetadata;
 }
-
 type Assignments = Partial<
 	Record<(typeof LOCAL_INFERENCE_MODEL_TYPES)[number], string>
 >;
-
 let activeModelState: {
 	modelId: string | null;
 	loadedAt: string | null;
 	status: "idle" | "loading" | "ready" | "error";
 	error?: string;
 } = { modelId: null, loadedAt: null, status: "idle" };
-
 export type LocalInferenceManagementOp =
 	| "start_download"
 	| "cancel_download"
@@ -256,7 +240,6 @@ export type LocalInferenceManagementOp =
 	| "set_policy"
 	| "set_preferred_provider"
 	| "set_assignment";
-
 export interface LocalInferenceManagementInput {
 	op: LocalInferenceManagementOp;
 	modelId?: string;
@@ -269,19 +252,51 @@ export interface LocalInferenceManagementInput {
 		autoUpdateOnWifi?: boolean;
 		autoUpdateOnCellular?: boolean;
 		autoUpdateOnMetered?: boolean;
-		quietHours?: Array<{ start: string; end: string }>;
+		quietHours?: Array<{
+			start: string;
+			end: string;
+		}>;
 	};
 }
-
 export type LocalInferenceManagementResult =
-	| { op: "start_download"; modelId: string; job: DownloadJob }
-	| { op: "cancel_download"; modelId: string | null; cancelled: true }
-	| { op: "set_active"; modelId: string; active: typeof activeModelState }
-	| { op: "clear_active"; active: typeof activeModelState }
-	| { op: "uninstall_model"; modelId: string; removed: boolean }
-	| { op: "trigger_voice_model_update"; id: string; result: unknown }
-	| { op: "pin_voice_model"; id: string; pinned: boolean }
-	| { op: "set_voice_model_preferences"; preferences: unknown }
+	| {
+			op: "start_download";
+			modelId: string;
+			job: DownloadJob;
+	  }
+	| {
+			op: "cancel_download";
+			modelId: string | null;
+			cancelled: true;
+	  }
+	| {
+			op: "set_active";
+			modelId: string;
+			active: typeof activeModelState;
+	  }
+	| {
+			op: "clear_active";
+			active: typeof activeModelState;
+	  }
+	| {
+			op: "uninstall_model";
+			modelId: string;
+			removed: boolean;
+	  }
+	| {
+			op: "trigger_voice_model_update";
+			id: string;
+			result: unknown;
+	  }
+	| {
+			op: "pin_voice_model";
+			id: string;
+			pinned: boolean;
+	  }
+	| {
+			op: "set_voice_model_preferences";
+			preferences: unknown;
+	  }
 	| {
 			op: "verify_model";
 			modelId: string;
@@ -308,7 +323,6 @@ export type LocalInferenceManagementResult =
 			modelId: string | null;
 			assignments: Assignments;
 	  };
-
 export function getLocalInferenceActiveModelId(): string | undefined {
 	const serviceActive = localInferenceServiceIfLoaded()?.getActive();
 	if (serviceActive?.status === "ready" && serviceActive.modelId?.trim()) {
@@ -318,17 +332,14 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 		? activeModelState.modelId.trim()
 		: undefined;
 }
-
 function catalogRole(model: SharedCatalogModel): ModelRole {
 	if ((model.category as string) === "embedding") return "embedding";
 	return "chat";
 }
-
 const CATALOG: CatalogModel[] = SHARED_MODEL_CATALOG.map((model) => ({
 	...model,
 	role: catalogRole(model),
 }));
-
 function isCuratedCatalogModelId(modelId: string): boolean {
 	return CATALOG.some(
 		(model) =>
@@ -337,7 +348,6 @@ function isCuratedCatalogModelId(modelId: string): boolean {
 			model.runtimeRole !== "mtp-drafter",
 	);
 }
-
 function sanitizeAssignments(assignments: Assignments): Assignments {
 	const next: Assignments = {};
 	for (const [slot, modelId] of Object.entries(assignments) as Array<
@@ -349,65 +359,55 @@ function sanitizeAssignments(assignments: Assignments): Assignments {
 	}
 	return next;
 }
-
 const activeDownloads = new Map<
 	string,
-	{ job: DownloadJob; abortController: AbortController }
+	{
+		job: DownloadJob;
+		abortController: AbortController;
+	}
 >();
 const MOBILE_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"];
 const mobileDnsResolver = new dns.Resolver();
 mobileDnsResolver.setServers(MOBILE_DNS_SERVERS);
-
 function stateDir(): string {
 	return resolveStateDir();
 }
-
 function localInferenceRoot(): string {
 	return path.join(stateDir(), "local-inference");
 }
-
 function modelsDir(): string {
 	return path.join(localInferenceRoot(), "models");
 }
-
 function downloadsDir(): string {
 	return path.join(localInferenceRoot(), "downloads");
 }
-
 function registryPath(): string {
 	return path.join(localInferenceRoot(), "registry.json");
 }
-
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), "assignments.json");
 }
-
 function aospActivePath(): string {
 	return path.join(localInferenceRoot(), "aosp-active.json");
 }
-
 function finalModelPath(model: CatalogModel): string {
 	return path.join(
 		modelsDir(),
 		`${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.gguf`,
 	);
 }
-
 function stagingPath(model: CatalogModel): string {
 	return path.join(
 		downloadsDir(),
 		`${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.part`,
 	);
 }
-
 function huggingFaceResolveUrl(model: CatalogModel): string {
 	return buildHuggingFaceResolveUrl(model);
 }
-
 function shouldUseMobileDns(): boolean {
 	return isMobilePlatform();
 }
-
 const mobileLookup: http.RequestOptions["lookup"] = (
 	hostname,
 	options,
@@ -429,7 +429,6 @@ const mobileLookup: http.RequestOptions["lookup"] = (
 		callback(null, addresses[0], 4);
 	});
 };
-
 /**
  * Recompute request headers when following a redirect. The HuggingFace bearer
  * token must never leak past a cross-host redirect: HF `/resolve/` URLs 302 to
@@ -448,7 +447,6 @@ export function reauthorizeRedirectHeaders(
 	Object.assign(next, resolveHubAuthHeaders(nextUrl));
 	return next;
 }
-
 async function openDownloadResponse(
 	url: string,
 	headers: Record<string, string>,
@@ -458,10 +456,8 @@ async function openDownloadResponse(
 	if (redirectCount > 5) {
 		throw new Error("Too many redirects while downloading model");
 	}
-
 	const parsed = new URL(url);
 	const transport = parsed.protocol === "http:" ? http : https;
-
 	return new Promise((resolve, reject) => {
 		const req = transport.get(
 			parsed,
@@ -488,7 +484,6 @@ async function openDownloadResponse(
 				resolve(response);
 			},
 		);
-
 		const abort = () => {
 			req.destroy(new Error("Download cancelled"));
 		};
@@ -501,12 +496,10 @@ async function openDownloadResponse(
 		req.on("close", () => signal.removeEventListener("abort", abort));
 	});
 }
-
 async function ensureLocalInferenceDirs(): Promise<void> {
 	await fsp.mkdir(modelsDir(), { recursive: true });
 	await fsp.mkdir(downloadsDir(), { recursive: true });
 }
-
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 	try {
 		return JSON.parse(await fsp.readFile(filePath, "utf8")) as T;
@@ -514,7 +507,6 @@ async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 		return fallback;
 	}
 }
-
 async function writeJsonFile(
 	filePath: string,
 	payload: unknown,
@@ -536,7 +528,6 @@ async function writeJsonFile(
 		throw error;
 	}
 }
-
 // Serializes read-modify-write transactions per persisted config file. The
 // management mutations (set_assignment, upsertInstalledModel,
 // removeInstalledModel) each read the current JSON, mutate it, and write it
@@ -562,7 +553,6 @@ async function withConfigFileLock<T>(
 	);
 	return next;
 }
-
 async function hashFile(filePath: string): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const hash = crypto.createHash("sha256");
@@ -574,7 +564,6 @@ async function hashFile(filePath: string): Promise<string> {
 		stream.on("error", reject);
 	});
 }
-
 async function isGgufFile(filePath: string): Promise<boolean> {
 	try {
 		const file = await fsp.open(filePath, "r");
@@ -589,7 +578,6 @@ async function isGgufFile(filePath: string): Promise<boolean> {
 		return false;
 	}
 }
-
 async function readRegistry(): Promise<InstalledModel[]> {
 	const registry = await readJsonFile<{
 		version?: number;
@@ -612,7 +600,6 @@ async function readRegistry(): Promise<InstalledModel[]> {
 	}
 	return installed;
 }
-
 async function writeRegistry(models: InstalledModel[]): Promise<void> {
 	await writeJsonFile(registryPath(), {
 		version: 1,
@@ -627,7 +614,6 @@ async function writeRegistry(models: InstalledModel[]): Promise<void> {
 		}),
 	});
 }
-
 async function upsertInstalledModel(model: InstalledModel): Promise<void> {
 	await withConfigFileLock(registryPath(), async () => {
 		const current = await readRegistry();
@@ -637,7 +623,6 @@ async function upsertInstalledModel(model: InstalledModel): Promise<void> {
 		]);
 	});
 }
-
 async function removeInstalledModel(id: string): Promise<boolean> {
 	return withConfigFileLock(registryPath(), async () => {
 		const current = await readRegistry();
@@ -648,24 +633,20 @@ async function removeInstalledModel(id: string): Promise<boolean> {
 		return true;
 	});
 }
-
 async function readAssignments(): Promise<Assignments> {
-	const file = await readJsonFile<{ assignments?: Assignments }>(
-		assignmentsPath(),
-		{
-			assignments: {},
-		},
-	);
+	const file = await readJsonFile<{
+		assignments?: Assignments;
+	}>(assignmentsPath(), {
+		assignments: {},
+	});
 	return sanitizeAssignments(file.assignments ?? {});
 }
-
 async function writeAssignments(
 	assignments: Assignments,
 ): Promise<Assignments> {
 	await writeJsonFile(assignmentsPath(), { version: 1, assignments });
 	return assignments;
 }
-
 // Serialized read-modify-write for assignments.json. The mutator runs inside
 // the per-file lock between a fresh read and the write-back, so concurrent
 // assignment updates observe each other's writes instead of racing on the
@@ -679,7 +660,6 @@ async function updateAssignments(
 		return writeAssignments(assignments);
 	});
 }
-
 async function assignModel(
 	model: CatalogModel,
 	overwrite: boolean,
@@ -706,29 +686,24 @@ async function assignModel(
 		}
 	});
 }
-
 async function ensureDefaultAssignment(model: CatalogModel): Promise<void> {
 	await assignModel(model, false);
 }
-
 async function downloadModel(
 	model: CatalogModel,
 	record: DownloadJob,
 ): Promise<void> {
 	const abortController = activeDownloads.get(model.id)?.abortController;
 	if (!abortController) return;
-
 	const finalPath = finalModelPath(model);
 	const partialPath = stagingPath(model);
 	const existingPartial = await fsp
 		.stat(partialPath)
 		.then((stat) => (stat.isFile() ? stat.size : 0))
 		.catch(() => 0);
-
 	record.state = "downloading";
 	record.received = existingPartial;
 	record.updatedAt = new Date().toISOString();
-
 	try {
 		const downloadUrl = huggingFaceResolveUrl(model);
 		const headers: Record<string, string> = {
@@ -745,20 +720,29 @@ async function downloadModel(
 		if (statusCode < 200 || statusCode >= 300) {
 			throw new Error(`HTTP ${statusCode} ${response.statusMessage ?? ""}`);
 		}
+		// Resume only when the server confirmed the Range with 206 Partial Content.
+		// Many CDNs, mirrors, and proxies (e.g. a ModelScope base or a corporate
+		// proxy) ignore `Range` and answer 200 OK with the *entire* body. Appending
+		// that full body onto the existing partial bytes yields an oversized, corrupt
+		// GGUF that still begins with the real "GGUF" magic — so isGgufFile() passes,
+		// sha256 is computed over the corrupt bytes, and the file is registered as an
+		// installed model whose later verify_model recomputes the same sha and
+		// reports "ok". The corruption is then silent and permanent (#29454). On a
+		// 200 we discard the partial and restart the write from byte 0.
+		const isResume = existingPartial > 0 && statusCode === 206;
+		record.received = isResume ? existingPartial : 0;
 		const contentLength = Number.parseInt(
 			String(response.headers["content-length"] ?? "0"),
 			10,
 		);
 		if (Number.isFinite(contentLength) && contentLength > 0) {
-			record.total = existingPartial + contentLength;
+			record.total = isResume ? existingPartial + contentLength : contentLength;
 		}
-
 		const stream = fs.createWriteStream(partialPath, {
-			flags: existingPartial > 0 ? "a" : "w",
+			flags: isResume ? "a" : "w",
 		});
 		let lastSampleAt = Date.now();
 		let lastSampleBytes = record.received;
-
 		try {
 			for await (const chunk of response) {
 				const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
@@ -787,7 +771,6 @@ async function downloadModel(
 				stream.on("error", reject);
 			});
 		}
-
 		await fsp.rename(partialPath, finalPath);
 		if (!(await isGgufFile(finalPath))) {
 			throw new Error("Downloaded file is not a valid GGUF");
@@ -807,7 +790,6 @@ async function downloadModel(
 			lastVerifiedAt: new Date().toISOString(),
 		});
 		await ensureDefaultAssignment(model);
-
 		record.state = "completed";
 		record.received = stat.size;
 		record.total = stat.size;
@@ -829,7 +811,6 @@ async function downloadModel(
 		}
 	}
 }
-
 async function startDownload(modelId: string): Promise<DownloadJob> {
 	const existing = activeDownloads.get(modelId);
 	if (existing) return { ...existing.job };
@@ -854,12 +835,10 @@ async function startDownload(modelId: string): Promise<DownloadJob> {
 	void downloadModel(model, job);
 	return { ...job };
 }
-
 async function installedSnapshot(): Promise<InstalledModel[]> {
 	await ensureLocalInferenceDirs();
 	return readRegistry();
 }
-
 /**
  * Whether local inference is the routing target for chat text, independent of
  * whether a model is resident. Local is routed when the config does not send
@@ -881,7 +860,6 @@ async function isLocalInferenceRouted(): Promise<boolean | undefined> {
 	if (!topology.services.inference) return true;
 	return topology.servicesUnreconciled.includes("inference");
 }
-
 export async function getLocalInferenceActiveSnapshot(): Promise<{
 	modelId: string | null;
 	loadedAt: string | null;
@@ -894,8 +872,11 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	loadedGpuLayers?: number | null;
 }> {
 	const routed = await isLocalInferenceRouted();
-	const withRouted = <T extends object>(state: T): T & { routed?: boolean } =>
-		routed === undefined ? state : { ...state, routed };
+	const withRouted = <T extends object>(
+		state: T,
+	): T & {
+		routed?: boolean;
+	} => (routed === undefined ? state : { ...state, routed });
 	const serviceActive = (await localInferenceServiceLazy()).getActive();
 	if (serviceActive.status === "ready" && serviceActive.modelId) {
 		return withRouted(serviceActive);
@@ -951,7 +932,6 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		status: "ready" as const,
 	});
 }
-
 async function hubSnapshot(): Promise<Record<string, unknown>> {
 	return {
 		catalog: CATALOG.filter((model) => !model.hiddenFromCatalog),
@@ -972,11 +952,9 @@ async function hubSnapshot(): Promise<Record<string, unknown>> {
 		assignments: await readAssignments(),
 	};
 }
-
 function chatModels(): CatalogModel[] {
 	return CATALOG.filter((model) => model.role === "chat");
 }
-
 function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
 	const candidates = chatModels()
@@ -1008,7 +986,6 @@ function recommendedChatModel(): CatalogModel | null {
 		null
 	);
 }
-
 function isNoSpaceMessage(value: unknown): boolean {
 	const message =
 		value instanceof Error
@@ -1020,7 +997,6 @@ function isNoSpaceMessage(value: unknown): boolean {
 		message,
 	);
 }
-
 function formatBytes(bytes: number): string {
 	if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
 	const units = ["B", "KB", "MB", "GB", "TB"];
@@ -1033,7 +1009,6 @@ function formatBytes(bytes: number): string {
 	const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
 	return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
-
 function progressForJob(
 	job: DownloadJob,
 ): LocalInferenceChatMetadata["progress"] {
@@ -1051,7 +1026,6 @@ function progressForJob(
 		etaMs: job.etaMs,
 	};
 }
-
 function progressText(
 	progress: LocalInferenceChatMetadata["progress"] | undefined,
 ): string {
@@ -1062,7 +1036,6 @@ function progressText(
 		progress.totalBytes > 0 ? ` of ${formatBytes(progress.totalBytes)}` : "";
 	return `${percent} (${formatBytes(progress.receivedBytes)}${total})`;
 }
-
 function pickStatusLine(status: LocalInferenceChatMetadata["status"]): string {
 	const variants: Record<LocalInferenceChatMetadata["status"], string[]> = {
 		missing: [
@@ -1112,9 +1085,8 @@ function pickStatusLine(status: LocalInferenceChatMetadata["status"]): string {
 		],
 	};
 	const list = variants[status];
-	return list[Math.floor(Date.now() / 15_000) % list.length] ?? list[0];
+	return list[Math.floor(Date.now() / 15000) % list.length] ?? list[0];
 }
-
 function buildLocalInferenceChatResult(
 	metadata: LocalInferenceChatMetadata,
 	detail?: string,
@@ -1132,7 +1104,6 @@ function buildLocalInferenceChatResult(
 		localInference: metadata,
 	};
 }
-
 function resolveRequestedCatalogModel(prompt: string): CatalogModel | null {
 	const normalized = prompt.toLowerCase();
 	return (
@@ -1148,7 +1119,6 @@ function resolveRequestedCatalogModel(prompt: string): CatalogModel | null {
 		}) ?? null
 	);
 }
-
 async function resolveDefaultChatModel(
 	prompt: string,
 ): Promise<CatalogModel | null> {
@@ -1180,11 +1150,9 @@ async function resolveDefaultChatModel(
 		})[0];
 	return installedCatalog ?? recommendedChatModel();
 }
-
 async function setRoutingForChat(provider: string): Promise<void> {
 	await setTextRouting(provider, "manual");
 }
-
 async function activateInstalledModel(
 	installed: InstalledModel,
 ): Promise<LocalInferenceChatResult> {
@@ -1225,7 +1193,6 @@ async function activateInstalledModel(
 		});
 	}
 }
-
 export async function getLocalInferenceChatStatus(
 	intent: LocalInferenceCommandIntent = "status",
 	error?: unknown,
@@ -1242,7 +1209,6 @@ export async function getLocalInferenceChatStatus(
 			progress: progressForJob(activeDownload),
 		});
 	}
-
 	const active = await getLocalInferenceActiveSnapshot();
 	if (activeModelState.status === "loading") {
 		return buildLocalInferenceChatResult({
@@ -1252,7 +1218,6 @@ export async function getLocalInferenceChatStatus(
 			activeModelId: active.modelId,
 		});
 	}
-
 	const errorMessage =
 		error instanceof Error
 			? error.message
@@ -1268,7 +1233,6 @@ export async function getLocalInferenceChatStatus(
 			error: errorMessage,
 		});
 	}
-
 	if (active.status === "ready" && active.modelId) {
 		const provider =
 			(await localInferenceServiceLazy()).getActive().status === "ready"
@@ -1282,7 +1246,6 @@ export async function getLocalInferenceChatStatus(
 			provider,
 		});
 	}
-
 	const installed = await installedSnapshot();
 	const installedChat = installed.find((entry) =>
 		CATALOG.some((model) => model.id === entry.id && model.role === "chat"),
@@ -1295,7 +1258,6 @@ export async function getLocalInferenceChatStatus(
 			activeModelId: active.modelId,
 		});
 	}
-
 	return buildLocalInferenceChatResult({
 		intent,
 		status: "missing",
@@ -1303,7 +1265,6 @@ export async function getLocalInferenceChatStatus(
 		activeModelId: active.modelId,
 	});
 }
-
 export async function handleLocalInferenceChatCommand(
 	intent: LocalInferenceCommandIntent,
 	prompt: string,
@@ -1311,7 +1272,6 @@ export async function handleLocalInferenceChatCommand(
 	if (intent === "status") {
 		return getLocalInferenceChatStatus(intent);
 	}
-
 	if (intent === "cancel") {
 		const requested = resolveRequestedCatalogModel(prompt);
 		const targets = requested ? [requested.id] : [...activeDownloads.keys()];
@@ -1326,7 +1286,6 @@ export async function handleLocalInferenceChatCommand(
 			activeModelId: activeModelState.modelId,
 		});
 	}
-
 	if (intent === "use_cloud") {
 		await setRoutingForChat("elizacloud");
 		return buildLocalInferenceChatResult(
@@ -1340,7 +1299,6 @@ export async function handleLocalInferenceChatCommand(
 			"Subsequent chat model calls will prefer Eliza Cloud.",
 		);
 	}
-
 	if (intent === "use_local") {
 		const installed = await installedSnapshot();
 		const requested = await resolveDefaultChatModel(prompt);
@@ -1371,7 +1329,6 @@ export async function handleLocalInferenceChatCommand(
 		}
 		return getLocalInferenceChatStatus(intent);
 	}
-
 	if (intent === "switch_smaller") {
 		const active = await getLocalInferenceActiveSnapshot();
 		const installed = await installedSnapshot();
@@ -1386,7 +1343,12 @@ export async function handleLocalInferenceChatCommand(
 				),
 			}))
 			.filter(
-				(entry): entry is { entry: InstalledModel; catalog: CatalogModel } => {
+				(
+					entry,
+				): entry is {
+					entry: InstalledModel;
+					catalog: CatalogModel;
+				} => {
 					const catalog = entry.catalog;
 					if (!catalog) return false;
 					return !activeCatalog || catalog.sizeGb < activeCatalog.sizeGb;
@@ -1411,7 +1373,6 @@ export async function handleLocalInferenceChatCommand(
 			);
 		}
 	}
-
 	const model = await resolveDefaultChatModel(prompt);
 	if (!model) {
 		return getLocalInferenceChatStatus(intent);
@@ -1428,21 +1389,18 @@ export async function handleLocalInferenceChatCommand(
 		progress: progressForJob(job),
 	});
 }
-
 function requireModelId(modelId: string | undefined, op: string): string {
 	if (typeof modelId !== "string" || !modelId.trim()) {
 		throw new Error(`${op} requires modelId`);
 	}
 	return modelId.trim();
 }
-
 function requireSlot(slot: string | undefined, op: string): string {
 	if (typeof slot !== "string" || !slot.trim()) {
 		throw new Error(`${op} requires slot`);
 	}
 	return slot.trim();
 }
-
 export async function applyLocalInferenceManagementMutation(
 	input: LocalInferenceManagementInput,
 ): Promise<LocalInferenceManagementResult> {
@@ -1492,9 +1450,7 @@ export async function applyLocalInferenceManagementMutation(
 			} catch (error) {
 				// Clearing chat routing should still reset our state in headless tests.
 				logger.debug(
-					`[local-inference] clear_active ignored bridge unload failure: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
+					`[local-inference] clear_active ignored bridge unload failure: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}
 			activeModelState = { modelId: null, loadedAt: null, status: "idle" };
@@ -1603,11 +1559,9 @@ export async function applyLocalInferenceManagementMutation(
 		}
 	}
 }
-
 function writeSse(res: http.ServerResponse, payload: unknown): void {
 	res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
-
 function decodeLocalInferencePathId(
 	raw: string,
 	res: http.ServerResponse,
@@ -1621,7 +1575,6 @@ function decodeLocalInferencePathId(
 		return null;
 	}
 }
-
 export async function handleLocalInferenceRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -1660,7 +1613,6 @@ export async function handleLocalInferenceRoutes(
 		if (await handleVoiceSpeakerProfileRoutes(req, res)) return true;
 	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
-
 	// Voice-sub-model auto-updater compat namespace
 	// (R5-versioning §3 + §4 + §5). The route module owns its own
 	// path-prefix check and returns false on miss so non-voice-model
@@ -1671,7 +1623,6 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleVoiceModelsRoutes(req, res)) return true;
 	}
-
 	if (
 		method === "GET" &&
 		pathname === "/api/local-inference/downloads/stream"
@@ -1695,7 +1646,6 @@ export async function handleLocalInferenceRoutes(
 		req.on("close", () => clearInterval(interval));
 		return true;
 	}
-
 	if (method === "GET" && pathname === "/api/local-inference/hub") {
 		sendJson(res, await hubSnapshot());
 		return true;
@@ -1706,7 +1656,7 @@ export async function handleLocalInferenceRoutes(
 	}
 	// The authoritative device-tier assessment (tier + recommendedMode +
 	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
-	// the app-core compat route so mobile (which mounts this upstream variant)
+	// the app compat route so mobile (which mounts this upstream variant)
 	// also gets the authoritative assessment instead of the coarse client estimate.
 	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
 		sendJson(res, {
@@ -2105,6 +2055,5 @@ export async function handleLocalInferenceRoutes(
 		});
 		return true;
 	}
-
 	return false;
 }

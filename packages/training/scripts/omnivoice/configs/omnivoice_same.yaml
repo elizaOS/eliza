@@ -7,7 +7,7 @@
 #   that tooling ships.
 #
 # The shipped same OmniVoice path is the ELZ2 v2 preset from I6:
-#   packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs
+#   packages/app/scripts/omnivoice-fuse/freeze-voice.ts
 #   --voice same --corpus packages/training/data/voice/same/
 #
 # See .swarm/impl/W3-11-finetune.md §2 for the Path B gap analysis.

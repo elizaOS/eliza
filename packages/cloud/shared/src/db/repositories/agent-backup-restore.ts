@@ -15,7 +15,7 @@ import {
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
   parseAgentBackupManifestV3,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import { and, eq } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";

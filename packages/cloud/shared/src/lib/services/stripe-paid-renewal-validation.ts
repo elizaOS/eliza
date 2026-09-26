@@ -1,8 +1,9 @@
-/** Validates only full-price captured platform Stripe payments for adjacent historical-v1 renewals; unsupported billing adjustments never become allowance authority. */
+/** Validates captured full-price platform Stripe payments for first activation and adjacent renewals; unsupported billing adjustments never become allowance authority. */
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -78,6 +79,9 @@ export const renewalInvoiceSchema = z.object({
       .length(1),
   }),
 });
+export const initialInvoiceSchema = renewalInvoiceSchema.extend({
+  billing_reason: z.literal("subscription_create"),
+});
 const paymentSchema = z.object({
   id: z.string(),
   object: z.literal("payment_intent"),
@@ -120,6 +124,8 @@ const chargeSchema = z.object({
   transfer_data: z.null(),
 });
 export interface PaidRenewalObjects {
+  /** Current account retrieved alongside a persisted purchase contract; absent for legacy authority. */
+  providerAccountId?: string;
   invoice: unknown;
   subscription: unknown;
   customer: unknown;
@@ -133,9 +139,12 @@ export function validatePaidRenewal(
     environment: Record<string, string | undefined>;
     databaseNow: Date;
     replayPeriod?: boolean;
+    initialPayment?: boolean;
   },
 ) {
-  const invoiceResult = renewalInvoiceSchema.safeParse(input.invoice);
+  const invoiceResult = (
+    input.initialPayment ? initialInvoiceSchema : renewalInvoiceSchema
+  ).safeParse(input.invoice);
   const paymentResult = paymentSchema.safeParse(input.paymentIntent);
   const chargeResult = chargeSchema.safeParse(input.charge);
   const subResult = z
@@ -161,6 +170,7 @@ export function validatePaidRenewal(
   const line = invoice.lines.data[0];
   if (!line) renewalUnavailable("missing_recurring_line");
   const source = input.source;
+  assertOrganizationSubscription(source);
   if (
     !source.current_period_start ||
     !source.current_period_end ||
@@ -190,7 +200,7 @@ export function validatePaidRenewal(
     start >= end ||
     start > input.databaseNow ||
     end <= input.databaseNow ||
-    (input.replayPeriod
+    (input.replayPeriod || input.initialPayment
       ? start.getTime() !== source.current_period_start.getTime() ||
         end.getTime() !== source.current_period_end.getTime()
       : start.getTime() !== source.current_period_end.getTime()) ||

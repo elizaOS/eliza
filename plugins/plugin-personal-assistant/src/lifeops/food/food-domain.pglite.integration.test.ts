@@ -2,31 +2,32 @@
  * Real-PGlite food-domain coverage through the canonical graph, owner approval
  * queue, restartable repository, and real loopback provider wire.
  */
+
 import { once } from "node:events";
 import http from "node:http";
+import { type AgentRuntime } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
-import type { ApprovalQueue } from "../approval-queue.types.js";
+import { type ApprovalQueue } from "../approval-queue.types.js";
 import { InstacartProductsLinkClient } from "./instacart.js";
 import { FoodRepository } from "./repository.js";
 import { FoodDomainService } from "./service.js";
-import type {
-  FoodPreference,
-  HardFoodConstraint,
-  InventoryObservation,
-  MealCandidate,
-  MealParticipant,
+import {
+  type FoodPreference,
+  type HardFoodConstraint,
+  type InventoryObservation,
+  type MealCandidate,
+  type MealParticipant,
 } from "./types.js";
 
 describe("food domain — real PGlite and approval queue", () => {
@@ -47,11 +48,9 @@ describe("food domain — real PGlite and approval queue", () => {
   let nowMs = Date.parse("2027-03-12T12:00:00.000Z");
   const childEntityId = "food-child-a";
   const householdId = "food-household-main";
-
   function currentDate(): Date {
     return new Date(nowMs);
   }
-
   function resetProviderGate(): void {
     providerResponseGate = new Promise<void>((resolve) => {
       releaseProviderResponse = resolve;
@@ -60,7 +59,6 @@ describe("food domain — real PGlite and approval queue", () => {
       markProviderRequestObserved = resolve;
     });
   }
-
   function provenance(
     sourceId: string,
     sourceRevision = 1,
@@ -75,7 +73,6 @@ describe("food domain — real PGlite and approval queue", () => {
       confidence: kind === "consumption_inference" ? 0.6 : 1,
     };
   }
-
   function mealParticipant(
     entityId: string,
     portionServings = 1,
@@ -86,7 +83,6 @@ describe("food domain — real PGlite and approval queue", () => {
       attendanceProvenance: provenance(`headcount-${entityId}`),
     };
   }
-
   function constraint(): HardFoodConstraint {
     return {
       id: "food-constraint-peanut",
@@ -100,7 +96,6 @@ describe("food domain — real PGlite and approval queue", () => {
       active: true,
     };
   }
-
   function preference(): FoodPreference {
     return {
       id: "food-preference-tacos",
@@ -114,7 +109,6 @@ describe("food domain — real PGlite and approval queue", () => {
       active: true,
     };
   }
-
   function safeMeal(suffix: string): MealCandidate {
     return {
       mealId: `food-meal-${suffix}`,
@@ -138,7 +132,6 @@ describe("food domain — real PGlite and approval queue", () => {
       ],
     };
   }
-
   function inventoryObservation(input: {
     lotId: string;
     itemId: string;
@@ -167,7 +160,6 @@ describe("food domain — real PGlite and approval queue", () => {
       },
     };
   }
-
   beforeAll(async () => {
     providerServer = http.createServer((request, response) => {
       void (async () => {
@@ -209,7 +201,6 @@ describe("food domain — real PGlite and approval queue", () => {
       throw new Error("food provider server failed to bind");
     }
     providerBaseUrl = `http://127.0.0.1:${address.port}`;
-
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
     const graph = resolveKnowledgeGraphService(runtime);
@@ -274,8 +265,7 @@ describe("food domain — real PGlite and approval queue", () => {
       preference: preference(),
       expectedVersion: 0,
     });
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     releaseProviderResponse?.();
     if (providerServer?.listening) {
@@ -284,7 +274,6 @@ describe("food domain — real PGlite and approval queue", () => {
     }
     await runtimeResult?.cleanup();
   });
-
   it("G23 rejects child and unknown-principal inventory or purchase mutations", async () => {
     const observation = inventoryObservation({
       lotId: "voice-requested",
@@ -312,7 +301,6 @@ describe("food domain — real PGlite and approval queue", () => {
       }),
     ).rejects.toMatchObject({ code: "FOOD_ACCESS_DENIED" });
   });
-
   it("G40 persists idempotent observations and refuses duplicate or out-of-order source corruption", async () => {
     const revisionTwo = inventoryObservation({
       lotId: "pantry-apples",
@@ -326,14 +314,12 @@ describe("food domain — real PGlite and approval queue", () => {
     });
     expect(applied.applied).toBe(true);
     expect(applied.current.quantity).toBe(2);
-
     const replay = await service.recordInventoryObservation({
       principalEntityId: SELF_ENTITY_ID,
       observation: revisionTwo,
     });
     expect(replay.applied).toBe(false);
     expect(replay.current.rowVersion).toBe(applied.current.rowVersion);
-
     const old = await service.recordInventoryObservation({
       principalEntityId: SELF_ENTITY_ID,
       observation: inventoryObservation({
@@ -345,7 +331,6 @@ describe("food domain — real PGlite and approval queue", () => {
     });
     expect(old.applied).toBe(false);
     expect(old.current.quantity).toBe(2);
-
     await expect(
       service.recordInventoryObservation({
         principalEntityId: SELF_ENTITY_ID,
@@ -357,7 +342,6 @@ describe("food domain — real PGlite and approval queue", () => {
         }),
       }),
     ).rejects.toMatchObject({ code: "FOOD_IDEMPOTENCY_CONFLICT" });
-
     const concurrent = await Promise.allSettled([
       service.recordInventoryObservation({
         principalEntityId: SELF_ENTITY_ID,
@@ -390,7 +374,6 @@ describe("food domain — real PGlite and approval queue", () => {
     if (winningResult?.status !== "fulfilled") {
       throw new Error("concurrent inventory update produced no winner");
     }
-
     const restartedRepository = new FoodRepository(runtime, runtime.agentId);
     const restartedService = new FoodDomainService({
       runtime,
@@ -421,7 +404,6 @@ describe("food domain — real PGlite and approval queue", () => {
         }),
       ]),
     );
-
     const inferred = inventoryObservation({
       lotId: "cross-source-bananas",
       itemId: "bananas",
@@ -470,7 +452,6 @@ describe("food domain — real PGlite and approval queue", () => {
       ]),
     );
   });
-
   it("G25 publishes a safe, source-fresh plan and G47 exposes only the child-safe projection", async () => {
     const evaluation = await service.evaluateMeal({
       principalEntityId: SELF_ENTITY_ID,
@@ -488,7 +469,6 @@ describe("food domain — real PGlite and approval queue", () => {
       evaluation,
     });
     expect(plan.contentSha256).toBe(evaluation.contentSha256);
-
     const childView = await service.getView({
       principalEntityId: childEntityId,
       householdId,
@@ -510,7 +490,6 @@ describe("food domain — real PGlite and approval queue", () => {
     expect(childView).not.toHaveProperty("constraints");
     expect(childView).not.toHaveProperty("handoffs");
   });
-
   it("G27 binds approval and content hashes, admits one concurrent provider call, and reuses the URL", async () => {
     const evaluation = await service.evaluateMeal({
       principalEntityId: SELF_ENTITY_ID,
@@ -551,7 +530,6 @@ describe("food domain — real PGlite and approval queue", () => {
       }),
     ).rejects.toMatchObject({ code: "FOOD_APPROVAL_REQUIRED" });
     expect(providerRequestCount).toBe(0);
-
     await approvals.approve(
       first.approvalRequest.id,
       first.approvalRequest.subjectUserId,
@@ -596,7 +574,6 @@ describe("food domain — real PGlite and approval queue", () => {
     ).toMatchObject({
       state: "done",
     });
-
     const cached = await service.materializeApprovedShoppingHandoff({
       principalEntityId: SELF_ENTITY_ID,
       handoffId: first.handoff.handoffId,
@@ -607,7 +584,6 @@ describe("food domain — real PGlite and approval queue", () => {
       JSON.stringify(await repository.listHandoffs(householdId)),
     ).not.toContain("food-integration-provider-secret");
   });
-
   it("invalidates approval when inventory changes after the approved snapshot", async () => {
     const evaluation = await service.evaluateMeal({
       principalEntityId: SELF_ENTITY_ID,
@@ -629,7 +605,7 @@ describe("food domain — real PGlite and approval queue", () => {
         resolutionReason: "Approved exact pre-change list.",
       },
     );
-    nowMs += 1_000;
+    nowMs += 1000;
     await service.recordInventoryObservation({
       principalEntityId: SELF_ENTITY_ID,
       observation: inventoryObservation({
@@ -662,7 +638,6 @@ describe("food domain — real PGlite and approval queue", () => {
     });
     expect(providerRequestCount).toBe(1);
   });
-
   it("persists ambiguous state before rejecting an expired provider lease retry", async () => {
     const evaluation = await service.evaluateMeal({
       principalEntityId: SELF_ENTITY_ID,
@@ -687,15 +662,14 @@ describe("food domain — real PGlite and approval queue", () => {
     await repository.claimHandoff({
       handoffId: prepared.handoff.handoffId,
       now: currentDate().toISOString(),
-      leaseMs: 1_000,
+      leaseMs: 1000,
     });
-    nowMs += 1_001;
-
+    nowMs += 1001;
     await expect(
       repository.claimHandoff({
         handoffId: prepared.handoff.handoffId,
         now: currentDate().toISOString(),
-        leaseMs: 1_000,
+        leaseMs: 1000,
       }),
     ).rejects.toMatchObject({ code: "FOOD_HANDOFF_AMBIGUOUS" });
     expect(
@@ -707,7 +681,6 @@ describe("food domain — real PGlite and approval queue", () => {
       leaseExpiresAt: null,
     });
   });
-
   it("quarantines an ambiguous provider success response and never retries it automatically", async () => {
     const evaluation = await service.evaluateMeal({
       principalEntityId: SELF_ENTITY_ID,
@@ -752,7 +725,6 @@ describe("food domain — real PGlite and approval queue", () => {
     expect(providerRequestCount).toBe(requestCountAfterAmbiguous);
     providerMode = "success";
   });
-
   it("persists a rate limit as explicitly retryable without an automatic provider replay", async () => {
     const evaluation = await service.evaluateMeal({
       principalEntityId: SELF_ENTITY_ID,
@@ -791,7 +763,6 @@ describe("food domain — real PGlite and approval queue", () => {
       failureCode: "FOOD_PROVIDER_RATE_LIMITED",
     });
     expect(providerRequestCount).toBe(requestsBeforeRateLimit + 1);
-
     providerMode = "success";
     const completed = await service.materializeApprovedShoppingHandoff({
       principalEntityId: SELF_ENTITY_ID,

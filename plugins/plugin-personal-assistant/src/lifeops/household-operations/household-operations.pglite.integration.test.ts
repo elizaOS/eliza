@@ -2,14 +2,15 @@
  * Real-PGlite integration coverage for the canonical knowledge graph, durable
  * household-operation repository, restart, concurrency, privacy, and policy.
  */
+
+import { type AgentRuntime, type Memory } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime, Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -18,14 +19,14 @@ import {
 import { createHouseholdOperationsAction } from "./action.js";
 import { HouseholdOperationsRepository } from "./repository.js";
 import { HouseholdOperationsService } from "./service.js";
-import type {
-  AlmanacEntryDefinition,
-  HouseholdObservationInput,
-  HouseholdSourceProvenance,
-  ItemReplacementThresholdDefinition,
-  OpportunityDefinition,
-  ResponsibilityAssignmentDefinition,
-  VendorProfileDefinition,
+import {
+  type AlmanacEntryDefinition,
+  type HouseholdObservationInput,
+  type HouseholdSourceProvenance,
+  type ItemReplacementThresholdDefinition,
+  type OpportunityDefinition,
+  type ResponsibilityAssignmentDefinition,
+  type VendorProfileDefinition,
 } from "./types.js";
 
 describe("household operations — real PGlite and runtime graph", () => {
@@ -36,7 +37,6 @@ describe("household operations — real PGlite and runtime graph", () => {
   let repository: HouseholdOperationsRepository;
   let service: HouseholdOperationsService;
   let nowMs = Date.parse("2027-03-10T12:00:00.000Z");
-
   const householdId = "household-operations-main";
   const secondHouseholdId = "household-operations-second";
   const partnerEntityId = "household-operations-partner";
@@ -51,11 +51,9 @@ describe("household operations — real PGlite and runtime graph", () => {
   const vendorRecordId = "vendor-home-services";
   const maintenanceAlmanacId = "almanac-water-filter-gutters";
   const maintenanceSubjectKey = "home:water-filter-and-gutters";
-
   function currentDate(): Date {
     return new Date(nowMs);
   }
-
   function provenance(
     sourceId: string,
     sourceRevision = 1,
@@ -72,7 +70,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       ...overrides,
     };
   }
-
   function responsibility(
     recordId: string,
     subjectKey: string,
@@ -104,7 +101,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       ...overrides,
     };
   }
-
   function sizeObservation(input: {
     sourceRevision: number;
     fitState: "too_small" | "fits" | "room_to_grow" | "damaged" | "unknown";
@@ -129,7 +125,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       correctsObservationId: input.correctsObservationId ?? null,
     };
   }
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -264,12 +259,10 @@ describe("household operations — real PGlite and runtime graph", () => {
       now: currentDate,
     });
     await service.initialize();
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   it("returns commit proof tied to the real persisted household revision", async () => {
     const recordId = "vendor-action-effect-contract";
     const action = createHouseholdOperationsAction({
@@ -307,7 +300,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       },
       undefined,
     );
-
     const persisted = await repository.getCurrentRevision(
       "vendor_profile",
       recordId,
@@ -328,7 +320,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       },
     });
   });
-
   it("G29 preserves vendor/service history and blocks outreach until an exact calendar check", async () => {
     await service.putRevision({
       principalEntityId: SELF_ENTITY_ID,
@@ -389,7 +380,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       definition: almanac,
       expectedRevision: 0,
     });
-
     const preparationBriefInput = {
       principalEntityId: SELF_ENTITY_ID,
       householdId,
@@ -413,7 +403,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     );
     expect(preparationReplay.briefId).toBe(preparationBrief.briefId);
     expect(preparationReplay.replayed).toBe(true);
-
     const blockedBrief = await service.generateWeeklyBrief({
       principalEntityId: SELF_ENTITY_ID,
       householdId,
@@ -436,7 +425,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       contactRouteRefs: ["contact-route:home-services:sms"],
       accessWindows: vendor.accessWindows,
     });
-
     // An "available" claim with no cited calendar sources is a bare model
     // assertion, not evidence — it must be a typed invalid, never a brief
     // whose ready_for_outreach_draft gate opened on nothing.
@@ -465,7 +453,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     ).rejects.toMatchObject({
       code: "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
     });
-
     const readyBrief = await service.generateWeeklyBrief({
       principalEntityId: SELF_ENTITY_ID,
       householdId,
@@ -503,7 +490,6 @@ describe("household operations — real PGlite and runtime graph", () => {
         subjectKey: maintenanceSubjectKey,
       }),
     ).toEqual([]);
-
     await expect(
       service.recordServiceEvent({
         principalEntityId: SELF_ENTITY_ID,
@@ -551,7 +537,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     ).rejects.toMatchObject({
       code: "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
     });
-
     const completed = await service.recordServiceEvent({
       principalEntityId: SELF_ENTITY_ID,
       event: {
@@ -577,7 +562,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       },
     });
     expect(completed.inserted).toBe(true);
-
     const restartedRepository = new HouseholdOperationsRepository(
       runtime,
       runtime.agentId,
@@ -607,7 +591,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       completionEvidenceReference: "receipt:gutter-service:2027",
     });
   });
-
   it("keeps append-only observation corrections, detects ambiguity, and rejects concurrent provenance corruption", async () => {
     const original = await service.recordObservation({
       principalEntityId: SELF_ENTITY_ID,
@@ -664,7 +647,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       state: "known",
       observation: { value: { state: "replaced" } },
     });
-
     const sameObservedAt = currentDate().toISOString();
     for (const [sourceId, state] of [
       ["roof-document-a", "clear"],
@@ -701,7 +683,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       state: "ambiguous",
       reason: "equal_authority_conflict",
     });
-
     await service.recordObservation({
       principalEntityId: SELF_ENTITY_ID,
       observation: {
@@ -728,7 +709,6 @@ describe("household operations — real PGlite and runtime graph", () => {
         observationKind: "home_state",
       }),
     ).toEqual({ state: "unknown", reason: "low_confidence" });
-
     const concurrentBase = {
       householdId,
       subjectKey: "home:concurrent-state",
@@ -764,7 +744,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     expect(
       concurrent.filter((result) => result.status === "rejected"),
     ).toHaveLength(1);
-
     await expect(
       service.recordObservation({
         principalEntityId: SELF_ENTITY_ID,
@@ -803,7 +782,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       code: "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
     });
   });
-
   it("G30 preserves child size history, scopes it through graph roles, and proposes no purchase", async () => {
     const threshold: ItemReplacementThresholdDefinition = {
       kind: "item_threshold",
@@ -845,7 +823,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       approvalRequirement: "owner_approval",
     });
     expect(recommendation.sourceObservationIds).toHaveLength(1);
-
     const ownerHistory = await service.listChildItemSizeHistory({
       principalEntityId: SELF_ENTITY_ID,
       householdId,
@@ -877,7 +854,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     ).rejects.toMatchObject({
       code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
     });
-
     const concurrentThreshold = (
       minimumUsableCount: number,
     ): ItemReplacementThresholdDefinition => ({
@@ -917,7 +893,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       code: "HOUSEHOLD_OPERATIONS_CONFLICT",
     });
   });
-
   it("G31/G32 keeps waitlists out of coverage and preserves explicitly unstructured child time", async () => {
     const registrationAlmanac: AlmanacEntryDefinition = {
       kind: "almanac_entry",
@@ -989,7 +964,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       countsAsCoverage: false,
       effectDraft: null,
     });
-
     const campOpportunity: OpportunityDefinition = {
       ...capacityOpportunity,
       recordId: "opportunity-summer-camp-status",
@@ -1095,7 +1069,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       ),
     ).toHaveLength(3);
   });
-
   it("G38 proposes multi-party renegotiation after non-use and never returns responsibility to the owner", async () => {
     const assignmentId = "responsibility-school-morning";
     await service.putRevision({
@@ -1170,7 +1143,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     ).rejects.toMatchObject({
       code: "HOUSEHOLD_OPERATIONS_ACCESS_DENIED",
     });
-
     const proposal = await service.assessResponsibility({
       principalEntityId: SELF_ENTITY_ID,
       assignmentRecordId: assignmentId,
@@ -1205,7 +1177,6 @@ describe("household operations — real PGlite and runtime graph", () => {
         monitoringOwnerId: partnerEntityId,
       },
     });
-
     await service.recordResponsibilitySignal({
       actingEntityId: SELF_ENTITY_ID,
       signal: {
@@ -1246,7 +1217,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       ),
     ).toBe(false);
   });
-
   it("builds a maximum-three-question brief and redacts owner-private maintenance from child and unrelated views", async () => {
     nowMs = Date.parse("2027-03-10T12:00:00.000Z");
     const brief = await service.generateWeeklyBrief({
@@ -1269,7 +1239,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     expect(brief.items.some((item) => item.kind === "item_replacement")).toBe(
       true,
     );
-
     const childView = await service.readWeeklyBrief({
       principalEntityId: childEntityId,
       briefId: brief.briefId,
@@ -1297,7 +1266,6 @@ describe("household operations — real PGlite and runtime graph", () => {
       code: "HOUSEHOLD_OPERATIONS_ACCESS_DENIED",
     });
   });
-
   it("binds every non-owner read and visibility principal to one canonical household relationship", async () => {
     const main = await service.recordObservation({
       principalEntityId: SELF_ENTITY_ID,
@@ -1335,7 +1303,6 @@ describe("household operations — real PGlite and runtime graph", () => {
         correctsObservationId: null,
       },
     });
-
     await expect(
       service.listVisibleObservations({
         principalEntityId: partnerEntityId,
@@ -1407,7 +1374,6 @@ describe("household operations — real PGlite and runtime graph", () => {
     ).rejects.toMatchObject({
       code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
     });
-
     await expect(
       service.listVisibleObservations({
         principalEntityId: SELF_ENTITY_ID,

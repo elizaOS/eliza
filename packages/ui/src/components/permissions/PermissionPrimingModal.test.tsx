@@ -5,7 +5,8 @@
 // the recovery callout for a denied card, the loading state, single onComplete
 // firing, and Skip-for-now. Drives the modal through an injected
 // `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+
+import type { PermissionId } from "@elizaos/core/contracts/permissions";
 import {
   act,
   cleanup,
@@ -15,7 +16,7 @@ import {
 } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { installJsdomUiPolyfills } from "../../../test/portable-stories";
+import { installJsdomUiPolyfills } from "../../../test/jsdom-ui-polyfills";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import type {
@@ -27,16 +28,13 @@ import type {
 beforeAll(() => {
   installJsdomUiPolyfills();
 });
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
-
 function renderModal(node: ReactElement) {
   return render(<MockAppProvider>{node}</MockAppProvider>);
 }
-
 function item(
   id: PermissionId,
   status: PrimingItemStatus,
@@ -52,7 +50,6 @@ function item(
     resolved: false,
   };
 }
-
 function makeController(
   overrides: Partial<PermissionPrimingController> = {},
 ): PermissionPrimingController {
@@ -72,7 +69,6 @@ function makeController(
     ...overrides,
   };
 }
-
 describe("PermissionPrimingModal", () => {
   it("renders the active card with rationale and Enable / Not now", () => {
     const controller = makeController({
@@ -89,14 +85,12 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-
     expect(screen.getByTestId("priming-card-microphone")).toBeTruthy();
     // MockAppProvider's t returns the defaultValue, so real copy renders.
     expect(screen.getByText("Talk to me")).toBeTruthy();
     expect(screen.getByTestId("priming-enable-microphone")).toBeTruthy();
     expect(screen.getByTestId("priming-skip-microphone")).toBeTruthy();
   });
-
   it("Enable fires the OS request, Not now skips without it", () => {
     const controller = makeController({
       items: [item("microphone", "not-determined", true)],
@@ -110,15 +104,12 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-
     fireEvent.click(screen.getByTestId("priming-enable-microphone"));
     expect(controller.request).toHaveBeenCalledWith("microphone");
     expect(controller.skip).not.toHaveBeenCalled();
-
     fireEvent.click(screen.getByTestId("priming-skip-microphone"));
     expect(controller.skip).toHaveBeenCalledWith("microphone");
   });
-
   it("shows the recovery callout for a denied card and routes recovery through the controller", async () => {
     const controller = makeController({
       items: [item("microphone", "denied", false)],
@@ -132,7 +123,6 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-
     expect(screen.getByTestId("priming-recovery-microphone")).toBeTruthy();
     // canRequest === false → the retry action re-checks status (post-Settings).
     await act(async () => {
@@ -140,7 +130,6 @@ describe("PermissionPrimingModal", () => {
     });
     expect(controller.recheck).toHaveBeenCalledWith("microphone");
     expect(controller.request).not.toHaveBeenCalled();
-
     await act(async () => {
       fireEvent.click(
         screen.getByTestId("priming-recovery-microphone-settings"),
@@ -148,7 +137,6 @@ describe("PermissionPrimingModal", () => {
     });
     expect(controller.openSettings).toHaveBeenCalledWith("microphone");
   });
-
   it("surfaces a native Settings launch failure in the recovery card", async () => {
     const controller = makeController({
       items: [item("notifications", "denied", false)],
@@ -166,19 +154,16 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-
     await act(async () => {
       fireEvent.click(
         screen.getByTestId("priming-recovery-notifications-settings"),
       );
     });
-
     expect(
       screen.getByTestId("priming-recovery-notifications-settings-error")
         .textContent,
     ).toContain("Couldn’t open Settings");
   });
-
   it("a denied card that can still re-prompt retries via request()", async () => {
     const controller = makeController({
       items: [item("location", "denied", true)],
@@ -197,7 +182,6 @@ describe("PermissionPrimingModal", () => {
     });
     expect(controller.request).toHaveBeenCalledWith("location");
   });
-
   it("labels a platform request failure as an error rather than a user denial", async () => {
     const failed = {
       ...item("notifications", "unknown", true),
@@ -212,7 +196,6 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-
     expect(screen.getByText("Couldn’t request permission")).toBeTruthy();
     expect(screen.queryByText("Permission was declined")).toBeNull();
     await act(async () => {
@@ -222,7 +205,6 @@ describe("PermissionPrimingModal", () => {
     });
     expect(controller.request).toHaveBeenCalledWith("notifications");
   });
-
   it("surfaces a failed post-Settings re-check and retries the re-check", async () => {
     const failed = {
       ...item("notifications", "denied", false),
@@ -237,7 +219,6 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-
     expect(screen.getByText("Couldn’t verify permission")).toBeTruthy();
     await act(async () => {
       fireEvent.click(
@@ -247,7 +228,6 @@ describe("PermissionPrimingModal", () => {
     expect(controller.recheck).toHaveBeenCalledWith("notifications");
     expect(controller.request).not.toHaveBeenCalled();
   });
-
   it("renders a loading state until the initial check completes", () => {
     const controller = makeController({ ready: false, active: null });
     renderModal(
@@ -260,7 +240,6 @@ describe("PermissionPrimingModal", () => {
     );
     expect(screen.getByTestId("permission-priming-loading")).toBeTruthy();
   });
-
   it("calls onComplete exactly once when the sequence is done", () => {
     const onComplete = vi.fn();
     const controller = makeController({
@@ -288,7 +267,6 @@ describe("PermissionPrimingModal", () => {
     );
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
-
   it("Skip for now skips the whole flow", () => {
     const controller = makeController({
       items: [item("microphone", "not-determined", true)],

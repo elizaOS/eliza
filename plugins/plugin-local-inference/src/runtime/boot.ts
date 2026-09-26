@@ -1,7 +1,7 @@
 /**
  * Pre-ready boot entrypoint for plugin-local-inference.
  *
- * The app-core host once hard-wired this plugin's boot internals at fixed
+ * The app host once hard-wired this plugin's boot internals at fixed
  * init points in `repairRuntimeAfterBoot` — importing
  * `@elizaos/plugin-local-inference/runtime` by name and calling
  * `warnIfMobileGateActiveWithoutPlatform` + `shouldEnableMobileLocalInference` +
@@ -25,14 +25,14 @@
  * boot steps it skips on mobile (telegram polling, app-route plugins, etc.);
  * this hook only owns the local-inference-specific init.
  */
-import { type AgentRuntime, isMobilePlatform, logger } from "@elizaos/core";
 
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import {
 	shouldEnableMobileLocalInference,
 	warnIfMobileGateActiveWithoutPlatform,
 } from "./mobile-local-inference-gate";
-
 /**
  * Install the local-inference model handler at the pre-ready boot phase.
  *
@@ -40,7 +40,7 @@ import {
  * inference does not apply on this platform/config (mobile without a wired
  * mobile-safe backend, or a runtime mode / missing backend that
  * `ensureLocalInferenceHandler` self-skips). Invoked once by the shared agent
- * boot-hook channel for headless and app-core hosts alike.
+ * boot-hook channel for headless and app hosts alike.
  */
 export async function registerLocalInferenceBoot(
 	runtime: AgentRuntime,
@@ -52,7 +52,6 @@ export async function registerLocalInferenceBoot(
 		mobilePlatform: isMobilePlatform(),
 		warn: logger.warn,
 	});
-
 	if (isMobilePlatform()) {
 		// Mobile bundle wires the local model handler only when a mobile-safe
 		// backend (device-bridge / AOSP FFI / bionic host / riscv64) is enabled;
@@ -62,7 +61,6 @@ export async function registerLocalInferenceBoot(
 		}
 		return;
 	}
-
 	// Desktop / server: ensureLocalInferenceHandler self-skips on a cloud
 	// runtime mode or when no local backend is available.
 	await ensureLocalInferenceHandler(runtime);

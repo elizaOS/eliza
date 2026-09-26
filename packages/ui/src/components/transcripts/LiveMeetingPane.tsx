@@ -7,10 +7,7 @@
  * delivering. Auto-scroll stays pinned to the bottom until the user scrolls up.
  */
 
-import type {
-  Transcript,
-  TranscriptSegment,
-} from "@elizaos/shared/transcripts";
+import type { Transcript, TranscriptSegment } from "@elizaos/core/transcripts";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingTranscriptEvent } from "../../api/client-meetings";
@@ -22,18 +19,16 @@ import {
 } from "./meeting-live";
 import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
 
-const POLL_INTERVAL_MS = 5_000;
+const POLL_INTERVAL_MS = 5000;
 /** A ws event within this window means the socket is live — skip polling. */
-const WS_FRESHNESS_MS = 12_000;
+const WS_FRESHNESS_MS = 12000;
 /** How close to the bottom (px) still counts as "pinned". */
 const PIN_THRESHOLD_PX = 48;
-
 export interface LiveMeetingPaneProps {
   /** The recording transcript record (seed segments + identity). */
   transcript: Transcript;
   className?: string;
 }
-
 function SegmentBlock({
   segment,
   muted,
@@ -57,7 +52,6 @@ function SegmentBlock({
     </div>
   );
 }
-
 export function LiveMeetingPane({
   transcript,
   className,
@@ -70,7 +64,6 @@ export function LiveMeetingPane({
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const pinnedRef = React.useRef(true);
   const transcriptId = transcript.id;
-
   // Live events over the agent WebSocket.
   React.useEffect(() => {
     return client.onWsEvent("meeting-transcript", (data) => {
@@ -80,7 +73,6 @@ export function LiveMeetingPane({
       setLive((prev) => applyMeetingTranscriptEvent(prev, event));
     });
   }, [transcriptId]);
-
   // Polling fallback — the record grows server-side while recording, so when
   // the socket has gone quiet re-fetch and reconcile.
   React.useEffect(() => {
@@ -97,22 +89,18 @@ export function LiveMeetingPane({
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [transcriptId]);
-
   const segmentCount = live.confirmed.length + live.pending.length;
-
   // Pin-to-bottom autoscroll: follow new segments unless the user scrolled up.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on content growth.
   React.useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [segmentCount]);
-
   const onScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     pinnedRef.current =
       el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_THRESHOLD_PX;
   }, []);
-
   return (
     <div
       ref={scrollRef}

@@ -3,7 +3,7 @@
  * voice_duet_sweep.mjs — the scientific latency grind for the two-agents-
  * talking-endlessly path.
  *
- * Runs `packages/app-core/scripts/voice-duet.mjs --turns N --report …` across
+ * Runs `packages/app/scripts/voice-duet.ts --turns N --report …` across
  * a grid of the latency knobs (MTP `--parallel` / `--draft-max` /
  * `--ctx-size-draft`, the phrase-chunker word threshold, `--prewarm-lead-ms`,
  * the cross-ring size `--ring-ms`, the KV-cache type, the backend), collects
@@ -25,7 +25,7 @@
  * GPU-fused build (WS-2) + the W7 streaming decoders (WS-4). This script runs
  * the CPU baseline now and the GPU sweep when those land — same harness.
  *
- * Honesty: a knob combo whose `voice-duet.mjs` invocation exits non-zero
+ * Honesty: a knob combo whose `voice-duet.ts` invocation exits non-zero
  * (missing bundle / fused lib / kernels) is recorded as a failed cell with the
  * exit code and stderr tail — never a fabricated row. `--dry-run` prints the
  * grid + the commands it would run, then exits.
@@ -47,9 +47,9 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const VOICE_DUET = path.join(
   REPO_ROOT,
   "packages",
-  "app-core",
+  "app",
   "scripts",
-  "voice-duet.mjs",
+  "voice-duet.ts",
 );
 
 // ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ const USAGE = `Usage: bun packages/inference/verify/voice_duet_sweep.mjs [option
   --model <id>            tier bundle (default eliza-1-2b)
   --turns <N>             round-trips per cell (default 20)
   --out <path>            CSV output (default reports/porting/<date>/voice-duet-sweep-<model>.csv)
-  --two-process           pass --two-process to voice-duet.mjs (1.7b RSS split)
+  --two-process           pass --two-process to voice-duet.ts (1.7b RSS split)
   --dry-run               print the grid + the commands, then exit
   --cell-timeout-ms <ms>  per-cell hard cap (default 600000)
 
@@ -459,7 +459,7 @@ async function main() {
     `| rssMaxMb | ${fmt(baseline, "rssMaxMb")} | ${fmt(best, "rssMaxMb")} |`,
     "",
     ok.length === 0
-      ? "_No cell completed — every `voice-duet.mjs` invocation exited non-zero (missing bundle / fused lib / kernels). See the CSV `note` column for the exit code + stderr tail of each cell. This is recorded, not faked._"
+      ? "_No cell completed — every `voice-duet.ts` invocation exited non-zero (missing bundle / fused lib / kernels). See the CSV `note` column for the exit code + stderr tail of each cell. This is recorded, not faked._"
       : "Methodology: profile the dominant per-stage span from each cell's tracer histogram (`latency.histograms`), sweep that stage's knob, pick the config minimising `ttftFromUtteranceEndMs.p50` without regressing `mtpAcceptRate`, re-run, repeat until the round-trip plateaus. On a CPU build TTS dominates (~6–10× RTF) so this is the harness/methodology baseline; the headline grind needs a GPU-fused build (WS-2) + the W7 streaming decoders (WS-4).",
   ];
   fs.writeFileSync(mdPath, `${md.join("\n")}\n`);

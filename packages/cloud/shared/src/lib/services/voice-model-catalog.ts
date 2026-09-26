@@ -3,7 +3,7 @@
  * §6.4).
  *
  * The runtime in-binary `VOICE_MODEL_VERSIONS` (re-exported from
- * `@elizaos/shared/local-inference/voice-models.js`) is the source of
+ * `@elizaos/plugin-native-inference/model-catalog/voice-models.js`) is the source of
  * truth at publish time; this service exposes it over the
  * `GET /api/v1/voice-models/catalog` endpoint with an Ed25519 signature
  * the device-side updater verifies before parsing.
@@ -20,12 +20,11 @@
  * model rollouts don't need shorter, and matching the existing models
  * route keeps the CDN behavior predictable.
  */
-
+import { ElizaError } from "@elizaos/core";
 import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelVersion,
-} from "@elizaos/shared/local-inference/voice-models";
-
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 /**
  * Wire shape returned by the catalog endpoint. The runtime updater reads
  * `versions[]` directly into its catalog-source pipeline.
@@ -44,7 +43,6 @@ export interface VoiceModelCatalogResponse {
    */
   readonly publicKeyFingerprints: ReadonlyArray<string>;
 }
-
 /**
  * Build the body of the catalog response. Pure — easy to unit-test
  * outside the worker.
@@ -60,7 +58,6 @@ export function buildVoiceModelCatalogBody(args: {
     publicKeyFingerprints: args.publicKeyFingerprints,
   };
 }
-
 /**
  * Sign the body with Ed25519 (Node ≥ 24 / browsers since 2023). The body
  * passed in MUST be the exact bytes the response will return — JSON
@@ -95,7 +92,6 @@ export async function signVoiceModelCatalog(args: {
   );
   return encodeBase64(new Uint8Array(sig));
 }
-
 /** Compute the base64 fingerprint of a raw 32-byte Ed25519 public key. */
 export function fingerprintPublicKey(rawPublicKeyBase64: string): string {
   const raw = decodeBase64Strict(rawPublicKeyBase64);
@@ -104,24 +100,35 @@ export function fingerprintPublicKey(rawPublicKeyBase64: string): string {
   }
   return encodeBase64(raw);
 }
-
 function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const copy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
   copy.set(bytes);
   return copy;
 }
-
 function decodeBase64Strict(input: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    const buf = Buffer.from(input, "base64");
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const trimmed = input.trim();
+  const normalized = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+  // Accept either standard alphabet, with optional padding, but never mixed
+  // alphabets, interior whitespace, misplaced padding, or discarded slack bits.
+  if (
+    (/[+/]/.test(trimmed) && /[-_]/.test(trimmed)) ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{2,3})?$/.test(
+      normalized,
+    )
+  ) {
+    throw new ElizaError("Invalid base64 credential", { code: "INVALID_VOICE_CATALOG_CREDENTIAL" });
   }
-  const bin = atob(input);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  const bytes =
+    typeof Buffer !== "undefined"
+      ? new Uint8Array(Buffer.from(normalized, "base64"))
+      : Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
+  if (encodeBase64(bytes) !== normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")) {
+    throw new ElizaError("Non-canonical base64 credential", {
+      code: "INVALID_VOICE_CATALOG_CREDENTIAL",
+    });
+  }
+  return bytes;
 }
-
 function encodeBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(bytes).toString("base64");
@@ -130,7 +137,6 @@ function encodeBase64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
   return btoa(bin);
 }
-
 /**
  * Wrap a raw 32-byte Ed25519 seed in the minimal PKCS8 ASN.1 envelope per
  * RFC 8410 §7. Sequence-tagged byte sequence:

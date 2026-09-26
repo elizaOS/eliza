@@ -1,0 +1,114 @@
+/**
+ * Browser-safe surface of `@elizaos/app`, aliased in by browser bundlers in
+ * place of the Node `index.ts`. Re-exports the dashboard React/UI components,
+ * registration contracts, and Electrobun desktop runtimes from `@elizaos/ui` and
+ * `@elizaos/core`, and provides explicit failures for the server-only helpers
+ * (`sendJson`, `ensureRouteAuthorized`, `sharedVault`, …) so browser code links
+ * against the same names without pulling in Node server modules.
+ */
+// Registration-surface contracts live in @elizaos/core (React-free canonical
+// home); import them from there rather than the React package.
+
+export { resolveAppBranding } from "@elizaos/core/config/app-config";
+export {
+  type AppRunSummary,
+  type AppSessionJsonValue,
+  client,
+} from "@elizaos/ui/api";
+export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
+export type { AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export type {
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/ui/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
+export * from "@elizaos/ui/browser";
+export { ErrorBoundary } from "@elizaos/ui/browser";
+export {
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  type SurfaceTone,
+} from "@elizaos/ui/components/apps/extensions/surface";
+export {
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "@elizaos/ui/components/apps/extensions/surface.helpers";
+export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+export { Button } from "@elizaos/ui/components/ui/button";
+export { Input } from "@elizaos/ui/components/ui/input";
+export { Spinner } from "@elizaos/ui/components/ui/spinner";
+export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+export {
+  type IosRuntimeConfig,
+  resolveIosRuntimeConfig,
+} from "@elizaos/ui/platform/ios-runtime";
+export { useApp } from "@elizaos/ui/state/useApp";
+export {
+  type AutomationNodeContributorContext,
+  registerAutomationNodeContributor,
+} from "./api/automation-node-contributors";
+export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
+export {
+  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+  IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  runIosFullBunSmokeIfRequested,
+} from "./platform/ios-runtime-bridge";
+export {
+  buildLocalizedTrayMenu,
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
+} from "./runtime/desktop";
+export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
+export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
+
+import { ElizaError } from "@elizaos/core/errors";
+
+function unsupportedServerOperation(): never {
+  throw new ElizaError(
+    "Server-only operation is unavailable in the browser renderer",
+    {
+      code: "BROWSER_SERVER_OPERATION_UNAVAILABLE",
+    },
+  );
+}
+
+export type CompatRuntimeState = {
+  current: unknown;
+  pendingAgentName?: string | null;
+  pendingRestartReasons?: string[];
+};
+export function sendJson(
+  _res: unknown,
+  _status: number,
+  _body: unknown,
+): never {
+  return unsupportedServerOperation();
+}
+
+export function sendJsonError(
+  _res: unknown,
+  _status: number,
+  _message: string,
+): never {
+  return unsupportedServerOperation();
+}
+
+export async function ensureRouteAuthorized(): Promise<boolean> {
+  return false;
+}
+export async function ensureCompatApiAuthorized(): Promise<boolean> {
+  return false;
+}
+export async function readCompatJsonBody(): Promise<unknown> {
+  return unsupportedServerOperation();
+}
+export function sharedVault(): never {
+  return unsupportedServerOperation();
+}

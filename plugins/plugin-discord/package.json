@@ -14,36 +14,10 @@
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
+			"eliza-source": "./index.ts",
 			"types": "./dist/index.d.ts",
-			"eliza-source": {
-				"types": "./index.ts",
-				"import": "./index.ts",
-				"default": "./index.ts"
-			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
-		},
-		"./*.css": "./dist/*.css",
-		"./user-account-scraper": {
-			"types": "./dist/user-account-scraper/index.d.ts",
-			"eliza-source": {
-				"types": "./user-account-scraper/index.ts",
-				"import": "./user-account-scraper/index.ts",
-				"default": "./user-account-scraper/index.ts"
-			},
-			"import": "./dist/user-account-scraper/index.js",
-			"default": "./dist/user-account-scraper/index.js"
-		},
-		"./guild-management": null,
-		"./*": {
-			"types": "./dist/*.d.ts",
-			"eliza-source": {
-				"types": "./*.ts",
-				"import": "./*.ts",
-				"default": "./*.ts"
-			},
-			"import": "./dist/*.js",
-			"default": "./dist/*.js"
 		}
 	},
 	"files": [
@@ -57,16 +31,14 @@
 		"build": "bun run build.ts",
 		"build:ts": "bun run build.ts",
 		"dev": "bun --hot build.ts",
-		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo && node ../../packages/scripts/clean-stray-dts.mjs",
+		"clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo && node ../../packages/scripts/clean-stray-dts.ts",
 		"test": "vitest run",
 		"test:real-runtime": "vitest run --config ./vitest.real-runtime.config.ts",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
-		"format:check": "bunx @biomejs/biome format .",
-		"test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
-		"test:live": "bun run test:e2e"
+		"format:check": "bunx @biomejs/biome format ."
 	},
 	"dependencies": {
 		"@discordjs/builders": "^1.14.1",
@@ -79,7 +51,6 @@
 		"@discordjs/ws": "^1.2.3",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-browser": "workspace:*",
-		"@elizaos/plugin-commands": "workspace:*",
 		"@elizaos/plugin-meetings": "workspace:*",
 		"@sapphire/snowflake": "3.5.5",
 		"discord-api-types": "^0.38.0",
@@ -96,15 +67,17 @@
 		"prism-media": "1.3.5",
 		"tslib": "^2.6.3",
 		"undici": "8.10.0",
-		"zod": "^4.4.3"
+		"zod": "^4.6.5",
+		"@elizaos/plugin-assistant": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.8",
+		"@biomejs/biome": "2.5.14",
 		"@types/fluent-ffmpeg": "^2.1.28",
 		"@types/node": "^25.0.3",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^4.1.10"
+		"vitest": "^5.0.1",
+		"@elizaos/testing": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*"

@@ -245,7 +245,7 @@ printf '%s\n' "$GPU_INFO"
 printf '%s\n' "$TOOLCHAIN_INFO"
 
 if [[ "${CUDA_BUILD_FORK:-1}" != "0" ]]; then
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" --target "$CUDA_TARGET"
+    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.ts" --target "$CUDA_TARGET"
 fi
 
 make cuda-verify

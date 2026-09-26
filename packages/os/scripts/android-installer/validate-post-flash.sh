@@ -1,0 +1,372 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DRY_RUN=1
+EXPLICIT_DRY_RUN=0
+EXECUTE=0
+DEVICE_SERIAL=""
+MANIFEST=""
+BOOT_TIMEOUT=""
+LAUNCHER_PACKAGE="ai.elizaos.app"
+LAUNCHER_ACTIVITY="ai.elizaos.app/.MainActivity"
+AGENT_HEALTH_URL="http://127.0.0.1:31337/api/health"
+AGENT_HEALTH_COMMAND=""
+EXPECTED_PM_PATH=""
+declare -a EXPECTED_PROPS=()
+declare -a PLAN=()
+declare -a ADB_COMMAND=(adb)
+
+usage() {
+  cat <<'EOF'
+Usage:
+  validate-post-flash.sh [--device SERIAL] [--manifest MANIFEST.json] [--expect key=value] [--execute]
+
+Plans or runs read-only ADB checks against a booted Android device. The default
+mode is dry-run: commands are printed and no device is queried.
+
+Options:
+  --device SERIAL             adb serial to target.
+  --manifest MANIFEST.json    Read validation.properties and boot timeout from
+                              an Android release manifest.
+  --expect KEY=VALUE          Add or override an expected getprop value.
+  --boot-timeout SECONDS      wait-for-device timeout used in the printed plan.
+  --launcher-package PACKAGE  Expected Eliza launcher package.
+  --launcher-activity CMP     Expected foreground HOME activity component.
+  --agent-health-url URL      Local agent health URL to probe on the device.
+  --execute                   Run the read-only ADB validation commands.
+  --dry-run                   Print the validation plan only. Default.
+EOF
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+shell_join() {
+  local out=""
+  local arg
+  for arg in "$@"; do
+    if [[ -z "$out" ]]; then
+      printf -v out "%q" "$arg"
+    else
+      printf -v out "%s %q" "$out" "$arg"
+    fi
+  done
+  echo "$out"
+}
+
+add_plan() {
+  PLAN+=("$(shell_join "$@")")
+}
+
+run_cmd() {
+  local printable
+  printable="$(shell_join "$@")"
+  echo "+ $printable"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    "$@"
+  fi
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --device)
+        [[ $# -ge 2 ]] || die "--device requires a serial"
+        DEVICE_SERIAL="$2"
+        shift 2
+        ;;
+      --manifest)
+        [[ $# -ge 2 ]] || die "--manifest requires a JSON file"
+        MANIFEST="$2"
+        shift 2
+        ;;
+      --expect)
+        [[ $# -ge 2 ]] || die "--expect requires KEY=VALUE"
+        EXPECTED_PROPS+=("$2")
+        shift 2
+        ;;
+      --boot-timeout)
+        [[ $# -ge 2 ]] || die "--boot-timeout requires seconds"
+        BOOT_TIMEOUT="$2"
+        shift 2
+        ;;
+      --launcher-package)
+        [[ $# -ge 2 ]] || die "--launcher-package requires a package name"
+        LAUNCHER_PACKAGE="$2"
+        shift 2
+        ;;
+      --launcher-activity)
+        [[ $# -ge 2 ]] || die "--launcher-activity requires a component"
+        LAUNCHER_ACTIVITY="$2"
+        shift 2
+        ;;
+      --agent-health-url)
+        [[ $# -ge 2 ]] || die "--agent-health-url requires a URL"
+        AGENT_HEALTH_URL="$2"
+        shift 2
+        ;;
+      --execute)
+        EXECUTE=1
+        DRY_RUN=0
+        shift
+        ;;
+      --dry-run)
+        EXPLICIT_DRY_RUN=1
+        DRY_RUN=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1"
+        ;;
+    esac
+  done
+  [[ "$EXPLICIT_DRY_RUN" -eq 0 || "$EXECUTE" -eq 0 ]] || die "--dry-run conflicts with --execute"
+  [[ -z "$DEVICE_SERIAL" || "$DEVICE_SERIAL" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]] || die "invalid device serial"
+}
+
+load_manifest_expectations() {
+  [[ -z "$MANIFEST" ]] && return
+  [[ -f "$MANIFEST" ]] || die "manifest not found: $MANIFEST"
+  command -v node >/dev/null 2>&1 || die "node is required to read manifest expectations"
+
+  local manifest_output
+  manifest_output="$(node - "$MANIFEST" <<'NODE'
+const { readFileSync } = require('node:fs');
+const manifest = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const properties = manifest.validation?.properties ?? {};
+const semanticProperties = new Set([
+  'agent_health',
+  'agent_service_pid',
+  'foreground_activity',
+  'home_role',
+  'logcat_fatal_count',
+  'pm_path',
+  'selinux_avc_denied_count',
+]);
+if (manifest.validation?.bootTimeoutSeconds) {
+  console.log(`BOOT_TIMEOUT=${manifest.validation.bootTimeoutSeconds}`);
+}
+for (const [key, value] of Object.entries(properties)) {
+  if (!semanticProperties.has(key)) {
+    console.log(`EXPECT=${key}=${value}`);
+  }
+}
+if (typeof properties.pm_path === 'string') {
+  console.log(`EXPECTED_PM_PATH=${properties.pm_path}`);
+}
+if (typeof properties.home_role === 'string') {
+  console.log(`LAUNCHER_PACKAGE=${properties.home_role}`);
+}
+if (typeof properties.foreground_activity === 'string') {
+  console.log(`LAUNCHER_ACTIVITY=${properties.foreground_activity}`);
+}
+if (manifest.validation?.expectedFingerprintPrefix) {
+  console.log(`FINGERPRINT_PREFIX=${manifest.validation.expectedFingerprintPrefix}`);
+}
+const checks = manifest.validation?.launcherAgentChecks ?? {};
+if (checks.launcherPackage) {
+  console.log(`LAUNCHER_PACKAGE=${checks.launcherPackage}`);
+}
+if (checks.launcherActivity) {
+  console.log(`LAUNCHER_ACTIVITY=${checks.launcherActivity}`);
+}
+if (checks.agentHealthUrl) {
+  console.log(`AGENT_HEALTH_URL=${checks.agentHealthUrl}`);
+}
+NODE
+)"
+
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      BOOT_TIMEOUT=*)
+        [[ -z "$BOOT_TIMEOUT" ]] && BOOT_TIMEOUT="${line#BOOT_TIMEOUT=}"
+        ;;
+      EXPECT=*)
+        EXPECTED_PROPS+=("${line#EXPECT=}")
+        ;;
+      EXPECTED_PM_PATH=*)
+        EXPECTED_PM_PATH="${line#EXPECTED_PM_PATH=}"
+        ;;
+      FINGERPRINT_PREFIX=*)
+        EXPECTED_PROPS+=("ro.build.fingerprint^=${line#FINGERPRINT_PREFIX=}")
+        ;;
+      LAUNCHER_PACKAGE=*)
+        LAUNCHER_PACKAGE="${line#LAUNCHER_PACKAGE=}"
+        ;;
+      LAUNCHER_ACTIVITY=*)
+        LAUNCHER_ACTIVITY="${line#LAUNCHER_ACTIVITY=}"
+        ;;
+      AGENT_HEALTH_URL=*)
+        AGENT_HEALTH_URL="${line#AGENT_HEALTH_URL=}"
+        ;;
+    esac
+  done <<<"$manifest_output"
+}
+
+build_agent_health_command() {
+  local health_port health_path
+  if [[ "$AGENT_HEALTH_URL" =~ ^http://127\.0\.0\.1:([0-9]{1,5})(/[A-Za-z0-9._~/?&=%+-]*)$ ]]; then
+    health_port="$((10#${BASH_REMATCH[1]}))"
+    health_path="${BASH_REMATCH[2]}"
+  else
+    die "agent health URL must be an explicit http://127.0.0.1:PORT/PATH endpoint"
+  fi
+  (( health_port >= 1 && health_port <= 65535 )) \
+    || die "agent health URL port is outside 1..65535"
+  printf -v AGENT_HEALTH_COMMAND \
+    "printf '%%s\\r\\n' 'GET %s HTTP/1.0' 'Host: 127.0.0.1:%s' 'Connection: close' '' | toybox nc -w 5 127.0.0.1 %s" \
+    "$health_path" "$health_port" "$health_port"
+}
+
+build_plan() {
+  local emit="${1:-add_plan}"
+  local timeout_prefix=()
+  if [[ -n "$BOOT_TIMEOUT" ]]; then
+    timeout_prefix=(timeout "$BOOT_TIMEOUT")
+  fi
+
+  "$emit" "${timeout_prefix[@]}" "${ADB_COMMAND[@]}" wait-for-device
+  "$emit" "${ADB_COMMAND[@]}" get-state
+  "$emit" "${ADB_COMMAND[@]}" shell getprop ro.product.device
+  "$emit" "${ADB_COMMAND[@]}" shell getprop ro.build.fingerprint
+  "$emit" "${ADB_COMMAND[@]}" shell getprop ro.boot.slot_suffix
+  "$emit" "${ADB_COMMAND[@]}" shell getprop sys.boot_completed
+  "$emit" "${ADB_COMMAND[@]}" shell pm path "$LAUNCHER_PACKAGE"
+  "$emit" "${ADB_COMMAND[@]}" shell cmd role get-role-holders android.app.role.HOME
+  "$emit" "${ADB_COMMAND[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+  "$emit" "${ADB_COMMAND[@]}" shell dumpsys package "$LAUNCHER_PACKAGE"
+  "$emit" "${ADB_COMMAND[@]}" shell dumpsys activity activities
+  "$emit" "${ADB_COMMAND[@]}" shell pidof "$LAUNCHER_PACKAGE"
+  # The printed diagnostic must not preempt the explicit status/body checks
+  # below when the endpoint is absent or unhealthy.
+  "$emit" "${ADB_COMMAND[@]}" shell "${AGENT_HEALTH_COMMAND} || true"
+  "$emit" "${ADB_COMMAND[@]}" logcat -d
+}
+
+print_plan() {
+  echo
+  echo "Post-flash validation plan:"
+  local command
+  for command in "${PLAN[@]}"; do
+    echo "  $command"
+  done
+  if [[ "${#EXPECTED_PROPS[@]}" -gt 0 ]]; then
+    echo
+    echo "Expected properties:"
+    local expected
+    for expected in "${EXPECTED_PROPS[@]}"; do
+      echo "  $expected"
+    done
+  fi
+  echo
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "Dry-run only. No ADB commands were executed."
+  fi
+}
+
+getprop_value() {
+  local prop="$1"
+  "${ADB_COMMAND[@]}" shell getprop "$prop" 2>/dev/null | tr -d '\r'
+}
+
+validate_expectations() {
+  [[ "$DRY_RUN" -eq 0 ]] || return 0
+  local boot_completed
+  boot_completed="$(getprop_value sys.boot_completed)" || die "could not read Android boot readiness"
+  [[ "$boot_completed" == 1 ]] || die "Android boot is incomplete: sys.boot_completed='$boot_completed'"
+  local expected key want actual
+  for expected in "${EXPECTED_PROPS[@]}"; do
+    if [[ "$expected" == *"^="* ]]; then
+      key="${expected%%^=*}"
+      want="${expected#*^=}"
+      actual="$(getprop_value "$key")"
+      [[ "$actual" == "$want"* ]] || die "$key='$actual' does not start with '$want'"
+    else
+      [[ "$expected" == *=* ]] || die "expected property must be KEY=VALUE or KEY^=PREFIX: $expected"
+      key="${expected%%=*}"
+      want="${expected#*=}"
+      actual="$(getprop_value "$key")"
+      [[ "$actual" == "$want" ]] || die "$key='$actual' does not match '$want'"
+    fi
+  done
+}
+
+validate_launcher_agent_liveness() {
+  [[ "$DRY_RUN" -eq 0 ]] || return 0
+  local pm_path health_response
+
+  pm_path="$("${ADB_COMMAND[@]}" shell pm path "$LAUNCHER_PACKAGE" | tr -d '\r')"
+  if [[ -n "$EXPECTED_PM_PATH" ]]; then
+    [[ "$pm_path" == "$EXPECTED_PM_PATH" ]] \
+      || die "launcher package path '$pm_path' does not match '$EXPECTED_PM_PATH'"
+  else
+    grep -F "package:" <<<"$pm_path" >/dev/null \
+      || die "launcher package is not installed: $LAUNCHER_PACKAGE"
+  fi
+  "${ADB_COMMAND[@]}" shell cmd role get-role-holders android.app.role.HOME | grep -Fx "$LAUNCHER_PACKAGE" >/dev/null \
+    || die "launcher package is not a HOME role holder: $LAUNCHER_PACKAGE"
+  "${ADB_COMMAND[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \
+    | grep -F "$LAUNCHER_PACKAGE" >/dev/null \
+    || die "HOME intent does not resolve to launcher package: $LAUNCHER_PACKAGE"
+  "${ADB_COMMAND[@]}" shell dumpsys activity activities | grep -F "$LAUNCHER_ACTIVITY" >/dev/null \
+    || die "expected launcher foreground activity was not found: $LAUNCHER_ACTIVITY"
+  "${ADB_COMMAND[@]}" shell pidof "$LAUNCHER_PACKAGE" >/dev/null \
+    || die "launcher/agent process is not running: $LAUNCHER_PACKAGE"
+  health_response="$("${ADB_COMMAND[@]}" shell "$AGENT_HEALTH_COMMAND")" \
+    || die "agent health probe transport failed: $AGENT_HEALTH_URL"
+  [[ "${health_response%%$'\n'*}" =~ ^HTTP/1\.[01]\ 200(\ |$) ]] \
+    || die "agent health probe did not return HTTP 200: $AGENT_HEALTH_URL"
+  node -e '
+    const response = require("node:fs").readFileSync(0, "utf8");
+    const separator = /\r?\n\r?\n/.exec(response);
+    if (!separator) process.exit(1);
+    try {
+      const body = JSON.parse(response.slice(separator.index + separator[0].length));
+      if (!body || Array.isArray(body) ||
+          !["ready", "ok", "healthy"].includes(body.status) ||
+          ("ready" in body && body.ready !== true)) process.exit(1);
+    } catch { process.exit(1); }
+  ' <<<"$health_response" \
+    || die "agent health probe body did not return ready/ok/healthy JSON: $AGENT_HEALTH_URL"
+  local device_log
+  device_log="$("${ADB_COMMAND[@]}" logcat -d)" || die "could not read device logcat"
+  ! grep -Ei 'FATAL EXCEPTION|AndroidRuntime|crash' <<<"$device_log" >/dev/null \
+    || die "fatal Android runtime/crash log entries were found"
+  ! grep -i 'avc: denied' <<<"$device_log" >/dev/null \
+    || die "SELinux avc: denied log entries were found"
+}
+
+execute_plan() {
+  [[ "$DRY_RUN" -eq 0 ]] || return 0
+  command -v adb >/dev/null 2>&1 || die "required tool 'adb' was not found in PATH"
+
+  command -v node >/dev/null 2>&1 || die "node is required to validate agent health JSON"
+
+  build_plan run_cmd
+  validate_expectations
+  validate_launcher_agent_liveness
+}
+
+parse_args "$@"
+if [[ -n "$DEVICE_SERIAL" ]]; then ADB_COMMAND+=(-s "$DEVICE_SERIAL"); fi
+load_manifest_expectations
+# adb shell joins its arguments into a remote shell command. Validate tokens
+# after reading the manifest too: local quoting alone does not protect Android.
+[[ "$LAUNCHER_PACKAGE" =~ ^[A-Za-z][A-Za-z0-9_.]*$ ]] || die "invalid launcher package"
+for expected in "${EXPECTED_PROPS[@]}"; do
+  [[ "$expected" == *=* ]] || die "expected property must be KEY=VALUE or KEY^=PREFIX"
+  key="${expected%%=*}"
+  key="${key%\^}"
+  [[ "$key" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "invalid property key"
+done
+build_agent_health_command
+build_plan
+print_plan
+execute_plan

@@ -1,33 +1,12 @@
 /**
- * Registration seam for the TEE attestation-evidence provider: the confidential-
- * VM deployment plugin registers its evidence-provider factory here, and the boot
- * gate resolves that registration (or undefined) rather than importing the
- * dstack/CoVE stack directly, so non-TEE builds never compile it. Fail-closed —
- * an unregistered provider under a required policy is treated as untrusted. See
- * the block below for the deployment rationale.
+ * Resolves TEE evidence from an explicitly configured pinned dstack verifier or
+ * a deployment plugin registration. Missing providers remain undefined so the
+ * required boot gate fails closed; conflicting providers reject configuration.
  */
+import { ElizaError } from "@elizaos/core";
+import { createDstackEvidenceProvider } from "./tee-dstack-evidence.ts";
+import { resolveDstackEvidenceConfiguration } from "./tee-dstack-release.ts";
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
-
-/**
- * Host-level seam between the fail-closed TEE boot gate (this package) and the
- * deployment-specific evidence provider that actually collects attestation
- * evidence (dstack `/run/dstack/*`, on-device CoVE quotes, ...). The concrete
- * provider is confidential-VM deployment code and lives in a TEE deployment
- * plugin (`@elizaos/plugin-tee`), NOT in trunk services — so desktop/mobile
- * builds that never load that plugin do not compile the dstack/CoVE stack.
- *
- * The plugin registers its factory here when a confidential-VM distribution
- * profile loads it; the boot gate then resolves the registered provider instead
- * of importing the concrete provider directly.
- *
- * Fail-closed contract: when NO factory is registered, `resolveTeeEvidenceProvider`
- * returns `undefined`. A boot gate that requires trusted TEE evidence but has no
- * provider treats that as untrusted and disables secrets (see
- * `evaluateTeeBootGate` — a required policy with an undefined provider yields
- * `secretsEnabled: false`). A non-TEE / local-only boot configures no required
- * policy, so an absent provider is inert and behaves exactly as before TEE
- * gating existed.
- */
 
 export type TeeEvidenceProviderFactoryOptions = {
   env?: Record<string, string | undefined>;
@@ -60,14 +39,30 @@ export function clearTeeEvidenceProviderFactory(): void {
   registeredFactory = undefined;
 }
 
-/**
- * Resolve the registered TEE evidence provider, or `undefined` when no
- * deployment plugin has registered one. The boot gate passes the result to
- * `evaluateTeeBootGate`; an `undefined` provider under a required policy fails
- * closed (secrets disabled) rather than fabricating trust.
- */
+/** Resolves one explicit provider; absent deployment configuration stays inert. */
 export function resolveTeeEvidenceProvider(
   options?: TeeEvidenceProviderFactoryOptions,
 ): TeeEvidenceProvider | undefined {
+  const env = options?.env ?? process.env;
+  const configured = env.ELIZA_DSTACK_EVIDENCE_CONFIG_JSON;
+  if (configured !== undefined) {
+    if (registeredFactory) {
+      throw new ElizaError(
+        "Configure either dstack evidence or a registered provider, not both",
+        { code: "TEE_EVIDENCE_PROVIDER_CONFLICT" },
+      );
+    }
+    try {
+      return createDstackEvidenceProvider(
+        resolveDstackEvidenceConfiguration(env),
+      );
+    } catch (error) {
+      // error-policy:J2 Malformed configuration must never disable the provider.
+      throw new ElizaError("Invalid dstack evidence configuration", {
+        code: "TEE_DSTACK_CONFIGURATION_INVALID",
+        cause: error,
+      });
+    }
+  }
   return registeredFactory ? registeredFactory(options) : undefined;
 }

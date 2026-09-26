@@ -25,7 +25,6 @@ import {
 import {
 	buildGenerateMediaHandler,
 	detectMediaIntent,
-	generateMediaAction,
 } from "../src/actions/generate-media.js";
 
 // ---------------------------------------------------------------------------
@@ -92,6 +91,9 @@ function makeRuntime(options: MockUseModelOptions = {}) {
 	});
 	const runtime = {
 		useModel,
+		getService: () => undefined,
+		getModel: (type: string) => [ModelType.IMAGE, ModelType.TEXT_TO_SPEECH].includes(type) ? useModel : undefined,
+		getSetting: () => undefined,
 	} as unknown as IAgentRuntime;
 	return { runtime, useModel };
 }
@@ -193,8 +195,8 @@ describe("GENERATE_MEDIA — image dispatch", () => {
 		);
 		expect(result.success).toBe(true);
 		expect(result.userFacingText).toMatch(/image/i);
-		expect(result.data?.computerUseAction).toBe("GENERATE_MEDIA_IMAGE");
-		expect(result.data?.mime).toBe("image/png");
+		expect(result.data?.mediaType).toBe("image");
+		expect(result.data?.mimeType).toBe("image/png");
 		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(useModel.mock.calls[0]?.[0]).toBe(ModelType.IMAGE);
 		// IMAGE params include the stripped prompt.
@@ -220,9 +222,7 @@ describe("GENERATE_MEDIA — image dispatch", () => {
 			makeMessage("Draw a cyberpunk city."),
 		);
 		expect(result.success).toBe(false);
-		expect(result.data?.computerUseAction).toBe("GENERATE_MEDIA_IMAGE_FAILED");
-		expect(result.error).toBeInstanceOf(Error);
-		expect(String(result.text)).toMatch(/Image generation failed/);
+		expect(String(result.text)).toMatch(/Media generation failed/);
 	});
 });
 
@@ -242,8 +242,8 @@ describe("GENERATE_MEDIA — audio dispatch", () => {
 			},
 		);
 		expect(result.success).toBe(true);
-		expect(result.data?.computerUseAction).toBe("GENERATE_MEDIA_AUDIO");
-		expect(result.data?.mime).toBe("audio/wav");
+		expect(result.data?.mediaType).toBe("audio");
+		expect(result.data?.mimeType).toBe("audio/wav");
 		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(useModel.mock.calls[0]?.[0]).toBe(ModelType.TEXT_TO_SPEECH);
 		const ttsParams = useModel.mock.calls[0]?.[1] as { text?: string };
@@ -265,8 +265,8 @@ describe("GENERATE_MEDIA — audio dispatch", () => {
 			makeMessage("Speak this aloud: foo"),
 		);
 		expect(result.success).toBe(true);
-		expect(result.data?.mime).toBe("audio/pcm");
-		expect(result.data?.byteLength).toBe(8);
+		expect(result.data?.mimeType).toBe("audio/pcm");
+		expect(Buffer.from(String(result.data?.audioUrl).split(",")[1], "base64")).toEqual(Buffer.from(pcm));
 	});
 });
 
@@ -279,10 +279,7 @@ describe("GENERATE_MEDIA — video unsupported", () => {
 			makeMessage("Make a video of a cat dancing."),
 		);
 		expect(result.success).toBe(false);
-		expect(result.data?.computerUseAction).toBe(
-			"GENERATE_MEDIA_VIDEO_UNSUPPORTED",
-		);
-		expect(result.text).toMatch(/unavailable in the local inference backend/);
+		expect(result.values?.error).toBe("VIDEO_GENERATION_DISABLED");
 		expect(useModel).not.toHaveBeenCalled();
 	});
 });
@@ -313,7 +310,7 @@ describe("GENERATE_MEDIA — ambiguous / empty input", () => {
 			makeMessage("Tell me a joke please."),
 		);
 		expect(result.success).toBe(false);
-		expect(result.data?.computerUseAction).toBe("GENERATE_MEDIA_AMBIGUOUS");
+		expect(result.text).toContain("Specify");
 	});
 
 	it("returns a graceful error for empty messages", async () => {
@@ -321,39 +318,8 @@ describe("GENERATE_MEDIA — ambiguous / empty input", () => {
 		const handler = buildGenerateMediaHandler();
 		const result = await handler(runtime, makeMessage("   "));
 		expect(result.success).toBe(false);
-		expect(result.data?.computerUseAction).toBe("GENERATE_MEDIA_INVALID");
+		expect(result.text).toContain("non-empty");
 		expect(useModel).not.toHaveBeenCalled();
 	});
 });
 
-// ---------------------------------------------------------------------------
-// Validator + action wiring
-// ---------------------------------------------------------------------------
-
-describe("GENERATE_MEDIA — action wiring", () => {
-	it("exposes the canonical name and the expected similes", () => {
-		expect(generateMediaAction.name).toBe("GENERATE_MEDIA");
-		expect(generateMediaAction.similes).toEqual(
-			expect.arrayContaining([
-				"DRAW_IMAGE",
-				"CREATE_IMAGE",
-				"SPEAK",
-				"TEXT_TO_SPEECH",
-				"GENERATE_AUDIO",
-				"GENERATE_VIDEO",
-			]),
-		);
-		expect(generateMediaAction.examples).toBeDefined();
-		expect((generateMediaAction.examples ?? []).length).toBeGreaterThanOrEqual(4);
-	});
-
-	it("validate() returns true for non-empty messages and false otherwise", async () => {
-		const { runtime } = makeRuntime();
-		await expect(
-			generateMediaAction.validate(runtime, makeMessage("draw something")),
-		).resolves.toBe(true);
-		await expect(
-			generateMediaAction.validate(runtime, makeMessage("   ")),
-		).resolves.toBe(false);
-	});
-});

@@ -1,164 +1,140 @@
 {
   "name": "@elizaos/auth",
   "version": "2.0.3-beta.7",
-  "description": "Leaf auth package for Eliza agents: account credential storage, OAuth/subscription flows, direct-API-key probing, and refresh coordination. Sits below @elizaos/agent and @elizaos/app-core so both consume it without a dependency cycle.",
+  "description": "Browser login, identity sessions, Node account authentication and encrypted credential storage for elizaOS.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/elizaOS/eliza",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/auth"
   },
-  "keywords": [
-    "elizaos",
-    "auth",
-    "credentials",
-    "oauth"
-  ],
-  "engines": {
-    "node": ">=24.0.0"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/sdk/index.js",
+  "types": "./dist/sdk/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
-      "bun": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "eliza-source": "./src/sdk/index.ts",
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js",
+      "default": "./dist/sdk/index.js"
     },
     "./package.json": "./package.json",
-    "./account-storage": {
-      "types": "./dist/account-storage.d.ts",
-      "eliza-source": {
-        "types": "./src/account-storage.ts",
-        "import": "./src/account-storage.ts",
-        "default": "./src/account-storage.ts"
-      },
-      "bun": {
-        "types": "./src/account-storage.ts",
-        "import": "./src/account-storage.ts",
-        "default": "./src/account-storage.ts"
-      },
-      "import": "./dist/account-storage.js",
-      "default": "./dist/account-storage.js"
+    "./server": {
+      "eliza-source": "./src/server/app.ts",
+      "types": "./dist/server/app.d.ts",
+      "import": "./dist/server/app.js"
     },
-    "./anthropic": {
-      "types": "./dist/anthropic.d.ts",
-      "eliza-source": "./src/anthropic.ts",
-      "bun": "./src/anthropic.ts",
-      "import": "./dist/anthropic.js",
-      "default": "./dist/anthropic.js"
+    "./embedded": {
+      "eliza-source": "./src/server/embedded.ts",
+      "types": "./dist/server/embedded.d.ts",
+      "import": "./dist/server/embedded.js"
     },
-    "./codex-usage": {
-      "types": "./dist/codex-usage.d.ts",
-      "eliza-source": "./src/codex-usage.ts",
-      "bun": "./src/codex-usage.ts",
-      "import": "./dist/codex-usage.js",
-      "default": "./dist/codex-usage.js"
+    "./start": {
+      "eliza-source": "./src/server/start.ts",
+      "types": "./dist/server/start.d.ts",
+      "import": "./dist/server/start.js"
+    },
+    "./auth": {
+      "eliza-source": "./src/auth/index.ts",
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js",
+      "default": "./dist/auth/index.js"
+    },
+    "./vault": {
+      "eliza-source": "./src/vault/index.ts",
+      "types": "./dist/vault/index.d.ts",
+      "import": "./dist/vault/index.js",
+      "default": "./dist/vault/index.js"
+    },
+    "./auth/*": {
+      "eliza-source": "./src/auth/*.ts",
+      "types": "./dist/auth/*.d.ts",
+      "import": "./dist/auth/*.js",
+      "default": "./dist/auth/*.js"
+    },
+    "./vault/*": {
+      "eliza-source": "./src/vault/*.ts",
+      "types": "./dist/vault/*.d.ts",
+      "import": "./dist/vault/*.js",
+      "default": "./dist/vault/*.js"
+    },
+    "./kms": {
+      "eliza-source": "./src/kms/index.ts",
+      "types": "./dist/kms/index.d.ts",
+      "import": "./dist/kms/index.js",
+      "default": "./dist/kms/index.js"
     },
     "./credentials": {
-      "types": "./dist/credentials.d.ts",
-      "eliza-source": "./src/credentials.ts",
-      "bun": "./src/credentials.ts",
-      "import": "./dist/credentials.js",
-      "default": "./dist/credentials.js"
-    },
-    "./direct-api-probe": {
-      "types": "./dist/direct-api-probe.d.ts",
-      "eliza-source": "./src/direct-api-probe.ts",
-      "bun": "./src/direct-api-probe.ts",
-      "import": "./dist/direct-api-probe.js",
-      "default": "./dist/direct-api-probe.js"
-    },
-    "./oauth-flow": {
-      "types": "./dist/oauth-flow.d.ts",
-      "eliza-source": "./src/oauth-flow.ts",
-      "bun": "./src/oauth-flow.ts",
-      "import": "./dist/oauth-flow.js",
-      "default": "./dist/oauth-flow.js"
-    },
-    "./openai-codex": {
-      "types": "./dist/openai-codex.d.ts",
-      "eliza-source": "./src/openai-codex.ts",
-      "bun": "./src/openai-codex.ts",
-      "import": "./dist/openai-codex.js",
-      "default": "./dist/openai-codex.js"
-    },
-    "./refresh-mutex": {
-      "types": "./dist/refresh-mutex.d.ts",
-      "eliza-source": "./src/refresh-mutex.ts",
-      "bun": "./src/refresh-mutex.ts",
-      "import": "./dist/refresh-mutex.js",
-      "default": "./dist/refresh-mutex.js"
-    },
-    "./subscription-auth/adopt-codex-cli-login": {
-      "types": "./dist/subscription-auth/adopt-codex-cli-login.d.ts",
-      "eliza-source": "./src/subscription-auth/adopt-codex-cli-login.ts",
-      "bun": "./src/subscription-auth/adopt-codex-cli-login.ts",
-      "import": "./dist/subscription-auth/adopt-codex-cli-login.js",
-      "default": "./dist/subscription-auth/adopt-codex-cli-login.js"
-    },
-    "./token-expiry": {
-      "types": "./dist/token-expiry.d.ts",
-      "eliza-source": "./src/token-expiry.ts",
-      "bun": "./src/token-expiry.ts",
-      "import": "./dist/token-expiry.js",
-      "default": "./dist/token-expiry.js"
-    },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "eliza-source": "./src/types.ts",
-      "bun": "./src/types.ts",
-      "import": "./dist/types.js",
-      "default": "./dist/types.js"
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "build": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/auth",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check --write src",
-    "lint:check": "bunx @biomejs/biome check src",
-    "format": "bunx @biomejs/biome format --write src",
-    "format:check": "bunx @biomejs/biome format src"
+    "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.ts packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/auth",
+    "test": "bun run build && bun run test:credentials && bun run test:login",
+    "test:watch": "node ../scripts/run-vitest.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.vault.json && tsc --noEmit -p tsconfig.login.json",
+    "lint": "biome check src test scripts",
+    "lint:check": "biome check src test scripts",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "start:embedded": "bun src/server/embedded.ts",
+    "start": "bun src/server/start.ts",
+    "test:railpack": "bun test test/login/railpack-runtime.test.ts",
+    "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
+    "test:credentials": "node ../scripts/run-vitest.ts run",
+    "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/vault": "workspace:*"
+    "@electric-sql/pglite": "^0.4.2",
+    "@napi-rs/keyring": "^1.1.6",
+    "bs58": "^6.0.0",
+    "@simplewebauthn/browser": "^13.0.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "0.45.2",
+    "postgres": "^3.4.7",
+    "@upstash/redis": "^1.34.3",
+    "ioredis": "^5.6.1",
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.7.0",
+    "@scure/bip32": "^1.6.0",
+    "@scure/bip39": "^1.6.0",
+    "@scure/btc-signer": "^2.2.0",
+    "@solana/web3.js": "^1",
+    "viem": "^2.30.0",
+    "@aws-sdk/client-kms": "^3.1136.0",
+    "graphene-pk11": "^2.2.0",
+    "hono": "^4.13.8",
+    "jose": "^6.2.1",
+    "siwe": "^3.0.0",
+    "@node-saml/node-saml": "5.1.0",
+    "@simplewebauthn/server": "^13",
+    "resend": "^6.9.4"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
-  },
-  "publishConfig": {
-    "access": "public",
-    "directory": "dist"
+    "vitest": "^5.0.1",
+    "@types/bun": "1.4.2",
+    "@playwright/test": "^1.63.0"
   },
   "elizaos": {
     "scripts": {
       "testLanes": [
         "server"
-      ]
+      ],
+      "coreBuild": true
     }
   }
 }

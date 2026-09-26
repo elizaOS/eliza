@@ -158,31 +158,43 @@ export async function createBlockRuleHarness(
       taskWorkers.set(worker.name, worker);
     },
     getTaskWorker: (name: string) => taskWorkers.get(name) ?? null,
-    getTasks: async (params?: { tags?: string[] }) => {
-      const wanted = params?.tags ?? [];
-      return [...tasks.values()].filter((task) =>
-        wanted.every((tag) => task.tags?.includes(tag)),
-      );
-    },
-    getTask: async (id: UUID) => tasks.get(id) ?? null,
-    createTask: async (task: Omit<Task, "id"> & { id?: UUID }) => {
-      taskCounter += 1;
-      const id =
-        task.id ??
-        (`00000000-0000-0000-0000-${String(taskCounter).padStart(12, "0")}` as UUID);
-      tasks.set(id, { ...task, id, updatedAt: Date.now() } as Task);
-      return id;
-    },
-    updateTask: async (id: UUID, patch: Partial<Task>) => {
-      const existing = tasks.get(id);
-      if (!existing) {
-        throw new Error(`[BlockRuleTestHarness] task ${id} not found`);
-      }
-      tasks.set(id, { ...existing, ...patch, id });
-    },
-    deleteTask: async (id: UUID) => {
-      tasks.delete(id);
-    },
+    ...({
+      getTasks: async (params?: { tags?: string[] }) => {
+        const wanted = params?.tags ?? [];
+        return [...tasks.values()].filter((task) =>
+          wanted.every((tag) => task.tags?.includes(tag)),
+        );
+      },
+      getTask: async (id: UUID) => tasks.get(id) ?? null,
+      createTask: async (task: Omit<Task, "id"> & { id?: UUID }) => {
+        taskCounter += 1;
+        const id =
+          task.id ??
+          (`00000000-0000-0000-0000-${String(taskCounter).padStart(12, "0")}` as UUID);
+        tasks.set(id, { ...task, id, updatedAt: Date.now() } as Task);
+        return id;
+      },
+      // The Map store has no atomic adapter; retain TaskService fallback persistence.
+      patchTaskMetadata: async () => "unsupported",
+      updateTask: async (id: UUID, patch: Partial<Task>) => {
+        const existing = tasks.get(id);
+        if (!existing) {
+          throw new Error(`[BlockRuleTestHarness] task ${id} not found`);
+        }
+        tasks.set(id, { ...existing, ...patch, id });
+      },
+      deleteTask: async (id: UUID) => {
+        tasks.delete(id);
+      },
+    } satisfies Pick<
+      IAgentRuntime,
+      | "getTasks"
+      | "getTask"
+      | "createTask"
+      | "patchTaskMetadata"
+      | "updateTask"
+      | "deleteTask"
+    >),
   } as unknown as IAgentRuntime;
 
   return {

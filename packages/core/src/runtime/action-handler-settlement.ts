@@ -9,14 +9,6 @@
 
 import { ElizaError } from "../errors";
 import { runWithSuppressedModelStream } from "../streaming-context";
-import type {
-	Action,
-	ActionResult,
-	Content,
-	HandlerCallback,
-	IAgentRuntime,
-	Memory,
-} from "../types";
 import {
 	type ActionFailureProvenance,
 	normalizeActionFailureProvenance,
@@ -26,6 +18,11 @@ import {
 	applyGroundedActionReply,
 	normalizeActionReplyFailure,
 } from "../types/action-reply";
+import type {
+	Action,
+	ActionResult,
+	HandlerCallback,
+} from "../types/components.js";
 import {
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
@@ -34,6 +31,13 @@ import {
 	tagsMayProduceEffects,
 	tagsRequireEffectReceipts,
 } from "../types/effects";
+import type { Memory } from "../types/memory.js";
+import type { Content } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import {
+	isProviderContextOverflowFailure,
+	PROVIDER_CONTEXT_OVERFLOW,
+} from "../utils/model-errors";
 import { bindEffectDelivery } from "./effect-delivery";
 
 type BufferedActionCallback = {
@@ -48,6 +52,8 @@ export interface SettleActionHandlerOptions {
 	runtime: IAgentRuntime;
 	action: Action;
 	callback?: HandlerCallback;
+	/** Executor-owned observation after normalization, before buffered delivery. */
+	beforeCallbacks?: (result: ActionResult) => void;
 	invoke: (callback?: HandlerCallback) => unknown | Promise<unknown>;
 	/**
 	 * Retry-owning callers need the original exception. Top-level executors use
@@ -90,36 +96,22 @@ function markCanonicalCallback(
 	return { ...response, agentVoiced: true };
 }
 
-/** Convert legacy handler returns into the canonical ActionResult shape. */
+/** Validate a handler result and bind it to the executing action. */
 export function normalizeActionResult(
 	actionName: string,
 	result: unknown,
 ): ActionResult {
-	if (result === undefined || result === null || typeof result === "boolean") {
-		return {
-			success: result !== false,
-			data: { actionName },
-		};
-	}
 	if (!isObjectRecord(result)) {
-		if (result instanceof Error || typeof result === "object") {
-			return invalidActionResult(
-				"Action handlers must return a plain ActionResult object, boolean, primitive text, null, or undefined.",
-			);
-		}
-		return {
-			success: true,
-			text: String(result),
-			data: { actionName },
-		};
-	}
-
-	const rawResult = result as unknown as ActionResult;
-	if ("success" in rawResult && typeof rawResult.success !== "boolean") {
 		return invalidActionResult(
-			"ActionResult.success must be a boolean when present.",
+			"Action handlers must return a plain ActionResult object.",
 		);
 	}
+	if (typeof result.success !== "boolean") {
+		return invalidActionResult(
+			"ActionResult.success must be an explicit boolean.",
+		);
+	}
+	const rawResult = result as unknown as ActionResult;
 	const resultData = isObjectRecord(rawResult.data) ? rawResult.data : {};
 	const effectReceipts =
 		rawResult.effectReceipts === undefined
@@ -143,7 +135,7 @@ export function normalizeActionResult(
 
 	const normalized: ActionResult = {
 		...rawResult,
-		success: "success" in rawResult ? rawResult.success : true,
+		success: rawResult.success,
 		...(effectReceipts !== undefined ? { effectReceipts } : {}),
 		...(userFacingEffectReceiptIds !== undefined
 			? { userFacingEffectReceiptIds }
@@ -378,18 +370,25 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
-		const failureProvenance =
-			readActionFailureProvenance(error) ??
-			({
-				kind: "handler_error",
-				boundary: "handler",
-				code: "ACTION_HANDLER_FAILED",
-				retryable: true,
-			} satisfies ActionFailureProvenance);
+		const contextOverflow = isProviderContextOverflowFailure(error);
+		const failureProvenance = contextOverflow
+			? ({
+					kind: "handler_error",
+					boundary: "handler",
+					code: PROVIDER_CONTEXT_OVERFLOW,
+					retryable: false,
+				} satisfies ActionFailureProvenance)
+			: (readActionFailureProvenance(error) ??
+				({
+					kind: "handler_error",
+					boundary: "handler",
+					code: "ACTION_HANDLER_FAILED",
+					retryable: true,
+				} satisfies ActionFailureProvenance));
 		return actionFailureResult(
 			options.action.name,
 			stringifyActionError(error),
-			{ error },
+			{ error, ...(contextOverflow ? { retryable: false } : {}) },
 			failureProvenance,
 		);
 	}
@@ -454,6 +453,8 @@ export async function settleActionHandler(
 			},
 		);
 	}
+
+	options.beforeCallbacks?.(settledResult);
 
 	// No action-owned prose is an acceptable substitute for unavailable model
 	// presentation. Keep the settled effect and let the turn emit system status.

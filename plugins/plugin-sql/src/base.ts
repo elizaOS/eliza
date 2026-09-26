@@ -14,9 +14,12 @@ import {
   type AgentRunSummary,
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
+  type AtomicMemoryPublicationParams,
+  type AtomicMemoryPublicationResult,
   actorFromAccessContext,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
+  authorizeMessageContentRead,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -26,12 +29,14 @@ import {
   type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
+  canonicalAttachmentText,
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
   type DeleteConnectorAccountCredentialRefsParams,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
   type DocumentDirectGrantUpdateParams,
@@ -50,10 +55,12 @@ import {
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
+  encodeCacheCasValue,
   encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
   getWorldMetadataRevision,
+  hashAttachmentIdForLocator,
   type IDatabaseAdapter,
   initializeWorldMetadataRevision,
   type JsonValue,
@@ -62,8 +69,14 @@ import {
   type Log,
   type LogBody,
   logger,
+  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
   type Memory,
   type MemoryMetadata,
+  type MessageContentPublicationParams,
+  type MessageContentPublicationResult,
+  type MessageContentRangeReadParams,
+  type MessageContentRangeReadResult,
   type MessageSearchHit,
   type Metadata,
   normalizePairingPageOptions,
@@ -80,14 +93,21 @@ import {
   type ParticipantUpdateFields,
   type ParticipantUserState,
   type PatchOp,
+  portableDocumentSearchTokens,
   type Relationship,
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   type RunStatus,
+  readDocumentSourceProjection,
+  readMessageContentProjection,
+  requireDocumentSourceReadMetadata,
   requireFreshWorldMetadataRevision,
+  rerankMemories,
+  resolveMessageContentSourceDescriptor,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
+  type TaskMetadataPatch,
   type UpsertConnectorAccountParams,
   type UUID,
   validateDocumentDirectGrantEntityIds,
@@ -102,13 +122,14 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject, serializeJsonb } from "./sanitize-json";
+import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
   serializeTaskDueAt,
   TaskTimingValidationError,
   taskMetadataForWrite,
+  taskMetadataPatchForWrite,
 } from "./stores/task-timing";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
@@ -315,6 +336,7 @@ function memoryAccessContextConditions(
 }
 
 const DOCUMENT_UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+const DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE = 250;
 
 function validDocumentRevision(metadata: SQLWrapper): SQL {
   return sql`(
@@ -385,7 +407,6 @@ function documentDirectGrantCondition(
 ): SQL {
   if (
     params.requesterRole === "UNRESOLVED" ||
-    params.requesterRole === "GUEST" ||
     documentRoleHasGlobalVisibility(params.requesterRole)
   ) {
     return sql`false`;
@@ -436,7 +457,10 @@ function documentVisibilityCondition(
   if (params.requesterRole === "GUEST") {
     return sql`(
       ${validAuthorizationMetadata}
-      AND ${metadata}->>'scope' = 'global'
+      AND (
+        ${metadata}->>'scope' = 'global'
+        OR ${documentDirectGrantCondition(params, metadata)}
+      )
     )`;
   }
   return sql`(
@@ -546,34 +570,32 @@ function isDuplicateKeyError(error: unknown): boolean {
 import { documentsFromDb } from "./agent-mapping";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
-import {
-  agentTable,
-  cacheTable,
-  channelParticipantsTable,
-  channelTable,
-  componentTable,
-  embeddingTable,
-  entityTable,
-  logTable,
-  memoryTable,
-  messageServerAgentsTable,
-  messageServerTable,
-  messageTable,
-  pairingAllowlistTable,
-  pairingRequestTable,
-  participantTable,
-  relationshipTable,
-  roomTable,
-  taskTable,
-  worldTable,
-} from "./schema/index";
-import { documentSearchTokensExpression } from "./schema/memory";
+import { agentTable } from "./schema/agent";
+import { cacheTable } from "./schema/cache";
+import { channelTable } from "./schema/channel";
+import { channelParticipantsTable } from "./schema/channelParticipant";
+import { componentTable } from "./schema/component";
+import { DIMENSION_MAP, type EmbeddingDimensionColumn, embeddingTable } from "./schema/embedding";
+import { entityTable } from "./schema/entity";
+import { logTable } from "./schema/log";
+import { documentSearchTokensExpression, memoryTable } from "./schema/memory";
+import { messageTable } from "./schema/message";
+import { messageServerTable } from "./schema/messageServer";
+import { messageServerAgentsTable } from "./schema/messageServerAgent";
+import { pairingAllowlistTable } from "./schema/pairingAllowlist";
+import { pairingRequestTable } from "./schema/pairingRequest";
+import { participantTable } from "./schema/participant";
+import { relationshipTable } from "./schema/relationship";
+import { roomTable } from "./schema/room";
+import { taskTable } from "./schema/tasks";
+import { worldTable } from "./schema/world";
 
 type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
 type MemoryRow = typeof memoryTable.$inferSelect;
+
+class AtomicMemoryPublicationConflict extends Error {}
 
 function memoryFromRow(row: MemoryRow, embedding?: number[], similarity?: number): Memory {
   return {
@@ -656,6 +678,7 @@ function mapAgentRow(row: AgentRow): Agent {
   };
 }
 
+import { EMBEDDING_WRITE_FENCE_STATEMENTS, embeddingSpaceCondition } from "./embedding-space";
 import {
   ConnectorAccountStore,
   type ListConnectorAccountAuditEventsParams,
@@ -663,26 +686,38 @@ import {
 import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
+/**
+ * ISO-8601 form of a relationship row's `created_at`, which the schema declares
+ * NOT NULL; a row without a usable value is a storage fault, not a fresh row.
+ */
+function relationshipRowCreatedAt(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+    return new Date(value).toISOString();
+  }
+  throw new ElizaError("relationship row has no usable created_at", {
+    code: "RELATIONSHIP_ROW_INVALID",
+    context: { createdAt: value },
+  });
+}
+
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
+  readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
-  readonly documentRangeReadCapability = 1 as const;
+  readonly documentRangeReadCapability = 2 as const;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
   protected readonly jitterMax: number = 1000;
+  protected embeddingSpace: string | null = null;
+  private requestedEmbeddingSpace: string | null = null;
+  private embeddingSpaceActivation: Promise<UUID[]> | null = null;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   protected readonly databaseBackend: DatabaseBackend = "unknown";
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private readonly migratedSchemaEntries = new Map<string, Map<string, unknown>>();
-  private transactionWrites?: Array<() => void>;
   private transactionEntityContext?: UUID | null;
-
-  /** Defers external write publication until the outermost SQL transaction commits. */
-  protected publishCommittedWrite(write: () => void): void {
-    if (this.transactionWrites) this.transactionWrites.push(write);
-    else write();
-  }
 
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
@@ -702,6 +737,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         ) => this.withEntityContext(entityId, callback),
         agentId: this.agentId,
         getEmbeddingDimension: () => this.embeddingDimension,
+        getEmbeddingSpace: () => this.embeddingSpace,
       };
       this._connectorAccountStore = new ConnectorAccountStore(ctx);
     }
@@ -887,7 +923,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return await operation();
       } catch (error) {
         if (error instanceof TaskTimingValidationError) throw error;
-        if (error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE") {
+        if (
+          error instanceof ElizaError &&
+          (error.code === "WORLD_METADATA_STALE_WRITE" || error.code === "CACHE_CAS_FAILED")
+        ) {
           throw error;
         }
         lastError = error as Error;
@@ -933,6 +972,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
    */
   async ensureEmbeddingDimension(dimension: number) {
+    if (
+      (this.embeddingSpace !== null || this.embeddingSpaceActivation !== null) &&
+      dimension !== Number(this.embeddingDimension.replace("dim", ""))
+    ) {
+      throw new ElizaError(
+        "Restart the runtime before changing a named embedding representation's dimension",
+        { code: "EMBEDDING_SPACE_CHANGED" }
+      );
+    }
     return this.withDatabase(async () => {
       const resolvedDimension = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
       if (!resolvedDimension) {
@@ -1045,6 +1093,69 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   }
 
+  /** Activate a named representation without adopting or deleting unversioned vectors. */
+  async ensureEmbeddingSpace(spaceId: string): Promise<UUID[]> {
+    if (!spaceId.trim() || spaceId !== spaceId.trim()) {
+      throw new ElizaError("Embedding representation must have a non-empty canonical identifier", {
+        code: "EMBEDDING_SPACE_INVALID",
+      });
+    }
+    const selected = this.embeddingSpace ?? this.requestedEmbeddingSpace;
+    if (selected !== null && selected !== spaceId) {
+      throw new ElizaError("Restart the runtime before changing its embedding representation", {
+        code: "EMBEDDING_SPACE_CHANGED",
+      });
+    }
+    if (this.embeddingSpaceActivation !== null) return this.embeddingSpaceActivation;
+    this.requestedEmbeddingSpace = spaceId;
+    const activation = this.activateEmbeddingSpace(spaceId);
+    this.embeddingSpaceActivation = activation;
+    try {
+      return await activation;
+    } catch (error) {
+      // error-policy:J2 Preserve migration failures so callers stop embedding use until activation succeeds.
+      throw new ElizaError(
+        "Embedding representation activation failed; complete database migrations before retrying",
+        {
+          code: "EMBEDDING_SPACE_ACTIVATION_FAILED",
+          cause: error,
+          context: { agentId: this.agentId, spaceId },
+        }
+      );
+    } finally {
+      this.embeddingSpaceActivation = null;
+      this.requestedEmbeddingSpace = null;
+    }
+  }
+
+  private async activateEmbeddingSpace(spaceId: string): Promise<UUID[]> {
+    const missing = await this.withDatabase(() =>
+      this.db.transaction(async (tx) => {
+        for (const statement of EMBEDDING_WRITE_FENCE_STATEMENTS) await tx.execute(statement);
+        return tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .leftJoin(
+            embeddingTable,
+            and(
+              eq(embeddingTable.memoryId, memoryTable.id),
+              embeddingSpaceCondition(spaceId),
+              isNotNull(embeddingTable[this.embeddingDimension])
+            )
+          )
+          .where(
+            and(
+              eq(memoryTable.agentId, this.agentId),
+              isNull(embeddingTable.id),
+              sql`${memoryTable.content}->>'text' IS NOT NULL AND ${memoryTable.content}->>'text' <> ''`
+            )
+          );
+      })
+    );
+    this.embeddingSpace = spaceId;
+    return missing.map((row) => row.id as UUID);
+  }
+
   /**
    * Delete every embedding row whose vector lives in a dimension column other
    * than the currently-active one, returning the ids of the memories left
@@ -1068,6 +1179,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .delete(embeddingTable)
         .where(
           and(
+            embeddingSpaceCondition(this.embeddingSpace),
             isNull(embeddingTable[this.embeddingDimension]),
             inArray(embeddingTable.memoryId, agentMemoryIds)
           )
@@ -1725,8 +1837,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // Build a condition to match any of the names
       const nameConditions = names.map((name) => sql`${name} = ANY(${entityTable.names})`);
 
+      // Alias snake_case driver columns to the camelCase Entity DTO keys.
+      // `db.execute` returns raw driver rows (e.g. `agent_id`), so a bare
+      // `SELECT *` would leave the required `agentId` field undefined. This
+      // mirrors the document-list query's `agent_id AS "agentId"` precedent.
       const query = sql`
-        SELECT * FROM ${entityTable}
+        SELECT
+          ${entityTable.id} AS "id",
+          ${entityTable.agentId} AS "agentId",
+          ${entityTable.names} AS "names",
+          ${entityTable.metadata} AS "metadata"
+        FROM ${entityTable}
         WHERE ${entityTable.agentId} = ${agentId}
         AND (${sql.join(nameConditions, sql` OR `)})
       `;
@@ -1774,9 +1895,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }));
       }
 
-      // Otherwise, search for entities with names containing the query (case-insensitive)
+      // Otherwise, search for entities with names containing the query (case-insensitive).
+      // Alias snake_case driver columns to the camelCase Entity DTO keys so the
+      // required `agentId` survives `db.execute`, matching the empty-query
+      // Drizzle-builder branch above and the document-list query precedent.
       const searchQuery = sql`
-        SELECT * FROM ${entityTable}
+        SELECT
+          ${entityTable.id} AS "id",
+          ${entityTable.agentId} AS "agentId",
+          ${entityTable.names} AS "names",
+          ${entityTable.metadata} AS "metadata"
+        FROM ${entityTable}
         WHERE ${entityTable.agentId} = ${agentId}
         AND EXISTS (
           SELECT 1 FROM unnest(${entityTable.names}) AS name
@@ -1943,6 +2072,299 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  async publishMessageContentSegments(
+    params: MessageContentPublicationParams
+  ): Promise<MessageContentPublicationResult> {
+    const agentId = params.mode === "create" ? params.parent.agentId : params.agentId;
+    if (!agentId) {
+      throw new ElizaError("Message content publication requires an agent ID", {
+        code: "MESSAGE_CONTENT_INVALID_PUBLICATION",
+      });
+    }
+    const messageId = params.mode === "create" ? params.parent.id : params.messageId;
+    for (const segment of params.segments) {
+      const metadata = segment.metadata as Record<string, unknown> | undefined;
+      if (
+        !segment.id ||
+        segment.agentId !== agentId ||
+        metadata?.type !== "message-content-segment" ||
+        metadata.messageId !== messageId
+      ) {
+        throw new ElizaError("Message content segment identity is invalid", {
+          code: "MESSAGE_CONTENT_INVALID_PUBLICATION",
+          context: { messageId, segmentId: segment.id },
+        });
+      }
+    }
+    const entityContext = params.mode === "create" ? params.parent.entityId : agentId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      if (params.mode === "create") {
+        const ids = [params.parent.id, ...params.segments.map(({ id }) => id as UUID)];
+        const collision = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(inArray(memoryTable.id, ids))
+          .limit(1);
+        if (collision[0]) return { status: "conflict" };
+        for (let offset = 0; offset < params.segments.length; offset += 250) {
+          for (const segment of params.segments.slice(offset, offset + 250)) {
+            await this.insertMemoryInTransaction(
+              tx,
+              segment,
+              "message_content_segments",
+              segment.id as UUID,
+              true
+            );
+          }
+        }
+        // Manifest-last: no reader can resolve staged rows until this parent exists.
+        await this.insertMemoryInTransaction(tx, params.parent, "messages", params.parent.id, true);
+        return { status: "created", parent: params.parent, removedSegmentIds: [] };
+      }
+
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.id, params.messageId),
+            eq(memoryTable.agentId, params.agentId),
+            eq(memoryTable.type, "messages")
+          )
+        )
+        .for("update")
+        .limit(1);
+      if (!rows[0]) return { status: "not_found" };
+      const existing = memoryFromRow(rows[0]);
+      if (JSON.stringify(existing.content) !== JSON.stringify(params.expectedContent)) {
+        return { status: "conflict" };
+      }
+      const removed = new Set(params.removeSegmentIds.map(String));
+      for (let offset = 0; offset < params.segments.length; offset += 250) {
+        const ids = params.segments
+          .slice(offset, offset + 250)
+          .map(({ id }) => id as UUID)
+          .filter((id) => !removed.has(String(id)));
+        if (ids.length === 0) continue;
+        const collision = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(inArray(memoryTable.id, ids))
+          .limit(1);
+        if (collision[0]) {
+          throw new ElizaError("Message content segment id already exists", {
+            code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+            context: { messageId: params.messageId, segmentId: collision[0].id },
+          });
+        }
+      }
+      if (params.removeSegmentIds.length > 0) {
+        const removable = await tx
+          .select({ id: memoryTable.id, metadata: memoryTable.metadata })
+          .from(memoryTable)
+          .where(
+            and(
+              inArray(memoryTable.id, params.removeSegmentIds),
+              eq(memoryTable.agentId, params.agentId),
+              eq(memoryTable.type, "message_content_segments")
+            )
+          )
+          .for("update");
+        if (
+          removable.length !== params.removeSegmentIds.length ||
+          removable.some(
+            (row) =>
+              (row.metadata as Record<string, unknown> | null)?.messageId !== params.messageId
+          )
+        ) {
+          throw new ElizaError(
+            "Message content replacement cannot remove unrelated or missing segments",
+            {
+              code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+              context: { messageId: params.messageId },
+            }
+          );
+        }
+        const deleted = await tx
+          .delete(memoryTable)
+          .where(
+            and(
+              inArray(memoryTable.id, params.removeSegmentIds),
+              eq(memoryTable.agentId, params.agentId),
+              eq(memoryTable.type, "message_content_segments")
+            )
+          )
+          .returning();
+        if (deleted.length !== params.removeSegmentIds.length) {
+          throw new ElizaError("Message content replacement did not remove every old segment", {
+            code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+            context: {
+              messageId: params.messageId,
+              expected: params.removeSegmentIds.length,
+              deleted: deleted.length,
+            },
+          });
+        }
+      }
+      for (let offset = 0; offset < params.segments.length; offset += 250) {
+        for (const segment of params.segments.slice(offset, offset + 250)) {
+          await this.insertMemoryInTransaction(
+            tx,
+            segment,
+            "message_content_segments",
+            segment.id as UUID,
+            true
+          );
+        }
+      }
+      const updated = await tx
+        .update(memoryTable)
+        .set({ content: params.replacementContent })
+        .where(eq(memoryTable.id, params.messageId))
+        .returning();
+      if (updated.length !== 1) {
+        throw new ElizaError("Message content parent commit was incomplete", {
+          code: "MESSAGE_CONTENT_PARENT_UPDATE_INCOMPLETE",
+          context: { messageId: params.messageId },
+        });
+      }
+      return {
+        status: "updated",
+        parent: memoryFromRow(updated[0]),
+        removedSegmentIds: params.removeSegmentIds,
+      };
+    });
+  }
+
+  async readMessageContentRange(
+    params: MessageContentRangeReadParams
+  ): Promise<MessageContentRangeReadResult> {
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+    ) {
+      throw new ElizaError("Message content range is invalid", {
+        code: "MESSAGE_CONTENT_INVALID_RANGE",
+      });
+    }
+    return this.withEntityContext(params.accessContext.requesterEntityId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.id, params.messageId),
+            eq(memoryTable.agentId, params.agentId),
+            eq(memoryTable.roomId, params.authorizedRoomId),
+            eq(memoryTable.type, "messages")
+          )
+        )
+        .limit(1);
+      if (!rows[0]) return { status: "not_found" };
+      const parent = memoryFromRow(rows[0]);
+      const participant = await tx
+        .select({ id: participantTable.id })
+        .from(participantTable)
+        .where(
+          and(
+            eq(participantTable.roomId, params.authorizedRoomId),
+            eq(participantTable.entityId, params.accessContext.requesterEntityId)
+          )
+        )
+        .limit(1);
+      if (
+        !authorizeMessageContentRead({
+          parent,
+          authorizedRoomId: params.authorizedRoomId,
+          requester: params.accessContext,
+          agentId: params.agentId,
+          participantCurrent: participant.length === 1,
+          selector: params.source,
+        })
+      ) {
+        return { status: "forbidden" };
+      }
+      const descriptor = resolveMessageContentSourceDescriptor(parent.content, params.source);
+      if (!descriptor) {
+        let inline = "";
+        if (params.source.kind === "message-text") inline = parent.content.text ?? "";
+        else {
+          const attachment = (parent.content.attachments ?? []).find(
+            (item) => hashAttachmentIdForLocator(item.id) === params.source.attachmentIdHash
+          );
+          inline = attachment ? canonicalAttachmentText(attachment) : "";
+        }
+        if (new TextEncoder().encode(inline).length > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES) {
+          throw new ElizaError("Legacy content requires explicit segmented reindexing", {
+            code:
+              params.source.kind === "message-text"
+                ? "MESSAGE_REINDEX_REQUIRED"
+                : "ATTACHMENT_REINDEX_REQUIRED",
+            context: { messageId: params.messageId },
+          });
+        }
+        return { status: "inline", parent, text: inline };
+      }
+      if (params.offset > 0 && !params.expectedRevision) {
+        throw new ElizaError("Message content continuation requires a revision", {
+          code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
+        });
+      }
+      if (params.expectedRevision && params.expectedRevision !== descriptor.revision) {
+        throw new ElizaError("Message content changed before continuation", {
+          code: "MESSAGE_CONTENT_STALE_REVISION",
+          context: { messageId: params.messageId },
+        });
+      }
+      const requestedEnd = Math.min(params.offset + params.limit, descriptor.byteLength);
+      const startExpression = sql<number>`(${memoryTable.metadata}->>'byteStart')::bigint`;
+      const endExpression = sql<number>`(${memoryTable.metadata}->>'byteEnd')::bigint`;
+      const segmentRows =
+        params.offset === descriptor.byteLength
+          ? []
+          : await tx
+              .select()
+              .from(memoryTable)
+              .where(
+                and(
+                  eq(memoryTable.type, "message_content_segments"),
+                  eq(memoryTable.agentId, params.agentId),
+                  sql`${memoryTable.metadata}->>'type' = 'message-content-segment'`,
+                  sql`${memoryTable.metadata}->>'messageId' = ${params.messageId}`,
+                  sql`${memoryTable.metadata}->>'sourceKind' = ${params.source.kind}`,
+                  params.source.attachmentIdHash
+                    ? sql`${memoryTable.metadata}->>'attachmentIdHash' = ${params.source.attachmentIdHash}`
+                    : and(
+                        sql`NOT (${memoryTable.metadata} ? 'attachmentIdHash')`,
+                        sql`${memoryTable.metadata}->>'attachmentIdHash' IS NULL`
+                      ),
+                  sql`${memoryTable.metadata}->>'sourceRevision' = ${descriptor.revision}`,
+                  sql`${endExpression} > ${params.offset}`,
+                  sql`${startExpression} < ${requestedEnd}`
+                )
+              )
+              .orderBy(asc(endExpression))
+              .limit(MESSAGE_CONTENT_READ_MAX_SEGMENTS);
+      return {
+        status: "ok",
+        parent,
+        page: {
+          ...readMessageContentProjection({
+            descriptor,
+            segments: segmentRows.map((row) => memoryFromRow(row)),
+            messageId: params.messageId,
+            offset: params.offset,
+            limit: params.limit,
+          }),
+          sourceQueryCount: params.offset === descriptor.byteLength ? 2 : 3,
+        },
+      };
+    });
+  }
+
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
     validateDocumentListQueryParams(params);
     const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
@@ -1992,23 +2414,65 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           )}::jsonb`
         );
       }
+      if (params.pinnedOnly) {
+        availableConditions.push(sql`${memoryTable.metadata}->>'pinned' = 'true'`);
+      }
       const availableCondition =
         availableConditions.length > 0 ? and(...availableConditions) : sql`true`;
 
       const normalizedQuery = params.query?.trim();
       let queryCondition: SQL = sql`true`;
       if (normalizedQuery) {
-        queryCondition = sql`${documentSearchTokensExpression(
-          memoryTable.content,
-          memoryTable.metadata
-        )} @> regexp_split_to_array(
-          translate(
-            trim(${normalizedQuery}),
-            'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-            'abcdefghijklmnopqrstuvwxyz'
-          ),
-          E'[ \\t\\r\\n\\f]+'
-        )`;
+        const searchDocumentId = sql.raw('"document_search_candidate"."id"');
+        const searchDocumentType = sql.raw('"document_search_candidate"."type"');
+        const searchDocumentAgentId = sql.raw('"document_search_candidate"."agent_id"');
+        const searchDocumentContent = sql.raw('"document_search_candidate"."content"');
+        const searchDocumentMetadata = sql.raw('"document_search_candidate"."metadata"');
+        const searchSegmentType = sql.raw('"document_source_search_candidate"."type"');
+        const searchSegmentAgentId = sql.raw('"document_source_search_candidate"."agent_id"');
+        const searchSegmentContent = sql.raw('"document_source_search_candidate"."content"');
+        const searchSegmentMetadata = sql.raw('"document_source_search_candidate"."metadata"');
+        const queryLexemes = portableDocumentSearchTokens(normalizedQuery);
+        queryCondition =
+          and(
+            ...queryLexemes.map(
+              (lexeme) =>
+                sql`${memoryTable.id} IN (
+                SELECT ${searchDocumentId}
+                FROM ${memoryTable} AS document_search_candidate
+                WHERE ${searchDocumentType} = 'documents'
+                  AND ${searchDocumentAgentId} = ${params.agentId}
+                  AND ${searchDocumentMetadata}->>'type' = 'document'
+                  AND ${documentSearchTokensExpression(
+                    searchDocumentContent,
+                    searchDocumentMetadata
+                  )} @> ARRAY[${lexeme}]::text[]
+                UNION
+                SELECT ${searchDocumentId}
+                FROM ${memoryTable} AS document_search_candidate
+                INNER JOIN ${memoryTable} AS document_source_search_candidate
+                  ON ${searchSegmentAgentId} = ${searchDocumentAgentId}
+                  AND ${searchSegmentMetadata}->>'documentId' = ${searchDocumentId}::text
+                  AND ${documentRevisionExpression(searchSegmentMetadata)}
+                    = ${documentRevisionExpression(searchDocumentMetadata)}
+                  AND (
+                    NOT (${searchDocumentMetadata} ? 'revisionAttemptId')
+                    OR ${searchSegmentMetadata}->>'revisionAttemptId'
+                      = ${searchDocumentMetadata}->>'revisionAttemptId'
+                  )
+                WHERE ${searchDocumentType} = 'documents'
+                  AND ${searchDocumentAgentId} = ${params.agentId}
+                  AND ${searchDocumentMetadata}->>'type' = 'document'
+                  AND ${searchSegmentType} = 'document_fragments'
+                  AND ${searchSegmentMetadata}->>'type' = 'fragment'
+                  AND ${searchSegmentMetadata}->>'fragmentRole' = 'source-segment'
+                  AND ${documentSearchTokensExpression(
+                    searchSegmentContent,
+                    searchSegmentMetadata
+                  )} @> ARRAY[${lexeme}]::text[]
+              )`
+            )
+          ) ?? sql`false`;
       }
 
       type DocumentRow = {
@@ -2351,100 +2815,92 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<DocumentRangeReadResult | null> {
     validateDocumentRequesterContext(params);
     if (
+      !(["line", "fragment", "byte"] as const).includes(params.unit) ||
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
-      (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit < 1))
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
     ) {
-      throw new ElizaError(
-        "Document range read requires a non-negative offset and positive limit",
-        {
-          code: "DOCUMENT_READ_INVALID_RANGE",
-        }
-      );
+      throw new ElizaError("Document range read requires a bounded safe-integer range", {
+        code: "DOCUMENT_READ_INVALID_RANGE",
+      });
     }
     const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
-      const linePattern = "([^\\r\\n]*(?:\\r\\n|\\r|\\n)|[^\\r\\n]+$)";
-      const units =
-        params.unit === "line"
-          ? sql`line_units AS (
-              SELECT matched[1] AS unit_text, ordinal - 1 AS unit_index
-              FROM authorized
-              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
-                WITH ORDINALITY AS matches(matched, ordinal)
-            )`
-          : sql`raw_lines AS (
-              SELECT matched[1] AS unit_text, ordinal - 1 AS line_index
-              FROM authorized
-              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
-                WITH ORDINALITY AS matches(matched, ordinal)
-            ), grouped_lines AS (
-              SELECT unit_text, line_index,
-                COALESCE(SUM(
-                  CASE WHEN btrim(regexp_replace(unit_text, E'[\\r\\n]', '', 'g')) = ''
-                    THEN 1 ELSE 0 END
-                ) OVER (
-                  ORDER BY line_index
-                  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                ), 0) AS unit_index
-              FROM raw_lines
-            ), line_units AS (
-              SELECT string_agg(unit_text, '' ORDER BY line_index) AS unit_text, unit_index
-              FROM grouped_lines
-              GROUP BY unit_index
-            )`;
-      const rangeFilter =
-        params.limit === undefined
-          ? sql`unit_index >= ${params.offset}`
-          : sql`unit_index >= ${params.offset}
-              AND unit_index < ${params.offset + params.limit}`;
-      const result = await tx.execute(sql`
-        WITH authorized AS (
-          SELECT content->>'text' AS source_text, metadata
-          FROM ${memoryTable}
-          WHERE ${and(...this.documentReadConditions(params))}
-          LIMIT 1
-        ), ${units}
-        SELECT
-          COALESCE(
-            string_agg(unit_text, '' ORDER BY unit_index)
-              FILTER (
-                WHERE ${rangeFilter}
-              ),
-            ''
-          ) AS text,
-          COUNT(*)::integer AS total,
-          (SELECT COALESCE((metadata->>'documentRevision')::integer, 0) FROM authorized)
-            AS document_revision,
-          (SELECT metadata->>'revisionAttemptId' FROM authorized) AS revision_attempt_id,
-          (SELECT md5(source_text) FROM authorized) AS source_fingerprint
-        FROM line_units
-      `);
-      const row = result.rows[0] as
-        | {
-            text?: unknown;
-            total?: unknown;
-            document_revision?: unknown;
-            revision_attempt_id?: unknown;
-            source_fingerprint?: unknown;
-          }
-        | undefined;
-      if (!row || typeof row.source_fingerprint !== "string") return null;
-      const total = Number(row.total);
-      const start = params.offset;
-      return {
-        text: typeof row.text === "string" ? row.text : "",
-        start,
-        end: params.limit === undefined ? total : Math.min(start + params.limit, total),
-        total,
-        documentRevision: Number(row.document_revision ?? 0),
-        ...(typeof row.revision_attempt_id === "string"
-          ? { revisionAttemptId: row.revision_attempt_id }
-          : {}),
-        sourceFingerprint: `md5:${row.source_fingerprint}`,
-      };
+      const parentRows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentReadConditions(params)))
+        .limit(1);
+      if (!parentRows[0]) return null;
+      const parentMemory = memoryFromRow(parentRows[0]);
+      const parent = requireDocumentSourceReadMetadata(
+        (parentMemory.metadata ?? {}) as Record<string, unknown>,
+        params.documentId
+      );
+      const total =
+        params.unit === "byte"
+          ? parent.sourceByteLength
+          : params.unit === "line"
+            ? parent.sourceLineCount
+            : parent.sourceFragmentCount;
+      if (params.offset > total) {
+        return readDocumentSourceProjection({
+          segments: [],
+          params,
+          parent,
+          documentId: params.documentId,
+          sourceQueryCount: 1,
+        });
+      }
+      const requestedEnd = Math.min(params.offset + params.limit, total);
+      const coordinatePrefix =
+        params.unit === "byte"
+          ? "sourceByte"
+          : params.unit === "line"
+            ? "sourceLine"
+            : "sourceFragment";
+      const startExpression = sql<number>`(${memoryTable.metadata}->>${`${coordinatePrefix}Start`})::bigint`;
+      const endExpression = sql<number>`(${memoryTable.metadata}->>${`${coordinatePrefix}End`})::bigint`;
+      const segmentRows =
+        params.offset === total
+          ? []
+          : await tx
+              .select()
+              .from(memoryTable)
+              .where(
+                and(
+                  eq(memoryTable.type, "document_fragments"),
+                  eq(memoryTable.agentId, params.agentId),
+                  sql`${memoryTable.metadata}->>'type' = 'fragment'`,
+                  sql`${memoryTable.metadata}->>'fragmentRole' = 'source-segment'`,
+                  sql`${memoryTable.metadata}->>'sourceSegmentVersion' = '1'`,
+                  sql`${memoryTable.metadata} ? ${`${coordinatePrefix}End`}`,
+                  sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`,
+                  sql`${documentRevisionExpression(memoryTable.metadata)} = ${parent.documentRevision}`,
+                  parent.revisionAttemptId
+                    ? sql`${memoryTable.metadata}->>'revisionAttemptId' = ${parent.revisionAttemptId}`
+                    : and(
+                        sql`NOT (${memoryTable.metadata} ? 'revisionAttemptId')`,
+                        sql`${memoryTable.metadata}->>'revisionAttemptId' IS NULL`
+                      ),
+                  sql`${endExpression} > ${params.offset}`,
+                  sql`${startExpression} < ${requestedEnd}`
+                )
+              )
+              .orderBy(asc(endExpression))
+              .limit(DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
+      return readDocumentSourceProjection({
+        segments: segmentRows.map((row) => memoryFromRow(row)),
+        params,
+        parent,
+        documentId: params.documentId,
+        examinedSourceSegments: segmentRows.length,
+        sourceQueryCount: params.offset === total ? 1 : 2,
+      });
     });
   }
 
@@ -2467,6 +2923,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         eq(fragment.type, "document_fragments"),
         eq(fragment.agentId, params.agentId),
         sql`${fragment.metadata}->>'type' = 'fragment'`,
+        sql`COALESCE(${fragment.metadata}->>'fragmentRole', 'embedding-chunk') <> 'source-segment'`,
         validDocumentRevision(fragment.metadata),
         sql`${documentRevisionExpression(fragment.metadata)}
           = ${documentRevisionExpression(parent.metadata)}`,
@@ -2501,7 +2958,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const rows = await tx
           .select({
             memory: fragment,
-            sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+            sourceFingerprint: sql<string>`${parent.metadata}->>'sourceFingerprint'`,
           })
           .from(fragment)
           .innerJoin(parent, parentJoin)
@@ -2515,7 +2972,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             ...memory,
             metadata: {
               ...(memory.metadata ?? {}),
-              sourceFingerprint: `md5:${row.sourceFingerprint}`,
+              ...(row.sourceFingerprint ? { sourceFingerprint: row.sourceFingerprint } : {}),
             } as Memory["metadata"],
           };
         });
@@ -2524,7 +2981,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const activeColumn = embeddingTable[this.embeddingDimension];
       const distance = cosineDistance(activeColumn, params.embedding);
       const similarity = sql<number>`1 - (${distance})`;
-      conditions.push(isNotNull(activeColumn));
+      conditions.push(isNotNull(activeColumn), embeddingSpaceCondition(this.embeddingSpace));
       if (params.matchThreshold !== undefined) {
         conditions.push(gte(similarity, params.matchThreshold));
       }
@@ -2533,7 +2990,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           memory: fragment,
           embedding: activeColumn,
           similarity,
-          sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+          sourceFingerprint: sql<string>`${parent.metadata}->>'sourceFingerprint'`,
         })
         .from(embeddingTable)
         .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
@@ -2552,7 +3009,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ...memory,
           metadata: {
             ...(memory.metadata ?? {}),
-            sourceFingerprint: `md5:${row.sourceFingerprint}`,
+            ...(row.sourceFingerprint ? { sourceFingerprint: row.sourceFingerprint } : {}),
           } as Memory["metadata"],
         };
       });
@@ -2581,15 +3038,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
       const replacement = params.replacement;
+      const content = serializeDocumentJsonb(replacement.content);
+      const metadata = serializeJsonb(replacement.metadata ?? {});
       const updated = await tx
         .update(memoryTable)
         .set({
-          content: replacement.content,
+          content: sql`${content}::jsonb`,
           entityId: replacement.entityId,
           roomId: replacement.roomId,
           worldId: replacement.worldId,
           unique: replacement.unique ?? row.unique,
-          metadata: replacement.metadata ?? {},
+          metadata: sql`${metadata}::jsonb`,
         })
         .where(eq(memoryTable.id, params.documentId))
         .returning();
@@ -2619,6 +3078,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       if (!canRequesterManageDocumentDirectGrants(existing, params)) {
         return { status: "forbidden" };
+      }
+      if (params.requesterRole === "ADMIN") {
+        // Serialize against membership removal before granting durable access.
+        const [membership] = await tx
+          .select({ id: participantTable.id })
+          .from(participantTable)
+          .where(
+            and(
+              eq(participantTable.agentId, params.agentId),
+              eq(participantTable.roomId, existing.roomId),
+              eq(participantTable.entityId, params.requesterEntityId)
+            )
+          )
+          .for("share")
+          .limit(1);
+        if (!membership) return { status: "forbidden" };
       }
       if (directGrantEntityIds.length > 0) {
         const grantees = await tx
@@ -2687,54 +3162,82 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
           )
         );
-      const oldFragmentIds = new Set(oldFragments.map(({ id }) => String(id)));
-      const reusedFragment = params.fragments.find(({ id }) => oldFragmentIds.has(String(id)));
-      if (reusedFragment) {
+      let conflictingFragmentId: UUID | undefined;
+      for (
+        let offset = 0;
+        offset < params.fragments.length;
+        offset += DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE
+      ) {
+        const ids = params.fragments
+          .slice(offset, offset + DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE)
+          .map(({ id }) => id as UUID);
+        const collisions =
+          ids.length === 0
+            ? []
+            : await tx
+                .select({ id: memoryTable.id })
+                .from(memoryTable)
+                .where(inArray(memoryTable.id, ids))
+                .limit(1);
+        if (collisions[0]) {
+          conflictingFragmentId = collisions[0].id as UUID;
+          break;
+        }
+      }
+      if (conflictingFragmentId) {
         throw new ElizaError("Atomic document fragment id already exists", {
           code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
-          context: { documentId: params.documentId, fragmentId: reusedFragment.id },
+          context: { documentId: params.documentId, fragmentId: conflictingFragmentId },
         });
       }
       if (oldFragments.length > 0) {
-        const deleted = await tx
-          .delete(memoryTable)
-          .where(
-            inArray(
-              memoryTable.id,
-              oldFragments.map(({ id }) => id)
-            )
-          )
-          .returning();
-        if (deleted.length !== oldFragments.length) {
+        const deleted = await tx.execute(sql`
+          DELETE FROM ${memoryTable}
+          WHERE ${inArray(
+            memoryTable.id,
+            oldFragments.map(({ id }) => id)
+          )}
+          RETURNING ${memoryTable.id}
+        `);
+        if (deleted.rows.length !== oldFragments.length) {
           throw new ElizaError("Atomic document replacement did not delete every old fragment", {
             code: "DOCUMENT_REVISION_DELETE_INCOMPLETE",
             context: {
               documentId: params.documentId,
               expected: oldFragments.length,
-              deleted: deleted.length,
+              deleted: deleted.rows.length,
             },
           });
         }
       }
-      for (const fragment of params.fragments) {
-        await this.insertMemoryInTransaction(
-          tx,
-          fragment,
-          "document_fragments",
-          fragment.id as UUID,
-          true
-        );
+      for (
+        let offset = 0;
+        offset < params.fragments.length;
+        offset += DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE
+      ) {
+        const batch = params.fragments.slice(offset, offset + DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE);
+        for (const fragment of batch) {
+          await this.insertMemoryInTransaction(
+            tx,
+            fragment,
+            "document_fragments",
+            fragment.id as UUID,
+            true
+          );
+        }
       }
       const replacement = params.replacement;
+      const content = serializeDocumentJsonb(replacement.content);
+      const metadata = serializeJsonb(replacement.metadata ?? {});
       const updated = await tx
         .update(memoryTable)
         .set({
-          content: replacement.content,
+          content: sql`${content}::jsonb`,
           entityId: replacement.entityId,
           roomId: replacement.roomId,
           worldId: replacement.worldId,
           unique: replacement.unique ?? row.unique,
-          metadata: replacement.metadata ?? {},
+          metadata: sql`${metadata}::jsonb`,
         })
         .where(eq(memoryTable.id, params.documentId))
         .returning();
@@ -2781,11 +3284,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
           )
         );
-      const deleted = await tx
-        .delete(memoryTable)
-        .where(eq(memoryTable.id, params.documentId))
-        .returning();
-      return deleted[0] ? { status: "deleted", document: existing } : { status: "conflict" };
+      const deleted = await tx.execute(sql`
+        DELETE FROM ${memoryTable}
+        WHERE ${memoryTable.id} = ${params.documentId}
+        RETURNING ${memoryTable.id}
+      `);
+      return deleted.rows[0] ? { status: "deleted", document: existing } : { status: "conflict" };
+    });
+  }
+
+  /** Lists every storage namespace belonging to the current agent. */
+  async listMemoryTypes(): Promise<string[]> {
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .selectDistinct({ type: memoryTable.type })
+        .from(memoryTable)
+        .where(eq(memoryTable.agentId, this.agentId));
+      return rows.map((row) => row.type).sort();
     });
   }
 
@@ -2862,6 +3377,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
+      if (tableName === "document_fragments") {
+        conditions.push(
+          sql`COALESCE(${memoryTable.metadata}->>'fragmentRole', 'embedding-chunk') <> 'source-segment'`
+        );
+      }
 
       conditions.push(
         ...memoryAccessContextConditions(params.accessContext, this.agentId, tableName)
@@ -2985,7 +3505,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             embedding: embeddingTable[this.embeddingDimension],
           })
           .from(memoryTable)
-          .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+          .leftJoin(
+            embeddingTable,
+            and(
+              eq(embeddingTable.memoryId, memoryTable.id),
+              embeddingSpaceCondition(this.embeddingSpace)
+            )
+          )
           .where(and(...conditions))
           .orderBy(...order);
         const rows = await (async () => {
@@ -3329,7 +3855,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           embedding: embeddingTable[this.embeddingDimension],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(memoryTable.id, embeddingTable.memoryId))
+        .leftJoin(
+          embeddingTable,
+          and(
+            eq(memoryTable.id, embeddingTable.memoryId),
+            embeddingSpaceCondition(this.embeddingSpace)
+          )
+        )
         .where(eq(memoryTable.id, id))
         .limit(1);
 
@@ -3377,7 +3909,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           embedding: embeddingTable[this.embeddingDimension],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .leftJoin(
+          embeddingTable,
+          and(
+            eq(embeddingTable.memoryId, memoryTable.id),
+            embeddingSpaceCondition(this.embeddingSpace)
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt));
 
@@ -3434,22 +3972,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                             ) as content_text
                         FROM memories m
                         WHERE m.type = ${opts.query_table_name}
+                            AND m.agent_id = ${this.agentId}
                             AND m.content->>${opts.query_field_sub_name} IS NOT NULL
                     ),
                     embedded_text AS (
                         SELECT
                             ct.content_text,
-                            COALESCE(
-                                e.dim_384,
-                                e.dim_512,
-                                e.dim_768,
-                                e.dim_1024,
-                                e.dim_1536,
-                                e.dim_3072
-                            ) as embedding
+                            e.${sql.identifier(embeddingTable[this.embeddingDimension].name)} as embedding
                         FROM content_text ct
                         LEFT JOIN embeddings e ON e.memory_id = ct.id
                         WHERE e.memory_id IS NOT NULL
+                          AND e.space_id IS NOT DISTINCT FROM ${this.embeddingSpace}::text
+                          AND e.${sql.identifier(embeddingTable[this.embeddingDimension].name)} IS NOT NULL
                     )
                     SELECT
                         embedding,
@@ -3566,14 +4100,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // silently fell back to the default 10 rows.
     const effectiveLimit = params.limit ?? params.count ?? 10;
 
-    // Use withEntityContext for RLS only when entityId is provided
-    // Without entityId, bypass RLS to see all logs (for non-RLS mode)
+    // entityId is both the RLS principal and a WHERE filter: PGlite and any
+    // Postgres without ENABLE_DATA_ISOLATION apply no row policy, so the
+    // predicate is the only thing keeping other entities' logs out.
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const result = await tx
         .select()
         .from(logTable)
         .where(
           and(
+            entityId ? eq(logTable.entityId, entityId) : undefined,
             roomId ? eq(logTable.roomId, roomId) : undefined,
             type ? eq(logTable.type, type) : undefined
           )
@@ -3896,25 +4432,30 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     unique?: boolean;
     query?: string;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     entityId?: UUID;
     accessContext?: AccessContext;
+    includeEmbedding?: boolean;
   }): Promise<Memory[]> {
-    return await this.searchMemoriesByEmbedding(params.embedding, {
+    const memories = await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
       // `limit` is the IDatabaseAdapter contract param; honour it (with `count`
       // as a legacy alias) instead of silently ignoring it and capping the
       // candidate pool at the default 10.
       count: params.count ?? params.limit,
       offset: params.offset,
+      includeEmbedding: params.includeEmbedding,
       // Pass direct scope fields down
       roomId: params.roomId,
+      excludeRoomIds: params.excludeRoomIds,
       worldId: params.worldId,
       entityId: params.entityId,
       unique: params.unique,
       tableName: params.tableName,
       accessContext: params.accessContext,
     });
+    return rerankMemories(params.query, memories);
   }
 
   /**
@@ -3937,16 +4478,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       count?: number;
       offset?: number;
       roomId?: UUID;
+      excludeRoomIds?: UUID[];
       worldId?: UUID;
       entityId?: UUID;
       unique?: boolean;
       tableName: string;
       accessContext?: AccessContext;
+      includeEmbedding?: boolean;
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
       const activeColumn = embeddingTable[this.embeddingDimension];
+      // An absent count means the caller asked for the COMPLETE eligible
+      // result, not a default page; a silent top-10 cap would drop eligible
+      // matches with no signal to the caller.
+      const count = params.count ?? Number.MAX_SAFE_INTEGER;
+
       // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
       // (type, agent, room, world, entity, uniqueness) is part of the WHERE of
       // the same query that orders by the raw distance operator. The contract
@@ -3974,6 +4522,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const similarity = sql<number>`1 - (${distance})`;
       const conditions = [
         isNotNull(activeColumn),
+        embeddingSpaceCondition(this.embeddingSpace),
         eq(memoryTable.type, params.tableName),
         eq(memoryTable.agentId, this.agentId),
         ...memoryAccessContextConditions(params.accessContext, this.agentId, params.tableName),
@@ -3985,6 +4534,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
       }
+      if (params.excludeRoomIds?.length) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
+      }
       if (params.worldId) {
         conditions.push(eq(memoryTable.worldId, params.worldId));
       }
@@ -3992,19 +4544,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
 
-      const orderedQuery = this.db
+      const candidates = await this.db
         .select({
           memory: memoryTable,
           similarity,
-          embedding: activeColumn,
+          embedding: params.includeEmbedding === false ? sql<null>`null` : activeColumn,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id));
-      const candidates = await (params.count === undefined
-        ? orderedQuery.offset(params.offset ?? 0)
-        : orderedQuery.limit(params.count).offset(params.offset ?? 0));
+        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id))
+        .limit(count)
+        .offset(params.offset ?? 0);
 
       // Same truthiness contract as the removed WHERE predicate: an absent or
       // zero threshold applies no similarity floor.
@@ -4107,7 +4658,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert = serializeJsonb(memory.content);
+    const contentToInsert =
+      tableName === "document_fragments"
+        ? serializeDocumentJsonb(memory.content)
+        : serializeJsonb(memory.content, {
+            documentText: tableName === "documents",
+            memoryContent: true,
+          });
 
     const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
@@ -4163,6 +4720,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const embeddingValues: Record<string, unknown> = {
           id: v4(),
           memoryId: memoryId,
+          spaceId: this.embeddingSpace,
+          writeNonce: this.embeddingSpace === null ? null : v4(),
           createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
         };
 
@@ -4175,6 +4734,59 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await tx.insert(embeddingTable).values([embeddingValues]);
       }
     }
+  }
+
+  async updateMemoryEmbedding(
+    update: import("@elizaos/core").MemoryEmbeddingUpdate
+  ): Promise<boolean> {
+    const column = this.embeddingDimension;
+    const dimension = Number(column.replace(/^dim/, ""));
+    if (update.embedding.length !== dimension || !update.embedding.every(Number.isFinite)) {
+      throw new Error("Invalid memory embedding for active dimension");
+    }
+    return this.withDatabase(() =>
+      this.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(
+            and(
+              eq(memoryTable.id, update.id),
+              eq(memoryTable.agentId, update.expected.agentId),
+              eq(memoryTable.roomId, update.expected.roomId),
+              eq(memoryTable.entityId, update.expected.entityId),
+              sql`${memoryTable.content}->>'text' = ${update.expected.text}`
+            )
+          )
+          .for("update");
+        if (!current) return false;
+        const vector = update.embedding.map((value) => Number(value.toFixed(6)));
+        const [existing] = await tx
+          .select({ id: embeddingTable.id })
+          .from(embeddingTable)
+          .where(eq(embeddingTable.memoryId, update.id))
+          .limit(1);
+        if (existing) {
+          await tx
+            .update(embeddingTable)
+            .set({
+              [column]: vector,
+              spaceId: this.embeddingSpace,
+              writeNonce: this.embeddingSpace === null ? null : v4(),
+            })
+            .where(eq(embeddingTable.memoryId, update.id));
+        } else {
+          await tx.insert(embeddingTable).values({
+            id: v4(),
+            memoryId: update.id,
+            [column]: vector,
+            spaceId: this.embeddingSpace,
+            writeNonce: this.embeddingSpace === null ? null : v4(),
+          });
+        }
+        return true;
+      })
+    );
   }
 
   /**
@@ -4190,7 +4802,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const contentToUpdate = serializeJsonb(memory.content);
+            // The stored row owns its content policy; caller-supplied metadata
+            // cannot select a different stored document policy. Memory source
+            // text is preserved independently of that policy.
+            // Lock the row so its identity/type stays fixed through this write.
+            const [existing] = await tx
+              .select({ type: memoryTable.type })
+              .from(memoryTable)
+              .where(eq(memoryTable.id, memory.id))
+              .for("update");
+            const contentToUpdate =
+              existing?.type === "document_fragments"
+                ? serializeDocumentJsonb(memory.content)
+                : serializeJsonb(memory.content, {
+                    documentText: existing?.type === "documents",
+                    memoryContent: true,
+                  });
 
             const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
@@ -4244,7 +4871,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
               if (existingEmbedding.length > 0) {
                 // Update existing embedding
-                const updateValues: Record<string, unknown> = {};
+                const updateValues: Record<string, unknown> = {
+                  spaceId: this.embeddingSpace,
+                  writeNonce: this.embeddingSpace === null ? null : v4(),
+                };
                 updateValues[this.embeddingDimension] = cleanVector;
 
                 await tx
@@ -4256,6 +4886,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 const embeddingValues: Record<string, unknown> = {
                   id: v4(),
                   memoryId: memory.id,
+                  spaceId: this.embeddingSpace,
+                  writeNonce: this.embeddingSpace === null ? null : v4(),
                 };
                 embeddingValues[this.embeddingDimension] = cleanVector;
 
@@ -4463,8 +5095,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const tableName = params.tableName ?? "messages";
       const conditions = [eq(memoryTable.type, tableName)];
 
-      if (params.roomIds && params.roomIds.length > 0) {
-        conditions.push(inArray(memoryTable.roomId, params.roomIds));
+      // An explicit empty roomIds list means "no rooms", not "every room":
+      // getMemories treats an empty authorEntityIds the same way.
+      if (params.roomIds) {
+        conditions.push(
+          params.roomIds.length === 0 ? sql`false` : inArray(memoryTable.roomId, params.roomIds)
+        );
       }
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
@@ -4891,6 +5527,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {Object} [params.metadata] - The metadata for the relationship.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the relationship was created successfully.
    */
+  private independentRelationshipEvidence(tags: string[], metadata: Record<string, unknown>) {
+    const revision = `independent-write:${v4()}`;
+    return sql`CASE WHEN ${relationshipTable.extractionEvidence} IS NULL THEN NULL ELSE
+      (${relationshipTable.extractionEvidence} - 'overlay') || jsonb_build_object(
+        'baseline', ${JSON.stringify({ tags, metadata })}::jsonb, 'active', true,
+        'observations', COALESCE((SELECT jsonb_object_agg(key,
+          value || jsonb_build_object('retiredBy', COALESCE(value->>'retiredBy', ${revision})))
+          FROM jsonb_each(${relationshipTable.extractionEvidence}->'observations')), '{}'::jsonb)) END`;
+  }
+
   async createRelationship(params: {
     sourceEntityId: UUID;
     targetEntityId: UUID;
@@ -4911,7 +5557,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const inserted = await this.db
           .insert(relationshipTable)
           .values(saveParams)
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [
+              relationshipTable.sourceEntityId,
+              relationshipTable.targetEntityId,
+              relationshipTable.agentId,
+            ],
+            set: {
+              tags: saveParams.tags,
+              metadata: saveParams.metadata,
+              extractionEvidence: this.independentRelationshipEvidence(
+                saveParams.tags,
+                saveParams.metadata
+              ),
+            },
+            setWhere: sql`${relationshipTable.extractionEvidence}->>'active' = 'false'`,
+          })
           .returning();
         return inserted.length > 0;
       } catch (error) {
@@ -4945,8 +5606,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .set({
             tags: relationship.tags || [],
             metadata: relationship.metadata || {},
+            extractionEvidence: this.independentRelationshipEvidence(
+              relationship.tags || [],
+              relationship.metadata || {}
+            ),
           })
-          .where(eq(relationshipTable.id, relationship.id));
+          .where(
+            and(
+              eq(relationshipTable.id, relationship.id),
+              eq(relationshipTable.agentId, this.agentId)
+            )
+          );
       } catch (error) {
         // error-policy:J2 context-adding rethrow — attach relationship context.
         throw new ElizaError("updateRelationship failed", {
@@ -4982,11 +5652,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           and(
             eq(relationshipTable.sourceEntityId, sourceEntityId),
             eq(relationshipTable.targetEntityId, targetEntityId),
-            eq(relationshipTable.agentId, this.agentId)
+            eq(relationshipTable.agentId, this.agentId),
+            sql`COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'`
           )
         );
       if (result.length === 0) return null;
-      const relationship = result[0];
+      const { extractionEvidence: _extractionEvidence, ...relationship } = result[0];
       return {
         ...relationship,
         id: relationship.id as UUID,
@@ -5034,7 +5705,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       let query = sql`
         SELECT * FROM ${relationshipTable}
-        WHERE (${entityFilter})
+        WHERE (${entityFilter}) AND ${relationshipTable.agentId} = ${this.agentId}
+          AND COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'
       `;
 
       if (tags && tags.length > 0) {
@@ -5043,6 +5715,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           AND ${relationshipTable.tags} && CAST(ARRAY[${sql.join(tags, sql`, `)}] AS text[])
         `;
       }
+
+      // A stable order is what makes LIMIT/OFFSET pages disjoint and complete;
+      // the heap order the query would otherwise follow moves on every UPDATE.
+      query = sql`${query} ORDER BY ${relationshipTable.createdAt}, ${relationshipTable.id}`;
 
       if (typeof limit === "number") {
         query = sql`${query} LIMIT ${limit}`;
@@ -5054,22 +5730,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       const result = await this.db.execute(query);
 
-      return result.rows.map((relationship: Record<string, unknown>) => ({
-        ...relationship,
-        id: relationship.id as UUID,
-        sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
-        targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
-        agentId: (relationship.agent_id || relationship.agentId) as UUID,
-        tags: (relationship.tags ?? []) as string[],
-        metadata: (relationship.metadata ?? {}) as Metadata,
-        createdAt:
-          relationship.created_at || relationship.createdAt
-            ? (relationship.created_at || relationship.createdAt) instanceof Date
-              ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
-              : new Date(
-                  (relationship.created_at as string) || (relationship.createdAt as string)
-                ).toISOString()
-            : new Date().toISOString(),
+      // The raw row carries snake_case columns; the DTO is built field by field
+      // so nothing outside the `Relationship` contract reaches callers.
+      return result.rows.map((row: Record<string, unknown>) => ({
+        id: row.id as UUID,
+        sourceEntityId: (row.source_entity_id ?? row.sourceEntityId) as UUID,
+        targetEntityId: (row.target_entity_id ?? row.targetEntityId) as UUID,
+        agentId: (row.agent_id ?? row.agentId) as UUID,
+        tags: (row.tags ?? []) as string[],
+        metadata: (row.metadata ?? {}) as Metadata,
+        createdAt: relationshipRowCreatedAt(row.created_at ?? row.createdAt),
       }));
     });
   }
@@ -5146,6 +5816,39 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {string} key - The key to delete the cache value for.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was deleted successfully.
    */
+  async compareAndSetCache<T>(key: string, expected: unknown, replacement: T): Promise<boolean> {
+    const replacementJson = encodeCacheCasValue(replacement);
+    const expectedJson = expected === undefined ? undefined : encodeCacheCasValue(expected);
+    // Capture both operands before the first await. One conditional statement;
+    // never replay an uncertain result (the committed response may be lost).
+    return this.withDatabase(async () => {
+      try {
+        const rows =
+          expectedJson === undefined
+            ? await this.db
+                .insert(cacheTable)
+                .values({ key, agentId: this.agentId, value: sql`${replacementJson}::jsonb` })
+                .onConflictDoNothing({ target: [cacheTable.key, cacheTable.agentId] })
+                .returning()
+            : await this.db
+                .update(cacheTable)
+                .set({ value: sql`${replacementJson}::jsonb` })
+                .where(
+                  and(
+                    eq(cacheTable.key, key),
+                    eq(cacheTable.agentId, this.agentId),
+                    sql`${cacheTable.value} = ${expectedJson}::jsonb`
+                  )
+                )
+                .returning();
+        return rows.length === 1;
+      } catch (cause) {
+        // error-policy:J2 distinguish storage failure from a concurrent write.
+        throw new ElizaError("Cache compare-and-set failed", { code: "CACHE_CAS_FAILED", cause });
+      }
+    });
+  }
+
   async deleteCache(key: string): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
@@ -5436,26 +6139,57 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           )
           .orderBy(asc(taskTable.createdAt), asc(taskTable.id))
-          .offset(params.offset ?? 0);
-        const result = params.limit === undefined ? await query : await query.limit(params.limit);
+          .offset(params.offset ?? 0)
+          .$dynamic();
+        const result = await (params.limit === undefined ? query : query.limit(params.limit));
 
-        return result.map((row) => {
-          const metadata = (row.metadata || {}) as TaskMetadata;
-          return {
-            id: row.id as UUID,
-            agentId: row.agentId as UUID,
-            name: row.name,
-            description: row.description ?? "",
-            roomId: row.roomId as UUID,
-            worldId: row.worldId as UUID,
-            entityId: row.entityId as UUID,
-            tags: row.tags || [],
-            dueAt: readTaskDueAt(metadata),
-            metadata,
-          };
-        });
+        return result.map((row) => this.taskFromListRow(row));
       });
     });
+  }
+
+  /**
+   * Maps a listed task row while keeping one unreadable `scheduledAt` from
+   * hiding every other task of the agent. The scheduler tick lists all tasks in
+   * one call, so a throwing mapper would stop every queued task; the damaged row
+   * retains its raw metadata and an explicit `scheduleError` for inspection and
+   * repair. The scheduler rejects this state; single-row reads stay strict.
+   */
+  private taskFromListRow(row: typeof taskTable.$inferSelect): Task {
+    const metadata = (row.metadata || {}) as TaskMetadata;
+    let dueAt: number | undefined;
+    let scheduleError: string | undefined;
+    try {
+      dueAt = readTaskDueAt(metadata);
+    } catch (error) {
+      // error-policy:J4 only TaskTimingValidationError degrades this one row to an
+      // explicit schedule failure; raw metadata stays visible and anything else rethrows.
+      if (!(error instanceof TaskTimingValidationError)) throw error;
+      logger.warn(
+        {
+          src: "plugin:sql",
+          agentId: row.agentId,
+          taskId: row.id,
+          scheduledAt: metadata.scheduledAt,
+          error: error.message,
+        },
+        "BaseDrizzleAdapter: task row has unreadable metadata.scheduledAt; listing it with a scheduleError"
+      );
+      scheduleError = error.message;
+    }
+    return {
+      id: row.id as UUID,
+      agentId: row.agentId as UUID,
+      name: row.name,
+      description: row.description ?? "",
+      roomId: row.roomId as UUID,
+      worldId: row.worldId as UUID,
+      entityId: row.entityId as UUID,
+      tags: row.tags || [],
+      dueAt,
+      ...(scheduleError === undefined ? {} : { scheduleError }),
+      metadata,
+    };
   }
 
   /**
@@ -5471,21 +6205,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .from(taskTable)
           .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)));
 
-        return result.map((row) => {
-          const metadata = (row.metadata || {}) as TaskMetadata;
-          return {
-            id: row.id as UUID,
-            agentId: row.agentId as UUID,
-            name: row.name,
-            description: row.description ?? "",
-            roomId: row.roomId as UUID,
-            worldId: row.worldId as UUID,
-            entityId: row.entityId as UUID,
-            tags: row.tags || [],
-            dueAt: readTaskDueAt(metadata),
-            metadata,
-          };
-        });
+        return result.map((row) => this.taskFromListRow(row));
       });
     });
   }
@@ -6637,14 +7357,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
     options?: { entityContext?: UUID }
   ): Promise<T> {
-    const writes: Array<() => void> = [];
     const entityContext = options?.entityContext ?? this.transactionEntityContext ?? null;
     const result = await this.withEntityContext(entityContext, async (db) => {
       // The facade shares immutable adapter configuration but never replaces
       // the global connection or its connection-bound store cache.
       const scoped = Object.create(this) as BaseDrizzleAdapter;
       scoped.db = db;
-      scoped.transactionWrites = writes;
       scoped.transactionEntityContext = entityContext;
       scoped._connectorAccountStore = undefined;
       scoped.withDatabase = (operation) => operation();
@@ -6685,26 +7403,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       };
       return callback(scoped);
     });
-    const publicationErrors: unknown[] = [];
-    for (const write of writes) {
-      try {
-        this.publishCommittedWrite(write);
-      } catch (error) {
-        // error-policy:J2 attempt every committed publication before reporting the committed failure.
-        publicationErrors.push(error);
-      }
-    }
-    if (publicationErrors.length > 0) {
-      throw new ElizaError(
-        "SQL committed, but publishing its writes failed. Do not replay the transaction.",
-        {
-          code: "TRANSACTION_PUBLICATION_FAILED",
-          context: { committed: true, failedPublications: publicationErrors.length },
-          cause: new AggregateError(publicationErrors, "Committed write publication failed"),
-        }
-      );
-    }
     return result;
+  }
+
+  async withAgentScope<T>(
+    agentId: UUID,
+    callback: (scoped: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>
+  ): Promise<T> {
+    return this.transaction(async (scoped) => {
+      if (!(scoped instanceof BaseDrizzleAdapter)) {
+        throw new ElizaError("Agent scope requires a SQL transaction adapter", {
+          code: "DB_AGENT_SCOPE_UNSUPPORTED",
+        });
+      }
+      if (scoped.agentId !== agentId) {
+        scoped.embeddingSpace = null;
+        scoped.requestedEmbeddingSpace = null;
+        scoped.embeddingSpaceActivation = null;
+      }
+      scoped.agentId = agentId;
+      scoped._connectorAccountStore = undefined;
+      return callback(scoped);
+    });
   }
 
   // ── Component batch methods ───────────────────────────────────────────
@@ -7022,12 +7742,53 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomIds: UUID[],
     includeComponents?: boolean
   ): Promise<EntitiesForRoomsResult> {
-    const result: EntitiesForRoomsResult = [];
-    for (const roomId of roomIds) {
-      const entities = await this.getEntitiesForRoom(roomId, includeComponents);
-      result.push({ roomId, entities });
-    }
-    return result;
+    if (roomIds.length === 0) return [];
+    return this.withDatabase(async () => {
+      // PostgreSQL resolves UUID aliases; ordinality preserves duplicate inputs
+      // and their original spelling without sharing mutable result groups.
+      const requested = sql`unnest(${sql.param(roomIds)}::uuid[]) WITH ORDINALITY AS requested(room_id, ordinal)`;
+      const query = this.db
+        .select({
+          ordinal: sql<number>`requested.ordinal`.mapWith(Number),
+          entity: entityTable,
+          ...(includeComponents && { components: componentTable }),
+        })
+        .from(requested)
+        .innerJoin(participantTable, sql`${participantTable.roomId} = requested.room_id`)
+        .leftJoin(
+          entityTable,
+          and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
+        );
+      if (includeComponents) {
+        query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
+      }
+      const rows = await query;
+      const groups = roomIds.map(() => new Map<UUID, Entity>());
+      for (const row of rows) {
+        if (!row.entity) continue;
+        const group = groups[row.ordinal - 1];
+        const entityId = row.entity.id as UUID;
+        let entity = group.get(entityId);
+        if (!entity) {
+          entity = {
+            ...row.entity,
+            id: entityId,
+            agentId: row.entity.agentId as UUID,
+            metadata: (row.entity.metadata || {}) as Metadata,
+            components: includeComponents ? [] : undefined,
+          };
+          group.set(entityId, entity);
+        }
+        if (includeComponents && row.components) {
+          if (!entity.components) entity.components = [];
+          entity.components.push(row.components);
+        }
+      }
+      return roomIds.map((roomId, index) => ({
+        roomId,
+        entities: Array.from(groups[index].values()),
+      }));
+    });
   }
 
   // ── Log batch methods ─────────────────────────────────────────────────
@@ -7082,6 +7843,105 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   // ── Memory batch methods ──────────────────────────────────────────────
+
+  async compareAndSwapMemoryPublication(
+    params: AtomicMemoryPublicationParams
+  ): Promise<AtomicMemoryPublicationResult> {
+    const headId = params.head.memory.id;
+    if (!headId) throw new TypeError("atomic memory publication head requires an id");
+    try {
+      return await this.withDatabase(async () =>
+        this.db.transaction(async (tx) => {
+          const currentRows = await tx
+            .select()
+            .from(memoryTable)
+            .where(eq(memoryTable.id, headId))
+            .limit(1);
+          const current = currentRows[0];
+          const currentRevision = (current?.metadata as Record<string, unknown> | undefined)
+            ?.revision;
+          if (
+            (params.expectedRevision === null && current) ||
+            (params.expectedRevision !== null && currentRevision !== params.expectedRevision)
+          ) {
+            throw new AtomicMemoryPublicationConflict();
+          }
+
+          for (const dependency of params.dependencies) {
+            const dependencyId = dependency.memory.id;
+            if (!dependencyId) {
+              throw new TypeError("atomic memory dependency requires an id");
+            }
+            await this.insertMemoryInTransaction(
+              tx,
+              { ...dependency.memory, unique: true },
+              dependency.tableName,
+              dependencyId
+            );
+            const storedRows = await tx
+              .select()
+              .from(memoryTable)
+              .where(eq(memoryTable.id, dependencyId))
+              .limit(1);
+            const stored = storedRows[0];
+            if (
+              !stored ||
+              stored.type !== dependency.tableName ||
+              stored.agentId !== (dependency.memory.agentId ?? this.agentId) ||
+              stored.roomId !== dependency.memory.roomId ||
+              memoryFromRow(stored).content.text !== dependency.memory.content.text
+            ) {
+              throw new ElizaError("Immutable memory dependency id has different content", {
+                code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+                context: { memoryId: dependencyId },
+              });
+            }
+          }
+
+          const contentText = JSON.stringify(params.head.memory.content);
+          const metadataText = JSON.stringify(params.head.memory.metadata ?? {});
+          let published: MemoryRow[];
+          if (params.expectedRevision === null) {
+            published = await tx
+              .insert(memoryTable)
+              .values({
+                id: headId,
+                type: params.head.tableName,
+                content: sql`${contentText}::jsonb`,
+                metadata: sql`${metadataText}::jsonb`,
+                entityId: params.head.memory.entityId,
+                roomId: params.head.memory.roomId,
+                worldId: params.head.memory.worldId,
+                agentId: params.head.memory.agentId ?? this.agentId,
+                unique: true,
+                createdAt: new Date(),
+              })
+              .onConflictDoNothing()
+              .returning();
+          } else {
+            published = await tx
+              .update(memoryTable)
+              .set({
+                content: sql`${contentText}::jsonb`,
+                metadata: sql`${metadataText}::jsonb`,
+              })
+              .where(
+                and(
+                  eq(memoryTable.id, headId),
+                  sql`${memoryTable.metadata}->>'revision' = ${params.expectedRevision}`
+                )
+              )
+              .returning();
+          }
+          if (published.length !== 1) throw new AtomicMemoryPublicationConflict();
+          return { status: "published" as const, head: memoryFromRow(published[0]) };
+        })
+      );
+    } catch (error) {
+      if (error instanceof AtomicMemoryPublicationConflict) return { status: "conflict" };
+      throw error;
+    }
+  }
 
   async createMemories(
     memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
@@ -7203,10 +8063,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         inArray(roomTable.worldId, worldIds),
         eq(roomTable.agentId, this.agentId),
       ];
+      // LIMIT/OFFSET without ORDER BY walks the heap, whose order changes on any
+      // UPDATE, so consecutive pages could drop a row and serve another twice.
       let query = this.db
         .select()
         .from(roomTable)
-        .where(and(...conditions));
+        .where(and(...conditions))
+        .orderBy(asc(roomTable.createdAt), asc(roomTable.id));
       if (offset != null) {
         query = query.offset(offset) as typeof query;
       }
@@ -7299,12 +8162,26 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult> {
-    const result: ParticipantsForRoomsResult = [];
-    for (const roomId of roomIds) {
-      const entityIds = await this.getParticipantsForRoom(roomId);
-      result.push({ roomId, entityIds });
-    }
-    return result;
+    if (roomIds.length === 0) return [];
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .select({ roomId: participantTable.roomId, entityId: participantTable.entityId })
+        .from(participantTable)
+        .where(inArray(participantTable.roomId, roomIds));
+      const byRoom = new Map<string, UUID[]>();
+      for (const row of rows) {
+        if (row.roomId === null) continue;
+        const ids = byRoom.get(row.roomId) ?? [];
+        ids.push(row.entityId as UUID);
+        byRoom.set(row.roomId, ids);
+      }
+      // PostgreSQL UUID equality is case-insensitive; retain the caller's room
+      // identities, order, duplicates, and empty entries in the public result.
+      return roomIds.map((roomId) => ({
+        roomId,
+        entityIds: [...(byRoom.get(roomId.toLowerCase()) ?? [])],
+      }));
+    });
   }
 
   async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
@@ -7388,8 +8265,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(relationshipTable)
-        .where(inArray(relationshipTable.id, relationshipIds));
-      return result.map((relationship) => ({
+        .where(
+          and(
+            inArray(relationshipTable.id, relationshipIds),
+            eq(relationshipTable.agentId, this.agentId),
+            sql`COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'`
+          )
+        );
+      return result.map(({ extractionEvidence: _extractionEvidence, ...relationship }) => ({
         ...relationship,
         id: relationship.id as UUID,
         sourceEntityId: relationship.sourceEntityId as UUID,
@@ -7465,14 +8348,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+    const replacementMetadata =
+      task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {
           updatedAt: new Date(),
         };
         if (task.tags !== undefined) updateValues.tags = task.tags;
-        if (task.metadata !== undefined) {
-          updateValues.metadata = task.metadata as typeof taskTable.$inferInsert.metadata;
+        if (replacementMetadata !== undefined) {
+          updateValues.metadata = replacementMetadata;
         }
         const updated = await this.db
           .update(taskTable)
@@ -7485,6 +8370,33 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               sql`COALESCE(${taskTable.metadata}->>'status', 'pending') = 'pending'`
             )
           )
+          .returning();
+        return updated.length === 1;
+      });
+    });
+  }
+
+  /**
+   * Key-level metadata patch in one UPDATE: `set` is merged with `||`, then
+   * every `unset` key is removed with `-`, all inside the same statement, so a
+   * concurrent whole-object writer cannot slip between a read and this write.
+   * Returns false when no task row matched (deleted or foreign agent).
+   */
+  async patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<boolean> {
+    const guarded = taskMetadataPatchForWrite(patch);
+    // JSON.stringify drops undefined values, so an `undefined` in `set` never
+    // reaches storage; callers remove keys through `unset`.
+    const merged = JSON.stringify(guarded.set ?? {});
+    let metadata = sql`(COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${merged}::jsonb)`;
+    for (const key of guarded.unset ?? []) {
+      metadata = sql`(${metadata} - ${String(key)})`;
+    }
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        const updated = await this.db
+          .update(taskTable)
+          .set({ metadata, updatedAt: new Date() })
+          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)))
           .returning();
         return updated.length === 1;
       });

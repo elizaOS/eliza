@@ -1,35 +1,36 @@
 /**
  * Agent host bridge — the downward-injection seam that replaces the former
- * memoized dynamic import of the app-core `agent-bridge` subpath (a reverse
+ * memoized dynamic import of the app `agent-bridge` subpath (a reverse
  * edge from agent up into the host).
  *
- * `@elizaos/agent` is the lower layer; `@elizaos/app-core` is the host that
+ * `@elizaos/agent` is the lower layer; `@elizaos/app` is the host that
  * runs it. A small set of host-owned capabilities (OS wallet-key hydration,
  * vault bootstrap/access, the account-pool singleton, build-variant flags, and
- * the cloud-SSO pair route) used to be pulled UP from agent into app-core via a
- * memoized dynamic import of the `app-core/agent-bridge` subpath. That edge put
- * `@elizaos/app-core ↔ @elizaos/agent` in a real dependency cycle (#9626),
+ * the cloud-SSO pair route) used to be pulled UP from agent into app via a
+ * memoized dynamic import of the `app/agent-bridge` subpath. That edge put
+ * `@elizaos/app ↔ @elizaos/agent` in a real dependency cycle (#9626),
  * hidden from `madge` only by the narrow-subpath `.d.ts`.
  *
  * The host now INJECTS these capabilities via {@link setAgentHostBridge} before
- * booting the runtime (see app-core's boot funnel). When no host installs a
+ * booting the runtime (see app's boot funnel). When no host installs a
  * bridge — the on-device mobile bundle and any standalone-agent boot — the
  * built-in {@link defaultAgentHostBridge} supplies the exact no-op behavior the
- * mobile `app-core-runtime.cjs` stub used to provide. Agent therefore never
- * imports `@elizaos/app-core`, static or dynamic.
+ * mobile `app-runtime.ts` stub used to provide. Agent therefore never
+ * imports `@elizaos/app`, static or dynamic.
  */
 
 import type {
   IncomingMessage as HttpIncomingMessage,
   ServerResponse as HttpServerResponse,
 } from "node:http";
-import type { AgentRuntime, RoleGateRole } from "@elizaos/core";
+import type { Vault } from "@elizaos/auth/vault";
 import {
   type AccountPoolBrokerSnapshot,
+  type AgentRuntime,
   emptyAccountPoolBrokerSnapshot,
+  type RoleGateRole,
+  type resolveServiceRoutingInConfig,
 } from "@elizaos/core";
-import type { resolveServiceRoutingInConfig } from "@elizaos/shared";
-import type { Vault } from "@elizaos/vault";
 
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;
@@ -132,7 +133,7 @@ export interface AgentHostBridge {
   isStoreBuild(): boolean;
   /**
    * Let an embedding host recognize its own HTTP authentication mechanism
-   * (for example app-core's browser session cookie). The standalone agent
+   * (for example app's browser session cookie). The standalone agent
    * has no host session model, so the default remains deny-by-default.
    */
   isHttpRequestAuthorized?(
@@ -200,7 +201,7 @@ function defaultBuildVariant(): "store" | "direct" {
 }
 
 /**
- * No-op host bridge — the exact behavior the mobile `app-core-runtime.cjs`
+ * No-op host bridge — the exact behavior the mobile `app-runtime.ts`
  * stub used to expose. Used whenever a host has not installed a real bridge.
  */
 export const defaultAgentHostBridge: AgentHostBridge = {
@@ -237,7 +238,7 @@ function getHostBridgeProcessState(): AgentHostBridgeProcessState {
 }
 
 /**
- * Install the host bridge. Called by the app-core boot funnel before the
+ * Install the host bridge. Called by the app boot funnel before the
  * runtime starts. Idempotent — the last installer wins.
  */
 export function setAgentHostBridge(bridge: AgentHostBridge): void {

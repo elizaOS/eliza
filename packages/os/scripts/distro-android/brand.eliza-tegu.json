@@ -1,0 +1,24 @@
+{
+  "brand": "eliza",
+  "appName": "Eliza",
+  "distroName": "elizaOS",
+  "packageName": "ai.elizaos.app",
+  "classPrefix": "Eliza",
+  "productName": "eliza_tegu_phone",
+  "lunchTarget": "eliza_tegu_phone-trunk_staging-userdebug",
+  "aospDeviceTreePaths": ["device/google/tegu/aosp_tegu.mk"],
+  "aospLockPath": "android/pixel9a.lock.json",
+  "envPrefix": "ELIZA",
+  "propertyPrefix": "elizaos",
+  "vendorDir": "android/vendor/eliza",
+  "initRcName": "init.eliza.rc",
+  "commonMakefile": "eliza_common.mk",
+  "cuttlefishMakefile": "eliza_tegu_phone.mk",
+  "buildAndroidSystemCmd": [
+    "bun",
+    "run",
+    "--cwd",
+    "packages/app",
+    "build:android:system"
+  ]
+}

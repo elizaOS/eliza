@@ -17,22 +17,19 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import {
-  APPROVAL_SERVICE,
-  type ApprovalService,
-} from "../services/approval/service.ts";
-import type {
-  ApprovalAction,
-  ApprovalListFilter,
-  ApprovalQueue,
-  ApprovalRequest,
-  ApprovalRequestState,
-} from "../services/approval/types.ts";
+
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
-} from "../services/approval/types.ts";
-import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
+  APPROVAL_SERVICE,
+  type ApprovalAction,
+  type ApprovalListFilter,
+  type ApprovalQueue,
+  type ApprovalRequest,
+  type ApprovalRequestState,
+  type ApprovalService,
+  PENDING_PROMPTS_SERVICE,
+} from "@elizaos/plugin-assistant";
 
 interface ApprovalRouteRuntime {
   agentId?: string;

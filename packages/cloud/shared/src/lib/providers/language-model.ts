@@ -1,4 +1,4 @@
-// Defines cloud shared language model behavior for backend service consumers.
+/** Routes cloud model requests to their configured provider and exposes matching availability contracts. */
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
@@ -10,12 +10,19 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
+import { getCloudBinding } from "../runtime/cloud-bindings";
 import type { SharedModelCallSelection } from "../services/shared-runtime/shared-runtime-timing";
 import type { PooledDirectProvider } from "../services/team-credential-pool/provider-map";
 import { logger } from "../utils/logger";
+import {
+  type CloudflareEmbeddingBinding,
+  createCloudflareBindingEmbeddingModel,
+  createCloudflareEmbeddingModel,
+} from "./cloudflare-embeddings";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
 import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
+import { createTeiEmbeddingModel } from "./tei-embeddings";
 import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
 /**
@@ -42,26 +49,28 @@ export function isProviderConfigurationError(error: unknown): boolean {
 }
 
 /**
- * Model id served by the self-hosted TEI embeddings sidecar
- * (packages/cloud/services/embeddings — BAAI/bge-small-en-v1.5, 384 dims).
- * When LOCAL_EMBEDDINGS_BASE_URL is set the sidecar serves this id over its
- * OpenAI-compatible /v1/embeddings surface; ELIZA_EMBEDDINGS_FORCE_LOCAL="true"
- * additionally aliases EVERY embedding id onto it. The upstream request always
- * carries this id — the sidecar embeds with its one loaded model regardless of
- * the requested spelling.
+ * Canonical BGE identifier shared by Workers AI and verified TEI endpoints.
+ * Explicit force-local routing keeps TEI ownership; every returned vector still
+ * uses the canonical source preparation and named representation.
  */
 export const LOCAL_EMBEDDING_MODEL_ID = "bge-small-en-v1.5";
+
+function cloudflareEmbeddingCredentials(): { accountId: string; token: string } | null {
+  const token = getProviderKey("CLOUDFLARE_EMBEDDING_API_TOKEN");
+  if (!token) return null;
+  const accountId = getProviderKey("CLOUDFLARE_ACCOUNT_ID");
+  if (!accountId)
+    throw new ProviderConfigurationError(
+      "CLOUDFLARE_ACCOUNT_ID is required with CLOUDFLARE_EMBEDDING_API_TOKEN",
+    );
+  return { accountId, token };
+}
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
 let vastClients = new Map<string, ReturnType<typeof createOpenAI>>();
 let openAIClient: {
   apiKey: string;
   baseURL?: string;
-  client: ReturnType<typeof createOpenAI>;
-} | null = null;
-let localEmbeddingsClient: {
-  apiKey: string;
-  baseURL: string;
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
 let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
@@ -139,25 +148,6 @@ function isLocalEmbeddingsForced(): boolean {
 function isLocalEmbeddingRoutingActive(model: string): boolean {
   if (!getLocalEmbeddingsBaseURL()) return false;
   return isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID;
-}
-
-function getLocalEmbeddingsClient(baseURL: string) {
-  // TEI serves unauthenticated unless the sidecar sets API_KEY; the SDK client
-  // requires a bearer value, so an unauthenticated deployment sends a dummy.
-  const apiKey = getProviderKey("LOCAL_EMBEDDINGS_API_KEY") ?? "local";
-  if (
-    !localEmbeddingsClient ||
-    localEmbeddingsClient.apiKey !== apiKey ||
-    localEmbeddingsClient.baseURL !== baseURL
-  ) {
-    localEmbeddingsClient = {
-      apiKey,
-      baseURL,
-      client: createOpenAI({ apiKey, baseURL }),
-    };
-  }
-
-  return localEmbeddingsClient.client;
 }
 
 function getCerebrasClient() {
@@ -821,6 +811,12 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
 }
 
 export function hasTextEmbeddingProviderConfigured(model?: string): boolean {
+  if (
+    !isLocalEmbeddingsForced() &&
+    (model === undefined || model === LOCAL_EMBEDDING_MODEL_ID) &&
+    (getCloudBinding<CloudflareEmbeddingBinding>("AI") || cloudflareEmbeddingCredentials())
+  )
+    return true;
   // Mirror getTextEmbeddingModel: the self-hosted sidecar serves the local id
   // (or every id under force-local); the local id has no other upstream. The
   // model is optional because some callers gate before parsing a request body —
@@ -929,21 +925,31 @@ export function getLanguageModel(
 }
 
 export function getTextEmbeddingModel(model: string) {
-  // Self-hosted TEI sidecar (packages/cloud/services/embeddings): serves the
-  // 384-dim local id, or EVERY id when ELIZA_EMBEDDINGS_FORCE_LOCAL aliases the
-  // deployment onto it. The upstream request always carries the local id — the
-  // sidecar embeds with its one loaded model regardless of requested spelling.
+  const binding =
+    model === LOCAL_EMBEDDING_MODEL_ID && !isLocalEmbeddingsForced()
+      ? getCloudBinding<CloudflareEmbeddingBinding>("AI")
+      : undefined;
+  if (binding) return createCloudflareBindingEmbeddingModel(binding);
+  const cloudflare =
+    model === LOCAL_EMBEDDING_MODEL_ID && !isLocalEmbeddingsForced()
+      ? cloudflareEmbeddingCredentials()
+      : null;
+  if (cloudflare) return createCloudflareEmbeddingModel(cloudflare.accountId, cloudflare.token);
+  // Forced aliases still require the endpoint to prove it serves BGE/CLS;
+  // an older GTE sidecar cannot be labeled as the canonical representation.
   const localBaseURL = getLocalEmbeddingsBaseURL();
   if (localBaseURL && (isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID)) {
-    return getLocalEmbeddingsClient(localBaseURL).textEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID);
+    return createTeiEmbeddingModel(
+      localBaseURL,
+      getProviderKey("LOCAL_EMBEDDINGS_API_KEY") ?? "local",
+    );
   }
 
-  // Only the sidecar can serve the local id — OpenAI would 404 it, so a
-  // deployment without the sidecar URL is a configuration error, not a
-  // fallthrough to a provider that cannot answer.
+  // BGE requires Workers AI or the explicitly configured sidecar. Never send
+  // its model identifier to an unrelated provider when configuration is absent.
   if (model === LOCAL_EMBEDDING_MODEL_ID) {
     throw new ProviderConfigurationError(
-      `LOCAL_EMBEDDINGS_BASE_URL environment variable is required for ${LOCAL_EMBEDDING_MODEL_ID}`,
+      `Configure the Workers AI binding, CLOUDFLARE_ACCOUNT_ID with CLOUDFLARE_EMBEDDING_API_TOKEN, or LOCAL_EMBEDDINGS_BASE_URL for ${LOCAL_EMBEDDING_MODEL_ID}`,
     );
   }
 
@@ -1014,7 +1020,15 @@ export function resolveAiProviderSource(
   return null;
 }
 
-export function resolveEmbeddingProviderSource(model?: string): "openai" | "selfhosted" | null {
+export function resolveEmbeddingProviderSource(
+  model?: string,
+): "openai" | "selfhosted" | "cloudflare" | null {
+  if (
+    !isLocalEmbeddingsForced() &&
+    (model === undefined || model === LOCAL_EMBEDDING_MODEL_ID) &&
+    (getCloudBinding<CloudflareEmbeddingBinding>("AI") || cloudflareEmbeddingCredentials())
+  )
+    return "cloudflare";
   // Mirror getTextEmbeddingModel: the self-hosted sidecar wins for the local id
   // (or for everything under force-local); OpenAI direct serves the rest. The
   // model is optional because some callers gate before parsing a request body —

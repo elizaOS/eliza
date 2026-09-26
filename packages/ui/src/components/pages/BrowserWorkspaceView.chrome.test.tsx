@@ -32,12 +32,24 @@ const authorityState = vi.hoisted(() => ({
 }));
 
 const openExternalUrlMock = vi.hoisted(() => vi.fn());
+const desktopRuntime = vi.hoisted(() => ({ active: false }));
+vi.mock("../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => desktopRuntime.active,
+}));
+
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
 
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
+  getActiveAgentAuthority: () => authorityState.value,
 }));
 
-vi.mock("../../utils/asset-url", () => ({
+vi.mock("../../utils/asset-url.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
 
@@ -178,6 +190,7 @@ function deferred<T>(): {
 }
 
 beforeEach(() => {
+  desktopRuntime.active = false;
   authorityState.value = "profile-a\u0000https://same-agent.test";
   walletStateHarness.connected = false;
   walletStateHarness.pendingApprovals = 0;
@@ -238,6 +251,57 @@ describe("Browser workspace URL normalization", () => {
 });
 
 describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () => {
+  it("defaults Linux desktop to owned websites while preserving app and wallet workspace access", async () => {
+    desktopRuntime.active = true;
+    const platform = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("Linux x86_64");
+    try {
+      render(<BrowserWorkspaceView />);
+      expect(
+        screen.getByRole("textbox", { name: "Website or search" }),
+      ).toBeTruthy();
+      expect(screen.queryByTestId("browser-workspace-view")).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "App and agent tabs" }),
+      );
+      expect(await screen.findByText("No page open")).toBeTruthy();
+      expect(screen.getByTestId("browser-workspace-view")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Websites" }));
+      expect(
+        screen.getByRole("textbox", { name: "Website or search" }),
+      ).toBeTruthy();
+    } finally {
+      platform.mockRestore();
+    }
+  });
+
+  it("opens desktop password setup from Browser while a remote agent is selected", async () => {
+    desktopRuntime.active = true;
+    render(<BrowserWorkspaceView />);
+    await screen.findByText("No page open");
+    fireEvent.click(screen.getByRole("button", { name: "Passwords" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Passwords & passkeys",
+    });
+    await waitFor(() =>
+      expect(
+        within(dialog)
+          .getByLabelText("Password manager")
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Get browser extension" }),
+    );
+    await waitFor(() =>
+      expect(openExternalUrlMock).toHaveBeenCalledWith(
+        "https://bitwarden.com/download/#downloads-web-browser",
+      ),
+    );
+    expect(within(dialog).queryByLabelText(/master password/i)).toBeNull();
+  });
+
   it("renders a main landmark with the view testid and NO shared ViewHeader row", async () => {
     render(<BrowserWorkspaceView />);
     // findBy: the designed-empty state lands after the mocked snapshot
@@ -252,27 +316,32 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
   });
 
   it("keeps bridge recovery reachable without adding idle administration UI", async () => {
+    desktopRuntime.active = true;
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
     expect(await screen.findByText("No page open")).not.toBeNull();
     expect(screen.queryByTestId("browser-bridge-controls")).toBeNull();
     expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
+    expect(screen.getByText("Agent browser connection")).not.toBeNull();
     expect(
-      await screen.findByTestId("browser-session-policy-error"),
+      await screen.findByText(/Browser connection unavailable/),
     ).not.toBeNull();
   });
 
   it("keeps bridge recovery reachable while a browser tab is open", async () => {
+    desktopRuntime.active = true;
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     render(<BrowserWorkspaceView />);
 
     expect(await screen.findByTitle("Google")).not.toBeNull();
     expect(
-      await screen.findByTestId("browser-session-policy-error"),
+      await screen.findByText(/Browser connection unavailable/),
     ).not.toBeNull();
-    expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Refresh connection", hidden: true }),
+    ).not.toBeNull();
   });
 
   it("keeps one flat navigation rail above the web surface", async () => {

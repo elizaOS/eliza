@@ -8,12 +8,12 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "vite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readRendererBuildManifest } from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
+import { readRendererBuildManifest } from "../scripts/lib/renderer-build-manifest.ts";
 import { rendererBuildManifestPlugin } from "../vite/renderer-build-manifest-plugin.ts";
 
 const cleanupHelperScript = path.resolve(
   import.meta.dirname,
-  "../../scripts/rm-path-recursive.mjs",
+  "../../scripts/rm-path-recursive.ts",
 );
 
 let tmp: string;
@@ -53,6 +53,63 @@ afterEach(() => {
 });
 
 describe("rendererBuildManifestPlugin", () => {
+  it("preserves the prior stamp and original error when recompilation fails", async () => {
+    const outDir = path.join(tmp, "dist");
+    const input = path.join(tmp, "main.js");
+    fs.writeFileSync(
+      path.join(tmp, "index.html"),
+      '<script type="module" src="/main.js"></script>',
+    );
+    fs.writeFileSync(input, "globalThis.revision = 1;");
+    const compile = () =>
+      build({
+        root: tmp,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [rendererBuildManifestPlugin()],
+        build: { outDir, minify: false },
+      });
+    await compile();
+    const manifestPath = path.join(outDir, "eliza-renderer-build.json");
+    const previousStamp = fs.readFileSync(manifestPath, "utf8");
+    fs.writeFileSync(input, 'import "./missing-renderer-input.js";');
+
+    await expect(compile()).rejects.toThrow("missing-renderer-input.js");
+    expect(fs.readFileSync(manifestPath, "utf8")).toBe(previousStamp);
+  });
+
+  it("refuses to stamp a bundle when an input changes during compilation", async () => {
+    const outDir = path.join(tmp, "dist");
+    fs.mkdirSync(path.join(tmp, "src"));
+    const input = path.join(tmp, "src/main.ts");
+    fs.writeFileSync(
+      path.join(tmp, "index.html"),
+      '<script type="module" src="/src/main.ts"></script>',
+    );
+    fs.writeFileSync(input, "globalThis.revision = 1;");
+    await expect(
+      build({
+        root: tmp,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [
+          rendererBuildManifestPlugin(),
+          {
+            name: "edit-already-bundled-input",
+            writeBundle() {
+              fs.writeFileSync(input, "globalThis.revision = 2;");
+              const changedAt = (Date.now() + 1000) / 1000;
+              fs.utimesSync(input, changedAt, changedAt);
+            },
+          },
+        ],
+        build: { outDir, minify: false },
+      }),
+    ).rejects.toThrow("input changed during build");
+    // The failed build's start stamp also makes subsequent reuse reject it.
+    expect(readRendererBuildManifest(outDir)?.startedAt).toBeTruthy();
+  });
+
   it("records test auth loaded by Vite from an env file", async () => {
     const outDir = path.join(tmp, "dist");
     fs.writeFileSync(
@@ -83,6 +140,13 @@ describe("rendererBuildManifestPlugin", () => {
       .join("\n");
     expect(bundleSource).toMatch(/globalThis\.testAuth\s*=\s*["']true["']/);
     expect(readRendererBuildManifest(outDir)?.playwrightTestAuth).toBe(true);
+    const manifest = readRendererBuildManifest(outDir);
+    if (!manifest?.startedAt) {
+      throw new Error("Renderer manifest must record the build start time");
+    }
+    expect(Date.parse(manifest.startedAt)).toBeLessThanOrEqual(
+      Date.parse(manifest.builtAt),
+    );
   });
 
   it("records the authoritative APNs value compiled into an iOS renderer", async () => {

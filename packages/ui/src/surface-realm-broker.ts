@@ -48,9 +48,12 @@
  */
 
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import { surfaceGrants } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
-import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/shared";
+import {
+  THEME_CSS_VAR_MAP,
+  THEME_FONT_CSS_VARS,
+} from "@elizaos/core/contracts/theme";
+import { surfaceGrants } from "@elizaos/core/views/surface-manifest";
+import { logger } from "./logger.ts";
 import { isPrivilegedShellActive } from "./surface-realm-channel";
 
 // Re-export the shell-privileged channel so existing importers of the broker
@@ -62,7 +65,6 @@ export {
   shellHistory,
   shellLocalStorage,
 } from "./surface-realm-channel";
-
 /**
  * Raised when a view attempts a host-realm mutation its manifest does not grant.
  * Thrown (not swallowed) so the denial reaches the caller/agent observably — a
@@ -78,12 +80,9 @@ export class SurfaceRealmDeniedError extends Error {
     this.name = "SurfaceRealmDeniedError";
   }
 }
-
 // ── Storage vector ───────────────────────────────────────────────────────────
-
 /** Namespace every view-scoped storage key lives under when a view lacks `storage`. */
 export const SURFACE_VIEW_STORAGE_PREFIX = "surface:view:";
-
 // The shell persists all of its own UI state under these key namespaces
 // (`packages/ui/src/state/persistence.ts`). A view path may never write them:
 // even a `storage`-granted view is denied here, so a view can never overwrite
@@ -97,19 +96,16 @@ const SHELL_RESERVED_STORAGE_PREFIXES = [
   "elizaos.",
   "elizaos_",
 ] as const;
-
 /** Whether a storage key belongs to the shell's own reserved namespace. */
 export function isShellReservedStorageKey(key: string): boolean {
   return SHELL_RESERVED_STORAGE_PREFIXES.some((prefix) =>
     key.startsWith(prefix),
   );
 }
-
 /** The keyspace prefix a view without the `storage` grant is confined to. */
 export function surfaceViewStoragePrefix(viewId: string): string {
   return `${SURFACE_VIEW_STORAGE_PREFIX}${viewId}:`;
 }
-
 /**
  * The storage surface handed to a view. A strict subset of the DOM `Storage`
  * interface (no index signature) so the façades below are strongly typed without
@@ -123,7 +119,6 @@ export interface ScopedStorage {
   removeItem(key: string): void;
   setItem(key: string, value: string): void;
 }
-
 function namespacedStorage(backing: Storage, prefix: string): ScopedStorage {
   const ownedKeys = (): string[] => {
     const keys: string[] = [];
@@ -155,7 +150,6 @@ function namespacedStorage(backing: Storage, prefix: string): ScopedStorage {
     },
   };
 }
-
 function hostScopedStorage(backing: Storage, viewId: string): ScopedStorage {
   const assertWritable = (key: string): void => {
     if (isShellReservedStorageKey(key)) {
@@ -197,7 +191,6 @@ function hostScopedStorage(backing: Storage, viewId: string): ScopedStorage {
     },
   };
 }
-
 /**
  * The storage surface for a view, gated on its manifest. Without the `storage`
  * grant a view is confined to a view-prefixed keyspace it can never escape (its
@@ -214,9 +207,7 @@ export function brokerSurfaceStorage(
     ? hostScopedStorage(backing, viewId)
     : namespacedStorage(backing, surfaceViewStoragePrefix(viewId));
 }
-
 // ── Navigation vector ────────────────────────────────────────────────────────
-
 /**
  * Wrap the shell's navigate function with the `navigate` gate. A view without
  * the grant cannot drive shell/history navigation: the wrapper throws instead of
@@ -239,9 +230,7 @@ export function brokerSurfaceNavigate(
     navigate(path);
   };
 }
-
 // ── Root/body class + :root CSS-variable vector ──────────────────────────────
-
 // The shell's own writers (`platform/init.ts`, `themes/apply-theme.ts`,
 // `state/persistence.ts` accent/theme) are the only sanctioned mutators of
 // root/body classes and `:root` variables. They run from a provider ABOVE
@@ -251,12 +240,10 @@ export function brokerSurfaceNavigate(
 // `document.documentElement`/`document.body` directly writes a token that is
 // neither shell-owned nor present when the view activated, so it is removed on
 // teardown and cannot survive into the next view.
-
 const SHELL_OWNED_ROOT_CLASSES: ReadonlySet<string> = new Set([
   "dark",
   "light",
 ]);
-
 // Every `:root` CSS variable the shell writes. Sourced from the shell's own
 // token maps so this cannot drift as the theme grows; the prefixes cover the
 // dynamically-suffixed families (accent ramp, per-edge safe-area, content-pack).
@@ -276,22 +263,18 @@ const SHELL_OWNED_ROOT_VAR_PREFIXES = [
   "--keyboard-",
   "--pack-",
 ] as const;
-
 function isShellOwnedRootClass(cls: string): boolean {
   return SHELL_OWNED_ROOT_CLASSES.has(cls);
 }
-
 function isShellOwnedBodyClass(cls: string): boolean {
   return cls === "native" || cls.startsWith("platform-");
 }
-
 function isShellOwnedRootVar(name: string): boolean {
   return (
     SHELL_OWNED_ROOT_VARS.has(name) ||
     SHELL_OWNED_ROOT_VAR_PREFIXES.some((prefix) => name.startsWith(prefix))
   );
 }
-
 function readRootVarNames(el: HTMLElement): string[] {
   const names: string[] = [];
   const { style } = el;
@@ -301,7 +284,6 @@ function readRootVarNames(el: HTMLElement): string[] {
   }
   return names;
 }
-
 /**
  * What a host-realm reset changed — returned so callers can log/inspect. The
  * `removed*` fields are rogue tokens the view ADDED and the reset stripped; the
@@ -317,9 +299,7 @@ export interface HostRealmResetResult {
   restoredBodyClasses: string[];
   restoredRootVars: string[];
 }
-
 // ── The per-view scope the shell publishes ───────────────────────────────────
-
 /**
  * The host-realm boundary for one active in-process view, resolved from its
  * surface manifest. The shell constructs one when a view becomes active and
@@ -344,7 +324,6 @@ export class SurfaceRealmScope {
   private readonly shellRootClassBaseline: readonly string[];
   private readonly shellBodyClassBaseline: readonly string[];
   private readonly shellRootVarBaseline: ReadonlyMap<string, string>;
-
   constructor(
     readonly manifest: ResolvedSurfaceManifest,
     readonly viewId: string,
@@ -352,7 +331,7 @@ export class SurfaceRealmScope {
     navigate: (path: string) => void,
     memberViewIds: readonly string[] = [viewId],
   ) {
-    this.memberViewIds = new Set(memberViewIds);
+    this.memberViewIds = new Set([viewId, ...memberViewIds]);
     this.storage = brokerSurfaceStorage(manifest, backing, viewId);
     this.navigate = brokerSurfaceNavigate(manifest, viewId, navigate);
     if (typeof document === "undefined") {
@@ -379,12 +358,10 @@ export class SurfaceRealmScope {
       );
     }
   }
-
   /** Only the routed owner or explicit layout members may evaluate in this scope. */
   ownsView(viewId: string): boolean {
     return this.memberViewIds.has(viewId);
   }
-
   /**
    * Undo a view's global root/body-class + `:root`-var mutations on teardown so
    * nothing it did to the host realm leaks into the next view. Two directions:
@@ -422,7 +399,6 @@ export class SurfaceRealmScope {
       root.style.removeProperty(name);
       result.rootVars.push(name);
     }
-
     for (const cls of this.shellRootClassBaseline) {
       if (root.classList.contains(cls)) continue;
       root.classList.add(cls);
@@ -441,14 +417,12 @@ export class SurfaceRealmScope {
     return result;
   }
 }
-
 // The active scope is a process-wide singleton because the host realm is: only
 // one view owns the foreground at a time. The shell publishes it here so the
 // active view (and the isolation tests) reach exactly the brokered handles the
 // shell resolved for the current manifest, never the raw globals.
 let activeScope: SurfaceRealmScope | null = null;
 const activeScopeListeners = new Set<() => void>();
-
 /** Observe committed scope replacement so evaluated views renew their handles. */
 export function subscribeActiveSurfaceRealmScope(
   listener: () => void,
@@ -458,7 +432,6 @@ export function subscribeActiveSurfaceRealmScope(
     activeScopeListeners.delete(listener);
   };
 }
-
 /** Publish the scope for the active view. Pass `null` on teardown. */
 export function setActiveSurfaceRealmScope(
   scope: SurfaceRealmScope | null,
@@ -471,26 +444,21 @@ export function setActiveSurfaceRealmScope(
   if (scope !== null) ensureHostRealmGuards();
   for (const listener of activeScopeListeners) listener();
 }
-
 /** The scope for the active view, or `null` when no view is mounted. */
 export function getActiveSurfaceRealmScope(): SurfaceRealmScope | null {
   return activeScope;
 }
-
 // ── Raw-global guards ────────────────────────────────────────────────────────
-
 // The shell-privileged channel (`shellLocalStorage`/`shellHistory`/
 // `runAsPrivilegedShell` + the depth flag the guards read) lives in the
 // dependency-free `surface-realm-channel` leaf so the ~30 shell writers that
 // migrated to it don't each pull this heavy module (core/shared/logger). The
 // guards below consume the channel's `isPrivilegedShellActive`; this module
 // re-exports the channel for back-compat (App.tsx, the bridge barrel).
-
 // Marker so a re-publish can tell "window.localStorage is already my proxy"
 // from "a test (or the platform) swapped in a fresh backing that needs
 // wrapping". The get trap answers the symbol with the raw backing.
 const STORAGE_GUARD_TARGET = Symbol("surface-realm-storage-guard-target");
-
 function assertRawStorageWriteAllowed(op: string, key: string): void {
   if (isPrivilegedShellActive()) return;
   const scope = activeScope;
@@ -505,7 +473,6 @@ function assertRawStorageWriteAllowed(op: string, key: string): void {
       `surface storage facade (scope.storage); shell code uses shellLocalStorage`,
   );
 }
-
 function guardedLocalStorage(backing: Storage): Storage {
   const guardedClear = (): void => {
     const scope = activeScope;
@@ -565,7 +532,6 @@ function guardedLocalStorage(backing: Storage): Storage {
     },
   });
 }
-
 function assertRawHistoryMutationAllowed(
   op: "pushState" | "replaceState",
   url: string | URL | null | undefined,
@@ -603,9 +569,7 @@ function assertRawHistoryMutationAllowed(
       `views use scope.navigate; shell code uses shellHistory`,
   );
 }
-
 let historyGuardInstalled = false;
-
 function installHistoryGuard(): void {
   if (historyGuardInstalled || typeof History === "undefined") return;
   // Patch the prototype, not the instance: an own-property wrapper is
@@ -632,7 +596,6 @@ function installHistoryGuard(): void {
   };
   historyGuardInstalled = true;
 }
-
 /**
  * Install (or re-arm after a test swapped the backing) the raw-global guards.
  * Idempotent and cheap; called on every scope publish. The guards themselves

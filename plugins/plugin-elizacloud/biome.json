@@ -1,6 +1,6 @@
 {
 	"root": false,
-	"$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
 	"files": {
 		"includes": [
 			"__tests__/**",
@@ -15,7 +15,6 @@
 			"build.ts",
 			"index.ts",
 			"index.node.ts",
-			"index.browser.ts",
 			"init.ts",
 			"package.json",
 			"tsconfig.json",

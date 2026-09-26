@@ -1,7 +1,8 @@
 /**
  * Integration tests for log create/get/delete against a real isolated
  * PGlite/Postgres adapter, covering the `limit`/legacy-`count` param
- * contract, JSON-body escaping and output bounds, and filtering by type.
+ * contract, JSON-body escaping and output bounds, and filtering by type and
+ * entity.
  */
 import {
   type AgentRuntime,
@@ -20,7 +21,7 @@ import {
   MAX_SQL_JSON_SANITIZE_STRING_BYTES,
   SQL_JSON_SANITIZE_UNBOUNDED,
 } from "../../sanitize-json";
-import { logTable } from "../../schema";
+import { logTable } from "../../schema/log";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -206,6 +207,39 @@ describe("Log Integration Tests", () => {
         type: "oversized_scalar_test",
       });
       expect(logs).toHaveLength(0);
+    });
+
+    it("filters logs by entityId so another entity's rows never leak through", async () => {
+      const otherEntityId = uuidv4() as UUID;
+      await adapter.createEntities([
+        { id: otherEntityId, agentId: testAgentId, names: ["Other Entity"] } as Entity,
+      ]);
+      await adapter.log({
+        body: { message: "mine" },
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "shared_type",
+      });
+      await adapter.log({
+        body: { message: "theirs" },
+        entityId: otherEntityId,
+        roomId: testRoomId,
+        type: "shared_type",
+      });
+
+      const mine = await adapter.getLogs({ entityId: testEntityId, type: "shared_type" });
+      expect(mine).toHaveLength(1);
+      expect(mine[0].entityId).toBe(testEntityId);
+      expect(mine[0].body).toEqual({ message: "mine" });
+
+      const theirs = await adapter.getLogs({ entityId: otherEntityId, roomId: testRoomId });
+      expect(theirs).toHaveLength(1);
+      expect(theirs[0].entityId).toBe(otherEntityId);
+
+      const everyone = await adapter.getLogs({ type: "shared_type" });
+      expect(everyone.map((log) => log.entityId).sort()).toEqual(
+        [testEntityId, otherEntityId].sort()
+      );
     });
 
     it("should filter logs by type", async () => {

@@ -11,6 +11,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
+import { resolveConfiguredTimeZone } from "./defaults.js";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -444,15 +445,15 @@ export interface LifeOpsMeetingPreferencesUpdate {
   readonly preferences: LifeOpsMeetingPreferences;
 }
 
-const DEFAULT_MEETING_PREFERENCES: LifeOpsMeetingPreferences = {
-  timeZone: "America/Los_Angeles",
-  preferredStartLocal: "09:00",
-  preferredEndLocal: "17:00",
-  defaultDurationMinutes: 30,
-  travelBufferMinutes: 0,
-  blackoutWindows: [],
-  updatedAt: null,
-};
+const DEFAULT_MEETING_PREFERENCES: Omit<LifeOpsMeetingPreferences, "timeZone"> =
+  {
+    preferredStartLocal: "09:00",
+    preferredEndLocal: "17:00",
+    defaultDurationMinutes: 30,
+    travelBufferMinutes: 0,
+    blackoutWindows: [],
+    updatedAt: null,
+  };
 
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -560,6 +561,7 @@ export function normalizeLifeOpsMeetingPreferencesPatch(
 
 function resolveMeetingPreferences(
   metadata: Record<string, unknown> | null | undefined,
+  defaultTimeZone: string,
 ): LifeOpsMeetingPreferences {
   const stored = isRecord(metadata?.meetingPreferences)
     ? metadata.meetingPreferences
@@ -581,7 +583,12 @@ function resolveMeetingPreferences(
     stored && typeof stored.updatedAt === "string"
       ? normalizeProfileValue(stored.updatedAt)
       : null;
-  return { ...DEFAULT_MEETING_PREFERENCES, ...normalized, updatedAt };
+  return {
+    ...DEFAULT_MEETING_PREFERENCES,
+    timeZone: defaultTimeZone,
+    ...normalized,
+    updatedAt,
+  };
 }
 
 export async function readLifeOpsMeetingPreferences(
@@ -589,7 +596,10 @@ export async function readLifeOpsMeetingPreferences(
 ): Promise<LifeOpsMeetingPreferences> {
   const task = await readLifeOpsSchedulerTask(runtime);
   const metadata = isRecord(task?.metadata) ? task.metadata : null;
-  return resolveMeetingPreferences(metadata);
+  return resolveMeetingPreferences(
+    metadata,
+    resolveConfiguredTimeZone(runtime),
+  );
 }
 
 export async function updateLifeOpsMeetingPreferences(
@@ -607,7 +617,7 @@ export async function updateLifeOpsMeetingPreferences(
       : buildFallbackSchedulerMetadata(runtime.agentId);
 
   const next: LifeOpsMeetingPreferences = {
-    ...resolveMeetingPreferences(metadata),
+    ...resolveMeetingPreferences(metadata, resolveConfiguredTimeZone(runtime)),
     ...normalizedPatch,
     updatedAt: new Date().toISOString(),
   };
@@ -619,7 +629,10 @@ export async function updateLifeOpsMeetingPreferences(
     persistedTask && isRecord(persistedTask.metadata)
       ? persistedTask.metadata
       : null;
-  const persisted = resolveMeetingPreferences(persistedMetadata);
+  const persisted = resolveMeetingPreferences(
+    persistedMetadata,
+    resolveConfiguredTimeZone(runtime),
+  );
   if (
     persistedTask?.id !== taskId ||
     stableStringify(persisted) !== stableStringify(next)

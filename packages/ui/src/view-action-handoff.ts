@@ -3,9 +3,8 @@
  * into shell navigation. Chat streams exist on every runtime transport, so this
  * is the reliable handoff when a platform intentionally runs without WebSockets.
  */
-
-import { ElizaError } from "@elizaos/core";
-import { normalizeCompletedActionHandoffId } from "@elizaos/shared/events";
+import { ElizaError } from "@elizaos/core/errors";
+import { normalizeCompletedActionHandoffId } from "@elizaos/core/events";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
 import { dispatchCompletedActionNavigation } from "./completed-action-navigation";
@@ -25,12 +24,10 @@ interface CurrentViewNavigation {
   alwaysOnTop?: boolean;
   source?: "agent" | "user";
 }
-
 interface CurrentViewResponse {
   currentView: CurrentViewNavigation | null;
   justSwitched: boolean;
 }
-
 export interface ViewActionHandoff {
   viewId: string;
   viewPath?: string;
@@ -38,18 +35,15 @@ export interface ViewActionHandoff {
   completedActionDelivered?: true;
   completedActionHandoffId?: string;
 }
-
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function readOwnValue(value: unknown, key: string): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
   return Object.getOwnPropertyDescriptor(value, key)?.value;
 }
-
 export function findViewActionHandoff(
   actionResults: readonly ChatActionResultSummary[] | undefined,
 ): ViewActionHandoff | null {
@@ -116,14 +110,16 @@ export function findViewActionHandoff(
   }
   return null;
 }
-
 function parseCurrentViewResponse(body: unknown): CurrentViewResponse {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new ElizaError("Malformed /api/views/current response", {
       code: "VIEW_HANDOFF_RESPONSE_INVALID",
     });
   }
-  const response = body as { currentView?: unknown; justSwitched?: unknown };
+  const response = body as {
+    currentView?: unknown;
+    justSwitched?: unknown;
+  };
   const currentView = response.currentView;
   if (currentView === null) {
     return { currentView: null, justSwitched: response.justSwitched === true };
@@ -185,7 +181,6 @@ function parseCurrentViewResponse(body: unknown): CurrentViewResponse {
     },
   };
 }
-
 async function fetchCurrentViewResponse(
   fetchCurrentView?: () => Promise<Response>,
 ): Promise<CurrentViewResponse> {
@@ -202,7 +197,6 @@ async function fetchCurrentViewResponse(
   }
   return parseCurrentViewResponse(await response.json());
 }
-
 export async function dispatchViewActionHandoff(
   actionResults: readonly ChatActionResultSummary[] | undefined,
   dependencies: {
@@ -213,7 +207,6 @@ export async function dispatchViewActionHandoff(
 ): Promise<boolean> {
   const handoff = findViewActionHandoff(actionResults);
   if (!handoff) return false;
-
   const { currentView: current } = await fetchCurrentViewResponse(
     dependencies.fetchCurrentView,
   );
@@ -234,7 +227,6 @@ export async function dispatchViewActionHandoff(
       },
     );
   }
-
   const currentPath = dependencies.currentPath?.() ?? getWindowNavigationPath();
   const targetPath = current.viewPath ?? `/apps/${current.viewId}`;
   // A live WebSocket may already have delivered the same switch while the chat
@@ -244,7 +236,6 @@ export async function dispatchViewActionHandoff(
   if (currentPath === targetPath && !current.subview && !handoff.subview) {
     return false;
   }
-
   const dispatch = dependencies.dispatch ?? dispatchNavigateViewEvent;
   dispatch({
     viewId: current.viewId,
@@ -263,7 +254,6 @@ export async function dispatchViewActionHandoff(
   });
   return true;
 }
-
 /**
  * Dispatch a completed VIEWS navigation handoff DIRECTLY from the turn's
  * `actionResults`, with NO `/api/views/current` round-trip or verification.
@@ -302,7 +292,6 @@ export function dispatchViewActionHandoffDirect(
   dispatch(detail);
   return true;
 }
-
 /** Recover one recent agent navigation that was missed while transport was down. */
 export async function recoverMissedCurrentView(
   dependencies: {
@@ -317,13 +306,11 @@ export async function recoverMissedCurrentView(
     dependencies.fetchCurrentView,
   );
   if (!current || !justSwitched || current.source !== "agent") return false;
-
   // Explicit user navigation while the recovery fetch was in flight wins over
   // process-global server state, which may be shared by several windows.
   if (readPath() !== pathBeforeFetch) return false;
   const targetPath = current.viewPath ?? `/apps/${current.viewId}`;
   if (pathBeforeFetch === targetPath && !current.subview) return false;
-
   const dispatch = dependencies.dispatch ?? dispatchNavigateViewEvent;
   // Recovery replays destination state only. Edge commands such as pin/window
   // or layout actions must never execute again on every resume/reconnect.

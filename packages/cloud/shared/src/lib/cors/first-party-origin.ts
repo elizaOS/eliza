@@ -6,8 +6,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud/domain-contract";
-
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import {
   APP_SCHEME_ORIGIN_RE,
   CAPACITOR_WEBVIEW_ORIGIN,
@@ -38,7 +37,6 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://eliza.ai",
   "https://www.eliza.ai",
 ]);
-
 /** Whether an origin may receive credentialed browser responses. */
 export function isFirstPartyOrigin(origin: string): boolean {
   if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;

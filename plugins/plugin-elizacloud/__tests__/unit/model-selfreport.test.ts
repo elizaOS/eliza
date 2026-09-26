@@ -6,12 +6,14 @@
  * (no live model); process env for every model-tier key is isolated per test.
  */
 
-import type { IAgentRuntime, Memory, ModelRegistrationMetadata } from "@elizaos/core";
 import {
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type IAgentRuntime,
+  type Memory,
+  type ModelRegistrationMetadata,
   ModelType,
-  runtimeModelContextProvider,
 } from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { runtimeModelContextProvider } from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerTextInferenceModels } from "../../src/index";
 import { DEFAULT_ELIZA_CLOUD_LARGE_MODEL } from "../../src/utils/config";
@@ -41,7 +43,6 @@ const MODEL_ENV_KEYS = (() => {
   }
   return keys;
 })();
-
 let savedEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
   savedEnv = {};
@@ -56,7 +57,6 @@ afterEach(() => {
     else process.env[key] = savedEnv[key];
   }
 });
-
 interface RegisteredModel {
   handler: unknown;
   metadata?: ModelRegistrationMetadata;
@@ -64,7 +64,6 @@ interface RegisteredModel {
   priority: number;
   registrationOrder: number;
 }
-
 // Mirrors AgentRuntime's registerModel storage (push + priority-desc sort into
 // the `models` map) so the provider's registry reads exercise the same shape a
 // live cloud-brained agent exposes.
@@ -94,11 +93,9 @@ function makeCloudBrainedRuntime(settings: Record<string, string>) {
   } as unknown as IAgentRuntime;
   return runtime;
 }
-
 function selfModelQuestion(): Memory {
   return { content: { text: "what model are you?", source: "test" } } as Memory;
 }
-
 describe("cloud-brained model self-report", () => {
   it("reports the concrete default cloud model when no tier is configured", async () => {
     // The default cloud deployment: an API key and nothing else — every tier
@@ -108,9 +105,7 @@ describe("cloud-brained model self-report", () => {
       ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
     });
     registerTextInferenceModels(runtime);
-
     const result = await runtimeModelContextProvider.get(runtime, selfModelQuestion(), {} as never);
-
     expect(result.text).toContain(`Response handler model: ${DEFAULT_ELIZA_CLOUD_TEXT_MODEL}`);
     expect(result.text).toContain(`Large text model: ${DEFAULT_ELIZA_CLOUD_LARGE_MODEL}`);
     expect(result.text).toContain("Response handler provider adapter: elizaOSCloud");
@@ -120,7 +115,6 @@ describe("cloud-brained model self-report", () => {
     expect(result.data?.responseHandlerModel).toBe(DEFAULT_ELIZA_CLOUD_TEXT_MODEL);
     expect(result.data?.textLargeModel).toBe(DEFAULT_ELIZA_CLOUD_LARGE_MODEL);
   });
-
   it("reports ELIZAOS_CLOUD_* configured tiers the runtime env fallbacks cannot see", async () => {
     const runtime = makeCloudBrainedRuntime({
       ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
@@ -128,9 +122,7 @@ describe("cloud-brained model self-report", () => {
       ELIZAOS_CLOUD_LARGE_MODEL: "zai-glm-4.7",
     });
     registerTextInferenceModels(runtime);
-
     const result = await runtimeModelContextProvider.get(runtime, selfModelQuestion(), {} as never);
-
     // Response handler falls back to the small tier, planner to the large tier
     // — the same chains the handlers resolve per call.
     expect(result.text).toContain("Response handler model: gpt-oss-120b");
@@ -138,17 +130,18 @@ describe("cloud-brained model self-report", () => {
     expect(result.text).toContain("Large text model: zai-glm-4.7");
     expect(result.text).toContain("Small text model: gpt-oss-120b");
   });
-
   it("registers every chat-brain slot with its resolved concrete display model", () => {
     const runtime = makeCloudBrainedRuntime({
       ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
       ELIZAOS_CLOUD_LARGE_MODEL: "zai-glm-4.7",
     });
     registerTextInferenceModels(runtime);
-
-    const models = (runtime as unknown as { models: Map<string, RegisteredModel[]> }).models;
+    const models = (
+      runtime as unknown as {
+        models: Map<string, RegisteredModel[]>;
+      }
+    ).models;
     const displayFor = (slot: string) => models.get(slot)?.[0]?.metadata?.displayModel;
-
     expect(displayFor(String(ModelType.TEXT_LARGE))).toBe("zai-glm-4.7");
     expect(displayFor(String(ModelType.TEXT_MEGA ?? "TEXT_MEGA"))).toBe("zai-glm-4.7");
     expect(displayFor(String(ModelType.ACTION_PLANNER ?? "ACTION_PLANNER"))).toBe("zai-glm-4.7");

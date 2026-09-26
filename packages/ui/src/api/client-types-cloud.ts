@@ -43,7 +43,7 @@ import type {
   AppViewerAuthMessage,
   AppViewerConfig,
   RegistryAppInfo,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/apps";
 import type { TrajectoryExportFormat } from "./client-types-core";
 
 export type {
@@ -77,9 +77,10 @@ export type {
   AppViewerConfig,
   RegistryAppInfo,
 };
-
 // Cloud
 export interface CloudStatus {
+  /** Older servers omit this field; omission must remain visibly unavailable. */
+  applicationBilling?: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection;
   connected: boolean;
   enabled?: boolean;
   cloudVoiceProxyAvailable?: boolean;
@@ -89,7 +90,6 @@ export interface CloudStatus {
   topUpUrl?: string;
   reason?: string;
 }
-
 export interface CloudCredits {
   connected: boolean;
   balance: number | null;
@@ -100,14 +100,12 @@ export interface CloudCredits {
   critical?: boolean;
   topUpUrl?: string;
 }
-
 export interface CloudApiKeySummary {
   id: string;
   name: string;
   keyPrefix: string | null;
   createdAt: string | null;
 }
-
 /**
  * Result of listing the org's Eliza Cloud API keys. `keys` is null — not an
  * empty array — whenever the list could not be retrieved (signed out,
@@ -121,7 +119,6 @@ export interface CloudApiKeys {
   manageUrl: string;
   reason?: "not-connected" | "session-required";
 }
-
 export interface LocalAgentBackupMetadata {
   fileName: string;
   path: string;
@@ -130,7 +127,6 @@ export interface LocalAgentBackupMetadata {
   stateSha256: string;
   sizeBytes: number;
 }
-
 export interface CloudBillingPaymentMethod {
   id: string;
   type: string;
@@ -143,7 +139,6 @@ export interface CloudBillingPaymentMethod {
   walletAddress?: string;
   network?: string;
 }
-
 export interface CloudBillingHistoryItem {
   id: string;
   kind?: string;
@@ -155,7 +150,6 @@ export interface CloudBillingHistoryItem {
   receiptUrl?: string;
   createdAt: string;
 }
-
 export interface CloudBillingSummary {
   balance: number | null;
   currency?: string;
@@ -171,7 +165,6 @@ export interface CloudBillingSummary {
   history?: CloudBillingHistoryItem[];
   [key: string]: unknown;
 }
-
 export interface CloudBillingSettings {
   success?: boolean;
   message?: string;
@@ -192,7 +185,6 @@ export interface CloudBillingSettings {
   };
   [key: string]: unknown;
 }
-
 export interface CloudBillingSettingsUpdateRequest {
   autoTopUp?: {
     enabled?: boolean;
@@ -200,12 +192,10 @@ export interface CloudBillingSettingsUpdateRequest {
     threshold?: number;
   };
 }
-
 export interface CloudBillingCheckoutRequest {
   amountUsd: number;
   mode?: "embedded" | "hosted";
 }
-
 export interface CloudBillingCheckoutResponse {
   success?: boolean;
   provider?: string;
@@ -218,14 +208,12 @@ export interface CloudBillingCheckoutResponse {
   message?: string;
   [key: string]: unknown;
 }
-
 export interface CloudBillingCryptoQuoteRequest {
   amountUsd: number;
   currency?: string;
   network?: string;
   walletAddress?: string;
 }
-
 export interface CloudBillingCryptoQuoteResponse {
   success?: boolean;
   provider?: string;
@@ -241,14 +229,12 @@ export interface CloudBillingCryptoQuoteResponse {
   memo?: string;
   [key: string]: unknown;
 }
-
 export interface CloudLoginResponse {
   ok: boolean;
   sessionId: string;
   browserUrl: string;
   error?: string;
 }
-
 export interface CloudLoginPollResponse {
   status: "pending" | "authenticated" | "expired" | "error";
   /**
@@ -264,12 +250,10 @@ export interface CloudLoginPollResponse {
   userId?: string;
   error?: string;
 }
-
 export interface CloudLoginPersistResponse {
   ok: boolean;
   error?: string;
 }
-
 // Cloud Compat (Eliza Cloud v2 thin-client types)
 export interface CloudCompatAgent {
   agent_id: string;
@@ -292,7 +276,6 @@ export interface CloudCompatAgent {
    * dedicated-mode agent picker filters shared bridges on it. */
   execution_tier?: string | null;
 }
-
 export interface CloudCompatAgentStatus {
   status: string;
   lastHeartbeat: string | null;
@@ -302,7 +285,6 @@ export interface CloudCompatAgentStatus {
   suspendedReason: string | null;
   databaseStatus: string;
 }
-
 export interface CloudCompatAgentProvisionResponse {
   success: boolean;
   created?: boolean;
@@ -330,7 +312,6 @@ export interface CloudCompatAgentProvisionResponse {
     expectedDurationMs?: number;
   };
 }
-
 export interface CloudCompatManagedDiscordStatus {
   applicationId: string | null;
   configured: boolean;
@@ -347,7 +328,6 @@ export interface CloudCompatManagedDiscordStatus {
   connectedAt: string | null;
   restarted?: boolean;
 }
-
 /** Discord plugin config shape exposed to cloud dashboard. */
 export interface CloudCompatDiscordConfig {
   dm?: {
@@ -392,7 +372,6 @@ export interface CloudCompatDiscordConfig {
     enabled?: boolean;
   };
 }
-
 export interface CloudCompatManagedGithubStatus {
   configured: boolean;
   connected: boolean;
@@ -410,7 +389,6 @@ export interface CloudCompatManagedGithubStatus {
   connectedAt: string | null;
   restarted?: boolean;
 }
-
 export type CloudOAuthConnectionRole = "owner" | "agent";
 export type CloudOAuthConnectionStatus =
   | "pending"
@@ -419,7 +397,6 @@ export type CloudOAuthConnectionStatus =
   | "revoked"
   | "error";
 export type CloudOAuthConnectionSource = "platform_credentials" | "secrets";
-
 export interface CloudOAuthConnection {
   id: string;
   userId?: string;
@@ -437,7 +414,6 @@ export interface CloudOAuthConnection {
   tokenExpired: boolean;
   source: CloudOAuthConnectionSource;
 }
-
 export interface CloudOAuthInitiateResponse {
   authUrl: string;
   state?: string;
@@ -446,14 +422,12 @@ export interface CloudOAuthInitiateResponse {
     name: string;
   };
 }
-
 export interface CloudTwitterOAuthInitiateResponse
   extends CloudOAuthInitiateResponse {
   oauthToken?: string;
   flow?: "oauth1a" | "oauth2";
   connectionRole?: CloudOAuthConnectionRole;
 }
-
 export interface CloudCompatJob {
   jobId: string;
   type: string;
@@ -471,7 +445,6 @@ export interface CloudCompatJob {
   created_on: string;
   completed_on: string | null;
 }
-
 export interface CloudCompatLaunchResult {
   agentId: string;
   agentName: string;
@@ -483,9 +456,8 @@ export interface CloudCompatLaunchResult {
     token: string;
   };
 }
-
 // App types — the App-run / App-session DTO contract is owned by
-// @elizaos/shared/contracts/apps (re-exported from the shared root barrel and
+// @elizaos/core/contracts/apps (re-exported from the shared root barrel and
 // re-exported above). Only InstalledAppInfo is defined here: the client's
 // installed-app view (installPath / isRunning) is a distinct shape from shared's
 // registry-oriented InstalledAppInfo (pluginName), so it stays UI-local.
@@ -497,7 +469,6 @@ export interface InstalledAppInfo {
   installedAt: string;
   isRunning: boolean;
 }
-
 // Trajectories
 export interface TrajectoryRecord extends CoreTrajectorySummaryRecord {
   roomId: string | null;
@@ -506,7 +477,6 @@ export interface TrajectoryRecord extends CoreTrajectorySummaryRecord {
   metadata: Record<string, TrajectoryJsonValue | undefined>;
   updatedAt: string;
 }
-
 export interface TrajectoryLlmCall extends CoreTrajectoryLlmCallRecord {
   id: string;
   trajectoryId: string;
@@ -523,7 +493,6 @@ export interface TrajectoryLlmCall extends CoreTrajectoryLlmCallRecord {
   latencyMs: number;
   createdAt: string;
 }
-
 export interface TrajectoryProviderAccess
   extends CoreTrajectoryProviderAccessRecord {
   id: string;
@@ -535,15 +504,15 @@ export interface TrajectoryProviderAccess
   timestamp: number;
   createdAt: string;
 }
-
 export type TrajectoryJsonValue =
   | string
   | number
   | boolean
   | null
   | TrajectoryJsonValue[]
-  | { [key: string]: TrajectoryJsonValue };
-
+  | {
+      [key: string]: TrajectoryJsonValue;
+    };
 export type ContextEventType =
   | "message"
   | "memory"
@@ -553,14 +522,12 @@ export type ContextEventType =
   | "segment"
   | "metadata"
   | (string & {});
-
 export type ContextEventRole =
   | "system"
   | "user"
   | "assistant"
   | "tool"
   | (string & {});
-
 export interface ContextEventBase {
   id: string;
   type: ContextEventType;
@@ -568,7 +535,6 @@ export interface ContextEventBase {
   source?: string;
   metadata?: Record<string, TrajectoryJsonValue | undefined>;
 }
-
 export interface ContextMessageEvent extends ContextEventBase {
   type: "message";
   message: {
@@ -579,12 +545,10 @@ export interface ContextMessageEvent extends ContextEventBase {
     metadata?: Record<string, TrajectoryJsonValue | undefined>;
   };
 }
-
 export interface ContextMemoryEvent extends ContextEventBase {
   type: "memory";
   memory: Record<string, unknown>;
 }
-
 export interface ContextProviderEvent extends ContextEventBase {
   type: "provider";
   name: string;
@@ -592,7 +556,6 @@ export interface ContextProviderEvent extends ContextEventBase {
   values?: Record<string, TrajectoryJsonValue | undefined>;
   data?: Record<string, unknown>;
 }
-
 export interface ContextToolEvent extends ContextEventBase {
   type: "tool";
   tool: {
@@ -603,14 +566,12 @@ export interface ContextToolEvent extends ContextEventBase {
     metadata?: Record<string, TrajectoryJsonValue | undefined>;
   };
 }
-
 export interface ContextInstructionEvent extends ContextEventBase {
   type: "instruction";
   content: string;
   role?: ContextEventRole;
   stable?: boolean;
 }
-
 export interface ContextSegmentEvent extends ContextEventBase {
   type: "segment";
   segment: Record<string, unknown> & {
@@ -619,13 +580,11 @@ export interface ContextSegmentEvent extends ContextEventBase {
     tokenCount?: number;
   };
 }
-
 export interface ContextMetadataEvent extends ContextEventBase {
   type: "metadata";
   key: string;
   value: TrajectoryJsonValue;
 }
-
 export type ContextEvent =
   | ContextMessageEvent
   | ContextMemoryEvent
@@ -635,14 +594,12 @@ export type ContextEvent =
   | ContextSegmentEvent
   | ContextMetadataEvent
   | (ContextEventBase & Record<string, unknown>);
-
 export type NativeToolCallStatus =
   | "queued"
   | "running"
   | "completed"
   | "skipped"
   | "failed";
-
 export interface TrajectoryEventBase {
   id: string;
   trajectoryId?: string;
@@ -652,7 +609,6 @@ export interface TrajectoryEventBase {
   createdAt?: string;
   metadata?: Record<string, unknown>;
 }
-
 export type PipelineStageName =
   | "input"
   | "should_respond"
@@ -666,7 +622,6 @@ export type PipelineStageName =
   | "context"
   | "cache"
   | (string & {});
-
 export interface NativeToolCallEvent extends TrajectoryEventBase {
   type: "tool_call" | "tool_result" | "tool_error";
   callId?: string;
@@ -684,7 +639,6 @@ export interface NativeToolCallEvent extends TrajectoryEventBase {
   duration?: number;
   error?: string;
 }
-
 export interface TrajectoryEvaluationEvent extends TrajectoryEventBase {
   type: "evaluation" | "evaluator";
   evaluatorName?: string;
@@ -697,7 +651,6 @@ export interface TrajectoryEvaluationEvent extends TrajectoryEventBase {
   durationMs?: number;
   error?: string;
 }
-
 export interface TrajectoryCacheObservation extends TrajectoryEventBase {
   type: "cache_observation" | "cache";
   cacheName?: string;
@@ -710,14 +663,12 @@ export interface TrajectoryCacheObservation extends TrajectoryEventBase {
   sizeBytes?: number;
   tokenCount?: number;
 }
-
 export type ContextDiffChangeType =
   | "added"
   | "removed"
   | "changed"
   | "unchanged"
   | (string & {});
-
 export interface TrajectoryContextDiffChange {
   type: ContextDiffChangeType;
   path?: string;
@@ -726,7 +677,6 @@ export interface TrajectoryContextDiffChange {
   summary?: string;
   tokenDelta?: number;
 }
-
 export interface TrajectoryContextDiff extends TrajectoryEventBase {
   type: "context_diff";
   label?: string;
@@ -740,14 +690,15 @@ export interface TrajectoryContextDiff extends TrajectoryEventBase {
   before?: unknown;
   after?: unknown;
 }
-
 export type TrajectoryEvent =
   | NativeToolCallEvent
   | TrajectoryEvaluationEvent
   | TrajectoryCacheObservation
   | TrajectoryContextDiff
-  | (TrajectoryEventBase & { type: string; [key: string]: unknown });
-
+  | (TrajectoryEventBase & {
+      type: string;
+      [key: string]: unknown;
+    });
 export interface TrajectoryCacheStatsData {
   hits: number;
   misses: number;
@@ -756,13 +707,12 @@ export interface TrajectoryCacheStatsData {
   tokenCount?: number;
   sizeBytes?: number;
 }
-
 export type TrajectoryListOptions = CoreTrajectoryListOptions;
-
 export interface TrajectoryListResult
   extends CoreTrajectoryListResult<TrajectoryRecord> {}
-
 export interface TrajectoryDetailResult {
+  /** False for lightweight inspection; full stored wire evidence remains available. */
+  payloadsIncluded?: boolean;
   trajectory: TrajectoryRecord;
   llmCalls: TrajectoryLlmCall[];
   providerAccesses: TrajectoryProviderAccess[];
@@ -775,7 +725,6 @@ export interface TrajectoryDetailResult {
   cacheStats?: TrajectoryCacheStatsData;
   contextDiffs?: TrajectoryContextDiff[];
 }
-
 export interface TrajectoryStats {
   totalTrajectories: number;
   totalLlmCalls: number;
@@ -786,15 +735,12 @@ export interface TrajectoryStats {
   bySource: Record<string, number>;
   byModel: Record<string, number>;
 }
-
 export interface TrajectoryConfig {
   enabled: boolean;
 }
-
 export type TrajectoryExportOptions = CoreTrajectoryExportOptions & {
   format: TrajectoryExportFormat | "jsonl";
 };
-
 // ERC-8004 Registry & Drop types
 export interface RegistryStatus {
   registered: boolean;
@@ -808,12 +754,10 @@ export interface RegistryStatus {
   totalAgents: number;
   configured: boolean;
 }
-
 export interface RegistrationResult {
   tokenId: number;
   txHash: string;
 }
-
 export interface RegistryConfig {
   configured: boolean;
   chainId: number;
@@ -821,19 +765,16 @@ export interface RegistryConfig {
   collectionAddress: string | null;
   explorerUrl: string;
 }
-
 export interface WhitelistStatus {
   eligible: boolean;
   twitterVerified: boolean;
   ogCode: string | null;
   walletAddress: string;
 }
-
 export interface VerificationMessageResponse {
   message: string;
   walletAddress: string;
 }
-
 // Coding Agent Sessions
 export interface CodingAgentSession {
   sessionId: string;
@@ -855,7 +796,6 @@ export interface CodingAgentSession {
   /** Latest activity text for the agent activity box. */
   lastActivity?: string;
 }
-
 export interface CodingAgentScratchWorkspace {
   sessionId: string;
   label: string;
@@ -866,7 +806,6 @@ export interface CodingAgentScratchWorkspace {
   terminalEvent: "stopped" | "task_complete" | "error";
   expiresAt?: number;
 }
-
 export interface AgentPreflightResult {
   adapter?: string;
   installed?: boolean;
@@ -879,7 +818,6 @@ export interface AgentPreflightResult {
     loginHint?: string;
   };
 }
-
 /** Token/cost usage rolled up per provider+model. Mirrors the orchestrator
  * route's `TaskUsageSummary`. `state` lets the UI render measured / estimated /
  * unavailable distinctly instead of a misleading confident `0`. */
@@ -894,7 +832,6 @@ export interface CodingAgentTaskUsageProvider {
   costUsd: number;
   state: "measured" | "estimated" | "unavailable";
 }
-
 export interface CodingAgentTaskUsageSummary {
   inputTokens: number;
   outputTokens: number;
@@ -905,14 +842,12 @@ export interface CodingAgentTaskUsageSummary {
   state: "measured" | "estimated" | "unavailable";
   byProvider: CodingAgentTaskUsageProvider[];
 }
-
 /** Provider/model/subscription policy applied to a task's sub-agents. */
 export interface CodingAgentTaskProviderPolicy {
   preferredFramework?: string;
   providerSource?: string;
   model?: string;
 }
-
 /** A registered project the switcher lists + activates (#13776 item 5). Mirrors
  * the agent-side `ProjectSummaryDTO`. */
 export interface ProjectSummary {
@@ -923,13 +858,11 @@ export interface ProjectSummary {
   defaultBranch?: string;
   lastOpenedAt: string;
 }
-
 /** `GET /api/projects` payload: the registry list plus the active pointer. */
 export interface ProjectListResponse {
   projects: ProjectSummary[];
   activeProjectId: string | null;
 }
-
 export interface CodingAgentTaskThread {
   id: string;
   title: string;
@@ -975,7 +908,6 @@ export interface CodingAgentTaskThread {
   closedAt: string | null;
   archivedAt: string | null;
 }
-
 export interface CodingAgentTaskSessionRecord {
   id: string;
   threadId: string;
@@ -1013,7 +945,6 @@ export interface CodingAgentTaskSessionRecord {
   createdAt: string;
   updatedAt: string;
 }
-
 /**
  * The real git change set a coding sub-agent produced, captured from git at
  * `task_complete` and surfaced on a session record's `metadata.lastChangeSet`
@@ -1028,7 +959,6 @@ export interface ChangeSetData {
   truncated: boolean;
   capturedAt: number;
 }
-
 export interface CodingAgentTaskDecisionRecord {
   id: string;
   threadId: string;
@@ -1041,7 +971,6 @@ export interface CodingAgentTaskDecisionRecord {
   timestamp: number;
   createdAt: string;
 }
-
 export interface CodingAgentTaskEventRecord {
   id: string;
   threadId: string;
@@ -1053,7 +982,6 @@ export interface CodingAgentTaskEventRecord {
   data: Record<string, unknown>;
   createdAt: string;
 }
-
 export interface CodingAgentTaskArtifactRecord {
   id: string;
   threadId: string;
@@ -1067,7 +995,6 @@ export interface CodingAgentTaskArtifactRecord {
   metadata: Record<string, unknown>;
   createdAt: string;
 }
-
 /** A room-message timeline entry: user prompts, orchestrator turns, and
  * sub-agent output, ordered for the `/orchestrator` conversation view. Mirrors
  * the route's `TaskMessageDto`. */
@@ -1082,7 +1009,6 @@ export interface CodingAgentTaskMessageRecord {
   metadata: Record<string, unknown>;
   createdAt: string;
 }
-
 export type CodingAgentTaskTimelineItem =
   | {
       id: string;
@@ -1102,7 +1028,6 @@ export type CodingAgentTaskTimelineItem =
       createdAt: string;
       event: CodingAgentTaskEventRecord;
     };
-
 export interface CodingAgentTaskPlanRevisionRecord {
   id: string;
   threadId: string;
@@ -1114,7 +1039,6 @@ export interface CodingAgentTaskPlanRevisionRecord {
   timestamp: number;
   createdAt: string;
 }
-
 export interface CodingAgentTaskTranscriptRecord {
   id: string;
   threadId: string;
@@ -1125,7 +1049,6 @@ export interface CodingAgentTaskTranscriptRecord {
   metadata: Record<string, unknown>;
   createdAt: string;
 }
-
 export interface CodingAgentPendingDecisionRecord {
   sessionId: string;
   threadId: string;
@@ -1136,7 +1059,6 @@ export interface CodingAgentPendingDecisionRecord {
   createdAt: number;
   updatedAt: string;
 }
-
 export interface CodingAgentTaskThreadDetail extends CodingAgentTaskThread {
   goal: string;
   roomId: string | null;
@@ -1162,14 +1084,12 @@ export interface CodingAgentTaskThreadDetail extends CodingAgentTaskThread {
    * the older coding-agent panel still reads it when present. */
   pendingDecisions?: CodingAgentPendingDecisionRecord[];
 }
-
 /** A cursor-paginated slice of a task's message or event history. Mirrors the
  * orchestrator route's `PageResult<T>`. */
 export interface CodingAgentTaskPage<T> {
   items: T[];
   nextCursor: string | null;
 }
-
 /** Aggregate orchestrator state for the workbench header. Computed server-side
  * (route `GET /api/orchestrator/status`) so the client never re-derives counts
  * or token spend. Mirrors the route's `OrchestratorStatus`. */
@@ -1184,7 +1104,6 @@ export interface CodingAgentOrchestratorStatus {
   usage: CodingAgentTaskUsageSummary;
   byStatus: Record<CodingAgentTaskThread["status"], number>;
 }
-
 /** One coding sub-agent's binding to a pooled account, with its spend. */
 export interface OrchestratorAccountAssignment {
   taskId: string;
@@ -1205,14 +1124,12 @@ export interface OrchestratorAccountAssignment {
   costUsd: number;
   usageState: "measured" | "estimated" | "unavailable";
 }
-
 export interface OrchestratorAccountProviderAvailability {
   providerId: string;
   total: number;
   enabled: number;
   healthy: number;
 }
-
 /** Payload for `GET /api/orchestrator/accounts`: which pooled accounts can serve
  * each coding-agent type, the active selection strategy, and the live
  * sub-agent → account assignment map. */
@@ -1221,7 +1138,6 @@ export interface OrchestratorAccountOverview {
   availability: Record<string, OrchestratorAccountProviderAvailability[]>;
   assignments: OrchestratorAccountAssignment[];
 }
-
 /** Per-provider readiness verdict from `GET /api/orchestrator/accounts/readiness`. */
 export interface OrchestratorProviderReadiness {
   agentType: string;
@@ -1231,7 +1147,6 @@ export interface OrchestratorProviderReadiness {
   required: number;
   ok: boolean;
 }
-
 /** Payload for `GET /api/orchestrator/accounts/readiness`: whether the pool has
  * enough healthy accounts (≥1 Codex AND ≥1 Claude; ≥2 each under rotation) to
  * run the multi-account orchestrator, with the human-readable problems when not. */
@@ -1242,12 +1157,10 @@ export interface OrchestratorAccountReadiness {
   providers: OrchestratorProviderReadiness[];
   problems: string[];
 }
-
 export type OrchestratorRoomParticipantKind =
   | "orchestrator"
   | "user"
   | "sub_agent";
-
 /** One participant in a task room. `sub_agent` rows carry their pooled account
  * + live spend; `orchestrator`/`user` rows identify the two human-facing ends. */
 export interface OrchestratorRoomParticipant {
@@ -1264,7 +1177,6 @@ export interface OrchestratorRoomParticipant {
   totalTokens?: number;
   usageState?: "measured" | "estimated" | "unavailable";
 }
-
 /** A single task room with its grouped participant roster — the orchestrator,
  * the owning user, and every sub-agent attached to THIS room. */
 export interface OrchestratorRoomRoster {
@@ -1277,14 +1189,12 @@ export interface OrchestratorRoomRoster {
   multiParty: boolean;
   participants: OrchestratorRoomParticipant[];
 }
-
 /** Payload for `GET /api/orchestrator/rooms`: per-room participant rosters
  * (orchestrator + user + each sub-agent grouped by task room) — the room-scoped
  * counterpart to the flat `/accounts` assignment map. */
 export interface OrchestratorRoomRosterOverview {
   rooms: OrchestratorRoomRoster[];
 }
-
 /** Structured payload for creating a task via `POST /api/orchestrator/tasks`. */
 export interface CodingAgentCreateTaskInput {
   title: string;
@@ -1299,7 +1209,6 @@ export interface CodingAgentCreateTaskInput {
    * spawned sub-agent drive the monetized-app Cloud commands). */
   metadata?: Record<string, unknown>;
 }
-
 /** Structured payload for forking a task via `POST /api/orchestrator/tasks/:id/fork`. */
 export interface CodingAgentForkTaskInput {
   title?: string;
@@ -1307,7 +1216,6 @@ export interface CodingAgentForkTaskInput {
   priority?: CodingAgentTaskThread["priority"];
   acceptanceCriteria?: string[];
 }
-
 /** Structured payload for adding a sub-agent via
  * `POST /api/orchestrator/tasks/:id/agents`. */
 export interface CodingAgentAddAgentInput {
@@ -1319,7 +1227,6 @@ export interface CodingAgentAddAgentInput {
   label?: string;
   task?: string;
 }
-
 export interface CodingAgentRetryTurnInput {
   messageId?: string;
   sessionId?: string;
@@ -1328,7 +1235,6 @@ export interface CodingAgentRetryTurnInput {
   mode?: "same-session" | "new-session";
   agent?: CodingAgentAddAgentInput;
 }
-
 export interface CodingAgentRerunFromEventInput {
   eventId: string;
   instruction?: string;
@@ -1337,14 +1243,12 @@ export interface CodingAgentRerunFromEventInput {
   preserveHistory?: boolean;
   agent?: CodingAgentAddAgentInput;
 }
-
 export interface CodingAgentRestartTaskInput {
   instruction?: string;
   planRevisionId?: string;
   stopActive?: boolean;
   agent?: CodingAgentAddAgentInput;
 }
-
 export interface CodingAgentCreatePlanRevisionInput {
   plan: Record<string, unknown>;
   basePlanRevisionId?: string;
@@ -1352,14 +1256,12 @@ export interface CodingAgentCreatePlanRevisionInput {
   createdBy?: string;
   metadata?: Record<string, unknown>;
 }
-
 export interface CodingAgentRestartWithEditedPlanInput
   extends CodingAgentRestartTaskInput {
   plan: Record<string, unknown>;
   basePlanRevisionId?: string;
   editSummary?: string;
 }
-
 /** Structured payload for updating a task via `PATCH /api/orchestrator/tasks/:id`. */
 export interface CodingAgentUpdateTaskInput {
   title?: string;
@@ -1369,7 +1271,6 @@ export interface CodingAgentUpdateTaskInput {
   priority?: CodingAgentTaskThread["priority"];
   providerPolicy?: CodingAgentTaskProviderPolicy;
 }
-
 /** Structured payload for submitting a validation verdict via
  * `POST /api/orchestrator/tasks/:id/validate`. */
 export interface CodingAgentValidateTaskInput {
@@ -1379,7 +1280,6 @@ export interface CodingAgentValidateTaskInput {
   verifier?: string;
   humanOverride?: boolean;
 }
-
 export interface CodingAgentFrameworkAvailability {
   id: string;
   label: string;
@@ -1393,7 +1293,6 @@ export interface CodingAgentFrameworkAvailability {
   reason: string;
   warnings: string[];
 }
-
 export interface CodingAgentStatus {
   supervisionLevel: string;
   taskCount: number;
@@ -1405,7 +1304,6 @@ export interface CodingAgentStatus {
   preferredAgentReason?: string;
   frameworks?: CodingAgentFrameworkAvailability[];
 }
-
 /** Raw ACP session shape returned by /api/coding-agents. */
 export interface RawAcpSession {
   id: string;
@@ -1415,7 +1313,6 @@ export interface RawAcpSession {
   status?: string;
   metadata?: Record<string, unknown>;
 }
-
 /**
  * Maps raw ACP sessions from /api/coding-agents into CodingAgentSession[].
  * Extracted as a pure function so it can be unit-tested without instantiating
@@ -1445,7 +1342,6 @@ export function mapAcpSessionsToCodingAgentSessions(
     autoResolvedCount: 0,
   }));
 }
-
 /** Maps persisted task threads into the existing CodingAgentSession UI shape. */
 export function mapTaskThreadsToCodingAgentSessions(
   taskThreads: CodingAgentTaskThread[],

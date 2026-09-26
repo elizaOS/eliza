@@ -1,7 +1,9 @@
 /** Builds tenant-scoped hosted Eliza runtimes from character, plugin, and connector state. */
+
 import {
   AgentRuntime,
   type Character,
+  ElizaError,
   elizaLogger,
   type IDatabaseAdapter,
   type JsonObject,
@@ -11,7 +13,6 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { doorDashPlugin } from "@elizaos/plugin-doordash";
 import { edgeRuntimeCache, getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
 import "@/lib/polyfills/dom-polyfills";
 import { agentLoader } from "../agent-loader";
@@ -38,6 +39,7 @@ import {
   buildDirectAccessContextSignature,
   buildRuntimeSettings,
   buildSettings,
+  resolveHostedEmbeddingModel,
 } from "./settings";
 
 /**
@@ -75,8 +77,19 @@ function filterPlugins(plugins: Plugin[]): Plugin[] {
   return plugins.filter((p) => p.name !== "@elizaos/plugin-sql") as Plugin[];
 }
 
+interface RuntimeCreation {
+  agentId: UUID;
+  organizationId: string;
+  invalidated: boolean;
+  runtime?: AgentRuntime;
+  /** Settles only after the attempt has returned or transferred teardown ownership. */
+  completion: Promise<void>;
+}
+
 export class RuntimeFactory {
   private static instance: RuntimeFactory;
+  private readonly creations = new Set<RuntimeCreation>();
+  private clearing: Promise<void> | undefined;
   private readonly DEFAULT_AGENT_ID = stringToUuid(DEFAULT_AGENT_ID_STRING) as UUID;
 
   private constructor() {
@@ -94,15 +107,31 @@ export class RuntimeFactory {
     return { runtime: runtimeCache.getStats() };
   }
 
-  async clearCaches(): Promise<void> {
-    await runtimeCache.clear();
+  /** Full shutdown joins every admitted creation before closing shared storage.
+   * Admission reopens only after successful teardown; failures remain observable.
+   */
+  clearCaches(): Promise<void> {
+    if (this.clearing) return this.clearing;
+    const creations = [...this.creations];
+    for (const creation of creations) creation.invalidated = true;
+    // Publish the barrier before loaders or teardown hooks can reenter the factory.
+    this.clearing = Promise.resolve().then(async () => {
+      await Promise.all(creations.map((creation) => creation.completion));
+      await runtimeCache.clear(dbAdapterPool);
+      this.clearing = undefined;
+    });
+    return this.clearing;
   }
 
   async invalidateRuntime(agentId: string): Promise<boolean> {
-    const removedCount = await runtimeCache.removeByAgentId(agentId);
+    const normalizedAgentId = stringToUuid(agentId);
+    for (const creation of this.creations) {
+      if (creation.agentId === normalizedAgentId) creation.invalidated = true;
+    }
+    // Revoke adapter admission before eviction yields to a replacement creator.
+    dbAdapterPool.removeAdapter(normalizedAgentId);
+    const removedCount = await runtimeCache.removeByAgentId(normalizedAgentId);
     const wasInMemory = removedCount > 0;
-
-    dbAdapterPool.removeAdapter(agentId);
 
     try {
       await edgeRuntimeCache.invalidateCharacter(agentId);
@@ -128,6 +157,9 @@ export class RuntimeFactory {
 
   /** Invalidate all runtimes for an organization, for example when OAuth changes. */
   async invalidateByOrganization(organizationId: string): Promise<number> {
+    for (const creation of this.creations) {
+      if (creation.organizationId === organizationId) creation.invalidated = true;
+    }
     const count = await runtimeCache.removeByOrganization(organizationId, dbAdapterPool);
     if (count > 0) {
       elizaLogger.info(
@@ -137,7 +169,54 @@ export class RuntimeFactory {
     return count;
   }
 
+  private assertCreation(creation: RuntimeCreation): void {
+    if (creation.invalidated) {
+      throw new ElizaError(
+        "Runtime creation was invalidated; retry with current agent configuration",
+        {
+          code: "RUNTIME_CREATION_INVALIDATED",
+          context: { agentId: creation.agentId, organizationId: creation.organizationId },
+        },
+      );
+    }
+  }
+
   async createRuntimeForUser(context: UserContext): Promise<AgentRuntime> {
+    if (this.clearing) {
+      throw new ElizaError(
+        "Hosted runtime shutdown is in progress or failed; wait for successful teardown",
+        {
+          code: "RUNTIME_FACTORY_SHUTTING_DOWN",
+        },
+      );
+    }
+    const finished = Promise.withResolvers<void>();
+    const creation: RuntimeCreation = {
+      agentId: stringToUuid(context.characterId || DEFAULT_AGENT_ID_STRING),
+      organizationId: context.organizationId,
+      invalidated: false,
+      completion: finished.promise,
+    };
+    // Register before even character loading can yield or reenter invalidation.
+    this.creations.add(creation);
+    try {
+      const runtime = await this.createAdmittedRuntime(context, creation);
+      this.assertCreation(creation);
+      return runtime;
+    } catch (error) {
+      // error-policy:J2 Preserve the creation failure; retained retirement owns any cleanup failure.
+      if (creation.runtime) runtimeCache.retire(creation.runtime);
+      throw error;
+    } finally {
+      this.creations.delete(creation);
+      finished.resolve();
+    }
+  }
+
+  private async createAdmittedRuntime(
+    context: UserContext,
+    creation: RuntimeCreation,
+  ): Promise<AgentRuntime> {
     const startTime = Date.now();
     elizaLogger.info(
       `[RuntimeFactory] Creating runtime: user=${context.userId}, mode=${context.agentMode}, char=${context.characterId || "default"}, webSearch=${context.webSearchEnabled}`,
@@ -150,6 +229,7 @@ export class RuntimeFactory {
     const { character, plugins, modeResolution } = isDefaultCharacter
       ? await agentLoader.getDefaultCharacter(context.agentMode, loaderOptions)
       : await agentLoader.loadCharacter(context.characterId!, context.agentMode, loaderOptions);
+    this.assertCreation(creation);
 
     if (modeResolution.upgradeReason !== "none") {
       elizaLogger.info(
@@ -158,16 +238,18 @@ export class RuntimeFactory {
     }
 
     const agentId = (character.id ? stringToUuid(character.id) : this.DEFAULT_AGENT_ID) as UUID;
+    if (agentId !== creation.agentId) {
+      throw new ElizaError("Loaded character does not match the admitted agent", {
+        code: "RUNTIME_CHARACTER_ID_MISMATCH",
+        context: { admittedAgentId: creation.agentId, loadedAgentId: agentId },
+      });
+    }
     const filteredPlugins = filterPlugins(plugins);
     const mcpShouldBeEnabled = shouldEnableMcp(context);
-    const doorDashShouldBeEnabled = getConnectedMcpPlatforms(context).includes("doordash");
     const cachePluginNames =
       mcpShouldBeEnabled && !filteredPlugins.some((p) => p.name === "mcp")
         ? [...filteredPlugins.map((plugin) => plugin.name), (mcpPlugin as Plugin).name]
         : filteredPlugins.map((plugin) => plugin.name);
-    if (doorDashShouldBeEnabled && !cachePluginNames.includes(doorDashPlugin.name)) {
-      cachePluginNames.push(doorDashPlugin.name);
-    }
 
     const cacheKey = buildRuntimeCacheKey({
       agentId,
@@ -182,12 +264,14 @@ export class RuntimeFactory {
     const currentMcpVersion = await edgeRuntimeCache
       .getMcpVersion(context.organizationId)
       .catch(() => 0);
+    this.assertCreation(creation);
 
     const cachedRuntime = await runtimeCache.getWithHealthCheck(
       cacheKey,
       dbAdapterPool,
       currentMcpVersion,
     );
+    this.assertCreation(creation);
     if (cachedRuntime) {
       elizaLogger.info(
         `[RuntimeFactory] Cache HIT: ${character.name} (${Date.now() - startTime}ms)`,
@@ -206,16 +290,11 @@ export class RuntimeFactory {
       filteredPlugins.push(mcpPlugin as Plugin);
       elizaLogger.info("[RuntimeFactory] Added MCP plugin for OAuth-connected user");
     }
-    if (doorDashShouldBeEnabled && !filteredPlugins.some((p) => p.name === doorDashPlugin.name)) {
-      filteredPlugins.push(doorDashPlugin);
-      elizaLogger.info("[RuntimeFactory] Added the safe DoorDash ordering facade");
-    }
 
-    const embeddingModel =
-      (character.settings?.OPENAI_EMBEDDING_MODEL as string) ||
-      (character.settings?.ELIZAOS_CLOUD_EMBEDDING_MODEL as string);
+    const embeddingModel = resolveHostedEmbeddingModel(character);
 
     const dbAdapter = await dbAdapterPool.getOrCreate(agentId, embeddingModel);
+    this.assertCreation(creation);
     const baseSettings = buildSettings(character, context);
     const mcpSettings = buildMcpSettings(context);
 
@@ -235,16 +314,27 @@ export class RuntimeFactory {
       settings: buildRuntimeSettings(context),
     });
 
+    creation.runtime = runtime;
     runtime.registerDatabaseAdapter(dbAdapter);
     ensureRuntimeLogger(runtime);
 
     await initializeRuntime(runtime, character, agentId);
+    this.assertCreation(creation);
     runtime.messageService = new CloudBootstrapMessageService();
     await waitForMcpServiceIfNeeded(runtime, filteredPlugins);
+    this.assertCreation(creation);
 
     setMcpEnabledServers(context);
 
-    await runtimeCache.set(cacheKey, runtime, character.name ?? "", agentId, currentMcpVersion);
+    await runtimeCache.set(
+      cacheKey,
+      runtime,
+      character.name ?? "",
+      agentId,
+      currentMcpVersion,
+      () => this.assertCreation(creation),
+    );
+    this.assertCreation(creation);
 
     edgeRuntimeCache
       .markRuntimeWarm(agentId as string, {

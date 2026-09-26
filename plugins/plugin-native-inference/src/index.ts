@@ -9,7 +9,7 @@
  *
  * The exports here are imported (statically, to defeat tree-shaking on
  * `Bun.build`) by `@elizaos/agent`'s mobile entrypoint, and dynamically by
- * the local-inference handler in `@elizaos/app-core`.
+ * the local-inference handler in `@elizaos/app`.
  *
  * The modules self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on every
  * other platform/runtime, so they are safe to import unconditionally.

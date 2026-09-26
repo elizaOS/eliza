@@ -2,22 +2,24 @@
  * Unit tests for AgentRuntime.useModel provider fallback: rotation to a
  * lower-priority provider on retryable (429 / 5xx / 529 / fetch-failed) errors,
  * failing closed for non-retryable errors and TTS slots, and honoring a pinned
- * provider. Drives a real AgentRuntime + InMemoryDatabaseAdapter with vi.fn
+ * provider. Drives a real AgentRuntime + SQLiteDatabaseAdapter with vi.fn
  * model handlers — no live model calls.
  */
+
+import { ElizaError } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import { AgentRuntime } from "../../runtime";
-import { type Character, ModelType } from "../../types";
+import type { AgentRuntime } from "../../runtime";
+import type { Character } from "../../types/agent.js";
+import { ModelType } from "../../types/model.js";
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "ProviderFallbackAgent",
 			bio: "test",
 			settings: {},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
 	});
 }
@@ -29,6 +31,40 @@ function statusError(statusCode: number, message: string): Error {
 }
 
 describe("AgentRuntime.useModel provider fallback", () => {
+	it("never changes payer after a funded operation fails, even through nested provider retry wrappers", async () => {
+		const runtime = makeRuntime();
+		const fundingError = new ElizaError(
+			"Recover the original funded operation",
+			{
+				code: "MODEL_FUNDING_AUTHORITY_FAILED",
+				cause: statusError(503, "Gateway timeout"),
+			},
+		);
+		let wrapped: Error = fundingError;
+		for (let i = 0; i < 20; i++)
+			wrapped = new Error("Gateway timeout", { cause: wrapped });
+		const preferred = vi.fn(async () => {
+			throw wrapped;
+		});
+		const otherPayer = vi.fn(async () => "personal purchase");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			preferred,
+			"application-provider",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			otherPayer,
+			"personal-provider",
+			10,
+		);
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+		).rejects.toBe(wrapped);
+		expect(preferred).toHaveBeenCalledTimes(1);
+		expect(otherPayer).not.toHaveBeenCalled();
+	});
 	it("falls through to the next provider when the preferred provider is rate-limited", async () => {
 		const runtime = makeRuntime();
 		const cliSdkFails = vi.fn(async () => {

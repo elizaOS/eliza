@@ -17,15 +17,19 @@ import {
   resolveOwnerContactWithFallback,
   resolveOwnerEntityId,
 } from "@elizaos/agent";
-import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
+import { getHostExecutionCapabilities } from "@elizaos/app/services/task-host-capabilities";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
   ServiceType,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
+  AnchorRegistry,
   CompletionCheckContribution,
   GlobalPauseView,
   OwnerFactsView,
@@ -43,8 +47,6 @@ import {
   createConsolidationRegistry,
   createEscalationLadderRegistry,
   createScheduledTaskRunner,
-  createSchedulingSqlScheduledTaskLogStore,
-  createSchedulingSqlScheduledTaskStore,
   createTaskGateRegistry,
   getAnchorRegistry,
   getScheduledTaskRunner,
@@ -69,11 +71,14 @@ import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
+import { FAMILY_BACKUP_CLEANUP_OPERATION } from "../family-workflows/backup-cleanup-schedule.js";
 import {
   FAMILY_MONTHLY_SYSTEM_OPERATION,
   getFamilyWorkflowRuntimeService,
 } from "../family-workflows/index.js";
-import { resolveGlobalPauseStore } from "../global-pause/store.js";
+import { withFamilyScheduledExecution } from "../family-workflows/scheduled-execution.js";
+import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
+import { purgeFamilyBackupCleanup } from "../family-workflows/workspace-deletion.js";
 import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "../household/repository.js";
 import {
@@ -100,6 +105,17 @@ import {
   revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding.js";
 import { resolveScheduledTaskDispatchContext } from "./dispatch-context.js";
+import { reconcileOwnerDossierActivity } from "./dossier-activity-migration.js";
+import {
+  DOSSIER_ACTIVITY_ANCHOR_KEY,
+  isManagedDossierTask,
+} from "./dossier-activity-policy.js";
+import {
+  admitDossierAutomaticExecution,
+  createDossierActivityMutationPolicy,
+  prepareDossierAutomaticFire,
+  resolveOwnerDossierActivityAnchor,
+} from "./dossier-activity-runtime.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -317,10 +333,7 @@ function makeRepositoryBackedStores(
   runtime: IAgentRuntime,
   agentId: string,
 ): RepositoryBackedStores {
-  return {
-    store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
-    logStore: createSchedulingSqlScheduledTaskLogStore({ runtime, agentId }),
-  };
+  return createFamilySchedulingStores(runtime, agentId);
 }
 
 function defaultOwnerFactsProvider(
@@ -668,7 +681,7 @@ function applyDispatchPolicy(result: DispatchResult): DispatchResult {
 
 export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
-  /** Test seam; production persists through LifeOpsRepository. */
+  /** Test seam; production persists through the runner-owned guarded callback. */
   persistDispatchAttempt?: (
     record: ScheduledTaskDispatchRecord,
     message: string,
@@ -692,6 +705,32 @@ export function createProductionScheduledTaskDispatcher(opts: {
           userActionable: true,
           message: deliveryBindingDecision.reason,
         });
+      }
+
+      if (
+        record.metadata?.systemOperation === FAMILY_BACKUP_CLEANUP_OPERATION
+      ) {
+        const jobId = record.metadata.deletionJobId;
+        const sha256 = record.metadata.backupReviewSha256;
+        if (typeof jobId !== "string" || typeof sha256 !== "string")
+          throw new ElizaError(
+            "[FamilyDeletion] Scheduled cleanup identity is missing",
+            {
+              code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+            },
+          );
+        const job = await purgeFamilyBackupCleanup(
+          opts.runtime,
+          SELF_ENTITY_ID,
+          {
+            jobId,
+            sha256,
+          },
+        );
+        return {
+          ok: true,
+          messageId: `family-backup-cleanup:${job.id}:${sha256}`,
+        };
       }
 
       if (isLocalAgentBackupDispatch(record)) {
@@ -787,43 +826,23 @@ export function createProductionScheduledTaskDispatcher(opts: {
           existingDispatchKey.trim().length > 0
             ? existingDispatchKey.trim()
             : `${record.taskId}:${record.firedAtIso}`;
-        if (opts.persistDispatchAttempt) {
+        if (record.persistPreparedDelivery) {
+          await record.persistPreparedDelivery(message, dispatchIdempotencyKey);
+        } else if (opts.persistDispatchAttempt) {
           await opts.persistDispatchAttempt(
             record,
             message,
             dispatchIdempotencyKey,
           );
         } else {
-          const repository = new LifeOpsRepository(opts.runtime);
-          const current = await repository.getScheduledTask(
-            opts.runtime.agentId,
-            record.taskId,
-          );
-          if (!current) {
-            return applyDispatchPolicy({
-              ok: false,
-              reason: "transport_error",
-              acceptance: "not_accepted",
-              userActionable: false,
-              message:
-                "Scheduled task disappeared before dispatch preparation.",
-            });
-          }
-          const attemptMetadata = {
-            dispatchPreparedMessage: message,
-            dispatchIdempotencyKey,
-            dispatchAttempt: {
-              status: "prepared",
-              preparedAtIso: new Date().toISOString(),
-              firedAtIso: record.firedAtIso,
-            },
-          };
-          current.metadata = {
-            ...(current.metadata ?? {}),
-            ...attemptMetadata,
-          };
-          await repository.upsertScheduledTask(opts.runtime.agentId, current);
-          if (record.metadata) Object.assign(record.metadata, attemptMetadata);
+          return applyDispatchPolicy({
+            ok: false,
+            reason: "transport_error",
+            acceptance: "not_accepted",
+            userActionable: false,
+            message:
+              "Scheduled delivery preparation requires the guarded task runner.",
+          });
         }
       }
 
@@ -1118,15 +1137,36 @@ export function createProductionScheduledTaskDispatcher(opts: {
   };
 }
 
+/** Bind activity resolution to the same durable rows used by the runner. */
+export function registerDossierActivityAnchor(
+  runtime: IAgentRuntime,
+  registry: AnchorRegistry,
+): void {
+  if (registry.get(DOSSIER_ACTIVITY_ANCHOR_KEY)) return;
+  const { store } = makeRepositoryBackedStores(runtime, runtime.agentId);
+  registry.register({
+    anchorKey: DOSSIER_ACTIVITY_ANCHOR_KEY,
+    consumption: "host_claim",
+    describe: {
+      label: "First authenticated owner activity of the dossier day",
+      provider: "@elizaos/plugin-personal-assistant",
+    },
+    resolve: (context) =>
+      resolveOwnerDossierActivityAnchor(store, context.nowIso),
+  });
+}
+
 function resolveRuntimeAnchorRegistry(runtime: IAgentRuntime) {
   const existing = getAnchorRegistry(runtime);
   if (existing) {
     registerFallbackAnchors(existing);
+    registerDossierActivityAnchor(runtime, existing);
     return existing;
   }
   const registry = createAnchorRegistry();
   registerAppLifeOpsAnchors(registry);
   registerFallbackAnchors(registry);
+  registerDossierActivityAnchor(runtime, registry);
   registerAnchorRegistry(runtime, registry);
   return registry;
 }
@@ -1141,7 +1181,7 @@ export interface CreateRuntimeRunnerOptions {
   subjectStore?: SubjectStoreView;
   /**
    * Override the host-capability probe. The default reads
-   * `getHostExecutionCapabilities(runtime)` from `@elizaos/app-core`,
+   * `getHostExecutionCapabilities(runtime)` from `@elizaos/app`,
    * which detects iOS BackgroundRunner / Android FGS / Node desktop. Tests
    * inject a fixed set to exercise substitution behavior.
    */
@@ -1212,15 +1252,34 @@ function buildLifeOpsRunnerDeps(
     opts.subjectStore ??
     makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
+  const ownerFacts = opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime);
+
   return {
     store: stores.store,
+    prepareMutation: createDossierActivityMutationPolicy({ ownerFacts }),
+    prepareAutomaticFire: prepareDossierAutomaticFire,
+    automaticAdmission: admitDossierAutomaticExecution,
+    prepareExecution: async ({ task, nowIso }) => {
+      if (!isManagedDossierTask(task)) return;
+      const facts = await ownerFacts();
+      await reconcileOwnerDossierActivity(stores.store, {
+        nowIso,
+        day: {
+          timezone: facts.timezone ?? resolveDefaultTimeZone(),
+          boundaryMinutes: 240,
+        },
+      });
+    },
+
+    executionBoundary: (task, execute) =>
+      withFamilyScheduledExecution(opts.runtime, task, execute, opts.agentId),
     logStore: stores.logStore,
     gates,
     completionChecks,
     ladders,
     anchors,
     consolidation,
-    ownerFacts: opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime),
+    ownerFacts,
     globalPause,
     activity,
     subjectStore,
@@ -1277,6 +1336,19 @@ export function createRuntimeScheduledTaskRunner(
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),
     dispatcher: deps.dispatcher,
+    ...(deps.executionBoundary
+      ? { executionBoundary: deps.executionBoundary }
+      : {}),
+    ...(deps.prepareMutation ? { prepareMutation: deps.prepareMutation } : {}),
+    ...(deps.prepareExecution
+      ? { prepareExecution: deps.prepareExecution }
+      : {}),
+    ...(deps.automaticAdmission
+      ? { automaticAdmission: deps.automaticAdmission }
+      : {}),
+    ...(deps.prepareAutomaticFire
+      ? { prepareAutomaticFire: deps.prepareAutomaticFire }
+      : {}),
   });
 }
 

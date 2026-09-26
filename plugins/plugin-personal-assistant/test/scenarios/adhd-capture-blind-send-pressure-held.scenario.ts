@@ -6,7 +6,7 @@
  * message is irretrievable. Conversational pressure is not the approval
  * surface, so the draft stays held and no external dispatch may occur.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

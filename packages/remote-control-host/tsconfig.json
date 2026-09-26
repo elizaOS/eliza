@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "bun-types"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "customConditions": ["eliza-source"],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+      "@elizaos/plugin-assistant": [
+        "../../plugins/plugin-assistant/src/index.ts"
+      ],
+      "@elizaos/core/contracts/remote-control": [
+        "../../packages/core/src/contracts/remote-control.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts"
+      ],
+      "@elizaos/core/logger": ["../core/src/logger.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

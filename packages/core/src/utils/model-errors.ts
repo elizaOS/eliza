@@ -34,10 +34,30 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function isTransientModelError(error: unknown): boolean {
+	if (isModelFundingAuthorityError(error)) return false;
 	const message = getErrorMessage(error).toLowerCase();
 	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
 		message.includes(pattern),
 	);
+}
+
+/** A failed funded operation must retain its payer and original intent across wrappers and retries. */
+export function isModelFundingAuthorityError(error: unknown): boolean {
+	const pending: unknown[] = [error];
+	const seen = new Set<object>();
+	while (pending.length) {
+		const value = pending.pop();
+		if (typeof value !== "object" || value === null || seen.has(value))
+			continue;
+		seen.add(value);
+		if ("code" in value && value.code === "MODEL_FUNDING_AUTHORITY_FAILED")
+			return true;
+		if ("cause" in value) pending.push(value.cause);
+		if ("lastError" in value) pending.push(value.lastError);
+		if ("errors" in value && Array.isArray(value.errors))
+			pending.push(...value.errors);
+	}
+	return false;
 }
 
 const OUTPUT_LIMIT_FINISH_REASONS = new Set([
@@ -277,6 +297,37 @@ export function isModelProviderError(error: unknown): boolean {
 		if (typeof status === "number" && status >= 400) return true;
 		const code = (node as { code?: unknown }).code;
 		if (typeof code === "string" && NETWORK_ERROR_CODES.has(code)) return true;
+	}
+	return false;
+}
+
+/** A rejected output/tool schema cannot be repaired by generating an apology. */
+export function isProviderSchemaRejection(error: unknown): boolean {
+	const status = modelProviderErrorStatus(error);
+	if (status !== undefined && status !== 400 && status !== 422) return false;
+	for (const node of modelErrorChain(error)) {
+		const status = readHttpStatus(node);
+		const code = (node as { code?: unknown }).code;
+		const name = (node as { name?: unknown }).name;
+		const providerEvidence =
+			status === 400 ||
+			status === 422 ||
+			code === "MODEL_PROVIDER_FAILED" ||
+			name === "AI_APICallError";
+		if (
+			!providerEvidence ||
+			(status !== undefined && status !== 400 && status !== 422)
+		)
+			continue;
+		const texts = nodeOverflowTexts(node);
+		if (
+			texts.some((text) =>
+				/failed to compile the JSON schema grammar|invalid schema for (?:response_format|function)|unsupported JSON schema/i.test(
+					text,
+				),
+			)
+		)
+			return true;
 	}
 	return false;
 }

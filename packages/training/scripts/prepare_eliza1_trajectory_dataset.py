@@ -5,7 +5,7 @@ Inputs:
   * `eliza_native_v1` model-boundary rows from runtime trajectory export.
   * `eliza_native_v1` rows produced by `eliza-scenarios run ... --export-native`
     (the scenario-runner → corpus bridge in
-    `packages/scenario-runner/src/native-export.ts`). These are ingested through
+    `packages/testing/scenario-runner/src/native-export.ts`). These are ingested through
     the same `eliza_native_v1` path — no separate flag — and run through the
     mandatory privacy filter like every other input row.
   * LifeOps benchmark result JSON exported by the standalone benchmark system.

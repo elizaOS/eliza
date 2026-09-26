@@ -13,15 +13,16 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import type {
+  AgentNotification,
+  NotificationCategory,
+  NotificationPriority,
+  UUID,
+} from "@elizaos/core";
 import {
-  type AgentNotification,
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
-  type NotificationCategory,
-  type NotificationPriority,
-  type UUID,
-} from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+} from "@elizaos/core/types/notification";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
@@ -37,6 +38,7 @@ import {
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
 import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
+import { logger } from "../../logger.ts";
 import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,

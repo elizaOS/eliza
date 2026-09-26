@@ -99,7 +99,29 @@ function databaseUrl(): string {
   return url;
 }
 
-async function loadDashboardInputs(
+/**
+ * Converts one daily token sum into a JavaScript number without losing digits.
+ *
+ * The SQL sums are `bigint` so a day whose valid int4 rows add up past
+ * 2^31 - 1 still returns; node-postgres delivers that `int8` as a decimal
+ * string. `Number()` is exact only up to `Number.MAX_SAFE_INTEGER` (2^53 - 1),
+ * far below the bigint ceiling of 2^63 - 1, so a larger sum fails the run
+ * instead of feeding a rounded value into projections.
+ */
+export function tokenSumToNumber(
+  value: number | string,
+  column: "input_tokens" | "output_tokens",
+): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(
+      `${column} daily sum ${String(value)} is not an exact JavaScript safe integer (max ${Number.MAX_SAFE_INTEGER})`,
+    );
+  }
+  return parsed;
+}
+
+export async function loadDashboardInputs(
   organizationId: string,
   startDate: Date,
   endDate: Date,
@@ -124,8 +146,8 @@ async function loadDashboardInputs(
             date_trunc('day', created_at) AS timestamp,
             count(*)::int AS total_requests,
             coalesce(sum(input_cost + output_cost), 0)::numeric AS total_cost,
-            coalesce(sum(input_tokens), 0)::int AS input_tokens,
-            coalesce(sum(output_tokens), 0)::int AS output_tokens,
+            coalesce(sum(input_tokens), 0)::bigint AS input_tokens,
+            coalesce(sum(output_tokens), 0)::bigint AS output_tokens,
             coalesce(
               count(*) FILTER (WHERE is_successful = true)::float /
               nullif(count(*)::float, 0),
@@ -151,8 +173,8 @@ async function loadDashboardInputs(
         timestamp: new Date(row.timestamp),
         totalRequests: Number(row.total_requests),
         totalCost: Number(row.total_cost),
-        inputTokens: Number(row.input_tokens),
-        outputTokens: Number(row.output_tokens),
+        inputTokens: tokenSumToNumber(row.input_tokens, "input_tokens"),
+        outputTokens: tokenSumToNumber(row.output_tokens, "output_tokens"),
         successRate: Number(row.success_rate),
       })),
       creditBalance:
@@ -471,7 +493,9 @@ async function main() {
   if (!status) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(`[eliza1:dashboard-alerts] ${error.message}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(`[eliza1:dashboard-alerts] ${error.message}`);
+    process.exit(1);
+  });
+}

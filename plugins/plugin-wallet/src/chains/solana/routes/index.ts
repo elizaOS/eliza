@@ -3,8 +3,9 @@
  * directly on the plugin's `routes` array. Each handler looks up `SolanaService`
  * from the runtime and returns a uniform `ApiResponse<T>` success/error envelope.
  */
-import type { LegacyRouteHandler, Route } from "@elizaos/core";
+
 import { logger } from "@elizaos/core";
+import type { LegacyRouteHandler, Route } from "@elizaos/core/api/http-plugin";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 import type { SolanaService } from "../service";
 import type { ApiError, ApiResponse, WalletPortfolio } from "../types";
@@ -13,7 +14,6 @@ function sendSuccess<T>(res: Parameters<LegacyRouteHandler>[1], data: T, status 
   const response: ApiResponse<T> = { success: true, data };
   res.status(status).json(response);
 }
-
 function sendError(
   res: Parameters<LegacyRouteHandler>[1],
   status: number,
@@ -25,23 +25,18 @@ function sendError(
   const response: ApiResponse<never> = { success: false, error };
   res.status(status).json(response);
 }
-
 const getWalletAddressHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
-
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
     return;
   }
-
   try {
     const publicKey = await solanaService.getPublicKey();
-
     if (!publicKey) {
       sendError(res, 404, "NO_WALLET", "No wallet configured");
       return;
     }
-
     sendSuccess(res, {
       publicKey: publicKey.toBase58(),
     });
@@ -51,27 +46,21 @@ const getWalletAddressHandler: LegacyRouteHandler = async (_req, res, runtime) =
     sendError(res, 500, "ERROR", "Failed to get wallet address", errorMessage);
   }
 };
-
 const getWalletBalanceHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
-
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
     return;
   }
-
   try {
     const publicKey = await solanaService.getPublicKey();
-
     if (!publicKey) {
       sendError(res, 404, "NO_WALLET", "No wallet configured");
       return;
     }
-
     const publicKeyStr = publicKey.toBase58();
     const balances = await solanaService.getBalancesByAddrs([publicKeyStr]);
     const balance = balances[publicKeyStr] ?? 0;
-
     sendSuccess(res, {
       publicKey: publicKeyStr,
       balance: balance,
@@ -83,45 +72,34 @@ const getWalletBalanceHandler: LegacyRouteHandler = async (_req, res, runtime) =
     sendError(res, 500, "ERROR", "Failed to get wallet balance", errorMessage);
   }
 };
-
 const getTokenBalanceHandler: LegacyRouteHandler = async (req, res, runtime) => {
   const token = req.params?.token;
   const solanaService = runtime.getService<SolanaService>("chain_solana");
-
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
     return;
   }
-
   if (!token) {
     sendError(res, 400, "INVALID_REQUEST", "token parameter is required");
     return;
   }
-
   try {
     const publicKey = await solanaService.getPublicKey();
-
     if (!publicKey) {
       sendError(res, 404, "NO_WALLET", "No wallet configured");
       return;
     }
-
     const publicKeyStr = publicKey.toBase58();
-
     // Get all token accounts and find the one matching the requested mint
     const tokenAccounts = await solanaService.getTokenAccountsByKeypair(publicKey, {
       includeZeroBalances: false,
     });
-
     const matchingToken = tokenAccounts.find((acc) => acc.account.data.parsed.info.mint === token);
-
     if (!matchingToken) {
       sendError(res, 404, "TOKEN_NOT_FOUND", `Token ${token} not found in wallet`);
       return;
     }
-
     const balance = matchingToken.account.data.parsed.info.tokenAmount.uiAmount;
-
     sendSuccess(res, {
       publicKey: publicKeyStr,
       token: token,
@@ -134,29 +112,22 @@ const getTokenBalanceHandler: LegacyRouteHandler = async (req, res, runtime) => 
     sendError(res, 500, "ERROR", "Failed to get token balance", errorMessage);
   }
 };
-
 const getWalletPortfolioHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
-
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
     return;
   }
-
   try {
     const publicKey = await solanaService.getPublicKey();
-
     if (!publicKey) {
       sendError(res, 404, "NO_WALLET", "No wallet configured");
       return;
     }
-
     const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
-
     if (!portfolioCache) {
       logger.info("[Route] Portfolio cache empty, triggering update");
       const portfolio = await solanaService.updateWalletData(true);
-
       sendSuccess(res, {
         publicKey: publicKey.toBase58(),
         totalUsd: portfolio.totalUsd,
@@ -177,9 +148,7 @@ const getWalletPortfolioHandler: LegacyRouteHandler = async (_req, res, runtime)
       });
       return;
     }
-
     const portfolio = portfolioCache;
-
     sendSuccess(res, {
       publicKey: publicKey.toBase58(),
       totalUsd: portfolio.totalUsd,
@@ -204,27 +173,21 @@ const getWalletPortfolioHandler: LegacyRouteHandler = async (_req, res, runtime)
     sendError(res, 500, "ERROR", "Failed to get wallet portfolio", errorMessage);
   }
 };
-
 const getWalletTokensHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
-
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
     return;
   }
-
   try {
     const publicKey = await solanaService.getPublicKey();
-
     if (!publicKey) {
       sendError(res, 404, "NO_WALLET", "No wallet configured");
       return;
     }
-
     const tokenAccounts = await solanaService.getTokenAccountsByKeypair(publicKey, {
       includeZeroBalances: false,
     });
-
     const tokens = tokenAccounts.map((acc) => {
       const info = acc.account.data.parsed.info;
       return {
@@ -234,7 +197,6 @@ const getWalletTokensHandler: LegacyRouteHandler = async (_req, res, runtime) =>
         amount: info.tokenAmount.amount,
       };
     });
-
     sendSuccess(res, {
       publicKey: publicKey.toBase58(),
       tokens: tokens,
@@ -246,7 +208,6 @@ const getWalletTokensHandler: LegacyRouteHandler = async (_req, res, runtime) =>
     sendError(res, 500, "ERROR", "Failed to get wallet tokens", errorMessage);
   }
 };
-
 export const solanaRoutes: Route[] = [
   {
     type: "GET",

@@ -1,17 +1,7 @@
 /**
- * Self-test for the shared plugin build driver (`plugins/plugin-build.ts`),
- * issue #10200. 57 plugin `build.ts` files delegate to `buildPlugin`, but it had
- * no dedicated test — a regression in the clean / target / rename / flatten /
- * declaration-emit / shim / copy orchestration would only surface as a broken
- * plugin dist somewhere downstream. This drives the driver against throwaway
- * fixture packages and asserts the real emitted `dist/` tree.
- *
- * Lives in packages/scripts/__tests__ (not a workspace member), so a workflow
- * must invoke it explicitly via `bun test packages/scripts/__tests__/plugin-build.test.ts`.
- *
- * The driver resolves `tsc` to an absolute path (`TSC_BIN`, via node module
- * resolution) and runs it as `node ${TSC_BIN}`, so the declaration-emit cases run
- * without `node_modules/.bin` on PATH — exactly the bare `bun test` CI shape.
+ * Exercises the shared plugin build driver against disposable packages and
+ * captures real workspace compiler outputs to prevent source-tree emission.
+ * Declaration fixtures invoke the resolved compiler without relying on PATH.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
@@ -24,6 +14,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "@typescript/typescript6";
 
 import {
   type BuildPluginConfig,
@@ -46,6 +38,63 @@ const TS_CONFIG = {
   },
   include: ["src"],
 };
+
+describe("workspace production emit", () => {
+  test.each([
+    ["packages/agent", "index.js"],
+    ["plugins/plugin-computeruse", "index.d.ts"],
+    ["plugins/plugin-wallet", "index.d.ts"],
+  ])(
+    "keeps %s compiler outputs inside its distribution",
+    (workspace, entry) => {
+      const root = fileURLToPath(
+        new URL(`../../../${workspace}/`, import.meta.url),
+      );
+      const config = ts.getParsedCommandLineOfConfigFile(
+        path.join(root, "tsconfig.build.json"),
+        { noCheck: true, incremental: false },
+        {
+          ...ts.sys,
+          onUnRecoverableConfigFileDiagnostic(diagnostic) {
+            throw new Error(
+              ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+            );
+          },
+        },
+      );
+      if (!config)
+        throw new Error(`Cannot parse ${workspace} build configuration`);
+      expect(config.errors).toEqual([]);
+      const emitted: string[] = [];
+      const program = ts.createProgram(config.fileNames, config.options);
+      const result = program.emit(undefined, (file) =>
+        emitted.push(path.resolve(file)),
+      );
+      const outputRoot = path.join(root, "dist");
+      if (result.emitSkipped) {
+        // Declaration-only compilation deliberately skips imported JSON assets.
+        // A skipped TypeScript module would still leave a broken distribution.
+        expect(
+          program
+            .getSourceFiles()
+            .filter(
+              (source) =>
+                !source.isDeclarationFile &&
+                !source.fileName.endsWith(".json") &&
+                program.emit(source, () => {}).emitSkipped,
+            )
+            .map((source) => source.fileName),
+        ).toEqual([]);
+      }
+      expect(result.diagnostics).toEqual([]);
+      expect(emitted).toContain(path.join(outputRoot, entry));
+      expect(
+        emitted.filter((file) => !file.startsWith(`${outputRoot}${path.sep}`)),
+      ).toEqual([]);
+    },
+    30_000,
+  );
+});
 
 let originalCwd: string;
 let fixtureDir: string;
@@ -344,44 +393,38 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     ).rejects.toThrow();
   });
 
-  test("dtsTolerant swallows a failed declaration emit and warns, keeping JS outputs", async () => {
-    // No tsconfig present → tsc fails (TS5058, missing project) → tolerant mode
-    // must warn + continue rather than abort. Spy on console.warn to prove the
-    // tolerant branch actually fired (not that tsc silently never ran).
-    makeFixture({ tsconfig: false });
-    const warnings: string[] = [];
-    const realWarn = console.warn;
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map(String).join(" "));
-    };
-    try {
-      await buildPlugin({
+  test("a missing required rename source aborts instead of publishing an incomplete build", async () => {
+    makeFixture({ src: "export const ok = 1;\n" });
+    await expect(
+      buildPlugin({
         name: "@elizaos/fixture-plugin",
         targets: [
           {
             label: "Node",
             entry: "src/index.ts",
-            outSubdir: ".",
+            outSubdir: "node",
             target: "node",
             format: "esm",
+            renames: [["missing.js", "required.js"]],
           },
         ],
-        dtsProject: "tsconfig.json",
-        dtsTolerant: true,
-      });
-    } finally {
-      console.warn = realWarn;
-    }
-    // JS target survived even though declaration emit failed.
-    expect(existsSync(distPath("index.js"))).toBe(true);
-    expect(existsSync(distPath("index.d.ts"))).toBe(false);
-    // The tolerant branch logged the specific warning.
-    expect(warnings.some((w) => /declaration generation failed/i.test(w))).toBe(
-      true,
-    );
+      }),
+    ).rejects.toThrow();
+    expect(existsSync(distPath("node", "required.js"))).toBe(false);
   });
 
-  test("dtsProject failure WITHOUT dtsTolerant rejects (the strict default)", async () => {
+  test("a missing required flatten source aborts instead of silently skipping the step", async () => {
+    makeFixture({ tsconfig: false });
+    await expect(
+      buildPlugin({
+        name: "@elizaos/fixture-plugin",
+        targets: [],
+        flatten: [{ from: "required-tree" }],
+      }),
+    ).rejects.toThrow();
+  });
+
+  test("a failed declaration emit rejects the build", async () => {
     makeFixture({ tsconfig: false });
     await expect(
       buildPlugin({

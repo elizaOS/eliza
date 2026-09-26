@@ -3,13 +3,12 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
-  CapabilityError,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { readFileHandler } from "./read.js";
 
 describe("READ", () => {
@@ -40,6 +39,76 @@ describe("READ", () => {
     expect(readView.slice.completeness).toBe("complete");
     expect(readView.slice.range).toMatchObject({ start: 0, end: 3 });
     expect(result.promptData).toEqual({ readView: data?.readView });
+  });
+
+  it("returns all Unicode content beyond the former implicit line and byte limits", async () => {
+    const file = path.join(env.tmpDir, "complete-large.txt");
+    const source = `${"猫🙂 line with preserved whitespace and complete planner context  \r\n".repeat(
+      5_000,
+    )}final marker`;
+    await fs.writeFile(file, source);
+    for (const unit of ["line", "byte"]) {
+      const result = await readFileHandler(
+        env.runtime,
+        env.message,
+        undefined,
+        {
+          parameters: { file_path: file, unit },
+        },
+      );
+      expect(result.success, result.text).toBe(true);
+      expect(result.text).toBe(source);
+    }
+  });
+
+  it("requires an explicit continuation revision even after a prior read", async () => {
+    const file = path.join(env.tmpDir, "explicit-revision.txt");
+    await fs.writeFile(file, "first\nunseen secret\n");
+    await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 1 },
+    });
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 1, limit: 1 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("expectedRevision is required");
+    expect(JSON.stringify(result)).not.toContain("unseen secret");
+  });
+
+  it.each([null, "", "invalid", Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
+    "rejects invalid numeric ranges without exposing file content: %s",
+    async (value) => {
+      const file = path.join(env.tmpDir, "invalid-range.txt");
+      await fs.writeFile(file, "unseen file content");
+      for (const name of ["offset", "limit"]) {
+        const result = await readFileHandler(
+          env.runtime,
+          env.message,
+          undefined,
+          {
+            parameters: { file_path: file, [name]: value },
+          },
+        );
+        expect(result.success).toBe(false);
+        expect(JSON.stringify(result)).not.toContain("unseen file content");
+      }
+    },
+  );
+
+  it("rejects byte offsets beyond EOF instead of reporting a different successful range", async () => {
+    const file = path.join(env.tmpDir, "past-eof.txt");
+    await fs.writeFile(file, "abc");
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        unit: "byte",
+        offset: 4,
+        limit: 1,
+        expectedRevision: "supplied",
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("byte offset exceeds");
   });
 
   it("fences the user-facing callback while the planner-facing text stays raw (#16563)", async () => {
@@ -135,6 +204,7 @@ describe("READ", () => {
         file_path: file,
         offset: firstView.slice.nextOffset,
         limit: 2,
+        expectedRevision: firstView.reference.revision,
       },
     });
     expect(`${first.text}${second.text}`).toBe("alpha\r\nbeta\ngamma\r\n");
@@ -169,6 +239,41 @@ describe("READ", () => {
         }
       ).slice.range,
     ).toEqual({ unit: "line", start: 2, end: 2, total: 2 });
+  });
+
+  it("rejects a past-EOF line offset on the repeat call too", async () => {
+    const file = path.join(env.tmpDir, "past-eof.txt");
+    await fs.writeFile(file, "alpha\nbeta\n", "utf8");
+    const initial = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 10 },
+    });
+    const { revision } = (
+      (initial.data as Record<string, unknown>).readView as {
+        reference: { revision: string };
+      }
+    ).reference;
+
+    const first = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        offset: 5,
+        limit: 1,
+        expectedRevision: revision,
+      },
+    });
+    const second = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        offset: 5,
+        limit: 1,
+        expectedRevision: revision,
+      },
+    });
+
+    expect(first.success).toBe(false);
+    expect(first.text).toContain("line offset 5 exceeds total 2");
+    expect(second.success).toBe(false);
+    expect(second.text).toContain("line offset 5 exceeds total 2");
   });
 
   it("accepts exact EOF from a cold line checkpoint after a byte-mode revision read", async () => {
@@ -260,8 +365,9 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "routed.txt");
     await fs.writeFile(file, "local file content", "utf8");
     const calls: string[] = [];
+    const unavailable = new UnavailableCapabilityRouter("desktop");
     const router: ElizaCapabilityRouter = {
-      environment: "desktop",
+      ...unavailable,
       availability: async () => ({
         environment: "desktop",
         available: true,
@@ -274,14 +380,7 @@ describe("READ", () => {
         },
       }),
       fs: {
-        list: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "fs unavailable",
-            capability: "fs",
-            method: "fs.list",
-          });
-        },
+        ...unavailable.fs,
         readText: async (params) => {
           calls.push(params.path);
           return {
@@ -291,62 +390,7 @@ describe("READ", () => {
             truncated: false,
           };
         },
-        writeText: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "fs unavailable",
-            capability: "fs",
-            method: "fs.writeText",
-          });
-        },
       },
-      pty: {
-        runCommand: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "terminal unavailable",
-            capability: "pty",
-            method: "pty.command.run",
-          });
-        },
-      },
-      git: {
-        status: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "git unavailable",
-            capability: "git",
-            method: "git.status",
-          });
-        },
-        diff: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "git unavailable",
-            capability: "git",
-            method: "git.diff",
-          });
-        },
-        commandRun: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "git unavailable",
-            capability: "git",
-            method: "git.command.run",
-          });
-        },
-      },
-      model: {
-        status: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "model unavailable",
-            capability: "model",
-            method: "model.status",
-          });
-        },
-      },
-      plugin: new UnavailableCapabilityRouter("desktop").plugin,
     };
     const runtime = {
       ...env.runtime,
@@ -700,17 +744,17 @@ describe("READ", () => {
     expect(result.text).toContain("UTF-8 character boundary");
   });
 
-  it("requires an initial read before a nonzero continuation", async () => {
+  it("requires a revision for a nonzero continuation", async () => {
     const file = path.join(env.tmpDir, "revision-required.txt");
     await fs.writeFile(file, "alpha\nbeta\n", "utf8");
     const result = await readFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: file, offset: 1, limit: 1 },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("read from offset 0");
+    expect(result.text).toContain("expectedRevision is required");
   });
 
-  it("rejects an automatic continuation when the file changed after the initial read", async () => {
+  it("rejects a stale explicit revision and resumes only with the refreshed revision", async () => {
     const file = path.join(env.tmpDir, "automatic-revision-stale.txt");
     await fs.writeFile(file, "alpha\nbeta\ngamma\n", "utf8");
     const first = await readFileHandler(env.runtime, env.message, undefined, {
@@ -720,7 +764,14 @@ describe("READ", () => {
 
     await fs.appendFile(file, "delta\n", "utf8");
     const result = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 1, limit: 1 },
+      parameters: {
+        file_path: file,
+        offset: 1,
+        limit: 1,
+        expectedRevision: (
+          first.data as { readView: { reference: { revision: string } } }
+        ).readView.reference.revision,
+      },
     });
 
     expect(result.success).toBe(false);
@@ -736,7 +787,14 @@ describe("READ", () => {
     expect(refreshed.text).toBe("alpha\n");
 
     const resumed = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, offset: 1, limit: 1 },
+      parameters: {
+        file_path: file,
+        offset: 1,
+        limit: 1,
+        expectedRevision: (
+          refreshed.data as { readView: { reference: { revision: string } } }
+        ).readView.reference.revision,
+      },
     });
     expect(resumed.success).toBe(true);
     expect(resumed.text).toBe("beta\n");

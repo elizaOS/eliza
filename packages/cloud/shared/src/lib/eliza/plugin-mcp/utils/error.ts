@@ -1,7 +1,6 @@
 // Wires hosted Eliza agent error behavior for cloud runtime services.
 import {
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -9,9 +8,9 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
-import type { McpProvider } from "../types";
-
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import { errorAnalysisTemplate as errorAnalysisPrompt } from "@elizaos/plugin-mcp/protocol-utils/prompts";
+import { type McpProvider } from "../types";
 export async function handleMcpError(
   state: State,
   mcpProvider: McpProvider,
@@ -23,10 +22,8 @@ export async function handleMcpError(
 ): Promise<ActionResult> {
   const errorMessage = error instanceof Error ? error.message : String(error);
   logger.error({ error, mcpType: type }, `MCP ${type} error: ${errorMessage}`);
-
   const fallbackText = `I wasn't able to complete that request. There's an issue with the ${type}. Can I help with something else?`;
   let responseText = fallbackText;
-
   if (callback) {
     try {
       const prompt = composePromptFromState({
@@ -45,14 +42,12 @@ export async function handleMcpError(
     } catch {
       // Use fallback
     }
-
     await callback({
       thought: `MCP ${type} error: ${errorMessage}`,
       text: responseText,
       actions: ["REPLY"],
     });
   }
-
   return {
     text: `Failed to execute MCP ${type}`,
     values: { success: false, error: errorMessage, errorType: type },

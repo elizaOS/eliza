@@ -12,22 +12,18 @@
 import {
   type AccountStoragePolicy,
   resetAccountCredentialStorage,
-} from "@elizaos/auth/account-storage";
-import { applySubscriptionCredentials } from "@elizaos/auth/credentials";
-import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/types";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceCapability,
-  ServiceRoutingConfig,
-} from "@elizaos/shared";
+} from "@elizaos/auth/auth/account-storage";
+import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
+import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
 import {
   asNonEmptyString,
-  asRecord,
+  asObjectRecord as asRecord,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   DEFAULT_CEREBRAS_TEXT_MODEL,
+  type DeploymentTargetConfig,
   deriveFirstRunCredentialPersistencePlan,
+  type ElizaConfig,
   type FirstRunConnection,
   type FirstRunCredentialInputs,
   type FirstRunLlmPersistenceSelection,
@@ -37,6 +33,7 @@ import {
   getFirstRunProviderSignalEnvKeys,
   getStoredFirstRunProviderId,
   getStoredSubscriptionProvider,
+  type LinkedAccountFlagsConfig,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
@@ -44,8 +41,9 @@ import {
   normalizeServiceRoutingConfig,
   normalizeSubscriptionProviderSelectionId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/types.eliza.ts";
+  type ServiceCapability,
+  type ServiceRoutingConfig,
+} from "@elizaos/core";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;
@@ -1044,6 +1042,8 @@ export async function applyFirstRunCredentialPersistence(
     credentialInputs?: FirstRunCredentialInputs | null;
     deploymentTarget?: DeploymentTargetConfig | null;
     serviceRouting?: ServiceRoutingConfig | null;
+    /** Observe synchronous environment writes without claiming later concurrent changes. */
+    observeEnvironmentMutation?: <T>(mutation: () => T) => T;
   },
 ): Promise<string | null> {
   const plan = deriveFirstRunCredentialPersistencePlan({
@@ -1055,12 +1055,23 @@ export async function applyFirstRunCredentialPersistence(
   if (plan.llmSelection) {
     const llmConnection = toFirstRunConnectionFromSelection(plan.llmSelection);
     if (llmConnection) {
-      await applyFirstRunConnectionConfig(config, llmConnection);
+      // Direct account providers mutate env before their first await; the
+      // continuation only updates canonical config. Subscription credential
+      // async work is not part of first-run direct-account rollback.
+      await (args.observeEnvironmentMutation
+        ? args.observeEnvironmentMutation(() =>
+            applyFirstRunConnectionConfig(config, llmConnection),
+          )
+        : applyFirstRunConnectionConfig(config, llmConnection));
     }
   }
 
   if (plan.cloudApiKey) {
-    persistLinkedCloudApiKey(config, plan.cloudApiKey);
+    if (args.observeEnvironmentMutation) {
+      args.observeEnvironmentMutation(() =>
+        persistLinkedCloudApiKey(config, plan.cloudApiKey),
+      );
+    } else persistLinkedCloudApiKey(config, plan.cloudApiKey);
   }
 
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);

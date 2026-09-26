@@ -49,7 +49,7 @@ gen_fixture: gen_fixture.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 #   3. Fail with a clear instruction.
 #
 # Path 2 lets the harness build on stock Linux machines that already have
-# `bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target
+# `bun run packages/app/scripts/build-llama-cpp-mtp.ts --target
 # linux-x64-vulkan` set up but no Vulkan SDK installed.
 ELIZA_MTP_VULKAN_HEADERS_DIR ?= $(HOME)/.cache/eliza-mtp/vulkan-headers/include
 SYSTEM_LIBVULKAN := $(firstword \
@@ -82,7 +82,7 @@ ifeq ($(wildcard $(ELIZA_MTP_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
 	@echo "  - VULKAN_SDK pointing at LunarG, or"
 	@echo "  - macOS: brew install molten-vk vulkan-headers vulkan-loader, or"
 	@echo "  - Fetched Khronos headers at $(ELIZA_MTP_VULKAN_HEADERS_DIR)"
-	@echo "    (run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-vulkan' to fetch them)"
+	@echo "    (run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-vulkan' to fetch them)"
 	@false
 else ifeq ($(SYSTEM_LIBVULKAN),)
 	@echo "Vulkan harness needs libvulkan.so.1 (apt install libvulkan1)"
@@ -467,8 +467,8 @@ cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 # libraries and times their dispatched SIMD entrypoints (AVX-VNNI / AVX2
 # / NEON-dotprod) at the production attention workload, with a thread
 # sweep. Requires the plugin libs — built here via cmake first.
-QJL_CPU_DIR     = ../../../../packages/native-plugins/qjl-cpu
-POLAR_CPU_DIR   = ../../../../packages/native-plugins/polarquant-cpu
+QJL_CPU_DIR     = ../qjl-cpu
+POLAR_CPU_DIR   = ../polarquant-cpu
 QJL_CPU_LIB     = $(QJL_CPU_DIR)/build/libqjl.a
 POLAR_CPU_LIB   = $(POLAR_CPU_DIR)/build/libpolarquant.a
 
@@ -582,12 +582,12 @@ ELIZA_MTP_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_MTP_IN_TREE_LLAMA_DIR)/ggml/inclu
 ELIZA_MTP_LIBGGML_CUDA ?= $(ELIZA_MTP_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
 # CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
-# agent owns build-llama-cpp-mtp.mjs):
+# agent owns build-llama-cpp-mtp.ts):
 #   linux-x64-cuda      : 80;86;89;90;100;120   (Ampere..Blackwell, mobile dGPU = 12.0)
 #   linux-aarch64-cuda  : 90a;90;100            (GH200 sm_90a + Hopper/Blackwell)
 # For a one-off local build on this machine's Blackwell mobile dGPU:
 #   ELIZA_MTP_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90' \
-#     node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
+#     node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda
 #
 # Compile-time arch list for the harness itself (cheap; one TU). Overridable
 # with CUDA_ARCH_FLAGS. Always emits sm_80/86/90 SASS plus compute_90 PTX —
@@ -735,14 +735,14 @@ ELIZA_MTP_FORK_VULKAN_DIR := $(ELIZA_MTP_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-
 verify-fork:
 ifeq ($(wildcard $(ELIZA_MTP_LLAMA_DIR)/.git),)
 	@echo "[verify-fork] fork not present at $(ELIZA_MTP_LLAMA_DIR)"
-	@echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal'"
+	@echo "[verify-fork] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal'"
 	@echo "[verify-fork] (or any other target) first to clone it, then re-run this target."
 	@false
 else
 	@if which xcrun >/dev/null 2>&1; then \
 	  if [ ! -d "$(ELIZA_MTP_FORK_METAL_DIR)" ]; then \
 	    echo "[verify-fork] fork present but $(ELIZA_MTP_FORK_METAL_DIR) missing — fork layout drift."; \
-	    echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal --dry-run' to stage/describe the shipped kernel patch."; \
+	    echo "[verify-fork] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal --dry-run' to stage/describe the shipped kernel patch."; \
 	    exit 1; \
 	  fi; \
 	  $(MAKE) metal_verify >/dev/null && \
@@ -805,7 +805,7 @@ endif
 # libggml-metal.dylib / libggml-base.dylib in the fork's
 # build/darwin-arm64-metal/bin tree, so it exercises the actual fork dispatch
 # pipeline (not the JIT). Prerequisite:
-# `node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target
+# `node packages/app/scripts/build-llama-cpp-mtp.ts --target
 # darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
 # eliza kernels in default.metallib.
 ELIZA_MTP_METAL_DEFAULT_BUILD_DIR := $(ELIZA_MTP_LLAMA_DIR)/build/darwin-arm64-metal
@@ -867,7 +867,7 @@ dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_G
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
 	@if [ ! -f "$(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
 	    echo "[dispatch-smoke] missing $(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib"; \
-	    echo "[dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal' first."; \
+	    echo "[dispatch-smoke] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal' first."; \
 	    exit 1; \
 	fi
 	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc \
@@ -885,7 +885,7 @@ metal_upscale_probe: metal_upscale_probe.cpp
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal upscale probe needs macOS Xcode tools."; exit 1; }
 	@if [ ! -f "$(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
 	    echo "[metal-upscale-probe] missing $(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib"; \
-	    echo "[metal-upscale-probe] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal' first."; \
+	    echo "[metal-upscale-probe] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal' first."; \
 	    exit 1; \
 	fi
 	clang++ $(CXXFLAGS) \
@@ -910,7 +910,7 @@ vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
 	@if [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_MTP_VULKAN_BIN_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target $(ELIZA_MTP_TARGET)' on a Linux Vulkan host first."; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target $(ELIZA_MTP_TARGET)' on a Linux Vulkan host first."; \
 	    exit 1; \
 	fi
 	LD_LIBRARY_PATH=$(ELIZA_MTP_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
@@ -926,14 +926,14 @@ vulkan_dispatch_smoke: force vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OB
 	fi
 	@if [ ! -f "$(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml.h" ] || [ ! -f "$(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml-backend.h" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing ggml headers under $(ELIZA_MTP_LLAMA_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target $(ELIZA_MTP_TARGET)' first, or override ELIZA_MTP_LLAMA_DIR."; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target $(ELIZA_MTP_TARGET)' first, or override ELIZA_MTP_LLAMA_DIR."; \
 	    exit 1; \
 	fi
 	@if [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_MTP_VULKAN_BIN_DIR)"; \
 	    echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_MTP_VULKAN_OUT_DIR)"; \
 	    echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_MTP_VULKAN_BUILD_BIN_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target $(ELIZA_MTP_TARGET)' on a Linux Vulkan host first."; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app/scripts/build-llama-cpp-mtp.ts --target $(ELIZA_MTP_TARGET)' on a Linux Vulkan host first."; \
 	    echo "[vulkan-dispatch-smoke] if using explicit prebuilt artifacts, set ELIZA_MTP_VULKAN_BIN_DIR=/path/to/the/bin-dir-containing-libggml-vulkan.so."; \
 	    exit 1; \
 	fi

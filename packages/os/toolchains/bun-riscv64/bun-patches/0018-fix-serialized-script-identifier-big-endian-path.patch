@@ -1,0 +1,19 @@
+diff --git a/src/jsc/bindings/webcore/SerializedScriptValue.cpp b/src/jsc/bindings/webcore/SerializedScriptValue.cpp
+index f1e72f3..ff7a363 100644
+--- a/src/jsc/bindings/webcore/SerializedScriptValue.cpp
++++ b/src/jsc/bindings/webcore/SerializedScriptValue.cpp
+@@ -3432,12 +3432,13 @@ private:
+         ptr += length * sizeof(char16_t);
+ #else
+         std::span<char16_t> characters;
+-        str = String::createUninitialized(length, characters);
++        String identifierString = String::createUninitialized(length, characters);
+         for (unsigned i = 0; i < length; ++i) {
+             uint16_t c;
+             readLittleEndian(ptr, end, c);
+             characters[i] = c;
+         }
++        str = Identifier::fromString(vm, identifierString);
+ #endif
+         return true;
+     }

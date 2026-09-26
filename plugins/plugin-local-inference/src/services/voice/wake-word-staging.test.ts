@@ -1,9 +1,10 @@
 /** Covers the wake-word staging plan (#9880). Deterministic. */
+
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { latestVoiceModelVersion } from "@elizaos/shared/local-inference";
+import { latestVoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { describe, expect, it } from "vitest";
 import {
 	downloadedAssetName,
@@ -13,7 +14,6 @@ import {
 
 describe("wake-word staging plan (#9880)", () => {
 	const wake = latestVoiceModelVersion("wakeword");
-
 	it("maps each downloaded GGUF onto the loader's wake/<head>.<kind>.gguf layout", () => {
 		if (!wake) throw new Error("wakeword version missing");
 		const plan = planWakeWordStaging(
@@ -22,7 +22,6 @@ describe("wake-word staging plan (#9880)", () => {
 			"/state/local-inference/wake",
 		);
 		expect(plan).toHaveLength(3);
-
 		// The downloaded name is version-prefixed; the destination is the canonical
 		// basename the runtime resolves.
 		const byDest = Object.fromEntries(plan.map((c) => [c.to, c.from]));
@@ -36,13 +35,11 @@ describe("wake-word staging plan (#9880)", () => {
 			byDest["/state/local-inference/wake/hey-eliza.classifier.gguf"],
 		).toBe("/state/models/voice/wakeword-0.3.0-hey-eliza.classifier.gguf");
 	});
-
 	it("returns no copies for a non-wakeword model", () => {
 		const vad = latestVoiceModelVersion("vad");
 		if (!vad) throw new Error("vad version missing");
 		expect(planWakeWordStaging(vad, "/x", "/y")).toEqual([]);
 	});
-
 	it("stageWakeWordModel copies the downloaded GGUFs into the wake dir", async () => {
 		if (!wake) throw new Error("wakeword version missing");
 		const root = await mkdtemp(path.join(tmpdir(), "wake-stage-"));
@@ -56,9 +53,7 @@ describe("wake-word staging plan (#9880)", () => {
 				"GGUF",
 			);
 		}
-
 		const staged = await stageWakeWordModel(wake, bundleVoiceDir, wakeDir);
-
 		expect(staged.sort()).toEqual(
 			[
 				path.join(wakeDir, "hey-eliza.classifier.gguf"),
@@ -68,7 +63,6 @@ describe("wake-word staging plan (#9880)", () => {
 		);
 		for (const p of staged) expect(existsSync(p)).toBe(true);
 	});
-
 	it("downloadedAssetName prefixes id + version", () => {
 		expect(
 			downloadedAssetName(

@@ -34,7 +34,7 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Keep in sync with `ELIZA_1_TIER_IDS` at
-# `packages/shared/src/local-inference/catalog.ts` and with the manifest
+# `plugins/plugin-native-inference/src/model-catalog/catalog.ts` and with the manifest
 # module at `packages/training/scripts/manifest/eliza1_manifest.py:38-46`.
 # R7 §"side bugs" flagged the prior `4b` omission as a publish-blocking bug.
 readonly VALID_TIERS=("2b" "4b" "9b" "27b" "27b-256k")
@@ -176,7 +176,7 @@ Staged voice "$VOICE_NAME" into $DEST.
 
 Next steps:
   1. Append the \`voice\` block from \`$DEST/manifest-fragment.json\` to
-     packages/app-core/src/services/local-inference/voice/kokoro/voice-presets.ts
+     packages/app/src/services/local-inference/voice/kokoro/voice-presets.ts
      (code-review step — this script intentionally does not edit it).
   2. Re-run packages/training/scripts/publish_all_eliza1.sh \\
        --bundles-root "$BUNDLES_ROOT" --filter-tier "$TIER"

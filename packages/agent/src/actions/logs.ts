@@ -7,19 +7,18 @@
  *   set_level → in-process per-room override on `runtime.logLevelOverrides`
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-} from "@elizaos/core";
-import { elizaLogger, logger } from "@elizaos/core";
 import {
+  type Action,
+  type ActionResult,
   createSelfApiRequestHeaders,
+  elizaLogger,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 const LOGS_OPS = ["search", "delete", "set_level"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];

@@ -68,7 +68,7 @@ log = logging.getLogger("gguf_eliza1_apply")
 
 
 # Source-of-truth slot numbers for the Eliza-added GGML types. Mirrors
-# packages/app-core/scripts/aosp/compile-libllama.mjs (preamble) and the
+# packages/app/scripts/aosp/compile-libllama.ts (preamble) and the
 # elizaOS/llama.cpp fork's gguf-py/gguf/constants.py.
 ELIZA1_GGML_TYPES = {
     "TBQ3_0": 43,

@@ -2,13 +2,23 @@
   "name": "@elizaos/cloud-sdk",
   "version": "2.0.3-beta.7",
   "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/cloud/sdk"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "LICENSE",
+    "README.md",
+    "app-delegation.md",
+    "app-inference.md",
+    "app-notifications.md"
   ],
   "sideEffects": false,
   "scripts": {
@@ -16,8 +26,7 @@
     "clean": "rm -rf dist",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src && node scripts/audit-api-routes.mjs",
-    "audit:routes": "node scripts/audit-api-routes.mjs",
+    "audit:routes": "node ../scripts/sdk/audit-api-routes.ts",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -27,62 +36,50 @@
   },
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./wallet-provision-challenge": {
+      "eliza-source": "./src/wallet-provision-challenge.ts",
       "types": "./dist/wallet-provision-challenge.d.ts",
-      "eliza-source": {
-        "types": "./src/wallet-provision-challenge.ts",
-        "import": "./src/wallet-provision-challenge.ts",
-        "default": "./src/wallet-provision-challenge.ts"
-      },
       "import": "./dist/wallet-provision-challenge.js",
       "default": "./dist/wallet-provision-challenge.js"
     },
     "./redemption-contract": {
+      "eliza-source": "./src/redemption-contract.ts",
       "types": "./dist/redemption-contract.d.ts",
-      "eliza-source": {
-        "types": "./src/redemption-contract.ts",
-        "import": "./src/redemption-contract.ts",
-        "default": "./src/redemption-contract.ts"
-      },
       "import": "./dist/redemption-contract.js",
       "default": "./dist/redemption-contract.js"
     },
     "./api-explorer": {
+      "eliza-source": "./src/api-explorer/index.ts",
       "types": "./dist/api-explorer/index.d.ts",
-      "eliza-source": {
-        "types": "./src/api-explorer/index.ts",
-        "import": "./src/api-explorer/index.ts",
-        "default": "./src/api-explorer/index.ts"
-      },
       "import": "./dist/api-explorer/index.js",
       "default": "./dist/api-explorer/index.js"
     },
     "./browser-contracts": {
+      "eliza-source": "./src/browser-contracts/index.ts",
       "types": "./dist/browser-contracts/index.d.ts",
-      "eliza-source": {
-        "types": "./src/browser-contracts/index.ts",
-        "import": "./src/browser-contracts/index.ts",
-        "default": "./src/browser-contracts/index.ts"
-      },
       "import": "./dist/browser-contracts/index.js",
       "default": "./dist/browser-contracts/index.js"
     },
+    "./app-notifications": {
+      "eliza-source": "./src/app-notifications.ts",
+      "types": "./dist/app-notifications.d.ts",
+      "import": "./dist/app-notifications.js",
+      "default": "./dist/app-notifications.js"
+    },
+    "./app-billing": {
+      "eliza-source": "./src/app-billing.ts",
+      "types": "./dist/app-billing.d.ts",
+      "import": "./dist/app-billing.js",
+      "default": "./dist/app-billing.js"
+    },
     "./account-billing-snapshot": {
+      "eliza-source": "./src/account-billing-snapshot.ts",
       "types": "./dist/account-billing-snapshot.d.ts",
-      "eliza-source": {
-        "types": "./src/account-billing-snapshot.ts",
-        "import": "./src/account-billing-snapshot.ts",
-        "default": "./src/account-billing-snapshot.ts"
-      },
       "import": "./dist/account-billing-snapshot.js",
       "default": "./dist/account-billing-snapshot.js"
     },
@@ -98,14 +95,34 @@
     },
     "./package.json": "./package.json",
     "./app-billing-account": {
+      "eliza-source": "./src/app-billing-account.ts",
       "types": "./dist/app-billing-account.d.ts",
-      "eliza-source": {
-        "types": "./src/app-billing-account.ts",
-        "import": "./src/app-billing-account.ts",
-        "default": "./src/app-billing-account.ts"
-      },
       "import": "./dist/app-billing-account.js",
       "default": "./dist/app-billing-account.js"
+    },
+    "./app-delegation": {
+      "eliza-source": "./src/app-delegation.ts",
+      "types": "./dist/app-delegation.d.ts",
+      "import": "./dist/app-delegation.js",
+      "default": "./dist/app-delegation.js"
+    },
+    "./app-billing-admin": {
+      "eliza-source": "./src/app-billing-admin.ts",
+      "types": "./dist/app-billing-admin.d.ts",
+      "import": "./dist/app-billing-admin.js",
+      "default": "./dist/app-billing-admin.js"
+    },
+    "./app-billing-membership": {
+      "eliza-source": "./src/app-billing-membership.ts",
+      "types": "./dist/app-billing-membership.d.ts",
+      "import": "./dist/app-billing-membership.js",
+      "default": "./dist/app-billing-membership.js"
+    },
+    "./browser-contracts/account-lifecycle": {
+      "eliza-source": "./src/browser-contracts/account-lifecycle.ts",
+      "types": "./dist/browser-contracts/account-lifecycle.d.ts",
+      "import": "./dist/browser-contracts/account-lifecycle.js",
+      "default": "./dist/browser-contracts/account-lifecycle.js"
     }
   },
   "elizaos": {
@@ -114,10 +131,7 @@
       "contractId": "eliza-cloud-api"
     },
     "scripts": {
-      "coreBuild": true,
-      "testLanes": [
-        "server"
-      ]
+      "coreBuild": true
     }
   },
   "dependencies": {

@@ -2,12 +2,21 @@
  * Playwright UI-smoke spec for the Remote Capability View app flow using the
  * real renderer fixture.
  */
+import { promises as fs } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import path from "node:path";
+import type { Plugin } from "@elizaos/core";
 import { expect, type Page, type Route, test } from "@playwright/test";
+import {
+  getView,
+  registerPluginViews,
+} from "../../../agent/src/api/views-registry.ts";
+import { createViewAssetHost as fixture } from "../../../agent/test/support/view-assets-host.ts";
 import { getFreePort } from "../utils/get-free-port.mjs";
 import {
   assertReadyChecks,
@@ -185,7 +194,9 @@ test("settings connects a remote capability endpoint and opens its view", async 
     await page.getByRole("option", { name: "Home machine" }).click();
     await page.getByLabel("Endpoint URL", { exact: true }).fill(remote.baseUrl);
     await page.getByLabel("Endpoint ID", { exact: true }).fill("live-product");
-    await page.getByLabel("Bearer token", { exact: true }).fill("product-token");
+    await page
+      .getByLabel("Bearer token", { exact: true })
+      .fill("product-token");
     await page
       .getByLabel("Allowed module IDs", { exact: true })
       .fill("remote-capability-live, remote-capability-live");
@@ -521,3 +532,125 @@ function sendJson(
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
 }
+
+test("loads a bound frame, nested CSS/media, WASM and raw module graph in a real browser", async ({
+  page,
+}) => {
+  const host = await fixture();
+  try {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto(host.url().href);
+    await page.waitForFunction(() => document.body.dataset.graph === "loaded");
+    expect(
+      await page
+        .locator("#target")
+        .evaluate((el) => getComputedStyle(el).color),
+    ).toBe("rgb(11, 22, 33)");
+    expect(errors).toEqual([]);
+    const prefix = host
+      .url()
+      .pathname.slice(0, host.url().pathname.lastIndexOf("/") + 1);
+    for (const file of [
+      "styles/main.css",
+      "media/pixel.svg",
+      "main.js",
+      "child.js",
+      "engine.wasm",
+    ])
+      expect(host.requests).toContain(`${prefix}${file}`);
+  } finally {
+    await host.close();
+  }
+});
+
+test("executes a real canonical build through the protected blob factory and rejects a relative graph before effect", async ({
+  page,
+}) => {
+  const host = await fixture();
+  try {
+    const { build } = await import("vite");
+    const { createViewBundleConfig } = await import(
+      "../../../scripts/view-bundle-vite.config.ts"
+    );
+    const output = path.join(host.dir, "built");
+    await mkdir(output);
+    await writeFile(path.join(output, "unrelated.js"), "must not be published");
+    await writeFile(
+      path.join(host.dir, "entry.ts"),
+      'export default async function value(){const {answer}=await import("./logic.ts");return answer}',
+    );
+    await writeFile(path.join(host.dir, "logic.ts"), "export const answer=42;");
+    const config = createViewBundleConfig({
+      packageName: "@test/assets",
+      viewId: "built",
+      entry: path.join(host.dir, "entry.ts"),
+      outDir: output,
+    });
+    await build({ ...config, configFile: false, logLevel: "silent" });
+    const manifest = JSON.parse(
+      await fs.readFile(path.join(output, "bundle.js.assets.json"), "utf8"),
+    );
+    expect(manifest.files).toContain("bundle.js");
+    expect(manifest.files).not.toContain("unrelated.js");
+    expect(manifest.files.some((file: string) => file.endsWith(".map"))).toBe(
+      false,
+    );
+    const plugin: Plugin = {
+      name: "built-asset",
+      description: "Canonical module",
+      views: [{ id: "built", label: "Built", bundlePath: "built/bundle.js" }],
+    };
+    await registerPluginViews(host.runtime, plugin, { pluginDir: host.dir });
+    const entry = getView(host.runtime, "built");
+    if (!entry?.bundleUrl) throw new Error("Missing built view URL");
+    const url = new URL(entry.bundleUrl, host.origin);
+    url.searchParams.set("hostExternalRuntime", "1");
+    url.searchParams.set("hostExternalSpecifiers", "react");
+    await page.goto(host.url().href);
+    // Keep the browser's native import intact; Vitest transforms imports in
+    // serialized function callbacks into its Node-only SSR helper.
+    const browserImport = `async (bundleUrl) => {
+      const response = await fetch(bundleUrl);
+      if (!response.ok) return { status: response.status, body: await response.json() };
+      const objectUrl = URL.createObjectURL(new Blob([await response.text()], { type: "application/javascript" }));
+      try {
+        const module = await import(objectUrl);
+        const exports = await module.default(async () => { throw new Error("Unexpected host import"); });
+        return { status: response.status, value: await exports.default() };
+      } finally { URL.revokeObjectURL(objectUrl); }
+    }`;
+    const result = await page.evaluate(
+      `(${browserImport})(${JSON.stringify(url.href)})`,
+    );
+    expect(result).toEqual({ status: 200, value: 42 });
+    await writeFile(
+      path.join(output, "bundle.js"),
+      'globalThis.unwantedEffect=true; const child=await import("./child.js"); export {child};',
+    );
+    await writeFile(path.join(output, "child.js"), "export const value=1;");
+    await writeFile(
+      path.join(output, "bundle.js.assets.json"),
+      JSON.stringify({ version: 1, files: ["bundle.js", "child.js"] }),
+    );
+    await registerPluginViews(host.runtime, plugin, { pluginDir: host.dir });
+    const rejected = new URL(
+      getView(host.runtime, "built")?.bundleUrl ?? "",
+      host.origin,
+    );
+    rejected.searchParams.set("hostExternalRuntime", "1");
+    rejected.searchParams.set("hostExternalSpecifiers", "react");
+    const rejectedLoad = await page.evaluate(
+      `(${browserImport})(${JSON.stringify(rejected.href)})`,
+    );
+    expect(rejectedLoad).toMatchObject({
+      status: 422,
+      body: { code: "VIEW_MODULE_GRAPH_UNSUPPORTED" },
+    });
+    expect(await page.evaluate(() => "unwantedEffect" in globalThis)).toBe(
+      false,
+    );
+  } finally {
+    await host.close();
+  }
+});

@@ -1,18 +1,13 @@
 /** Resolves Cloud model and endpoint settings from runtime and environment state. */
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger, resolveSetting } from "@elizaos/core";
-import {
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core";
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  type DevCloudEnvAuthority,
-} from "@elizaos/shared";
-
-export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL =
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL;
-
+import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { ElizaError } from "@elizaos/core";
+import { captureDevCloudEnvAuthoritySnapshot } from "../cloud-config/dev-cloud-env-authority.js";
+import { logger } from "@elizaos/core";
+import { resolveSetting } from "@elizaos/core";
+import { type DevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
+import { type IAgentRuntime } from "@elizaos/core";
+export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL;
 /**
  * Runtime config first, then `process.env`, then the supplied default.
  *
@@ -20,104 +15,62 @@ export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL =
  * canonical place. The env fallback uses dotenv semantics (trimmed; empty
  * strings treated as unset).
  */
-export function getSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  defaultValue?: string
-): string | undefined {
-  return defaultValue === undefined
-    ? resolveSetting(runtime, key)
-    : resolveSetting(runtime, key, { defaultValue });
+export function getSetting(runtime: IAgentRuntime, key: string, defaultValue?: string): string | undefined {
+    return defaultValue === undefined
+        ? resolveSetting(runtime, key)
+        : resolveSetting(runtime, key, { defaultValue });
 }
-
-export function isBrowser(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { document?: Document }).document !== "undefined"
-  );
-}
-
-export function isProxyMode(runtime: IAgentRuntime): boolean {
-  return isBrowser() && !!getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL");
-}
-
 export type EndpointSettingReader = (key: string) => string | undefined;
-
 /** Atomic Cloud endpoint and credential choice used by outbound SDK clients. */
 export interface CloudSdkAuthorityTuple {
-  readonly authority: DevCloudEnvAuthority | null;
-  readonly apiBaseUrl: string;
-  readonly apiKey: string | undefined;
-  readonly outboundAllowed: boolean;
+    readonly authority: DevCloudEnvAuthority | null;
+    readonly apiBaseUrl: string;
+    readonly apiKey: string | undefined;
+    readonly outboundAllowed: boolean;
 }
-
 /** Pure endpoint policy shared by inference and diagnostic surfaces. */
-export function resolveElizaCloudBaseURL(
-  readSetting: EndpointSettingReader,
-  options: { browser?: boolean } = {}
-): string {
-  const read = (key: string): string | undefined => {
-    const value = readSetting(key)?.trim();
-    return value ? value : undefined;
-  };
-  return (
-    (options.browser ? read("ELIZAOS_CLOUD_BROWSER_BASE_URL") : undefined) ??
-    read("ELIZAOS_CLOUD_BASE_URL") ??
-    "https://api.eliza.app/api/v1"
-  );
+export function resolveElizaCloudBaseURL(readSetting: EndpointSettingReader): string {
+    const read = (key: string): string | undefined => {
+        const value = readSetting(key)?.trim();
+        return value ? value : undefined;
+    };
+    return (read("ELIZAOS_CLOUD_BASE_URL") ??
+        "https://api.eliza.app/api/v1");
 }
-
 function resolveUnmanagedBaseURL(runtime: IAgentRuntime): string {
-  return resolveElizaCloudBaseURL(
-    (key) => {
-      const runtimeValue = runtime.getSetting(key);
-      const normalizedRuntime =
-        runtimeValue === undefined || runtimeValue === null
-          ? undefined
-          : String(runtimeValue).trim() || undefined;
-      return normalizedRuntime ?? resolveSetting(null, key);
-    },
-    { browser: isBrowser() }
-  );
+    return resolveElizaCloudBaseURL((key) => {
+        const runtimeValue = runtime.getSetting(key);
+        const normalizedRuntime = runtimeValue === undefined || runtimeValue === null
+            ? undefined
+            : String(runtimeValue).trim() || undefined;
+        return normalizedRuntime ?? resolveSetting(null, key);
+    });
 }
-
 function resolveUnmanagedEmbeddingBaseURL(runtime: IAgentRuntime): string {
-  const embeddingURL = isBrowser()
-    ? getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL") ||
-      getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL")
-    : getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_URL");
-  if (embeddingURL) {
-    logger.debug(`[ELIZAOS_CLOUD] Using specific embedding base URL: ${embeddingURL}`);
-    return embeddingURL;
-  }
-  logger.debug("[ELIZAOS_CLOUD] Falling back to general base URL for embeddings.");
-  return resolveUnmanagedBaseURL(runtime);
+    const embeddingURL = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_URL");
+    if (embeddingURL) {
+        logger.debug(`[ELIZAOS_CLOUD] Using specific embedding base URL: ${embeddingURL}`);
+        return embeddingURL;
+    }
+    logger.debug("[ELIZAOS_CLOUD] Falling back to general base URL for embeddings.");
+    return resolveUnmanagedBaseURL(runtime);
 }
-
 function resolveUnmanagedApiKey(runtime: IAgentRuntime): string | undefined {
-  return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+    return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
 }
-
-function resolveUnmanagedEmbeddingApiKey(
-  runtime: IAgentRuntime,
-): string | undefined {
-  const embeddingApiKey = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_API_KEY");
-  if (embeddingApiKey) {
-    logger.debug("[ELIZAOS_CLOUD] Using specific embedding API key (present)");
-    return embeddingApiKey;
-  }
-  logger.debug("[ELIZAOS_CLOUD] Falling back to general API key for embeddings.");
-  return resolveUnmanagedApiKey(runtime);
+function resolveUnmanagedEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
+    const embeddingApiKey = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_API_KEY");
+    if (embeddingApiKey) {
+        logger.debug("[ELIZAOS_CLOUD] Using specific embedding API key (present)");
+        return embeddingApiKey;
+    }
+    logger.debug("[ELIZAOS_CLOUD] Falling back to general API key for embeddings.");
+    return resolveUnmanagedApiKey(runtime);
 }
-
-function frozenValue(
-  values: Readonly<Record<string, string | undefined>>,
-  key: string,
-): string | undefined {
-  const value = values[key]?.trim();
-  return value || undefined;
+function frozenValue(values: Readonly<Record<string, string | undefined>>, key: string): string | undefined {
+    const value = values[key]?.trim();
+    return value || undefined;
 }
-
 /**
  * Resolve one immutable endpoint/credential tuple for a Cloud SDK operation.
  *
@@ -125,74 +78,62 @@ function frozenValue(
  * and later `process.env` mutations must not replace either half. The two
  * deliberately unauthenticated targets also block SDK traffic entirely.
  */
-export function resolveCloudSdkAuthorityTuple(
-  runtime: IAgentRuntime,
-  embedding = false,
-): CloudSdkAuthorityTuple {
-  const snapshot =
-    !isBrowser() && typeof process !== "undefined"
-      ? captureDevCloudEnvAuthoritySnapshot(process.env)
-      : null;
-
-  if (!snapshot) {
-    const apiBaseUrl = embedding
-      ? resolveUnmanagedEmbeddingBaseURL(runtime)
-      : resolveUnmanagedBaseURL(runtime);
-    const apiKey = isBrowser()
-      ? undefined
-      : embedding
-        ? resolveUnmanagedEmbeddingApiKey(runtime)
-        : resolveUnmanagedApiKey(runtime);
+export function resolveCloudSdkAuthorityTuple(runtime: IAgentRuntime, embedding = false): CloudSdkAuthorityTuple {
+    const snapshot = captureDevCloudEnvAuthoritySnapshot(process.env);
+    if (!snapshot) {
+        const apiBaseUrl = embedding
+            ? resolveUnmanagedEmbeddingBaseURL(runtime)
+            : resolveUnmanagedBaseURL(runtime);
+        const apiKey = embedding
+            ? resolveUnmanagedEmbeddingApiKey(runtime)
+            : resolveUnmanagedApiKey(runtime);
+        return Object.freeze({
+            authority: null,
+            apiBaseUrl,
+            apiKey,
+            outboundAllowed: true,
+        });
+    }
+    const blocked = snapshot.authority === "staging-default" || snapshot.authority === "offline";
+    const embeddingBaseUrl = embedding
+        ? frozenValue(snapshot.values, "ELIZAOS_CLOUD_EMBEDDING_URL")
+        : undefined;
+    const apiBaseUrl = embeddingBaseUrl ??
+        frozenValue(snapshot.values, "ELIZAOS_CLOUD_BASE_URL") ??
+        "";
+    const embeddingApiKey = embedding
+        ? frozenValue(snapshot.values, "ELIZAOS_CLOUD_EMBEDDING_API_KEY")
+        : undefined;
+    const apiKey = blocked
+        ? undefined
+        : embeddingApiKey ?? frozenValue(snapshot.values, "ELIZAOS_CLOUD_API_KEY");
+    if (embeddingBaseUrl) {
+        logger.debug(`[ELIZAOS_CLOUD] Using launcher-authorized embedding base URL: ${embeddingBaseUrl}`);
+    }
     return Object.freeze({
-      authority: null,
-      apiBaseUrl,
-      apiKey,
-      outboundAllowed: true,
+        authority: snapshot.authority,
+        apiBaseUrl,
+        apiKey,
+        outboundAllowed: !blocked && Boolean(apiBaseUrl),
     });
-  }
-
-  const blocked =
-    snapshot.authority === "staging-default" || snapshot.authority === "offline";
-  const embeddingBaseUrl = embedding
-    ? frozenValue(snapshot.values, "ELIZAOS_CLOUD_EMBEDDING_URL")
-    : undefined;
-  const apiBaseUrl =
-    embeddingBaseUrl ??
-    frozenValue(snapshot.values, "ELIZAOS_CLOUD_BASE_URL") ??
-    "";
-  const embeddingApiKey = embedding
-    ? frozenValue(snapshot.values, "ELIZAOS_CLOUD_EMBEDDING_API_KEY")
-    : undefined;
-  const apiKey = blocked
-    ? undefined
-    : embeddingApiKey ?? frozenValue(snapshot.values, "ELIZAOS_CLOUD_API_KEY");
-
-  if (embeddingBaseUrl) {
-    logger.debug(
-      `[ELIZAOS_CLOUD] Using launcher-authorized embedding base URL: ${embeddingBaseUrl}`,
-    );
-  }
-
-  return Object.freeze({
-    authority: snapshot.authority,
-    apiBaseUrl,
-    apiKey,
-    outboundAllowed: !blocked && Boolean(apiBaseUrl),
-  });
 }
-
 export function getBaseURL(runtime: IAgentRuntime): string {
-  return resolveCloudSdkAuthorityTuple(runtime).apiBaseUrl;
+    return resolveCloudSdkAuthorityTuple(runtime).apiBaseUrl;
 }
-
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
-  return resolveCloudSdkAuthorityTuple(runtime, true).apiBaseUrl;
+    return resolveCloudSdkAuthorityTuple(runtime, true).apiBaseUrl;
 }
-
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
-  return resolveCloudSdkAuthorityTuple(runtime).apiKey;
+    return resolveCloudSdkAuthorityTuple(runtime).apiKey;
 }
-
+/** Explicit configured native product; the server resolves all tenant and funding authority. */
+export function getNativeApplicationSlot(runtime: IAgentRuntime): string | undefined {
+    return getSetting(runtime, "ELIZAOS_CLOUD_APPLICATION_SLOT");
+}
+/** One key per logical model call, retained by the caller across warming or transport retries. */
+export function nativeApplicationOperationHeaders(runtime: IAgentRuntime): Record<string, string> {
+    return getNativeApplicationSlot(runtime) ? { "Idempotency-Key": `native:${crypto.randomUUID()}` } : {};
+}
 /**
  * The Eliza Cloud app this agent's inference should be attributed to (#10423).
  *
@@ -206,9 +147,8 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
  * is simply billed normally, never rejected.
  */
 export function getAppId(runtime: IAgentRuntime): string | undefined {
-  return getSetting(runtime, "ELIZA_APP_ID");
+    return getSetting(runtime, "ELIZA_APP_ID");
 }
-
 /**
  * Truthiness for host-written cloud flags: "true" or "1" (trimmed,
  * case-insensitive), mirroring how core `isCloudConnected` reads
@@ -216,11 +156,11 @@ export function getAppId(runtime: IAgentRuntime): string | undefined {
  * string "true" (getSetting/resolveSetting coerce to string).
  */
 function isTruthyCloudFlag(value: string | undefined): boolean {
-  if (!value) return false;
-  const lower = value.trim().toLowerCase();
-  return lower === "true" || lower === "1";
+    if (!value)
+        return false;
+    const lower = value.trim().toLowerCase();
+    return lower === "true" || lower === "1";
 }
-
 /**
  * Whether Cloud TTS may serve: a Cloud API key is present AND the operator
  * turned cloud audio on — either through the full cloud connection
@@ -238,14 +178,12 @@ function isTruthyCloudFlag(value: string | undefined): boolean {
  * capability-only mode, even when the operator cloud-routed TTS.
  */
 export function isCloudTtsAvailable(runtime: IAgentRuntime): boolean {
-  const apiKey = getApiKey(runtime);
-  if (!apiKey?.trim()) return false;
-  return (
-    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
-    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_TTS"))
-  );
+    const apiKey = getApiKey(runtime);
+    if (!apiKey?.trim())
+        return false;
+    return (isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
+        isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_TTS")));
 }
-
 /**
  * Whether Cloud STT (TRANSCRIPTION) may serve. Exact mirror of
  * {@link isCloudTtsAvailable}: a Cloud API key is present AND cloud audio is
@@ -260,124 +198,82 @@ export function isCloudTtsAvailable(runtime: IAgentRuntime): boolean {
  * unauthenticated cloud request.
  */
 export function isCloudSttAvailable(runtime: IAgentRuntime): boolean {
-  const apiKey = getApiKey(runtime);
-  if (!apiKey?.trim()) return false;
-  return (
-    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
-    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_STT"))
-  );
+    const apiKey = getApiKey(runtime);
+    if (!apiKey?.trim())
+        return false;
+    return (isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
+        isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_STT")));
 }
-
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
-  return resolveCloudSdkAuthorityTuple(runtime, true).apiKey;
+    return resolveCloudSdkAuthorityTuple(runtime, true).apiKey;
 }
-
 export function getSmallModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
-    (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
+        (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string));
 }
-
 export function getNanoModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL") ??
-    getSetting(runtime, "NANO_MODEL") ??
-    getSmallModel(runtime)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL") ??
+        getSetting(runtime, "NANO_MODEL") ??
+        getSmallModel(runtime));
 }
-
 export function getMediumModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_MEDIUM_MODEL") ??
-    getSetting(runtime, "MEDIUM_MODEL") ??
-    getSmallModel(runtime)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_MEDIUM_MODEL") ??
+        getSetting(runtime, "MEDIUM_MODEL") ??
+        getSmallModel(runtime));
 }
-
 export function getLargeModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
-    (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_LARGE_MODEL) as string)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
+        (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_LARGE_MODEL) as string));
 }
-
 export function getMegaModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_MEGA_MODEL") ??
-    getSetting(runtime, "MEGA_MODEL") ??
-    getLargeModel(runtime)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_MEGA_MODEL") ??
+        getSetting(runtime, "MEGA_MODEL") ??
+        getLargeModel(runtime));
 }
-
 export function getResponseHandlerModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ??
-    getSetting(runtime, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL") ??
-    getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
-    getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
-    getSmallModel(runtime)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ??
+        getSetting(runtime, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL") ??
+        getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
+        getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
+        getSmallModel(runtime));
 }
-
 export function getActionPlannerModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ??
-    getSetting(runtime, "ELIZAOS_CLOUD_PLANNER_MODEL") ??
-    getSetting(runtime, "ACTION_PLANNER_MODEL") ??
-    getSetting(runtime, "PLANNER_MODEL") ??
-    getLargeModel(runtime)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ??
+        getSetting(runtime, "ELIZAOS_CLOUD_PLANNER_MODEL") ??
+        getSetting(runtime, "ACTION_PLANNER_MODEL") ??
+        getSetting(runtime, "PLANNER_MODEL") ??
+        getLargeModel(runtime));
 }
-
 export function getResponseModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_MODEL") ??
-    getSetting(runtime, "RESPONSE_MODEL") ??
-    getLargeModel(runtime)
-  );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_MODEL") ??
+        getSetting(runtime, "RESPONSE_MODEL") ??
+        getLargeModel(runtime));
 }
-
 /**
  * @deprecated Eliza Cloud research was retired. This compatibility export
  * fails explicitly instead of selecting a text model that cannot do research.
  */
 export function getResearchModel(_runtime: IAgentRuntime): never {
-  throw new ElizaError(
-    "Eliza Cloud no longer provides a RESEARCH model; install a research-capable provider",
-    {
-      code: "ELIZA_CLOUD_RESEARCH_UNAVAILABLE",
-      severity: "fatal",
-    },
-  );
+    throw new ElizaError("Eliza Cloud no longer provides a RESEARCH model; install a research-capable provider", {
+        code: "ELIZA_CLOUD_RESEARCH_UNAVAILABLE",
+        severity: "fatal",
+    });
 }
-
 export function getImageDescriptionModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL", "gpt-5.4-mini") as string;
+    return getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL", "gpt-5.4-mini") as string;
 }
-
 export function getImageGenerationModel(runtime: IAgentRuntime): string {
-  // Must be a cloud SUPPORTED_IMAGE_MODELS id with an image:generation price;
-  // the retired BitRouter default (google/gemini-2.5-flash-image) 500'd (#11005).
-  return (
-    getSetting(
-      runtime,
-      "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL",
-      "google/nano-banana-2/text-to-image",
-    ) ?? "google/nano-banana-2/text-to-image"
-  );
+    // Must be a cloud SUPPORTED_IMAGE_MODELS id with an image:generation price;
+    // the retired BitRouter default (google/gemini-2.5-flash-image) 500'd (#11005).
+    return (getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL", "google/nano-banana-2/text-to-image") ?? "google/nano-banana-2/text-to-image");
 }
-
-
 export function getTTSModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "gpt-5-mini-tts") as string;
+    return getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "gpt-5-mini-tts") as string;
 }
-
 export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
-  const setting = getSetting(runtime, "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY", "false");
-  return String(setting).toLowerCase() === "true";
+    const setting = getSetting(runtime, "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY", "false");
+    return String(setting).toLowerCase() === "true";
 }
-
 /**
  * Resolve a client-side timeout (ms) for a cloud model round-trip from `envKey`,
  * falling back to `defaultMs`. `0`/negative/non-numeric → undefined (opt out).
@@ -386,13 +282,12 @@ export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
  * platform default), so turn-blocking calls (TTS/STT in a voice turn, deep
  * research) need an explicit ceiling or a stalled gateway hangs the turn.
  */
-export function resolveCloudTimeoutMs(
-  envKey: string,
-  defaultMs: number
-): number | undefined {
-  const raw = typeof process !== "undefined" ? process.env[envKey] : undefined;
-  if (raw === undefined || raw.trim() === "") return defaultMs;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return defaultMs;
-  return parsed <= 0 ? undefined : parsed;
+export function resolveCloudTimeoutMs(envKey: string, defaultMs: number): number | undefined {
+    const raw = typeof process !== "undefined" ? process.env[envKey] : undefined;
+    if (raw === undefined || raw.trim() === "")
+        return defaultMs;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed))
+        return defaultMs;
+    return parsed <= 0 ? undefined : parsed;
 }

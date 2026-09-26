@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -14,8 +15,8 @@
     "esModuleInterop": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+      "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"]
     },
     "types": ["node", "bun"]
   },

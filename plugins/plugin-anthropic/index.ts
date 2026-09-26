@@ -9,23 +9,22 @@
  * Also carries the built-in `TestSuite` that exercises key validation and a few
  * live `useModel()` calls, and the `config` block declaring every supported env
  * var. `initializeAnthropic` (init.ts) runs at plugin init to detect the auth
- * mode. The Node and browser build entrypoints re-export this module.
+ * mode. This module is the Node runtime entrypoint.
  */
 import type {
   GenerateTextParams,
   IAgentRuntime,
   ImageDescriptionParams,
   Plugin,
-  ProcessEnvLike,
   TestCase,
   TestSuite,
   TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeAnthropic, type PluginConfig } from "./init";
+import { handleImageDescription } from "./models/image";
 import {
   handleActionPlanner,
-  handleImageDescription,
   handleReasoningLarge,
   handleReasoningSmall,
   handleResponseHandler,
@@ -34,7 +33,7 @@ import {
   handleTextMega,
   handleTextNano,
   handleTextSmall,
-} from "./models";
+} from "./models/text";
 import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
@@ -146,15 +145,7 @@ const pluginTests = [
   },
 ] as TestSuite[];
 
-function getProcessEnv(): ProcessEnvLike {
-  // In browsers, `process` is not defined (and we must not reference it unguarded).
-  if (typeof process === "undefined") {
-    return {};
-  }
-  return process.env as ProcessEnvLike;
-}
-
-const env = getProcessEnv();
+const env = process.env;
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
 const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
@@ -192,7 +183,6 @@ export const anthropicPlugin: Plugin = {
     PLANNER_MODEL: env.PLANNER_MODEL ?? null,
     ANTHROPIC_EXPERIMENTAL_TELEMETRY: env.ANTHROPIC_EXPERIMENTAL_TELEMETRY ?? null,
     ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL ?? null,
-    ANTHROPIC_BROWSER_BASE_URL: env.ANTHROPIC_BROWSER_BASE_URL ?? null,
     ANTHROPIC_COT_BUDGET: env.ANTHROPIC_COT_BUDGET ?? null,
     ANTHROPIC_COT_BUDGET_SMALL: env.ANTHROPIC_COT_BUDGET_SMALL ?? null,
     ANTHROPIC_COT_BUDGET_LARGE: env.ANTHROPIC_COT_BUDGET_LARGE ?? null,
@@ -283,3 +273,5 @@ export const anthropicPlugin: Plugin = {
 };
 
 export default anthropicPlugin;
+
+export * from "./utils/config";

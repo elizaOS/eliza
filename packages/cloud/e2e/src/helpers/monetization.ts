@@ -115,25 +115,14 @@ function isInferenceCacheWarming(response: AuthedResponse<unknown>): boolean {
   );
 }
 
-/**
- * The cloud's DEFAULT text model — routed natively to Cerebras
- * (`CEREBRAS_DEFAULT_TEXT_SMALL_MODEL`). The `cerebras/` prefix makes
- * `resolveAiProviderSource` bill it to the `cerebras` source and the language
- * model layer call `api.cerebras.ai/v1`. No Ollama / local-OpenAI shim.
- */
-export const REAL_LLM_MODEL = "cerebras/gemma-4-31b";
+/** Live Cerebras model used to prove the paid inference and creator ledger path. */
+export const REAL_LLM_MODEL = "cerebras/gpt-oss-120b";
 
 /** Billing source + provider for {@link REAL_LLM_MODEL} (seed-pricing). */
 export const REAL_LLM_BILLING_SOURCE = "cerebras";
 
-/**
- * The model's max output tokens (gemma-4-31b on Cerebras: 40000 on the paid
- * tier, per the `CEREBRAS_DEFAULT_TEXT_SMALL_MODEL` catalog entry in
- * cloud/shared/lib/models/catalog.ts). gemma-4-31b is non-reasoning by default
- * (reasoning only via `reasoning_effort`), but still give it the model's full
- * output budget so long completions are never truncated.
- */
-export const REAL_LLM_MAX_TOKENS = 40000;
+/** Full output budget from the GPT OSS 120B catalog entry, including reasoning. */
+export const REAL_LLM_MAX_TOKENS = 40960;
 
 /**
  * Whether the cloud's default inference provider (Cerebras) is configured.

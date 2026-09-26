@@ -1,17 +1,9 @@
 /** Worker-safe Todos plugin bound to host-owned durable storage. */
 
-import type { Plugin } from "@elizaos/core/edge";
+import type { Plugin } from "@elizaos/core";
 import { createTodoAction } from "./actions/todo.js";
 import { createCurrentTodosProvider } from "./providers/current-todos.js";
 import type { TodoStore } from "./store.js";
-
-export {
-  convergeTodoScopesInTransaction,
-  createTodosSqlStore,
-  deserializeTodoMutationRecord,
-  importTodoMutationRecordsInTransaction,
-  serializeTodoMutationRecord,
-} from "./sql-store.js";
 
 export const TODOS_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -45,23 +37,3 @@ export function createTodosEdgePlugin(options: TodosEdgePluginOptions): Plugin {
     ],
   };
 }
-
-export type {
-  CreateTodoInput,
-  TodoCutoverState,
-  TodoFilter,
-  TodoMutation,
-  TodoMutationExecution,
-  TodoMutationImportInput,
-  TodoMutationImportResult,
-  TodoMutationInput,
-  TodoMutationRecord,
-  TodoMutationRecordWire,
-  TodoMutationResult,
-  TodoScope,
-  TodoScopeConvergenceInput,
-  TodoStore,
-  UpdateTodoInput,
-  WriteTodoListInput,
-} from "./store.js";
-export type { Todo } from "./types.js";

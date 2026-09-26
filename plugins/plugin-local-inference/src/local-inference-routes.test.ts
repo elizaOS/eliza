@@ -11,7 +11,7 @@ import { PassThrough } from "node:stream";
 import {
 	readRoutingPreferences,
 	writeRoutingPreferences,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function freshActiveState() {
@@ -123,7 +123,7 @@ vi.mock("./services/service.js", () => ({
 	},
 }));
 
-vi.mock("@elizaos/plugin-capacitor-bridge", () => ({
+vi.mock("@elizaos/plugin-native-inference/host-bridge", () => ({
 	getMobileDeviceBridgeStatus:
 		getRouteTestMocks().bridgeMock.getMobileDeviceBridgeStatus,
 	loadMobileDeviceBridgeModel:
@@ -135,7 +135,7 @@ vi.mock("@elizaos/plugin-capacitor-bridge", () => ({
 // getMobileDeviceBridgeApi imports this deep subpath (the bare entry is
 // stubbed on mobile), so the providers-route tests must mock it here.
 vi.mock(
-	"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap",
+	"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap",
 	() => ({
 		getMobileDeviceBridgeStatus:
 			getRouteTestMocks().bridgeMock.getMobileDeviceBridgeStatus,

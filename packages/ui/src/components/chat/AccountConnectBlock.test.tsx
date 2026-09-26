@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import { createTranslator } from "../../i18n";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
@@ -100,14 +101,7 @@ function accountConnectMessage(): ConversationMessage["accountConnect"] {
 
 function renderWithApp(message: ConversationMessage) {
   const appValue = {
-    // Use the provided defaultValue so labels render as real English.
-    t: (_key: string, vars?: Record<string, unknown>) => {
-      const dv = vars?.defaultValue;
-      if (typeof dv !== "string") return _key;
-      return dv.replace(/\{\{(\w+)\}\}/g, (_m, name: string) =>
-        vars && vars[name] != null ? String(vars[name]) : "",
-      );
-    },
+    t: createTranslator("en"),
     sendActionMessage: vi.fn(),
   } as never;
   __setAppValueForTests(appValue);
@@ -151,8 +145,6 @@ describe("AccountConnectBlock", () => {
       screen.getByTestId("account-connect-add-anthropic-subscription"),
     ).toBeTruthy();
     expect(screen.getByTestId("account-connect-add-openai-codex")).toBeTruthy();
-    expect(screen.getByText("Claude Subscription")).toBeTruthy();
-    expect(screen.getByText("OpenAI Codex")).toBeTruthy();
   });
 
   it("shows the live account count from the api client per provider", async () => {

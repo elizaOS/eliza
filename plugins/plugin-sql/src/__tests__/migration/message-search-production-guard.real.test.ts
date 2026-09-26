@@ -8,6 +8,7 @@ import { vector } from "@electric-sql/pglite/vector";
 import {
   type Agent,
   ChannelType,
+  clearSaltCache,
   type Entity,
   type Memory,
   type Room,
@@ -18,7 +19,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { v4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { plugin as sqlPlugin } from "../../index";
 import { DatabaseMigrationService } from "../../migration-service";
 import type { DrizzleDatabase } from "../../types";
@@ -29,10 +30,15 @@ describe("message-search production DDL guard", () => {
   let pgClient: PGlite;
   let db: DrizzleDatabase;
   let originalNodeEnv: string | undefined;
+  let originalSecretSalt: string | undefined;
   let originalApplyMessageSearchObjects: string | undefined;
 
   beforeEach(async () => {
+    vi.stubEnv("SECRET_SALT", "sql-production-ddl-fixture-salt");
     originalNodeEnv = process.env.NODE_ENV;
+    originalSecretSalt = process.env.SECRET_SALT;
+    process.env.SECRET_SALT = `message-search-test-${v4()}`;
+    clearSaltCache();
     originalApplyMessageSearchObjects = process.env.ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS;
 
     pgClient = new PGlite({ extensions: { vector } });
@@ -40,6 +46,12 @@ describe("message-search production DDL guard", () => {
   });
 
   afterEach(async () => {
+    if (originalSecretSalt === undefined) {
+      delete process.env.SECRET_SALT;
+    } else {
+      process.env.SECRET_SALT = originalSecretSalt;
+    }
+    clearSaltCache();
     if (originalNodeEnv === undefined) {
       delete process.env.NODE_ENV;
     } else {
@@ -52,6 +64,7 @@ describe("message-search production DDL guard", () => {
     }
 
     await pgClient.close();
+    vi.unstubAllEnvs();
   });
 
   const runSqlPluginMigration = async (databaseBackend: "postgres" | "pglite", targetDb = db) => {

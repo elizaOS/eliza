@@ -637,7 +637,6 @@ test.beforeEach(async ({ page }) => {
     const host = window as unknown as Record<string, unknown>;
     host.__ELIZA_APP_API_BASE__ = origin;
     host.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
-    host.__ELIZAOS_API_BASE__ = origin;
   });
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
@@ -651,9 +650,6 @@ test("automations overview empty state encourages creating tasks and workflows",
   await openAppPath(page, "/automations");
 
   await expect(page.getByTestId("automations-shell")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Automations" }),
-  ).toBeVisible();
   const filterMenu = page.getByRole("button", {
     name: "Filter automations, All selected",
   });

@@ -19,19 +19,15 @@
  * These routes are registered with `rawPath: true` so they mount at their
  * canonical paths without the plugin-name prefix.
  */
-
 import {
   buildSetupError,
   type IAgentRuntime,
-  type Route,
-  type RouteRequest,
-  type RouteResponse,
   type SetupState,
   type SetupStatusResponse,
 } from "@elizaos/core";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
 
 const IMESSAGE_SERVICE_NAME = "imessage";
-
 /**
  * Narrow structural type for the IMessageService methods we call from
  * this route file. Declared here rather than imported from the service
@@ -57,23 +53,19 @@ interface IMessageServiceLike {
     channelId: string | null;
   };
 }
-
 interface ConnectorSetupService {
   getConfig(): Record<string, unknown>;
   updateConfig(updater: (config: Record<string, unknown>) => void): void;
 }
-
 function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
   if (!service || typeof service !== "object") return false;
   const candidate = service as Partial<ConnectorSetupService>;
   return typeof candidate.getConfig === "function" && typeof candidate.updateConfig === "function";
 }
-
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   const service = runtime.getService("connector-setup");
   return isConnectorSetupService(service) ? service : null;
 }
-
 function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
   if (!service || typeof service !== "object") return false;
   const candidate = service as Partial<IMessageServiceLike>;
@@ -82,12 +74,10 @@ function isIMessageServiceLike(service: unknown): service is IMessageServiceLike
     (candidate.getStatus === undefined || typeof candidate.getStatus === "function")
   );
 }
-
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
   const service = runtime.getService(IMESSAGE_SERVICE_NAME);
   return isIMessageServiceLike(service) ? service : null;
 }
-
 interface IMessageSetupDetail {
   transport?: "native" | "blooio";
   available: boolean;
@@ -105,7 +95,6 @@ interface IMessageSetupDetail {
   webhookPath?: string | null;
   channelId?: string | null;
 }
-
 function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessageSetupDetail> {
   const service = resolveService(runtime);
   if (!service) {
@@ -143,7 +132,6 @@ function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessa
     },
   };
 }
-
 // ── GET /api/setup/imessage/status ──────────────────────────────────
 async function handleSetupStatus(
   _req: RouteRequest,
@@ -152,7 +140,6 @@ async function handleSetupStatus(
 ): Promise<void> {
   res.status(200).json(buildStatusResponse(runtime));
 }
-
 // ── POST /api/setup/imessage/start ──────────────────────────────────
 async function handleSetupStart(
   _req: RouteRequest,
@@ -166,7 +153,6 @@ async function handleSetupStart(
       .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
-
   setupService.updateConfig((cfg) => {
     if (!cfg.connectors) cfg.connectors = {};
     const connectors = cfg.connectors as Record<string, unknown>;
@@ -176,10 +162,8 @@ async function handleSetupStart(
       enabled: true,
     };
   });
-
   res.status(200).json(buildStatusResponse(runtime));
 }
-
 // ── POST /api/setup/imessage/cancel ─────────────────────────────────
 async function handleSetupCancel(
   _req: RouteRequest,
@@ -193,18 +177,15 @@ async function handleSetupCancel(
       .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
-
   setupService.updateConfig((cfg) => {
     const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
     delete connectors.imessage;
   });
-
   res.status(200).json({
     connector: "imessage",
     state: "idle",
   } satisfies SetupStatusResponse<undefined>);
 }
-
 export const imessageSetupRoutes: Route[] = [
   {
     type: "GET",

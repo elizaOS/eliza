@@ -53,6 +53,7 @@ import {
   redactTextForEgress,
 } from "../lifeops/privacy-egress.js";
 import { LifeOpsService } from "../lifeops/service.js";
+import { formatConnectorDegradationLines } from "./lifeops-connector-lines.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -98,15 +99,13 @@ async function summarizeConnectorDegradation(
       }
     }),
   );
-  const lines: string[] = [];
-  for (const { contribution, status } of statuses) {
-    if (status.state === "ok") continue;
-    const detail = status.message ? `: ${status.message}` : "";
-    lines.push(
-      `Connector ${contribution.describe.label} ${status.state}${detail}`,
-    );
-  }
-  return lines;
+  return formatConnectorDegradationLines(
+    statuses.map(({ contribution, status }) => ({
+      label: contribution.describe.label,
+      state: status.state,
+      message: status.message,
+    })),
+  );
 }
 
 export function normalizeGoalTitle(title: string): string {
@@ -282,28 +281,43 @@ function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
 
 function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
   const timezone = facts.timezone?.value;
-  const morning = facts.morningWindow?.value;
-  const evening = facts.eveningWindow?.value;
   const quiet = facts.quietHours?.value;
   const parts: string[] = [];
+  const inferred: string[] = [];
   if (timezone) {
     parts.push(`timezone=${timezone}`);
   }
-  if (morning) {
-    parts.push(`morningWindow=${morning.startLocal}-${morning.endLocal}`);
-  }
-  if (evening) {
-    parts.push(`eveningWindow=${evening.startLocal}-${evening.endLocal}`);
+  for (const [key, description] of [
+    ["morningWindow", "post-wake activity"],
+    ["eveningWindow", "pre-sleep activity"],
+  ] as const) {
+    const entry = facts[key];
+    if (!entry) continue;
+    const range = `${entry.value.startLocal}-${entry.value.endLocal}`;
+    const source = entry.provenance?.source ?? "unknown";
+    if (["first_run", "profile_save", "policy_action"].includes(source)) {
+      parts.push(`${key}=${range}`);
+    } else {
+      inferred.push(`${description}=${range} (source=${source})`);
+    }
   }
   if (quiet) {
     parts.push(
       `protected quiet/sleep window=${quiet.startLocal}-${quiet.endLocal} ${quiet.timezone}`,
     );
   }
-  if (parts.length === 0) {
+  if (parts.length === 0 && inferred.length === 0) {
     return [];
   }
-  const lines = [`Owner timing facts: ${parts.join(" | ")}`];
+  const lines = parts.length
+    ? [`Owner timing facts: ${parts.join(" | ")}`]
+    : [];
+  if (inferred.length) {
+    lines.push(
+      `Inferred routine estimates: ${inferred.join(" | ")}`,
+      "These estimates are not explicit scheduling preferences, do not redefine clock-time morning/evening, and prove no calendar availability or conflicts.",
+    );
+  }
   if (quiet) {
     lines.push(
       "Calendar creates inside the protected quiet/sleep window are conflicts: do not book silently; ask for explicit owner override and propose alternatives outside the protected window.",
@@ -315,7 +329,7 @@ function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
-    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser-companion management to MANAGE_BROWSER_BRIDGE, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. Morning/night self-review briefings run as scheduled tasks rather than as a planner-visible action. Available in private owner conversations, including Discord.",
+    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. Morning/night self-review briefings run as scheduled tasks rather than as a planner-visible action. Available in private owner conversations, including Discord.",
   descriptionCompressed:
     "Owner operations overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
@@ -373,34 +387,91 @@ export const lifeOpsProvider: Provider = {
 
     try {
       const service = new LifeOpsService(runtime);
-      const ownerProfile = await readLifeOpsOwnerProfile(runtime);
-      const ownerFacts = await resolveOwnerFactStore(runtime).read();
-      const overview = await service.getOverview();
+      const accountManager = getConnectorAccountManager(runtime);
+      const now = new Date();
+      // These reads have no data dependency on each other, so they go out
+      // together instead of one await at a time (0.55-1.1 s of serial round
+      // trips per planner recompose, live 2026-09-13). Failure handling is
+      // per read and unchanged: reads that used to throw out of `get()`
+      // still reject here and reach the provider boundary below; reads that
+      // used to degrade in place still degrade in place. Only
+      // `listOwnerOccurrencesCompletedToday` stays chained after
+      // `getOverview()`, which materializes occurrences before it reads them,
+      // so the completed-today query observes the same post-refresh rows it
+      // did when the two ran back to back. The calendar/gmail reads further
+      // down depend on the connector status resolved here and stay ordered
+      // after it.
+      const [
+        ownerProfile,
+        ownerFacts,
+        { overview, completedToday },
+        connectorAccounts,
+        privacyPolicies,
+        googleAccountsRead,
+        connectorDegradationLines,
+      ] = await Promise.all([
+        readLifeOpsOwnerProfile(runtime),
+        resolveOwnerFactStore(runtime).read(),
+        service.getOverview().then(async (refreshed) => ({
+          overview: refreshed,
+          completedToday: await service.listOwnerOccurrencesCompletedToday(now),
+        })),
+        (async () => {
+          try {
+            return await accountManager.listAccounts("google");
+          } catch (cause) {
+            // error-policy:J2 context-adding rethrow — a failed
+            // connector-account read must not silently shrink the privacy
+            // metadata to an empty set; the provider boundary below reports it
+            // and renders the explicit unavailable state instead of a
+            // healthy-looking overview.
+            runtime.reportError("LifeOpsProvider.connectorAccounts", cause, {
+              provider: "google",
+            });
+            throw new ElizaError("Google connector account read failed.", {
+              code: "LIFEOPS_CONNECTOR_ACCOUNTS_READ_FAILED",
+              cause,
+              context: { provider: "google" },
+            });
+          }
+        })(),
+        (async () => {
+          try {
+            return mapConnectorAccountPrivacyPolicies(
+              await service.repository.listConnectorAccountPrivacy(
+                service.agentId(),
+              ),
+            );
+          } catch (cause) {
+            // error-policy:J4 fail closed — with the per-account privacy
+            // table unreadable every account stays owner-only (the most
+            // restrictive policy); reportError surfaces the broken read
+            // instead of letting the degrade look healthy.
+            runtime.reportError("LifeOpsProvider.accountPrivacy", cause, {
+              agentId: runtime.agentId,
+            });
+            return mapConnectorAccountPrivacyPolicies([]);
+          }
+        })(),
+        (async () => {
+          // Captured, not thrown: the Google block below re-raises a failure
+          // into its own catch so the degrade path stays exactly as it was.
+          try {
+            return {
+              ok: true as const,
+              accounts: await service.getGoogleConnectorAccounts(INTERNAL_URL),
+            };
+          } catch (cause) {
+            return { ok: false as const, cause };
+          }
+        })(),
+        summarizeConnectorDegradation(runtime),
+      ]);
       const egressContext = createLifeOpsEgressContext({
         isOwner: true,
         agentId: runtime.agentId,
         entityId: message.entityId,
       });
-      const accountManager = getConnectorAccountManager(runtime);
-      let connectorAccounts: Awaited<
-        ReturnType<typeof accountManager.listAccounts>
-      >;
-      try {
-        connectorAccounts = await accountManager.listAccounts("google");
-      } catch (cause) {
-        // error-policy:J2 context-adding rethrow — a failed connector-account
-        // read must not silently shrink the privacy metadata to an empty set;
-        // the provider boundary below reports it and renders the explicit
-        // unavailable state instead of a healthy-looking overview.
-        runtime.reportError("LifeOpsProvider.connectorAccounts", cause, {
-          provider: "google",
-        });
-        throw new ElizaError("Google connector account read failed.", {
-          code: "LIFEOPS_CONNECTOR_ACCOUNTS_READ_FAILED",
-          cause,
-          context: { provider: "google" },
-        });
-      }
       const privacyByAccountKey = new Map<
         string,
         ReturnType<typeof getAccountPrivacy>
@@ -438,29 +509,10 @@ export const lifeOpsProvider: Provider = {
       };
 
       let privacyFilteredCount = 0;
-      let privacyPolicies = mapConnectorAccountPrivacyPolicies([]);
-      try {
-        privacyPolicies = mapConnectorAccountPrivacyPolicies(
-          await service.repository.listConnectorAccountPrivacy(
-            service.agentId(),
-          ),
-        );
-      } catch (cause) {
-        // error-policy:J4 fail closed — with the per-account privacy table
-        // unreadable every account stays owner-only (the most restrictive
-        // policy); reportError surfaces the broken read instead of letting the
-        // degrade look healthy.
-        runtime.reportError("LifeOpsProvider.accountPrivacy", cause, {
-          agentId: runtime.agentId,
-        });
-      }
-      const now = new Date();
       const ownerLines = summarizeOccurrences(
         "Owner active items:",
         overview.owner.occurrences,
       );
-      const completedToday =
-        await service.listOwnerOccurrencesCompletedToday(now);
       const completedTodayLines = summarizeCompletedToday(completedToday);
       const ownerGoalLines = summarizeActiveGoals(overview.owner.goals, now);
       const agentLines = summarizeOccurrences(
@@ -475,7 +527,10 @@ export const lifeOpsProvider: Provider = {
       let gmailSummary: LifeOpsGmailTriageSummary | null = null;
 
       try {
-        const accounts = await service.getGoogleConnectorAccounts(INTERNAL_URL);
+        if (!googleAccountsRead.ok) {
+          throw googleAccountsRead.cause;
+        }
+        const accounts = googleAccountsRead.accounts;
         const connectedAccounts = accounts.filter((a) => a.connected);
 
         if (connectedAccounts.length > 1) {
@@ -668,33 +723,41 @@ export const lifeOpsProvider: Provider = {
         );
       }
 
-      const connectorDegradationLines =
-        await summarizeConnectorDegradation(runtime);
-
+      const instructions = [
+        "## Owner Operations",
+        // Per-action routing ("Use OWNER_TODOS for…") is not repeated here: every
+        // LifeOps tool on the planner surface already carries that guidance in its
+        // own description, and repeating ~17 lines of it cost 11.5K chars in every
+        // planner and evaluator call (live 2026-09-05). Only the cross-cutting
+        // rules that no single tool description can express stay below.
+        "The LifeOps tool descriptions on this turn's surface say which action owns which request; pick the best-fit one instead of staying in advice-only chat.",
+        "When the owner retracts something that was just saved ('actually don't save that', 'cancel that one', 'never mind'), call the owning surface with action=delete and the item title — never answer with a bare reply or a review call: a saved row stays saved until a delete runs.",
+        "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through CALENDAR.",
+        "For third-party availability requests, minimize to free/busy windows or ask the owner to confirm sharing. Never volunteer event titles, medical details, home addresses, locations, attendees, or stored private facts to someone who only asked when the owner is free.",
+        "Stable owner facts and reusable travel preferences are extracted automatically. Goals, todos, reminders and temporary or live task state require their owning tools; profile extraction does not complete those operations.",
+        "When the owner is only making an observation or venting like 'my calendar has been crazy this quarter', 'I hate email', or 'I think I spend too much time on my phone', stay in REPLY instead of calling a LifeOps action unless they actually ask you to do something.",
+        "When the owner reports missing a reminder, step, or habit (once or repeatedly): acknowledge neutrally in one short clause with no shame, blame, streak, or discipline framing; offer ONE smaller version of the missed step (a few minutes, a partial batch) instead of re-proposing the full original task; and in that repair flow ASK before creating, rescheduling, or re-arming anything — never silently create a reminder or claim one was set.",
+        "When the owner gives a clear, unambiguous reminder ask with a date or deadline ('remind me to renew the registration by the 20th'), save it right away with a sensible plain default time (a day or two before a deadline, or the morning it is due) and confirm briefly — do not interrogate for exact times or add scaffolding, check-ins, or extra structure the owner did not ask for.",
+        "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
+        "Reminder and scheduling confirmations to the owner must be plain everyday words: name the thing and the time ('I'll remind you the morning of the 27th'). Never expose internal ids, trigger kinds, cron/ISO timestamp formats, schema or field names, or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
+        "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
+        "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
+        "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
+        "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
+      ];
+      const ownerContext = [
+        ...summarizeOwnerProfile(ownerProfile),
+        ...summarizeOwnerTimingFacts(ownerFacts),
+      ];
       return {
+        discoveryText: [
+          ...instructions,
+          ...ownerContext,
+          "Complete owner operations, counts, current items, and connector details are available through the lifeops provider reference. Read that reference when those details are needed; omitted details are not empty or unavailable.",
+        ].join("\n"),
         text: [
-          "## Owner Operations",
-          // Per-action routing ("Use OWNER_TODOS for…") is not repeated here: every
-          // LifeOps tool on the planner surface already carries that guidance in its
-          // own description, and repeating ~17 lines of it cost 11.5K chars in every
-          // planner and evaluator call (live 2026-09-05). Only the cross-cutting
-          // rules that no single tool description can express stay below.
-          "The LifeOps tool descriptions on this turn's surface say which action owns which request; pick the best-fit one instead of staying in advice-only chat.",
-          "When the owner retracts something that was just saved ('actually don't save that', 'cancel that one', 'never mind'), call the owning surface with action=delete and the item title — never answer with a bare reply or a review call: a saved row stays saved until a delete runs.",
-          "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through CALENDAR.",
-          "For third-party availability requests, minimize to free/busy windows or ask the owner to confirm sharing. Never volunteer event titles, medical details, home addresses, locations, attendees, or stored private facts to someone who only asked when the owner is free.",
-          "Stable owner-only profile details and reusable travel-preference checklists are extracted automatically by evaluators. Do not use a planner action for goals, todos, reminders, temporary plans, or live task state.",
-          "When the owner is only making an observation or venting like 'my calendar has been crazy this quarter', 'I hate email', or 'I think I spend too much time on my phone', stay in REPLY instead of calling a LifeOps action unless they actually ask you to do something.",
-          "When the owner reports missing a reminder, step, or habit (once or repeatedly): acknowledge neutrally in one short clause with no shame, blame, streak, or discipline framing; offer ONE smaller version of the missed step (a few minutes, a partial batch) instead of re-proposing the full original task; and in that repair flow ASK before creating, rescheduling, or re-arming anything — never silently create a reminder or claim one was set.",
-          "When the owner gives a clear, unambiguous reminder ask with a date or deadline ('remind me to renew the registration by the 20th'), save it right away with a sensible plain default time (a day or two before a deadline, or the morning it is due) and confirm briefly — do not interrogate for exact times or add scaffolding, check-ins, or extra structure the owner did not ask for.",
-          "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
-          "Reminder and scheduling confirmations to the owner must be plain everyday words: name the thing and the time ('I'll remind you the morning of the 27th'). Never expose internal ids, trigger kinds, cron/ISO timestamp formats, schema or field names, or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
-          "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
-          "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
-          "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
-          "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
-          ...summarizeOwnerProfile(ownerProfile),
-          ...summarizeOwnerTimingFacts(ownerFacts),
+          ...instructions,
+          ...ownerContext,
           formatCount(
             "Owner open occurrences",
             overview.owner.summary.activeOccurrenceCount,

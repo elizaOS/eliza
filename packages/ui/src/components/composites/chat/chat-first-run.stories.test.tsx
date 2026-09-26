@@ -14,7 +14,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { installJsdomUiPolyfills } from "../../../../test/portable-stories";
+import { installJsdomUiPolyfills } from "../../../../test/jsdom-ui-polyfills";
 import * as bubbleStories from "./chat-bubble.stories";
 import * as messageStories from "./chat-message.stories";
 

@@ -1,10 +1,8 @@
 /**
- * Default (Node/Bun) build of the plugin's platform-specific helpers, used by
- * `./index.ts`; resolves the PGlite data directory by walking up from cwd to
- * find a `.env` file and to detect whether cwd is inside the elizaOS
- * monorepo, then falls back to `<cwd>/.eliza/.elizadb`. Kept in sync with
- * `./utils.node.ts` (used by `./index.node.ts`); `./utils.browser.ts` stubs
- * the filesystem-dependent parts for the browser build.
+ * Node storage helpers: resolves the PGlite data directory by walking
+ * up from cwd to find a `.env` file and to detect whether cwd is inside the
+ * elizaOS monorepo (so local dev defaults PGlite data under
+ * `<repo-root>/.eliza/.elizadb`), then falls back to `<cwd>/.eliza/.elizadb`.
  */
 import { existsSync } from "node:fs";
 import path from "node:path";

@@ -1,0 +1,76 @@
+[
+  {
+    "id": "evt_201",
+    "title": "Team Standup",
+    "start": "2026-02-06T09:00:00-08:00",
+    "end": "2026-02-06T09:30:00-08:00",
+    "location": "Zoom"
+  },
+  {
+    "id": "evt_202",
+    "title": "1:1 with Sarah",
+    "start": "2026-02-06T09:30:00-08:00",
+    "end": "2026-02-06T10:00:00-08:00",
+    "location": "Sarah's office"
+  },
+  {
+    "id": "evt_203",
+    "title": "Sprint Planning",
+    "start": "2026-02-06T10:00:00-08:00",
+    "end": "2026-02-06T11:00:00-08:00",
+    "location": "Conference Room B"
+  },
+  {
+    "id": "evt_204",
+    "title": "Acme Corp — Proposal Review Call",
+    "start": "2026-02-06T13:00:00-08:00",
+    "end": "2026-02-06T14:00:00-08:00",
+    "location": "Zoom",
+    "notes": "Mike Stevens requested to reschedule to Friday"
+  },
+  {
+    "id": "evt_205",
+    "title": "Focus Time",
+    "start": "2026-02-06T14:00:00-08:00",
+    "end": "2026-02-06T15:30:00-08:00",
+    "location": ""
+  },
+  {
+    "id": "evt_206",
+    "title": "Design Review — Dashboard V2",
+    "start": "2026-02-06T15:30:00-08:00",
+    "end": "2026-02-06T16:00:00-08:00",
+    "location": "Figma + Zoom"
+  },
+  {
+    "id": "evt_207",
+    "title": "Board Presentation Prep",
+    "start": "2026-02-07T09:00:00-08:00",
+    "end": "2026-02-07T12:00:00-08:00",
+    "location": "Executive Conference Room"
+  },
+  {
+    "id": "evt_208",
+    "title": "All-Hands Meeting",
+    "start": "2026-02-11T14:00:00-08:00",
+    "end": "2026-02-11T15:00:00-08:00",
+    "location": "Main Hall + Zoom",
+    "notes": "Elena's all-hands — product roadmap update needed"
+  },
+  {
+    "id": "evt_209",
+    "title": "Product Sync with Sales",
+    "start": "2026-02-10T14:00:00-08:00",
+    "end": "2026-02-10T15:00:00-08:00",
+    "location": "Zoom",
+    "notes": "Monthly alignment with Lisa Wang"
+  },
+  {
+    "id": "evt_210",
+    "title": "Free slot",
+    "start": "2026-02-07T13:00:00-08:00",
+    "end": "2026-02-07T15:00:00-08:00",
+    "location": "",
+    "notes": "Available — could reschedule Acme call here"
+  }
+]

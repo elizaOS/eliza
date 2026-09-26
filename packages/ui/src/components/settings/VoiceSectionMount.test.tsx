@@ -48,7 +48,10 @@ vi.mock("./VoiceProfileSection", () => ({
 import { BrandingContext, DEFAULT_BRANDING } from "../../config/branding";
 import { loadOsIntentAutoStartConsent } from "../../state/persistence";
 import { emitViewEvent } from "../../views/view-event-bus";
-import { VOICE_SETTINGS_APPLY_EVENT } from "../../voice/useVoiceSettingsApplyChannel";
+import {
+  useVoiceSettingsApplyChannel,
+  VOICE_SETTINGS_APPLY_EVENT,
+} from "../../voice/useVoiceSettingsApplyChannel";
 import {
   DEFAULT_VAD_AUTO_STOP_PREFS,
   DEFAULT_VOICE_SECTION_PREFS,
@@ -101,6 +104,34 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("keeps a failed hardware assessment unavailable and retries on reopening", async () => {
+    let rejectProbe!: (error: Error) => void;
+    clientMock.getLocalInferenceDeviceTier.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectProbe = reject;
+      }),
+    );
+    const first = render(<VoiceSectionMount />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Checking hardware",
+    );
+    expect(screen.queryByTestId("voice-tier-banner")).toBeNull();
+
+    await act(async () => rejectProbe(new Error("device probe unavailable")));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Hardware assessment unavailable",
+    );
+    expect(screen.queryByTestId("voice-tier-banner")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+
+    first.unmount();
+    render(<VoiceSectionMount />);
+    await waitFor(() =>
+      expect(screen.getByTestId("voice-tier-banner")).toBeTruthy(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("defaults the wake-word toggle ON (no stored pref) and reflects it", async () => {
@@ -428,4 +459,174 @@ describe("VoiceSectionMount — mount preserves explicit local consent when the 
       ),
     ).toBe("false");
   });
+});
+
+function MountedVoicePreferences() {
+  useVoiceSettingsApplyChannel();
+  return <VoiceSectionMount />;
+}
+
+describe("VoiceSectionMount — applied preferences remain visible while mounted", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("eliza:settings-advanced", "1");
+    clientMock.getConfig.mockResolvedValue({
+      messages: {
+        voice: {
+          continuous: "always-on",
+          osIntentAutoStartVoice: true,
+          osIntentAutoStartTranscription: false,
+          vadAutoStop: { silenceMs: 900, speechRmsThreshold: 0.005 },
+        },
+      },
+    });
+    clientMock.updateConfig.mockClear();
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "",
+    });
+  });
+  afterEach(cleanup);
+
+  it("updates each applied mode without remounting or issuing another write", async () => {
+    render(<MountedVoicePreferences />);
+    const row = await screen.findByTestId("voice-section-continuous-row");
+    await waitFor(() =>
+      expect(
+        row
+          .querySelector("button[data-mode='always-on']")
+          ?.getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
+    for (const continuous of ["off", "vad-gated", "always-on"]) {
+      act(() =>
+        emitViewEvent(VOICE_SETTINGS_APPLY_EVENT, { continuous }, "agent"),
+      );
+      await waitFor(() =>
+        expect(
+          row
+            .querySelector(`button[data-mode='${continuous}']`)
+            ?.getAttribute("aria-checked"),
+        ).toBe("true"),
+      );
+      expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe(continuous);
+    }
+    expect(
+      screen
+        .getByTestId("voice-section-intent-autostart-voice")
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(clientMock.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("updates the displayed VAD pair and retains current values for malformed or absent fields", async () => {
+    render(<MountedVoicePreferences />);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("voice-section-vad-silence-value").textContent,
+      ).toBe("0.9s"),
+    );
+    act(() =>
+      emitViewEvent(
+        VOICE_SETTINGS_APPLY_EVENT,
+        { vadAutoStop: { silenceMs: 1500, speechRmsThreshold: 0.008 } },
+        "agent",
+      ),
+    );
+    expect(
+      screen.getByTestId("voice-section-vad-silence-value").textContent,
+    ).toBe("1.5s");
+    expect(screen.getByTestId("voice-section-vad-rms-value").textContent).toBe(
+      "0.008",
+    );
+    for (const payload of [
+      {},
+      { continuous: "unknown", vadAutoStop: null },
+      { vadAutoStop: { silenceMs: 300 } },
+      { vadAutoStop: { silenceMs: Number.NaN, speechRmsThreshold: 0.003 } },
+      { vadAutoStop: { silenceMs: 650, speechRmsThreshold: "0.003" } },
+    ]) {
+      act(() => emitViewEvent(VOICE_SETTINGS_APPLY_EVENT, payload, "agent"));
+      expect(
+        screen.getByTestId("voice-section-vad-silence-value").textContent,
+      ).toBe("1.5s");
+      expect(
+        screen.getByTestId("voice-section-vad-rms-value").textContent,
+      ).toBe("0.008");
+      expect(
+        screen
+          .getByTestId("voice-section-continuous-row")
+          .querySelector("button[data-mode='always-on']")
+          ?.getAttribute("aria-checked"),
+      ).toBe("true");
+    }
+    expect(clientMock.updateConfig).not.toHaveBeenCalled();
+  });
+});
+
+it("preserves applied fields while an older initial config read finishes", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("eliza:settings-advanced", "1");
+  let resolveConfig: (value: Record<string, unknown>) => void = () => {
+    throw new Error("config request not started");
+  };
+  const initialConfig = new Promise<Record<string, unknown>>((resolve) => {
+    resolveConfig = resolve;
+  });
+  // The nested voice preset section also reads config; both initial readers
+  // must observe the same held response instead of consuming different mocks.
+  clientMock.getConfig.mockImplementation(() => initialConfig);
+  clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+    tier: "GOOD",
+    reason: "",
+  });
+  clientMock.updateConfig.mockClear();
+  render(<MountedVoicePreferences />);
+  act(() =>
+    emitViewEvent(
+      VOICE_SETTINGS_APPLY_EVENT,
+      {
+        continuous: "vad-gated",
+        vadAutoStop: { silenceMs: 1500, speechRmsThreshold: 0.008 },
+      },
+      "agent",
+    ),
+  );
+  await act(async () =>
+    resolveConfig({
+      messages: {
+        voice: {
+          continuous: "off",
+          vadAutoStop: { silenceMs: 650, speechRmsThreshold: 0.003 },
+          osIntentAutoStartVoice: true,
+          osIntentAutoStartTranscription: true,
+        },
+      },
+    }),
+  );
+  const row = screen.getByTestId("voice-section-continuous-row");
+  expect(
+    row
+      .querySelector("button[data-mode='vad-gated']")
+      ?.getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe("vad-gated");
+  expect(
+    screen.getByTestId("voice-section-vad-silence-value").textContent,
+  ).toBe("1.5s");
+  expect(screen.getByTestId("voice-section-vad-rms-value").textContent).toBe(
+    "0.008",
+  );
+  expect(
+    screen
+      .getByTestId("voice-section-intent-autostart-voice")
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(
+    screen
+      .getByTestId("voice-section-intent-autostart-transcription")
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(clientMock.updateConfig).not.toHaveBeenCalled();
+  cleanup();
 });

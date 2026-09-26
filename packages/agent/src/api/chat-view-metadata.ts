@@ -7,7 +7,6 @@
  */
 
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
-import { listViews } from "./views-registry.ts";
 
 function asString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -91,11 +90,7 @@ export function resolveChatMetadataView(
  */
 export function enrichChatUiViewMetadata(
   metadata: Record<string, unknown> | undefined,
-  views: readonly ViewRegistryEntry[] = listViews({
-    developerMode: true,
-    includeAllKinds: true,
-    viewType: "gui",
-  }),
+  views: readonly ViewRegistryEntry[],
 ): Record<string, unknown> | undefined {
   if (!metadata) return undefined;
   const {

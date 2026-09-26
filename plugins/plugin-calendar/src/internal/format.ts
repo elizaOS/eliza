@@ -3,11 +3,11 @@
  * date/times, the aggregated feed summary, and next-event context into the
  * human-readable strings the CALENDAR action returns to the owner.
  */
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
 
 function formatCalendarDatePart(
   date: Date,
@@ -140,7 +140,7 @@ export function formatNextEventContext(
   context: LifeOpsNextCalendarEventContext,
 ): string {
   if (!context.event) {
-    return "No upcoming events on your calendar.";
+    return "No upcoming event was found in the checked calendar window.";
   }
   const lines = [
     `**Next event: ${context.event.title}** (${formatEventTime(context.event)})`,

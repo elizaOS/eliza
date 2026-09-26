@@ -8,15 +8,15 @@
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import {
   composeToolDiagnosticRedactor,
+  fetchWithConfidentialInference,
   getInferenceTimer,
   getTrajectoryContext,
   type IAgentRuntime,
   type InferenceTimingMeta,
   logger,
 } from "@elizaos/core";
-import { getApiKey, getBaseURL, isProxyMode } from "../utils/config";
+import { getApiKey, getBaseURL } from "../utils/config";
 
-const PROXY_API_KEY = "sk-proxy";
 const SAFE_RESPONSE_HEADERS = [
   "x-request-id",
   "request-id",
@@ -52,9 +52,12 @@ function observeHttpDiagnostic<T>(observe: () => T): T | undefined {
   }
 }
 
-export function createOpenAIClient(runtime: IAgentRuntime): OpenAIProvider {
-  const baseURL = getBaseURL(runtime);
-  const apiKey = getApiKey(runtime) || (isProxyMode(runtime) ? PROXY_API_KEY : undefined);
+export function createOpenAIClient(
+  runtime: IAgentRuntime,
+  endpoint?: { baseURL: string; apiKey: string; provider: "openrouter" }
+): OpenAIProvider {
+  const baseURL = endpoint?.baseURL ?? getBaseURL(runtime);
+  const apiKey = endpoint?.apiKey ?? getApiKey(runtime);
 
   if (!apiKey) {
     throw new Error(
@@ -101,6 +104,19 @@ export function createOpenAIClient(runtime: IAgentRuntime): OpenAIProvider {
     // Never log request bodies, credentials, query strings, or response text.
     fetch: Object.assign(
       async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        // OpenRouter routes only to backends honoring the full tool/schema
+        // contract. Its unified reasoning field differs from Cerebras's.
+        if (endpoint?.provider === "openrouter" && typeof init?.body === "string") {
+          const body = JSON.parse(init.body) as Record<string, unknown>;
+          const reasoning = body.reasoning_effort;
+          delete body.reasoning_effort;
+          delete body.prompt_cache_retention;
+          body.provider = { require_parameters: true, data_collection: "deny", sort: "latency" };
+          if (typeof reasoning === "string") {
+            body.reasoning = reasoning === "none" ? { enabled: false } : { effort: reasoning };
+          }
+          init = { ...init, body: JSON.stringify(body) };
+        }
         const attempt = ++httpAttempt;
         const startedAt = Date.now();
         const startedMonotonic = performance.now();
@@ -129,7 +145,7 @@ export function createOpenAIClient(runtime: IAgentRuntime): OpenAIProvider {
         });
         let response: Response;
         try {
-          response = await globalThis.fetch(input, init);
+          response = await fetchWithConfidentialInference(input, init, globalThis.fetch);
         } catch (error) {
           // error-policy:J2 transport owns the original rejection; observers are isolated.
           const endedAt = Date.now();

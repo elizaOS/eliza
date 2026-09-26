@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Sweep stale CI servers older than 60 minutes. Run on a schedule so a
- * crashed workflow can't leak servers indefinitely. Gracefully exits 0
- * when HCLOUD_TOKEN_CI is unset so the workflow can exist before its secret is
- * configured. A configured token that Hetzner rejects must fail the sweep.
+ * Manually sweeps diagnostic hosts older than 60 minutes using their CI labels.
+ * No workflow schedules this command. An absent HCLOUD_TOKEN_CI skips the sweep;
+ * a configured token rejected by Hetzner fails explicitly.
  */
 
 import { HetznerCloudClient } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";

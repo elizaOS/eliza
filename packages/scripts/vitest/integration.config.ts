@@ -5,9 +5,8 @@ import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
   getElizaCoreEntry,
-  getSharedSourceRoot,
   getUiSourceRoot,
-} from "../../core/src/testing/eliza-package-paths";
+} from "@elizaos/testing/package-paths";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
 import {
@@ -16,46 +15,12 @@ import {
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
-  getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
   type ModuleAlias,
 } from "./workspace-aliases";
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreEntryDir = elizaCoreEntry
-  ? path.dirname(elizaCoreEntry)
-  : undefined;
-// Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
-// module graph imports (`./node` from plugin dists, `./testing` from test
-// runtimes, `./connectors` from connector plugins). Each candidate list covers
-// the source layout (entry at src/) first, then the built layout (entry at
-// dist/node/), so every subpath resolves inside the same core tree as
-// `elizaCoreEntry` — mixing source and dist would boot two copies of core.
-const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
-  ? [
-      { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
-      {
-        subpath: "testing",
-        candidates: ["testing/index.ts", "../testing/index.js"],
-      },
-      {
-        subpath: "connectors",
-        candidates: ["connectors.ts", "../connectors.js"],
-      },
-      {
-        subpath: "client-public",
-        candidates: ["client-public.ts", "client-public.js"],
-      },
-    ].flatMap(({ subpath, candidates }) => {
-      const replacement = candidates
-        .map((candidate) => path.join(elizaCoreEntryDir, candidate))
-        .find((candidate) => existsSync(candidate));
-      return replacement
-        ? [{ find: new RegExp(`^@elizaos/core/${subpath}$`), replacement }]
-        : [];
-    })
-  : [];
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 // plugin-discord is not part of build:core, so its `/user-account-scraper`
 // subpath export has no dist and dies with "Cannot find package" when the PA
@@ -158,24 +123,7 @@ const relativeElizaRoot = path
 const elizaGlob = (pattern: string): string =>
   relativeElizaRoot === "" ? pattern : `${relativeElizaRoot}/${pattern}`;
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
-const agentKnowledgeGraphAliases: ModuleAlias[] = autonomousSourceRoot
-  ? [
-      {
-        // The agent's generic source alias maps subpaths to sibling `.ts`
-        // files, but this public export is an index directory. Keep clean
-        // integration runs on source instead of requiring a prebuilt dist.
-        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
-        replacement: path.join(
-          autonomousSourceRoot,
-          "services",
-          "knowledge-graph",
-          "index.ts",
-        ),
-      },
-    ]
-  : [];
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const workspaceUiSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages",
@@ -213,22 +161,12 @@ const integrationResolveAlias: ModuleAlias[] = [
   },
   ...(elizaCoreEntry
     ? [
-        // Subpath aliases must precede the bare specifier. A bare-string
-        // `find` is prefix-matched by Vite/rollup, so a string
-        // "@elizaos/core" alias rewrites "@elizaos/core/node" (and
-        // "/testing", "/connectors") into "<core entry file>/<subpath>" — a
-        // path under a *file* (ENOTDIR) — which killed every plugin
-        // integration test in this lane (#11047). The bare specifier is
-        // exact-matched so any other subpath falls through to normal
-        // package-exports resolution instead of being rewritten.
-        ...elizaCoreSubpathAliases,
         {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },
       ]
     : []),
-  ...agentKnowledgeGraphAliases,
   ...getAgentSourceAliases(autonomousSourceRoot),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
@@ -238,7 +176,6 @@ const integrationResolveAlias: ModuleAlias[] = [
     "app-task-coordinator",
     "plugin-workflow",
   ]),
-  ...getSharedSourceAliases(sharedSourceRoot),
   // Vite's SSR resolver does not consistently select custom export
   // conditions, so source-alias the remaining workspace leaves after the
   // specialized entry points above. This keeps clean CI independent of dist.
@@ -258,19 +195,6 @@ const integrationResolveAlias: ModuleAlias[] = [
         ),
       },
     },
-    {
-      find: "@elizaos/plugin-whatsapp",
-      packageName: "@elizaos/plugin-whatsapp",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-whatsapp",
-          "src",
-          "index",
-        ),
-      },
-    },
   ]),
 ];
 
@@ -286,10 +210,7 @@ const integrationConfig = {
     testTimeout: 120_000,
     hookTimeout: 120_000,
     globalSetup: [
-      path.join(
-        elizaWorkspaceRoot,
-        "packages/app-core/test/e2e-global-setup.ts",
-      ),
+      path.join(elizaWorkspaceRoot, "packages/app/test/e2e-global-setup.ts"),
     ],
     // Integration files frequently replace globals and module-level mocks.
     // Shared module state causes cross-file bleed, which is more expensive to
@@ -308,7 +229,7 @@ const integrationConfig = {
     include: [
       elizaGlob("packages/agent/test/**/*.integration.test.ts"),
       elizaGlob("apps/*/test/**/*.integration.test.ts"),
-      elizaGlob("packages/app-core/test/**/*.integration.test.ts"),
+      elizaGlob("packages/app/test/**/*.integration.test.ts"),
       // Plugin-level integration tests (16 *.integration.test.ts files in
       // app-lifeops/test/) were dead in CI — neither the plugin's own
       // vitest.config.ts (which excludes the integration suffix from the
@@ -332,15 +253,13 @@ const integrationConfig = {
       // packages/agent/src/** was dead in the same way as the two cases
       // above, and its test/** sibling on line 332 only looks covered: the
       // agent package's own lanes exclude the `.integration.test.` suffix
-      // (vitest.config.ts and scripts/run-vitest-batches.mjs), so this config
+      // (vitest.config.ts and scripts/run-vitest-batches.ts), so this config
       // is the only lane that can run those files (#17778). Both agent roots
       // are listed so a new suite is picked up by pattern rather than by an
       // author remembering to add it somewhere.
       elizaGlob("packages/agent/src/**/*.integration.test.ts"),
     ],
-    setupFiles: [
-      path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts"),
-    ],
+    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts")],
     exclude: [
       "dist/**",
       "**/node_modules/**",
@@ -355,8 +274,8 @@ const integrationConfig = {
       "**/*.real.e2e.test.ts",
       "**/*.real.e2e.test.tsx",
       // --- server/runtime route tests must live in the live/real lane ---
-      elizaGlob("packages/app-core/src/api/**/*.test.{ts,tsx}"),
-      elizaGlob("packages/app-core/src/services/**/*.test.{ts,tsx}"),
+      elizaGlob("packages/app/src/api/**/*.test.{ts,tsx}"),
+      elizaGlob("packages/app/src/services/**/*.test.{ts,tsx}"),
       elizaGlob("apps/*/src/**/*routes.test.{ts,tsx}"),
       elizaGlob("apps/*/src/services/**/*.test.{ts,tsx}"),
     ],

@@ -19,6 +19,7 @@
  * it identity-memoizes and otherwise full-parses.
  */
 
+import { stripAssistantStageDirections } from "@elizaos/core/utils/assistant-text";
 import {
   collectSegmentRegions,
   interleaveSegments,
@@ -29,12 +30,12 @@ import {
   SEGMENT_TRIGGER_RE,
   type Segment,
   type SegmentRegion,
+  stripHiddenDisplayContent,
 } from "./message-parser-helpers";
 import { getInlineWidgetOpenTokens } from "./widgets/inline-registry";
 
 /** `"action":"permission_request"` — the substring `parsePermissionRequestFromText` requires. */
 const PERMISSION_MARKER = '"action":"permission_request"';
-
 /**
  * Opaque per-component cache. Held in a React ref by {@link useParsedSegments};
  * one instance per mounted transcript row / overlay bubble, so no message-id
@@ -65,15 +66,12 @@ export interface StreamingParseCache {
   /** Raw offset whose normalized-core prefix is `normStableCore`. */
   readonly normRawCut: number;
 }
-
 export interface StreamingParseResult {
   segments: Segment[];
   cache: StreamingParseCache;
 }
-
 const HIDDEN_BLOCK_RE =
   /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
-
 /**
  * Largest raw offset `c ≥ fromCut` such that `normalizeDisplayCore` splits
  * cleanly there — `core(raw) === core(raw.slice(0,c)) + core(raw.slice(c))` —
@@ -89,7 +87,10 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
   // Hidden blocks intersecting [fromCut, end) all start at ≥ fromCut (fromCut is
   // clean). Detect them in the tail window only.
   const window = raw.slice(fromCut);
-  const closed: Array<{ start: number; end: number }> = [];
+  const closed: Array<{
+    start: number;
+    end: number;
+  }> = [];
   let unclosedFrom = raw.length + 1;
   HIDDEN_BLOCK_RE.lastIndex = 0;
   for (
@@ -108,7 +109,6 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
   }
   const insideClosedBlock = (i: number): boolean =>
     closed.some((b) => i > b.start && i < b.end);
-
   let openLtAt = -1; // dangling '<' with no later '>' (clean ⇒ -1 at fromCut)
   // A '(' whose only-whitespace trailer reaches the candidate cut: the full
   // pass collapses `\(\s+` → `(` forward across the boundary, so freezing the
@@ -124,7 +124,6 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     else if (prev !== " " && prev !== "\t" && prev !== "\n" && prev !== "\r")
       openParenAt = -1;
     if (i > unclosedFrom) break;
-
     if (prev !== "\n") continue;
     const next = raw[i];
     if (next === "\n" || next === " " || next === "\t" || next === "\r")
@@ -143,7 +142,6 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
   }
   return bestCut;
 }
-
 /** Count of ` ``` ` fence delimiters in `text[from..to)`. */
 function fenceCount(text: string, from: number, to: number): number {
   let count = 0;
@@ -154,7 +152,6 @@ function fenceCount(text: string, from: number, to: number): number {
   }
   return count;
 }
-
 /**
  * Would the tail scan mis-classify a fenced UiSpec that the full parser renders
  * as raw `code`? `FENCED_JSON_RE` / `FENCED_CODE_RE` are global and pair fences
@@ -186,7 +183,6 @@ function hasCoupledFencedUiSpecRisk(
   }
   return false;
 }
-
 /**
  * Does prose gap `text[from..to)` hold an open marker (a widget open token or
  * `[CONFIG`) whose closer could arrive later and retroactively claim across the
@@ -205,7 +201,6 @@ function proseHasOpenMarker(
   for (const token of openTokens) if (gap.includes(token)) return true;
   return false;
 }
-
 /**
  * Is `r` a patch-derived ui-spec that a later patch line could still extend?
  * `findPatchRegions` merges consecutive patch lines across any run of blank
@@ -223,7 +218,6 @@ function isMergeablePatchTail(r: SegmentRegion, target: string): boolean {
   const firstLine = after.split("\n").find((l) => l.trim().length > 0) ?? "";
   return firstLine.trimStart().startsWith("{");
 }
-
 /**
  * Would freezing the stable cut at fenced region `r`'s end leave its closing
  * ` ``` ` free to re-pair with a later ` ``` ` opener the full parser sees?
@@ -250,7 +244,6 @@ function isUnsealedFenceTail(r: SegmentRegion, target: string): boolean {
   if (after.startsWith("```")) return true; // adjacent fence opener confirmed
   return /^`+$/.test(after); // an opener's fence delimiter still streaming in
 }
-
 /**
  * Return `segment` with any absolute char offsets its payload carries shifted by
  * `by`. Only widget payloads embed offsets (the `InlineWidgetMatch` `start`/`end`
@@ -277,7 +270,6 @@ function shiftSegmentOffsets(segment: Segment, by: number): Segment {
     },
   };
 }
-
 /** Rebuild the cache from scratch with a full parse. */
 function fullRebuild(raw: string, analysisMode: boolean): StreamingParseResult {
   const target = analysisMode ? raw : normalizeDisplayText(raw);
@@ -296,7 +288,6 @@ function fullRebuild(raw: string, analysisMode: boolean): StreamingParseResult {
   };
   return { segments, cache };
 }
-
 /**
  * Parse `text` reusing `cache` when the change is a pure tail append. Returns
  * fresh segments plus the next cache; pass the previous frame's cache back in.
@@ -315,7 +306,16 @@ export function parseSegmentsStreaming(
   }
   if (text === cache.raw) return { segments: cache.segments, cache };
   if (analysisMode) return fullRebuild(text, analysisMode);
-
+  // Removing a stage direction enables whitespace cleanup across the whole
+  // reply, including already cached prose. That normalization is not local.
+  const normalizationTail = text.slice(cache.normRawCut);
+  if (/[*_]/.test(normalizationTail)) {
+    parserWork.normalizedChars += normalizationTail.length;
+    const visibleTail = stripHiddenDisplayContent(normalizationTail);
+    if (stripAssistantStageDirections(visibleTail) !== visibleTail) {
+      return fullRebuild(text, analysisMode);
+    }
+  }
   // ── Incremental normalize (clean-seam splice) ─────────────────────
   const normRawCut = computeSafeNormCut(text, cache.normRawCut);
   const windowCore =
@@ -325,7 +325,6 @@ export function parseSegmentsStreaming(
   const normStableCore = cache.normStableCore + windowCore;
   const tailCore = normalizeDisplayCore(text.slice(normRawCut));
   const target = (normStableCore + tailCore).trim();
-
   // Seam guard: the new target must extend the previously-stable target prefix.
   // A back-reaching rewrite that crossed the cut breaks this → full parse.
   if (
@@ -334,7 +333,6 @@ export function parseSegmentsStreaming(
   ) {
     return fullRebuild(text, analysisMode);
   }
-
   if (!target) {
     const segments: Segment[] = [{ kind: "text", text: "" }];
     return {
@@ -353,7 +351,6 @@ export function parseSegmentsStreaming(
       },
     };
   }
-
   // ── Trigger fast path — never touch the region scan on pure prose ──
   const hasTrigger = cache.hasTrigger || SEGMENT_TRIGGER_RE.test(target);
   if (!hasTrigger) {
@@ -375,7 +372,6 @@ export function parseSegmentsStreaming(
       },
     };
   }
-
   // ── Permission bypass — its `display` grows, so it can't be spliced ──
   const permissionMode =
     cache.permissionMode || target.includes(PERMISSION_MARKER);
@@ -391,7 +387,6 @@ export function parseSegmentsStreaming(
       },
     };
   }
-
   // ── Tail region scan ──────────────────────────────────────────────
   // Scan from exactly the stable cut. It is always a region END (never
   // mid-prose), so no region straddles it, and every later patch line / fenced
@@ -415,21 +410,18 @@ export function parseSegmentsStreaming(
       segment: shiftSegmentOffsets(r.segment, scanStart),
     });
   }
-
   // A fenced UiSpec preceded by another fence pairs differently under the
   // global full parse than under this sliced tail scan; the sliced view would
   // render a widget where the full parse renders raw code. Full-parse instead.
   if (hasCoupledFencedUiSpecRisk(tailRegions, target)) {
     return fullRebuild(text, analysisMode);
   }
-
   const sortedTail = [...tailRegions].sort((a, b) => a.start - b.start);
   const tail = interleaveSegments(target, sortedTail, prevCut);
   const segments =
     cache.stableSegments.length === 0 && sortedTail.length === 0
       ? [{ kind: "text" as const, text: target }]
       : cache.stableSegments.concat(tail);
-
   // ── Advance the stable cut to the end of the last finalized region ──
   const openTokens = getInlineWidgetOpenTokens();
   let newCut = prevCut;
@@ -449,7 +441,6 @@ export function parseSegmentsStreaming(
     newCut = r.end;
     cutRegionCount = idx + 1;
   }
-
   let stableSegments = cache.stableSegments;
   let targetStableCut = prevCut;
   if (newCut > prevCut) {
@@ -466,7 +457,6 @@ export function parseSegmentsStreaming(
     );
     targetStableCut = newCut;
   }
-
   parserWork.incrementalParses += 1;
   return {
     segments,

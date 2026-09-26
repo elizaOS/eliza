@@ -5,6 +5,7 @@
 // probes) on limited cloud bases, when no Google account is linked, or when there
 // are no upcoming events; otherwise shows the single soonest event with a +N
 // badge and applies its grid span. jsdom render with the API client mocked.
+
 import {
   cleanup,
   fireEvent,
@@ -13,6 +14,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
+import type { WidgetProps } from "../../../widgets/types";
+import { CalendarUpcomingWidget } from "./calendar-upcoming";
 
 // Auth gate (#11084), mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
@@ -25,9 +29,6 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
 vi.mock("../../../hooks/useRole", () => ({
   useRole: () => ({ isOwner: true }),
 }));
-
-import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
-
 const { getBaseUrlMock, publishMock, listConnectorAccountsMock, fetchMock } =
   vi.hoisted(() => ({
     getBaseUrlMock: vi.fn(() => "http://localhost"),
@@ -35,7 +36,6 @@ const { getBaseUrlMock, publishMock, listConnectorAccountsMock, fetchMock } =
     listConnectorAccountsMock: vi.fn(),
     fetchMock: vi.fn(),
   }));
-
 // Mock the client: getBaseUrl resolves without booting the real ElizaClient,
 // and listConnectorAccounts is the connection probe driven per-test.
 vi.mock("../../../api", () => ({
@@ -46,22 +46,11 @@ vi.mock("../../../api", () => ({
     fetch: fetchMock,
   },
 }));
-
 // Spy on the self-signal hook to assert the urgent weight is published.
 vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishMock,
 }));
-
-// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
-// stub it so the click tests isolate the navigation rail (the CustomEvent).
-vi.mock("../../../chat/useSlashCommandController", () => ({
-  reportUserViewSwitch: vi.fn(),
-}));
-
-import type { WidgetProps } from "../../../widgets/types";
-import { CalendarUpcomingWidget } from "./calendar-upcoming";
-
-// Minimal wire event matching LifeOpsCalendarEvent (@elizaos/shared
+// Minimal wire event matching LifeOpsCalendarEvent (@elizaos/core
 // contracts/calendar.ts), only the fields the widget reads.
 function event(
   overrides: Partial<{
@@ -76,18 +65,16 @@ function event(
   return {
     id: "evt-1",
     title: "Standup",
-    startAt: new Date(Date.now() + 60 * 60_000).toISOString(),
-    endAt: new Date(Date.now() + 90 * 60_000).toISOString(),
+    startAt: new Date(Date.now() + 60 * 60000).toISOString(),
+    endAt: new Date(Date.now() + 90 * 60000).toISOString(),
     isAllDay: false,
     location: "",
     ...overrides,
   };
 }
-
 function mockFeed(events: ReturnType<typeof event>[]) {
   fetchMock.mockResolvedValue({ events });
 }
-
 /** A linked Google account makes the connection probe resolve "connected". */
 function connectedGoogle() {
   listConnectorAccountsMock.mockResolvedValue({
@@ -104,7 +91,6 @@ function connectedGoogle() {
     ],
   });
 }
-
 /** No accounts → the probe resolves "disconnected" (connect affordance). */
 function disconnectedGoogle() {
   listConnectorAccountsMock.mockResolvedValue({
@@ -113,17 +99,14 @@ function disconnectedGoogle() {
     accounts: [],
   });
 }
-
 // Mirrors the registry declaration: the calendar owns a full-width row.
 const homeProps: Partial<WidgetProps> = {
   slot: "home",
   spanClassName: "col-span-4 row-span-1",
 };
-
 afterEach(() => {
   cleanup();
 });
-
 beforeEach(() => {
   authMock.authenticated = true;
   getBaseUrlMock.mockReset();
@@ -132,25 +115,20 @@ beforeEach(() => {
   listConnectorAccountsMock.mockReset();
   fetchMock.mockReset();
 });
-
 describe("CalendarUpcomingWidget", () => {
   it("renders nothing and skips full-shell probes on limited cloud agent bases", async () => {
     getBaseUrlMock.mockReturnValue("https://agent-1.elizacloud.ai");
-
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
-
     await waitFor(() => {
       expect(container.firstChild).toBeNull();
     });
     expect(listConnectorAccountsMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
   it("renders NOTHING when no Google account is linked, no connect-CTA tile", async () => {
     disconnectedGoogle();
     mockFeed([]);
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
-
     // The probe settles to "disconnected" and the widget self-hides; the
     // connect flow lives in Settings → Connectors, not the home grid.
     await waitFor(() => {
@@ -163,18 +141,16 @@ describe("CalendarUpcomingWidget", () => {
       screen.queryByTestId("chat-widget-calendar-upcoming-connect"),
     ).toBeNull();
   });
-
   it("renders NOTHING when connected but no upcoming events, the row must earn its place", async () => {
     connectedGoogle();
     // A past event only, filtered out (startAt < now).
     mockFeed([
       event({
         id: "past",
-        startAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+        startAt: new Date(Date.now() - 60 * 60000).toISOString(),
       }),
     ]);
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
-
     await waitFor(() => {
       expect(listConnectorAccountsMock).toHaveBeenCalled();
     });
@@ -183,23 +159,21 @@ describe("CalendarUpcomingWidget", () => {
     });
     expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
   });
-
   it("shows ONE high-priority datum, the soonest event, with a +N more badge", async () => {
     connectedGoogle();
     mockFeed([
       event({
         id: "a",
         title: "Standup",
-        startAt: new Date(Date.now() + 5 * 60 * 60_000).toISOString(),
+        startAt: new Date(Date.now() + 5 * 60 * 60000).toISOString(),
       }),
       event({
         id: "b",
         title: "Lunch",
-        startAt: new Date(Date.now() + 7 * 60 * 60_000).toISOString(),
+        startAt: new Date(Date.now() + 7 * 60 * 60000).toISOString(),
       }),
     ]);
     render(<CalendarUpcomingWidget {...homeProps} />);
-
     const widget = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(widget.tagName).toBe("BUTTON");
     // The shared Home card recipe is also the positioning context for the
@@ -217,28 +191,24 @@ describe("CalendarUpcomingWidget", () => {
     // Sentence-case copy law (spec §copy): "Open calendar.", not "Open Calendar".
     expect(widget.getAttribute("aria-label")).toMatch(/Open calendar/);
   });
-
   // --- 18h lookahead gate (§B "Up Next", issue #14564) -----------------------
   // The card earns its home slot ONLY when the next event starts within 18h; a
   // more-distant event yields the slot (renders null). "An event next Tuesday is
   // not glanceable urgency." The feed is queried 14d wide, but the render gate
   // is the narrower 18h window.
-
   it("renders the card when the next event is just inside the 18h gate (17h59m)", async () => {
     connectedGoogle();
     mockFeed([
       event({
         id: "soon",
         title: "Design sync",
-        startAt: new Date(Date.now() + (17 * 60 + 59) * 60_000).toISOString(),
+        startAt: new Date(Date.now() + (17 * 60 + 59) * 60000).toISOString(),
       }),
     ]);
     render(<CalendarUpcomingWidget {...homeProps} />);
-
     const card = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(card.textContent).toContain("Design sync");
   });
-
   it("yields its slot (renders null) when the next event is just past the 18h gate (18h01m)", async () => {
     connectedGoogle();
     // A real upcoming event, but beyond the 18h glance window: the feed returns
@@ -247,11 +217,10 @@ describe("CalendarUpcomingWidget", () => {
       event({
         id: "far",
         title: "Next Tuesday",
-        startAt: new Date(Date.now() + (18 * 60 + 1) * 60_000).toISOString(),
+        startAt: new Date(Date.now() + (18 * 60 + 1) * 60000).toISOString(),
       }),
     ]);
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
-
     // The connector probe + feed both run (the event exists), but the card is
     // gated out, no tile occupies the home grid.
     await waitFor(() => {
@@ -265,18 +234,16 @@ describe("CalendarUpcomingWidget", () => {
     });
     expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
   });
-
   it("does not publish home attention for a beyond-18h event (no card = no signal)", async () => {
     connectedGoogle();
     mockFeed([
       event({
         id: "far",
         title: "Next Tuesday",
-        startAt: new Date(Date.now() + 20 * 60 * 60_000).toISOString(),
+        startAt: new Date(Date.now() + 20 * 60 * 60000).toISOString(),
       }),
     ]);
     render(<CalendarUpcomingWidget {...homeProps} />);
-
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
     });
@@ -288,7 +255,6 @@ describe("CalendarUpcomingWidget", () => {
       expect(call).toEqual(["calendar/calendar.upcoming", null]);
     }
   });
-
   it("holds null on the deterministic first render (now === 0), before the clock installs", async () => {
     // useNow returns 0 on first render (no Date.now in render, determinism
     // convention). With a real upcoming event queued, the FIRST synchronous
@@ -300,27 +266,25 @@ describe("CalendarUpcomingWidget", () => {
       event({
         id: "soon",
         title: "Design sync",
-        startAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+        startAt: new Date(Date.now() + 60 * 60000).toISOString(),
       }),
     ]);
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
     // Synchronous first paint: feed not loaded + now === 0 → null.
     expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
-
     // Once the clock + feed install, the card appears (proving the null above
     // was the first-render guard, not a permanent self-hide) and the effects
     // are flushed under act.
     await screen.findByTestId("chat-widget-calendar-upcoming");
   });
-
   it("publishes the reminder weight when the next event starts within 2 hours (home slot)", async () => {
     connectedGoogle();
     mockFeed([
       event({
         id: "imminent",
         title: "Call",
-        startAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        startAt: new Date(Date.now() + 30 * 60000).toISOString(),
       }),
     ]);
     render(<CalendarUpcomingWidget {...homeProps} />);
@@ -330,75 +294,65 @@ describe("CalendarUpcomingWidget", () => {
       HOME_SIGNAL_WEIGHTS.reminder,
     );
   });
-
   it("navigates to the Calendar view when the populated card is clicked", async () => {
     connectedGoogle();
     mockFeed([event({ id: "a", title: "Standup" })]);
     const navEvents: string[] = [];
     const onNav = (e: Event) => {
-      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
+      const detail = (
+        e as CustomEvent<{
+          viewPath?: string;
+        }>
+      ).detail;
       if (detail?.viewPath) navEvents.push(detail.viewPath);
     };
     window.addEventListener("eliza:navigate:view", onNav);
-
     render(<CalendarUpcomingWidget {...homeProps} />);
     fireEvent.click(await screen.findByTestId("chat-widget-calendar-upcoming"));
     window.removeEventListener("eliza:navigate:view", onNav);
-
     expect(navEvents).toContain("/calendar");
   });
-
   // #11084, the widget mounts before the auth probe resolves; the connector
   // probe and the calendar feed must stay dormant while unauthenticated.
   it("does not probe the connector or fetch the feed while unauthenticated", async () => {
     authMock.authenticated = false;
     connectedGoogle();
     mockFeed([event({ id: "a", title: "Standup" })]);
-
     render(<CalendarUpcomingWidget {...homeProps} />);
-
     await Promise.resolve();
     expect(listConnectorAccountsMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
   it("starts the probe + feed once the session flips to authenticated", async () => {
     authMock.authenticated = false;
     connectedGoogle();
     mockFeed([event({ id: "a", title: "Standup" })]);
-
     const { rerender } = render(<CalendarUpcomingWidget {...homeProps} />);
     await Promise.resolve();
     expect(listConnectorAccountsMock).not.toHaveBeenCalled();
-
     authMock.authenticated = true;
     rerender(<CalendarUpcomingWidget {...homeProps} />);
-
     const card = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(card.textContent).toContain("Standup");
     expect(listConnectorAccountsMock).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalled();
   });
-
   it("uses bounded client requests and aborts the initial feed on unmount", async () => {
     connectedGoogle();
     fetchMock.mockReturnValue(new Promise(() => {}));
-
     const { unmount } = render(<CalendarUpcomingWidget {...homeProps} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-
     expect(listConnectorAccountsMock).toHaveBeenCalledWith(
       "google",
       undefined,
-      { timeoutMs: 6_000, signal: expect.any(AbortSignal) },
+      { timeoutMs: 6000, signal: expect.any(AbortSignal) },
     );
     const feedInit = fetchMock.mock.calls[0]?.[1];
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/^\/api\/lifeops\/calendar\/feed\?/),
       { signal: expect.any(AbortSignal) },
-      { timeoutMs: 8_000 },
+      { timeoutMs: 8000 },
     );
-
     unmount();
     expect(feedInit?.signal.aborted).toBe(true);
   });

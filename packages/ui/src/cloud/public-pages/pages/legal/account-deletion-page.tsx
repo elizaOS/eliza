@@ -1,6 +1,6 @@
 /** Server-authoritative external request, status, export, and recovery page. */
 
-import type { AccountDeletionStatusDto } from "@elizaos/cloud-shared/types/account-lifecycle";
+import type { AccountDeletionStatusDto } from "@elizaos/cloud-sdk/browser-contracts/account-lifecycle";
 import {
   CheckCircle2,
   CircleAlert,

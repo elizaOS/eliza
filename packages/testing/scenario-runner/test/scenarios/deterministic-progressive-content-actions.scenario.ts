@@ -1,0 +1,1081 @@
+/**
+ * Keyless, model-free coverage for progressive reads across production action
+ * surfaces and the six shared target families. It seeds large native sources,
+ * proves exact continuation without planting answers in prompts, and runs the
+ * real lifecycle oracle for restart, isolation, concurrency, cleanup, typed
+ * rejection, and bounded source work.
+ */
+
+import { createHash } from "node:crypto";
+import { promises as fs, realpathSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { IAgentRuntime, Memory, ReadView, UUID } from "@elizaos/core";
+import { buildMessageContentProjection, stringToUuid } from "@elizaos/core";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import type {
+  CapturedAction,
+  ScenarioContext,
+  ScenarioModelFixture,
+  ScenarioTurnExecution,
+} from "@elizaos/testing";
+import {
+  type ProgressiveContentTargetFactory,
+  type ProgressiveContentTargetFamily,
+  runProgressiveContentTargetConformance,
+  scenario,
+} from "@elizaos/testing";
+import { DocumentService } from "../../../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import codingToolsPlugin from "../../../../../plugins/plugin-coding-tools/src/index.ts";
+import { createProgressiveFileTargetFactory } from "../../../../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
+import { createProgressiveToolOutputTargetFactory } from "../../../../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
+import { GoogleGmailAdapter } from "../../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
+import { createProgressiveSqlTargetFactories } from "../../../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts";
+import { createProgressiveAttachmentTargetFactory } from "../../../../agent/src/testing/progressive-content-attachment-target.ts";
+
+const SCENARIO_ID = "deterministic-progressive-content-actions";
+let fixtureRoot = "";
+let filePath = "";
+let previousEvaluators: IAgentRuntime["evaluators"] | null = null;
+
+const FILE_CANARY = "FILE-LATE-CANARY-7f32";
+const DOCUMENT_CANARY = "DOCUMENT-LATE-CANARY-8a41";
+const ATTACHMENT_CANARY = "ATTACHMENT-LATE-CANARY-9b50";
+const MEMORY_CANARY = "MEMORY-LATE-CANARY-ac61";
+const LARGE_PREFIX = "x".repeat(1024 * 1024);
+const FILE_SOURCE = `${LARGE_PREFIX}${FILE_CANARY}`;
+const ATTACHMENT_SOURCE = `${LARGE_PREFIX}${ATTACHMENT_CANARY}`;
+const MEMORY_SOURCE = `${LARGE_PREFIX}${MEMORY_CANARY}`;
+const DOCUMENT_LINES = [
+  ...Array.from({ length: 200 }, (_, index) => `document-line-${index}\n`),
+  `${DOCUMENT_CANARY}\n`,
+];
+const DOCUMENT_SOURCE = DOCUMENT_LINES.join("");
+const GMAIL_BODY =
+  "Hi there,\n\nWe received invoice 4831 for April. Please confirm receipt when you get a chance.\n\nThanks,\nFinance Team";
+
+let documentId = stringToUuid(`${SCENARIO_ID}:document`) as UUID;
+const ATTACHMENT_MEMORY_ID = stringToUuid(
+  `${SCENARIO_ID}:attachment-memory`,
+) as UUID;
+const MESSAGE_MEMORY_ID = stringToUuid(`${SCENARIO_ID}:message-memory`) as UUID;
+const RESTRICTED_MEMORY_ID = stringToUuid(
+  `${SCENARIO_ID}:restricted-memory`,
+) as UUID;
+const RESTRICTED_ROOM_ID = stringToUuid(
+  `scenario-room:${SCENARIO_ID}:restricted`,
+) as UUID;
+
+type JsonRecord = Record<string, unknown>;
+type ScenarioRuntime = IAgentRuntime & {
+  plugins?: Array<{ name?: string }>;
+  registerPlugin: (plugin: unknown) => Promise<void>;
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+};
+
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function actionFor(
+  execution: ScenarioTurnExecution,
+  actionName: string,
+): CapturedAction | string {
+  return (
+    execution.actionsCalled.find(
+      (action) => action.actionName === actionName,
+    ) ??
+    `expected ${actionName}; saw ${execution.actionsCalled.map((action) => action.actionName).join(", ") || "none"}`
+  );
+}
+
+function resultData(action: CapturedAction): JsonRecord | string {
+  return isRecord(action.result?.data)
+    ? action.result.data
+    : `expected ActionResult.data, saw ${JSON.stringify(action.result?.data)}`;
+}
+
+function readViewFrom(action: CapturedAction): ReadView | string {
+  const data = resultData(action);
+  if (typeof data === "string") return data;
+  const candidate = data.readView;
+  if (
+    !isRecord(candidate) ||
+    !isRecord(candidate.reference) ||
+    !isRecord(candidate.slice)
+  ) {
+    return `expected readView, saw ${JSON.stringify(candidate)}`;
+  }
+  return candidate as unknown as ReadView;
+}
+
+function exactPageFailure(
+  action: CapturedAction,
+  expectedText: string,
+  expectedRange: { unit: string; start: number; end: number; total: number },
+): string | undefined {
+  if (action.result?.success !== true) {
+    return `expected success, saw ${JSON.stringify(action.result)}`;
+  }
+  if (action.result.text !== expectedText) {
+    return `expected exact page ${JSON.stringify(expectedText)}, saw ${JSON.stringify(action.result.text)}`;
+  }
+  const view = readViewFrom(action);
+  if (typeof view === "string") return view;
+  if (JSON.stringify(view.slice.range) !== JSON.stringify(expectedRange)) {
+    return `expected range ${JSON.stringify(expectedRange)}, saw ${JSON.stringify(view.slice.range)}`;
+  }
+  const pageMarker = expectedText.slice(-32);
+  const dataJson = JSON.stringify(action.result.data) ?? "";
+  const promptDataJson = JSON.stringify(action.result.promptData) ?? "";
+  if (
+    pageMarker &&
+    (dataJson.includes(pageMarker) || promptDataJson.includes(pageMarker))
+  ) {
+    return "exact page text was duplicated into data or promptData";
+  }
+  return undefined;
+}
+
+const fileFirst = {
+  action: "read",
+  file_path: filePath,
+  unit: "byte",
+  offset: 0,
+  limit: 4096,
+};
+const fileLate: JsonRecord = {
+  action: "read",
+  file_path: filePath,
+  unit: "byte",
+  offset: Buffer.byteLength(FILE_SOURCE) - Buffer.byteLength(FILE_CANARY),
+  limit: 128,
+};
+const documentFirst = {
+  action: "read",
+  documentId,
+  unit: "line",
+  offset: 0,
+  limit: 10,
+};
+const documentLate: JsonRecord = {
+  action: "read",
+  documentId,
+  unit: "line",
+  offset: 200,
+  limit: 1,
+};
+const attachmentFirst = {
+  action: "read",
+  attachmentId: "progressive-attachment",
+  offset: 0,
+  limit: 4096,
+};
+const attachmentLate: JsonRecord = {
+  action: "read",
+  attachmentId: "progressive-attachment",
+  offset:
+    Buffer.byteLength(ATTACHMENT_SOURCE) - Buffer.byteLength(ATTACHMENT_CANARY),
+  limit: 128,
+};
+const memoryFirst = {
+  action: "read_channel",
+  messageId: MESSAGE_MEMORY_ID,
+  offset: 0,
+  limit: 4096,
+};
+const memoryLate: JsonRecord = {
+  action: "read_channel",
+  offset: Buffer.byteLength(MEMORY_SOURCE) - Buffer.byteLength(MEMORY_CANARY),
+  limit: 128,
+};
+const gmailFirst = {
+  action: "read_message",
+  source: "gmail",
+  accountId: "default",
+  messageId: "msg-finance",
+  unit: "byte",
+  offset: 0,
+  limit: 16,
+};
+const gmailNext: JsonRecord = {
+  action: "read_message",
+  source: "gmail",
+  unit: "byte",
+  offset: 16,
+  limit: 65_536,
+};
+const fileMutate = {
+  action: "write",
+  file_path: filePath,
+  content: `${FILE_SOURCE}\nreplacement after continuation`,
+  overwrite: true,
+};
+const fileStale: JsonRecord = {
+  action: "read",
+  file_path: filePath,
+  unit: "byte",
+  offset: 4096,
+  limit: 128,
+};
+const restrictedMemoryRead = {
+  action: "read_channel",
+  messageId: RESTRICTED_MEMORY_ID,
+  offset: 0,
+  limit: 128,
+};
+const MESSAGE_ROUTING = {
+  metadata: { __responseContext: { primaryContext: "messaging" } },
+};
+const AUTONOMOUS_FILE_PROMPT =
+  "Inspect the seeded large file through its bounded production reader.";
+const TARGET_SOURCE_BYTES = 384 * 1024 + 37;
+const TARGET_SOURCE_PAGE_BYTES = 64 * 1024;
+
+function currentTurnInputPattern(input: string): string {
+  const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `${escaped}(?![\\s\\S]*message:user:\\n)`;
+}
+
+const progressiveModelFixtures: ScenarioModelFixture[] = [
+  {
+    name: "progressive-file-stage1",
+    match: {
+      modelType: "RESPONSE_HANDLER",
+      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+    },
+    response: {
+      json: {
+        contexts: ["code"],
+        intents: ["inspect the seeded large file"],
+        replyText: "I will inspect the file through the bounded reader.",
+        threadOps: [],
+        candidateActionNames: ["FILE"],
+      },
+    },
+  },
+  {
+    name: "progressive-file-planner",
+    match: {
+      modelType: "ACTION_PLANNER",
+      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+    },
+    response: {
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [
+        {
+          id: "progressive-file-read",
+          name: "FILE",
+          arguments: {
+            action: "read",
+            file_path: "late-evidence.txt",
+            unit: "byte",
+            offset: 0,
+            limit: 4096,
+          },
+        },
+      ],
+    },
+  },
+  {
+    name: "progressive-file-final",
+    match: {
+      modelType: "RESPONSE_HANDLER",
+      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        success: true,
+        decision: "FINISH",
+        thought: "The production FILE read returned a recoverable page.",
+        messageToUser:
+          "I inspected the first bounded page and retained its continuation metadata.",
+      },
+    },
+  },
+];
+
+function captureContinuation(
+  action: CapturedAction,
+  target: JsonRecord,
+  includeReference = false,
+): string | undefined {
+  const view = readViewFrom(action);
+  if (typeof view === "string") return view;
+  if (!view.slice.revision) return "first page omitted revision";
+  target.expectedRevision = view.slice.revision;
+  if (includeReference && view.reference.ref) {
+    target.reference = view.reference.ref;
+  }
+  return undefined;
+}
+
+async function publishSegmentedMessage(
+  runtime: IAgentRuntime,
+  memory: Memory & { id: UUID },
+): Promise<string | undefined> {
+  const publish = runtime.adapter.publishMessageContentSegments;
+  if (!publish) return "message-content segment storage is unavailable";
+  const projection = buildMessageContentProjection(memory);
+  const result = await publish.call(runtime.adapter, {
+    mode: "create",
+    parent: { ...memory, content: projection.content },
+    segments: projection.segments,
+  });
+  return result.status === "created"
+    ? undefined
+    : `segmented message publication returned ${result.status}`;
+}
+
+function lifecycleCorpus(family: ProgressiveContentTargetFamily) {
+  const bytes = Buffer.alloc(TARGET_SOURCE_BYTES, 0x61);
+  const canaries = [
+    { label: "beginning", text: `BEGIN-${family}-世界`, byteStart: 0 },
+    {
+      label: "page-boundary",
+      text: `BOUNDARY-${family}-🧪`,
+      byteStart: TARGET_SOURCE_PAGE_BYTES - 17,
+    },
+    {
+      label: "middle",
+      text: `MIDDLE-${family}-世界`,
+      byteStart: Math.floor(TARGET_SOURCE_BYTES / 2),
+    },
+    {
+      label: "late",
+      text: `LATE-${family}-🧪`,
+      byteStart: TARGET_SOURCE_BYTES - 48,
+    },
+  ].map((canary) => ({
+    ...canary,
+    byteEnd: canary.byteStart + Buffer.byteLength(canary.text),
+  }));
+  for (const canary of canaries) bytes.write(canary.text, canary.byteStart);
+  return { bytes, canaries };
+}
+
+function caughtCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+async function verifyTypedRejection(input: {
+  factory: ProgressiveContentTargetFactory;
+  id: string;
+  format: "binary" | "invalid-utf8";
+  bytes: Buffer;
+  expectedCode: "CONTENT_BINARY_UNSUPPORTED" | "CONTENT_INVALID_UTF8";
+  maximumSourceBytes: number;
+}): Promise<string | undefined> {
+  const digest = createHash("sha256").update(input.bytes).digest("hex");
+  let reads = 0;
+  let sourceBytes = 0;
+  let maxReadBytes = 0;
+  try {
+    const target = await input.factory.create({
+      object: {
+        id: input.id,
+        family: input.factory.family,
+        byteLength: input.bytes.byteLength,
+        sourceSha256: digest,
+        sourceRevision: digest,
+        format: input.format,
+        authorizationScope: `${SCENARIO_ID}:${input.id}:owner`,
+        canaries: [],
+      },
+      source: {
+        byteLength: input.bytes.byteLength,
+        async read(offset, maximum = TARGET_SOURCE_PAGE_BYTES) {
+          const page = input.bytes.subarray(offset, offset + maximum);
+          reads += 1;
+          sourceBytes += page.byteLength;
+          maxReadBytes = Math.max(maxReadBytes, page.byteLength);
+          return page;
+        },
+      },
+    });
+    await target.cleanup();
+    return `${input.factory.family} ${input.format} unexpectedly realized a target`;
+  } catch (error) {
+    if (caughtCode(error) !== input.expectedCode) {
+      return `${input.factory.family} ${input.format} rejected with ${caughtCode(error) ?? "untyped error"}`;
+    }
+  }
+  if (
+    sourceBytes > input.maximumSourceBytes ||
+    maxReadBytes > TARGET_SOURCE_PAGE_BYTES
+  ) {
+    return `${input.factory.family} ${input.format} rejection performed unbounded source work: reads=${reads} bytes=${sourceBytes} max=${maxReadBytes}`;
+  }
+  return undefined;
+}
+
+async function verifyProductionTargetLifecycle(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  if (!fixtureRoot) return "progressive fixture root unavailable";
+  const lifecycleRoot = path.join(fixtureRoot, "production-target-lifecycle");
+  const priorStateDir = process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = path.join(lifecycleRoot, "state");
+  try {
+    const fileFactory = await createProgressiveFileTargetFactory({
+      targetRoot: path.join(lifecycleRoot, "files"),
+      agentId: String(ctx.runtime.agentId),
+    });
+    const sqlFactories = await createProgressiveSqlTargetFactories({
+      dataRoot: path.join(lifecycleRoot, "sql"),
+    });
+    const attachmentFactory = createProgressiveAttachmentTargetFactory();
+    const toolOutputFactory = createProgressiveToolOutputTargetFactory({
+      agentId: String(ctx.runtime.agentId),
+    });
+    const factories = [
+      fileFactory,
+      ...sqlFactories,
+      attachmentFactory,
+      toolOutputFactory,
+    ];
+    const observedFamilies = new Set<ProgressiveContentTargetFamily>();
+
+    for (const factory of factories) {
+      const { bytes, canaries } = lifecycleCorpus(factory.family);
+      const digest = createHash("sha256").update(bytes).digest("hex");
+      let sourceReads = 0;
+      let sourceBytes = 0;
+      let maxReadBytes = 0;
+      const target = await factory.create({
+        object: {
+          id: `${SCENARIO_ID}:${factory.family}:healthy`,
+          family: factory.family,
+          byteLength: bytes.byteLength,
+          sourceSha256: digest,
+          sourceRevision: digest,
+          format:
+            factory.binaryPolicy === "native-bytes" ? "binary" : "unicode-text",
+          authorizationScope: `${SCENARIO_ID}:${factory.family}:owner`,
+          canaries,
+        },
+        source: {
+          byteLength: bytes.byteLength,
+          async read(offset, maximum = TARGET_SOURCE_PAGE_BYTES) {
+            const page = bytes.subarray(offset, offset + maximum);
+            sourceReads += 1;
+            sourceBytes += page.byteLength;
+            maxReadBytes = Math.max(maxReadBytes, page.byteLength);
+            return page;
+          },
+        },
+      });
+      const result = await runProgressiveContentTargetConformance({
+        manifestSha256: digest,
+        adapterId: factory.adapterId,
+        target,
+        pageBytes: TARGET_SOURCE_PAGE_BYTES,
+      });
+      const receiptPhases = new Set(
+        result.receipts
+          .filter(({ status }) => status === "passed")
+          .map(({ phase }) => phase),
+      );
+      const requiredPhases = [
+        "realized",
+        "authorization",
+        "isolation",
+        "restart",
+        "cleanup",
+      ] as const;
+      if (
+        result.report.status !== "passed" ||
+        result.report.pages < 2 ||
+        !result.report.restartVerified ||
+        !result.report.concurrencyVerified ||
+        !result.report.repeatedPageVerified ||
+        !result.report.cleanupVerified ||
+        !result.report.postCleanupProbeVerified ||
+        result.report.sourceWork.parentScans !== 0 ||
+        result.report.performance.readCallsPerPageMax > 2 ||
+        result.report.performance.rowsPerPageMax > 8 ||
+        requiredPhases.some((phase) => !receiptPhases.has(phase))
+      ) {
+        return `${factory.family} lifecycle failed: ${JSON.stringify({ report: result.report, receipts: result.receipts })}`;
+      }
+      if (
+        sourceReads < 2 ||
+        sourceBytes !== bytes.byteLength ||
+        maxReadBytes > TARGET_SOURCE_PAGE_BYTES
+      ) {
+        return `${factory.family} realization source work was not bounded and complete: reads=${sourceReads} bytes=${sourceBytes} max=${maxReadBytes}`;
+      }
+      observedFamilies.add(factory.family);
+    }
+
+    const invalidUtf8 = Buffer.alloc(96 * 1024, 0x61);
+    invalidUtf8[127] = 0xff;
+    const binary = Buffer.from([0, 0xff, 1, 2]);
+    const sqlMemory = sqlFactories.find(({ family }) => family === "memory");
+    const sqlEmail = sqlFactories.find(({ family }) => family === "email");
+    if (!sqlMemory || !sqlEmail) return "SQL rejection factories unavailable";
+    for (const rejection of [
+      {
+        factory: fileFactory,
+        id: "file-binary-rejection",
+        format: "binary" as const,
+        bytes: binary,
+        expectedCode: "CONTENT_BINARY_UNSUPPORTED" as const,
+        maximumSourceBytes: 0,
+      },
+      {
+        factory: fileFactory,
+        id: "file-invalid-utf8-rejection",
+        format: "invalid-utf8" as const,
+        bytes: invalidUtf8,
+        expectedCode: "CONTENT_INVALID_UTF8" as const,
+        maximumSourceBytes: TARGET_SOURCE_PAGE_BYTES,
+      },
+      {
+        factory: sqlMemory,
+        id: "memory-binary-rejection",
+        format: "binary" as const,
+        bytes: binary,
+        expectedCode: "CONTENT_BINARY_UNSUPPORTED" as const,
+        maximumSourceBytes: 0,
+      },
+      {
+        factory: sqlEmail,
+        id: "email-invalid-utf8-rejection",
+        format: "invalid-utf8" as const,
+        bytes: invalidUtf8,
+        expectedCode: "CONTENT_INVALID_UTF8" as const,
+        maximumSourceBytes: TARGET_SOURCE_PAGE_BYTES,
+      },
+    ]) {
+      const failure = await verifyTypedRejection(rejection);
+      if (failure) return failure;
+    }
+    return observedFamilies.size === 6
+      ? undefined
+      : `expected six production target families, saw ${[
+          ...observedFamilies,
+        ].join(", ")}`;
+  } catch (error) {
+    return `production target lifecycle threw: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`;
+  } finally {
+    if (priorStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = priorStateDir;
+  }
+}
+
+async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
+  const runtime = ctx.runtime as ScenarioRuntime;
+  previousEvaluators = runtime.evaluators;
+  runtime.evaluators = [];
+  if (!ctx.primaryRoomId || !ctx.primaryUserId) {
+    return "scenario primary room/user unavailable";
+  }
+  const { seedGoogleConnectorGrant } = await import(
+    "../../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts"
+  );
+  await seedGoogleConnectorGrant(
+    runtime as unknown as Parameters<typeof seedGoogleConnectorGrant>[0],
+    {
+      capabilities: ["google.gmail.triage"],
+      email: "owner@example.test",
+      grantId: "progressive-content-read",
+    },
+  );
+  getDefaultTriageService().register(new GoogleGmailAdapter());
+  const runDir = process.env.ELIZA_LIFEOPS_RUN_DIR?.trim();
+  if (runDir) {
+    fixtureRoot = path.join(
+      path.resolve(runDir),
+      "fixtures",
+      `${SCENARIO_ID}-${process.pid}`,
+    );
+    await fs.mkdir(fixtureRoot, { recursive: true });
+  } else {
+    fixtureRoot = await fs.mkdtemp(
+      path.join(realpathSync(os.tmpdir()), `${SCENARIO_ID}-`),
+    );
+  }
+  fixtureRoot = realpathSync(fixtureRoot);
+  filePath = path.join(fixtureRoot, "late-evidence.txt");
+  fileFirst.file_path = filePath;
+  fileLate.file_path = filePath;
+  fileMutate.file_path = filePath;
+  fileStale.file_path = filePath;
+  await fs.writeFile(filePath, FILE_SOURCE, "utf8");
+  process.env.CODING_TOOLS_WORKSPACE_ROOTS = fixtureRoot;
+
+  if (
+    !runtime.plugins?.some(
+      (plugin) =>
+        plugin.name === "coding-tools" ||
+        plugin.name === "@elizaos/plugin-coding-tools",
+    )
+  ) {
+    await runtime.registerPlugin(codingToolsPlugin);
+  }
+  await Promise.all([
+    runtime.getServiceLoadPromise?.("CODING_TOOLS_SESSION_CWD"),
+    runtime.getServiceLoadPromise?.("CODING_TOOLS_SANDBOX"),
+  ]);
+  const session = runtime.getService("CODING_TOOLS_SESSION_CWD") as {
+    setCwd?: (conversationId: string, absPath: string) => void;
+  } | null;
+  const sandbox = runtime.getService("CODING_TOOLS_SANDBOX") as {
+    addRoot?: (conversationId: string, absPath: string) => void;
+  } | null;
+  if (!session?.setCwd || !sandbox?.addRoot) {
+    return "coding-tools workspace services unavailable";
+  }
+  sandbox.addRoot(ctx.primaryRoomId, fixtureRoot);
+  session.setCwd(ctx.primaryRoomId, fixtureRoot);
+
+  const documentService = runtime.getService<DocumentService>(
+    DocumentService.serviceType,
+  );
+  if (!documentService) return "document service unavailable";
+  const room = await runtime.getRoom(ctx.primaryRoomId as UUID);
+  if (!room?.worldId) return "scenario room world unavailable";
+  const storedDocument = await documentService.addDocument({
+    worldId: room.worldId,
+    roomId: ctx.primaryRoomId as UUID,
+    entityId: ctx.primaryUserId as UUID,
+    clientDocumentId: documentId,
+    contentType: "text/markdown",
+    originalFilename: "progressive-document.md",
+    content: DOCUMENT_SOURCE,
+    scope: "global",
+    addedBy: ctx.primaryUserId as UUID,
+    addedByRole: "OWNER",
+    addedFrom: "import",
+    metadata: { title: "Progressive scenario document" },
+  });
+  documentId = storedDocument.clientDocumentId as UUID;
+  documentFirst.documentId = documentId;
+  documentLate.documentId = documentId;
+
+  const attachmentPublicationFailure = await publishSegmentedMessage(runtime, {
+    id: ATTACHMENT_MEMORY_ID,
+    agentId: runtime.agentId,
+    entityId: ctx.primaryUserId as UUID,
+    roomId: ctx.primaryRoomId as UUID,
+    content: {
+      text: "Attachment fixture envelope without its planted answer.",
+      source: "client_chat",
+      attachments: [
+        {
+          id: "progressive-attachment",
+          url: "https://example.invalid/progressive-attachment.txt",
+          title: "progressive-attachment.txt",
+          contentType: "document",
+          mimeType: "text/plain",
+          text: ATTACHMENT_SOURCE,
+        },
+      ],
+    },
+    metadata: { type: "message", scope: "global" },
+    createdAt: Date.now() - 1,
+  } as Memory & { id: UUID });
+  if (attachmentPublicationFailure) return attachmentPublicationFailure;
+  const messagePublicationFailure = await publishSegmentedMessage(runtime, {
+    id: MESSAGE_MEMORY_ID,
+    agentId: runtime.agentId,
+    entityId: ctx.primaryUserId as UUID,
+    roomId: ctx.primaryRoomId as UUID,
+    content: { text: MEMORY_SOURCE, source: "client_chat" },
+    metadata: { type: "message", scope: "room" },
+    createdAt: Date.now(),
+  } as Memory & { id: UUID });
+  if (messagePublicationFailure) return messagePublicationFailure;
+  await runtime.createMemory(
+    {
+      id: RESTRICTED_MEMORY_ID,
+      agentId: runtime.agentId,
+      entityId: stringToUuid(
+        `scenario-account:${SCENARIO_ID}:restricted`,
+      ) as UUID,
+      roomId: RESTRICTED_ROOM_ID,
+      content: { text: "restricted room content", source: "client_chat" },
+      metadata: { type: "message", scope: "room" },
+      createdAt: Date.now(),
+    } as Memory,
+    "messages",
+  );
+  return undefined;
+}
+
+function finalLedger(ctx: ScenarioContext): string | undefined {
+  const actions = ctx.actionsCalled ?? [];
+  const expected = [
+    "FILE",
+    "FILE",
+    "FILE",
+    "FILE",
+    "FILE",
+    "DOCUMENT",
+    "DOCUMENT",
+    "ATTACHMENT",
+    "ATTACHMENT",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+  ];
+  const names = actions.map((action) => action.actionName);
+  return JSON.stringify(names) === JSON.stringify(expected)
+    ? undefined
+    : `expected progressive action ledger ${JSON.stringify(expected)}, saw ${JSON.stringify(names)}`;
+}
+
+export default scenario({
+  id: "deterministic-progressive-content-actions",
+  lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: progressiveModelFixtures,
+  },
+  title: "Deterministic progressive content action contracts",
+  domain: "scenario-runner",
+  tags: ["pr", "deterministic", "progressive-content", "large-content"],
+  isolation: "per-scenario",
+  requires: {
+    plugins: [
+      "@elizaos/plugin-coding-tools",
+      "@elizaos/plugin-google-workspace",
+      "@elizaos/plugin-personal-assistant",
+    ],
+  },
+  rooms: [
+    {
+      id: "main",
+      source: "client_chat",
+      title: "Progressive Content",
+    },
+    {
+      id: "restricted",
+      account: `${SCENARIO_ID}:restricted`,
+      source: "client_chat",
+      title: "Restricted Progressive Content",
+    },
+  ],
+  seed: [
+    {
+      type: "gmailInbox",
+      account: "default",
+      requiredMessageIds: ["msg-finance"],
+    },
+    {
+      type: "custom",
+      name: "seed large native progressive content sources",
+      apply: setupSources,
+    },
+    {
+      type: "custom",
+      name: "exercise six production target lifecycles",
+      apply: verifyProductionTargetLifecycle,
+    },
+  ],
+  turns: [
+    {
+      kind: "message",
+      name: "planner selects the bounded FILE reader",
+      text: AUTONOMOUS_FILE_PROMPT,
+      responseIncludesAny: ["first bounded page", "continuation metadata"],
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "FILE");
+        if (typeof action === "string") return action;
+        return exactPageFailure(action, "x".repeat(4096), {
+          unit: "byte",
+          start: 0,
+          end: 4096,
+          total: Buffer.byteLength(FILE_SOURCE),
+        });
+      },
+    },
+    {
+      kind: "action",
+      name: "FILE first page",
+      text: "Read the first bounded page of the seeded file.",
+      actionName: "FILE",
+      options: { parameters: fileFirst },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "FILE");
+        if (typeof action === "string") return action;
+        return (
+          exactPageFailure(action, "x".repeat(4096), {
+            unit: "byte",
+            start: 0,
+            end: 4096,
+            total: Buffer.byteLength(FILE_SOURCE),
+          }) ?? captureContinuation(action, fileLate)
+        );
+      },
+    },
+    {
+      kind: "action",
+      name: "FILE late continuation",
+      text: "Continue the seeded file read at the requested range.",
+      actionName: "FILE",
+      options: { parameters: fileLate },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "FILE");
+        if (typeof action === "string") return action;
+        const failure = exactPageFailure(action, FILE_CANARY, {
+          unit: "byte",
+          start:
+            Buffer.byteLength(FILE_SOURCE) - Buffer.byteLength(FILE_CANARY),
+          end: Buffer.byteLength(FILE_SOURCE),
+          total: Buffer.byteLength(FILE_SOURCE),
+        });
+        if (failure) return failure;
+        const view = readViewFrom(action);
+        if (typeof view === "string") return view;
+        fileStale.expectedRevision = view.slice.revision;
+        return undefined;
+      },
+    },
+    {
+      kind: "action",
+      name: "FILE production mutation",
+      text: "Replace the seeded file after its continuation was read.",
+      actionName: "FILE",
+      options: { parameters: fileMutate },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "FILE");
+        if (typeof action === "string") return action;
+        return action.result?.success === true
+          ? undefined
+          : `expected production FILE mutation success, saw ${JSON.stringify(action.result)}`;
+      },
+    },
+    {
+      kind: "action",
+      name: "FILE stale continuation denial",
+      text: "Try the old continuation revision after the seeded file changed.",
+      actionName: "FILE",
+      options: { parameters: fileStale },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "FILE");
+        if (typeof action === "string") return action;
+        if (action.result?.success !== false) {
+          return `expected stale continuation failure, saw ${JSON.stringify(action.result)}`;
+        }
+        return action.result.text.includes("stale_read")
+          ? undefined
+          : `expected stale_read failure, saw ${JSON.stringify(action.result.text)}`;
+      },
+    },
+    {
+      kind: "action",
+      name: "DOCUMENT first page",
+      text: "Read the first bounded page of the seeded document.",
+      actionName: "DOCUMENT",
+      options: { parameters: documentFirst },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "DOCUMENT");
+        if (typeof action === "string") return action;
+        return (
+          exactPageFailure(action, DOCUMENT_LINES.slice(0, 10).join(""), {
+            unit: "line",
+            start: 0,
+            end: 10,
+            total: DOCUMENT_LINES.length,
+          }) ?? captureContinuation(action, documentLate)
+        );
+      },
+    },
+    {
+      kind: "action",
+      name: "DOCUMENT late continuation",
+      text: "Continue the seeded document read at the requested range.",
+      actionName: "DOCUMENT",
+      options: { parameters: documentLate },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "DOCUMENT");
+        if (typeof action === "string") return action;
+        return exactPageFailure(action, `${DOCUMENT_CANARY}\n`, {
+          unit: "line",
+          start: 200,
+          end: 201,
+          total: DOCUMENT_LINES.length,
+        });
+      },
+    },
+    {
+      kind: "action",
+      name: "ATTACHMENT first page",
+      text: "Read the first bounded page and show the attachment record details.",
+      actionName: "ATTACHMENT",
+      content: { attachmentId: "progressive-attachment" },
+      options: { parameters: attachmentFirst },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "ATTACHMENT");
+        if (typeof action === "string") return action;
+        return (
+          exactPageFailure(
+            action,
+            "x".repeat(4096),
+            {
+              unit: "byte",
+              start: 0,
+              end: 4096,
+              total: Buffer.byteLength(ATTACHMENT_SOURCE),
+            },
+            true,
+          ) ?? captureContinuation(action, attachmentLate)
+        );
+      },
+    },
+    {
+      kind: "action",
+      name: "ATTACHMENT late continuation",
+      text: "Continue the requested range and show the attachment record details.",
+      actionName: "ATTACHMENT",
+      content: { attachmentId: "progressive-attachment" },
+      options: { parameters: attachmentLate },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "ATTACHMENT");
+        if (typeof action === "string") return action;
+        return exactPageFailure(action, ATTACHMENT_CANARY, {
+          unit: "byte",
+          start:
+            Buffer.byteLength(ATTACHMENT_SOURCE) -
+            Buffer.byteLength(ATTACHMENT_CANARY),
+          end: Buffer.byteLength(ATTACHMENT_SOURCE),
+          total: Buffer.byteLength(ATTACHMENT_SOURCE),
+        });
+      },
+    },
+    {
+      kind: "action",
+      name: "MESSAGE stored memory first page",
+      text: "Read the first bounded page of the seeded stored message.",
+      actionName: "MESSAGE",
+      content: MESSAGE_ROUTING,
+      options: { parameters: memoryFirst },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "MESSAGE");
+        if (typeof action === "string") return action;
+        return (
+          exactPageFailure(action, "x".repeat(4096), {
+            unit: "byte",
+            start: 0,
+            end: 4096,
+            total: Buffer.byteLength(MEMORY_SOURCE),
+          }) ?? captureContinuation(action, memoryLate, true)
+        );
+      },
+    },
+    {
+      kind: "action",
+      name: "MESSAGE stored memory late continuation",
+      text: "Continue the seeded stored-message read at the requested range.",
+      actionName: "MESSAGE",
+      content: MESSAGE_ROUTING,
+      options: { parameters: memoryLate },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "MESSAGE");
+        if (typeof action === "string") return action;
+        return exactPageFailure(action, MEMORY_CANARY, {
+          unit: "byte",
+          start:
+            Buffer.byteLength(MEMORY_SOURCE) - Buffer.byteLength(MEMORY_CANARY),
+          end: Buffer.byteLength(MEMORY_SOURCE),
+          total: Buffer.byteLength(MEMORY_SOURCE),
+        });
+      },
+    },
+    {
+      kind: "action",
+      name: "MESSAGE cross-room denial",
+      text: "Try to read a stored message from an inaccessible room.",
+      actionName: "MESSAGE",
+      content: MESSAGE_ROUTING,
+      options: { parameters: restrictedMemoryRead },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "MESSAGE");
+        if (typeof action === "string") return action;
+        if (action.result?.success !== false) {
+          return `expected cross-room failure, saw ${JSON.stringify(action.result)}`;
+        }
+        const data = resultData(action);
+        if (typeof data === "string") return data;
+        return data.error === "MESSAGE_MEMORY_NOT_FOUND"
+          ? undefined
+          : `expected non-enumerating MESSAGE_MEMORY_NOT_FOUND, saw ${JSON.stringify(data.error)}`;
+      },
+    },
+    {
+      kind: "action",
+      name: "MESSAGE Gmail first page",
+      text: "Read the first bounded page of the seeded Gmail message.",
+      actionName: "MESSAGE",
+      content: MESSAGE_ROUTING,
+      options: { parameters: gmailFirst },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "MESSAGE");
+        if (typeof action === "string") return action;
+        return (
+          exactPageFailure(action, GMAIL_BODY.slice(0, 16), {
+            unit: "byte",
+            start: 0,
+            end: 16,
+            total: Buffer.byteLength(GMAIL_BODY),
+          }) ?? captureContinuation(action, gmailNext, true)
+        );
+      },
+    },
+    {
+      kind: "action",
+      name: "MESSAGE Gmail continuation",
+      text: "Continue the seeded Gmail read using its returned reference.",
+      actionName: "MESSAGE",
+      content: MESSAGE_ROUTING,
+      options: { parameters: gmailNext },
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "MESSAGE");
+        if (typeof action === "string") return action;
+        return exactPageFailure(action, GMAIL_BODY.slice(16), {
+          unit: "byte",
+          start: 16,
+          end: Buffer.byteLength(GMAIL_BODY),
+          total: Buffer.byteLength(GMAIL_BODY),
+        });
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "custom",
+      name: "progressive action ledger is isolated and exact",
+      predicate: finalLedger,
+    },
+    {
+      type: "gmailMockRequest",
+      method: "GET",
+      path: "/gmail/v1/users/me/messages/msg-finance",
+      minCount: 2,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "remove progressive-content workspace",
+      apply: async (ctx) => {
+        if (previousEvaluators !== null) {
+          ctx.runtime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
+        if (fixtureRoot) {
+          await fs.rm(fixtureRoot, { force: true, recursive: true });
+        }
+        return undefined;
+      },
+    },
+  ],
+});

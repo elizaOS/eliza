@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-pty",
   "version": "1.0.0",
-  "description": "Interactive PTY terminal service for elizaOS — registers PTY_SERVICE so the app's web terminal can drive a real interactive CLI (eliza-code on Eliza Cloud/cerebras)",
+  "description": "Interactive PTY terminal service for elizaOS \u2014 registers PTY_SERVICE so the app's web terminal can drive a real interactive CLI (eliza-code on Eliza Cloud/cerebras)",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -14,16 +14,10 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./index.ts",
       "types": "./dist/index.d.ts",
-      "bun": "./index.ts",
-      "development": "./index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "files": [
@@ -41,25 +35,26 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.3",
-    "bun-types": "^1.2.25",
+    "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "test": "vitest run",
     "test:unit": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -127,7 +122,7 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Default export (Node.js) — requires a real PTY, not available on store builds"
+      "node": "Default export (Node.js) \u2014 requires a real PTY, not available on store builds"
     }
   }
 }

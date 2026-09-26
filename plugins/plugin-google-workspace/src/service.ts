@@ -204,6 +204,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.gmailClient.getGmailMessageDetail(params);
   }
 
+  getGmailMessageRevision(
+    params: GoogleAccountRef & { messageId: string }
+  ): Promise<string | null> {
+    return this.gmailClient.getGmailMessageRevision(params);
+  }
+
   listGmailUnrespondedThreads(
     params: GoogleAccountRef & {
       selfEmail?: string | null;
@@ -337,6 +343,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
   ): Promise<GoogleCalendarEvent> {
     return this.calendarClient.getEvent(params);
+  }
+
+  findEventByIdempotencyKey(
+    params: GoogleAccountRef & { calendarId: string; idempotencyKey: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent | null> {
+    return this.calendarClient.findEventByIdempotencyKey(params);
   }
 
   createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {

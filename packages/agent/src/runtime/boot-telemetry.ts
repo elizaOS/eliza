@@ -12,9 +12,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-
-import { logger } from "@elizaos/core";
-import { isDevApiWatchEnabled } from "@elizaos/shared/runtime-env";
+import { isDevApiWatchEnabled, logger } from "@elizaos/core";
 
 import { resolveStateDir } from "../config/paths.ts";
 import type { BootSummary } from "./boot-timer.ts";
@@ -29,7 +27,6 @@ const STARTUP_TRACE_ID_ENV = "ELIZA_STARTUP_TRACE_ID";
 const MAX_SAMPLES = 240;
 /** Keep at most this many recent boot/(re)start events on disk. */
 const MAX_RESTART_EVENTS = 200;
-
 /** Node `process.memoryUsage()` snapshot, in bytes. */
 interface MemoryUsageSnapshot {
   rss: number;
@@ -38,7 +35,6 @@ interface MemoryUsageSnapshot {
   external: number;
   arrayBuffers: number;
 }
-
 /** Boot summary enriched with the process state at record time. */
 interface BootTelemetryRecord extends BootSummary {
   /** Host/renderer correlation id when the native shell provided one. */
@@ -50,7 +46,6 @@ interface BootTelemetryRecord extends BootSummary {
   /** Memory usage at record time, in bytes. */
   memory: MemoryUsageSnapshot;
 }
-
 /** A single RSS sample. */
 interface MemorySample {
   /** Epoch milliseconds when the sample was taken. */
@@ -58,7 +53,6 @@ interface MemorySample {
   /** Resident set size at sample time, in megabytes. */
   rssMb: number;
 }
-
 /** On-disk shape of the memory sampler's `latest.json`. */
 interface MemoryTelemetryRecord {
   /** Peak observed RSS across the run, in megabytes. */
@@ -68,7 +62,6 @@ interface MemoryTelemetryRecord {
   /** Most recent samples, capped at {@link MAX_SAMPLES}. */
   samples: MemorySample[];
 }
-
 /** True when telemetry should not run (tests or explicit opt-out). */
 function telemetryDisabled(): boolean {
   return (
@@ -76,7 +69,6 @@ function telemetryDisabled(): boolean {
     process.env.NODE_ENV === "test"
   );
 }
-
 function captureMemory(): MemoryUsageSnapshot {
   const usage = process.memoryUsage();
   return {
@@ -87,30 +79,29 @@ function captureMemory(): MemoryUsageSnapshot {
     arrayBuffers: usage.arrayBuffers,
   };
 }
-
 function bytesToMb(bytes: number): number {
   return Math.round((bytes / (1024 * 1024)) * 100) / 100;
 }
-
 function telemetryDir(...segments: string[]): string {
   return path.join(resolveStateDir(), "telemetry", ...segments);
 }
-
 function readStartupTraceId(): string | undefined {
   const value = process.env[STARTUP_TRACE_ID_ENV];
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function isMissingFileError(error: unknown): boolean {
   return (
     error instanceof Error &&
     "code" in error &&
-    (error as Error & { code?: unknown }).code === "ENOENT"
+    (
+      error as Error & {
+        code?: unknown;
+      }
+    ).code === "ENOENT"
   );
 }
-
 /**
  * Write `data` as pretty JSON to `<stateDir>/telemetry/<dir>/<file>`, creating
  * the directory tree first. Only the filesystem work is guarded; a failure logs
@@ -129,13 +120,10 @@ async function writeTelemetryFile(
   } catch (err) {
     // error-policy:J7 telemetry failure is warned but cannot kill runtime boot.
     logger.warn(
-      `[boot-telemetry] Failed to write ${targetPath}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[boot-telemetry] Failed to write ${targetPath}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
-
 /**
  * Persist a boot run: enrich the boot summary with process memory + uptime and
  * write a timestamped record plus `latest.json` under
@@ -147,7 +135,6 @@ export async function recordBootTelemetry(summary: BootSummary): Promise<void> {
   if (telemetryDisabled()) {
     return;
   }
-
   const recordedAt = new Date().toISOString();
   const startupTraceId = readStartupTraceId();
   const record: BootTelemetryRecord = {
@@ -157,14 +144,12 @@ export async function recordBootTelemetry(summary: BootSummary): Promise<void> {
     processUptimeSec: process.uptime(),
     memory: captureMemory(),
   };
-
   const fileName = `${recordedAt.replace(/[:.]/g, "-")}.json`;
   await Promise.all([
     writeTelemetryFile(BOOT_DIR, fileName, record),
     writeTelemetryFile(BOOT_DIR, LATEST_FILE, record),
   ]);
 }
-
 /** A single boot/(re)start event — one is appended at the start of each boot. */
 interface BootEvent {
   /** Host/renderer correlation id when the native shell provided one. */
@@ -180,7 +165,6 @@ interface BootEvent {
   /** Short label, e.g. the BootTimer label. */
   label: string;
 }
-
 /**
  * Append a boot/(re)start event to
  * `<stateDir>/telemetry/restart/events.json` (a bounded rolling array). Unlike
@@ -195,7 +179,6 @@ export async function recordBootEvent(label: string): Promise<void> {
   if (telemetryDisabled()) {
     return;
   }
-
   const spawnedAtMs = Number(process.env.ELIZA_API_PROCESS_SPAWNED_AT_MS);
   const startupTraceId = readStartupTraceId();
   const event: BootEvent = {
@@ -207,7 +190,6 @@ export async function recordBootEvent(label: string): Promise<void> {
     watch: isDevApiWatchEnabled(),
     label,
   };
-
   const targetDir = telemetryDir(RESTART_DIR);
   const targetPath = path.join(targetDir, RESTART_EVENTS_FILE);
   try {
@@ -247,26 +229,20 @@ export async function recordBootEvent(label: string): Promise<void> {
   } catch (err) {
     // error-policy:J7 telemetry failure is warned but cannot kill runtime boot.
     logger.warn(
-      `[boot-telemetry] Failed to record boot event: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[boot-telemetry] Failed to record boot event: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
-
 /** Options for {@link startMemorySampler}. */
 export interface MemorySamplerOptions {
   /** Sampling interval in milliseconds. */
   intervalMs: number;
 }
-
 interface MemorySamplerHandle {
   timer: NodeJS.Timeout;
   detach: () => Promise<void>;
 }
-
 let activeSampler: MemorySamplerHandle | null = null;
-
 /**
  * Begin periodically sampling `process.memoryUsage().rss`, tracking the peak.
  * On `beforeExit` (or {@link stopMemorySampler}) the run is flushed to
@@ -280,11 +256,9 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
   if (telemetryDisabled() || activeSampler) {
     return;
   }
-
   const startedAt = Date.now();
   const samples: MemorySample[] = [];
   let peakRssBytes = 0;
-
   const sample = (): void => {
     const rss = process.memoryUsage().rss;
     if (rss > peakRssBytes) {
@@ -295,11 +269,9 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
       samples.splice(0, samples.length - MAX_SAMPLES);
     }
   };
-
   sample();
   const timer = setInterval(sample, options.intervalMs);
   timer.unref();
-
   let flushPromise: Promise<void> | null = null;
   const flush = (): Promise<void> => {
     if (flushPromise) return flushPromise;
@@ -316,7 +288,6 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
     flushPromise = pending;
     return flushPromise;
   };
-
   const onExit = (): void => {
     // Async work scheduled from `beforeExit` causes Node/Bun to emit
     // `beforeExit` again once that work settles. Detach first so the final
@@ -324,9 +295,7 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
     process.off("beforeExit", onExit);
     void flush();
   };
-
   process.on("beforeExit", onExit);
-
   activeSampler = {
     timer,
     detach: async () => {
@@ -336,7 +305,6 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
     },
   };
 }
-
 /** Stop the active memory sampler and flush a final snapshot to disk. */
 export async function stopMemorySampler(): Promise<void> {
   if (!activeSampler) {

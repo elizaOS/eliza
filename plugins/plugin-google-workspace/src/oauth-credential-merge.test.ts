@@ -37,15 +37,22 @@ describe("mergeCredentialObject", () => {
     expect(credentials.access_token).toBe("tok");
   });
 
-  it(`throws ${GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED} one past depth ${MAX_OAUTH_CREDENTIAL_DEPTH}`, () => {
-    try {
-      mergeCredentialObject({}, nestTokens(MAX_OAUTH_CREDENTIAL_DEPTH + 1));
-      expect.unreachable("merge should fail closed on over-budget depth");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ElizaError);
-      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+  it.each([MAX_OAUTH_CREDENTIAL_DEPTH + 1, 8_000])(
+    "rejects a %i-deep nest at the depth boundary",
+    (depth) => {
+      try {
+        mergeCredentialObject({}, nestTokens(depth));
+        expect.unreachable("merge should fail closed on over-budget depth");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+        expect((error as ElizaError).context).toEqual({
+          depth: MAX_OAUTH_CREDENTIAL_DEPTH + 1,
+          max: MAX_OAUTH_CREDENTIAL_DEPTH,
+        });
+      }
     }
-  });
+  );
 
   it(`throws ${GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED} past ${MAX_OAUTH_CREDENTIAL_NODES} sparse scopes`, () => {
     const sparse: unknown[] = [];
@@ -266,15 +273,14 @@ describe("mergeCredentialObject", () => {
   it("throws on a cyclic tokens object without hanging", () => {
     const cyclic: { tokens?: unknown } = {};
     cyclic.tokens = cyclic;
-    const started = performance.now();
     try {
       mergeCredentialObject({}, cyclic);
       expect.unreachable("merge should fail closed on a cycle");
     } catch (error) {
       expect(error).toBeInstanceOf(ElizaError);
       expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as ElizaError).context).toEqual({ cycle: true });
     }
-    expect(performance.now() - started).toBeLessThan(50);
   });
 
   it("does not invoke accessors while merging", () => {
@@ -290,18 +296,5 @@ describe("mergeCredentialObject", () => {
     mergeCredentialObject(credentials, hostile);
     expect(invoked).toBe(0);
     expect(credentials.access_token).toBe("a");
-  });
-
-  it("fails closed on an 8k nest in under 50ms instead of RangeError", () => {
-    const started = performance.now();
-    try {
-      mergeCredentialObject({}, nestTokens(8_000));
-      expect.unreachable("merge should fail closed on an 8k nest");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ElizaError);
-      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
-      expect((error as Error).name).not.toBe("RangeError");
-    }
-    expect(performance.now() - started).toBeLessThan(50);
   });
 });

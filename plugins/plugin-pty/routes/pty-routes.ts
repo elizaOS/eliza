@@ -9,14 +9,14 @@
  * `PTY_VENDOR_CLI_ENABLED` gate on top. The spawn handler never logs the
  * request body — it can carry an Eliza Cloud API key.
  */
+
 import { timingSafeEqual } from "node:crypto";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
-  type IAgentRuntime,
-  logger,
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/core/api/http-plugin";
 import {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,
@@ -31,23 +31,19 @@ import {
   resolveClaudeCliBin,
   resolveCodexCliBin,
 } from "../lib/vendor-cli-spec";
-import type { PtyService } from "../services/pty-service";
-import type { PtySpawnSpec } from "../services/pty-types";
+import { type PtyService } from "../services/pty-service";
+import { type PtySpawnSpec } from "../services/pty-types";
 
 // --- small helpers -------------------------------------------------------
-
 function json(status: number, body: unknown): RouteHandlerResult {
   return { status, headers: { "content-type": "application/json" }, body };
 }
-
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim().length > 0 ? v : undefined;
 }
-
 function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
-
 function getStr(runtime: IAgentRuntime, key: string): string | undefined {
   const fromSetting = runtime.getSetting?.(key);
   if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
@@ -56,11 +52,9 @@ function getStr(runtime: IAgentRuntime, key: string): string | undefined {
   const fromEnv = process.env[key];
   return fromEnv && fromEnv.trim().length > 0 ? fromEnv.trim() : undefined;
 }
-
 function getService(ctx: RouteHandlerContext): PtyService | null {
   return (ctx.runtime.getService("PTY_SERVICE") as PtyService | null) ?? null;
 }
-
 function timingSafeTokenMatches(expected: string, provided: string): boolean {
   const expectedBytes = Buffer.from(expected);
   const providedBytes = Buffer.from(provided);
@@ -69,7 +63,6 @@ function timingSafeTokenMatches(expected: string, provided: string): boolean {
     timingSafeEqual(expectedBytes, providedBytes)
   );
 }
-
 function header(ctx: RouteHandlerContext, name: string): string | undefined {
   return str(
     ctx.headers[name] ??
@@ -77,23 +70,19 @@ function header(ctx: RouteHandlerContext, name: string): string | undefined {
       ctx.headers[name.toUpperCase()],
   );
 }
-
 function query(ctx: RouteHandlerContext, name: string): string | undefined {
   const value = ctx.query[name];
   return str(Array.isArray(value) ? value[0] : value);
 }
-
 function bodyToken(body: Record<string, unknown>): string | undefined {
   return str(body.terminalToken) ?? str(body.ptyToken);
 }
-
 function splitCsv(v: string | undefined): string[] {
   return (v ?? "")
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
 }
-
 function normalizeBaseUrl(raw: string): string {
   const url = new URL(raw);
   url.hash = "";
@@ -101,7 +90,6 @@ function normalizeBaseUrl(raw: string): string {
   url.pathname = url.pathname.replace(/\/+$/, "");
   return url.toString().replace(/\/+$/, "");
 }
-
 function allowedBaseUrls(runtime: IAgentRuntime): Set<string> {
   const configured = [
     ...splitCsv(getStr(runtime, "PTY_ALLOWED_BASE_URLS")),
@@ -113,7 +101,6 @@ function allowedBaseUrls(runtime: IAgentRuntime): Set<string> {
     ),
   );
 }
-
 function resolveAllowedBaseUrl(
   runtime: IAgentRuntime,
   requested: string | undefined,
@@ -127,7 +114,6 @@ function resolveAllowedBaseUrl(
   }
   return normalized;
 }
-
 function providedTerminalToken(
   ctx: RouteHandlerContext,
   body: Record<string, unknown> = {},
@@ -140,7 +126,6 @@ function providedTerminalToken(
     query(ctx, "ptyToken")
   );
 }
-
 function ptyAccessRejection(
   ctx: RouteHandlerContext,
   body: Record<string, unknown> = {},
@@ -148,7 +133,6 @@ function ptyAccessRejection(
   const expected =
     getStr(ctx.runtime, "ELIZA_TERMINAL_RUN_TOKEN") ??
     getStr(ctx.runtime, "PTY_TERMINAL_RUN_TOKEN");
-
   // Compatibility mode: trusted in-process callers keep working in local
   // builds unless the operator explicitly configures a terminal step-up token.
   if (!expected) {
@@ -158,9 +142,7 @@ function ptyAccessRejection(
         "Interactive PTY routes require a terminal token (ELIZA_TERMINAL_RUN_TOKEN) for HTTP access.",
     });
   }
-
   if (ctx.isTrustedLocal) return null;
-
   const provided = providedTerminalToken(ctx, body);
   if (!provided) {
     return json(401, {
@@ -173,7 +155,6 @@ function ptyAccessRejection(
   }
   return null;
 }
-
 /**
  * Interactive spawning is on unless explicitly disabled or on a store build
  * (which forbids running child processes / dynamic code).
@@ -190,7 +171,6 @@ function interactiveEnabled(runtime: IAgentRuntime): boolean {
   }
   return true;
 }
-
 /**
  * The experimental vendor-CLI tier (#10832 Phase 2): the real interactive
  * Claude Code / Codex CLIs on the user's own subscription. Inherently
@@ -204,7 +184,6 @@ function vendorCliEnabled(runtime: IAgentRuntime): boolean {
   const flag = getStr(runtime, "PTY_VENDOR_CLI_ENABLED")?.trim().toLowerCase();
   return flag === "true" || flag === "1" || flag === "on" || flag === "yes";
 }
-
 function resolveRequestCloudTuple(
   runtime: IAgentRuntime,
   body: Record<string, unknown>,
@@ -214,7 +193,6 @@ function resolveRequestCloudTuple(
   // and must not even trigger allowlist parsing that could diverge the target.
   const launcherTuple = resolveElizaCodeCloudTuple();
   if (launcherTuple.authority) return launcherTuple;
-
   return resolveElizaCodeCloudTuple({
     // Do not fall back to the agent's primary OPENAI_API_KEY; terminal users
     // can inspect their child environment.
@@ -222,13 +200,10 @@ function resolveRequestCloudTuple(
     baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
   });
 }
-
 function defaultCwd(runtime: IAgentRuntime): string {
   return getStr(runtime, "PTY_ALLOWED_DIRECTORY") ?? process.cwd();
 }
-
 // --- handlers ------------------------------------------------------------
-
 /**
  * Builds the eliza-code spawn spec from a validated request. `apiKey` is
  * pre-resolved by the route so the missing-key rejection carries the
@@ -258,7 +233,6 @@ function elizaCodeSpecFromRequest(
       str(body.smartModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_SMART_MODEL"),
   });
 }
-
 /**
  * Builds a vendor-CLI spawn spec (gate already checked). Credentials are the
  * user's own subscription handles, passed through opaquely — the claude token
@@ -285,7 +259,6 @@ function vendorCliSpecFromRequest(
     codexHome: getStr(runtime, "CODEX_HOME"),
   });
 }
-
 /**
  * POST /api/pty/sessions — spawn an interactive session. `kind: "eliza-code"`
  * (real slash-command CLI on Eliza Cloud/cerebras) is the default; the
@@ -300,7 +273,6 @@ async function spawnHandler(
   const body = (ctx.body ?? {}) as Record<string, unknown>;
   const rejection = ptyAccessRejection(ctx, body);
   if (rejection) return rejection;
-
   if (!interactiveEnabled(runtime)) {
     return json(403, {
       error:
@@ -309,14 +281,12 @@ async function spawnHandler(
   }
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
-
   const kind = str(body.kind) ?? "eliza-code";
   if (kind !== "eliza-code" && kind !== "claude" && kind !== "codex") {
     return json(400, {
       error: `Unsupported session kind "${kind}". Supported kinds: "eliza-code", "claude", "codex".`,
     });
   }
-
   if (kind !== "eliza-code" && !vendorCliEnabled(runtime)) {
     return json(403, {
       error:
@@ -324,9 +294,7 @@ async function spawnHandler(
         "(runs the real vendor CLI on your own subscription). Set PTY_VENDOR_CLI_ENABLED=true to enable it.",
     });
   }
-
   const cwd = str(body.cwd) ?? defaultCwd(runtime);
-
   try {
     let spec: PtySpawnSpec;
     if (kind === "eliza-code") {
@@ -359,7 +327,6 @@ async function spawnHandler(
     const rows = num(body.rows);
     if (cols) spec.cols = cols;
     if (rows) spec.rows = rows;
-
     const session = await svc.startSession(spec);
     logger.info(
       `[plugin-pty] spawned interactive session ${session.sessionId} kind=${kind} label=${spec.label} cwd=${cwd}`,
@@ -371,26 +338,22 @@ async function spawnHandler(
     return json(400, { error: message });
   }
 }
-
 /** GET /api/pty/sessions — list live sessions. */
 async function listHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
   const rejection = ptyAccessRejection(ctx);
   if (rejection) return rejection;
-
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   return json(200, { sessions: svc.listSessions() });
 }
-
 /** GET /api/pty/sessions/:id/buffered-output — initial scrollback for late subscribers. */
 async function bufferedOutputHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
   const rejection = ptyAccessRejection(ctx);
   if (rejection) return rejection;
-
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   const id = ctx.params?.id;
@@ -400,14 +363,12 @@ async function bufferedOutputHandler(
     return json(404, { error: "PTY session not found." });
   return json(200, { output });
 }
-
 /** DELETE /api/pty/sessions/:id — kill a session. */
 async function stopHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
   const rejection = ptyAccessRejection(ctx);
   if (rejection) return rejection;
-
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   const id = ctx.params?.id;
@@ -415,7 +376,6 @@ async function stopHandler(
   await svc.stopSession(id);
   return json(200, { ok: true });
 }
-
 /**
  * Sensitive developer terminal routes. Generic route authentication is not
  * enough: HTTP callers must pass the terminal step-up token, while in-process

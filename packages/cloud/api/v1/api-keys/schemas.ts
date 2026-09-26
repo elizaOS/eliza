@@ -15,6 +15,12 @@ const optionalExpiresAtSchema = z
     return new Date(value);
   });
 
+// JSON booleans and arrays are not numeric rate limits.
+const rateLimitSchema = z
+  .union([z.number(), z.string()])
+  .transform(Number)
+  .pipe(z.number().int().min(1).max(100000));
+
 export const createApiKeySchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   description: z
@@ -25,7 +31,7 @@ export const createApiKeySchema = z.object({
       const trimmed = value.trim();
       return trimmed.length ? trimmed : null;
     }),
-  rate_limit: z.coerce.number().int().min(1).max(100000).default(1000),
+  rate_limit: rateLimitSchema.default(1000),
   expires_at: optionalExpiresAtSchema,
 });
 
@@ -41,7 +47,7 @@ export const updateApiKeySchema = z
         const trimmed = value.trim();
         return trimmed.length ? trimmed : null;
       }),
-    rate_limit: z.coerce.number().int().min(1).max(100000).optional(),
+    rate_limit: rateLimitSchema.optional(),
     is_active: z.boolean().optional(),
     expires_at: optionalExpiresAtSchema,
   })

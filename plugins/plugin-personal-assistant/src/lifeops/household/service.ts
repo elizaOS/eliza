@@ -6,23 +6,23 @@
  * bounded in `household-entity-scan.ts`.
  */
 import crypto from "node:crypto";
+import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  type Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
+import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import {
-  type Entity,
-  type Relationship,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalChannel,
@@ -1632,6 +1632,35 @@ export class HouseholdCoordinationService {
       "HOUSEHOLD_ACCESS_DENIED",
       { householdId, grantId, principalEntityId, scope: input.scope },
     );
+  }
+
+  /** Owner inventory for permission selectors; no reconciliation or grant mutation. */
+  async listActiveGrantsForOwner(input: {
+    householdId: string;
+    ownerEntityId: string;
+    scope: HouseholdAccessScope;
+  }): Promise<HouseholdAccessGrant[]> {
+    if (input.ownerEntityId !== SELF_ENTITY_ID) {
+      throw new HouseholdCoordinationError(
+        "Only the owner can list household permission choices",
+        "HOUSEHOLD_ACCESS_DENIED",
+      );
+    }
+    const householdId = householdNamespace(input.householdId);
+    const grants = await this.deps.repository.listGrants(
+      undefined,
+      householdId,
+    );
+    const at = this.now();
+    const active: HouseholdAccessGrant[] = [];
+    for (const grant of grants) {
+      if (
+        expandGrantScopes(grant.scopes).includes(input.scope) &&
+        (await this.grantIsActive(grant, at))
+      )
+        active.push(grant);
+    }
+    return active;
   }
 
   private async activeGrants(

@@ -9,7 +9,7 @@
  */
 
 import { userReferenceLogView, wrapExternalContent } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import {
   buildCalendarEventDisambiguationFallback,

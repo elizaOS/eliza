@@ -3,6 +3,14 @@
  * helpers, and the wake/turn logic.
  */
 export {
+  EDGE_BACKUP_VOICES,
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
+  sanitizeApiKey,
+  VOICE_PROVIDERS,
+  type VoicePreset,
+} from "@elizaos/core/voice";
+export {
   type AecLoopControl,
   type AecLoopResult,
   type AecLoopRunOptions,
@@ -71,7 +79,6 @@ export {
   type PlaybackFrameTap,
   resamplePcmTo16k,
 } from "./playback-frame-pump";
-export * from "./types";
 export {
   SHIPPED_WAKE_HEADS,
   type UseWakeControllerOptions,
@@ -90,6 +97,12 @@ export {
   type VoiceCaptureState,
   type VoiceCaptureTranscriptSegment,
 } from "./voice-capture-factory";
+export type {
+  VoicePlaybackEvidenceEvent,
+  VoicePlaybackObserver,
+  VoicePlaybackTerminal,
+  VoiceTransportLeg,
+} from "./voice-playback-evidence";
 export {
   type DefaultVoiceProviderResult,
   isCloudVoiceRunnable,

@@ -6,17 +6,19 @@
  * LifeOps can import it without the full plugin runtime.
  */
 import {
+  type IAgentRuntime,
+  type Memory,
+  toWellFormedUnicode,
+} from "@elizaos/core";
+import {
   BaseMessageAdapter,
   type DraftRequest,
-  type IAgentRuntime,
   type ListOptions,
-  type Memory,
   type MessageAdapterCapabilities,
   type MessageRef,
   type MessageSource,
   NotYetImplementedError,
-  toWellFormedUnicode,
-} from "@elizaos/core/node";
+} from "@elizaos/plugin-assistant";
 
 type XRuntimeServiceLike = {
   sendDirectMessageForAccount?: (

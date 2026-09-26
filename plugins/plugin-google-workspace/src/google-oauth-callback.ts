@@ -8,10 +8,10 @@
  * and — when the caller knows the origin actually serving the connector API —
  * a callback targeting a different host or port is rejected as unreachable.
  */
-import { type IAgentRuntime, isLoopbackBindHost } from "@elizaos/core";
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { isLoopbackBindHost } from "@elizaos/core/runtime-env";
 export const GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH = "/api/connectors/google/oauth/callback";
-
 export type GoogleOAuthCallbackConfigIssueCode =
   | "missing"
   | "malformed"
@@ -24,19 +24,16 @@ export type GoogleOAuthCallbackConfigIssueCode =
   | "served_origin_malformed"
   | "wrong_host"
   | "wrong_port";
-
 export interface GoogleOAuthCallbackConfigIssue {
   code: GoogleOAuthCallbackConfigIssueCode;
   message: string;
 }
-
 export interface GoogleOAuthCallbackConfigAssessment {
   configured: boolean;
   /** Present only when the callback passed every validation check. */
   redirectUri: string | null;
   issues: GoogleOAuthCallbackConfigIssue[];
 }
-
 export interface GoogleOAuthCallbackConfigOptions {
   /**
    * Origin actually serving the connector API, typically the URL of the
@@ -47,28 +44,22 @@ export interface GoogleOAuthCallbackConfigOptions {
    */
   servedOrigin?: URL | string;
 }
-
 type RuntimeWithSettings = Pick<IAgentRuntime, "getSetting">;
-
 const FALLBACK_CALLBACK_EXAMPLE = "http://127.0.0.1:31437/api/connectors/google/oauth/callback";
-
 function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function readRedirectUriSetting(runtime: RuntimeWithSettings): string | undefined {
   return nonEmptyString(runtime.getSetting?.("GOOGLE_REDIRECT_URI"));
 }
-
 function normalizedHostname(url: URL): string {
   return url.hostname
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
 }
-
 function servedCallbackExample(options?: GoogleOAuthCallbackConfigOptions): string {
   if (options?.servedOrigin === undefined) return FALLBACK_CALLBACK_EXAMPLE;
   try {
@@ -89,7 +80,6 @@ function servedCallbackExample(options?: GoogleOAuthCallbackConfigOptions): stri
     return FALLBACK_CALLBACK_EXAMPLE;
   }
 }
-
 /**
  * Loopback callbacks must name an explicit port (for example `31437`). A
  * portless `http://127.0.0.1/...` origin targets implicit port 80, not the
@@ -99,14 +89,12 @@ export function isPortlessLoopbackRedirectUrl(url: URL): boolean {
   if (!isLoopbackBindHost(url.hostname)) return false;
   return url.port === "";
 }
-
 /** URL.port with scheme-default ports ("80" for http, "443" for https) normalized to "". */
 function explicitPort(url: URL): string {
   if (url.protocol === "http:" && url.port === "80") return "";
   if (url.protocol === "https:" && url.port === "443") return "";
   return url.port;
 }
-
 export function assessGoogleOAuthCallbackConfig(
   runtime: RuntimeWithSettings,
   options?: GoogleOAuthCallbackConfigOptions
@@ -125,7 +113,6 @@ export function assessGoogleOAuthCallbackConfig(
       ],
     };
   }
-
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -141,7 +128,6 @@ export function assessGoogleOAuthCallbackConfig(
       ],
     };
   }
-
   const issues: GoogleOAuthCallbackConfigIssue[] = [];
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     issues.push({
@@ -184,7 +170,6 @@ export function assessGoogleOAuthCallbackConfig(
       message: `GOOGLE_REDIRECT_URI uses a portless loopback origin. Include the served API port: ${callbackExample}.`,
     });
   }
-
   if (options?.servedOrigin !== undefined) {
     let served: URL;
     try {
@@ -232,7 +217,6 @@ export function assessGoogleOAuthCallbackConfig(
       }
     }
   }
-
   if (issues.length > 0) {
     return {
       configured: false,
@@ -240,14 +224,12 @@ export function assessGoogleOAuthCallbackConfig(
       issues,
     };
   }
-
   return {
     configured: true,
     redirectUri: parsed.toString(),
     issues: [],
   };
 }
-
 export function resolveGoogleConnectorOAuthCallbackUrl(
   runtime: RuntimeWithSettings,
   options?: GoogleOAuthCallbackConfigOptions

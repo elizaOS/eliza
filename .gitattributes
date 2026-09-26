@@ -1,4 +1,5 @@
-*.patch -text whitespace=-blank-at-eol
+*.patch -text whitespace=-blank-at-eol,-space-before-tab
+# Unified-diff context prefixes precede literal source tabs; those are patch data.
 # Patch bytes are hashed (patches/CHECKSUMS.sha256) and applied verbatim by bun,
 # so they must stay byte-identical across platforms — never let a Windows
 # checkout (autocrlf) rewrite them to CRLF.
@@ -7,7 +8,7 @@ patches/CHECKSUMS.sha256 -text
 # Source files must check out with LF everywhere: Windows runners default to
 # core.autocrlf=true, and a CRLF checkout makes vitest's transform pipeline
 # reject otherwise-valid modules ("SyntaxError: Invalid or unexpected token"
-# at collection — reproduced by CRLF-converting run-mobile-build.mjs on
+# at collection — reproduced by CRLF-converting run-mobile-build.ts on
 # Linux). Biome also formats LF-only, so CRLF working copies churn
 # format:check.
 *.mjs text eol=lf
@@ -27,3 +28,7 @@ patches/CHECKSUMS.sha256 -text
 # literals. Force a textual diff so security-relevant assertion changes remain
 # reviewable instead of appearing as an opaque binary replacement.
 plugins/plugin-personal-assistant/test/connector-payload-fuzz.test.ts diff
+
+# The relocated benchmark cost model is hashed corpus input. Preserve its
+# original trailing spaces and bytes, including on Windows checkouts.
+packages/benchmarks/scripts/terminal-bench/llm-inference-batching-scheduler/cost_model.py -text whitespace=-blank-at-eol

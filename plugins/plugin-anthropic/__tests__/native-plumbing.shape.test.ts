@@ -91,7 +91,7 @@ describe("Anthropic native text plumbing", () => {
   it("uses generateText for streaming tool requests so tool-only responses are preserved", async () => {
     const generateText = vi.fn(async () => ({
       text: "",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: { inputTokens: 7, outputTokens: 2 },
     }));
@@ -120,7 +120,7 @@ describe("Anthropic native text plumbing", () => {
     expect(streamText).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       text: "",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
       finishReason: "tool-calls",
     });
   }, 60_000);
@@ -128,7 +128,7 @@ describe("Anthropic native text plumbing", () => {
   it("preserves prompt segment cache metadata and returns cache usage with native tools", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: {
         inputTokens: 11,
@@ -238,7 +238,7 @@ describe("Anthropic native text plumbing", () => {
     // costUsd.
     const generateText = vi.fn(async () => ({
       text: "ok",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: {
         inputTokens: 100,
@@ -324,7 +324,7 @@ describe("Anthropic native text plumbing", () => {
   it("uses segmented dynamic user content on messages plus promptSegments while keeping cacheable system", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
-      toolCalls: [{ toolName: "READ", input: { path: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "READ", input: { path: "x" } }],
       finishReason: "tool-calls",
       usage: { inputTokens: 20, outputTokens: 3 },
     }));
@@ -673,7 +673,7 @@ describe("Anthropic model defaults", () => {
     // every planner / evaluator call, and Anthropic prompt caching was silently inert.
     const generateText = vi.fn(async () => ({
       text: "ok",
-      toolCalls: [{ toolName: "READ", input: { path: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "READ", input: { path: "x" } }],
       finishReason: "tool-calls",
       usage: {
         inputTokens: 100,

@@ -1,0 +1,62 @@
+# JavaScript and task-runner output
+node_modules/
+# Cross-repository app builds can materialize plugin build outputs here; plugin
+# source ownership remains in elizaOS/eliza and the layout verifier rejects it.
+plugins/
+dist/
+**/dist/
+.turbo/
+**/.turbo/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+
+# Native build output and downloaded toolchains
+**/build/
+**/.gradle/
+**/Pods/
+**/DerivedData/
+toolchains/bun-riscv64/dist/
+.eliza-source/
+
+# OS image and release build output
+out/
+artifacts/
+evidence/
+e2e-recordings/
+*.iso
+*.img
+*.qcow2
+*.vmdk
+*.apk
+*.aab
+
+# Models and generated media
+*.gguf
+*.onnx
+*.wav
+*.mp3
+models/
+cache/
+logs/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+characters/**/secrets.json
+characters/**/*.env
+
+# Editor and operating-system files
+.DS_Store
+._*
+.idea/
+.vscode/
+xcuserdata/
+*.xcuserstate
+
+# Local evidence and validation output (never committed per repo policy)
+reports/

@@ -1,7 +1,6 @@
 /** Reads snapshot transfer bodies against explicit transport limits and rejects incomplete or oversized state. Error-body excerpts are diagnostics only and never become restored agent context. */
-import { resolveRetainableAgentBackupBytes } from "@elizaos/shared/agent-backup-limits";
+import { resolveRetainableAgentBackupBytes } from "@elizaos/core/agent-backup-limits";
 import { type AgentBackupStateData } from "../../../../db/schemas/agent-sandboxes";
-
 /**
  * Maximum bytes to read from a snapshot-fetch error response body for
  * diagnostic logging (#18228). The body distinguishes an agent-side 500
@@ -10,7 +9,6 @@ import { type AgentBackupStateData } from "../../../../db/schemas/agent-sandboxe
  * cannot exhaust Worker memory.
  */
 export const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
-
 /**
  * Hydration budgets (#16639): the worker heap died buffering unbounded
  * snapshot bodies (`res.json()` retained everything, then a re-stringify
@@ -26,17 +24,14 @@ export const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
 export const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(
   process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES,
 );
-
 export const SNAPSHOT_MAX_FILES = (() => {
   const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
+  return Number.isFinite(raw) && raw > 0 ? raw : 5000;
 })();
-
 export const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
   const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 384 * 1024 * 1024;
 })();
-
 /**
  * Stream a Response body, enforcing a hard byte budget (#16639): the read is
  * aborted the moment the counted bytes exceed the budget, so an oversized
@@ -76,7 +71,6 @@ export async function readBodyWithinBudget(res: Response, maxBytes: number): Pro
   }
   return Buffer.concat(chunks).toString("utf-8");
 }
-
 /**
  * Validate the parsed snapshot's expanded budgets BEFORE it is persisted
  * (#16639): total file count and summed content bytes across the legacy
@@ -132,7 +126,6 @@ export function assertSnapshotExpandedBudgets(stateData: AgentBackupStateData): 
     );
   }
 }
-
 /**
  * Read a bounded excerpt of an error response body for diagnostic logging.
  * Returns a trimmed string or null when the body is empty. Used by
@@ -178,7 +171,10 @@ export async function readErrorBodyExcerpt(
     // JSON error bodies carry structured diagnostics — try to extract a message.
     if (contentType.includes("application/json")) {
       try {
-        const data = JSON.parse(body) as { error?: unknown; message?: unknown };
+        const data = JSON.parse(body) as {
+          error?: unknown;
+          message?: unknown;
+        };
         const msg = data.error ?? data.message;
         if (typeof msg === "string" && msg.trim()) {
           return msg.trim();
@@ -192,7 +188,6 @@ export async function readErrorBodyExcerpt(
     return null;
   }
 }
-
 /** Truncate UTF-8 bytes without splitting a multi-byte code point. */
 export function truncateUtf8Bytes(bytes: Uint8Array, maxBytes: number): Uint8Array {
   const limit = Math.min(bytes.length, maxBytes);

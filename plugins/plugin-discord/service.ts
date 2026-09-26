@@ -15,6 +15,7 @@ import {
 	ChannelType,
 	type Character,
 	type Content,
+	ContentType,
 	createUniqueUuid,
 	ElizaError,
 	type EventPayload,
@@ -85,6 +86,7 @@ import {
  */
 import {
 	ActivityType,
+	type Attachment,
 	type AttachmentBuilder,
 	type BaseGuildVoiceChannel,
 	type Channel,
@@ -611,6 +613,35 @@ function scoreDiscordConnectorMatch(
 	return bestScore;
 }
 
+/** Attachment records for a history read: identity, url, name and kind only. */
+export function historyAttachmentMedia(
+	attachments: Iterable<
+		Pick<Attachment, "id" | "url" | "name" | "contentType">
+	>,
+): Media[] {
+	const media: Media[] = [];
+	for (const attachment of attachments) {
+		const mime = (attachment.contentType ?? "").toLowerCase();
+		const contentType = mime.startsWith("image/")
+			? ContentType.IMAGE
+			: mime.startsWith("video/")
+				? ContentType.VIDEO
+				: mime.startsWith("audio/")
+					? ContentType.AUDIO
+					: ContentType.DOCUMENT;
+		media.push({
+			id: attachment.id,
+			url: attachment.url,
+			title: attachment.name ?? "attachment",
+			source: "discord",
+			contentType,
+			description: "",
+			text: "",
+		});
+	}
+	return media;
+}
+
 function isDiscordTextTarget(channel: unknown): boolean {
 	const maybeChannel = channel as {
 		isTextBased?: () => boolean;
@@ -699,7 +730,7 @@ type DiscordAccountSettingsConfig = ResolvedDiscordAccount["config"] &
 
 export class DiscordService extends Service implements IDiscordService {
 	// Override runtime type for messageServerId cross-core compatibility (see compat.ts)
-	protected declare runtime: ICompatRuntime;
+	declare protected runtime: ICompatRuntime;
 
 	static serviceType: string = DISCORD_SERVICE_NAME;
 	capabilityDescription =
@@ -1497,6 +1528,12 @@ export class DiscordService extends Service implements IDiscordService {
 			get clientReadyPromise() {
 				return state?.clientReadyPromise ?? parent.clientReadyPromise;
 			},
+			trackInFlightTurn: (messageId: string, promise: Promise<unknown>) =>
+				parent.trackInFlightTurn(messageId, promise),
+			trackStatusReaction: (
+				messageId: string,
+				controller: StatusReactionController,
+			) => parent.trackStatusReaction(messageId, controller),
 			admitInboundMessage: (messageId: string, channelId: string) =>
 				parent.admitInboundMessage(messageId, channelId, accountId()),
 			accountToken: state?.account.token,
@@ -3119,8 +3156,16 @@ export class DiscordService extends Service implements IDiscordService {
 				? page.filter((message) => BigInt(message.id) > BigInt(afterBoundary))
 				: page;
 			for (const discordMessage of eligible) {
+				// A history read returns what was said; describing every historical
+				// image and transcribing every clip through the models (one provider
+				// call per attachment) turned a 3-message read into a minutes-long
+				// turn (live 2026-09-15). Attachments are listed, not processed.
 				const memory = await this.buildMemoryFromMessage(discordMessage, {
 					accountId,
+					processedContent: discordMessage.content,
+					processedAttachments: historyAttachmentMedia(
+						discordMessage.attachments.values(),
+					),
 				});
 				if (memory) memories.push(memory);
 			}
@@ -3279,7 +3324,10 @@ export class DiscordService extends Service implements IDiscordService {
 				`Discord channel ${channel.id} does not support thread creation.`,
 			);
 		}
-		const name = (params.name ?? "thread").slice(0, 100);
+		const name = truncateWellFormed(
+			toWellFormedUnicode(params.name ?? "thread"),
+			100,
+		);
 		let startMessage: Message | undefined;
 		if (params.parentMessageId) {
 			try {

@@ -172,7 +172,6 @@ async function isLocalWranglerRecycleResponse(
     (method !== "GET" && method !== "HEAD") ||
     !isLocalTarget() ||
     (response.status !== 500 && response.status !== 503) ||
-    response.headers.get("server")?.trim().toLowerCase() !== "workerd" ||
     !response.headers
       .get("content-type")
       ?.toLowerCase()
@@ -182,10 +181,23 @@ async function isLocalWranglerRecycleResponse(
     return false;
   }
 
-  if (method === "HEAD") return true;
+  const fromWorkerd =
+    response.headers.get("server")?.trim().toLowerCase() === "workerd";
+  if (method === "HEAD") return fromWorkerd;
+  const body = (await response.clone().text()).trim();
+  // Miniflare can lose its upstream Worker connection without setting Server.
+  // Match its exact proxy stack, never an application error with similar text.
+  if (
+    response.status === 500 &&
+    /^Error: Network connection lost\.\r?\n\s+at async Object\.fetch \(file:\/\/[^\r\n]+\/node_modules\/miniflare\/dist\/src\/workers\/core\/entry\.worker\.js:\d+:\d+\)$/.test(
+      body,
+    )
+  ) {
+    return true;
+  }
   const expectedBody =
     response.status === 500 ? "Internal Server Error" : "Service Unavailable";
-  return (await response.clone().text()).trim() === expectedBody;
+  return fromWorkerd && body === expectedBody;
 }
 
 async function request(
@@ -194,14 +206,21 @@ async function request(
   opts: FetchOptions = {},
 ): Promise<Response> {
   const makeInit = (): RequestInit => {
+    const headers = new Headers(opts.headers);
+    // Wrangler's local proxy can reuse a connection the Worker just closed,
+    // returning "Network connection lost" before the route responds. Close
+    // each local connection instead of replaying potentially applied mutations.
+    // https://github.com/cloudflare/workers-sdk/issues/14641
+    if (isLocalTarget()) headers.set("Connection", "close");
     const init: RequestInit = {
       method,
       signal: timeoutSignal(),
-      headers: { ...(opts.headers ?? {}) },
+      headers,
     };
     if (opts.body !== undefined) {
-      (init.headers as Record<string, string>)["Content-Type"] ??=
-        "application/json";
+      if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
       init.body =
         typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
     }
@@ -222,6 +241,16 @@ async function request(
       setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
     );
     res = await fetch(url(path), makeInit());
+  }
+  if (res.status === 500 && !isJsonMediaType(res.headers.get("content-type"))) {
+    console.error("[Worker e2e] Non-JSON server failure", {
+      method,
+      path,
+      status: res.status,
+      server: res.headers.get("server"),
+      contentType: res.headers.get("content-type"),
+      body: await res.clone().text(),
+    });
   }
   recordStatus(method, path, res.status);
   return res;

@@ -18,8 +18,8 @@ import type {
 	TrajectoryProviderAccessRecord,
 	TrajectoryStepRecord,
 	TrajectorySummaryRecord,
-} from "./services/trajectory-types";
-import { toWellFormedUnicode, truncateWellFormed } from "./utils/well-formed";
+} from "./services/trajectory-types.js";
+import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
 
 export interface ActivityPlaintextSummary {
 	eventType: string;

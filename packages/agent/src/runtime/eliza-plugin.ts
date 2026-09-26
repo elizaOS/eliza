@@ -1,18 +1,28 @@
 /**
- * Eliza plugin for elizaOS — workspace context, session keys, and agent
- * lifecycle actions (restart).
- *
- * Compaction is handled by core auto-compaction in the recent-messages provider.
- * Memory search/get actions are superseded by the todos plugin.
+ * Composes the agent host's workspace providers, lifecycle actions, HTTP routes
+ * and concrete services. Assistant policy is registered separately; this plugin
+ * supplies host storage, permissions, media and runtime integration.
  */
-
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import {
   AgentEventService,
+  type IAgentRuntime,
   NotificationService,
   PairingService,
+  type HttpPlugin as Plugin,
   promoteSubactionsToActions,
+  type ServiceClass,
 } from "@elizaos/core";
+
+import {
+  ApprovalService,
+  GlobalPauseService,
+  HandoffService,
+  PendingPromptsService,
+} from "@elizaos/plugin-assistant";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -28,19 +38,20 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { viewsAction } from "../actions/views.ts";
 import { registerAttachmentKnowledgeBackfillWorker } from "../api/attachment-knowledge-backfill.ts";
 import { registerAttachmentKnowledgeIngestHook } from "../api/attachment-knowledge-ingest.ts";
 import {
   backgroundGenerateImageRoute,
   backgroundUploadImageRoute,
 } from "../api/background-routes.ts";
+import { registerImportedConversationEmbeddingWorker } from "../api/conversation-import-embeddings.ts";
 import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
   registerMediaGcWorker,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
-import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -56,75 +67,61 @@ import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
 } from "../providers/session-utils.ts";
-import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
-import {
-  uiGenerativeProvider,
-  uiWidgetsProvider,
-} from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
-import { ApprovalService } from "../services/approval/index.ts";
 import { AudioRedactionService } from "../services/audio-redaction-service.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";
-import { GlobalPauseService } from "../services/global-pause/index.ts";
-import { HandoffService } from "../services/handoff/index.ts";
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
-import { pendantSessionSchema } from "../services/pendant-session/index.ts";
-import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
+import { preparePluginForSelectedDatabase } from "./database-selection.ts";
+import { elizaSchema } from "./eliza-schema.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
-
+import { retainedPendantSchema } from "./retained-pendant-schema.ts";
+import {
+  viewNavigationEvaluator,
+  viewNavigationField,
+} from "./view-navigation.ts";
 export type ElizaPluginConfig = {
   workspaceDir?: string;
   sessionStorePath?: string;
   agentId?: string;
 };
-
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
     config?.workspaceDir ?? resolveDefaultAgentWorkspaceDir();
   const agentId = config?.agentId ?? "main";
   const sessionStorePath =
     config?.sessionStorePath ?? resolveDefaultSessionStorePath(agentId);
-
   const baseProviders = [
     createWorkspaceProvider({ workspaceDir }),
     adminTrustProvider,
     adminPanelProvider,
-
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
-    createDynamicSkillProvider(),
     pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),
   ];
-
   const plugin: Plugin = {
     name: "eliza",
+    databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-
     // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
     // migrates the runtime data model whenever the agent runs.
     schema: {
+      ...retainedPendantSchema,
       ...knowledgeGraphSchema,
-      ...pendantSessionSchema,
     },
-
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,
@@ -159,7 +156,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // (#14710) and every non-whitelisted DM sender is denied.
       PairingService as ServiceClass,
     ],
-
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
       registerErrorEscalation(runtime);
@@ -176,23 +172,18 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // The worker must exist before TaskService starts. The host's awaited
       // post-migration maintenance phase creates its idempotent queue row.
       registerAttachmentKnowledgeBackfillWorker(runtime);
+      registerImportedConversationEmbeddingWorker(runtime);
     },
-
     providers: [
       ...baseProviders,
-
       automationTerminalBridgeProvider,
       pageScopedContextProvider,
       recentConversationsProvider,
       relevantConversationsProvider,
       rolodexProvider,
-
-      uiWidgetsProvider,
-      uiGenerativeProvider,
       roleBackfillProvider,
       escalationTriggerProvider,
     ],
-
     // Public media route — only reached on iOS (in-process dispatch, no HTTP
     // server). HTTP platforms serve media via the pre-auth handler in server.ts.
     routes: [
@@ -200,10 +191,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
-      ...pendantSessionRoutes,
     ],
-
+    responseHandlerFieldEvaluators: [viewNavigationField],
+    responseHandlerEvaluators: [viewNavigationEvaluator],
     actions: [
+      ...promoteSubactionsToActions(viewsAction),
       terminalAction,
       ...promoteSubactionsToActions(triggerAction),
       pageDelegateAction,
@@ -220,13 +212,17 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(memoryAction, {
         overrides: {
           create: { description: "Store a memory. Supply text to save." },
+          count: {
+            description:
+              "Read fresh memory inventory totals, per-category counts and newest timestamps. Omit filters for the overall count including saved facts; type=facts counts only facts. Returns complete aggregates without source bodies or pagination. Use for current counts even when earlier totals appear in conversation; use MEMORY_SEARCH for record contents.",
+          },
           update: {
             description:
-              "Correct saved knowledge. Search the subject's existing facts first and reconcile every record affected by the user's correction, preserving unrelated facts in each full replacement text. Every update call MUST include its target memoryId from the search (or a unique query), replacement text, and confirm:true. Updating one record does not correct other contradictory records; verify the saved facts before reporting completion.",
+              "Correct saved knowledge. Search the subject's existing facts first and reconcile every record affected by the user's correction, preserving unrelated facts in each full replacement text. Every update call MUST include target (kind:memoryId with an observed ID, or kind:query with unique saved wording), replacement text, and confirm:true. Updating one record does not correct other contradictory records; verify the saved facts before reporting completion.",
           },
           delete: {
             description:
-              "Delete saved knowledge the user asked to forget. Supply confirm:true and either memoryId or a unique query. If the tool returns candidates, review their full text and delete only records expressing the requested claim by memoryId. Shared source messages can contain unrelated facts; preserve those. Verify the requested claim is gone before reporting completion.",
+              "Delete saved knowledge the user asked to forget. Supply confirm:true and target (kind:memoryId with an observed ID, or kind:query with unique saved wording). If the tool returns candidates, review their full text and delete only records expressing the requested claim by memoryId. Shared source messages can contain unrelated facts; preserve those. Verify the requested claim is gone before reporting completion.",
           },
         },
       }).map((action) => {
@@ -235,12 +231,23 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
         // Otherwise planners can repeatedly call UPDATE without replacement text.
         const fields: Record<string, readonly string[]> = {
           MEMORY_CREATE: ["action", "text", "kind", "tags"],
-          MEMORY_SEARCH: [
+          MEMORY_COUNT: [
             "action",
             "type",
+            "author",
             "entityId",
             "roomId",
             "query",
+            "queryMode",
+          ],
+          MEMORY_SEARCH: [
+            "action",
+            "type",
+            "author",
+            "entityId",
+            "roomId",
+            "query",
+            "queryMode",
             "limit",
             "offset",
             "snapshot",
@@ -248,8 +255,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           MEMORY_UPDATE: [
             "action",
             "text",
-            "memoryId",
-            "query",
+            "target",
             "type",
             "entityId",
             "roomId",
@@ -257,8 +263,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           ],
           MEMORY_DELETE: [
             "action",
-            "memoryId",
-            "query",
+            "target",
             "type",
             "entityId",
             "roomId",
@@ -271,8 +276,18 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           ?.filter((parameter) => allowed.includes(parameter.name))
           .map((parameter) => ({
             ...parameter,
+            description:
+              action.name === "MEMORY_SEARCH" && parameter.name === "query"
+                ? "Search terms for the requested subject. Use an empty string only to intentionally search all records within the other filters. Keyword mode ranks related terms; literal mode requires known exact wording."
+                : action.name === "MEMORY_SEARCH" && parameter.name === "limit"
+                  ? "Page size from 1 to 50. Follow nextOffset and snapshot with unchanged filters until the needed evidence is complete; a page is not the entire history."
+                  : parameter.description,
             required:
-              parameter.name === "text" || parameter.name === "confirm"
+              parameter.name === "text" ||
+              parameter.name === "confirm" ||
+              parameter.name === "target" ||
+              (action.name === "MEMORY_SEARCH" &&
+                (parameter.name === "query" || parameter.name === "limit"))
                 ? true
                 : parameter.required,
           }));
@@ -287,7 +302,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
       // CODE umbrella).
     ],
-
     async dispose(runtime) {
       await runtime
         .getService<PermissionRegistry>(PermissionRegistry.serviceType)
@@ -307,6 +321,5 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
         ?.stop();
     },
   };
-
-  return plugin;
+  return preparePluginForSelectedDatabase(plugin);
 }

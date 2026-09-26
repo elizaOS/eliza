@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   ElizaError,
   isElizaError,
@@ -199,6 +200,14 @@ export class NotesStore {
     return snapshotFromDocument(this.requireReadyDocument());
   }
 
+  /** Reads persisted bytes after queued writes without refreshing or mutating Notes. */
+  async persistedSnapshot(): Promise<NotesSnapshot> {
+    await this.initialize();
+    return this.serialize(async () =>
+      snapshotFromDocument(await this.readDocument(this.filePath)),
+    );
+  }
+
   async transact<T>(
     mutate: (draft: NotesDocument) => T,
   ): Promise<{ value: T; snapshot: NotesSnapshot }> {
@@ -207,6 +216,11 @@ export class NotesStore {
       const current = this.requireReadyDocument();
       const draft = cloneDocument(current);
       const value = mutate(draft);
+      // Compare inside the write barrier: a replay must neither rewrite the
+      // file nor invalidate a confirmation bound to unchanged Notes state.
+      if (isDeepStrictEqual(draft, current)) {
+        return { value, snapshot: snapshotFromDocument(current) };
+      }
       draft.revision = current.revision + 1;
       draft.persistedAt = this.now().toISOString();
       const next = parseNotesDocument(draft);

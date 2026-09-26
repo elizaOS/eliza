@@ -13,7 +13,7 @@
  *      the verified OWNER/ADMIN principal.
  *   3. Install that token on the ElizaClient (`client.setToken`) so every
  *      subsequent agent API call carries it as a bearer — the credential the
- *      auth boundary now accepts (see app-core embed-session-token wiring).
+ *      auth boundary now accepts (see app embed-session-token wiring).
  *
  * The handshake is dependency-injected (window / fetch / client) so it is unit
  * testable without the iframe runtime or the ElizaClient singleton. It never
@@ -184,14 +184,20 @@ export async function runEmbedHandshake(
     return { status: "failed", reason: "bad_response" };
   }
 
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return { status: "failed", reason: "bad_response" };
+  }
   if (typeof body.token !== "string" || body.token.length === 0) {
     return { status: "failed", reason: "no_token" };
   }
 
+  if (typeof body.role !== "string" || typeof body.adminMode !== "boolean") {
+    return { status: "failed", reason: "bad_response" };
+  }
   embedClient.setToken(body.token);
   return {
     status: "authenticated",
-    role: typeof body.role === "string" ? body.role : "ADMIN",
+    role: body.role,
     adminMode: body.adminMode === true,
   };
 }

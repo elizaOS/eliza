@@ -3,10 +3,10 @@
  * @vitest-environment jsdom
  */
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../registry-host";
+import { resetUiRegistryHostForTests } from "../registry-host.js";
 import { seedAppValue } from "../state/app-store";
 import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
@@ -25,6 +25,11 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
     return {
       authorityState,
       client: {
+        fetch: vi.fn(async (_path: string, _init?: RequestInit) => ({
+          claimId: "native-execution-claim",
+        })),
+        sendWsMessage: vi.fn(),
+        clientId: "native-client",
         getBaseUrl: vi.fn(() => ""),
         onBaseUrlChange: vi.fn((onChange: () => void) => {
           authorityState.listeners.add(onChange);
@@ -35,12 +40,10 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
       getFrontendPlatform: vi.fn(() => "desktop"),
     };
   });
-
 vi.mock("../api", () => ({ client }));
 vi.mock("../api/client", () => ({ client }));
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
-
 function response(status: number, body: unknown) {
   return {
     ok: status >= 200 && status < 300,
@@ -48,7 +51,6 @@ function response(status: number, body: unknown) {
     json: async () => body,
   } as Response;
 }
-
 function deferredResponse() {
   let resolve!: (value: Response) => void;
   const promise = new Promise<Response>((resolver) => {
@@ -56,7 +58,6 @@ function deferredResponse() {
   });
   return { promise, resolve };
 }
-
 function view(
   id: string,
   patch: Partial<ViewRegistryEntry> = {},
@@ -69,13 +70,14 @@ function view(
     ...patch,
   };
 }
-
 describe("useAvailableViews", () => {
   beforeEach(() => {
     resetUiRegistryHostForTests();
     __resetResourceCache();
     authorityState.listeners.clear();
     client.getBaseUrl.mockReturnValue("");
+    client.fetch.mockClear();
+    client.sendWsMessage.mockClear();
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
     getFrontendPlatform.mockReturnValue("desktop");
@@ -83,13 +85,11 @@ describe("useAvailableViews", () => {
       startupCoordinator: { phase: "ready", target: "embedded-local" },
     } as Parameters<typeof seedAppValue>[0]);
   });
-
   afterEach(() => {
     resetUiRegistryHostForTests();
     vi.clearAllTimers();
     vi.useRealTimers();
   });
-
   async function flushHookEffects() {
     await act(async () => {
       await Promise.resolve();
@@ -97,28 +97,22 @@ describe("useAvailableViews", () => {
       await Promise.resolve();
     });
   }
-
   it("does not fetch or poll views when network access is disabled", async () => {
     vi.useFakeTimers();
-
     const { result } = renderHook(() =>
       useAvailableViews({ networkEnabled: false }),
     );
-
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.views).toEqual([]);
     expect(fetchWithCsrf).not.toHaveBeenCalled();
-
     act(() => {
-      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30000);
       result.current.refresh();
     });
     await flushHookEffects();
-
     expect(fetchWithCsrf).not.toHaveBeenCalled();
   });
-
   it("hides managed-cloud app pages from every registry-backed discovery surface on local and VPS runtimes", () => {
     registerAppShellPage({
       id: "cloud",
@@ -129,7 +123,6 @@ describe("useAvailableViews", () => {
       availability: "managed-cloud",
       Component: () => null,
     });
-
     const local = renderHook(() =>
       useAvailableViews({ networkEnabled: false }),
     );
@@ -137,7 +130,6 @@ describe("useAvailableViews", () => {
       local.result.current.views.some((entry) => entry.id === "cloud"),
     ).toBe(false);
     local.unmount();
-
     seedAppValue({
       startupCoordinator: { phase: "ready", target: "cloud-managed" },
     } as Parameters<typeof seedAppValue>[0]);
@@ -148,26 +140,20 @@ describe("useAvailableViews", () => {
       expect.objectContaining({ id: "cloud", path: "/cloud" }),
     );
   });
-
   it("does not fetch app-shell views from a limited cloud agent base", async () => {
     vi.useFakeTimers();
     client.getBaseUrl.mockReturnValue(
       "https://37911a1e-ed40-4626-88f5-0e4dcf249a34.elizacloud.ai",
     );
-
     const { result } = renderHook(() => useAvailableViews());
-
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(fetchWithCsrf).not.toHaveBeenCalled();
-
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5000);
     });
-
     expect(fetchWithCsrf).not.toHaveBeenCalled();
   });
-
   it("fetches shipped registry views with the platform header and merges by view type/id", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
@@ -178,12 +164,9 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
-
     expect(result.current.loading).toBe(true);
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.error).toBeNull();
     expect(
       result.current.views.map(
@@ -195,7 +178,6 @@ describe("useAvailableViews", () => {
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
   });
-
   it("uses the signed in-process page instead of remote JavaScript on Android", async () => {
     getFrontendPlatform.mockReturnValue("android");
     registerAppShellPage({
@@ -212,14 +194,13 @@ describe("useAvailableViews", () => {
           view("calendar", {
             path: "/calendar",
             bundleUrl: "/api/views/calendar/bundle.js",
+            installationId: "calendar-installation",
           }),
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     const calendar = result.current.views.find(
       (entry) => entry.id === "calendar",
     );
@@ -228,6 +209,7 @@ describe("useAvailableViews", () => {
         id: "calendar",
         path: "/calendar",
         pluginName: "@elizaos/plugin-calendar",
+        installationId: "calendar-installation",
       }),
     );
     expect(calendar?.bundleUrl).toBeUndefined();
@@ -235,7 +217,184 @@ describe("useAvailableViews", () => {
       headers: { "X-Eliza-Platform": "android" },
     });
   });
-
+  it.each(["ios", "android"])(
+    "binds signed native controls to the current runtime installation on %s",
+    async (platform) => {
+      const { ShellViewAgentSurface } = await import(
+        "../components/views/ShellViewAgentSurface"
+      );
+      const { AgentButton } = await import("../agent-surface");
+      const { dispatchViewInteract } = await import(
+        "../components/views/view-interact-registry"
+      );
+      getFrontendPlatform.mockReturnValue(platform);
+      const effect = vi.fn();
+      const NativeCalendar = () => (
+        <AgentButton agentId="native-save" onClick={effect}>
+          Save
+        </AgentButton>
+      );
+      registerAppShellPage({
+        id: "calendar",
+        pluginId: "@elizaos/plugin-calendar",
+        label: "Calendar",
+        path: "/calendar",
+        Component: NativeCalendar,
+      });
+      const catalog = (installationId: string) =>
+        response(200, {
+          views: [
+            view("calendar", {
+              installationId,
+              path: "/calendar",
+              bundleUrl: "/api/views/calendar/bundle.js",
+              frameUrl: "/api/views/calendar/frame.html",
+            }),
+          ],
+        });
+      fetchWithCsrf.mockResolvedValue(catalog("native-old"));
+      const { result, unmount } = renderHook(() => useAvailableViews());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const mounted = render(
+        <ShellViewAgentSurface viewId="calendar">
+          <NativeCalendar />
+        </ShellViewAgentSurface>,
+      );
+      try {
+        const current = () =>
+          result.current.views.find((entry) => entry.id === "calendar");
+        expect(current()).toMatchObject({
+          installationId: "native-old",
+          available: true,
+        });
+        expect(current()?.bundleUrl).toBeUndefined();
+        expect(current()?.frameUrl).toBeUndefined();
+        await dispatchViewInteract(
+          "calendar",
+          "gui",
+          "agent-click",
+          { id: "native-save" },
+          `${platform}-first`,
+          "native-old",
+        );
+        expect(effect).toHaveBeenCalledTimes(1);
+        fetchWithCsrf.mockResolvedValue(catalog("native-new"));
+        await act(async () => {
+          await result.current.refresh();
+        });
+        await waitFor(() =>
+          expect(current()?.installationId).toBe("native-new"),
+        );
+        await dispatchViewInteract(
+          "calendar",
+          "gui",
+          "agent-click",
+          { id: "native-save" },
+          `${platform}-retired`,
+          "native-old",
+        );
+        expect(effect).toHaveBeenCalledTimes(1);
+        await dispatchViewInteract(
+          "calendar",
+          "gui",
+          "agent-click",
+          { id: "native-save" },
+          `${platform}-current`,
+          "native-new",
+        );
+        expect(effect).toHaveBeenCalledTimes(2);
+        expect(client.fetch).toHaveBeenCalledTimes(2);
+        expect(client.sendWsMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            installationId: "native-new",
+            success: true,
+          }),
+        );
+      } finally {
+        mounted.unmount();
+        unmount();
+      }
+    },
+  );
+  it.each(["ios", "android"])(
+    "reports only current native installation controls on %s",
+    async (platform) => {
+      const { ShellViewAgentSurface } = await import(
+        "../components/views/ShellViewAgentSurface"
+      );
+      const { AgentButton, getViewRegistry } = await import("../agent-surface");
+      getFrontendPlatform.mockReturnValue(platform);
+      const NativeCalendar = () => (
+        <AgentButton agentId="native-save">Save</AgentButton>
+      );
+      registerAppShellPage({
+        id: "calendar",
+        pluginId: "@elizaos/plugin-calendar",
+        label: "Calendar",
+        path: "/calendar",
+        Component: NativeCalendar,
+      });
+      const catalog = (installationId: string) =>
+        response(200, {
+          views: [
+            view("calendar", {
+              installationId,
+              path: "/calendar",
+              bundleUrl: "/api/views/calendar/bundle.js",
+            }),
+          ],
+        });
+      fetchWithCsrf.mockResolvedValue(catalog("report-old"));
+      const hook = renderHook(() => useAvailableViews());
+      await waitFor(() => expect(hook.result.current.loading).toBe(false));
+      vi.stubEnv("NODE_ENV", "production");
+      vi.useFakeTimers();
+      const mounted = render(
+        <ShellViewAgentSurface viewId="calendar">
+          <NativeCalendar />
+        </ShellViewAgentSurface>,
+      );
+      try {
+        const oldRegistry = getViewRegistry("calendar", "gui", "report-old");
+        expect(oldRegistry).toBeDefined();
+        fetchWithCsrf.mockResolvedValue(catalog("report-new"));
+        await act(async () => {
+          await hook.result.current.refresh();
+        });
+        expect(
+          hook.result.current.views.find((entry) => entry.id === "calendar")
+            ?.installationId,
+        ).toBe("report-new");
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        const reports = () =>
+          client.fetch.mock.calls
+            .filter(([path]) => path === "/api/views/calendar/elements")
+            .map(([, init]) => JSON.parse(String(init?.body)));
+        expect(reports()).toEqual([
+          expect.objectContaining({
+            installationId: "report-new",
+            clientId: "native-client",
+            viewType: "gui",
+            elements: expect.arrayContaining([
+              expect.objectContaining({ id: "native-save" }),
+            ]),
+          }),
+        ]);
+        oldRegistry?.update("native-save", { label: "Retired" });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        expect(reports()).toHaveLength(1);
+      } finally {
+        mounted.unmount();
+        hook.unmount();
+        vi.unstubAllEnvs();
+        vi.useRealTimers();
+      }
+    },
+  );
   it("keeps the runtime bundle authoritative on desktop", async () => {
     getFrontendPlatform.mockReturnValue("desktop");
     registerAppShellPage({
@@ -255,10 +414,8 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toContainEqual(
       expect.objectContaining({
         id: "calendar",
@@ -267,7 +424,6 @@ describe("useAvailableViews", () => {
       }),
     );
   });
-
   it("promotes an executable signed page over unavailable runtime metadata", () => {
     const merged = mergeViewRegistryEntries(
       [
@@ -288,7 +444,6 @@ describe("useAvailableViews", () => {
         ],
       ],
     );
-
     expect(merged).toContainEqual(
       expect.objectContaining({
         id: "calendar",
@@ -299,7 +454,6 @@ describe("useAvailableViews", () => {
       }),
     );
   });
-
   it("keeps a runtime bundle when an unavailable app-shell fallback shares its id", async () => {
     registerAppShellPage({
       id: "cloud",
@@ -320,10 +474,8 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toContainEqual(
       expect.objectContaining({
         id: "cloud",
@@ -334,7 +486,6 @@ describe("useAvailableViews", () => {
       }),
     );
   });
-
   it("accepts the current view-capability transport contract", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
@@ -350,10 +501,8 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.error).toBeNull();
     expect(result.current.views).toEqual([
       expect.objectContaining({
@@ -367,7 +516,6 @@ describe("useAvailableViews", () => {
       }),
     ]);
   });
-
   it("strips views declaring `nativeOs: true` off the AOSP fork", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
@@ -380,14 +528,11 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     // jsdom has no ElizaOS UA marker → not the AOSP fork → natives stripped.
     expect(result.current.views.map((v) => v.id)).toEqual(["wallet"]);
   });
-
   it("gates on the declared `nativeOs` flag, not the view id", async () => {
     // A view id-matching an old native surface but WITHOUT the flag survives;
     // a plugin-owned view declaring the flag is stripped. Proves the filter is
@@ -401,16 +546,13 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views.map((v) => v.id).sort()).toEqual([
       "phone",
       "wallet",
     ]);
   });
-
   it("keeps native-OS views on the AOSP fork (?android=true)", async () => {
     window.history.replaceState(null, "", "/?android=true");
     fetchWithCsrf.mockResolvedValueOnce(
@@ -418,27 +560,22 @@ describe("useAvailableViews", () => {
         views: [view("phone", { nativeOs: true }), view("wallet")],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views.map((v) => v.id).sort()).toEqual([
       "phone",
       "wallet",
     ]);
     window.history.replaceState(null, "", "/");
   });
-
   it("preserves retained modality metadata returned by the default registry", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
         views: [view("spatial-room", { viewType: "xr", label: "Spatial" })],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toEqual([
       expect.objectContaining({
         id: "spatial-room",
@@ -447,7 +584,6 @@ describe("useAvailableViews", () => {
       }),
     ]);
   });
-
   it("dedupes repeated GUI entries and lets the later entry win", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
@@ -457,41 +593,32 @@ describe("useAvailableViews", () => {
         ],
       }),
     );
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toEqual([
       expect.objectContaining({ id: "duplicate", label: "New label" }),
     ]);
   });
-
   it("surfaces malformed payloads instead of rendering a healthy empty list", async () => {
     fetchWithCsrf.mockResolvedValueOnce(response(200, { ok: true }));
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toEqual([]);
     expect(result.current.error).toMatchObject({
       name: "ElizaError",
       code: "VIEW_REGISTRY_RESPONSE_INVALID",
     });
   });
-
   it("adds built-in shell entries only for routable consumers", async () => {
     fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
-
     const available = renderHook(() => useAvailableViews());
     await waitFor(() => expect(available.result.current.loading).toBe(false));
     expect(
       available.result.current.views.find((v) => v.id === "documents"),
     ).toBe(undefined);
     available.unmount();
-
     const routable = renderHook(() => useRoutableViews());
     await waitFor(() => expect(routable.result.current.loading).toBe(false));
-
     expect(routable.result.current.views).toContainEqual(
       expect.objectContaining({
         id: "documents",
@@ -508,69 +635,55 @@ describe("useAvailableViews", () => {
       }),
     );
   });
-
   it("does not let built-in shell fallbacks override real registry entries", () => {
     const routable = withBuiltinShellViews([
       view("documents", {
         label: "Registered Documents",
         path: "/apps/registered-documents",
-        pluginName: "@elizaos/plugin-documents",
+        pluginName: "@elizaos/plugin-knowledge",
       }),
     ]);
-
     expect(routable.find((v) => v.id === "documents")).toMatchObject({
       id: "documents",
       label: "Registered Documents",
       path: "/apps/registered-documents",
-      pluginName: "@elizaos/plugin-documents",
+      pluginName: "@elizaos/plugin-knowledge",
     });
   });
-
   it("silences 404s and clears views without surfacing an error", async () => {
     fetchWithCsrf.mockResolvedValue(response(404, { error: "missing" }));
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toEqual([]);
     expect(result.current.error).toBeNull();
   });
-
   it("surfaces non-404 failures", async () => {
     fetchWithCsrf.mockResolvedValue(response(500, { error: "boom" }));
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(result.current.views).toEqual([]);
     expect(result.current.error?.message).toContain("HTTP 500");
   });
-
   it("keeps the latest refresh result when an older request resolves last", async () => {
     const staleGui = deferredResponse();
     const freshGui = deferredResponse();
     fetchWithCsrf
       .mockReturnValueOnce(staleGui.promise)
       .mockReturnValueOnce(freshGui.promise);
-
     const { result } = renderHook(() => useAvailableViews());
-
     act(() => {
       result.current.refresh();
     });
     freshGui.resolve(response(200, { views: [view("fresh")] }));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.views[0]?.id).toBe("fresh");
-
     staleGui.resolve(response(200, { views: [view("stale")] }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-
     expect(result.current.views[0]?.id).toBe("fresh");
   });
-
   it("drops the prior registry immediately and ignores a stale response across agent switches", async () => {
     const agentB = deferredResponse();
     const agentC = deferredResponse();
@@ -579,30 +692,24 @@ describe("useAvailableViews", () => {
       .mockResolvedValueOnce(response(200, { views: [view("agent-a")] }))
       .mockReturnValueOnce(agentB.promise)
       .mockReturnValueOnce(agentC.promise);
-
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.views[0]?.id).toBe("agent-a"));
-
     act(() => {
       client.getBaseUrl.mockReturnValue("https://agent-b.test");
       for (const onChange of authorityState.listeners) onChange();
     });
-
     // No committed render under B may expose A's registry while B loads.
     expect(result.current.views).toEqual([]);
     expect(result.current.loading).toBe(true);
     await waitFor(() => expect(fetchWithCsrf).toHaveBeenCalledTimes(2));
-
     act(() => {
       client.getBaseUrl.mockReturnValue("https://agent-c.test");
       for (const onChange of authorityState.listeners) onChange();
     });
     expect(result.current.views).toEqual([]);
     await waitFor(() => expect(fetchWithCsrf).toHaveBeenCalledTimes(3));
-
     agentC.resolve(response(200, { views: [view("agent-c")] }));
     await waitFor(() => expect(result.current.views[0]?.id).toBe("agent-c"));
-
     agentB.resolve(response(200, { views: [view("stale-agent-b")] }));
     await act(async () => {
       await Promise.resolve();
@@ -610,38 +717,32 @@ describe("useAvailableViews", () => {
     });
     expect(result.current.views[0]?.id).toBe("agent-c");
   });
-
   it("refreshes immediately and polls until unmounted", async () => {
     vi.useFakeTimers();
     fetchWithCsrf
       .mockResolvedValueOnce(response(200, { views: [view("first")] }))
       .mockResolvedValueOnce(response(200, { views: [view("second")] }))
       .mockResolvedValueOnce(response(200, { views: [view("third")] }));
-
     const { result, unmount } = renderHook(() => useAvailableViews());
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("first");
-
     act(() => {
       result.current.refresh();
     });
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("second");
-
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5000);
     });
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("third");
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
-
     unmount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(10000);
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
   });
-
   it("refreshes the shared registry immediately after a plugin create/edit reload", async () => {
     fetchWithCsrf
       .mockResolvedValueOnce(
@@ -663,14 +764,12 @@ describe("useAvailableViews", () => {
           ],
         }),
       );
-
     // App mounts one consumer for routing and another for desktop tabs. The
     // plugin event must refresh their shared cache once, not race two reads.
     const router = renderHook(() => useAvailableViews());
     const tabs = renderHook(() => useAvailableViews());
     await waitFor(() => expect(router.result.current.loading).toBe(false));
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
-
     act(() => {
       emitViewEvent(
         VIEW_EVENTS.PLUGIN_RELOADED,
@@ -678,7 +777,6 @@ describe("useAvailableViews", () => {
         "agent",
       );
     });
-
     await waitFor(() =>
       expect(router.result.current.views).toEqual([
         expect.objectContaining({
@@ -691,45 +789,37 @@ describe("useAvailableViews", () => {
     expect(tabs.result.current.views).toEqual(router.result.current.views);
     expect(fetchWithCsrf).toHaveBeenCalledTimes(2);
   });
-
   it("runs only one background poll when the hook is mounted twice", async () => {
     vi.useFakeTimers();
     // Two simultaneous mounts (App.tsx mounts the hook in ViewRouter and again
     // in the shell). They share one cache key, so they must share one poll timer
     // — a single 5s tick should issue exactly one registry fetch, not two.
     fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
-
     const first = renderHook(() => useAvailableViews());
     const second = renderHook(() => useAvailableViews());
     await flushHookEffects();
-
     // Initial mount fetch is shared (one in-flight round across both mounts).
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
-
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5000);
     });
     await flushHookEffects();
-
     // One poll tick -> one extra fetch, not two.
     expect(fetchWithCsrf).toHaveBeenCalledTimes(2);
-
     // With one mount unmounted, the surviving mount keeps the single timer alive.
     first.unmount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5000);
     });
     await flushHookEffects();
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
-
     // Last unmount tears the timer down — no further polling.
     second.unmount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(10000);
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
   });
-
   it("pauses background polling while hidden and refreshes when visible again", async () => {
     vi.useFakeTimers();
     fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
@@ -737,17 +827,14 @@ describe("useAvailableViews", () => {
       configurable: true,
       value: "hidden",
     });
-
     const { unmount } = renderHook(() => useAvailableViews());
     await flushHookEffects();
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
-
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5000);
     });
     await flushHookEffects();
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
-
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
@@ -755,7 +842,6 @@ describe("useAvailableViews", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     await flushHookEffects();
     expect(fetchWithCsrf).toHaveBeenCalledTimes(2);
-
     unmount();
   });
 });

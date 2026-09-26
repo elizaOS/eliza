@@ -17,41 +17,41 @@ import {
   BM25,
   ChannelType,
   compareMemoryIds,
-  composePrompt,
+  composeToolDiagnosticRedactor,
   createMessageMemory,
   ElizaError,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
-  memoryContextQaTemplate,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import {
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
   parseCanonicalInteger,
   parsePositiveInteger,
-} from "@elizaos/shared";
+  projectCompleteToolValueForModel,
+  type RouteRequestContext,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+
 import {
   type DocumentsServiceResult,
   getDocumentsService,
-} from "./documents-service-loader.ts";
+} from "@elizaos/plugin-assistant";
+import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
+import { memoryContextQaTemplate } from "./memory-context-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
-
 export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MEMORY_SEARCH_SCAN_LIMIT = 2_000;
+const MEMORY_SEARCH_SCAN_LIMIT = 2000;
 /**
  * Warm-corpus reuse window for the hash-memory search cache. Module-local
  * writes (remember/delete/patch) invalidate explicitly and a row-count check
  * runs before every reuse. Count-preserving out-of-band edits trigger refresh
  * after 10 seconds and may be served stale only until the 20-second hard bound.
  */
-const MEMORY_SEARCH_CACHE_TTL_MS = 10_000;
-const MEMORY_SEARCH_CACHE_MAX_STALE_MS = 20_000;
+const MEMORY_SEARCH_CACHE_TTL_MS = 10000;
+const MEMORY_SEARCH_CACHE_MAX_STALE_MS = 20000;
 const MEMORY_SEARCH_CACHE_MAX_ENTRIES = 4;
 const MEMORY_SEARCH_CACHE_MAX_TEXT_BYTES = 8 * 1024 * 1024;
 const MEMORY_SEARCH_MAX_UNSTABLE_BUILD_ATTEMPTS = 3;
@@ -60,10 +60,9 @@ const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
 const QUICK_CONTEXT_MAX_LIMIT = 20;
 const QUICK_CONTEXT_DOCUMENTS_THRESHOLD = 0.2;
-
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
-const MEMORY_BROWSE_MAX_SCAN_ROWS = 25_000;
+const MEMORY_BROWSE_MAX_SCAN_ROWS = 25000;
 const MEMORY_FEED_DEFAULT_LIMIT = 50;
 const MEMORY_FEED_MAX_LIMIT = 100;
 export const MEMORY_TABLE_NAMES = [
@@ -72,20 +71,17 @@ export const MEMORY_TABLE_NAMES = [
   "facts",
   "documents",
 ] as const;
-
 export interface MemoryRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
   agentName: string;
 }
-
 type MemorySearchHit = {
   id: string;
   text: string;
   createdAt: number;
   score: number;
 };
-
 type DocumentSearchHit = {
   id: string;
   text: string;
@@ -94,29 +90,30 @@ type DocumentSearchHit = {
   documentTitle?: string;
   position?: number;
 };
-
 type DocumentSearchMatch = {
   id: UUID;
-  content: { text?: string };
+  content: {
+    text?: string;
+  };
   similarity?: number;
   metadata?: Record<string, unknown>;
 };
-
 function resolveAgentName(runtime: AgentRuntime, fallbackName: string): string {
   return runtime.character.name?.trim() || fallbackName || "Eliza";
 }
-
 async function ensureMemoryConnection(
   runtime: AgentRuntime,
   agentName: string,
-): Promise<{ roomId: UUID; entityId: UUID }> {
+): Promise<{
+  roomId: UUID;
+  entityId: UUID;
+}> {
   const entityId = runtime.agentId as UUID;
   const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
   const worldId = stringToUuid(`${agentName}-hash-memory-world`) as UUID;
   const messageServerId = stringToUuid(
     `${agentName}-hash-memory-server`,
   ) as UUID;
-
   await runtime.ensureConnection({
     entityId,
     roomId,
@@ -128,10 +125,8 @@ async function ensureMemoryConnection(
     messageServerId,
     metadata: { ownership: { ownerId: entityId } },
   });
-
   return { roomId, entityId };
 }
-
 /**
  * Rank a candidate set against `query` with Okapi BM25 + Porter2 stemming,
  * returning each item with a [0,1] max-normalized relevance score in input order.
@@ -151,7 +146,10 @@ export function rankByKeyword<T>(
   query: string,
   items: T[],
   getText: (item: T) => string,
-): Array<{ item: T; score: number }> {
+): Array<{
+  item: T;
+  score: number;
+}> {
   if (items.length === 0) return [];
   // Single `content` field per doc so only the text is indexed; items are
   // tracked by array index (the BM25 result `index`).
@@ -161,7 +159,6 @@ export function rankByKeyword<T>(
   );
   return rankWithIndex(query, items, bm25);
 }
-
 /**
  * Same ranking contract as {@link rankByKeyword} but against a prebuilt BM25
  * index whose docs correspond 1:1 (by array index) with `items`. This is the
@@ -171,7 +168,10 @@ function rankWithIndex<T>(
   query: string,
   items: T[],
   bm25: BM25,
-): Array<{ item: T; score: number }> {
+): Array<{
+  item: T;
+  score: number;
+}> {
   if (items.length === 0) return [];
   const results = bm25.search(query, items.length);
   if (results.length === 0) return items.map((item) => ({ item, score: 0 }));
@@ -189,7 +189,6 @@ function rankWithIndex<T>(
     };
   });
 }
-
 /**
  * Boolean keyword match for *filtering* (not ranking): does the text contain the
  * whole query or any query term (≥2 chars)? Used where the caller wants
@@ -205,9 +204,11 @@ export function matchesKeyword(text: string, query: string): boolean {
     .filter((term) => term.length >= 2)
     .some((term) => normalizedText.includes(term));
 }
-
-type MemorySearchCandidate = { id: UUID; text: string; createdAt: number };
-
+type MemorySearchCandidate = {
+  id: UUID;
+  text: string;
+  createdAt: number;
+};
 type MemorySearchCorpus = {
   candidates: MemorySearchCandidate[];
   /** BM25 index whose doc order matches `candidates` by array index. */
@@ -216,7 +217,6 @@ type MemorySearchCorpus = {
   rowCount: number;
   builtAt: number;
 };
-
 type MemorySearchCacheSlot = {
   generation: number;
   corpus?: MemorySearchCorpus;
@@ -224,18 +224,15 @@ type MemorySearchCacheSlot = {
   builds: Set<Promise<MemorySearchCorpusBuild>>;
   leases: number;
 };
-
 type MemorySearchCorpusBuild = {
   corpus: MemorySearchCorpus;
   disposition: "cacheable" | "uncached" | "obsolete";
   countBefore: number | null;
   countAfter: number | null;
 };
-
 type MemorySearchBuildRetryBudget = {
   unstableAttempts: number;
 };
-
 /**
  * Per-runtime, per-room corpus + BM25 index cache for the hash-memory search
  * endpoints. Building this per request was the whole latency story: a full
@@ -256,18 +253,15 @@ let memorySearchCorpusCaches = new WeakMap<
   AgentRuntime,
   Map<string, MemorySearchCacheSlot>
 >();
-
 type MemorySearchBuildAdmission = {
   active: number;
   waiters: Array<() => void>;
 };
-
 let memorySearchBuildAdmissions = new WeakMap<
   AgentRuntime,
   MemorySearchBuildAdmission
 >();
 let memorySearchSlotWaiters = new WeakMap<AgentRuntime, Set<() => void>>();
-
 function invalidateMemorySearchCacheSlot(slot: MemorySearchCacheSlot): void {
   slot.generation++;
   slot.corpus = undefined;
@@ -275,7 +269,6 @@ function invalidateMemorySearchCacheSlot(slot: MemorySearchCacheSlot): void {
   // a stale snapshot. Its generation check prevents that build from publishing.
   slot.inFlight = undefined;
 }
-
 export function invalidateMemorySearchCache(
   runtime?: AgentRuntime,
   roomId?: UUID,
@@ -297,7 +290,6 @@ export function invalidateMemorySearchCache(
   }
   for (const slot of cache.values()) invalidateMemorySearchCacheSlot(slot);
 }
-
 async function countRoomMessages(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -317,7 +309,6 @@ async function countRoomMessages(
     return null;
   }
 }
-
 function runtimeMemorySearchCache(
   runtime: AgentRuntime,
 ): Map<string, MemorySearchCacheSlot> {
@@ -328,7 +319,6 @@ function runtimeMemorySearchCache(
   }
   return cache;
 }
-
 function retainMemorySearchCacheSlot(
   cache: Map<string, MemorySearchCacheSlot>,
   roomId: string,
@@ -338,7 +328,6 @@ function retainMemorySearchCacheSlot(
   cache.delete(roomId);
   cache.set(roomId, slot);
 }
-
 async function acquireMemorySearchCacheSlot(
   runtime: AgentRuntime,
   roomId: string,
@@ -354,7 +343,6 @@ async function acquireMemorySearchCacheSlot(
       existing.leases++;
       return { cache, slot: existing };
     }
-
     if (cache.size < MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
       const slot: MemorySearchCacheSlot = {
         generation: 0,
@@ -364,7 +352,6 @@ async function acquireMemorySearchCacheSlot(
       retainMemorySearchCacheSlot(cache, roomId, slot);
       return { cache, slot };
     }
-
     // Never evict a slot while one of its current or invalidated builds still
     // owns work. Otherwise the caller retains an orphaned slot, a later request
     // starts a replacement scan, and the Map bound says nothing about live work.
@@ -375,7 +362,6 @@ async function acquireMemorySearchCacheSlot(
       cache.delete(evictable[0]);
       continue;
     }
-
     // All bounded slots are busy. Wait for one to become evictable before
     // allocating another slot; concurrent callers remain ordinary request
     // promises rather than cache-owned room state.
@@ -389,14 +375,12 @@ async function acquireMemorySearchCacheSlot(
     });
   }
 }
-
 function signalMemorySearchSlotAvailability(runtime: AgentRuntime): void {
   const waiters = memorySearchSlotWaiters.get(runtime);
   if (!waiters) return;
   memorySearchSlotWaiters.delete(runtime);
   for (const resolve of waiters) resolve();
 }
-
 async function withMemorySearchBuildPermit<T>(
   runtime: AgentRuntime,
   task: () => Promise<T>,
@@ -406,7 +390,6 @@ async function withMemorySearchBuildPermit<T>(
     admission = { active: 0, waiters: [] };
     memorySearchBuildAdmissions.set(runtime, admission);
   }
-
   if (admission.active < MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
     admission.active++;
   } else {
@@ -417,7 +400,6 @@ async function withMemorySearchBuildPermit<T>(
       });
     });
   }
-
   try {
     return await task();
   } finally {
@@ -433,7 +415,6 @@ async function withMemorySearchBuildPermit<T>(
     }
   }
 }
-
 async function buildMemorySearchCorpus(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -451,16 +432,25 @@ async function buildMemorySearchCorpus(
   });
   const countAfter =
     countBefore === null ? null : await countRoomMessages(runtime, roomId);
-
   const candidates: MemorySearchCandidate[] = [];
   const textEncoder = new TextEncoder();
   let retainedTextBytes = 0;
   for (const memory of memories) {
     const text = (
-      memory.content as { text?: string } | undefined
+      memory.content as
+        | {
+            text?: string;
+          }
+        | undefined
     )?.text?.trim();
     if (!text) continue;
-    const source = (memory.content as { source?: string } | undefined)?.source;
+    const source = (
+      memory.content as
+        | {
+            source?: string;
+          }
+        | undefined
+    )?.source;
     if (source !== HASH_MEMORY_SOURCE) continue;
     if (!memory.id || typeof memory.createdAt !== "number") continue;
     retainedTextBytes += textEncoder.encode(text).byteLength;
@@ -470,7 +460,6 @@ async function buildMemorySearchCorpus(
       createdAt: memory.createdAt,
     });
   }
-
   const countsMatch =
     countBefore !== null && countAfter !== null && countBefore === countAfter;
   return {
@@ -493,7 +482,6 @@ async function buildMemorySearchCorpus(
     countAfter,
   };
 }
-
 function startMemorySearchCorpusBuild(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -529,7 +517,6 @@ function startMemorySearchCorpusBuild(
   );
   return build;
 }
-
 async function awaitCurrentMemorySearchCorpusBuild(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -564,7 +551,6 @@ async function awaitCurrentMemorySearchCorpusBuild(
       continue;
     }
     if (result.disposition !== "obsolete") return result.corpus;
-
     invalidateMemorySearchCacheSlot(slot);
     consumeMemorySearchRetryBudget(retryBudget, roomId, "count_mismatch", {
       countBefore: result.countBefore,
@@ -572,12 +558,14 @@ async function awaitCurrentMemorySearchCorpusBuild(
     });
   }
 }
-
 function consumeMemorySearchRetryBudget(
   retryBudget: MemorySearchBuildRetryBudget,
   roomId: UUID,
   reason: "count_mismatch" | "generation" | "map_identity",
-  context: { countBefore?: number | null; countAfter?: number | null } = {},
+  context: {
+    countBefore?: number | null;
+    countAfter?: number | null;
+  } = {},
 ): void {
   retryBudget.unstableAttempts++;
   if (
@@ -598,7 +586,6 @@ function consumeMemorySearchRetryBudget(
     },
   );
 }
-
 async function getMemorySearchCorpus(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -609,7 +596,6 @@ async function getMemorySearchCorpus(
     const cached = slot.corpus;
     if (cached) {
       const rowCount = await countRoomMessages(runtime, roomId);
-
       // A process/test cache reset may replace this runtime's canonical map while
       // COUNT is pending. Re-enter through that map with the shared retry budget.
       if (
@@ -619,7 +605,6 @@ async function getMemorySearchCorpus(
         consumeMemorySearchRetryBudget(retryBudget, roomId, "map_identity");
         return await getMemorySearchCorpus(runtime, roomId, retryBudget);
       }
-
       // A module-local mutation may have invalidated this slot while COUNT was
       // pending. Never return the snapshot captured before that mutation.
       if (slot.corpus !== cached) {
@@ -632,7 +617,6 @@ async function getMemorySearchCorpus(
           retryBudget,
         );
       }
-
       if (rowCount !== null && rowCount === cached.rowCount) {
         const age = Date.now() - cached.builtAt;
         if (age <= MEMORY_SEARCH_CACHE_TTL_MS) return cached;
@@ -663,7 +647,6 @@ async function getMemorySearchCorpus(
     signalMemorySearchSlotAvailability(runtime);
   }
 }
-
 async function searchMemoryNotes(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -671,7 +654,6 @@ async function searchMemoryNotes(
   limit: number,
 ): Promise<MemorySearchHit[]> {
   const corpus = await getMemorySearchCorpus(runtime, roomId);
-
   const hits: MemorySearchHit[] = rankWithIndex(
     query,
     corpus.candidates,
@@ -684,7 +666,6 @@ async function searchMemoryNotes(
       createdAt: item.createdAt,
       score,
     }));
-
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
@@ -694,7 +675,6 @@ async function searchMemoryNotes(
   });
   return hits.slice(0, limit);
 }
-
 async function searchDocuments(
   runtime: AgentRuntime,
   query: string,
@@ -703,7 +683,6 @@ async function searchDocuments(
   const documents: DocumentsServiceResult = await getDocumentsService(runtime);
   const documentsService = documents.service;
   if (!documentsService || !runtime.agentId) return [];
-
   const agentId = runtime.agentId as UUID;
   const searchMessage: Memory = {
     id: crypto.randomUUID() as UUID,
@@ -713,14 +692,12 @@ async function searchDocuments(
     content: { text: query },
     createdAt: Date.now(),
   };
-
   const matches: DocumentSearchMatch[] = await documentsService.searchDocuments(
     searchMessage,
     {
       roomId: agentId,
     },
   );
-
   return matches
     .filter(
       (match) => (match.similarity ?? 0) >= QUICK_CONTEXT_DOCUMENTS_THRESHOLD,
@@ -749,7 +726,6 @@ async function searchDocuments(
       };
     });
 }
-
 function buildQuickContextPrompt(params: {
   query: string;
   memories: MemorySearchHit[];
@@ -768,13 +744,11 @@ function buildQuickContextPrompt(params: {
           .map((item, index) => `- [D${index + 1}] ${item.text}`)
           .join("\n")
       : "- none";
-
   return composePrompt({
     state: { query, memorySection, knowledgeSection: documentsSection },
     template: memoryContextQaTemplate,
   });
 }
-
 type MemoryBrowseItem = {
   id: string;
   type: string;
@@ -786,17 +760,24 @@ type MemoryBrowseItem = {
   metadata: Record<string, unknown> | null;
   source: string | null;
 };
-
-type TaggedMemory = Memory & { _table: string };
-
+type TaggedMemory = Memory & {
+  _table: string;
+};
 /** Ordering key — `Memory.createdAt` is optional; rows without one sort as oldest. */
 const memoryCreatedAt = (memory: { createdAt?: number }): number =>
   memory.createdAt ?? 0;
-
 /** Newest-first comparator shared by the browse/search/feed list routes. */
 const byNewestFirst = (
-  a: { createdAt?: number; id?: string; _table?: string },
-  b: { createdAt?: number; id?: string; _table?: string },
+  a: {
+    createdAt?: number;
+    id?: string;
+    _table?: string;
+  },
+  b: {
+    createdAt?: number;
+    id?: string;
+    _table?: string;
+  },
 ): number => {
   const timestampOrder = memoryCreatedAt(b) - memoryCreatedAt(a);
   if (timestampOrder !== 0) return timestampOrder;
@@ -804,7 +785,6 @@ const byNewestFirst = (
   if (idOrder !== 0) return idOrder;
   return (a._table ?? "").localeCompare(b._table ?? "");
 };
-
 function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
   const content = memory.content as Record<string, unknown> | undefined;
   return {
@@ -819,12 +799,16 @@ function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
     source: (content?.source as string) ?? null,
   };
 }
-
 function hasBrowsableContent(memory: TaggedMemory): boolean {
-  const text = (memory.content as { text?: string } | undefined)?.text;
+  const text = (
+    memory.content as
+      | {
+          text?: string;
+        }
+      | undefined
+  )?.text;
   return typeof text === "string" && text.trim().length > 0;
 }
-
 async function fetchMemoriesFromTables(
   runtime: AgentRuntime,
   params: {
@@ -851,7 +835,6 @@ async function fetchMemoriesFromTables(
     1,
     Math.floor(MEMORY_BROWSE_MAX_SCAN_ROWS / Math.max(tables.length, 1)),
   );
-
   // Tables are independent and remain concurrent, but each table advances an
   // exclusive keyset cursor instead of repeatedly reading a larger prefix.
   // Requiring the target from every non-exhausted table makes the final
@@ -860,13 +843,17 @@ async function fetchMemoriesFromTables(
   const tableResults = await Promise.all(
     tables.map(async (tableName) => {
       const eligible: TaggedMemory[] = [];
-      let cursor: { createdAt: number; id: UUID } | undefined =
+      let cursor:
+        | {
+            createdAt: number;
+            id: UUID;
+          }
+        | undefined =
         params.before !== undefined && params.beforeId !== undefined
           ? { createdAt: params.before, id: params.beforeId }
           : undefined;
       let batchSize = 200;
       let scannedRows = 0;
-
       for (;;) {
         const queryLimit = Math.min(
           batchSize,
@@ -899,7 +886,6 @@ async function fetchMemoriesFromTables(
           includeEmbedding: false, // browse feed discards embeddings
         });
         scannedRows += memories.length;
-
         let nextCursor = cursor;
         for (const memory of memories) {
           if (!memory.id) {
@@ -937,7 +923,6 @@ async function fetchMemoriesFromTables(
           }
           nextCursor = candidate;
         }
-
         for (const memory of memories) {
           const tagged = { ...memory, _table: tableName };
           if (!hasBrowsableContent(tagged)) continue;
@@ -962,7 +947,13 @@ async function fetchMemoriesFromTables(
           if (
             searchQuery &&
             !matchesKeyword(
-              (tagged.content as { text?: string } | undefined)?.text ?? "",
+              (
+                tagged.content as
+                  | {
+                      text?: string;
+                    }
+                  | undefined
+              )?.text ?? "",
               searchQuery,
             )
           ) {
@@ -970,7 +961,6 @@ async function fetchMemoriesFromTables(
           }
           eligible.push(tagged);
         }
-
         if (memories.length < queryLimit) {
           return eligible;
         }
@@ -992,22 +982,27 @@ async function fetchMemoriesFromTables(
           );
         }
         cursor = nextCursor;
-        batchSize = Math.min(batchSize * 2, 5_000);
+        batchSize = Math.min(batchSize * 2, 5000);
       }
     }),
   );
   return tableResults.flat();
 }
-
 /**
  * Parse the memory-viewer `type` query. Omitted/empty means every table
  * (the "all" tab). A known table name narrows the scan. Any other token
  * used to fall through to that same unfiltered scan, so `type=notes` or
  * `type=message` silently returned the whole feed.
  */
-export function parseMemoryTableFilter(
-  typeParam: string | null,
-): { ok: true; tables?: readonly string[] } | { ok: false; message: string } {
+export function parseMemoryTableFilter(typeParam: string | null):
+  | {
+      ok: true;
+      tables?: readonly string[];
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   if (typeParam === null || typeParam === "") return { ok: true };
   const t = typeParam.toLowerCase();
   if (MEMORY_TABLE_NAMES.includes(t as (typeof MEMORY_TABLE_NAMES)[number])) {
@@ -1018,7 +1013,6 @@ export function parseMemoryTableFilter(
     message: `type must be one of: ${MEMORY_TABLE_NAMES.join(", ")}`,
   };
 }
-
 export async function handleMemoryRoutes(
   ctx: MemoryRouteContext,
 ): Promise<boolean> {
@@ -1034,7 +1028,6 @@ export async function handleMemoryRoutes(
     error,
     readJsonBody,
   } = ctx;
-
   if (
     !pathname.startsWith("/api/memory") &&
     !pathname.startsWith("/api/memories") &&
@@ -1042,18 +1035,15 @@ export async function handleMemoryRoutes(
   ) {
     return false;
   }
-
   if (!runtime) {
     error(res, "Agent runtime is not available", 503);
     return true;
   }
-
   const resolvedAgentName = resolveAgentName(runtime, agentName);
   const { roomId, entityId } = await ensureMemoryConnection(
     runtime,
     resolvedAgentName,
   );
-
   if (method === "POST" && pathname === "/api/memory/remember") {
     const rawRem = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawRem === null) return true;
@@ -1110,7 +1100,6 @@ export async function handleMemoryRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/memory/search") {
     const query = url.searchParams.get("q")?.trim() ?? "";
     if (!query) {
@@ -1134,7 +1123,6 @@ export async function handleMemoryRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/context/quick") {
     const query = url.searchParams.get("q")?.trim() ?? "";
     if (!query) {
@@ -1149,12 +1137,10 @@ export async function handleMemoryRoutes(
       Math.max(requestedLimit, 1),
       QUICK_CONTEXT_MAX_LIMIT,
     );
-
     const [memories, documents] = await Promise.all([
       searchMemoryNotes(runtime, roomId, query, limit),
       searchDocuments(runtime, query, limit),
     ]);
-
     const prompt = buildQuickContextPrompt({ query, memories, documents });
     let answer = "I couldn't generate a quick answer right now.";
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
@@ -1162,7 +1148,6 @@ export async function handleMemoryRoutes(
     if (text.trim()) {
       answer = text.trim();
     }
-
     json(res, {
       query,
       answer,
@@ -1171,9 +1156,7 @@ export async function handleMemoryRoutes(
     });
     return true;
   }
-
   // ── Memory Viewer endpoints ───────────────────────────────────────────
-
   if (method === "GET" && pathname === "/api/memories/feed") {
     const requestedLimit = parsePositiveInteger(
       url.searchParams.get("limit"),
@@ -1205,17 +1188,14 @@ export async function handleMemoryRoutes(
       return true;
     }
     const tables = tableFilter.tables;
-
     const allMemories = await fetchMemoriesFromTables(runtime, {
       tables,
       target: limit + 1,
       before,
       beforeId: beforeIdParam === null ? undefined : (beforeIdParam as UUID),
     });
-
     allMemories.sort(byNewestFirst);
     const items = allMemories.slice(0, limit).map(memoryToBrowseItem);
-
     json(res, {
       memories: items,
       count: items.length,
@@ -1224,7 +1204,6 @@ export async function handleMemoryRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/memories/browse") {
     const requestedLimit = parsePositiveInteger(
       url.searchParams.get("limit"),
@@ -1245,7 +1224,6 @@ export async function handleMemoryRoutes(
     const entityIdsParam = url.searchParams.get("entityIds");
     const roomIdParam = url.searchParams.get("roomId");
     const searchQuery = url.searchParams.get("q")?.trim() ?? "";
-
     const entityIds: UUID[] | undefined = entityIdsParam
       ? (entityIdsParam
           .split(",")
@@ -1254,7 +1232,6 @@ export async function handleMemoryRoutes(
       : entityIdParam
         ? [entityIdParam as UUID]
         : undefined;
-
     const allMemories = await fetchMemoriesFromTables(runtime, {
       tables,
       entityIds,
@@ -1262,13 +1239,11 @@ export async function handleMemoryRoutes(
       searchQuery,
       target: offset + limit + 1,
     });
-
     allMemories.sort(byNewestFirst);
     const total = allMemories.length;
     const page = allMemories
       .slice(offset, offset + limit)
       .map(memoryToBrowseItem);
-
     json(res, {
       memories: page,
       total,
@@ -1281,7 +1256,6 @@ export async function handleMemoryRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname.startsWith("/api/memories/by-entity/")) {
     const primaryEntityId = decodePathComponent(
       pathname.slice("/api/memories/by-entity/".length),
@@ -1293,7 +1267,6 @@ export async function handleMemoryRoutes(
       error(res, "Invalid entity identifier.", 400);
       return true;
     }
-
     // Support multi-identity people: ?entityIds=id1,id2,id3
     // Falls back to the single path param if not provided.
     const entityIdsParam = url.searchParams.get("entityIds");
@@ -1303,7 +1276,6 @@ export async function handleMemoryRoutes(
           .map((id) => id.trim())
           .filter(Boolean) as UUID[])
       : [primaryEntityId as UUID];
-
     const requestedLimit = parsePositiveInteger(
       url.searchParams.get("limit"),
       MEMORY_BROWSE_DEFAULT_LIMIT,
@@ -1319,19 +1291,16 @@ export async function handleMemoryRoutes(
       return true;
     }
     const tables = tableFilter.tables;
-
     const allMemories = await fetchMemoriesFromTables(runtime, {
       entityIds,
       tables,
       target: offset + limit + 1,
     });
-
     allMemories.sort(byNewestFirst);
     const total = allMemories.length;
     const page = allMemories
       .slice(offset, offset + limit)
       .map(memoryToBrowseItem);
-
     json(res, {
       entityId: primaryEntityId,
       memories: page,
@@ -1343,13 +1312,11 @@ export async function handleMemoryRoutes(
     });
     return true;
   }
-
   // ── Memory mutation by id ─────────────────────────────────────────────
   // DELETE /api/memories/:id and PATCH /api/memories/:id operate on the bare
   // id segment. Path matching only fires when the segment looks like a UUID,
   // which keeps the literal sibling routes (`feed`, `browse`, `stats`,
   // `by-entity/...`) unambiguous.
-
   const memoryIdMatch = /^\/api\/memories\/([^/]+)$/.exec(pathname);
   if (memoryIdMatch && (method === "DELETE" || method === "PATCH")) {
     const rawId = decodePathComponent(memoryIdMatch[1] ?? "", res, "memory id");
@@ -1364,63 +1331,83 @@ export async function handleMemoryRoutes(
       error(res, "Memory not found.", 404);
       return true;
     }
-
-    if (method === "DELETE") {
-      await runtime.deleteMemory(memoryId);
-      invalidateMemorySearchCache(runtime, existing.roomId);
-      json(res, { deleted: true, id: memoryId });
-      return true;
+    let patchedText: string | undefined;
+    if (method === "PATCH") {
+      const rawPat = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawPat === null) return true;
+      const parsedPat = PatchMemoryRequestSchema.safeParse(rawPat);
+      if (!parsedPat.success) {
+        error(
+          res,
+          parsedPat.error.issues[0]?.message ?? "text is required",
+          400,
+        );
+        return true;
+      }
+      patchedText = parsedPat.data.text;
     }
-
-    // PATCH — update text, regenerate embedding, then atomically persist
-    // both via runtime.updateMemory (the SQL adapter writes content +
-    // embedding in a single transaction). If embedding generation fails we
-    // return 500 *before* touching the database, so there is nothing to roll
-    // back.
-    const rawPat = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawPat === null) return true;
-    const parsedPat = PatchMemoryRequestSchema.safeParse(rawPat);
-    if (!parsedPat.success) {
-      error(res, parsedPat.error.issues[0]?.message ?? "text is required", 400);
-      return true;
-    }
-    const text = parsedPat.data.text;
-
-    const existingContent =
-      (existing.content as Record<string, unknown> | undefined) ?? {};
-    const nextContent = { ...existingContent, text };
-
-    let embedding: number[];
-    try {
-      embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text,
+    // Share the conversational persistence boundary with reply recovery and
+    // normal turns. Re-read after acquiring it so a queued edit never restores
+    // old content or a row deleted by the turn that held the lease before us.
+    return runtime.roomHandlerQueue.withLease(existing.roomId, async () => {
+      const current = await runtime.getMemoryById(memoryId);
+      if (!current) {
+        error(res, "Memory not found.", 404);
+        return true;
+      }
+      if (current.roomId !== existing.roomId) {
+        error(res, "Memory room changed. Reload and try again.", 409);
+        return true;
+      }
+      if (method === "DELETE") {
+        await runtime.deleteMemory(memoryId);
+        invalidateMemorySearchCache(runtime, current.roomId);
+        json(res, { deleted: true, id: memoryId });
+        return true;
+      }
+      // PATCH updates content and its embedding atomically. Generate first so
+      // an embedding failure leaves the stored memory unchanged.
+      const text = patchedText as string;
+      const existingContent =
+        (current.content as Record<string, unknown> | undefined) ?? {};
+      const nextContent = { ...existingContent, text };
+      let embedding: number[];
+      try {
+        embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+          text,
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        error(res, `Failed to regenerate embedding: ${detail}`, 500);
+        return true;
+      }
+      if (!Array.isArray(embedding) || embedding.length === 0) {
+        error(res, "Embedding model returned no vector.", 500);
+        return true;
+      }
+      await runtime.updateMemory({
+        id: memoryId,
+        content: nextContent,
+        embedding,
       });
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      error(res, `Failed to regenerate embedding: ${detail}`, 500);
+      invalidateMemorySearchCache(runtime, current.roomId);
+      const updated = await runtime.getMemoryById(memoryId);
+      json(res, {
+        updated: true,
+        id: memoryId,
+        // Recovery evidence and credentials stay server-local even when an
+        // operator edits the text of their owning memory through the dashboard.
+        memory: projectCompleteToolValueForModel(
+          updated,
+          composeToolDiagnosticRedactor(runtime),
+        ),
+      });
       return true;
-    }
-    if (!Array.isArray(embedding) || embedding.length === 0) {
-      error(res, "Embedding model returned no vector.", 500);
-      return true;
-    }
-
-    await runtime.updateMemory({
-      id: memoryId,
-      content: nextContent,
-      embedding,
     });
-    invalidateMemorySearchCache(runtime, existing.roomId);
-
-    const updated = await runtime.getMemoryById(memoryId);
-    json(res, { updated: true, id: memoryId, memory: updated });
-    return true;
   }
-
   if (method === "GET" && pathname === "/api/memories/stats") {
     const counts: Record<string, number> = {};
     let total = 0;
-
     for (const tableName of MEMORY_TABLE_NAMES) {
       // Exact count straight from the store. The previous implementation
       // fetched getMemories({ limit: 10000 }).length per table, which capped
@@ -1434,10 +1421,8 @@ export async function handleMemoryRoutes(
       counts[tableName] = count;
       total += count;
     }
-
     json(res, { total, byType: counts, totalIsExact: true });
     return true;
   }
-
   return false;
 }

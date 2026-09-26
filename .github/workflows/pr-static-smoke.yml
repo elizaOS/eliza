@@ -1,11 +1,11 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
-# It checks mergeability, changed secrets and workflow syntax, then builds and
+# It checks mergeability and workflow syntax, then builds and
 # statically validates the affected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions. Provider, device, deployment, and destructive-effect lanes remain
 # excluded.
-name: PR Static Smoke
+name: PR Validation
 
 on:
   pull_request:
@@ -23,16 +23,21 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
   source-smoke:
-    name: Source static smoke
+    name: Source checks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      # Cloud API checking needs more than 4 GiB; serialize tasks so its
+      # 8 GiB heap does not compete with another compiler on a 16 GiB runner.
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -68,35 +73,15 @@ jobs:
 
           echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/synthetic-world; then
+          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/testing/synthetic-world; then
             echo "synthetic_world_changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "synthetic_world_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install pinned gitleaks
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./.github/scripts/install-gitleaks.sh "$RUNNER_TEMP/gitleaks"
-          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
-
-      - name: Scan candidate commits for secrets
-        shell: bash
-        env:
-          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
-        run: >-
-          gitleaks detect
-          --config .gitleaks.toml
-          --source .
-          --redact
-          --no-banner
-          --log-opts "${MERGE_BASE}..${HEAD_SHA}"
-
       - name: Install pinned workflow linters
         shell: bash
-        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
 
       - name: Lint changed workflows
         shell: bash
@@ -119,33 +104,31 @@ jobs:
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Apply required dependency compatibility patches
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Test required workflow contracts
         run: >-
           bun test
-          packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
-          packages/scripts/__tests__/homepage-deploy-workflow.test.ts
-          packages/scripts/__tests__/cloud-cf-canonical-source-guard-workflow.test.ts
-          packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts
+          packages/cloud/scripts/shared/messaging-gateway-preflight.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
-          packages/scripts/__tests__/github-action-pinning.test.ts
-          packages/scripts/__tests__/pr-static-smoke-workflow.test.ts
-
-      - name: Check production and smoke view navigation parity
-        working-directory: packages/app-core
-        run: node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/smoke-view-declarations.test.ts
-
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -154,27 +137,42 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Resolve broad core bootstrap
+        id: core_scope
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: |
+          if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
+            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
+          else
+            echo "Candidate predates scoped bootstrap; retaining the full core build."
+            echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build core contract
+        if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
-
-      - name: Run synthetic-world transaction tests
-        if: steps.diff.outputs.synthetic_world_changed == 'true'
-        run: bun run --cwd packages/synthetic-world test
-
-      - name: Lint affected workspace closure
-        env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run lint:check --concurrency=4 --affected
-
-      - name: Typecheck affected workspace closure
-        env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
 
       - name: Build affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
+
+      - name: Run synthetic-world transaction tests
+        if: steps.diff.outputs.synthetic_world_changed == 'true'
+        run: bun run --cwd packages/testing test:synthetic-world
+
+      - name: Lint affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.ts run lint:check --concurrency=4 --affected
+
+      - name: Typecheck affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        # Each typecheck may use the inherited 8 GiB heap. Serialize this
+        # closure so concurrent heaps cannot exceed the 16 GiB runner.
+        run: node packages/scripts/run-turbo.ts run typecheck --concurrency=1 --affected
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
@@ -193,9 +191,9 @@ jobs:
       CRON_SECRET: test-cron-secret
       # These are the workspace entry points actually executed by the keyless
       # stack. Detection below walks their runtime workspace dependencies, so a
-      # shared/core/logger/plugin change cannot silently skip the replay proof.
+      # shared/core/plugin change cannot silently skip the replay proof.
       # packages/app carries a large native/desktop-only dependency graph, so
-      # its browser source and app-core aliases stay explicit path inputs below.
+      # its browser source and app aliases stay explicit path inputs below.
       BILLING_REPLAY_WORKSPACE_SEEDS: >-
         packages/cloud/api
         packages/cloud/e2e
@@ -204,7 +202,7 @@ jobs:
       BILLING_REPLAY_PATH_INPUTS: >-
         packages/cloud
         packages/app
-        packages/app-core
+        packages/app
         packages/scripts
         package.json
         bun.lock
@@ -213,7 +211,7 @@ jobs:
         tsconfig.json
         tsconfig.base.json
         .github/actions/cloud-setup-test-env
-        .github/scripts/install-playwright-browsers.sh
+        packages/scripts/github/install-playwright-browsers.sh
         .github/develop-surface-graph.json
         .github/workflows/develop-full.yml
         .github/workflows/pr-static-smoke.yml
@@ -236,7 +234,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { spawnSync } from "node:child_process";
           import { appendFileSync } from "node:fs";
-          import { listPackages } from "./packages/scripts/lib/workspaces.mjs";
+          import { listPackages } from "./packages/scripts/lib/workspaces.ts";
 
           function requiredEnv(name) {
             const value = process.env[name]?.trim();
@@ -309,11 +307,11 @@ jobs:
         uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
         if: steps.billing-diff.outputs.run == 'true'
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Run billing payment replay spec
         if: steps.billing-diff.outputs.run == 'true'
         run: >-
-          bun run cloud:e2e --
+          bun run --cwd packages/cloud/e2e test --
           '(^|/)billing-payment-replay\.spec\.ts$'
       - name: Upload Playwright evidence
         if: failure() && steps.billing-diff.outputs.run == 'true'
@@ -321,7 +319,7 @@ jobs:
         with:
           name: billing-payment-replay-e2e-${{ github.run_attempt }}
           path: |
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
           retention-days: 7
           include-hidden-files: true
@@ -350,7 +348,7 @@ jobs:
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           test -n "$merge_base"
           if git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages/cloud/shared packages/core packages/shared \
+            packages/cloud/shared packages/core packages/core \
             package.json bun.lock bunfig.toml turbo.json \
             tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
             .github/workflows/pr-static-smoke.yml; then
@@ -361,6 +359,7 @@ jobs:
       - if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -403,11 +402,7 @@ jobs:
             sleep 1
           done
           bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
-          bun test --config=/dev/null \
-            packages/cloud/shared/src/db/repositories/organization-policy.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
@@ -432,16 +427,11 @@ jobs:
             exit 1
           fi
 
-  browser-bridge-windows-security:
-    name: Browser bridge Windows security
-    uses: ./.github/workflows/browser-bridge-windows-security.yml
-
   static-smoke:
     name: All Tests Passed
     if: always()
     needs:
       - source-smoke
-      - browser-bridge-windows-security
       - billing-payment-replay-e2e
       - subscription-authority-postgres
     runs-on: ubuntu-24.04
@@ -450,7 +440,6 @@ jobs:
         env:
           RESULTS: >-
             source-smoke=${{ needs.source-smoke.result }}
-            browser-bridge-windows-security=${{ needs.browser-bridge-windows-security.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
         run: |

@@ -54,6 +54,22 @@ export const ORGANIZATION_CREDIT_PRICING = Object.freeze({
   usdPerCredit: USD_PER_ORGANIZATION_CREDIT,
 });
 
+/** Shared bounds for custom one-off top-ups; auto-top-up has its own policy. */
+export const ORGANIZATION_CREDIT_CHECKOUT_LIMITS = Object.freeze({
+  minAmountUsd: 1,
+  maxAmountUsd: 1000,
+});
+
+/** Accept decimal whole cents without rejecting values such as 1.15 due to floating point. */
+export function checkoutAmountUsdToCents(amountUsd: number): number | null {
+  if (!Number.isFinite(amountUsd) || amountUsd < 0) return null;
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(amountUsd));
+  if (!match?.[1]) return null;
+  const cents =
+    Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+  return Number.isSafeInteger(cents) ? cents : null;
+}
+
 function assertFiniteNonNegative(value: number, field: string): void {
   if (!Number.isFinite(value) || value < 0) {
     throw new RangeError(`${field} must be a finite non-negative number`);

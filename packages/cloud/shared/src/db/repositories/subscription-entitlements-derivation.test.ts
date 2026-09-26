@@ -5,6 +5,12 @@ import type { BillingSubscriptionRevision } from "../schemas/billing-subscriptio
 import { deriveSubscriptionEntitlementValues } from "./subscription-entitlements";
 
 const revision = {
+  billing_scope_id: null,
+  merchant_key: "platform",
+  plan_revision_id: null,
+  trial_start: null,
+  trial_end: null,
+  quantity: 1,
   id: "10000000-0000-4000-8000-000000000001",
   organization_id: "10000000-0000-4000-8000-000000000002",
   subscription_id: "10000000-0000-4000-8000-000000000003",

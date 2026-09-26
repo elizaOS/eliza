@@ -11,8 +11,13 @@
  * Runtime, timers, and `@elizaos/core` (logger/Service) are mocked.
  */
 import { logger } from "@elizaos/core";
+import type { Context, Telegraf } from "telegraf";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getTelegramPollerClaim } from "./poller-lock";
+import {
+  claimTelegramPollerToken,
+  getTelegramPollerClaim,
+  releaseTelegramPollerToken,
+} from "./poller-lock";
 import { TelegramService } from "./service";
 
 const CONFLICT = "409: Conflict: terminated by other getUpdates request";
@@ -59,7 +64,12 @@ function makeService() {
   const runtime = { agentId: "agent-test", reportError: vi.fn() };
   const service = Object.assign(
     Object.create(TelegramService.prototype) as TelegramService,
-    { runtime },
+    {
+      runtime,
+      outboundCompletions: new Set(),
+      pollerCompletions: new Map(),
+      pollerRetryTimers: new Set(),
+    },
   );
   return { service, runtime };
 }
@@ -191,6 +201,120 @@ describe("TelegramService.launchPollerSupervised", () => {
     );
   });
 
+  it.each(["before failure", "during backoff"])(
+    "does not restart a stopped service %s",
+    async (stopTiming) => {
+      const { bot, calls } = makeBot();
+      const { service } = makeService();
+      const token = `tok-stopped-${stopTiming}`;
+      Object.assign(service, { bot, botToken: token });
+      const launched = callLaunch(service, bot, token, "acct");
+      calls[0].onLaunch();
+      await exposeStoppablePoller(bot);
+      await launched;
+
+      const stopped = stopTiming === "before failure" ? service.stop() : null;
+      calls[0].reject(new Error(CONFLICT));
+      await flushMicrotasks();
+      if (stopped) await stopped;
+      else await service.stop();
+      expect(getTelegramPollerClaim(token)).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(bot.launch).toHaveBeenCalledTimes(1);
+      expect(getTelegramPollerClaim(token)).toBeUndefined();
+      const replacement = makeBot();
+      const { service: replacementService } = makeService();
+      const replacementStarted = callLaunch(
+        replacementService,
+        replacement.bot,
+        token,
+        "replacement",
+      );
+      replacement.calls[0].onLaunch();
+      await exposeStoppablePoller(replacement.bot);
+      await replacementStarted;
+      expect(getTelegramPollerClaim(token)?.bot).toBe(replacement.bot);
+      replacement.calls[0].resolve();
+      await flushMicrotasks();
+    },
+  );
+
+  it("retains ownership until the stopped polling loop has drained", async () => {
+    const { bot, calls } = makeBot();
+    const { service } = makeService();
+    const token = "tok-draining";
+    Object.assign(service, { bot, botToken: token });
+    const launched = callLaunch(service, bot, token, "acct");
+    calls[0].onLaunch();
+    await exposeStoppablePoller(bot);
+    await launched;
+    let stopped = false;
+    const shutdown = service.stop().then(() => {
+      stopped = true;
+    });
+    await flushMicrotasks();
+    expect(stopped).toBe(false);
+    expect(getTelegramPollerClaim(token)?.bot).toBe(bot);
+    const replacement = makeBot();
+    await expect(
+      callLaunch(makeService().service, replacement.bot, token, "next"),
+    ).rejects.toThrow(/already has an active/i);
+    calls[0].resolve();
+    await shutdown;
+    expect(getTelegramPollerClaim(token)).toBeUndefined();
+  });
+
+  it("stops a launch that becomes stoppable after shutdown was requested", async () => {
+    const { bot, calls } = makeBot();
+    const { service } = makeService();
+    const token = "tok-stop-startup";
+    Object.assign(service, { bot, botToken: token });
+    const launched = callLaunch(service, bot, token, "acct");
+    const startupResult = expect(launched).rejects.toThrow(/stopp/i);
+    let stopped = false;
+    const shutdown = service.stop().then(() => {
+      stopped = true;
+    });
+    await flushMicrotasks();
+    expect(stopped).toBe(false);
+    expect(getTelegramPollerClaim(token)?.bot).toBe(bot);
+    calls[0].onLaunch();
+    await exposeStoppablePoller(bot);
+    expect(bot.stop).toHaveBeenCalledWith("service-stop");
+    calls[0].resolve();
+    await shutdown;
+    await startupResult;
+    expect(getTelegramPollerClaim(token)).toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps ownership when stopping fails and permits shutdown to be retried", async () => {
+    const { bot, calls } = makeBot();
+    const { service } = makeService();
+    const token = "tok-stop-failure";
+    Object.assign(service, { bot, botToken: token });
+    const launched = callLaunch(service, bot, token, "acct");
+    calls[0].onLaunch();
+    await exposeStoppablePoller(bot);
+    await launched;
+    bot.stop.mockImplementation(() => {
+      throw new Error("stop rejected");
+    });
+    await expect(service.stop()).rejects.toMatchObject({
+      code: "TELEGRAM_SHUTDOWN_INCOMPLETE",
+    });
+    expect(getTelegramPollerClaim(token)?.bot).toBe(bot);
+    expect(vi.getTimerCount()).toBe(0);
+    bot.stop.mockReset();
+    const shutdown = service.stop();
+    await flushMicrotasks();
+    calls[0].resolve();
+    await shutdown;
+    expect(getTelegramPollerClaim(token)).toBeUndefined();
+  });
+
   it("fails loudly instead of replacing a poller that already owns the token", async () => {
     const first = makeBot();
     const second = makeBot();
@@ -212,5 +336,88 @@ describe("TelegramService.launchPollerSupervised", () => {
 
     expect(first.bot.stop).not.toHaveBeenCalled();
     expect(second.bot.launch).not.toHaveBeenCalled();
+  });
+});
+
+describe("default bot disconnect identity", () => {
+  it("does not report an inert replacement drained while the previous runtime still owns its poller", async () => {
+    const { service, runtime } = makeService();
+    const bot = makeBot().bot;
+    const token = "123456:previous-runtime-token";
+    Object.assign(service, {
+      defaultAccountId: "default",
+      botToken: null,
+      bot: null,
+      accountStates: new Map(),
+      stop: vi.fn().mockResolvedValue(undefined),
+    });
+    claimTelegramPollerToken(token, {
+      bot: bot as unknown as Telegraf<Context>,
+      mode: "full",
+      ownerId: runtime.agentId,
+      accountId: "default",
+    });
+    try {
+      await expect(service.disconnectDefaultBot(token)).rejects.toMatchObject({
+        code: "TELEGRAM_SHUTDOWN_INCOMPLETE",
+      });
+    } finally {
+      releaseTelegramPollerToken(token, bot as unknown as Telegraf<Context>);
+    }
+  });
+
+  it("can drain an inert default service after a token was saved for the next startup", async () => {
+    const { service } = makeService();
+    const stop = vi.fn().mockResolvedValue(undefined);
+    Object.assign(service, {
+      defaultAccountId: "default",
+      botToken: null,
+      bot: null,
+      accountStates: new Map(),
+      stop,
+    });
+    await service.disconnectDefaultBot("123456:saved-for-next-start");
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a named account and a stale credential before stopping", async () => {
+    const { service } = makeService();
+    const stop = vi.spyOn(service, "stop");
+    Object.assign(service, {
+      defaultAccountId: "named",
+      botToken: "synthetic",
+    });
+    await expect(
+      service.disconnectDefaultBot("synthetic"),
+    ).rejects.toMatchObject({ code: "TELEGRAM_DISCONNECT_IDENTITY_MISMATCH" });
+    Object.assign(service, { defaultAccountId: "default" });
+    await expect(service.disconnectDefaultBot("other")).rejects.toMatchObject({
+      code: "TELEGRAM_DISCONNECT_IDENTITY_MISMATCH",
+    });
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("waits for admitted outbound work and can be repeated after shutdown", async () => {
+    const { service } = makeService();
+    let release!: () => void;
+    const admitted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    Object.assign(service, {
+      defaultAccountId: "default",
+      botToken: "synthetic-disconnect",
+      outboundCompletions: new Set([admitted]),
+    });
+    let finished = false;
+    const pending = service
+      .disconnectDefaultBot("synthetic-disconnect")
+      .then(() => {
+        finished = true;
+      });
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    release();
+    await pending;
+    await expect(service.disconnectDefaultBot()).resolves.toBeUndefined();
   });
 });

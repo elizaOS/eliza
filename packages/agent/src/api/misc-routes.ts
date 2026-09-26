@@ -14,17 +14,11 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import {
   buildStoreVariantBlockedMessage,
-  composePrompt,
-  customActionGenerateTemplate,
+  type CustomActionDef,
+  isAndroidMobile,
   isLocalCodeExecutionAllowed,
   logger,
   ModelType,
-  parseBooleanValue,
-  validateUuid,
-} from "@elizaos/core";
-import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
-import {
-  isAndroidMobile,
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
@@ -32,14 +26,20 @@ import {
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
-} from "@elizaos/shared";
+  parseBooleanValue,
+  type ReadJsonBodyOptions,
+  type StreamEventEnvelope,
+  validateUuid,
+} from "@elizaos/core";
+
+import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import type { CustomActionDef } from "../config/types.eliza.ts";
 import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import { customActionGenerateTemplate } from "./custom-action-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import {
@@ -54,13 +54,11 @@ import {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 type TerminalRunRequestBody = {
   command?: string;
   clientId?: unknown;
   terminalToken?: string;
 };
-
 type MiscRouteState = Pick<
   ServerState,
   | "config"
@@ -77,11 +75,9 @@ type MiscRouteState = Pick<
   | "broadcastStatus"
   | "pendingRestartReasons"
 >;
-
 // ---------------------------------------------------------------------------
 // Approximate (IP-based) location
 // ---------------------------------------------------------------------------
-
 // Server-side IP-geolocation for the weather widget's no-permission fallback.
 // The lookup runs here rather than in the browser because the public geo
 // services CORS-fail on hosted app origins and would each need a CSP carve-out
@@ -91,21 +87,21 @@ type MiscRouteState = Pick<
 // `accuracyMeters` so no consumer can mistake it for a GPS reading.
 const DEFAULT_IP_GEO_SERVICES = ["https://ipapi.co/json/", "https://ipwho.is/"];
 const IP_GEO_ACCURACY_METERS = 5000;
-const IP_GEO_TIMEOUT_MS = 5_000;
+const IP_GEO_TIMEOUT_MS = 5000;
 // A public IP's city doesn't move minute-to-minute; the cache keeps repeated
 // widget revalidations from hammering the free-tier providers.
-const IP_GEO_CACHE_TTL_MS = 15 * 60_000;
-
+const IP_GEO_CACHE_TTL_MS = 15 * 60000;
 export interface ApproximateLocation {
   lat: number;
   lon: number;
   accuracyMeters: number;
   source: string;
 }
-
-let ipGeoCache: { value: ApproximateLocation; fetchedAt: number } | null = null;
+let ipGeoCache: {
+  value: ApproximateLocation;
+  fetchedAt: number;
+} | null = null;
 let ipGeoInFlight: Promise<ApproximateLocation | null> | null = null;
-
 /** Test seam + self-hoster override: comma-separated lookup URLs. */
 function ipGeoServiceUrls(): string[] {
   const raw = process.env.ELIZA_IP_GEO_SERVICES;
@@ -116,13 +112,11 @@ function ipGeoServiceUrls(): string[] {
     .filter((value) => value.length > 0);
   return urls.length > 0 ? urls : DEFAULT_IP_GEO_SERVICES;
 }
-
 /** Exported for tests: drop the module-level cache between cases. */
 export function resetIpGeoCacheForTests(): void {
   ipGeoCache = null;
   ipGeoInFlight = null;
 }
-
 async function lookupApproximateLocation(): Promise<ApproximateLocation | null> {
   for (const url of ipGeoServiceUrls()) {
     try {
@@ -169,7 +163,6 @@ async function lookupApproximateLocation(): Promise<ApproximateLocation | null> 
   }
   return null;
 }
-
 function resolveTerminalShellCommand(): {
   command: string;
   argsFor: (command: string) => string[];
@@ -188,16 +181,19 @@ function resolveTerminalShellCommand(): {
     argsFor: (command) => ["-c", command],
   };
 }
-
-function parseOptionalBooleanQuery(
-  raw: string | null,
-): { ok: true; value?: boolean } | { ok: false } {
+function parseOptionalBooleanQuery(raw: string | null):
+  | {
+      ok: true;
+      value?: boolean;
+    }
+  | {
+      ok: false;
+    } {
   if (raw === null) return { ok: true };
   const parsed = parseBooleanValue(raw);
   if (parsed === undefined) return { ok: false };
   return { ok: true, value: parsed };
 }
-
 function toTerminalRunRequestBody(
   body: Record<string, unknown>,
 ): TerminalRunRequestBody {
@@ -208,7 +204,6 @@ function toTerminalRunRequestBody(
       typeof body.terminalToken === "string" ? body.terminalToken : undefined,
   };
 }
-
 export interface MiscRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -227,7 +222,10 @@ export interface MiscRouteContext {
   resolveTerminalRunRejection: (
     req: http.IncomingMessage,
     body: TerminalRunRequestBody,
-  ) => { reason: string; status: number } | null;
+  ) => {
+    reason: string;
+    status: number;
+  } | null;
   resolveTerminalRunClientId: (
     req: http.IncomingMessage,
     body: TerminalRunRequestBody,
@@ -244,22 +242,23 @@ export interface MiscRouteContext {
     runId: string,
     maxConcurrent: number,
   ) =>
-    | { release: () => void }
-    | { rejection: "capacity" | "duplicate" | "registry-capacity" };
+    | {
+        release: () => void;
+      }
+    | {
+        rejection: "capacity" | "duplicate" | "registry-capacity";
+      };
   /** Test seam for failures before the shell process can be launched. */
   resolveTerminalShellCommand?: typeof resolveTerminalShellCommand;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 export async function handleMiscRoutes(
   ctx: MiscRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, url, state, json, error, readJsonBody } =
     ctx;
-
   // ── GET /api/location/approximate ───────────────────────────────────
   if (method === "GET" && pathname === "/api/location/approximate") {
     if (ipGeoCache && Date.now() - ipGeoCache.fetchedAt < IP_GEO_CACHE_TTL_MS) {
@@ -279,7 +278,6 @@ export async function handleMiscRoutes(
     json(res, value);
     return true;
   }
-
   // ── POST /api/restart ───────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/restart") {
     state.agentState = "restarting";
@@ -292,7 +290,6 @@ export async function handleMiscRoutes(
     setTimeout(() => process.exit(0), 1000);
     return true;
   }
-
   // ── POST /api/ingest/share ───────────────────────────────────────────
   if (method === "POST" && pathname === "/api/ingest/share") {
     const rawShare = await readJsonBody<Record<string, unknown>>(req, res);
@@ -307,7 +304,6 @@ export async function handleMiscRoutes(
       return true;
     }
     const body = parsedShare.data;
-
     const item = {
       id: crypto.randomUUID(),
       source: body.source ?? "unknown",
@@ -327,7 +323,6 @@ export async function handleMiscRoutes(
     json(res, { ok: true, item });
     return true;
   }
-
   // ── GET /api/ingest/share ────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/ingest/share") {
     const consumeParsed = parseOptionalBooleanQuery(
@@ -347,7 +342,6 @@ export async function handleMiscRoutes(
     }
     return true;
   }
-
   // ── POST /api/agent/event ──────────────────────────────────────────────
   if (
     method === "POST" &&
@@ -423,19 +417,16 @@ export async function handleMiscRoutes(
     json(res, { ok: true });
     return true;
   }
-
   // ── POST /api/terminal/run ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/terminal/run") {
     if (!isLocalCodeExecutionAllowed()) {
       error(res, buildStoreVariantBlockedMessage("Terminal commands"), 403);
       return true;
     }
-
     if (state.shellEnabled === false) {
       error(res, "Shell access is disabled", 403);
       return true;
     }
-
     const rawTerm = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawTerm === null) return true;
     const parsedTerm = PostTerminalRunRequestSchema.safeParse(rawTerm);
@@ -448,24 +439,20 @@ export async function handleMiscRoutes(
       return true;
     }
     const body = parsedTerm.data;
-
     const terminalRejection = ctx.resolveTerminalRunRejection(req, body);
     if (terminalRejection) {
       error(res, terminalRejection.reason, terminalRejection.status);
       return true;
     }
-
     const command = body.command.trim();
     if (!command) {
       error(res, "Missing or empty command");
       return true;
     }
-
     if (command.length > 4096) {
       error(res, "Command exceeds maximum length (4096 chars)", 400);
       return true;
     }
-
     if (
       command.includes("\n") ||
       command.includes("\r") ||
@@ -478,7 +465,6 @@ export async function handleMiscRoutes(
       );
       return true;
     }
-
     const targetClientId = ctx.resolveTerminalRunClientId(req, body);
     if (!targetClientId) {
       error(
@@ -488,7 +474,6 @@ export async function handleMiscRoutes(
       );
       return true;
     }
-
     const emitTerminalEvent = (payload: object) => {
       try {
         if (ctx.isSharedTerminalClientId(targetClientId)) {
@@ -506,10 +491,8 @@ export async function handleMiscRoutes(
         );
       }
     };
-
     const captureOutput = body.captureOutput === true;
     const MAX_CAPTURE_BYTES = MAX_TERMINAL_CAPTURE_BYTES;
-
     const runId = resolveRequestedTerminalRunId(
       req.headers["x-eliza-terminal-run-id"],
     );
@@ -517,7 +500,6 @@ export async function handleMiscRoutes(
       error(res, "Invalid X-Eliza-Terminal-Run-Id header", 400);
       return true;
     }
-
     const { maxConcurrent, maxDurationMs } = resolveTerminalRunLimits();
     const runScopeId = String(state.runtime?.agentId ?? "no-agent");
     const admission = ctx.tryAcquireTerminalRunSlot
@@ -552,11 +534,9 @@ export async function handleMiscRoutes(
       return true;
     }
     const releaseTerminalRunSlot = admission.release;
-
     if (!captureOutput) {
       json(res, { ok: true, runId });
     }
-
     emitTerminalEvent({
       type: "terminal-output",
       runId,
@@ -564,13 +544,11 @@ export async function handleMiscRoutes(
       command,
       maxDurationMs,
     });
-
     let finalized = false;
     let timedOut = false;
     let stdout = "";
     let stderr = "";
     let captureOverflowed = false;
-
     let capturedBytes = 0;
     const appendOutput = (current: string, chunkText: string): string => {
       if (!captureOutput || captureOverflowed || !chunkText) {
@@ -589,14 +567,12 @@ export async function handleMiscRoutes(
       captureOverflowed = true;
       return current;
     };
-
     const finalize = () => {
       if (finalized) return;
       finalized = true;
       releaseTerminalRunSlot();
       clearTimeout(timeoutHandle);
     };
-
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
       emitTerminalEvent({
@@ -606,7 +582,6 @@ export async function handleMiscRoutes(
         maxDurationMs,
       });
     }, maxDurationMs);
-
     const appendAndEmit = (stream: "stdout" | "stderr", text: string) => {
       if (captureOutput) {
         if (stream === "stdout") stdout = appendOutput(stdout, text);
@@ -620,7 +595,6 @@ export async function handleMiscRoutes(
         data: text,
       });
     };
-
     Promise.resolve()
       .then(() => {
         const shell = (
@@ -731,18 +705,14 @@ export async function handleMiscRoutes(
           error(res, "Terminal execution failed", 500);
         }
       });
-
     return true;
   }
-
   // ── Custom Actions CRUD ──────────────────────────────────────────────
-
   if (method === "GET" && pathname === "/api/custom-actions") {
     const config = loadElizaConfig();
     json(res, { actions: config.customActions ?? [] });
     return true;
   }
-
   if (method === "POST" && pathname === "/api/custom-actions") {
     const rawAction = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawAction === null) return true;
@@ -756,7 +726,6 @@ export async function handleMiscRoutes(
       return true;
     }
     const body = parsedAction.data;
-
     if (body.handler.type === "shell" || body.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
@@ -771,7 +740,6 @@ export async function handleMiscRoutes(
         return true;
       }
     }
-
     const now = new Date().toISOString();
     const actionDef: CustomActionDef = {
       id: crypto.randomUUID(),
@@ -784,20 +752,16 @@ export async function handleMiscRoutes(
       createdAt: now,
       updatedAt: now,
     };
-
     const config = loadElizaConfig();
     if (!config.customActions) config.customActions = [];
     config.customActions.push(actionDef);
     saveElizaConfig(config);
-
     if (actionDef.enabled) {
       registerCustomActionLive(actionDef);
     }
-
     json(res, { ok: true, action: actionDef });
     return true;
   }
-
   // Generate a custom action definition from a natural language prompt
   if (method === "POST" && pathname === "/api/custom-actions/generate") {
     const rawGen = await readJsonBody<Record<string, unknown>>(req, res);
@@ -812,23 +776,19 @@ export async function handleMiscRoutes(
       return true;
     }
     const prompt = parsedGen.data.prompt;
-
     const runtime = state.runtime;
     if (!runtime) {
       error(res, "Agent runtime not available", 503);
       return true;
     }
-
     try {
       const composedPrompt = composePrompt({
         state: { request: prompt },
         template: customActionGenerateTemplate,
       });
-
       const llmResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: composedPrompt,
       });
-
       const text =
         typeof llmResponse === "string" ? llmResponse : String(llmResponse);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -836,7 +796,6 @@ export async function handleMiscRoutes(
         error(res, "Failed to generate action definition", 500);
         return true;
       }
-
       const generated = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
       json(res, { ok: true, generated });
     } catch (err) {
@@ -848,12 +807,10 @@ export async function handleMiscRoutes(
     }
     return true;
   }
-
   const customActionMatch = pathname.match(/^\/api\/custom-actions\/([^/]+)$/);
   const customActionTestMatch = pathname.match(
     /^\/api\/custom-actions\/([^/]+)\/test$/,
   );
-
   if (method === "POST" && customActionTestMatch) {
     const decodedActionId = decodePathComponent(
       customActionTestMatch[1],
@@ -878,14 +835,12 @@ export async function handleMiscRoutes(
       return true;
     }
     const body = parsedTest.data;
-
     const config = loadElizaConfig();
     const def = (config.customActions ?? []).find((a) => a.id === actionId);
     if (!def) {
       error(res, "Action not found", 404);
       return true;
     }
-
     if (def.handler.type === "shell" || def.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
@@ -900,7 +855,6 @@ export async function handleMiscRoutes(
         return true;
       }
     }
-
     const testParams = body.params ?? {};
     const start = Date.now();
     try {
@@ -921,7 +875,6 @@ export async function handleMiscRoutes(
     }
     return true;
   }
-
   if (method === "PUT" && customActionMatch) {
     const decodedActionId = decodePathComponent(
       customActionMatch[1],
@@ -946,7 +899,6 @@ export async function handleMiscRoutes(
       return true;
     }
     const body = parsedUpdate.data;
-
     const config = loadElizaConfig();
     const actions = config.customActions ?? [];
     const idx = actions.findIndex((a) => a.id === actionId);
@@ -954,10 +906,8 @@ export async function handleMiscRoutes(
       error(res, "Action not found", 404);
       return true;
     }
-
     const existing = actions[idx];
     const newHandler = body.handler ?? existing.handler;
-
     if (newHandler.type === "shell" || newHandler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
@@ -972,7 +922,6 @@ export async function handleMiscRoutes(
         return true;
       }
     }
-
     const updated: CustomActionDef = {
       ...existing,
       name: body.name
@@ -987,15 +936,12 @@ export async function handleMiscRoutes(
       enabled: body.enabled ?? existing.enabled,
       updatedAt: new Date().toISOString(),
     };
-
     actions[idx] = updated;
     config.customActions = actions;
     saveElizaConfig(config);
-
     json(res, { ok: true, action: updated });
     return true;
   }
-
   if (method === "DELETE" && customActionMatch) {
     const decodedActionId = decodePathComponent(
       customActionMatch[1],
@@ -1008,7 +954,6 @@ export async function handleMiscRoutes(
       error(res, "Invalid custom action id", 400);
       return true;
     }
-
     const config = loadElizaConfig();
     const actions = config.customActions ?? [];
     const idx = actions.findIndex((a) => a.id === actionId);
@@ -1016,17 +961,13 @@ export async function handleMiscRoutes(
       error(res, "Action not found", 404);
       return true;
     }
-
     actions.splice(idx, 1);
     config.customActions = actions;
     saveElizaConfig(config);
-
     json(res, { ok: true });
     return true;
   }
-
   // Privy wallet routes (/api/privy/*) are provided by wallet/runtime route
   // registries when the relevant backend is installed.
-
   return false;
 }

@@ -6,22 +6,19 @@
  */
 import type { Task } from "@elizaos/core";
 import {
-  type BrowserBridgeCompanionStatus,
-  type BrowserBridgeReadiness,
-  type BrowserBridgeReadinessState,
-  type BrowserBridgeSettings,
-  resolveBrowserBridgeReadiness,
+  type LifeOpsCapabilitiesStatus,
+  type LifeOpsCapabilityEvidence,
+  type LifeOpsCapabilityState,
+  type LifeOpsCapabilityStatus,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsXConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
 import type { HealthBackend } from "@elizaos/plugin-health";
-import type {
-  LifeOpsCapabilitiesStatus,
-  LifeOpsCapabilityEvidence,
-  LifeOpsCapabilityState,
-  LifeOpsCapabilityStatus,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsXConnectorStatus,
-} from "@elizaos/shared";
 import { loadLifeOpsAppState } from "../app-state.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { createFeatureFlagService } from "../feature-flags.js";
@@ -210,68 +207,6 @@ function summarizeCapabilities(
   };
 }
 
-function browserReadinessCapabilityState(
-  state: BrowserBridgeReadinessState,
-): LifeOpsCapabilityState {
-  switch (state) {
-    case "ready":
-      return "working";
-    case "paused":
-    case "permission_blocked":
-      return "blocked";
-    case "control_disabled":
-    case "stale":
-      return "degraded";
-    case "disabled":
-    case "tracking_off":
-    case "no_companion":
-      return "not_configured";
-  }
-}
-
-function browserReadinessSummary(
-  readiness: BrowserBridgeReadiness,
-  settings: BrowserBridgeSettings,
-): string {
-  switch (readiness.state) {
-    case "ready":
-      return `${settings.trackingMode} tracking; ${readiness.recentConnectedCompanions.length} recent companion`;
-    case "disabled":
-      return "Browser tracking is disabled";
-    case "tracking_off":
-      return "Browser tracking mode is off";
-    case "paused":
-      return "Browser tracking is paused";
-    case "control_disabled":
-      return "Browser control is disabled";
-    case "no_companion":
-      return "No browser companion has paired yet";
-    case "stale":
-      return "No connected browser companion has checked in recently";
-    case "permission_blocked":
-      return "Browser companion permissions or site access need attention";
-  }
-}
-
-function browserReadinessConfidence(
-  state: BrowserBridgeReadinessState,
-): number {
-  switch (state) {
-    case "ready":
-      return 0.9;
-    case "control_disabled":
-    case "stale":
-    case "permission_blocked":
-      return 0.55;
-    case "paused":
-      return 0.7;
-    case "disabled":
-    case "tracking_off":
-    case "no_companion":
-      return 0.35;
-  }
-}
-
 /**
  * Capability-status aggregator domain. Reads app state, feature flags, the
  * scheduler task, and a fan-out of cross-domain connector statuses (schedule,
@@ -289,59 +224,35 @@ export class StatusDomain {
   ): Promise<LifeOpsCapabilitiesStatus> {
     const checkedAt = now.toISOString();
     const timezone = resolveDefaultTimeZone();
-    const [
-      appState,
-      features,
-      schedule,
-      browserSettings,
-      browserCompanions,
-      health,
-      xLocal,
-      schedulerTasks,
-    ] = await Promise.all([
-      runCheck(checkedAt, () => loadLifeOpsAppState(this.ctx.runtime)),
-      runCheck(checkedAt, () =>
-        createFeatureFlagService(this.ctx.runtime).list(),
-      ),
-      runCheck(checkedAt, () =>
-        this.deps.getScheduleMergedState({
-          timezone,
-          scope: "effective",
-          refresh: false,
-          now,
-        }),
-      ),
-      runCheck(checkedAt, () => this.deps.getBrowserSettings()),
-      runCheck(checkedAt, () => this.deps.listBrowserCompanions()),
-      runCheck(checkedAt, () => this.deps.getHealthConnectorStatus()),
-      runCheck(checkedAt, () => this.deps.getXConnectorStatus("local")),
-      runCheck(checkedAt, () =>
-        this.ctx.runtime.getTasks({
-          agentIds: [this.ctx.runtime.agentId],
-          tags: [...LIFEOPS_TASK_TAGS],
-        }),
-      ),
-    ]);
+    const [appState, features, schedule, health, xLocal, schedulerTasks] =
+      await Promise.all([
+        runCheck(checkedAt, () => loadLifeOpsAppState(this.ctx.runtime)),
+        runCheck(checkedAt, () =>
+          createFeatureFlagService(this.ctx.runtime).list(),
+        ),
+        runCheck(checkedAt, () =>
+          this.deps.getScheduleMergedState({
+            timezone,
+            scope: "effective",
+            refresh: false,
+            now,
+          }),
+        ),
+        runCheck(checkedAt, () => this.deps.getHealthConnectorStatus()),
+        runCheck(checkedAt, () => this.deps.getXConnectorStatus("local")),
+        runCheck(checkedAt, () =>
+          this.ctx.runtime.getTasks({
+            agentIds: [this.ctx.runtime.agentId],
+            tags: [...LIFEOPS_TASK_TAGS],
+          }),
+        ),
+      ]);
 
     const appEnabled = appState.ok && appState.value.enabled;
     const appStateLoadFailed = !appState.ok;
     const appDisabled = appState.ok && !appState.value.enabled;
     const scheduleState = schedule.ok ? schedule.value : null;
     const featureStates = features.ok ? features.value : [];
-    const browser =
-      browserSettings.ok && browserCompanions.ok
-        ? {
-            settings: browserSettings.value,
-            companions: browserCompanions.value,
-          }
-        : null;
-    const browserReadiness = browser
-      ? resolveBrowserBridgeReadiness(
-          browser.settings,
-          browser.companions,
-          now.getTime(),
-        )
-      : null;
     const xStatuses = [xLocal]
       .filter(
         (
@@ -483,53 +394,6 @@ export class StatusDomain {
               ? (schedulerTask?.id ?? "No scheduler task row")
               : schedulerTasks.message,
             observedAt: checkedAt,
-          },
-        ],
-      }),
-      createCapability({
-        id: "activity.browser",
-        domain: "activity",
-        label: "Browser activity",
-        state: browserReadiness
-          ? browserReadinessCapabilityState(browserReadiness.state)
-          : "degraded",
-        summary:
-          browser && browserReadiness
-            ? browserReadinessSummary(browserReadiness, browser.settings)
-            : "Browser status failed to load",
-        confidence: browserReadiness
-          ? browserReadinessConfidence(browserReadiness.state)
-          : 0.3,
-        checkedAt,
-        evidence: [
-          {
-            label: "Browser settings",
-            state: browserReadiness
-              ? browserReadinessCapabilityState(browserReadiness.state)
-              : "degraded",
-            detail: browser
-              ? `${browser.settings.trackingMode}; site access ${browser.settings.siteAccessMode}; control ${browser.settings.allowBrowserControl ? "on" : "off"}`
-              : browserSettings.ok
-                ? "Missing browser companions"
-                : browserSettings.message,
-            observedAt: browser?.settings.updatedAt ?? checkedAt,
-          },
-          {
-            label: "Browser companions",
-            state: browserReadiness
-              ? browserReadiness.ready
-                ? "working"
-                : browserReadiness.connectedCompanions.length > 0
-                  ? "degraded"
-                  : "not_configured"
-              : "degraded",
-            detail: browserReadiness
-              ? `${browserReadiness.recentConnectedCompanions.length}/${browserReadiness.connectedCompanions.length}/${browser?.companions.length ?? 0} recent/connected/paired`
-              : browserCompanions.ok
-                ? "Browser settings failed"
-                : browserCompanions.message,
-            observedAt:
-              browserReadiness?.primaryCompanion?.lastSeenAt ?? checkedAt,
           },
         ],
       }),

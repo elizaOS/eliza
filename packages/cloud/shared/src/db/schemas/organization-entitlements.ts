@@ -6,11 +6,14 @@ import {
   check,
   foreignKey,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { appBillingScopes } from "./app-billing";
 import { billingSubscriptionRevisions, billingSubscriptions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
 
@@ -19,6 +22,11 @@ export type EntitlementPlanKey = (typeof ENTITLEMENT_PLAN_KEYS)[number];
 
 export const ORGANIZATION_ENTITLEMENT_STATES = [
   "free",
+  "trialing",
+  "paused",
+  "canceled",
+  "incomplete",
+  "incomplete_expired",
   "active",
   "grace",
   "past_due",
@@ -29,10 +37,15 @@ export type OrganizationEntitlementState = (typeof ORGANIZATION_ENTITLEMENT_STAT
 export const organizationEntitlements = pgTable(
   "organization_entitlements",
   {
+    id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    access: text("access").$type<"granted" | "read_only" | "denied">().notNull().default("granted"),
+    features: jsonb("features").$type<string[]>().notNull().default([]),
+    quantity: integer("quantity").notNull().default(1),
     organization_id: uuid("organization_id")
-      .primaryKey()
+      .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    plan_key: text("plan_key").$type<EntitlementPlanKey>().notNull(),
+    plan_key: text("plan_key").notNull(),
     state: text("state").$type<OrganizationEntitlementState>().notNull(),
     entitlement_effective: boolean("entitlement_effective").notNull(),
     effective_from: timestamp("effective_from", { withTimezone: true }).notNull(),
@@ -58,6 +71,16 @@ export const organizationEntitlements = pgTable(
     rebuilt_at: timestamp("rebuilt_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
+    legacy_unique: uniqueIndex("organization_entitlements_legacy_org_idx")
+      .on(table.organization_id)
+      .where(sql`${table.billing_scope_id} IS NULL`),
+    scope_unique: uniqueIndex("organization_entitlements_scope_idx")
+      .on(table.billing_scope_id)
+      .where(sql`${table.billing_scope_id} IS NOT NULL`),
     source_subscription_tenant_fk: foreignKey({
       columns: [table.source_subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -78,7 +101,7 @@ export const organizationEntitlements = pgTable(
     }).onDelete("restrict"),
     plan_state_check: check(
       "organization_entitlements_plan_state_check",
-      sql`${table.plan_key} IN ('free','plus_monthly','pro_monthly') AND ${table.state} IN ('free','active','grace','past_due','unpaid') AND ((${table.plan_key} = 'free' AND ${table.state} = 'free' AND ${table.entitlement_effective} AND (${table.source_subscription_id} IS NULL) = (${table.source_subscription_revision} IS NULL)) OR (${table.plan_key} <> 'free' AND ${table.state} <> 'free' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND (${table.entitlement_effective} = (${table.state} IN ('active','grace')))))`,
+      sql`(${table.billing_scope_id} IS NOT NULL AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND ${table.state} IN ('trialing','active','grace','past_due','unpaid','paused','canceled','incomplete','incomplete_expired') AND ${table.access} IN ('granted','read_only','denied') AND ${table.entitlement_effective} = (${table.access} = 'granted')) OR (${table.billing_scope_id} IS NULL AND ${table.plan_key} IN ('free','plus_monthly','pro_monthly') AND ${table.state} IN ('free','active','grace','past_due','unpaid') AND ((${table.plan_key} = 'free' AND ${table.state} = 'free' AND ${table.entitlement_effective} AND (${table.source_subscription_id} IS NULL) = (${table.source_subscription_revision} IS NULL)) OR (${table.plan_key} <> 'free' AND ${table.state} <> 'free' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND (${table.entitlement_effective} = (${table.state} IN ('active','grace'))))))`,
     ),
     effective_bounds_check: check(
       "organization_entitlements_effective_bounds_check",

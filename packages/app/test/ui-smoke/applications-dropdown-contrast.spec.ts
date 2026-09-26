@@ -31,11 +31,13 @@
  * (helpers/cloud-audit-fixtures) so ApplicationDetailPage reaches its real
  * analytics/earnings tab instead of the session-not-ready loading spinner.
  *
- * Output: aesthetic-audit-output-cloud/applications-dropdown/<mode>/<slug>.png
+ * Output: test-results/aesthetic-audit-cloud/applications-dropdown/<mode>/<slug>.png
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
 import {
   installCloudApiStubs,
@@ -50,8 +52,7 @@ import {
 const THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
 
 const OUTPUT_ROOT = path.join(
-  process.env.ELIZA_AUDIT_CLOUD_DIR ??
-    path.join(process.cwd(), "aesthetic-audit-output-cloud"),
+  process.env.ELIZA_AUDIT_CLOUD_DIR ?? testOutputPath("aesthetic-audit-cloud"),
   "applications-dropdown",
 );
 

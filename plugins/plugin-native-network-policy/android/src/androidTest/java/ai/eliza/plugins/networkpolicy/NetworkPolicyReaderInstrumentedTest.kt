@@ -51,10 +51,30 @@ class NetworkPolicyReaderInstrumentedTest {
     }
 
     @Test
+    fun readNetworkState_usesOneValidatedCapabilitySnapshot() {
+        val result = NetworkPolicyReader.readNetworkState(ctx)
+        assertEquals("android-os", result.getString("source"))
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val active = cm.activeNetwork
+        val caps = active?.let { cm.getNetworkCapabilities(it) }
+        if (active == null) {
+            assertEquals("none", result.getString("connectionType"))
+            assertTrue(result.isNull("metered"))
+        } else if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+            !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+            assertEquals("unknown", result.getString("connectionType"))
+            assertTrue(result.isNull("metered"))
+        } else {
+            assertEquals(!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED), result.getBoolean("metered"))
+            assertTrue(listOf("wifi", "ethernet", "cellular", "unknown").contains(result.getString("connectionType")))
+        }
+    }
+
+    @Test
     fun readPathHints_returnsTheAndroidNoInfoShape() {
         val result = NetworkPolicyReader.readPathHints()
-        assertEquals(false, result.getBoolean("isExpensive"))
-        assertEquals(false, result.getBoolean("isConstrained"))
+        assertTrue(result.has("isExpensive") && result.isNull("isExpensive"))
+        assertTrue(result.has("isConstrained") && result.isNull("isConstrained"))
         assertEquals("nw-path-monitor", result.getString("source"))
     }
 }

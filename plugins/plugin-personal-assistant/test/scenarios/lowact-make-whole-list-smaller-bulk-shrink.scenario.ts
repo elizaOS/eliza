@@ -18,7 +18,7 @@
  * actually made lighter (defer/archive/collapse), and NOT a destructive wipe of
  * everything; a gentle confirm before large changes is fine.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

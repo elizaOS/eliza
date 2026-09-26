@@ -5,14 +5,10 @@
 
 import {
 	fetchWithSsrfGuard,
-	type LookupFn,
 	type PinnedLookupFetchLike,
-	type SsrfPolicy,
-} from "../network/index.js";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+} from "../network/fetch-guard.js";
+import type { LookupFn, SsrfPolicy } from "../network/ssrf.js";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.js";
 import { detectMime, extensionForMime } from "./mime.js";
 
 export type FetchMediaResult = {
@@ -48,6 +44,8 @@ export type FetchMediaOptions = {
 	url: string;
 	fetchImpl?: FetchLike;
 	filePathHint?: string;
+	/** Transparent application identification for hosts that require a named client. */
+	userAgent?: string;
 	maxBytes?: number;
 	maxRedirects?: number;
 	timeoutMs?: number;
@@ -177,6 +175,10 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 	try {
 		return await fetchWithSsrfGuard({
 			url: options.url,
+			init:
+				options.userAgent === undefined
+					? undefined
+					: { headers: { "User-Agent": options.userAgent } },
 			fetchImpl: options.fetchImpl,
 			maxRedirects: options.maxRedirects,
 			timeoutMs: undefined,

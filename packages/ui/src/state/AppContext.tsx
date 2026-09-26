@@ -275,7 +275,7 @@ function AppProviderInner({
 
   // --- Pairing ---
   // --- Pairing (via usePairingState) ---
-  const pairingHook = usePairingState();
+  const pairingHook = usePairingState(retryStartup);
   const {
     state: {
       pairingEnabled,
@@ -888,6 +888,8 @@ function AppProviderInner({
     setElizaCloudStatusReason,
     cloudDashboardView,
     setCloudDashboardView,
+    elizaCloudStatusLoading,
+    elizaCloudStatusUnavailable,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
     setElizaCloudLoginError,
@@ -977,6 +979,8 @@ function AppProviderInner({
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,
@@ -1008,9 +1012,6 @@ function AppProviderInner({
     updateChannelSaving,
     loadUpdateStatus,
     handleChannelChange,
-    extensionStatus,
-    extensionChecking,
-    checkExtensionStatus,
   } = dataLoaders;
 
   // pollCloudCredits is now provided by useCloudState (cloudHook — wired below)
@@ -1449,6 +1450,10 @@ function AppProviderInner({
   // during the post-(re)start window before those services finish starting.
   const agentRunningRef = useRef(agentStatus?.state === "running");
   agentRunningRef.current = agentStatus?.state === "running";
+  const codingAgentsEnabledRef = useRef(false);
+  codingAgentsEnabledRef.current = plugins.some(
+    (plugin) => plugin.id === "agent-orchestrator" && plugin.enabled,
+  );
 
   // ── StartupCoordinator (sole startup authority) ──────────────────────
   // Called after all dependency hooks so every setter/callback is available.
@@ -1484,7 +1489,6 @@ function AppProviderInner({
     loadWalletConfig,
     loadInventory,
     loadUpdateStatus,
-    checkExtensionStatus,
     pollCloudCredits,
     fetchAutonomyReplay,
     appendAutonomousEvent,
@@ -1494,6 +1498,7 @@ function AppProviderInner({
     setPtySessions,
     hasPtySessionsRef,
     agentRunningRef,
+    codingAgentsEnabledRef,
     setTab,
     setTabRaw,
     setConversationMessages,
@@ -1711,12 +1716,16 @@ function AppProviderInner({
       removeConversationMessage,
       setConversationMessages,
       prependConversationMessages,
+      getConversationMessagesSnapshot,
+      applyConversationMessageStream,
     }),
     [
       conversationMessages,
       removeConversationMessage,
       setConversationMessages,
       prependConversationMessages,
+      getConversationMessagesSnapshot,
+      applyConversationMessageStream,
     ],
   );
 
@@ -1910,6 +1919,9 @@ function AppProviderInner({
       elizaCloudStatusReason,
       ownerName,
       cloudDashboardView,
+      elizaCloudStatusLoading,
+      elizaCloudStatusUnavailable,
+      refreshCloudStatus: pollCloudCredits,
       elizaCloudLoginBusy,
       elizaCloudLoginError,
       elizaCloudLoginFallbackUrl,
@@ -1918,8 +1930,6 @@ function AppProviderInner({
       updateStatus,
       updateLoading,
       updateChannelSaving,
-      extensionStatus,
-      extensionChecking,
       storePlugins,
       storeSearch,
       storeFilter,
@@ -2109,7 +2119,6 @@ function AppProviderInner({
       switchAgentProfile,
       loadUpdateStatus,
       handleChannelChange,
-      checkExtensionStatus,
       openEmotePicker,
       closeEmotePicker,
       loadWorkbench,
@@ -2281,6 +2290,9 @@ function AppProviderInner({
       elizaCloudStatusReason,
       ownerName,
       cloudDashboardView,
+      elizaCloudStatusLoading,
+      elizaCloudStatusUnavailable,
+      pollCloudCredits,
       elizaCloudLoginBusy,
       elizaCloudLoginError,
       elizaCloudLoginFallbackUrl,
@@ -2288,8 +2300,6 @@ function AppProviderInner({
       updateStatus,
       updateLoading,
       updateChannelSaving,
-      extensionStatus,
-      extensionChecking,
       storePlugins,
       storeSearch,
       storeFilter,
@@ -2473,7 +2483,6 @@ function AppProviderInner({
       switchAgentProfile,
       loadUpdateStatus,
       handleChannelChange,
-      checkExtensionStatus,
       openEmotePicker,
       closeEmotePicker,
       loadWorkbench,

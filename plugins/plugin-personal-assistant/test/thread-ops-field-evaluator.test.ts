@@ -17,14 +17,15 @@ import type {
   ResponseHandlerFieldContext,
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import * as assistantState from "@elizaos/plugin-assistant";
+import { describe, expect, it, vi } from "vitest";
 import { threadOpsFieldEvaluator } from "../src/lifeops/work-threads/field-evaluator-thread-ops";
 
 interface FakeRuntimeOverrides {
   ownerAccess?: boolean;
   activeThreads?: number;
-  pendingPrompts?: number;
   hasActiveTurn?: boolean;
+  hasAbortableTurn?: boolean;
   abortTurnReturn?: boolean;
   onAbortTurn?: (roomId: string, reason: string) => void;
 }
@@ -33,30 +34,36 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
   const {
     ownerAccess = true,
     activeThreads = 0,
-    pendingPrompts = 0,
     hasActiveTurn = false,
+    hasAbortableTurn = false,
     abortTurnReturn = true,
     onAbortTurn,
   } = overrides;
+  const cache = new Map<string, unknown>();
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     // No pending AWAITING_CHOICE tasks by default — the abort-path pick guard
     // queries this before honoring an abort op.
     getTasks: async () => [],
+    getService: () => null,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+    },
     logger: {
       debug: () => {},
       info: () => {},
       warn: () => {},
       error: () => {},
     },
-    // hasOwnerAccess() in @elizaos/agent reads from runtime.character.owners
-    // and the message's entityId. We bypass it by monkey-patching the module
-    // import at test boundary — simpler is to intercept via the fake's
-    // owner/entity helpers. The implementation we care about is that
-    // hasOwnerAccess returns ownerAccess.
-    character: {
-      owners: ownerAccess ? ["00000000-0000-0000-0000-deadbeefdead"] : [],
-    },
+    getSetting: (key: string) =>
+      key === "ELIZA_ADMIN_ENTITY_ID"
+        ? ownerAccess
+          ? "00000000-0000-0000-0000-deadbeefdead"
+          : "00000000-0000-0000-0000-000000000002"
+        : undefined,
+    getRoom: async () => null,
+    reportError: vi.fn(),
     adapter: {
       db: {
         execute: async () => {
@@ -92,13 +99,13 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
     turnControllers: {
       hasActiveTurn: (roomId: string) =>
         Boolean(hasActiveTurn) && roomId === "room-1",
+      hasAbortableTurn: (roomId: string) =>
+        Boolean(hasAbortableTurn) && roomId === "room-1",
       abortTurn: (roomId: string, reason: string) => {
         if (onAbortTurn) onAbortTurn(roomId, reason);
         return abortTurnReturn;
       },
     },
-    // Stubs needed by createPendingPromptsStore.list():
-    _pendingPromptCount: pendingPrompts,
   };
 }
 
@@ -130,6 +137,55 @@ function buildCtx(
 }
 
 describe("threadOpsFieldEvaluator", () => {
+  describe("prompt admission", () => {
+    it("keeps the owner gate even when another turn is active", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(
+            buildFakeRuntime({ ownerAccess: false, hasAbortableTurn: true }),
+          ),
+        ),
+      ).toBe(false);
+    });
+
+    it("does not treat its own prompt-building turn as interruptible work", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(buildFakeRuntime({ hasActiveTurn: true })),
+        ),
+      ).toBe(false);
+    });
+
+    it("keeps instructions for another turn that can be interrupted", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(
+            buildFakeRuntime({ hasActiveTurn: true, hasAbortableTurn: true }),
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    it("keeps instructions while a user answer is pending", async () => {
+      const ctx = buildCtx(buildFakeRuntime());
+      await assistantState.createPendingPromptsStore(ctx.runtime).record({
+        taskId: "pending-1",
+        roomId: "room-1",
+        promptSnippet: "Proceed?",
+        firedAt: new Date().toISOString(),
+      });
+      expect(await threadOpsFieldEvaluator.shouldRun?.(ctx)).toBe(true);
+    });
+
+    it("keeps instructions for an existing durable thread", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(buildFakeRuntime({ activeThreads: 1 })),
+        ),
+      ).toBe(true);
+    });
+  });
+
   describe("identity", () => {
     it("has the expected name, priority, and description", () => {
       expect(threadOpsFieldEvaluator.name).toBe("threadOps");

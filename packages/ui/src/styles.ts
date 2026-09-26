@@ -7,5 +7,8 @@
  */
 import "./styles/styles.css";
 import "./styles/brand-gold.css";
-import "./cloud-ui/index.css";
-import "@elizaos/ui/styles/login.css";
+// The shared sheet owns Tailwind; importing the standalone Cloud sheet here
+// would emit base utilities again after responsive overrides.
+import "@rainbow-me/rainbowkit/styles.css";
+import "@solana/wallet-adapter-react-ui/styles.css";
+import "./styles/login.css";

@@ -8,11 +8,12 @@
  * shapes or strict loopback, so changing only the persisted `kind` cannot turn
  * an arbitrary public host into a Steward-token target.
  */
+
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared/contracts";
-import { classifyElizaHostname } from "@elizaos/shared/elizacloud";
+} from "@elizaos/core/contracts/cloud-pair";
+import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
 import {
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
@@ -22,11 +23,9 @@ import {
 const REMOTE_FALLBACK_API_BASE_ENV_KEY = "VITE_ELIZA_REMOTE_FALLBACK_API_BASE";
 const REMOTE_FALLBACK_RUNTIME_GLOBAL =
   "__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__";
-
 type RemoteFallbackRuntimeGlobal = typeof globalThis & {
   __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: unknown;
 };
-
 function configuredRemoteFallbackApiBase(): string | undefined {
   // `@elizaos/ui` can be consumed as a pre-built package. In that shape Vite
   // does not necessarily rewrite `import.meta.env` inside this module even
@@ -37,15 +36,17 @@ function configuredRemoteFallbackApiBase(): string | undefined {
     REMOTE_FALLBACK_RUNTIME_GLOBAL
   ];
   if (typeof runtimeValue === "string") return runtimeValue;
-
   const env =
     typeof import.meta !== "undefined"
-      ? (import.meta as { env?: Record<string, unknown> }).env
+      ? (
+          import.meta as {
+            env?: Record<string, unknown>;
+          }
+        ).env
       : undefined;
   const value = env?.[REMOTE_FALLBACK_API_BASE_ENV_KEY];
   return typeof value === "string" ? value : undefined;
 }
-
 /**
  * Publish the app-entrypoint's validated remote origin to pre-built UI code.
  * A second, different target is rejected so late runtime code cannot repoint a
@@ -58,7 +59,6 @@ export function installBuildConfiguredRemoteApiBaseUrl(apiBase: string): void {
       "[runtime-url-trust] build-configured remote target must be a root HTTPS origin",
     );
   }
-
   const runtime = globalThis as RemoteFallbackRuntimeGlobal;
   const current = runtime[REMOTE_FALLBACK_RUNTIME_GLOBAL];
   if (typeof current === "string" && current !== resolved) {
@@ -68,7 +68,6 @@ export function installBuildConfiguredRemoteApiBaseUrl(apiBase: string): void {
   }
   runtime[REMOTE_FALLBACK_RUNTIME_GLOBAL] = resolved;
 }
-
 /**
  * Return the exact root HTTPS origin compiled into a dedicated remote build.
  * Invalid build input fails closed so callers can use a non-null result as the
@@ -78,7 +77,6 @@ export function getBuildConfiguredRemoteApiBaseUrl(
   configuredBase = configuredRemoteFallbackApiBase(),
 ): string | null {
   if (!configuredBase?.trim()) return null;
-
   try {
     const configured = new URL(configuredBase.trim());
     if (
@@ -98,7 +96,6 @@ export function getBuildConfiguredRemoteApiBaseUrl(
     return null;
   }
 }
-
 /**
  * Trust one exact HTTPS origin compiled into a dedicated remote-fallback app.
  * The configured value is a root origin only: credentials, custom ports,
@@ -109,10 +106,8 @@ export function isTrustedBuildConfiguredRemoteApiBaseUrl(
   configuredBase = configuredRemoteFallbackApiBase(),
 ): boolean {
   if (!apiBase) return false;
-
   const configuredOrigin = getBuildConfiguredRemoteApiBaseUrl(configuredBase);
   if (!configuredOrigin) return false;
-
   try {
     const candidate = new URL(apiBase);
     return (
@@ -130,7 +125,6 @@ export function isTrustedBuildConfiguredRemoteApiBaseUrl(
     return false;
   }
 }
-
 /** Classify URL hostnames without treating bind defaults as loopback. */
 export function isLoopbackHostname(hostname: string): boolean {
   const lower = hostname.toLowerCase();
@@ -146,7 +140,6 @@ export function isLoopbackHostname(hostname: string): boolean {
       h.split(".").every((octet) => Number(octet) <= 255))
   );
 }
-
 export function isTrustedRestoreApiBaseUrl(
   apiBase: string | undefined,
 ): boolean {
@@ -155,7 +148,6 @@ export function isTrustedRestoreApiBaseUrl(
   // in-process: no network dial, no attacker-choosable host, no bearer-token
   // exfiltration surface.
   if (isMobileLocalAgentIpcBase(apiBase)) return true;
-
   let parsed: URL;
   try {
     parsed = new URL(apiBase);
@@ -165,9 +157,7 @@ export function isTrustedRestoreApiBaseUrl(
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return false;
   }
-
   if (isTrustedBuildConfiguredRemoteApiBaseUrl(apiBase)) return true;
-
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (isLoopbackHostname(host) || host === "0.0.0.0") return true;
   if (
@@ -183,7 +173,6 @@ export function isTrustedRestoreApiBaseUrl(
   ) {
     return true;
   }
-
   // RFC1918 / CGNAT (Tailscale) / link-local IPv4 + private name suffixes.
   return (
     /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
@@ -201,7 +190,6 @@ export function isTrustedRestoreApiBaseUrl(
     host.endsWith(".ts.net")
   );
 }
-
 function decodedPathAgentId(value: string): string | null {
   try {
     const decoded = decodeURIComponent(value).trim().toLowerCase();
@@ -213,14 +201,12 @@ function decodedPathAgentId(value: string): string | null {
     return null;
   }
 }
-
 function agentIdMatches(
   candidate: string,
   expectedAgentId: string | null,
 ): boolean {
   return expectedAgentId === null || candidate === expectedAgentId;
 }
-
 /**
  * Validate a persisted Cloud API base before any owner or agent bearer is
  * attached. Canonical dedicated hosts bind one DNS label to the expected agent;
@@ -232,7 +218,6 @@ export function isTrustedCloudApiBaseUrl(
   expectedAgentId?: string | null,
 ): boolean {
   if (!apiBase) return false;
-
   const hasExpectedAgentId =
     expectedAgentId !== undefined && expectedAgentId !== null;
   const normalizedExpectedAgentId = expectedAgentId?.trim().toLowerCase() ?? "";
@@ -244,7 +229,6 @@ export function isTrustedCloudApiBaseUrl(
     return false;
   }
   const expected = hasExpectedAgentId ? normalizedExpectedAgentId : null;
-
   let url: URL;
   try {
     url = new URL(apiBase);
@@ -253,7 +237,6 @@ export function isTrustedCloudApiBaseUrl(
     return false;
   }
   if (url.username || url.password || url.search || url.hash) return false;
-
   const normalizedPath = url.pathname.replace(/\/+$/, "");
   if (isCloudPairLoopbackOrigin(url.origin)) {
     if (normalizedPath === "") return true;
@@ -270,7 +253,6 @@ export function isTrustedCloudApiBaseUrl(
     return candidate !== null && agentIdMatches(candidate, expected);
   }
   if (url.protocol !== "https:" || url.port) return false;
-
   const host = url.hostname.toLowerCase();
   if (ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)) {
     if (normalizedPath === "" || normalizedPath === "/api/v1/eliza/agents") {
@@ -283,7 +265,6 @@ export function isTrustedCloudApiBaseUrl(
     const candidate = decodedPathAgentId(match[1]);
     return candidate !== null && agentIdMatches(candidate, expected);
   }
-
   const classified = classifyElizaHostname(host);
   if (
     (classified.role !== "dedicated-agent" &&

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Process entrypoint for the `eliza-autonomous` binary. Before any heavy import
  * it enables Node's persistent V8 compile cache (anchored to the shared state
@@ -11,22 +10,26 @@
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
+import {
+  captureHostExecutionBaseline,
+  isAndroidMobile,
+  readAliasedEnv,
+} from "@elizaos/core";
+
+import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
+
 // Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
 // boot-config alias table — the reader path, with no process.env mirror
-// (issue #13423). `@elizaos/shared` is already a transitive static import via
+// (issue #13423). `@elizaos/core` is already a transitive static import via
 // `./cli/index.ts`, so this adds no new module to the boot graph; before the
 // alias table is seeded these fall back to the raw ELIZA_ value.
-import { isAndroidMobile, readAliasedEnv } from "@elizaos/shared";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
-
 // Establish the host executable-search authority before the CLI dynamically
 // imports runtime configuration or any plugin code.
 captureHostExecutionBaseline();
-
 // Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
 // the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
 // source. Anchored to <stateDir>/cache/node-compile — the SAME dir the dev
-// orchestrator pins via NODE_COMPILE_CACHE (dev-ui.mjs) — so the packaged CLI
+// orchestrator pins via NODE_COMPILE_CACHE (dev-ui.ts) — so the packaged CLI
 // path and the dev path share one warm cache instead of two.
 //
 // When NODE_COMPILE_CACHE is already set (dev path), Node enables the cache
@@ -62,9 +65,6 @@ captureHostExecutionBaseline();
     // V8 compile cache is a pure boot-time optimization; ignore any failure.
   }
 })();
-
-import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
-
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
 // Uses raw node:fs so the shim can't interfere. Writes to $ELIZA_STATE_DIR/bin-debug.log.
 const _binDebugLog = isAndroidMobile()
@@ -98,13 +98,11 @@ const _binDebugLog = isAndroidMobile()
 _binDebugLog(
   `[bin.ts] started ELIZA_PLATFORM=${readAliasedEnv("ELIZA_PLATFORM") ?? "(unset)"} ELIZA_STATE_DIR=${readAliasedEnv("ELIZA_STATE_DIR") ?? "(unset)"}`,
 );
-
 // Mobile devices ship no /etc/resolv.conf, so the musl bun agent can't resolve
 // DNS — every outbound fetch (cloud, model catalog, connectors) fails until we
 // point the resolver at public nameservers. No-op off-device. Runs at module
 // eval, before the runtime boots or any fetch fires.
 configureMobileDnsIfNeeded();
-
 async function bootstrapMobileEntrypoint(): Promise<void> {
   if (isAndroidMobile()) {
     _binDebugLog("[bin.ts] entering android block");
@@ -121,7 +119,6 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
         `[bin.ts] aosp-local-inference init error (ok): ${e instanceof Error ? e.message : String(e)}`,
       );
     }
-
     try {
       await import("./runtime/android-app-plugins.ts");
       _binDebugLog("[bin.ts] android-app-plugins loaded ok");
@@ -133,25 +130,22 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
       );
     }
   }
-
   if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
     try {
       // Bundle anchor only: eliza.ts imports and calls
       // ensureMobileDeviceBridgeInferenceHandlers on the runtime.
       await import(
-        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+        "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
       );
     } catch {
       // Device bridge is explicitly opt-in; absence just leaves cloud/local-model
       // provider selection to the runtime.
     }
   }
-
   _binDebugLog("[bin.ts] pre-runAutonomousCli");
   const { runAutonomousCli } = await import("./cli/index.ts");
   await runAutonomousCli();
 }
-
 bootstrapMobileEntrypoint().catch((error) => {
   const msg =
     error instanceof Error ? (error.stack ?? error.message) : String(error);

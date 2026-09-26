@@ -1,5 +1,5 @@
 /** Exercises MFA rendering and step-up state through deterministic authentication context. */
-import { LoginApiError } from "@elizaos/login";
+import { LoginApiError } from "@elizaos/auth";
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";

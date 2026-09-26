@@ -7,7 +7,7 @@
  *   - on-disk credential records under `<stateDir>/auth/...`
  *     (`account-storage.ts`),
  *   - rich `LinkedAccountConfig` records (label / enabled / priority /
- *     health / usage) owned by `AccountPool` in `@elizaos/app-core`,
+ *     health / usage) owned by `AccountPool` in `@elizaos/app`,
  *   - the in-flight OAuth flow registry (`auth/oauth-flow.ts`) used by
  *     the `oauth/start` + SSE `oauth/status` + `oauth/cancel` trio.
  *
@@ -36,10 +36,11 @@ import {
   listAccounts,
   loadAccount,
   saveAccount,
-} from "@elizaos/auth/account-storage";
-import { fetchCodexUsage } from "@elizaos/auth/codex-usage";
-import { getAccessToken } from "@elizaos/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
+  updateAccountMetadata,
+} from "@elizaos/auth/auth/account-storage";
+import { fetchCodexUsage } from "@elizaos/auth/auth/codex-usage";
+import { getAccessToken } from "@elizaos/auth/auth/credentials";
+import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
 import {
   cancelFlow,
   getFlowState,
@@ -47,7 +48,7 @@ import {
   startCodexOAuthFlow,
   submitFlowCode,
   subscribeFlow,
-} from "@elizaos/auth/oauth-flow";
+} from "@elizaos/auth/auth/oauth-flow";
 import {
   type AccountCredentialProvider,
   CODING_PLAN_PROVIDER_BASE_URL,
@@ -60,31 +61,31 @@ import {
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
-} from "@elizaos/auth/types";
-import type { AccountPoolBrokerSnapshot, IAgentRuntime } from "@elizaos/core";
+} from "@elizaos/auth/auth/types";
 import {
-  ElizaError,
-  logger,
-  resolveStateDir,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import {
+  type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
+  type ElizaConfig,
+  ElizaError,
+  type IAgentRuntime,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
+  logger,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
+  type RouteRequestContext,
   resolveServiceRoutingInConfig,
+  resolveStateDir,
   type ServiceRouteAccountStrategy,
-} from "@elizaos/shared";
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+
 import * as zod from "zod";
-import type { ElizaConfig } from "../config/types.eliza.ts";
 import {
   runSubscriptionCliNpm,
   subscriptionCliCommandAvailable,
@@ -275,7 +276,7 @@ function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {
 // All `LinkedAccountConfig` records (label / enabled / priority / health /
 // usage) are owned by the host account-pool, injected downward through the
 // agent host bridge (see ../runtime/host-bridge.ts). Account routes read it via
-// `getAgentHostBridge()` so agent never imports `@elizaos/app-core`.
+// `getAgentHostBridge()` so agent never imports `@elizaos/app`.
 
 interface PoolFacade {
   list(providerId?: string): LinkedAccountConfig[];
@@ -288,6 +289,8 @@ interface PoolFacade {
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
   sweepExpired?(providerId?: string): Promise<number>;
+  /** Current hosts share one validated read across inventory projections. */
+  readSnapshot?(): Pick<PoolFacade, "list" | "selectionState">;
   /**
    * Non-mutating "which account is next + why" dry-run for the accounts API.
    * Older host bridges may not implement it; callers must null-guard.
@@ -618,7 +621,7 @@ async function probeAnthropicUsage(accessToken: string): Promise<{
         "anthropic-version": "2023-06-01",
         // OAuth subscription tokens are rejected with a 401 unless the
         // oauth beta header is present — same header the canonical
-        // `pollAnthropicUsage` (app-core account-usage) sends.
+        // `pollAnthropicUsage` (app account-usage) sends.
         "anthropic-beta": "oauth-2025-04-20",
         Authorization: `Bearer ${accessToken}`,
       },
@@ -668,7 +671,7 @@ async function probeCodexUsage(
 }> {
   const start = Date.now();
   try {
-    // One canonical probe: `@elizaos/auth/codex-usage` hits the ChatGPT/Codex
+    // One canonical probe: `@elizaos/auth/auth/codex-usage` hits the ChatGPT/Codex
     // backend the subscription token actually authenticates against (NOT
     // api.openai.com completions, which bills the API platform org and fails
     // healthy subscription accounts with billing errors), runtime-validates
@@ -920,10 +923,11 @@ async function handleListAllAccounts(
   const pool = await requirePool(ctx);
   if (!pool) return true;
   await pool.sweepExpired?.();
+  const inventory = pool.readSnapshot?.() ?? pool;
   const broker = brokerSnapshot();
   const providers = await Promise.all(
     SUPPORTED_PROVIDER_IDS.map(async (providerId) => {
-      const linkedConfigs = pool.list(providerId).sort((a, b) => {
+      const linkedConfigs = inventory.list(providerId).sort((a, b) => {
         const aPriority =
           typeof a.priority === "number" && Number.isFinite(a.priority)
             ? a.priority
@@ -943,7 +947,7 @@ async function handleListAllAccounts(
       // Non-mutating dry-run: which account the pool would serve next + why,
       // so the UI can label the active row without re-deriving policy. Guarded
       // because older host bridges may not implement selectionState.
-      const selection = pool.selectionState?.(providerId, strategy);
+      const selection = inventory.selectionState?.(providerId, strategy);
       const providerBroker = broker.providers[providerId];
       const lastSelection = providerBroker?.lastSelection
         ? {
@@ -1536,19 +1540,28 @@ async function handlePatchAccount(
           }
       : {}),
   };
-  await pool.upsert(next);
-
   // Mirror label changes onto the on-disk credential so listAccounts()
   // and the runtime keep reading the same name.
   if (parsed.data.label !== undefined) {
     const accountProvider = asAccountCredentialProvider(providerId);
-    if (accountProvider) {
-      const record = loadAccount(accountProvider, accountId, storagePolicy);
-      if (record && record.label !== parsed.data.label) {
-        saveAccount({ ...record, label: parsed.data.label }, storagePolicy);
+    // External CLI accounts may intentionally have no imported credential.
+    if (
+      accountProvider &&
+      loadAccount(accountProvider, accountId, storagePolicy)
+    ) {
+      const outcome = updateAccountMetadata(
+        accountProvider,
+        accountId,
+        { label: parsed.data.label },
+        storagePolicy,
+      );
+      if (outcome.kind === "missing") {
+        error(res, "Account credentials were removed during the update", 404);
+        return true;
       }
     }
   }
+  await pool.upsert(next);
   if (parsed.data.enabled !== undefined || parsed.data.priority !== undefined) {
     await syncDirectProviderCredentials(ctx, providerId);
   }

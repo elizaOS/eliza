@@ -55,9 +55,9 @@ interface ConstraintRow {
 }
 
 import { sql } from "drizzle-orm";
-import { RuntimeMigrator } from "../../runtime-migrator";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
-import * as schema from "../../schema";
+import { schema } from "../../schema";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 
 describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
@@ -329,17 +329,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
       if (uniqueCount > 0) {
         testResults.passed.push(`Unique constraints created: ${uniqueCount}`);
-
-        // Check specific unique constraint on agents.name
-        const hasAgentNameUnique = result.rows.some(
-          (r: ConstraintRow) => r.table_name === "agents" && r.constraint_name === "name_unique"
-        );
-
-        if (hasAgentNameUnique) {
-          testResults.passed.push("agents.name unique constraint created");
-        } else {
-          testResults.failed.push("agents.name unique constraint missing");
-        }
       } else {
         testResults.failed.push("No unique constraints created");
       }

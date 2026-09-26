@@ -3,16 +3,15 @@
  * tick from the owner's merged schedule state — sleep/wake status, regularity,
  * and bedtime-target timing — the sleep/wake `LifeOpsEventKind` events.
  */
-import type {
-  LifeOpsCircadianState,
-  LifeOpsEventKind,
-  LifeOpsRegularityClass,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleSleepStatus,
-  LifeOpsUnclearReason,
+import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import {
+  type LifeOpsCircadianState,
+  type LifeOpsEventKind,
+  type LifeOpsRegularityClass,
+  type LifeOpsScheduleInsight,
+  type LifeOpsScheduleSleepStatus,
+  type LifeOpsUnclearReason,
 } from "../contracts/health.js";
-import { parseIsoMs } from "../util/time-util.js";
-
 /**
  * Structural shape of `LifeOpsScheduleMergedState` (declared in
  * `app-lifeops/src/lifeops/schedule-sync-contracts.ts`) restricted to the
@@ -25,7 +24,6 @@ export interface LifeOpsScheduleMergedStateRecord
   id: string;
   agentId: string;
 }
-
 /**
  * Typed payload for every circadian-state event emitted from the scheduler
  * tick. Every field is derived from the merged state record, and must not
@@ -43,7 +41,6 @@ interface LifeOpsDerivedEventPayload {
   bedtimeTargetAt: string | null;
   minutesUntilBedtimeTarget: number | null;
 }
-
 export interface LifeOpsDerivedEvent {
   id: string;
   kind: Exclude<
@@ -56,7 +53,6 @@ export interface LifeOpsDerivedEvent {
   confidence: number;
   payload: LifeOpsDerivedEventPayload;
 }
-
 /**
  * ActivitySignalBus family carried for each derived circadian event kind.
  * Values are members of `HEALTH_BUS_FAMILIES` (`../connectors/index.ts`);
@@ -76,7 +72,6 @@ const HEALTH_BUS_FAMILY_BY_DERIVED_EVENT_KIND: Partial<
   "lifeops.bedtime.imminent": "health.bedtime.imminent",
   "lifeops.regularity.changed": "health.regularity.changed",
 };
-
 /**
  * Resolves the bus family a derived circadian event publishes under, or
  * `null` for kinds that intentionally do not reach the bus. The production
@@ -90,7 +85,6 @@ export function healthBusFamilyForDerivedEventKind(
 ): string | null {
   return HEALTH_BUS_FAMILY_BY_DERIVED_EVENT_KIND[kind] ?? null;
 }
-
 function buildEvent(args: {
   kind: LifeOpsDerivedEvent["kind"];
   occurredAt: string;
@@ -118,15 +112,12 @@ function buildEvent(args: {
     },
   };
 }
-
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }
-
 function isAwakeState(state: LifeOpsCircadianState): boolean {
   return state === "awake" || state === "waking";
 }
-
 /**
  * Edge-triggered circadian event derivation per `sleep-wake-spec.md`:
  * - Events fire only on state transitions, never on stable ticks.
@@ -153,7 +144,6 @@ export function deriveSleepWakeEvents(args: {
   const currentState = current.circadianState;
   const previousState = previous?.circadianState ?? null;
   const stateChanged = previousState !== currentState;
-
   if (stateChanged) {
     // sleep.onset_candidate + sleep.detected on any -> sleeping edge
     if (currentState === "sleeping" && current.currentSleepStartedAt) {
@@ -176,7 +166,6 @@ export function deriveSleepWakeEvents(args: {
         }),
       );
     }
-
     // nap.detected on any -> napping edge
     if (currentState === "napping" && current.currentSleepStartedAt) {
       events.push(
@@ -189,7 +178,6 @@ export function deriveSleepWakeEvents(args: {
         }),
       );
     }
-
     // wake.observed on (sleeping|napping) -> waking edge
     if (
       currentState === "waking" &&
@@ -207,7 +195,6 @@ export function deriveSleepWakeEvents(args: {
         }),
       );
     }
-
     // wake.confirmed + sleep.ended on waking -> awake edge
     if (
       currentState === "awake" &&
@@ -235,13 +222,11 @@ export function deriveSleepWakeEvents(args: {
         );
       }
     }
-
     // Note: cold-boot (no previous state) does not synthesize any circadian
     // event. The first tick landed in its scored state because the
     // stability-window gate bypassed when priorState was null; the next
     // real transition will emit the appropriate edge-triggered event.
   }
-
   // bedtime.imminent — edge-triggered when minutesUntilBedtimeTarget crosses
   // into the [0, 30] window from above.
   const previousMinutesUntilBedtime =
@@ -269,7 +254,6 @@ export function deriveSleepWakeEvents(args: {
       }),
     );
   }
-
   // regularity.changed — edge-triggered on regularityClass transitions.
   const previousClass = previous?.regularity.regularityClass ?? null;
   const currentClass = current.regularity.regularityClass;
@@ -284,6 +268,5 @@ export function deriveSleepWakeEvents(args: {
       }),
     );
   }
-
   return events;
 }

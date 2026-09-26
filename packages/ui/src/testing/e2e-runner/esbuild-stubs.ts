@@ -1,21 +1,20 @@
 /**
  * esbuild resolve/load plugins the `__e2e__` fixture runners share to bundle a
- * shell fixture for the browser. The overlay's import graph transitively reaches
- * server-only code — `@elizaos/core` module-init that touches `process` + node
- * builtins — which is dead at render in a headless page. Production Vite
- * resolves core's `browser` export condition; a raw esbuild bundle does not, so
- * these plugins replace those edges with no-op proxies.
+ * shell fixture for the browser. These isolated fixtures replace server-only
+ * core and Node imports with controlled doubles. They validate UI behavior,
+ * not the production renderer's dependency boundary or core runtime behavior.
  *
  * Type-only esbuild import: importing these factories pulls no runtime esbuild, so
  * the frame-glitch harness (which resolves esbuild itself) can share them too.
  */
 
 import { builtinModules } from "node:module";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "esbuild";
 
 /**
  * Replace `@elizaos/core` with a no-op Proxy that answers the render-path symbols
- * the shell reads (`isViewVisible`, `dedupeModalities`, `matchShortcut`,
+ * the shell reads (`isViewVisible`, `dedupeModalities`,
  * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and proxies
  * everything else, so core's Node graph is never bundled.
  */
@@ -29,6 +28,7 @@ export function stubElizaCore(): Plugin {
       }));
       build.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
         contents: `
+        const notifications = require(${JSON.stringify(fileURLToPath(new URL("../../../../core/src/types/notification.ts", import.meta.url)))});
         const noop = new Proxy(() => noop, { get: () => noop });
         // The wake/provision path (client-cloud.ts) subclasses the real
         // ElizaError; esbuild's ESM interop copies only this object's own keys,
@@ -50,14 +50,11 @@ export function stubElizaCore(): Plugin {
         }
         module.exports = new Proxy(
           {
+            ...notifications,
             ElizaError,
             isElizaError: (v) => v instanceof ElizaError,
             isViewVisible: () => true,
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            // Fixture chat messages must fall through to the mocked transport.
-            // Keep this as an own property so esbuild can materialize the named
-            // ESM import reached through slash-menu.ts.
-            matchShortcut: () => null,
             findInteractionRegions: () => [],
             // The stub reports no claimed interaction regions, so preserve the
             // fixture text. This must be a concrete own property: esbuild's ESM
@@ -68,6 +65,7 @@ export function stubElizaCore(): Plugin {
         );
       `,
         loader: "js",
+        resolveDir: fileURLToPath(new URL(".", import.meta.url)),
       }));
     },
   };

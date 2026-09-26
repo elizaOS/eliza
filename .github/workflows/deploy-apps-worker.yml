@@ -165,7 +165,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
-        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+        run: node packages/cloud/scripts/production-effect-certification.ts "$SOURCE_SHA"
 
       - name: Fence current staging SHA before host mutation
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
@@ -302,8 +302,8 @@ jobs:
             # installs are lockfile-pinned and deterministic.
             git checkout "$TARGET_SHA" -- bun.lock
 
-            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then
-              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.4.2" ]; then
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
@@ -320,19 +320,10 @@ jobs:
 
             # The daemon runs under Node/tsx, which resolves linked workspace
             # packages through their built `node` exports — refresh dist files.
-            # Core's build excludes prompts because its full build generates
-            # action docs back into core. Build only the package artifact and
-            # replace any stale installed copy masking the workspace link.
-            mkdir -p packages/core/node_modules/@elizaos
-            rm -rf packages/core/node_modules/@elizaos/prompts
-            ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts
-            test "$(realpath packages/core/node_modules/@elizaos/prompts)" = \
-              /opt/eliza/packages/prompts
-            bun run --cwd packages/prompts build:package
+            bun run build:core
             timeout --signal=TERM --kill-after=5s 30s \
               node --import tsx --input-type=module \
-              -e 'await import("./packages/core/src/prompts.ts")'
-            bun run build:core
+              -e 'await import("@elizaos/core"); await import("@elizaos/plugin-assistant/text/template-rendering")'
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core

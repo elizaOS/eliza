@@ -25,6 +25,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client as apiClient } from "../api/client";
+import { getWindowNavigationPath } from "../navigation";
+import { getClientBrowserSurface } from "../platform/browser-surface";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -149,6 +152,8 @@ export interface UseRealtimeVoiceSessionState {
   connecting: boolean;
   /** Unified status for the mounted composer or an embedded status bar. */
   status: VoiceContinuousStatus;
+  /** Current transient acknowledgement; never persisted as a message. */
+  progressText?: string;
   /** Live partial transcript (server `stt_partial`). "" when none. */
   transcriptPartial: string;
   /** Committed final transcript for the current turn (server `stt_final`). */
@@ -211,24 +216,21 @@ function classifyError(error: Error): RealtimeVoiceError {
     };
   }
   if (error instanceof VoiceSessionMintError) {
-    // A 404 (feature disabled) is NOT an error surface — the caller falls back
-    // to batch. Any other mint status is a real failure; it latches realtime
-    // off, so "will use standard voice" is what the next mic tap actually does.
+    // The caller owns any alternate capture policy. Realtime remains
+    // retryable, so do not promise a provider switch from this shared hook.
     return {
       kind: "mint",
-      message:
-        "Couldn't start realtime voice. The mic will use standard voice instead.",
-      actionable: false,
+      message: "Couldn't start realtime voice. Tap the mic to try again.",
+      actionable: true,
     };
   }
   if (error instanceof VoiceSessionConsentError) {
-    // Consent failures latch realtime off for this surface, so the copy's
-    // promise ("standard voice") is exactly what the next mic tap does.
     return {
       kind: "consent",
-      message:
-        "Couldn't confirm consent for realtime voice. The mic will use standard voice instead.",
-      actionable: false,
+      // This is the server nonce step, not getUserMedia permission. A null
+      // nonce can also mean an unavailable gateway or a malformed response.
+      message: "Voice setup couldn't complete. Tap the mic to try again.",
+      actionable: true,
     };
   }
   // Transport loss past the reconnect budget surfaces as a generic Error from
@@ -295,6 +297,7 @@ export function useRealtimeVoiceSession(
   } = options;
 
   const [status, setStatus] = useState<VoiceContinuousStatus>("idle");
+  const [progressText, setProgressText] = useState<string>();
   const [transcriptPartial, setTranscriptPartial] = useState("");
   const [transcriptFinal, setTranscriptFinal] = useState("");
   const [agentSpeaking, setAgentSpeaking] = useState(false);
@@ -308,6 +311,7 @@ export function useRealtimeVoiceSession(
     useState<RealtimeVoiceFallbackReason | null>(null);
 
   const clientRef = useRef<VoiceSessionClient | null>(null);
+  const teardownRef = useRef<Promise<void> | null>(null);
   // A generation counter so a stale client's async callbacks (a teardown that
   // races a new start) cannot write state for a session the component moved on
   // from.
@@ -408,7 +412,13 @@ export function useRealtimeVoiceSession(
     clientRef.current = null;
     if (client) {
       // error-policy:J6 Socket/microphone teardown is best effort after ownership is cleared.
-      await client.stop().catch(() => {});
+      const pending = client.stop().catch(() => {});
+      teardownRef.current = pending;
+      await pending;
+      if (teardownRef.current === pending) teardownRef.current = null;
+    } else {
+      // Rapid identity changes share the detached client's ongoing teardown.
+      await teardownRef.current;
     }
   }, []);
 
@@ -429,6 +439,7 @@ export function useRealtimeVoiceSession(
       setPaused(false);
       setMicrophoneMuted(false);
       setStatus("idle");
+      setProgressText(undefined);
       setTranscriptPartial("");
     }
     return stoppedGeneration;
@@ -507,6 +518,7 @@ export function useRealtimeVoiceSession(
       setNeedsUnlock(false);
       setPaused(false);
       setStatus("idle");
+      setProgressText(undefined);
       setTranscriptPartial("");
     };
     const armReadyTimer = () => {
@@ -517,6 +529,7 @@ export function useRealtimeVoiceSession(
       );
     };
 
+    const uiTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const client = createClientRef.current({
       // The client's own LIVE reconnect budget (with backoff, healthy refill,
       // and pre-expiry rotation) is the structural answer to transient
@@ -530,6 +543,13 @@ export function useRealtimeVoiceSession(
       preLiveMaxReconnects: clientOptionsRef.current?.preLiveMaxReconnects ?? 0,
       agentId: aId,
       conversationId: cId,
+      getUiContext: () =>
+        clientOptionsRef.current?.getUiContext?.() ?? {
+          uiViewPath: getWindowNavigationPath().split(/[?#]/, 1)[0],
+          uiTimeZone,
+          uiBrowserSurface: getClientBrowserSurface(),
+          uiClientId: apiClient.clientId,
+        },
       // The client invokes this immediately before every mint/re-mint. Keeping
       // the source behind a ref gives reconnects the latest callback and, more
       // importantly, prevents replay of the one-use nonce from the first mint.
@@ -538,6 +558,7 @@ export function useRealtimeVoiceSession(
         if (!isCurrent()) return;
         if (state.phase === "ready") serverReadyForMic = true;
         setStatus(unifiedStatus);
+        setProgressText(state.progressText);
         setAgentSpeaking(state.phase === "speaking");
         // `active` derives ONLY from the client's phase: live means the socket
         // opened, the server sent `ready`, and the mic is capturing. Pre-live
@@ -602,10 +623,8 @@ export function useRealtimeVoiceSession(
         setError(classified);
         setActive(false);
         setConnecting(false);
-        // Latch realtime off only for failures whose copy promises the batch
-        // path ("standard voice"): mint and consent. Actionable kinds
-        // (permission, no-device, transport) keep `available` true so the
-        // advertised mic-tap retry is actually possible.
+        // Release failed clients while retaining eligibility for an explicit
+        // retry. The caller decides whether another capture path is allowed.
         if (
           !micOwnedRef.current ||
           classified.kind === "transport" ||
@@ -794,6 +813,7 @@ export function useRealtimeVoiceSession(
       active,
       connecting,
       status,
+      progressText,
       transcriptPartial,
       transcriptFinal,
       agentSpeaking,
@@ -815,6 +835,7 @@ export function useRealtimeVoiceSession(
       active,
       connecting,
       status,
+      progressText,
       transcriptPartial,
       transcriptFinal,
       agentSpeaking,
@@ -839,13 +860,14 @@ export function useRealtimeVoiceSession(
  * `import.meta.env.VITE_*` at build time, so this MUST be a literal member read
  * (not a dynamic key).
  *
- * Realtime is opt-in on every runtime target so an unrelated build mode cannot
- * silently replace the established batch voice path.
+ * Realtime capability is present by default on every target. Runtime identity,
+ * conversation-bound availability, consent and a user gesture still gate capture.
+ * Explicit false or malformed values disable the capability.
  */
 export function isRealtimeVoiceFlagEnabled(): boolean {
   try {
     const raw = import.meta.env?.VITE_VOICE_REALTIME_WS as unknown;
-    return parseRealtimeVoiceFlag(raw);
+    return raw === undefined || parseRealtimeVoiceFlag(raw);
   } catch {
     // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;

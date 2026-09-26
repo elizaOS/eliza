@@ -21,11 +21,14 @@ function exportNamesWithNative(
     const val = realModule[name];
     return (
       typeof val === "function" &&
-      typeof (val as { native?: unknown }).native === "function"
+      typeof (
+        val as {
+          native?: unknown;
+        }
+      ).native === "function"
     );
   });
 }
-
 /**
  * Generate a virtual ESM module that stubs all exports of a Node built-in.
  * We `require()` the real module at Vite config time (Node process), read its
@@ -105,7 +108,6 @@ export function generateNodeBuiltinStub(
   } catch {
     // Module not available (e.g. dns/promises on some platforms)
   }
-
   // Functions on the real module that carry a `.native` sub-function
   // (fs.realpath / fs.realpathSync). graceful-fs does
   // `clone(require('fs'))` — clone() copies via Object.getOwnPropertyNames,
@@ -130,7 +132,6 @@ export function generateNodeBuiltinStub(
     "const stub = new Proxy(base, handler);",
     "export default stub;",
   ];
-
   const reserved = new Set([
     "default",
     "arguments",
@@ -169,12 +170,10 @@ export function generateNodeBuiltinStub(
     "with",
     "yield",
   ]);
-
   for (const name of exportNames) {
     if (reserved.has(name)) continue;
     // Validate it's a valid JS identifier
     if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) continue;
-
     const val = realModule?.[name];
     if (typeof val === "function") {
       if (
@@ -183,7 +182,13 @@ export function generateNodeBuiltinStub(
         Object.getOwnPropertyNames(val.prototype).length > 1
       ) {
         lines.push(`export class ${name} { constructor() {} }`);
-      } else if (typeof (val as { native?: unknown }).native === "function") {
+      } else if (
+        typeof (
+          val as {
+            native?: unknown;
+          }
+        ).native === "function"
+      ) {
         // Already materialized on `base` (with a `.native` sub-fn) above so the
         // graceful-fs clone keeps it. Re-export the same object by name so the
         // namespace and the default-export clone agree.
@@ -203,10 +208,8 @@ export function generateNodeBuiltinStub(
       lines.push(`export const ${name} = undefined;`);
     }
   }
-
   return lines.join("\n");
 }
-
 /**
  * Dev-mode plugin that stubs native-only packages.  In production builds
  * rollupOptions.external handles this, but the Vite dev server still tries
@@ -218,7 +221,6 @@ export interface NativeModuleStubPluginOptions {
   isCapacitorMobileBuild: boolean;
   requireModule: NodeRequire;
 }
-
 export function nativeModuleStubPlugin(
   options: NativeModuleStubPluginOptions,
 ): Plugin {
@@ -248,30 +250,22 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-local-inference",
     "@elizaos/plugin-anthropic",
     "@elizaos/plugin-pdf",
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
     "@elizaos/plugin-telegram",
-    "@elizaos/plugin-whatsapp",
-    // Node-only edge-tts backend. app-core's runtime/ensure-text-to-speech-handler.ts
+    // Node-only edge-tts backend. app's runtime/ensure-text-to-speech-handler.ts
     // does `await import("@elizaos/plugin-edge-tts")`; the dist barrel pulls that
     // module into the client graph where it must be stubbed (no browser TTS path).
     "@elizaos/plugin-edge-tts",
     // The cloud plugin's runtime surface (cloud secrets, TTS routes,
-    // ElevenLabs key resolver) is server-only. The app-core dist barrel
+    // ElevenLabs key resolver) is server-only. The app dist barrel
     // re-exports symbols from it via api/server.js — stub the bare
     // specifier so rollup's static named-import scan succeeds.
     "@elizaos/plugin-elizacloud",
-    // Plugin registry owns server-side install/discovery HTTP handlers.
-    // app-core's browser reach-through re-exports api/server.ts, so the
-    // renderer must resolve the symbol surface without bundling the server
-    // registry package and its agent-only dependency graph.
-    "@elizaos/plugin-registry",
     // Vault is server/native-only; browser reaches it through optional
     // autofill paths and must not resolve the OS-keychain dependency graph.
-    "@elizaos/vault",
+    "@elizaos/auth/vault",
     // Native argon2 bindings (server-side password hashing in
-    // app-core/api/auth/passwords.ts). Pulled into the browser graph
+    // app/api/auth/passwords.ts). Pulled into the browser graph
     // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
     // re-exported from argon2's own browser.js — also stub it so rollup
     // doesn't try to resolve a wasm shim package we don't ship.
@@ -280,7 +274,7 @@ export function nativeModuleStubPlugin(
     "@protobufjs/inquire",
     // Node-only ANSI colour helpers used by terminal/theme. The shared
     // barrel re-exports terminal/theme so any browser consumer that
-    // imports from `@elizaos/shared` indirectly pulls chalk's bare ESM
+    // imports from `@elizaos/core` indirectly pulls chalk's bare ESM
     // specifier into the output bundle.
     "chalk",
     "drizzle-orm",
@@ -295,7 +289,6 @@ export function nativeModuleStubPlugin(
   // Capacitor native plugins — mobile-only, must never run in the browser.
   // Stubbing prevents Rollup from failing when bun workspaces don't hoist them.
   const capacitorNativeScopeRe = /^@capacitor\/(?!core)(.+)$/;
-
   return {
     name: "native-module-stub",
     enforce: "pre",
@@ -389,7 +382,6 @@ export function nativeModuleStubPlugin(
     },
     load(id) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return null;
-
       const strippedId = id.slice(VIRTUAL_PREFIX.length);
       const modName = strippedId.split("/")[0];
       // node-llama-cpp is the most import-heavy native module — its consumers
@@ -415,7 +407,6 @@ export function nativeModuleStubPlugin(
           "export const LlamaJsonSchemaGrammar = stub;",
         ].join("\n");
       }
-
       // fs-extra: CJS module with default + named exports
       if (modName === "fs-extra") {
         return [
@@ -451,7 +442,6 @@ export function nativeModuleStubPlugin(
           ].map((n) => `export const ${n} = noop;`),
         ].join("\n");
       }
-
       // events: CJS module, consumers use `import { EventEmitter } from "events"`
       if (modName === "events") {
         return [
@@ -465,7 +455,6 @@ export function nativeModuleStubPlugin(
           "export default EventEmitter;",
         ].join("\n");
       }
-
       // undici: Node HTTP client — re-export browser globals (fetch, WebSocket, etc.)
       if (modName === "undici") {
         return [
@@ -488,7 +477,6 @@ export function nativeModuleStubPlugin(
           "export default { fetch, Request, Response, Headers, WebSocket };",
         ].join("\n");
       }
-
       // async_hooks — AsyncLocalStorage must be a real constructor because
       // @elizaos packages do `new AsyncLocalStorage()` at the
       // top level. Uses function-constructor syntax (not class expressions)
@@ -508,7 +496,6 @@ export function nativeModuleStubPlugin(
           "export default { AsyncLocalStorage: AsyncLocalStorage, AsyncResource: AsyncResource, executionAsyncId: executionAsyncId, triggerAsyncId: triggerAsyncId, executionAsyncResource: executionAsyncResource, createHook: createHook };",
         ].join("\n");
       }
-
       // node:* builtins — return a Proxy-based module that provides any
       // named export as a no-op function.  This handles @elizaos/core's node
       // entry which uses createRequire, randomUUID, fs, etc. at the top level.
@@ -520,10 +507,9 @@ export function nativeModuleStubPlugin(
           requireModule,
         );
       }
-
       if (strippedId === "@napi-rs/keyring") {
         return [
-          "// Stub: real binding is native-only (@elizaos/vault master key / OS keychain).",
+          "// Stub: real binding is native-only (@elizaos/auth/vault master key / OS keychain).",
           "export class Entry {",
           "  constructor(_service, _account) {}",
           '  getPassword() { return ""; }',
@@ -535,7 +521,6 @@ export function nativeModuleStubPlugin(
           "}",
         ].join("\n");
       }
-
       // libvips native / wasm bindings — only used server-side for LifeOps screen sampling
       if (
         strippedId === "sharp" ||
@@ -558,74 +543,12 @@ export function nativeModuleStubPlugin(
           "export default function sharp() { return mk(); }",
         ].join("\n");
       }
-
-      if (strippedId === "@elizaos/plugin-sql") {
-        return [
-          "const handler = { get: () => table, apply: () => table };",
-          "const table = new Proxy(function table() {}, handler);",
-          ...[
-            "agentTable",
-            "approvalRequestTable",
-            "authAuditEventTable",
-            "authBootstrapJtiSeenTable",
-            "authIdentityCreatedAtDefault",
-            "authIdentityTable",
-            "authOwnerBindingTable",
-            "authOwnerLoginTokenTable",
-            "authSessionTable",
-            "cacheTable",
-            "channelTable",
-            "channelParticipantsTable",
-            "componentTable",
-            "embeddingTable",
-            "entityTable",
-            "entityIdentityTable",
-            "entityMergeCandidateTable",
-            "factCandidateTable",
-            "logTable",
-            "longTermMemories",
-            "memoryTable",
-            "memoryAccessLogs",
-            "messageTable",
-            "messageServerTable",
-            "messageServerAgentsTable",
-            "pairingAllowlistTable",
-            "pairingRequestTable",
-            "participantTable",
-            "relationshipTable",
-            "roomTable",
-            "serverTable",
-            "sessionSummaries",
-            "taskTable",
-            "worldTable",
-          ].map((name) => `export const ${name} = table;`),
-          ...[
-            "and",
-            "asc",
-            "count",
-            "desc",
-            "eq",
-            "gt",
-            "gte",
-            "inArray",
-            "isNull",
-            "lt",
-            "lte",
-            "ne",
-            "or",
-            "sql",
-          ].map((name) => `export const ${name} = table;`),
-          "export const schema = table;",
-          "export default table;",
-        ].join("\n");
-      }
-
       if (
         strippedId === "@node-rs/argon2" ||
         strippedId === "@node-rs/argon2-wasm32-wasi"
       ) {
         // Argon2 hashing is server-only; the renderer pulls in
-        // app-core's auth passwords module via the dist barrel re-export.
+        // app's auth passwords module via the dist barrel re-export.
         // The argon2 package's own browser.js re-exports from
         // `@node-rs/argon2-wasm32-wasi`, so stub both with the same shape.
         return [
@@ -637,8 +560,7 @@ export function nativeModuleStubPlugin(
           "export default { hash, verify, Algorithm, Version };",
         ].join("\n");
       }
-
-      if (strippedId === "@elizaos/vault") {
+      if (strippedId === "@elizaos/auth/vault") {
         return [
           "const asyncNull = async () => null;",
           "const asyncFalse = async () => false;",
@@ -655,10 +577,9 @@ export function nativeModuleStubPlugin(
           "export default { createManager, getAutofillAllowed, getSavedLogin, listSavedLogins };",
         ].join("\n");
       }
-
-      // @elizaos/plugin-local-inference sub-paths used by app-core sources.
+      // @elizaos/plugin-local-inference sub-paths used by app sources.
       // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
-      // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
+      // app's `api/server.ts` and `runtime/eliza.ts` import named symbols
       // from `/routes`, `/runtime`, and `/services` at module top level. The
       // dist barrel pulls those imports into the renderer graph where Rollup
       // needs a static export shape to satisfy the named-import scan.
@@ -677,7 +598,7 @@ export function nativeModuleStubPlugin(
           // Server-only constants
           "export const DEFAULT_MODELS_DIR = '/.eliza/models';",
           "export const EMBEDDING_PRESETS = {};",
-          // Server-only functions used by app-core/runtime/eliza.ts
+          // Server-only functions used by app/runtime/eliza.ts
           "export const detectEmbeddingPreset = noop;",
           "export const detectEmbeddingTier = noop;",
           "export const selectEmbeddingPresetFromHardware = noop;",
@@ -689,10 +610,10 @@ export function nativeModuleStubPlugin(
           "export const isEmbeddingWarmupReuseDisabled = () => true;",
           "export const shouldEnableMobileLocalInference = () => false;",
           "export const shouldWarmupLocalEmbeddingModel = () => false;",
-          // Server-only routes used by app-core/api/server.ts
+          // Server-only routes used by app/api/server.ts
           "export const handleLocalInferenceCompatRoutes = async () => false;",
           "export const handleLocalInferenceTtsRoute = async () => false;",
-          // Server-only services used by app-core/api/dev-compat-routes.ts +
+          // Server-only services used by app/api/dev-compat-routes.ts +
           // phrase-chunked-tts.ts (a phrase chunker that runs in node but is
           // imported as a type/class). Provide minimal class stubs.
           "export const buildVoiceLatencyDevPayload = () => ({});",
@@ -709,7 +630,6 @@ export function nativeModuleStubPlugin(
           "export default proxy;",
         ].join("\n");
       }
-
       // @elizaos/plugin-anthropic — server-only model provider. The dist barrel
       // re-exports it; the renderer never instantiates the provider directly.
       if (
@@ -722,9 +642,8 @@ export function nativeModuleStubPlugin(
           "export default proxy;",
         ].join("\n");
       }
-
       if (strippedId === "@elizaos/plugin-elizacloud") {
-        // Mirrors packages/app-core/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
+        // Mirrors packages/app/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
         // Every server-only export resolves to a noop in the renderer; the
         // default export is a Proxy that swallows arbitrary property access
         // so any future call sites do not break the static analysis pass.
@@ -746,24 +665,6 @@ export function nativeModuleStubPlugin(
           "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
         ].join("\n");
       }
-
-      if (strippedId === "@elizaos/plugin-registry") {
-        return [
-          "const noop = () => undefined;",
-          "const asyncFalse = async () => false;",
-          "const emptyPluginList = () => ({ plugins: [], categories: [], installed: [] });",
-          "export const buildPluginListResponse = emptyPluginList;",
-          "export const handlePluginRoutes = asyncFalse;",
-          "export const handlePluginsCompatRoutes = asyncFalse;",
-          "export const installAndRestart = noop;",
-          "export const installPlugin = noop;",
-          "export const listInstalledPlugins = () => [];",
-          "export const uninstallAndRestart = noop;",
-          "export const uninstallPlugin = noop;",
-          "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
-        ].join("\n");
-      }
-
       // @elizaos/plugin-agent-orchestrator — server-only orchestrator. The
       // agent runtime's api/server-helpers-swarm.ts statically imports
       // sanitizeCompletionRelay, which the dist barrel pulls into the
@@ -779,7 +680,6 @@ export function nativeModuleStubPlugin(
           "export default proxy;",
         ].join("\n");
       }
-
       if (strippedId === "@protobufjs/inquire") {
         return [
           "function inquire() { return null; }",
@@ -787,7 +687,6 @@ export function nativeModuleStubPlugin(
           "export default inquire;",
         ].join("\n");
       }
-
       if (strippedId === "@elizaos/plugin-telegram") {
         return [
           "function serverOnly() { throw new Error('Telegram account auth is server-only'); }",
@@ -800,9 +699,8 @@ export function nativeModuleStubPlugin(
           "export default { defaultTelegramAccountDeviceModel, defaultTelegramAccountSystemVersion, loadTelegramAccountSessionString, TelegramAccountAuthSession };",
         ].join("\n");
       }
-
       // Capacitor native plugins — mobile-only, cloud builds stub them.
-      // Must export the exact named identifiers used in app-core sources.
+      // Must export the exact named identifiers used in app sources.
       if (capacitorNativeScopeRe.test(strippedId)) {
         const capPkg = strippedId.split("/").slice(0, 2).join("/");
         if (capPkg === "@capacitor/haptics") {
@@ -899,9 +797,8 @@ export function nativeModuleStubPlugin(
           "export default stub;",
         ].join("\n");
       }
-
       // chalk: ANSI helpers used only by terminal/theme.ts which the
-      // renderer pulls in via the @elizaos/shared barrel. The real
+      // renderer pulls in via the @elizaos/core barrel. The real
       // chalk supports arbitrary chained accessors and call patterns
       // (`chalk.red("x")`, `chalk.bold.hex("#fff")("text")`, etc.), so
       // the stub must:
@@ -941,7 +838,6 @@ export function nativeModuleStubPlugin(
           "export default chalk;",
         ].join("\n");
       }
-
       // drizzle-orm and its sub-modules: Node-only ORM with many named
       // exports (column builders like `boolean`, `integer`, `index`, `text`,
       // `pgTable`, etc.). Return a Proxy that yields a no-op for any name so
@@ -961,62 +857,8 @@ export function nativeModuleStubPlugin(
           "export { stubProxy as boolean, stubProxy as integer, stubProxy as bigint, stubProxy as text, stubProxy as varchar, stubProxy as char, stubProxy as serial, stubProxy as bigserial, stubProxy as smallint, stubProxy as smallserial, stubProxy as decimal, stubProxy as numeric, stubProxy as real, stubProxy as doublePrecision, stubProxy as date, stubProxy as time, stubProxy as timestamp, stubProxy as interval, stubProxy as uuid, stubProxy as json, stubProxy as jsonb, stubProxy as pgTable, stubProxy as pgEnum, stubProxy as pgSchema, stubProxy as pgView, stubProxy as pgMaterializedView, stubProxy as pgSequence, stubProxy as foreignKey, stubProxy as primaryKey, stubProxy as uniqueIndex, stubProxy as unique, stubProxy as index, stubProxy as check, stubProxy as customType, stubProxy as relations, stubProxy as one, stubProxy as many, stubProxy as eq, stubProxy as ne, stubProxy as gt, stubProxy as gte, stubProxy as lt, stubProxy as lte, stubProxy as and, stubProxy as or, stubProxy as not, stubProxy as inArray, stubProxy as notInArray, stubProxy as isNull, stubProxy as isNotNull, stubProxy as like, stubProxy as ilike, stubProxy as notLike, stubProxy as between, stubProxy as exists, stubProxy as notExists, stubProxy as sql, stubProxy as desc, stubProxy as asc, stubProxy as count, stubProxy as sum, stubProxy as avg, stubProxy as min, stubProxy as max, stubProxy as drizzle, stubProxy as getTableConfig, stubProxy as getTableName, stubProxy as is, stubProxy as alias, stubProxy as except, stubProxy as union, stubProxy as unionAll, stubProxy as intersect, stubProxy as raw, stubProxy as placeholder, stubProxy as param, stubProxy as Column, stubProxy as Table, stubProxy as TableAliasProxy };",
         ].join("\n");
       }
-
       // Generic fallback for other native modules
       return "export default {};\n";
-    },
-    // Patch @elizaos/core browser entry at transform time to add missing
-    // exports and fix browser-incompatible patterns.
-    transform(code, id) {
-      const isCoreDistFile =
-        id.endsWith("index.browser.js") || id.endsWith("index.node.js");
-      const normId = id.split(path.sep).join("/");
-      const isCorePackagePath =
-        normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/core/dist/");
-      if (!isCoreDistFile || !isCorePackagePath) return null;
-
-      // Fix AsyncLocalStorage: the browser entry has a try/catch that does
-      //   let {AsyncLocalStorage:$} = (() => {throw new Error(...)})()
-      // Rollup/esbuild may optimize the throw into (()=>({})) which makes
-      // AsyncLocalStorage undefined, causing "xte is not a constructor".
-      // Replace the broken IIFE pattern with a working stub class.
-      const patched = code.replace(
-        /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
-        "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
-      );
-      // Names that downstream plugins and the agent runtime
-      // import from @elizaos/core but that are missing from the browser entry.
-      const missingExports: Record<string, string> = {
-        resolveSecretKeyAlias: "function(k){return k}",
-        SECRET_KEY_ALIASES: "{}",
-        SetupStateMachine: "function(){}",
-        isSetupComplete: "function(){return false}",
-        AgentEventService: "function(){}",
-        AutonomyService: "function(){}",
-        createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
-        resolveStateDir: "function(){return '/.eliza'}",
-        runPluginMigrations: "async function(){}",
-      };
-      // Check which are actually missing from the existing export block
-      const needed = Object.keys(missingExports).filter((n) => {
-        // Check if already exported (as named export or re-export alias)
-        const exportedAs = new RegExp(`\\b${n}\\b`);
-        // Search only in export{} blocks
-        const exportBlocks = patched.match(/export\s*\{[^}]+\}/g) || [];
-        return !exportBlocks.some((b) => exportedAs.test(b));
-      });
-      if (needed.length === 0 && patched === code) return null;
-      // Use unique prefixed names to avoid collisions with minified vars
-      const prefix = "__eliza_stub_";
-      const stubs = needed
-        .map((n) => `var ${prefix}${n} = ${missingExports[n]};`)
-        .join("\n");
-      const exports =
-        needed.length > 0
-          ? `export { ${needed.map((n) => `${prefix}${n} as ${n}`).join(", ")} };`
-          : "";
-      return { code: `${patched}\n${stubs}\n${exports}`, map: null };
     },
   };
 }

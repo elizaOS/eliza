@@ -1,6 +1,10 @@
 /** Real PGlite coverage for the LifeOps repository's domain CRUD contracts. */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createRealTestRuntime,
+  type RealTestRuntimeResult,
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsBrowserSession,
@@ -21,8 +25,6 @@ import {
   createLifeOpsWorkflowRun,
   LifeOpsRepository,
 } from "../src/lifeops/repository.ts";
-import type { RealTestRuntimeResult } from "./helpers/runtime.ts";
-import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 const NOW = "2026-07-11T08:00:00.000Z";
 const LATER = "2026-07-11T09:00:00.000Z";
@@ -40,6 +42,15 @@ function ownership(agentId: string) {
 
 describe("LifeOpsRepository domain CRUD", () => {
   let runtimeResult: RealTestRuntimeResult | null = null;
+  let runtime: RealTestRuntimeResult["runtime"];
+  let repository: LifeOpsRepository;
+
+  beforeEach(async () => {
+    runtimeResult = await createRealTestRuntime();
+    runtime = runtimeResult.runtime;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    repository = new LifeOpsRepository(runtime);
+  });
 
   afterEach(async () => {
     await runtimeResult?.cleanup();
@@ -47,10 +58,6 @@ describe("LifeOpsRepository domain CRUD", () => {
   });
 
   it("round-trips core owner records through the bootstrapped schema", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
-    const { runtime } = runtimeResult;
-    await LifeOpsRepository.bootstrapSchema(runtime);
-    const repository = new LifeOpsRepository(runtime);
     const base = ownership(runtime.agentId);
 
     const definition = createLifeOpsTaskDefinition({
@@ -722,10 +729,6 @@ describe("LifeOpsRepository domain CRUD", () => {
   // evicted owner wins from the evening brief. The subject filter now lives
   // in the SQL WHERE, ahead of the LIMIT.
   it("keeps owner completions inside the limit under multi-subject load", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
-    const { runtime } = runtimeResult;
-    await LifeOpsRepository.bootstrapSchema(runtime);
-    const repository = new LifeOpsRepository(runtime);
     const ownerBase = ownership(runtime.agentId);
     const agentBase = {
       agentId: runtime.agentId,
@@ -835,11 +838,6 @@ describe("LifeOpsRepository domain CRUD", () => {
   });
 
   it("round-trips connector sync, schedule, and work-thread records", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
-    const { runtime } = runtimeResult;
-    await LifeOpsRepository.bootstrapSchema(runtime);
-    const repository = new LifeOpsRepository(runtime);
-
     const calendarEvent = {
       id: crypto.randomUUID(),
       agentId: runtime.agentId,

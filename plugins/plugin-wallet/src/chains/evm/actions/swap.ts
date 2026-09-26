@@ -8,20 +8,18 @@
  * the `WALLET`/`swap` subaction entry point and always runs through
  * `gateWalletFinancialExecution` before submission.
  */
-import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+
 import {
-  gateWalletFinancialExecution,
-  walletFinancialGateActionResult,
-} from "../../../security/wallet-financial-confirmation.js";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
-import { buildSendTxParams, createEvmActionValidator } from "./helpers";
-
-export const DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS = 10_000;
-
-const legacySpec = requireActionSpec("EVM_SWAP");
-const spec = { ...legacySpec, name: "WALLET" };
-
-import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  type State,
+} from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import {
   createConfig,
   type ExtendedChain,
@@ -30,8 +28,11 @@ import {
   getToken,
   type Route,
 } from "@lifi/sdk";
-
 import { type Address, encodeFunctionData, type Hex, parseAbi, parseUnits } from "viem";
+import {
+  gateWalletFinancialExecution,
+  walletFinancialGateActionResult,
+} from "../../../security/wallet-financial-confirmation.js";
 import { runIntentModel } from "../../../utils/intent-trajectory";
 import {
   BEBOP_CHAIN_MAP,
@@ -43,6 +44,7 @@ import {
   NATIVE_TOKEN_ADDRESS,
   TX_CONFIRMATION_TIMEOUT_MS,
 } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { swapTemplate } from "../templates";
 import {
@@ -58,18 +60,19 @@ import {
   type SwapQuote,
   type Transaction,
 } from "../types";
+import { buildSendTxParams, createEvmActionValidator } from "./helpers";
+export const DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS = 10000;
+const legacySpec = requireActionSpec("EVM_SWAP");
+const spec = { ...legacySpec, name: "WALLET" };
 
 export { swapTemplate };
-
 export class SwapAction {
   constructor(private readonly walletProvider: WalletProvider) {
     const lifiChains: ExtendedChain[] = [];
-
     for (const config of Object.values(this.walletProvider.chains)) {
       const blockExplorerUrls = config.blockExplorers?.default?.url
         ? [config.blockExplorers.default.url]
         : [];
-
       const lifiChain = {
         id: config.id,
         name: config.name,
@@ -101,17 +104,14 @@ export class SwapAction {
         mainnet: true,
         diamondAddress: NATIVE_TOKEN_ADDRESS,
       } as ExtendedChain;
-
       lifiChains.push(lifiChain);
     }
-
     createConfig({
       integrator: "eliza",
       chains: lifiChains,
       preloadChains: false,
     });
   }
-
   private async resolveTokenAddress(
     tokenSymbolOrAddress: string,
     chainId: number
@@ -119,22 +119,18 @@ export class SwapAction {
     if (tokenSymbolOrAddress.startsWith("0x") && tokenSymbolOrAddress.length === 42) {
       return tokenSymbolOrAddress;
     }
-
     if (tokenSymbolOrAddress === NATIVE_TOKEN_ADDRESS) {
       return tokenSymbolOrAddress;
     }
-
     const token = await getToken(chainId, tokenSymbolOrAddress);
     return token.address;
   }
-
   async swap(params: SwapParams): Promise<Transaction> {
     // Validate inputs early to fail fast
     const amount = parseFloat(params.amount);
     if (Number.isNaN(amount) || amount <= 0) {
       throw new EVMError(EVMErrorCode.INVALID_PARAMS, "Amount must be a positive number");
     }
-
     if (
       !params.fromToken.startsWith("0x") ||
       (params.fromToken.length !== 42 && params.fromToken !== NATIVE_TOKEN_ADDRESS)
@@ -144,47 +140,37 @@ export class SwapAction {
         `Invalid fromToken address: ${params.fromToken}`
       );
     }
-
     if (
       !params.toToken.startsWith("0x") ||
       (params.toToken.length !== 42 && params.toToken !== NATIVE_TOKEN_ADDRESS)
     ) {
       throw new EVMError(EVMErrorCode.INVALID_PARAMS, `Invalid toToken address: ${params.toToken}`);
     }
-
     const walletClient = this.walletProvider.getWalletClient(params.chain);
     const [fromAddress] = await walletClient.getAddresses();
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);
     const chainId = chainConfig.id;
-
     const resolvedFromToken = await this.resolveTokenAddress(params.fromToken, chainId);
     const resolvedToToken = await this.resolveTokenAddress(params.toToken, chainId);
-
     const resolvedParams: SwapParams = {
       ...params,
       fromToken: resolvedFromToken as Address,
       toToken: resolvedToToken as Address,
     };
-
     // A confirmed slippageBps is the tolerance the user approved, so quote at
     // exactly that level; only the unstated case escalates through the ladder.
     const slippageLevels =
       params.slippageBps === undefined ? [0.01, 0.015, 0.02] : [params.slippageBps / 10000];
     let lastError: Error | undefined;
     let attemptCount = 0;
-
     for (const slippage of slippageLevels) {
       logger.info(`Attempting swap with ${(slippage * 100).toFixed(1)}% slippage...`);
-
       const sortedQuotes = await this.getSortedQuotes(fromAddress, resolvedParams, slippage);
-
       for (const quote of sortedQuotes) {
         attemptCount++;
         logger.info(`Trying ${quote.aggregator} (attempt ${attemptCount})...`);
-
         try {
           let result: Transaction | undefined;
-
           switch (quote.aggregator) {
             case "lifi":
               result = await this.executeLifiQuote(quote);
@@ -196,7 +182,6 @@ export class SwapAction {
               result = await this.executeKyberSwapQuote(quote, resolvedParams);
               break;
           }
-
           if (result) {
             logger.info(`✅ Swap succeeded via ${quote.aggregator}!`);
             return result;
@@ -204,26 +189,21 @@ export class SwapAction {
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
           logger.warn(`${quote.aggregator} attempt failed: ${lastError.message}`);
-
           // If it's a recoverable error, continue to next attempt
           if (this.isRecoverableError(lastError)) {
             continue;
           }
-
           // Non-recoverable error, throw immediately
           throw lastError;
         }
       }
-
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-
     throw new EVMError(
       EVMErrorCode.CONTRACT_REVERT,
       `All swap attempts failed after ${attemptCount} tries. ${lastError?.message ?? "Unknown error"}`
     );
   }
-
   private isRecoverableError(error: Error): boolean {
     const message = error.message;
     return (
@@ -234,7 +214,6 @@ export class SwapAction {
       message.includes("TRANSFER_FROM_FAILED")
     );
   }
-
   private async getSortedQuotes(
     fromAddress: Address,
     params: SwapParams,
@@ -242,9 +221,7 @@ export class SwapAction {
   ): Promise<SwapQuote[]> {
     const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
     let fromTokenDecimals: number;
-
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);
-
     if (
       params.fromToken.toUpperCase() === chainConfig.nativeCurrency.symbol.toUpperCase() ||
       params.fromToken === NATIVE_TOKEN_ADDRESS
@@ -260,7 +237,6 @@ export class SwapAction {
       });
       fromTokenDecimals = Number(decimals);
     }
-
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
       this.getLifiQuote(fromAddress, params, fromTokenDecimals, slippage),
       // The current Bebop request does not carry an enforceable slippage
@@ -271,19 +247,14 @@ export class SwapAction {
         : []),
       this.getKyberSwapQuote(fromAddress, params, fromTokenDecimals, slippage),
     ];
-
     const quotesResults = await Promise.all(quotesPromises);
     const sortedQuotes = quotesResults.filter((quote): quote is SwapQuote => quote !== undefined);
-
     sortedQuotes.sort((a, b) => (BigInt(a.minOutputAmount) > BigInt(b.minOutputAmount) ? -1 : 1));
-
     if (sortedQuotes.length === 0) {
       throw new EVMError(EVMErrorCode.INVALID_PARAMS, "No routes found");
     }
-
     return sortedQuotes;
   }
-
   private async getLifiQuote(
     fromAddress: Address,
     params: SwapParams,
@@ -303,11 +274,9 @@ export class SwapAction {
           order: "RECOMMENDED",
         },
       });
-
       if (!routes.routes.length) {
         throw new Error("No routes found");
       }
-
       return {
         aggregator: "lifi",
         minOutputAmount: routes.routes[0].steps[0].estimate.toAmountMin,
@@ -321,7 +290,6 @@ export class SwapAction {
       return undefined;
     }
   }
-
   private async getBebopQuote(
     fromAddress: Address,
     params: SwapParams,
@@ -330,11 +298,9 @@ export class SwapAction {
     try {
       const chainName = BEBOP_CHAIN_MAP[params.chain] ?? params.chain;
       const url = `https://api.bebop.xyz/router/${chainName}/v1/quote`;
-
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
       const resolvedFromToken = await this.resolveTokenAddress(params.fromToken, chainConfig.id);
       const resolvedToToken = await this.resolveTokenAddress(params.toToken, chainConfig.id);
-
       const reqParams = new URLSearchParams({
         sell_tokens: resolvedFromToken,
         buy_tokens: resolvedToToken,
@@ -345,30 +311,23 @@ export class SwapAction {
         gasless: "false",
         source: "eliza",
       });
-
       const response = await fetch(`${url}?${reqParams.toString()}`, {
         method: "GET",
         headers: { accept: "application/json" },
         signal: AbortSignal.timeout(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS),
       });
-
       if (!response.ok) {
         throw new Error(`Bebop API error: ${response.status} ${response.statusText}`);
       }
-
       const data = await response.json();
-
       if (!data.routes?.length) {
         throw new Error("No routes found in Bebop API response");
       }
-
       const firstRoute = data.routes[0];
       const quoteTx = firstRoute?.quote?.tx;
-
       if (!quoteTx) {
         throw new Error("Invalid route structure in Bebop API response");
       }
-
       const route: BebopRoute = {
         data: quoteTx.data,
         sellAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
@@ -379,26 +338,21 @@ export class SwapAction {
         gas: quoteTx.gas?.toString() ?? "0",
         gasPrice: quoteTx.gasPrice?.toString() ?? "0",
       };
-
       // Validate the route structure
       BebopRouteSchema.parse(route);
-
       // Find buy token info
       const buyTokens = firstRoute.quote.buyTokens;
       if (!buyTokens) {
         throw new Error("Missing buyTokens in Bebop response");
       }
-
       const buyTokenInfo =
         buyTokens[resolvedToToken] ??
         buyTokens[params.toToken] ??
         buyTokens[resolvedToToken.toLowerCase()] ??
         Object.values(buyTokens)[0];
-
       if (!buyTokenInfo?.minimumAmount) {
         throw new Error("Cannot determine minimum output amount");
       }
-
       return {
         aggregator: "bebop",
         minOutputAmount: buyTokenInfo.minimumAmount.toString(),
@@ -412,7 +366,6 @@ export class SwapAction {
       return undefined;
     }
   }
-
   private async getKyberSwapQuote(
     fromAddress: Address,
     params: SwapParams,
@@ -422,37 +375,30 @@ export class SwapAction {
     try {
       const chainSlug = KYBERSWAP_CHAIN_MAP[params.chain];
       if (!chainSlug) return undefined;
-
       const fromToken =
         params.fromToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.fromToken;
       const toToken =
         params.toToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.toToken;
       const amountIn = parseUnits(params.amount, fromTokenDecimals).toString();
-
       const url = new URL(`https://aggregator-api.kyberswap.com/${chainSlug}/api/v1/routes`);
       url.searchParams.set("tokenIn", fromToken);
       url.searchParams.set("tokenOut", toToken);
       url.searchParams.set("amountIn", amountIn);
       url.searchParams.set("gasInclude", "true");
       url.searchParams.set("source", "elizaos");
-
       const res = await fetch(url.toString(), {
         headers: { "X-Client-Id": "elizaos", Accept: "application/json" },
         signal: AbortSignal.timeout(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS),
       });
-
       if (!res.ok) throw new Error(`KyberSwap API error: ${res.status}`);
-
       const data = await res.json();
       const routeSummary = data?.data?.routeSummary as KyberSwapRouteSummary | undefined;
       if (!routeSummary?.amountOut) throw new Error("No route found from KyberSwap");
-
       const slippageBps = Math.round(slippage * 10000);
       // KyberSwap's quote endpoint returns the expected gross output; the
       // guaranteed minimum is computed client-side by applying the slippage
       // tolerance (same math the build endpoint uses internally).
       const minOut = (BigInt(routeSummary.amountOut) * BigInt(10000 - slippageBps)) / 10000n;
-
       return {
         aggregator: "kyberswap",
         minOutputAmount: minOut.toString(),
@@ -475,43 +421,33 @@ export class SwapAction {
       return undefined;
     }
   }
-
   private async executeLifiQuote(quote: SwapQuote): Promise<Transaction | undefined> {
     const route = quote.swapData as Route;
     const step = route.steps[0];
-
     if (!step) {
       throw new EVMError(EVMErrorCode.INVALID_PARAMS, "No steps found in route");
     }
-
     const stepWithTx = await getStepTransaction(step);
-
     if (!stepWithTx.transactionRequest) {
       throw new EVMError(EVMErrorCode.INVALID_PARAMS, "No transaction request found in step");
     }
-
     const chainId = route.fromChainId;
     const chainName = Object.keys(this.walletProvider.chains).find(
       (name) => this.walletProvider.getChainConfigs(name as SupportedChain).id === chainId
     );
-
     if (!chainName) {
       throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, `Chain with ID ${chainId} not found`);
     }
-
     const walletClient = this.walletProvider.getWalletClient(chainName as SupportedChain);
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
-
     const account = walletClient.account;
     if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
-
     const chain = walletClient.chain;
     if (!chain) {
       throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, "Wallet chain is not configured");
     }
-
     const txRequest = stepWithTx.transactionRequest;
     const fromToken = route.fromToken;
     if (fromToken.address !== NATIVE_TOKEN_ADDRESS) {
@@ -523,7 +459,6 @@ export class SwapAction {
         BigInt(route.fromAmount)
       );
     }
-
     const hash = await walletClient.sendTransaction(
       buildSendTxParams({
         account,
@@ -539,16 +474,13 @@ export class SwapAction {
           : undefined,
       })
     );
-
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
       timeout: TX_CONFIRMATION_TIMEOUT_MS,
     });
-
     if (receipt.status === "reverted") {
       throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `Transaction reverted. Hash: ${hash}`);
     }
-
     return {
       hash,
       from: account.address,
@@ -558,7 +490,6 @@ export class SwapAction {
       chainId: route.fromChainId,
     };
   }
-
   private async executeBebopQuote(
     quote: SwapQuote,
     params: SwapParams
@@ -566,15 +497,12 @@ export class SwapAction {
     const bebopRoute = quote.swapData as BebopRoute;
     const walletClient = this.walletProvider.getWalletClient(params.chain);
     const publicClient = this.walletProvider.getPublicClient(params.chain);
-
     const account = walletClient.account;
     if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
-
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);
     const resolvedFromToken = await this.resolveTokenAddress(params.fromToken, chainConfig.id);
-
     if (resolvedFromToken !== NATIVE_TOKEN_ADDRESS) {
       await this.handleTokenApproval(
         publicClient,
@@ -584,7 +512,6 @@ export class SwapAction {
         BigInt(bebopRoute.sellAmount)
       );
     }
-
     const hash = await walletClient.sendTransaction(
       buildSendTxParams({
         account,
@@ -594,16 +521,13 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
       timeout: TX_CONFIRMATION_TIMEOUT_MS,
     });
-
     if (receipt.status === "reverted") {
       throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `Bebop swap reverted. Hash: ${hash}`);
     }
-
     return {
       hash,
       from: account.address,
@@ -613,7 +537,6 @@ export class SwapAction {
       chainId: chainConfig.id,
     };
   }
-
   private async executeKyberSwapQuote(
     quote: SwapQuote,
     params: SwapParams
@@ -621,12 +544,10 @@ export class SwapAction {
     const ks = quote.swapData as KyberSwapRouteData;
     const walletClient = this.walletProvider.getWalletClient(params.chain);
     const publicClient = this.walletProvider.getPublicClient(params.chain);
-
     const account = walletClient.account;
     if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
-
     const buildRes = await fetch(
       `https://aggregator-api.kyberswap.com/${ks.chainSlug}/api/v1/route/build`,
       {
@@ -648,17 +569,14 @@ export class SwapAction {
         }),
       }
     );
-
     if (!buildRes.ok) {
       throw new Error(`KyberSwap build failed: ${buildRes.status} ${buildRes.statusText}`);
     }
-
     const buildData = await buildRes.json();
     const tx = buildData?.data;
     if (!tx?.routerAddress || !tx?.data) {
       throw new Error("Invalid transaction data from KyberSwap build");
     }
-
     if (ks.fromToken.toLowerCase() !== KYBERSWAP_NATIVE_SENTINEL.toLowerCase()) {
       await this.handleTokenApproval(
         publicClient,
@@ -668,7 +586,6 @@ export class SwapAction {
         BigInt(ks.amountIn)
       );
     }
-
     const hash = await walletClient.sendTransaction(
       buildSendTxParams({
         account,
@@ -678,16 +595,13 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
       timeout: TX_CONFIRMATION_TIMEOUT_MS,
     });
-
     if (receipt.status === "reverted") {
       throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `KyberSwap swap reverted. Hash: ${hash}`);
     }
-
     return {
       hash,
       from: account.address,
@@ -697,7 +611,6 @@ export class SwapAction {
       chainId: this.walletProvider.getChainConfigs(params.chain).id,
     };
   }
-
   private async handleTokenApproval(
     publicClient: ReturnType<WalletProvider["getPublicClient"]>,
     walletClient: ReturnType<WalletProvider["getWalletClient"]>,
@@ -709,9 +622,7 @@ export class SwapAction {
     if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account not available");
     }
-
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
-
     const allowance = BigInt(
       await publicClient.readContract({
         address: tokenAddress,
@@ -721,19 +632,15 @@ export class SwapAction {
         authorizationList: undefined,
       })
     );
-
     if (allowance >= requiredAmount) {
       return;
     }
-
     logger.info(`Approving token for swap...`);
-
     const approvalData = encodeFunctionData({
       abi: parseAbi(["function approve(address,uint256)"]),
       functionName: "approve",
       args: [spenderAddress, requiredAmount],
     });
-
     const approvalTx = await walletClient.sendTransaction(
       buildSendTxParams({
         account,
@@ -743,25 +650,20 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-
     logger.info(`Waiting for approval confirmation...`);
-
     const approvalReceipt = await publicClient.waitForTransactionReceipt({
       hash: approvalTx,
       timeout: TX_CONFIRMATION_TIMEOUT_MS,
     });
-
     if (approvalReceipt.status === "reverted") {
       throw new EVMError(
         EVMErrorCode.CONTRACT_REVERT,
         `Token approval failed. Hash: ${approvalTx}`
       );
     }
-
     logger.info(`Token approval confirmed`);
   }
 }
-
 export async function buildSwapDetails(
   state: State,
   message: Memory,
@@ -770,7 +672,6 @@ export async function buildSwapDetails(
 ): Promise<SwapParams> {
   const chains = wp.getSupportedChains();
   const balances = await wp.getWalletBalances();
-
   state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
   state.supportedChains = chains.join(" | ");
   state.chainBalances = Object.entries(balances)
@@ -779,65 +680,52 @@ export async function buildSwapDetails(
       return `${chain}: ${balance} ${chainConfig.nativeCurrency.symbol}`;
     })
     .join(", ");
-
   const context = composePromptFromState({
     state,
     template: swapTemplate,
   });
-
   const llmResponse = await runIntentModel({
     runtime,
     taskName: "evm.swap.intent",
     template: context,
     modelType: ModelType.TEXT_LARGE,
   });
-
   const parsedResponse = parseJSONObjectFromText(llmResponse) as Record<string, unknown> | null;
-
   if (!parsedResponse) {
     throw new EVMError(
       EVMErrorCode.INVALID_PARAMS,
       "Failed to parse structured response from LLM for swap details."
     );
   }
-
   const chain = String(parsedResponse.chain ?? "").toLowerCase();
   const amountMode = resolveAmountMode(parsedResponse.amountMode);
-
   // `chain` is an arbitrary lowercased string from the model, so the balance
   // lookup is honestly `string | undefined` (resolveRelativeAmount throws when
   // it is undefined). Validation of the chain itself happens via parseSwapParams.
   const chainBalance: string | undefined = (balances as Record<string, string | undefined>)[chain];
-
   const amount =
     amountMode === "absolute"
       ? String(parsedResponse.amount ?? "")
       : resolveRelativeAmount(amountMode, parsedResponse.amountPercent, chainBalance);
-
   const swapDetails = parseSwapParams({
     fromToken: String(parsedResponse.inputToken ?? ""),
     toToken: String(parsedResponse.outputToken ?? ""),
     amount,
     chain,
   });
-
   if (!wp.chains[swapDetails.chain]) {
     throw new EVMError(
       EVMErrorCode.CHAIN_NOT_CONFIGURED,
       `Chain ${swapDetails.chain} not configured. Available: ${chains.join(", ")}`
     );
   }
-
   return swapDetails;
 }
-
 const AMOUNT_MODES = ["absolute", "half", "max", "percent"] as const;
 type AmountMode = (typeof AMOUNT_MODES)[number];
-
 function resolveAmountMode(value: unknown): AmountMode {
   return AMOUNT_MODES.includes(value as AmountMode) ? (value as AmountMode) : "absolute";
 }
-
 /**
  * Resolve a relative swap size ("half"/"max"/"percent") into an absolute,
  * human-readable amount string from the connected chain's native balance.
@@ -855,16 +743,13 @@ function resolveRelativeAmount(
       `Cannot resolve a relative swap amount: unknown balance for the selected chain.`
     );
   }
-
   const balanceNum = parseFloat(balance);
-
   if (mode === "half") {
     return (balanceNum / 2).toString();
   }
   if (mode === "max") {
     return (balanceNum * 0.9).toString();
   }
-
   const percent = Number(rawPercent);
   if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
     throw new EVMError(
@@ -874,7 +759,6 @@ function resolveRelativeAmount(
   }
   return ((balanceNum * percent) / 100).toString();
 }
-
 export const swapAction = {
   name: spec.name,
   description: spec.description,
@@ -908,7 +792,6 @@ export const swapAction = {
       schema: { type: "string" },
     },
   ],
-
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -917,13 +800,10 @@ export const swapAction = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const walletProvider = await initWalletProvider(runtime);
-
     if (!state) {
       state = await runtime.composeState(message);
     }
-
     const swapOptions = await buildSwapDetails(state, message, runtime, walletProvider);
-
     const gate = await gateWalletFinancialExecution({
       runtime,
       message,
@@ -941,12 +821,9 @@ export const swapAction = {
     if (!gate.proceed) {
       return walletFinancialGateActionResult(gate);
     }
-
     const action = new SwapAction(walletProvider);
     const swapResp = await action.swap(swapOptions);
-
     const successText = `✅ Successfully swapped ${swapOptions.amount} ${swapOptions.fromToken} for ${swapOptions.toToken} on ${swapOptions.chain}\nTransaction Hash: ${swapResp.hash}`;
-
     if (callback) {
       callback({
         text: successText,
@@ -960,7 +837,6 @@ export const swapAction = {
         },
       });
     }
-
     return {
       success: true,
       text: successText,
@@ -979,14 +855,11 @@ export const swapAction = {
       },
     };
   },
-
   template: swapTemplate,
-
   validate: createEvmActionValidator({
     keywords: ["swap", "exchange", "trade", "token"],
     regex: /\b(?:swap|exchange|trade|token)\b/i,
   }),
-
   examples: [
     [
       {
@@ -1039,6 +912,5 @@ export const swapAction = {
       },
     ],
   ],
-
   similes: spec.similes ? [...spec.similes] : [],
 };

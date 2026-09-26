@@ -9,8 +9,9 @@
 
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { startChunkedAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
-import { APP_ID } from "../../scripts/lib/android-device.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { startChunkedAndroidScreenRecord } from "../../scripts/lib/android-capture.ts";
+import { APP_ID } from "../../scripts/lib/android-device.ts";
 import {
   assertLiveChallengeReply,
   buildLivenessChallenge,
@@ -32,11 +33,7 @@ import {
   resumedAndroidActivityComponent,
 } from "./resumed-android-activity";
 
-const ARTIFACT_DIR = path.join(
-  process.cwd(),
-  "test-results",
-  "android-cloud-onboarding",
-);
+const ARTIFACT_DIR = testOutputPath("app", "android-cloud-onboarding");
 const STALE_ACTIVE_SERVER = JSON.stringify({
   id: "local:android",
   kind: "remote",

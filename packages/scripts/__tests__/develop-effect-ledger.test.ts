@@ -19,8 +19,8 @@ import {
   validateRegistry,
   validateSourceRun,
   verifyLedgerPayload,
-} from "../develop-effect-ledger.mjs";
-import { createEvidence } from "../develop-impact-evidence.mjs";
+} from "../develop-effect-ledger.ts";
+import { createEvidence } from "../develop-impact-evidence.ts";
 
 const SOURCE_SHA = "a".repeat(40);
 const PRIOR_SHA = "b".repeat(40);
@@ -586,6 +586,41 @@ describe("checked-in workflow authority", () => {
   const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
   const readWorkflow = (name: string) =>
     readFileSync(path.join(repoRoot, ".github/workflows", name), "utf8");
+
+  test("all branch effects reconcile against the checked-in validation graph", () => {
+    const graph = JSON.parse(
+      readFileSync(
+        path.join(repoRoot, ".github/develop-surface-graph.json"),
+        "utf8",
+      ),
+    ) as { surfaces: { id: string }[] };
+    const expected = manifests().expected;
+    expected.surfaces = graph.surfaces.map(({ id }) => ({
+      id,
+      inputDigest: sha256(id),
+    }));
+    const observed = {
+      ...manifests().observed,
+      surfaces: expected.surfaces.map(({ id }) =>
+        createEvidence(expected, id, NOW, 24),
+      ),
+    };
+    for (const branch of ["develop", "staging", "main"]) {
+      const config = JSON.parse(
+        readFileSync(
+          path.join(repoRoot, `.github/${branch}-effects.json`),
+          "utf8",
+        ),
+      );
+      const result = buildEffectPlans({
+        expected,
+        observed,
+        registry: config,
+        repoRoot,
+      });
+      expect(result.plans).toHaveLength(config.effects.length);
+    }
+  });
 
   test("reconciliation is dispatch-only, non-cancelable, and least scoped", () => {
     const workflow = Bun.YAML.parse(readWorkflow("develop-reconcile.yml")) as {

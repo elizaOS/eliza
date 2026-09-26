@@ -5,8 +5,7 @@
 import type {
   LocalInferenceReadiness,
   LocalInferenceSlotReadiness,
-} from "./types";
-
+} from "@elizaos/core/contracts/local-inference";
 export type HomeModelStatusKind =
   | "not-required"
   | "ready"
@@ -14,7 +13,6 @@ export type HomeModelStatusKind =
   | "loading"
   | "missing"
   | "error";
-
 export interface HomeModelStatus {
   kind: HomeModelStatusKind;
   /** True while the local text model is unavailable for chat. */
@@ -34,25 +32,21 @@ export interface HomeModelStatus {
   /** Distinct error messages from failed downloads / activation. */
   errors: string[];
 }
-
 function maxOrNull(values: number[]): number | null {
   return values.length > 0 ? Math.max(...values) : null;
 }
-
 function firstModelName(slots: LocalInferenceSlotReadiness[]): string | null {
   for (const slot of slots) {
     if (slot.displayName) return slot.displayName;
   }
   return null;
 }
-
 function firstModelId(slots: LocalInferenceSlotReadiness[]): string | null {
   for (const slot of slots) {
     if (slot.assignedModelId) return slot.assignedModelId;
   }
   return null;
 }
-
 /**
  * Collapse the per-slot local-inference readiness into a single status for the
  * home avatar surface: whether a local text model is required, whether it is
@@ -69,7 +63,6 @@ export function deriveHomeModelStatus(
   );
   const modelName = firstModelName(assigned);
   const modelId = firstModelId(assigned);
-
   if (assigned.length === 0) {
     return {
       kind: "not-required",
@@ -80,7 +73,6 @@ export function deriveHomeModelStatus(
       errors: [],
     };
   }
-
   if (assigned.every((slot) => slot.ready)) {
     return {
       kind: "ready",
@@ -92,7 +84,6 @@ export function deriveHomeModelStatus(
       errors: [],
     };
   }
-
   const failed = assigned.filter(
     (slot) => slot.state === "failed" || slot.state === "cancelled",
   );
@@ -107,7 +98,6 @@ export function deriveHomeModelStatus(
       errors: [...new Set(failed.flatMap((slot) => slot.errors))],
     };
   }
-
   const downloading = assigned.filter((slot) => slot.state === "downloading");
   if (downloading.length > 0) {
     const percents = downloading
@@ -126,7 +116,6 @@ export function deriveHomeModelStatus(
       errors: [],
     };
   }
-
   const missing = assigned.some(
     (slot) => slot.state === "missing" || slot.state === "unassigned",
   );
@@ -141,7 +130,6 @@ export function deriveHomeModelStatus(
       errors: [],
     };
   }
-
   // Downloaded to disk and awaiting runtime activation.
   return {
     kind: "loading",

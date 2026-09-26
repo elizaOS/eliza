@@ -117,7 +117,7 @@ export const InsetRow: Story = {
   render: (args) => (
     <Card {...args} className="w-80">
       <span className="text-sm">Monetization</span>
-      <span className="text-sm text-muted">Enabled</span>
+      <span className="text-sm text-muted-strong">Enabled</span>
     </Card>
   ),
 };

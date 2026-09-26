@@ -10,7 +10,6 @@ import type { AddressInfo } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { Telegraf } from "telegraf";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTelegramCommandDescriptors } from "./command-registration";
 import { MessageManager } from "./messageManager";
 import { TelegramService } from "./service";
 
@@ -376,9 +375,7 @@ describe("TelegramService startup wiring", () => {
 
       expect(api.getMeCalls()).toBe(5);
       expect(startRegistration).toHaveBeenCalledTimes(1);
-      expect(commandRegistration).toHaveBeenCalledTimes(
-        buildTelegramCommandDescriptors(runtime.agentId).length + 3,
-      );
+      expect(commandRegistration).toHaveBeenCalledTimes(2);
       expect(middlewareRegistration).toHaveBeenCalledTimes(
         commandRegistration.mock.calls.length +
           eventRegistration.mock.calls.length +

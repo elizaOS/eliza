@@ -34,6 +34,7 @@ await buildPlugin({
         "src/sdk/index.ts",
         "src/wallet-action.ts",
         "src/lib/server-wallet-trade.ts",
+        "src/lib/market-overview.ts",
       ],
       outSubdir: "",
       target: "node",

@@ -115,6 +115,13 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["browser", "web", "internet", "research", "tabs"],
     responseContext: { primaryContext: "browser" },
     relatedActions: ["BROWSER"],
+    capabilities: [
+      {
+        id: "browser-command",
+        description:
+          "Control the requesting client's native browser using typed commands and snapshot-bound element references.",
+      },
+    ],
     visibleInManager: false,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
@@ -390,19 +397,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       primaryContext: "media",
       secondaryContexts: ["system"],
     },
-    visibleInManager: false,
-    desktopTabEnabled: true,
-  },
-  {
-    id: "pendant-transcript",
-    viewKind: "system",
-    label: "Pendant transcript",
-    description: "Live pendant voice transcript",
-    icon: "AudioLines",
-    path: "/pendant/transcript",
-    order: 75,
-    tags: ["pendant", "transcript", "voice"],
-    responseContext: { primaryContext: "documents" },
     visibleInManager: false,
     desktopTabEnabled: true,
   },

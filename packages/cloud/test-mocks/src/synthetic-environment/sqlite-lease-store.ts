@@ -3,26 +3,23 @@
  * SQLite's cross-process write transaction is the local production boundary;
  * guarded mutations receive that same transaction connection.
  */
-
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import type {
-  AcquireSyntheticEnvironmentLeaseInput,
-  RefreshSyntheticEnvironmentLeaseInput,
-  SyntheticEnvironmentLeaseAuthority,
-  SyntheticEnvironmentLeaseOwner,
-  SyntheticEnvironmentLeaseReceipt,
-  SyntheticEnvironmentLeaseSnapshot,
-  SyntheticEnvironmentLeaseStore,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
 import {
+  type AcquireSyntheticEnvironmentLeaseInput,
   isSyntheticEnvironmentNamespace,
+  type RefreshSyntheticEnvironmentLeaseInput,
   SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
   SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
+  type SyntheticEnvironmentLeaseAuthority,
+  type SyntheticEnvironmentLeaseOwner,
+  type SyntheticEnvironmentLeaseReceipt,
+  type SyntheticEnvironmentLeaseSnapshot,
+  type SyntheticEnvironmentLeaseStore,
+} from "@elizaos/core/contracts/synthetic-environment-lease";
 
 interface LeaseRow {
   namespace: string;
@@ -37,10 +34,8 @@ interface LeaseRow {
   released_at_ms: number | null;
   revision: number;
 }
-
-const MAX_LEASE_DURATION_MS = 86_400_000;
+const MAX_LEASE_DURATION_MS = 86400000;
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:@-]{0,127}$/;
-
 function containsControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
@@ -48,7 +43,6 @@ function containsControlCharacter(value: string): boolean {
   }
   return false;
 }
-
 function invalidInput(message: string, cause?: unknown): ElizaError {
   return new ElizaError(message, {
     code: "SYNTHETIC_LEASE_INVALID_INPUT",
@@ -56,7 +50,6 @@ function invalidInput(message: string, cause?: unknown): ElizaError {
     cause,
   });
 }
-
 function storageFailure(
   message: string,
   namespace: string | null,
@@ -69,7 +62,6 @@ function storageFailure(
     cause,
   });
 }
-
 function validateNamespace(value: unknown, field: string): string {
   if (!isSyntheticEnvironmentNamespace(value)) {
     throw invalidInput(
@@ -78,7 +70,6 @@ function validateNamespace(value: unknown, field: string): string {
   }
   return value;
 }
-
 function validateIdentifier(value: unknown, field: string): string {
   if (typeof value !== "string" || !IDENTIFIER_PATTERN.test(value)) {
     throw invalidInput(
@@ -87,7 +78,6 @@ function validateIdentifier(value: unknown, field: string): string {
   }
   return value;
 }
-
 function validateOwner(
   owner: SyntheticEnvironmentLeaseOwner,
 ): SyntheticEnvironmentLeaseOwner {
@@ -99,7 +89,7 @@ function validateOwner(
     owner.processId !== null &&
     (!Number.isSafeInteger(owner.processId) ||
       owner.processId < 1 ||
-      owner.processId > 2_147_483_647)
+      owner.processId > 2147483647)
   ) {
     throw invalidInput(
       "owner.processId must be a positive 32-bit integer or null",
@@ -118,7 +108,6 @@ function validateOwner(
   }
   return { ...owner, host };
 }
-
 function validateDuration(leaseDurationMs: number): number {
   if (
     !Number.isSafeInteger(leaseDurationMs) ||
@@ -131,7 +120,6 @@ function validateDuration(leaseDurationMs: number): number {
   }
   return leaseDurationMs;
 }
-
 function validateAuthority(
   authority: SyntheticEnvironmentLeaseAuthority,
 ): SyntheticEnvironmentLeaseAuthority {
@@ -152,11 +140,9 @@ function validateAuthority(
   }
   return { ...authority, namespace };
 }
-
 function iso(milliseconds: number | null): string | null {
   return milliseconds === null ? null : new Date(milliseconds).toISOString();
 }
-
 function rowOwner(row: LeaseRow): SyntheticEnvironmentLeaseOwner | null {
   if (row.owner_id === null || row.owner_host === null) return null;
   return {
@@ -165,7 +151,6 @@ function rowOwner(row: LeaseRow): SyntheticEnvironmentLeaseOwner | null {
     host: row.owner_host,
   };
 }
-
 function snapshot(
   row: LeaseRow,
   nowMs: number,
@@ -191,7 +176,6 @@ function snapshot(
     observedAt: new Date(nowMs).toISOString(),
   };
 }
-
 function authorityFromRow(row: LeaseRow): SyntheticEnvironmentLeaseAuthority {
   const owner = rowOwner(row);
   if (row.lease_id === null || owner === null) {
@@ -209,7 +193,6 @@ function authorityFromRow(row: LeaseRow): SyntheticEnvironmentLeaseAuthority {
     owner,
   };
 }
-
 function assertAuthorityMatches(
   row: LeaseRow | null,
   authority: SyntheticEnvironmentLeaseAuthority,
@@ -240,7 +223,6 @@ function assertAuthorityMatches(
   }
   return row;
 }
-
 /** File-backed local adapter shared by scenario and provider-mock processes. */
 export class SqliteSyntheticEnvironmentLeaseStore
   implements SyntheticEnvironmentLeaseStore<Database>
@@ -249,7 +231,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
   private transactionTail: Promise<void> = Promise.resolve();
   private pendingTransactions = 0;
   private closed = false;
-
   constructor(databasePath: string) {
     if (!path.isAbsolute(databasePath)) {
       throw invalidInput("databasePath must be absolute");
@@ -265,7 +246,10 @@ export class SqliteSyntheticEnvironmentLeaseStore
         "databasePath parent must not be writable by group or other users",
       );
     }
-    let existingIdentity: { dev: number; ino: number } | null = null;
+    let existingIdentity: {
+      dev: number;
+      ino: number;
+    } | null = null;
     try {
       const existing = lstatSync(databasePath);
       if (!existing.isFile() || existing.isSymbolicLink()) {
@@ -327,7 +311,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       )
     `);
   }
-
   close(): void {
     if (this.closed) return;
     if (this.pendingTransactions > 0) {
@@ -340,7 +323,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
     this.closed = true;
     this.database.close(false);
   }
-
   async acquire(
     input: AcquireSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -407,7 +389,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       return this.receipt(operation, this.requireRow(namespace), nowMs);
     });
   }
-
   async read(
     namespace: string,
   ): Promise<SyntheticEnvironmentLeaseSnapshot | null> {
@@ -418,7 +399,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
     const row = this.select(namespace);
     return row ? snapshot(row, nowMs) : null;
   }
-
   async heartbeat(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -447,7 +427,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       );
     });
   }
-
   async rollover(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -485,7 +464,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       );
     });
   }
-
   async release(
     uncheckedAuthority: SyntheticEnvironmentLeaseAuthority,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
@@ -512,11 +490,13 @@ export class SqliteSyntheticEnvironmentLeaseStore
       };
     });
   }
-
   async withActiveGeneration<T>(
     uncheckedAuthority: SyntheticEnvironmentLeaseAuthority,
     write: (database: Database) => T | Promise<T>,
-  ): Promise<{ value: T; receipt: SyntheticEnvironmentLeaseReceipt }> {
+  ): Promise<{
+    value: T;
+    receipt: SyntheticEnvironmentLeaseReceipt;
+  }> {
     const authority = validateAuthority(uncheckedAuthority);
     return this.transaction(authority.namespace, async (nowMs) => {
       assertAuthorityMatches(
@@ -537,7 +517,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       };
     });
   }
-
   private select(namespace: string): LeaseRow | null {
     return (
       this.database
@@ -547,7 +526,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
         .get(namespace) ?? null
     );
   }
-
   private requireRow(namespace: string): LeaseRow {
     const row = this.select(namespace);
     if (!row) {
@@ -559,7 +537,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
     }
     return row;
   }
-
   private receipt(
     operation: SyntheticEnvironmentLeaseReceipt["operation"],
     row: LeaseRow,
@@ -571,7 +548,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       snapshot: snapshot(row, nowMs),
     };
   }
-
   private assertOpen(): void {
     if (this.closed) {
       throw storageFailure(
@@ -581,7 +557,6 @@ export class SqliteSyntheticEnvironmentLeaseStore
       );
     }
   }
-
   private async transaction<T>(
     namespace: string,
     operation: (nowMs: number) => Promise<T>,

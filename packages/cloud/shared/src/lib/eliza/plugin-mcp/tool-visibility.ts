@@ -3,8 +3,7 @@
  * Tier 1 (crucial): Always visible to the LLM in the prompt.
  * Tier 2 (discoverable): Only found via SEARCH_ACTIONS using BM25.
  */
-
-import { toActionName } from "./utils/action-naming";
+import { toActionName } from "@elizaos/plugin-mcp/protocol-utils/action-naming";
 
 /**
  * Map of provider -> list of crucial tool action names.
@@ -104,16 +103,13 @@ const CRUCIAL_TOOLS: Record<string, string[]> = {
     "calendar_create_event",
   ],
 };
-
 /**
  * Pre-computed set of normalized crucial action names for fast lookup.
  * Built lazily on first access.
  */
 let crucialActionNamesCache: Set<string> | null = null;
-
 function buildCrucialActionNamesSet(): Set<string> {
   if (crucialActionNamesCache) return crucialActionNamesCache;
-
   const set = new Set<string>();
   for (const [server, tools] of Object.entries(CRUCIAL_TOOLS)) {
     for (const tool of tools) {
@@ -123,7 +119,6 @@ function buildCrucialActionNamesSet(): Set<string> {
   crucialActionNamesCache = set;
   return set;
 }
-
 /**
  * Checks whether a tool is classified as crucial (Tier 1) for the given server.
  * Uses the same normalization as plugin-mcp's action naming.
@@ -132,21 +127,18 @@ export function isCrucialTool(serverName: string, toolName: string): boolean {
   const actionName = toActionName(serverName, toolName);
   return buildCrucialActionNamesSet().has(actionName);
 }
-
 /**
  * Returns the list of crucial tool names for a given server.
  */
 export function getCrucialToolsForServer(serverName: string): string[] {
   return CRUCIAL_TOOLS[serverName.toLowerCase()] ?? [];
 }
-
 /**
  * Returns a copy of all crucial tools configuration.
  */
 export function getAllCrucialTools(): Record<string, string[]> {
   return { ...CRUCIAL_TOOLS };
 }
-
 /** Raw DoorDash tools stay callable by its facade but are never agent actions. */
 export function shouldRegisterRawMcpTools(serverName: string): boolean {
   return serverName.trim().toLowerCase() !== "doordash";

@@ -9,7 +9,6 @@
  * concrete wiring lives in `src/index.ts` so this file stays independently
  * testable with scripted seams.
  */
-
 import {
   ChannelType,
   createUniqueUuid,
@@ -20,11 +19,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  type MeetingArtifact,
+  meetingArtifactToTranscriptSegments,
+} from "@elizaos/core/meeting-artifacts";
+import {
   DEFAULT_MEETING_AUTO_LEAVE,
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_PLATFORM_LABELS,
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
-  type MeetingArtifact,
   type MeetingAutoLeaveConfig,
   type MeetingBillingState,
   type MeetingEndReason,
@@ -35,14 +37,13 @@ import {
   type MeetingSession,
   type MeetingSessionStatus,
   type MeetingTranscriptFinalizedPayload,
-  meetingArtifactToTranscriptSegments,
   parseMeetingUrl,
-  parsePositiveInteger,
-} from "@elizaos/shared";
-import type {
-  Transcript,
-  TranscriptSegment,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/core/meetings";
+import {
+  type Transcript,
+  type TranscriptSegment,
+} from "@elizaos/core/transcripts";
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
 import { MeetingEventEmitter } from "./events.js";
 import { resolveMeetingRuntimeSupport } from "./platform-support.js";
 import {
@@ -55,24 +56,22 @@ import {
   MeetingTranscriptWriter,
   persistMeetingMedia,
 } from "./transcripts/meeting-transcript-writer.js";
-import type {
-  MeetingAudioSink,
-  MeetingBillingError,
-  MeetingBillingSession,
-  MeetingBillingSessionInput,
-  MeetingBotSession,
-  MeetingPipelineOptions,
-  MeetingPlatformAdapter,
-  MeetingTranscriptionPipeline,
-  ResolvedMeetingBotConfig,
+import {
+  type MeetingAudioSink,
+  type MeetingBillingError,
+  type MeetingBillingSession,
+  type MeetingBillingSessionInput,
+  type MeetingBotSession,
+  type MeetingPipelineOptions,
+  type MeetingPlatformAdapter,
+  type MeetingTranscriptionPipeline,
+  type ResolvedMeetingBotConfig,
 } from "./types.js";
-
 /** Pipeline instance plus the optional retained-audio accessor. */
 export interface MeetingPipelineInstance extends MeetingTranscriptionPipeline {
   /** Full session audio as mono PCM16 WAV, when `retainAudio` was set. */
   sessionAudioWav?(): Buffer | null;
 }
-
 /** Concrete adapter + pipeline wiring, injected by `src/index.ts` (or tests). */
 export interface MeetingServiceDependencies {
   adapters: ReadonlyMap<MeetingPlatform, MeetingPlatformAdapter>;
@@ -84,7 +83,6 @@ export interface MeetingServiceDependencies {
     input: ZoomCloudImportInput,
   ): Promise<ZoomCloudImportResult>;
 }
-
 export interface ZoomMeetingImportRequest {
   meetingId: string;
   accessToken?: string;
@@ -92,14 +90,12 @@ export interface ZoomMeetingImportRequest {
   maxFileBytes?: number;
   maxTotalBytes?: number;
 }
-
 export interface ZoomMeetingImportResult {
   artifact: MeetingArtifact;
   transcript: Transcript;
   warnings: string[];
   requestIds: string[];
 }
-
 export type MeetingJoinErrorCode =
   | "invalid_url"
   | "unsupported_platform"
@@ -108,7 +104,6 @@ export type MeetingJoinErrorCode =
   | "already_joined"
   | "invalid_duration_cap"
   | "insufficient_credits";
-
 /** Validation/conflict failures of `requestJoin` — routes map these to 4xx. */
 export class MeetingJoinError extends Error {
   constructor(
@@ -119,12 +114,10 @@ export class MeetingJoinError extends Error {
     this.name = "MeetingJoinError";
   }
 }
-
 const TERMINAL_STATUSES: ReadonlySet<MeetingSessionStatus> = new Set([
   "ended",
   "failed",
 ]);
-
 interface InternalSession {
   readonly id: UUID;
   readonly platform: MeetingPlatform;
@@ -153,12 +146,10 @@ interface InternalSession {
   /** Resolves when the adapter lifecycle + finalize have fully completed. */
   done: Promise<void>;
 }
-
 export class MeetingService extends Service {
   static serviceType = "meetings";
   capabilityDescription =
     "Joins Google Meet / Microsoft Teams / Zoom meetings as a notetaker bot and produces live, diarized transcripts";
-
   /**
    * Default concrete wiring, assigned at module load by `src/index.ts` (which
    * imports the real platform adapters + pipeline). Tests inject their own
@@ -171,7 +162,6 @@ export class MeetingService extends Service {
     IAgentRuntime,
     (runtime: IAgentRuntime) => MeetingServiceDependencies
   >();
-
   /** Install a dependency override for exactly one runtime, primarily for scenario boundaries. */
   static setRuntimeDependencyFactory(
     runtime: IAgentRuntime,
@@ -179,12 +169,10 @@ export class MeetingService extends Service {
   ): void {
     MeetingService.runtimeDependencyFactories.set(runtime, factory);
   }
-
   /** Remove a runtime-scoped override without changing production defaults or other runtimes. */
   static clearRuntimeDependencyFactory(runtime: IAgentRuntime): void {
     MeetingService.runtimeDependencyFactories.delete(runtime);
   }
-
   private readonly sessions = new Map<UUID, InternalSession>();
   /**
    * Lightweight terminal snapshots. Once a session finishes it is evicted from
@@ -196,7 +184,6 @@ export class MeetingService extends Service {
   private readonly emitter: MeetingEventEmitter;
   private readonly deps: MeetingServiceDependencies;
   private worldReady: Promise<UUID> | null = null;
-
   constructor(runtime?: IAgentRuntime, deps?: MeetingServiceDependencies) {
     if (!runtime) {
       throw new Error("[MeetingService] runtime is required");
@@ -214,13 +201,11 @@ export class MeetingService extends Service {
     this.deps = resolved;
     this.emitter = new MeetingEventEmitter(runtime);
   }
-
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new MeetingService(runtime);
     logger.info("[MeetingService] started");
     return service;
   }
-
   async stop(): Promise<void> {
     const active = [...this.sessions.values()].filter(
       (s) => !TERMINAL_STATUSES.has(s.status),
@@ -228,7 +213,6 @@ export class MeetingService extends Service {
     for (const session of active) session.abort.abort();
     await Promise.allSettled(active.map((s) => s.done));
   }
-
   /** Start a bot for a meeting URL. Resolves once the session is launched. */
   async requestJoin(request: MeetingJoinRequest): Promise<MeetingSession> {
     const parsed = parseMeetingUrl(request.meetingUrl);
@@ -251,7 +235,6 @@ export class MeetingService extends Service {
         `no platform adapter available for ${MEETING_PLATFORM_LABELS[parsed.platform]}`,
       );
     }
-
     // Refuse cleanly on hosts that cannot run a browser bot (mobile, or no
     // Chromium resolvable) instead of launching and crashing mid-join.
     const support = resolveMeetingRuntimeSupport(this.runtime);
@@ -262,9 +245,7 @@ export class MeetingService extends Service {
           "this host cannot run the meeting browser bot (no Chromium available)",
       );
     }
-
     this.assertCapturePolicyAllowsJoin();
-
     const duplicate = [...this.sessions.values()].find(
       (s) =>
         !TERMINAL_STATUSES.has(s.status) &&
@@ -277,7 +258,6 @@ export class MeetingService extends Service {
         `a bot is already in this meeting (session ${duplicate.id}, status ${duplicate.status})`,
       );
     }
-
     // Reserve the meeting SYNCHRONOUSLY before the first await. The dup-check
     // above and this insert run in one uninterrupted turn, so two concurrent
     // same-URL joins cannot both slip past the check and launch two bots
@@ -302,7 +282,6 @@ export class MeetingService extends Service {
       request,
       maxDurationMs,
     });
-
     const pipeline = this.deps.createPipeline({
       runtime: this.runtime,
       sessionId,
@@ -334,7 +313,6 @@ export class MeetingService extends Service {
       },
     });
     const writer = new MeetingTranscriptWriter(this.runtime);
-
     const session: InternalSession = {
       id: sessionId,
       platform: parsed.platform,
@@ -359,7 +337,6 @@ export class MeetingService extends Service {
       done: Promise.resolve(),
     };
     this.sessions.set(sessionId, session);
-
     // With the reservation held, do every awaited setup step, including the
     // initial billing hold. If any step throws, release the meeting claim and
     // reconcile the billing hold so future joins are not permanently rejected
@@ -434,7 +411,6 @@ export class MeetingService extends Service {
       }
       throw err;
     }
-
     pipeline.onUpdate((update) => {
       session.confirmedSegments.push(...update.confirmed);
       session.writer.updateSegments([
@@ -449,7 +425,6 @@ export class MeetingService extends Service {
         pending: update.pending,
       });
     });
-
     const config: ResolvedMeetingBotConfig = {
       platform: parsed.platform,
       meetingUrl: parsed.meetingUrl,
@@ -466,7 +441,6 @@ export class MeetingService extends Service {
       signal: session.abort.signal,
       reportStatus: (status) => this.applyStatus(session, status),
     };
-
     this.emitter.emitStatus(this.toDto(session));
     logger.info(
       {
@@ -480,7 +454,6 @@ export class MeetingService extends Service {
     session.done = this.runSession(session, adapter, botSession);
     return this.toDto(session);
   }
-
   /** Request a graceful leave. Returns false when the session is unknown. */
   stopSession(sessionId: UUID): boolean {
     const session = this.sessions.get(sessionId);
@@ -490,13 +463,11 @@ export class MeetingService extends Service {
     session.abort.abort();
     return true;
   }
-
   getSession(sessionId: UUID): MeetingSession | null {
     const session = this.sessions.get(sessionId);
     if (session) return this.toDto(session);
     return this.terminated.get(sessionId) ?? null;
   }
-
   listSessions(options?: { active?: boolean }): MeetingSession[] {
     const live = [...this.sessions.values()].map((s) => this.toDto(s));
     const all = options?.active ? live : [...live, ...this.terminated.values()];
@@ -512,7 +483,6 @@ export class MeetingService extends Service {
       return bReq - aReq || a.id.localeCompare(b.id);
     });
   }
-
   /** Await the complete production lifecycle, including persistence, billing, events, and eviction. */
   async waitForSessionCompletion(sessionId: UUID): Promise<MeetingSession> {
     const completed = this.terminated.get(sessionId);
@@ -530,12 +500,10 @@ export class MeetingService extends Service {
     }
     return terminal;
   }
-
   /** Number of retained internal sessions whose lifecycle work is not fully evicted. */
   pendingSessionWorkCount(): number {
     return this.sessions.size;
   }
-
   /** Import one completed Zoom cloud meeting into canonical media/transcripts. */
   async importZoomMeeting(
     request: ZoomMeetingImportRequest,
@@ -630,7 +598,6 @@ export class MeetingService extends Service {
     });
     return { ...imported, transcript };
   }
-
   /** API/UI projection of one internal session (defensive copies). */
   private toDto(session: InternalSession): MeetingSession {
     return {
@@ -653,7 +620,6 @@ export class MeetingService extends Service {
       billing: this.billingState(session),
     };
   }
-
   private billingState(session: InternalSession): MeetingBillingState {
     return (
       session.billing?.state ?? {
@@ -663,7 +629,6 @@ export class MeetingService extends Service {
       }
     );
   }
-
   /** One shared "Meetings" world across sessions (created once, reused). */
   private ensureMeetingsWorld(): Promise<UUID> {
     if (!this.worldReady) {
@@ -683,7 +648,6 @@ export class MeetingService extends Service {
     }
     return this.worldReady;
   }
-
   /**
    * Wrap the pipeline sink so roster observations also maintain the session's
    * participant list + entity graph before reaching the pipeline.
@@ -712,7 +676,6 @@ export class MeetingService extends Service {
       },
     };
   }
-
   private trackParticipantJoined(
     session: InternalSession,
     participant: MeetingParticipant,
@@ -757,7 +720,6 @@ export class MeetingService extends Service {
     this.emitter.emitStatus(this.toDto(session));
     return tracked;
   }
-
   /** Adapter-reported lifecycle transition (ignored after a terminal state). */
   private applyStatus(
     session: InternalSession,
@@ -776,7 +738,6 @@ export class MeetingService extends Service {
     );
     this.emitter.emitStatus(this.toDto(session));
   }
-
   /** Full adapter lifecycle: run → finalize pipeline + transcript → terminal. */
   private async runSession(
     session: InternalSession,
@@ -823,7 +784,6 @@ export class MeetingService extends Service {
     }
     await this.finishSession(session, endReason, errorMessage);
   }
-
   private async finishSession(
     session: InternalSession,
     endReason: MeetingEndReason,
@@ -843,10 +803,14 @@ export class MeetingService extends Service {
         "[MeetingService] pipeline finalize failed",
       );
     }
-
     try {
       const audioWav = session.pipeline.sessionAudioWav?.() ?? null;
-      let retainedAudio: { url: string; contentType: string } | undefined;
+      let retainedAudio:
+        | {
+            url: string;
+            contentType: string;
+          }
+        | undefined;
       let meetingArtifact: MeetingArtifact | undefined;
       if (session.platform === "zoom" && audioWav && audioWav.length > 0) {
         const stored = persistMeetingMedia(audioWav, "wav");
@@ -902,7 +866,6 @@ export class MeetingService extends Service {
         "[MeetingService] transcript finalize failed",
       );
     }
-
     try {
       await this.reconcileBillingOnce(session, endReason);
     } catch (err) {
@@ -914,7 +877,6 @@ export class MeetingService extends Service {
         "[MeetingService] billing reconciliation failed",
       );
     }
-
     session.endReason = endReason;
     session.errorMessage = errorMessage;
     session.endedAt = Date.now();
@@ -933,7 +895,6 @@ export class MeetingService extends Service {
       "[MeetingService] session finished",
     );
     await this.emitTranscriptFinalized(session, dto, finalizedTranscript);
-
     // Evict the heavy session: dropping the pipeline (retained PCM),
     // writer, and roster arrays lets them be garbage-collected. Only the DTO
     // survives for status/history reads; the persisted transcript record holds
@@ -941,7 +902,6 @@ export class MeetingService extends Service {
     this.sessions.delete(session.id);
     this.terminated.set(session.id, dto);
   }
-
   private async emitTranscriptFinalized(
     session: InternalSession,
     dto: MeetingSession,
@@ -966,7 +926,6 @@ export class MeetingService extends Service {
       });
     }
   }
-
   private async reconcileBillingOnce(
     session: InternalSession,
     endReason: MeetingEndReason,
@@ -979,12 +938,10 @@ export class MeetingService extends Service {
     }
     await session.billingFinalized;
   }
-
   private settingString(key: string): string | null {
     const value = this.runtime.getSetting(key);
     return typeof value === "string" && value.trim() ? value.trim() : null;
   }
-
   /**
    * Enforce the organization capture policy before billing, pipeline creation,
    * transcript persistence, or adapter launch. Local/self-hosted runtimes keep
@@ -1006,7 +963,6 @@ export class MeetingService extends Service {
       ) ||
       cloudEnabled === "true" ||
       cloudEnabled === "1";
-
     if (configured === "allow") return;
     if (configured === "deny") {
       throw new MeetingJoinError(
@@ -1021,7 +977,6 @@ export class MeetingService extends Service {
       );
     }
   }
-
   private resolveMaxDurationMs(requested: number | undefined): number {
     const configured = this.settingPositiveInteger(
       "ELIZA_MEETINGS_MAX_DURATION_MS",
@@ -1044,7 +999,6 @@ export class MeetingService extends Service {
     }
     return requested ?? maximum;
   }
-
   private settingPositiveInteger(key: string): number | null {
     const raw = this.settingString(key);
     return parsePositiveInteger(raw) ?? null;

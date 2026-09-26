@@ -10,6 +10,7 @@ import type {
   JsonValue,
   ModelTypeName,
   RecordLlmCallDetails,
+  ToolCall,
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
@@ -17,25 +18,22 @@ import {
   assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
-  cloneSchemaForBoundedTransport,
+  composeToolDiagnosticRedactor,
+  createPreparedModelRequestGuard,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
   getInferenceTimer,
   getTrajectoryContext,
-  JSON_SCHEMA_ARRAY_KEYWORDS,
-  JSON_SCHEMA_MAP_KEYWORDS,
-  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
-  JSON_SCHEMA_SINGLE_KEYWORDS,
+  isPermanentQuotaError,
   logActiveTrajectoryLlmCall,
   logger,
-  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_WELL_FORMED_DEPTH,
+  MODEL_PROVIDER_ATTEMPTS,
   ModelType,
-  normalizeSchemaForCerebras,
+  providerRetryAfterMs,
   recordLlmCall,
   resolveEffectiveSystemPrompt,
-  sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
   truncateWellFormed,
   wellFormedUnicodeSchemaStructure,
@@ -48,6 +46,7 @@ import {
   type ModelMessage,
   Output,
   RetryError,
+  type StreamTextTransform,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -69,9 +68,21 @@ import {
   getSmallModel,
   getUsageProvider,
   isCerebrasMode,
-  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
+import { factorResponseSchema } from "../utils/factor-response-schema";
+import {
+  cloneSchemaForBoundedTransport,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  normalizeSchemaForCerebras,
+  sanitizeFunctionNameForCerebras,
+} from "../utils/schema-compat";
+import { countTokensForModel } from "../utils/tokenization";
+import { StructuredOutputProgressGuard } from "./structured-output-progress";
 
 // ============================================================================
 // Types
@@ -108,6 +119,7 @@ interface GenerateTextParamsWithOpenAIOptions
   providerOptions?: Record<string, object | JsonValue> & {
     agentName?: string;
     openai?: OpenAIPromptCacheOptions;
+    cerebras?: { promptCacheKey?: string; prompt_cache_key?: string };
   };
 }
 
@@ -154,7 +166,7 @@ type LanguageModelUsageWithCache = Omit<LanguageModelUsage, "inputTokenDetails">
 
 interface NativeGenerateTextResult {
   text: string;
-  toolCalls?: unknown[];
+  toolCalls?: ToolCall[];
   finishReason?: string;
   usage?: TokenUsage;
   providerMetadata?: unknown;
@@ -175,7 +187,9 @@ interface ResponseSchemaTransform {
 
 interface PreparedStructuredOutput {
   output: NativeOutput;
+  factoredSchema?: JSONSchema7;
   transform?: ResponseSchemaTransform;
+  requestDescriptor?: unknown;
 }
 
 interface NormalizedNativeToolsResult {
@@ -372,16 +386,11 @@ function isOpenCodeGoEndpoint(value: string | undefined): boolean {
 /**
  * Detects the endpoint contract that translates `reasoning_effort: "none"`.
  *
- * Browser requests terminate at an opaque proxy, so the direct base URL is not
- * proof of the proxy's upstream. Proxy deployments must declare their actual
- * upstream explicitly before this provider-specific wire value is emitted.
+ * Provider-specific wire values require a recognized endpoint; an opaque host
+ * proxy does not establish its upstream provider.
  */
 function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
-  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
-  return (
-    isProxyMode(runtime) &&
-    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
-  );
+  return isOpenCodeGoEndpoint(getBaseURL(runtime));
 }
 
 /** Maps thinking suppression only for exact model ids on proven endpoints. */
@@ -467,14 +476,37 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params, runtime);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
-  // Thinking-off suppression outranks the env pin and provider default so
-  // forced-tool planner calls do not enter an incompatible reasoning mode.
+  // Thinking-off normally outranks the env pin and provider default. A host
+  // preference may opt into the verified native-tool lane below; unsupported
+  // forced-tool calls retain their existing suppression.
   // Keep this endpoint/model allowlist exact: OpenAI-direct and many compatible
   // endpoints reject `"none"`. An explicit caller value still wins below.
-  const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
+  const eliza = rawProviderOptions?.eliza as
+    | { thinking?: unknown; preferToolReasoning?: unknown }
+    | undefined;
+  const elizaThinking = eliza?.thinking;
+  const configuredEffort = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const preferToolReasoning =
+    eliza?.preferToolReasoning === true &&
+    !(typeof configuredEffort === "string" && configuredEffort.trim().toLowerCase() === "none");
   const thinkingOffEffort =
     elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
-  const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
+  // Reconciliation or direct-text planning may prefer reasoning on the verified
+  // native-tool lane. Other endpoints/models retain their existing suppression.
+  const thinkingOnEffort =
+    (elizaThinking === "on" || preferToolReasoning) &&
+    isCerebrasMode(runtime) &&
+    modelName &&
+    normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
+      ? reasoningEffort && reasoningEffort !== "none"
+        ? reasoningEffort
+        : "low"
+      : undefined;
+  const effectiveReasoningEffort =
+    (preferToolReasoning ? thinkingOnEffort : undefined) ??
+    thinkingOffEffort ??
+    thinkingOnEffort ??
+    reasoningEffort;
 
   if (
     !rawProviderOptions &&
@@ -547,17 +579,34 @@ function buildStructuredOutput(
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
+  const cerebrasSchema = cerebrasMode
+    ? factorResponseSchema(preparedSchema.schema as JSONSchema7)
+    : undefined;
 
+  const wireSchema = sanitizeJsonSchema(
+    cerebrasSchema ?? preparedSchema.schema,
+    true,
+    "$",
+    undefined,
+    {
+      preserveStructure: cerebrasMode,
+    }
+  );
   return {
+    ...(cerebrasSchema !== undefined && cerebrasSchema !== preparedSchema.schema
+      ? { factoredSchema: wireSchema as JSONSchema7 }
+      : {}),
     output: Output.object({
-      schema: jsonSchema(
-        cerebrasMode
-          ? (preparedSchema.schema as JSONSchema7)
-          : sanitizeJsonSchema(preparedSchema.schema, true)
-      ),
+      schema: jsonSchema(wireSchema),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
+    requestDescriptor: {
+      type: "json_schema",
+      schema: sanitizeJsonSchema(preparedSchema.schema, true),
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    },
     ...(preparedSchema.transform ? { transform: preparedSchema.transform } : {}),
   };
 }
@@ -1329,46 +1378,28 @@ function restoreRecordArgInput(input: unknown, transforms: RecordArgTransform[])
 function restoreRecordArgToolCalls(
   toolCalls: unknown,
   transformsByTool: Record<string, RecordArgTransform[]>
-): unknown[] | undefined {
-  if (!Array.isArray(toolCalls)) {
-    return undefined;
-  }
+): ToolCall[] | undefined {
+  if (toolCalls === undefined) return undefined;
+  if (!Array.isArray(toolCalls)) throw new TypeError("Invalid provider tool-call list");
 
   return toolCalls.map((toolCall) => {
     const call = asOptionalRecord(toolCall);
-    if (!call) return toolCall;
+    if (!call) throw new TypeError("Invalid provider tool call");
+    if (call.invalid) {
+      throw new TypeError("Provider returned invalid tool arguments", { cause: call.error });
+    }
     const rawFunction = asRecord(call.function);
-    const toolName = firstString(call.toolName, call.name, rawFunction.name);
-    const transforms = toolName ? transformsByTool[toolName] : undefined;
-    if (!transforms?.length) return toolCall;
-
-    if ("input" in call) {
-      return {
-        ...call,
-        input: restoreRecordArgInput(call.input, transforms),
-      };
+    const id = firstString(call.toolCallId, call.id);
+    const name = firstString(call.toolName, call.name, rawFunction.name);
+    if (!id || !name) throw new TypeError("Provider tool call requires an id and name");
+    const input = restoreRecordArgInput(
+      parseToolCallInput(call, rawFunction),
+      transformsByTool[name] ?? []
+    );
+    if (typeof input !== "string" && !asOptionalRecord(input)) {
+      throw new TypeError("Provider tool arguments must be an object or JSON string");
     }
-
-    if (typeof call.arguments === "string") {
-      const parsed = parseJsonIfPossible(call.arguments);
-      return {
-        ...call,
-        arguments: JSON.stringify(restoreRecordArgInput(parsed, transforms)),
-      };
-    }
-
-    if (typeof rawFunction.arguments === "string") {
-      const parsed = parseJsonIfPossible(rawFunction.arguments);
-      return {
-        ...call,
-        function: {
-          ...rawFunction,
-          arguments: JSON.stringify(restoreRecordArgInput(parsed, transforms)),
-        },
-      };
-    }
-
-    return toolCall;
+    return { id, name, arguments: input as ToolCall["arguments"] };
   });
 }
 
@@ -1577,17 +1608,20 @@ function sanitizeJsonSchema(
   transforms?: RecordArgTransform[],
   options: {
     preserveOptional?: boolean;
+    preserveStructure?: boolean;
     responseCompatibility?: { preservesShape: boolean };
   } = {}
 ): JSONSchema7 {
   const { responseCompatibility } = options;
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    // Response schemas retain boolean/composed leaves for provider admission.
+    if (options.preserveStructure) return schema as JSONSchema7;
     if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
     // closes this afterwards (explicit empty `properties` +
     // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
     // bare `{type: "object"}` with a request-fatal 400. See
-    // `normalizeSchemaForCerebras` in @elizaos/core for the live-bisected
+    // `normalizeSchemaForCerebras` in ../utils/schema-compat for the live-bisected
     // provider rules.
     return { type: "object" };
   }
@@ -1606,14 +1640,13 @@ function sanitizeJsonSchema(
     responseCompatibility.preservesShape = false;
   }
 
-  // Non-Cerebras response schemas and strict/unspecified tool schemas share
-  // this compatibility rewrite. Direct Cerebras response schemas bypass it to
-  // preserve optional fields; explicit non-strict tools also bypass it.
-  // Proxy endpoints can still require strict grammar even when detected as
-  // OpenAI, so compatibility normalization remains enabled for those callers.
+  // All structured responses and strict tools share constraint translation.
+  // Cerebras responses retain their declared shape and optionality; only the
+  // unsupported constraints become guidance. Explicit non-strict tools bypass
+  // this adapter, while proxy endpoints retain strict-tool normalization.
   stripStrictUnsupportedConstraints(sanitized);
 
-  if (typeof sanitized.type !== "string") {
+  if (!options.preserveStructure && typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
     if (inferredType) {
       if (responseCompatibility) responseCompatibility.preservesShape = false;
@@ -1621,7 +1654,7 @@ function sanitizeJsonSchema(
     }
   }
 
-  if (isRoot && hasIllegalStrictRoot(sanitized)) {
+  if (!options.preserveStructure && isRoot && hasIllegalStrictRoot(sanitized)) {
     if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Wrap the original schema under properties.value. Strict-tool callers
     // that unwrap arguments will see `{ value: <original> }`. The recursion
@@ -1652,12 +1685,16 @@ function sanitizeJsonSchema(
     // Cerebras supports optional fields in strict tools as well as responses.
     // Requiring unused arguments invents values that fail runtime validation.
     // Retain the all-properties-required rule for other strict providers.
-    if (!options.preserveOptional) {
+    if (!options.preserveOptional && !options.preserveStructure) {
       sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
     }
   }
 
-  if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+  if (
+    !options.preserveStructure &&
+    sanitized.type === "object" &&
+    sanitized.additionalProperties !== false
+  ) {
     // An omitted additionalProperties also permits extra keys. Preserve the
     // existing response contract unless the caller explicitly closed it.
     if (responseCompatibility) responseCompatibility.preservesShape = false;
@@ -1747,7 +1784,7 @@ function sanitizeJsonSchema(
   // instance path; tuple/item schemas use the array wildcard/index path that
   // reverse argument restoration understands.
   for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
-    if (singleKey === "additionalProperties") continue;
+    if (singleKey === "additionalProperties" && !options.preserveStructure) continue;
     if (responseCompatibility && singleKey in sanitized) {
       responseCompatibility.preservesShape = false;
     }
@@ -1851,13 +1888,13 @@ function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): bool
 function buildNativeTextResult(
   result: {
     text: string;
-    toolCalls?: unknown[];
+    toolCalls?: ToolCall[];
     finishReason?: string;
     usage?: LanguageModelUsage;
     providerMetadata?: unknown;
   },
   modelName: string,
-  provider: "cerebras" | "evolink" | "openai",
+  provider: ReturnType<typeof getUsageProvider>,
   retry?: ModelRetryTelemetry
 ): NativeGenerateTextResult {
   const identity = mergeProviderIdentity(result.providerMetadata, modelName, provider) as Record<
@@ -1902,7 +1939,7 @@ function handledMappedPromise<T, U>(
 function mergeProviderIdentity(
   providerMetadata: unknown,
   modelName: string,
-  provider: "cerebras" | "evolink" | "openai"
+  provider: ReturnType<typeof getUsageProvider>
 ): unknown {
   if (
     providerMetadata &&
@@ -1925,7 +1962,8 @@ function createLlmCallDetails(
   actionType: string,
   modelType?: ModelTypeName,
   providerOptions?: Record<string, unknown>,
-  generateParams?: NativeTextParams
+  generateParams?: NativeTextParams,
+  factoredSchema?: JSONSchema7
 ): RecordLlmCallDetails {
   const originalParams = params as GenerateTextParamsWithOpenAIOptions;
   const nativeParams = generateParams as
@@ -1958,9 +1996,12 @@ function createLlmCallDetails(
     toolChoice: nativeParams?.toolChoice ?? originalParams.toolChoice,
     output:
       nativeParams?.output !== undefined
-        ? buildTrajectoryOutputDescriptor(originalParams.responseSchema, nativeParams.output)
+        ? buildTrajectoryOutputDescriptor(
+            factoredSchema ?? originalParams.responseSchema,
+            nativeParams.output
+          )
         : undefined,
-    responseSchema: originalParams.responseSchema,
+    responseSchema: factoredSchema ?? originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
@@ -2005,6 +2046,172 @@ function toTrajectoryJsonSafe(value: unknown): unknown {
     // back to a string repr rather than failing the model call being logged.
     return String(value);
   }
+}
+
+/** Base64 is the JSON wire representation the AI SDK uses for byte content. */
+function bytesToBase64(bytes: Uint8Array): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let output = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0;
+    const second = bytes[index + 1] ?? 0;
+    const third = bytes[index + 2] ?? 0;
+    const triple = (first << 16) | (second << 8) | third;
+    output += alphabet[(triple >>> 18) & 63];
+    output += alphabet[(triple >>> 12) & 63];
+    output += index + 1 < bytes.length ? alphabet[(triple >>> 6) & 63] : "=";
+    output += index + 2 < bytes.length ? alphabet[triple & 63] : "=";
+  }
+  return output;
+}
+
+/**
+ * Clone only provider-body values. Transport callbacks are intentionally
+ * absent, URLs and bytes use their JSON wire representation, and any cycle or
+ * unsupported value fails before the shared final-wire guard is constructed.
+ */
+function cloneOpenAIWireValue(value: unknown): unknown {
+  const active = new WeakSet<object>();
+  const visit = (candidate: unknown, inArray = false): unknown => {
+    if (
+      candidate === null ||
+      typeof candidate === "string" ||
+      typeof candidate === "boolean" ||
+      typeof candidate === "number"
+    ) {
+      return candidate;
+    }
+    if (candidate === undefined || typeof candidate === "function") {
+      return inArray ? null : undefined;
+    }
+    if (typeof candidate !== "object") {
+      throw new ElizaError("[OpenAI] Prepared request contains a non-JSON wire value", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+      });
+    }
+    if (candidate instanceof URL) return candidate.toString();
+    if (candidate instanceof Uint8Array) return bytesToBase64(candidate);
+    if (active.has(candidate)) {
+      throw new ElizaError("[OpenAI] Prepared request contains a cycle", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+      });
+    }
+    active.add(candidate);
+    try {
+      if (Array.isArray(candidate)) {
+        return candidate.map((item) => visit(item, true));
+      }
+      const result: Record<string, unknown> = {};
+      for (const key of Object.keys(candidate)) {
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+        if (!descriptor) continue;
+        // Generated AI SDK schema wrappers deliberately expose jsonSchema as
+        // a lazy getter; resolve that one model-visible value exactly once.
+        const nested =
+          descriptor.get && key === "jsonSchema"
+            ? descriptor.get.call(candidate)
+            : "value" in descriptor
+              ? descriptor.value
+              : undefined;
+        if ((descriptor.get || descriptor.set) && key !== "jsonSchema") {
+          throw new ElizaError("[OpenAI] Prepared request contains an unexpected accessor", {
+            code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+            context: { key },
+          });
+        }
+        const cloned = visit(nested, false);
+        if (cloned !== undefined) result[key] = cloned;
+      }
+      return result;
+    } finally {
+      active.delete(candidate);
+    }
+  };
+  return visit(value);
+}
+
+function projectOpenAITools(tools: ToolSet | undefined): unknown[] | undefined {
+  if (!tools) return undefined;
+  const projected = Object.entries(tools).map(([name, rawTool]) => {
+    const tool = rawTool as Record<string, unknown>;
+    const rawSchema = tool.inputSchema ?? tool.parameters ?? { type: "object" };
+    const schema = cloneOpenAIWireValue(rawSchema) as Record<string, unknown>;
+    const parameters =
+      schema && typeof schema === "object" && "jsonSchema" in schema ? schema.jsonSchema : schema;
+    return {
+      type: "function",
+      function: {
+        name,
+        ...(typeof tool.description === "string" ? { description: tool.description } : {}),
+        parameters,
+        ...(typeof tool.strict === "boolean" ? { strict: tool.strict } : {}),
+      },
+    };
+  });
+  return projected.length > 0 ? projected : undefined;
+}
+
+function runtimePreparedBudget(providerOptions: Record<string, unknown> | undefined): {
+  contextWindowTokens?: number;
+} {
+  const eliza = providerOptions?.eliza;
+  const budget =
+    eliza && typeof eliza === "object" && !Array.isArray(eliza)
+      ? (eliza as Record<string, unknown>).modelInputBudget
+      : undefined;
+  if (!budget || typeof budget !== "object" || Array.isArray(budget)) return {};
+  const contextWindowTokens = (budget as Record<string, unknown>).contextWindowTokens;
+  return typeof contextWindowTokens === "number" && Number.isFinite(contextWindowTokens)
+    ? { contextWindowTokens }
+    : {};
+}
+
+function createOpenAIPreparedRequestGuard(args: {
+  modelName: string;
+  generateParams: NativeTextParams;
+  responseDescriptor: unknown;
+  providerOptions: Record<string, unknown> | undefined;
+}) {
+  const projectRequest = () => {
+    const native = args.generateParams as NativeTextParams & Record<string, unknown>;
+    const openaiOptions = args.providerOptions?.openai;
+    const projected: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(native)) {
+      if (
+        key === "model" ||
+        key === "tools" ||
+        key === "toolChoice" ||
+        key === "output" ||
+        key === "providerOptions" ||
+        key === "experimental_telemetry" ||
+        key.startsWith("on")
+      ) {
+        continue;
+      }
+      if (value !== undefined) projected[key] = value;
+    }
+    return cloneOpenAIWireValue({
+      ...projected,
+      model: args.modelName,
+      ...(native.tools ? { tools: projectOpenAITools(native.tools) } : {}),
+      ...(native.toolChoice ? { tool_choice: native.toolChoice } : {}),
+      ...(args.responseDescriptor !== undefined
+        ? { response_format: args.responseDescriptor }
+        : {}),
+      ...(openaiOptions && typeof openaiOptions === "object"
+        ? { provider_options: { openai: openaiOptions } }
+        : {}),
+    });
+  };
+  const maxOutputTokens = (args.generateParams as { maxOutputTokens?: unknown }).maxOutputTokens;
+  return createPreparedModelRequestGuard({
+    provider: "openai-compatible",
+    model: args.modelName,
+    projectRequest,
+    ...runtimePreparedBudget(args.providerOptions),
+    ...(typeof maxOutputTokens === "number" ? { outputReserveTokens: maxOutputTokens } : {}),
+    countInputTokens: (body) => countTokensForModel(args.modelName, body),
+  });
 }
 
 function applyUsageToDetails(
@@ -2146,12 +2353,13 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
  * resets; re-sending a 20-45K-token prompt to it — directly or through a
  * runtime fallback alias that resolves to the same model — only burns the
  * bucket further and delays failover. A runtime never inherits another
- * runtime's cooldown; changing its endpoint or credential resets the memo.
+ * runtime's cooldown. Endpoint, credential and model each retain independent
+ * buckets, so interleaved credentials never erase another account's hold.
  * Entries expire at the provider's Retry-After and never block another model.
  */
 const rateLimitCooldowns = new WeakMap<
   IAgentRuntime,
-  { endpoint: string; credential: string | undefined; models: Map<string, number> }
+  Map<string, Map<string | undefined, Map<string, number>>>
 >();
 
 class ProviderRateLimitCooldownError extends Error {
@@ -2166,18 +2374,30 @@ class ProviderRateLimitCooldownError extends Error {
   }
 }
 
-function runtimeRateLimitCooldowns(runtime: IAgentRuntime): Map<string, number> {
-  const endpoint = getBaseURL(runtime);
-  const credential = getApiKey(runtime);
-  let cooldown = rateLimitCooldowns.get(runtime);
-  if (!cooldown || cooldown.endpoint !== endpoint || cooldown.credential !== credential) {
-    cooldown = { endpoint, credential, models: new Map() };
-    rateLimitCooldowns.set(runtime, cooldown);
+function runtimeRateLimitCooldowns(
+  runtime: IAgentRuntime,
+  endpoint = getBaseURL(runtime),
+  credential = getApiKey(runtime)
+): Map<string, number> {
+  let endpoints = rateLimitCooldowns.get(runtime);
+  if (!endpoints) {
+    endpoints = new Map();
+    rateLimitCooldowns.set(runtime, endpoints);
   }
-  for (const [model, until] of cooldown.models) {
-    if (until <= Date.now()) cooldown.models.delete(model);
+  let credentials = endpoints.get(endpoint);
+  if (!credentials) {
+    credentials = new Map();
+    endpoints.set(endpoint, credentials);
   }
-  return cooldown.models;
+  let models = credentials.get(credential);
+  if (!models) {
+    models = new Map();
+    credentials.set(credential, models);
+  }
+  for (const [model, until] of models) {
+    if (until <= Date.now()) models.delete(model);
+  }
+  return models;
 }
 
 function assertModelNotCoolingDown(models: Map<string, number>, modelName: string): void {
@@ -2242,7 +2462,7 @@ function noteRateLimitCooldown(
   const status =
     (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
     (error as { status?: number } | undefined)?.status;
-  if (status !== 429) return;
+  if (status !== 429 || isPermanentQuotaError(error)) return;
   const retryAfterMs = providerRetryAfterMs(error);
   if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return;
   // The cooldown is a timestamp, not an awaited retry. Preserve the provider's
@@ -2256,68 +2476,45 @@ function noteRateLimitCooldown(
   );
 }
 
+/** Exhausted server/rate-limit retries shared only within the current model call. */
+const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>();
+
+function endpointRetryBudget(
+  params: GenerateTextParams,
+  endpointIdentity: object,
+  model: string
+): (error: unknown) => void {
+  const attempts = params[MODEL_PROVIDER_ATTEMPTS];
+  if (!attempts) return () => undefined;
+  let endpoints = exhaustedEndpointRetries.get(attempts);
+  if (!endpoints) {
+    endpoints = new WeakMap();
+    exhaustedEndpointRetries.set(attempts, endpoints);
+  }
+  let models = endpoints.get(endpointIdentity);
+  if (!models) {
+    models = new Map();
+    endpoints.set(endpointIdentity, models);
+  }
+  if (models.has(model)) throw models.get(model);
+  return (error) => {
+    const status =
+      (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+      (error as { status?: number } | undefined)?.status;
+    // Request/schema failures can change with tier-specific preparation. Only
+    // exhausted server/rate-limit retries suppress identical endpoint/model retries.
+    if (status === 429 || (typeof status === "number" && status >= 500 && status < 600)) {
+      models.set(model, error);
+    }
+  };
+}
+
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
 const TRANSIENT_LANE_MAX_BACKOFF_MS = 3000;
-
-/**
- * Read the provider's retry delay once for both retry admission and cooldowns.
- * The millisecond header takes precedence over Retry-After seconds/date, matching
- * the SDK transport contract. Invalid values fall through to the other header;
- * missing or invalid hints leave the bounded exponential policy in control.
- */
-function providerRetryAfterMs(error: unknown): number | undefined {
-  const headers = (error as { responseHeaders?: unknown } | undefined)?.responseHeaders;
-  if (!headers || typeof headers !== "object") return undefined;
-  let milliseconds: string | undefined;
-  let secondsOrDate: string | undefined;
-  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
-    const raw = Array.isArray(value) ? value[0] : value;
-    if (typeof raw !== "string" || raw.trim().length === 0) continue;
-    if (key.toLowerCase() === "retry-after-ms") milliseconds = raw.trim();
-    if (key.toLowerCase() === "retry-after") secondsOrDate = raw.trim();
-  }
-  const explicitMilliseconds = milliseconds === undefined ? Number.NaN : Number(milliseconds);
-  if (Number.isFinite(explicitMilliseconds) && explicitMilliseconds >= 0)
-    return explicitMilliseconds;
-  if (secondsOrDate === undefined) return undefined;
-  const seconds = Number(secondsOrDate);
-  if (Number.isFinite(seconds))
-    return seconds >= 0 && Number.isFinite(seconds * 1000) ? seconds * 1000 : undefined;
-  const at = Date.parse(secondsOrDate);
-  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
-}
 
 function providerRetryOutlastsTransientLane(error: unknown): boolean {
   const retryAfterMs = providerRetryAfterMs(error);
   return retryAfterMs !== undefined && retryAfterMs > TRANSIENT_LANE_MAX_BACKOFF_MS;
-}
-
-function isPermanentQuotaError(error: unknown): boolean {
-  const codes = new Set(["insufficient_quota", "credit_balance_exhausted"]);
-  const inspect = (value: unknown): boolean => {
-    if (typeof value !== "object" || value === null) return false;
-    const record = value as Record<string, unknown>;
-    return (
-      (typeof record.code === "string" && codes.has(record.code)) ||
-      (typeof record.type === "string" && codes.has(record.type)) ||
-      (typeof record.error === "object" &&
-        record.error !== null &&
-        ["code", "type"].some((key) => {
-          const field = (record.error as Record<string, unknown>)[key];
-          return typeof field === "string" && codes.has(field);
-        }))
-    );
-  };
-  if (typeof error !== "object" || error === null) return false;
-  const record = error as Record<string, unknown>;
-  if (inspect(record) || inspect(record.data)) return true;
-  if (typeof record.responseBody !== "string") return false;
-  try {
-    return inspect(JSON.parse(record.responseBody));
-  } catch {
-    // error-policy:J3 malformed provider bodies cannot establish permanent quota exhaustion.
-    return false;
-  }
 }
 
 function isTransientProviderError(error: unknown): boolean {
@@ -2506,7 +2703,9 @@ async function generateTextWithTransientRetry(
     model: string;
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
+    onExhausted?: (error: unknown) => void;
     beforeAttempt?: () => void;
+    yieldRateLimit?: (error: unknown) => boolean;
   }
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   const maxRetries = opts.maxRetries ?? 3;
@@ -2526,7 +2725,15 @@ async function generateTextWithTransientRetry(
       // request retry.
       const error = enrichProviderCallError(rawError);
       logToolPairingRejectionShape(error, generateParams);
-      if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
+      if (attempt >= maxRetries && !signal?.aborted && isTransientProviderError(error)) {
+        opts.onExhausted?.(error);
+      }
+      if (
+        attempt >= maxRetries ||
+        signal?.aborted ||
+        opts.yieldRateLimit?.(error) ||
+        !isTransientProviderError(error)
+      ) {
         throw error;
       }
       attempt++;
@@ -2584,6 +2791,25 @@ function observeStreamTiming(runtime: IAgentRuntime, observe: () => void): void 
   }
 }
 
+/** Read only finite provider durations; response bodies never enter diagnostics. */
+function providerTimingDurations(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object" || !("time_info" in raw)) return {};
+  const info = raw.time_info;
+  if (!info || typeof info !== "object" || Array.isArray(info)) return {};
+  const durations: Record<string, number> = {};
+  for (const [field, name] of [
+    ["queue_time", "queueMs"],
+    ["prompt_time", "promptMs"],
+    ["completion_time", "completionMs"],
+    ["total_time", "totalMs"],
+  ]) {
+    const seconds = (info as Record<string, unknown>)[field];
+    if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
+      durations[name] = seconds * 1000;
+  }
+  return durations;
+}
+
 function createStreamTiming(
   runtime: IAgentRuntime,
   modelType: ModelTypeName,
@@ -2624,27 +2850,8 @@ function createStreamTiming(
                 providerObserved = true;
                 record("openai.stream.first-provider-event");
               }
-              const raw = chunk.rawValue;
-              if (
-                providerTimingObserved ||
-                !raw ||
-                typeof raw !== "object" ||
-                !("time_info" in raw)
-              )
-                return;
-              const info = raw.time_info;
-              if (!info || typeof info !== "object" || Array.isArray(info)) return;
-              const durations: Record<string, number> = {};
-              for (const [field, name] of [
-                ["queue_time", "queueMs"],
-                ["prompt_time", "promptMs"],
-                ["completion_time", "completionMs"],
-                ["total_time", "totalMs"],
-              ]) {
-                const seconds = (info as Record<string, unknown>)[field];
-                if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
-                  durations[name] = seconds * 1000;
-              }
+              if (providerTimingObserved) return;
+              const durations = providerTimingDurations(chunk.rawValue);
               if (Object.keys(durations).length > 0) {
                 providerTimingObserved = true;
                 timer.recordSpan("openai.stream.provider-timing", 0, { ...meta, ...durations });
@@ -2693,7 +2900,9 @@ async function consumeStreamWithTransientRetry(
     model: string;
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
+    onExhausted?: (error: unknown) => void;
     beforeAttempt?: () => void;
+    yieldRateLimit?: (error: unknown) => boolean;
     streamTiming?: ReturnType<typeof createStreamTiming>;
   }
 ): Promise<BufferedStreamResult> {
@@ -2754,7 +2963,15 @@ async function consumeStreamWithTransientRetry(
       // request retry.
       const error = enrichProviderCallError(rawError);
       logToolPairingRejectionShape(error, generateParams);
-      if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
+      if (attempt >= maxRetries && !signal?.aborted && isTransientProviderError(error)) {
+        opts.onExhausted?.(error);
+      }
+      if (
+        attempt >= maxRetries ||
+        signal?.aborted ||
+        opts.yieldRateLimit?.(error) ||
+        !isTransientProviderError(error)
+      ) {
         throw error;
       }
       attempt++;
@@ -2785,15 +3002,82 @@ async function generateTextByModelType(
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter
 ): Promise<string | TextStreamResult> {
+  // Cross-provider recovery belongs to one model call, never to the action
+  // executor. Only an explicit alternative credential/model enables it.
+  const modelName = getSetting(runtime, "OPENROUTER_FALLBACK_MODEL")?.trim();
+  const apiKey = getSetting(runtime, "OPENROUTER_API_KEY")?.trim();
+  const canFallback = isCerebrasMode(runtime) && !!modelName && !!apiKey;
+  let delivered = false;
+  const observedParams =
+    canFallback && params.onStreamChunk
+      ? {
+          ...params,
+          [MODEL_PROVIDER_ATTEMPTS]: params[MODEL_PROVIDER_ATTEMPTS],
+          onStreamChunk: (chunk: string) => {
+            if (chunk) delivered = true;
+            params.onStreamChunk?.(chunk);
+          },
+        }
+      : params;
+  try {
+    return await generateTextAtEndpoint(
+      runtime,
+      observedParams,
+      modelType,
+      getModelFn,
+      undefined,
+      (error) => {
+        if (!canFallback || delivered || params.signal?.aborted) return false;
+        const failure = RetryError.isInstance(error) ? error.lastError : error;
+        const status =
+          (failure as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+          (failure as { status?: number } | undefined)?.status;
+        return status === 429;
+      }
+    );
+  } catch (error) {
+    // error-policy:J4 operator-approved alternate inference preserves the
+    // complete request after rate limiting, only before any output delivery.
+    if (!canFallback || !modelName || !apiKey || delivered || params.signal?.aborted) throw error;
+    const failure = RetryError.isInstance(error) ? error.lastError : error;
+    const status =
+      (failure as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+      (failure as { status?: number } | undefined)?.status;
+    if (status !== 429) throw error;
+    logger.info(
+      { src: "plugin:openai", modelType, model: modelName, provider: "openrouter" },
+      "[OpenAI] Cerebras rate limited; retrying this model call through the configured OpenRouter fallback"
+    );
+    return generateTextAtEndpoint(runtime, params, modelType, getModelFn, {
+      baseURL: getSetting(runtime, "OPENROUTER_BASE_URL")?.trim() || "https://openrouter.ai/api/v1",
+      apiKey,
+      modelName,
+      provider: "openrouter",
+    });
+  }
+}
+
+async function generateTextAtEndpoint(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelType: ModelTypeName,
+  getModelFn: ModelNameGetter,
+  endpoint?: { baseURL: string; apiKey: string; modelName: string; provider: "openrouter" },
+  yieldRateLimit?: (error: unknown) => boolean
+): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
-  const openai = createOpenAIClient(runtime);
+  const openai = createOpenAIClient(runtime, endpoint);
   // Keep retries and their failures bound to this call's endpoint/credential,
   // even if runtime settings change while the HTTP request is in flight.
-  const modelCooldowns = runtimeRateLimitCooldowns(runtime);
-  const primaryModelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
-  const fallbackModelName = resolveFallbackModelName(runtime, primaryModelName);
+  const modelCooldowns = runtimeRateLimitCooldowns(runtime, endpoint?.baseURL, endpoint?.apiKey);
+  const primaryModelName =
+    endpoint?.modelName ?? resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const fallbackModelName = endpoint
+    ? undefined
+    : resolveFallbackModelName(runtime, primaryModelName);
   const modelName = selectRequestModelName(modelCooldowns, primaryModelName, fallbackModelName);
-  const usageProvider = getUsageProvider(runtime);
+  const usageProvider = endpoint?.provider ?? getUsageProvider(runtime);
+  const onExhausted = endpointRetryBudget(params, modelCooldowns, modelName);
 
   if (modelName !== primaryModelName) {
     logger.info(
@@ -2802,7 +3086,11 @@ async function generateTextByModelType(
     );
   }
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
-  const providerOptions = resolveProviderOptions(params, runtime, modelName);
+  const providerOptions = resolveProviderOptions(
+    params,
+    runtime,
+    endpoint ? resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn) : modelName
+  );
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
   const userContent = hasAttachments ? buildUserContent(paramsWithAttachments) : undefined;
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
@@ -2823,6 +3111,8 @@ async function generateTextByModelType(
   // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
   //
   const model = openai.chat(modelName);
+  // The explicitly configured equivalent model accepts the same strict schema
+  // semantics. OpenRouter require_parameters prevents silent capability loss.
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedToolResult = normalizeNativeToolsForCall(paramsWithAttachments.tools, {
     cerebrasMode,
@@ -2928,6 +3218,57 @@ async function generateTextByModelType(
     ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
     : undefined;
 
+  const progressController =
+    cerebrasMode &&
+    params.stream &&
+    (params.streamStructured === true ||
+      params.responseSchema !== undefined ||
+      responseFormatType === "json_object")
+      ? new AbortController()
+      : undefined;
+  const requestSignal = progressController
+    ? params.signal
+      ? AbortSignal.any([params.signal, progressController.signal])
+      : progressController.signal
+    : params.signal;
+  let stalledOutput: { error: unknown; text: string } | undefined;
+  // SDK Output.object buffers text while its parsed partial value is unchanged.
+  // Observe raw deltas before that transform, otherwise whitespace is only
+  // exposed after the provider has already exhausted its output window.
+  const progressTransform: StreamTextTransform<ToolSet> | undefined = progressController
+    ? () => {
+        const guards = new Map<string, StructuredOutputProgressGuard>();
+        const received: string[] = [];
+        return new TransformStream({
+          transform(part, controller) {
+            requestSignal?.throwIfAborted();
+            const delta =
+              part.type === "text-delta"
+                ? part.text
+                : params.streamStructured === true && part.type === "tool-input-delta"
+                  ? part.delta
+                  : undefined;
+            if (typeof delta === "string") {
+              received.push(delta);
+              const id = part.type === "tool-input-delta" ? part.id : "text";
+              let guard = guards.get(id);
+              if (!guard) {
+                guard = new StructuredOutputProgressGuard(progressController);
+                guards.set(id, guard);
+              }
+              try {
+                guard.observe(delta);
+              } catch (error) {
+                stalledOutput = { error, text: received.join("") };
+                controller.error(error);
+                return;
+              }
+            }
+            controller.enqueue(part);
+          },
+        });
+      }
+    : undefined;
   const generateParams: NativeTextParams = {
     model,
     ...deepToWellFormedUnicode(promptOrMessages),
@@ -2940,7 +3281,8 @@ async function generateTextByModelType(
     // tails). Retries are owned by the transient lanes below (bounded 3s
     // backoff) and by the runtime's provider failover, never by the SDK.
     maxRetries: 0,
-    ...(params.signal ? { abortSignal: params.signal } : {}),
+    ...(progressTransform ? { experimental_transform: progressTransform } : {}),
+    ...(requestSignal ? { abortSignal: requestSignal } : {}),
     // An omitted caller cap delegates the output boundary to the provider/model.
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
@@ -2952,6 +3294,18 @@ async function generateTextByModelType(
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
     ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
     ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
+  };
+  const preparedRequestGuard = createOpenAIPreparedRequestGuard({
+    modelName,
+    generateParams,
+    responseDescriptor:
+      preparedOutput?.requestDescriptor ??
+      (responseFormatType === "json_object" ? { type: "json_object" } : undefined),
+    providerOptions,
+  });
+  const assertPreparedAttempt = (details: RecordLlmCallDetails): void => {
+    attestLlmInputSubstring(details);
+    preparedRequestGuard.assertBeforeAttempt();
   };
 
   // Handle streaming mode
@@ -2987,9 +3341,11 @@ async function generateTextByModelType(
         "ai.streamText",
         modelType,
         providerOptions,
-        generateParams
+        generateParams,
+        preparedOutput?.factoredSchema
       );
       details.response = "";
+      details.provider = usageProvider;
       const hasResponseTransform = preparedOutput?.transform !== undefined;
       const buffered = await recordLlmCall(runtime, details, async () => {
         assertModelNotCoolingDown(modelCooldowns, modelName);
@@ -2999,13 +3355,25 @@ async function generateTextByModelType(
           {
             model: modelName,
             retryState,
+            yieldRateLimit,
             maxRetries: 5,
-            beforeAttempt: () => attestLlmInputSubstring(details),
+            onExhausted,
+            beforeAttempt: () => assertPreparedAttempt(details),
             streamTiming,
           }
         ).catch((error: unknown) => {
+          if (stalledOutput) {
+            details.response = stalledOutput.text;
+            details.finishReason = "error";
+            details.providerMetadata = {
+              ...(details.providerMetadata && typeof details.providerMetadata === "object"
+                ? details.providerMetadata
+                : {}),
+              error: "Structured output stopped making JSON progress.",
+            };
+          }
           noteRateLimitCooldown(modelCooldowns, modelName, error);
-          throw error;
+          throw stalledOutput?.error ?? error;
         });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
@@ -3030,7 +3398,8 @@ async function generateTextByModelType(
           params.prompt ?? "",
           buffered.usage,
           modelName,
-          retryState
+          retryState,
+          usageProvider
         );
       }
       return {
@@ -3057,9 +3426,11 @@ async function generateTextByModelType(
       "ai.streamText",
       modelType,
       providerOptions,
-      generateParams
+      generateParams,
+      preparedOutput?.factoredSchema
     );
     details.response = "";
+    details.provider = usageProvider;
     assertActiveTrajectoryForLlmCall({
       actionType: details.actionType,
       model: details.model,
@@ -3099,7 +3470,7 @@ async function generateTextByModelType(
       assertModelNotCoolingDown(modelCooldowns, modelName);
       capturedStreamError = undefined;
       attemptPrefix = [];
-      attestLlmInputSubstring(details);
+      assertPreparedAttempt(details);
       attemptTiming = streamTiming?.(attempt + 1);
       try {
         result = await streamText({
@@ -3164,9 +3535,18 @@ async function generateTextByModelType(
       capturedStreamError = enrichProviderCallError(capturedStreamError);
       logToolPairingRejectionShape(capturedStreamError, generateParams);
       if (
+        failedBeforeFirstToken &&
+        attempt >= 5 &&
+        !abortSignal?.aborted &&
+        isTransientProviderError(capturedStreamError)
+      ) {
+        onExhausted(capturedStreamError);
+      }
+      if (
         !failedBeforeFirstToken ||
         attempt >= 5 ||
         abortSignal?.aborted ||
+        yieldRateLimit?.(capturedStreamError) ||
         !isTransientProviderError(capturedStreamError)
       ) {
         break;
@@ -3190,6 +3570,30 @@ async function generateTextByModelType(
         yield next.value;
       }
     };
+    // Before any text/tool delta is exposed, a provider 429 is a failed
+    // dispatch, not a partial response. Surface it to the same-call fallback.
+    if (
+      capturedStreamError &&
+      (firstItem === undefined || firstItem.done) &&
+      !endpoint &&
+      getSetting(runtime, "OPENROUTER_FALLBACK_MODEL") &&
+      getSetting(runtime, "OPENROUTER_API_KEY")
+    ) {
+      const failure = RetryError.isInstance(capturedStreamError)
+        ? capturedStreamError.lastError
+        : capturedStreamError;
+      const status =
+        (failure as { statusCode?: number; status?: number }).statusCode ??
+        (failure as { status?: number }).status;
+      if (status === 429) {
+        logActiveTrajectoryLlmCall(runtime, {
+          ...details,
+          response: "",
+          latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        });
+        throw capturedStreamError;
+      }
+    }
     let structuredTextSettled = false;
     let resolveStructuredText: (text: string) => void = () => {};
     let rejectStructuredText: (error: unknown) => void = () => {};
@@ -3232,7 +3636,7 @@ async function generateTextByModelType(
       Promise.all([rawTextPromise, finishReasonPromise]),
       ([text]) => text
     );
-    const finalizeStreamingTelemetry = async () => {
+    const finalizeStreamingTelemetry = async (streamIterationErrorForTelemetry?: unknown) => {
       if (telemetryFinalized) {
         return;
       }
@@ -3243,7 +3647,7 @@ async function generateTextByModelType(
         restoredToolCallsPromise,
       ]);
 
-      details.response = restoreResponseText(responseChunks.join(""));
+      details.response = stalledOutput?.text ?? restoreResponseText(responseChunks.join(""));
       if (usageResult.status === "fulfilled" && usageResult.value) {
         applyUsageToDetails(details, usageResult.value);
         emitModelUsageEvent(
@@ -3252,7 +3656,8 @@ async function generateTextByModelType(
           params.prompt ?? "",
           usageResult.value,
           modelName,
-          retryState
+          retryState,
+          usageProvider
         );
       } else if (usageResult.status === "rejected") {
         companionStreamError ??= usageResult.reason;
@@ -3277,6 +3682,23 @@ async function generateTextByModelType(
         companionStreamError ??= toolCallsResult.reason;
       }
 
+      const streamError =
+        stalledOutput?.error ??
+        streamIterationErrorForTelemetry ??
+        capturedStreamError ??
+        companionStreamError;
+      if (streamError !== undefined) {
+        details.providerMetadata = {
+          ...(details.providerMetadata && typeof details.providerMetadata === "object"
+            ? details.providerMetadata
+            : {}),
+          providerFinishReason: details.finishReason,
+          error: composeToolDiagnosticRedactor(runtime)(
+            streamError instanceof Error ? streamError.message : String(streamError)
+          ),
+        };
+        details.finishReason = "error";
+      }
       const elapsed =
         (typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
@@ -3341,10 +3763,13 @@ async function generateTextByModelType(
             noteRateLimitCooldown(modelCooldowns, modelName, error);
           }
         } finally {
-          await finalizeStreamingTelemetry();
+          await finalizeStreamingTelemetry(streamIterationError);
         }
         const streamError = enrichProviderCallError(
-          streamIterationError ?? capturedStreamError ?? companionStreamError
+          stalledOutput?.error ??
+            streamIterationError ??
+            capturedStreamError ??
+            companionStreamError
         );
         if (streamError && !streamIterationError && !capturedStreamError) {
           noteRateLimitCooldown(modelCooldowns, modelName, streamError);
@@ -3368,18 +3793,33 @@ async function generateTextByModelType(
     "ai.generateText",
     modelType,
     providerOptions,
-    generateParams
+    generateParams,
+    preparedOutput?.factoredSchema
   );
+  details.provider = usageProvider;
   const result = await recordLlmCall(runtime, details, async () => {
     assertModelNotCoolingDown(modelCooldowns, modelName);
     const result = await generateTextWithTransientRetry(generateParams, {
       model: modelName,
       retryState,
+      yieldRateLimit,
       maxRetries: 3,
-      beforeAttempt: () => attestLlmInputSubstring(details),
+      onExhausted,
+      beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
       throw error;
+    });
+    observeStreamTiming(runtime, () => {
+      const timer = getInferenceTimer();
+      if (!timer) return;
+      const durations = providerTimingDurations(result.response.body);
+      if (Object.keys(durations).length === 0) return;
+      timer.recordSpan("openai.generate.provider-timing", 0, {
+        modelType: Object.values(ModelType).find((known) => known === modelType) ?? "other",
+        attempt: retryState.retryCount + 1,
+        ...durations,
+      });
     });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
@@ -3393,7 +3833,7 @@ async function generateTextByModelType(
     applyUsageToDetails(details, result.usage);
     return {
       text: restoredText,
-      toolCalls: restoredToolCalls as typeof result.toolCalls,
+      toolCalls: restoredToolCalls,
       finishReason: result.finishReason,
       usage: result.usage,
       providerMetadata: result.providerMetadata,
@@ -3413,7 +3853,8 @@ async function generateTextByModelType(
       params.prompt ?? "",
       result.usage,
       modelName,
-      retryState
+      retryState,
+      usageProvider
     );
   }
 

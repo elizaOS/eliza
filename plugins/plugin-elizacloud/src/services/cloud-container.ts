@@ -6,8 +6,8 @@
  * minutes), so `waitForDeployment` polls with exponential backoff.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
 import type {
   CloudCodingContainerService,
   CloudContainer,
@@ -25,8 +25,11 @@ import type {
   SyncCloudCodingContainerResponse,
 } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
-import type { CloudApiClient } from "../utils/cloud-api";
+import { type CloudApiClient, CloudApiError } from "../utils/cloud-api";
 import type { CloudAuthService } from "./cloud-auth";
+
+/** `runtime.reportError` scope for deployment-polling failures. */
+const POLL_ERROR_SCOPE = "CloudContainerService.deploymentPolling";
 
 /** Active containers tracked locally for quick access. */
 interface TrackedContainer {
@@ -189,6 +192,10 @@ export class CloudContainerService
   /**
    * Poll container status until it reaches a terminal state (running, failed, stopped).
    * Uses exponential backoff: 5s, 10s, 20s, 30s, 30s, ...
+   *
+   * A retryable status-fetch failure consumes one attempt and re-arms on the
+   * same backoff; a permanent one (authorization, not-found, other client
+   * errors) ends the chain. Both are reported through `runtime.reportError`.
    */
   private startPolling(containerId: string): void {
     const tracked = this.tracked.get(containerId);
@@ -199,16 +206,79 @@ export class CloudContainerService
     const baseInterval = 5_000;
     const maxInterval = 30_000;
 
+    // stop() and deleteContainer() clear the pending timer and drop the entry,
+    // but cannot cancel a poll already awaiting the API. Once that request
+    // settles, the poll must not reschedule, report, or start health checks
+    // for an entry that is no longer the tracked one.
+    const stillTracked = (): boolean => {
+      if (this.tracked.get(containerId) === tracked) return true;
+      logger.debug(
+        `[CloudContainer] Poll #${attempt} for ${containerId} settled after polling stopped; not rescheduling`
+      );
+      return false;
+    };
+
     const poll = async () => {
       attempt++;
       if (attempt > maxAttempts) {
-        logger.error(
-          `[CloudContainer] Polling timed out for container ${containerId} after ${maxAttempts} attempts`
+        this.runtime.reportError(
+          POLL_ERROR_SCOPE,
+          new ElizaError(
+            `Deployment polling for container ${containerId} stopped after ${maxAttempts} attempts without a terminal status`,
+            {
+              code: "CLOUD_CONTAINER_POLL_TIMEOUT",
+              severity: "fatal",
+              context: {
+                containerId,
+                attempts: maxAttempts,
+                lastObservedStatus: tracked.container.status,
+              },
+            }
+          )
         );
         return;
       }
 
-      const container = await this.getContainer(containerId);
+      // Backoff for the next poll; computed once so the retry branch below
+      // re-arms on exactly the schedule a successful poll would have used.
+      const delay = Math.min(baseInterval * 2 ** Math.min(attempt - 1, 3), maxInterval);
+
+      let container: CloudContainer;
+      try {
+        container = await this.getContainer(containerId);
+      } catch (error) {
+        // error-policy:J1 boundary translation — this timer callback is the
+        // outermost frame of the polling job and nothing awaits it, so a failed
+        // status fetch becomes a runtime.reportError report plus an explicit
+        // retry-or-stop decision instead of an unhandled rejection that
+        // silently ends the chain.
+        if (!stillTracked()) return;
+        const retryable = isRetryablePollFailure(error);
+        const statusCode = error instanceof CloudApiError ? error.statusCode : null;
+        this.runtime.reportError(
+          POLL_ERROR_SCOPE,
+          new ElizaError(
+            `Status poll #${attempt} for container ${containerId} failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            {
+              code: retryable ? "CLOUD_CONTAINER_POLL_RETRYABLE" : "CLOUD_CONTAINER_POLL_REJECTED",
+              severity: retryable ? "ephemeral" : "fatal",
+              cause: error,
+              context: {
+                containerId,
+                attempt,
+                maxAttempts,
+                statusCode,
+                nextPollInMs: retryable ? delay : null,
+              },
+            }
+          )
+        );
+        if (retryable) tracked.pollingTimer = setTimeout(poll, delay);
+        return;
+      }
+      if (!stillTracked()) return;
       const status = container.status;
 
       logger.debug(`[CloudContainer] Poll #${attempt} for ${containerId}: status=${status}`);
@@ -230,7 +300,6 @@ export class CloudContainerService
       }
 
       // Schedule next poll with exponential backoff
-      const delay = Math.min(baseInterval * 2 ** Math.min(attempt - 1, 3), maxInterval);
       tracked.pollingTimer = setTimeout(poll, delay);
     };
 
@@ -390,6 +459,18 @@ export class CloudContainerService
   private isAuthenticated(): boolean {
     return this.authService?.isAuthenticated?.() === true;
   }
+}
+
+/**
+ * Whether a failed status fetch can succeed on a later poll. Transport failures
+ * (no HTTP response) and 408/425/429/5xx are transient; every other HTTP status
+ * — 401/403 authorization, 402 credits, 404 not-found, other client errors —
+ * fails identically on each retry.
+ */
+function isRetryablePollFailure(error: unknown): boolean {
+  if (!(error instanceof CloudApiError)) return true;
+  const { statusCode } = error;
+  return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
 }
 
 function isMissingCloudCodingEndpoint(error: unknown): boolean {

@@ -7,16 +7,11 @@
  * runner. Each runtime keeps one runner service, one injected deps set, and one
  * scheduled-task REST route.
  */
-import {
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-} from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
-
 import {
   getScheduledTaskRunnerDeps,
   registerScheduledTaskRunnerBootHook,
@@ -32,27 +27,23 @@ import {
   ensureStandaloneTickTask,
   registerStandaloneTickWorker,
 } from "./scheduled-task/standalone-tick.js";
-
 export const SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT =
   "SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT";
 export const SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED =
   "SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED";
 export const SCHEDULED_TASK_RUNNER_WAIT_STOPPED =
   "SCHEDULED_TASK_RUNNER_WAIT_STOPPED";
-
 // Deferred plugin registration can legitimately trail runtime initialization
 // on a cold, plugin-heavy boot. Keep the observed boot allowance in the
 // scheduling owner so every consumer shares one readiness contract.
-const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 120_000;
+const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 120000;
 const DEFAULT_RUNNER_REGISTRATION_POLL_MS = 250;
-
 export interface WaitForScheduledTaskRunnerServiceOptions {
   registrationTimeoutMs?: number;
   registrationPollMs?: number;
   /** Cancels deferred startup when the owning plugin/service is disposed. */
   signal?: AbortSignal;
 }
-
 function runnerWaitStopped(
   runtime: IAgentRuntime,
   signal?: AbortSignal,
@@ -63,13 +54,16 @@ function runnerWaitStopped(
       : undefined;
   return (
     signal?.aborted === true ||
-    (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true ||
+    (
+      runtime as IAgentRuntime & {
+        stopped?: boolean;
+      }
+    ).stopped === true ||
     lifecycle === "failed" ||
     lifecycle === "stopping" ||
     lifecycle === "stopped"
   );
 }
-
 function runnerWaitSignal(
   runtime: IAgentRuntime,
   ownerSignal?: AbortSignal,
@@ -82,18 +76,15 @@ function runnerWaitSignal(
   if (!runtimeSignal) return ownerSignal;
   return AbortSignal.any([runtimeSignal, ownerSignal]);
 }
-
 function runnerWaitStoppedError(serviceType: string): ElizaError {
   return new ElizaError("Scheduled task runner wait stopped", {
     code: SCHEDULED_TASK_RUNNER_WAIT_STOPPED,
     context: { serviceType },
   });
 }
-
 function throwRunnerWaitStopped(serviceType: string): never {
   throw runnerWaitStoppedError(serviceType);
 }
-
 async function waitForPromise<T>(
   promise: Promise<T>,
   signal?: AbortSignal,
@@ -120,7 +111,6 @@ async function waitForPromise<T>(
     );
   });
 }
-
 async function waitForPoll(ms: number, signal?: AbortSignal): Promise<void> {
   if (!signal) {
     await new Promise((resolve) => setTimeout(resolve, ms));
@@ -142,7 +132,6 @@ async function waitForPoll(ms: number, signal?: AbortSignal): Promise<void> {
     signal.addEventListener("abort", onAbort, { once: true });
   });
 }
-
 function requireDuration(
   value: number | undefined,
   fallback: number,
@@ -162,7 +151,6 @@ function requireDuration(
   }
   return duration;
 }
-
 /**
  * Wait for the deferred runner declaration before asking the runtime to load
  * it. Registration failure is observed immediately; missing registration is
@@ -186,7 +174,6 @@ export async function waitForScheduledTaskRunnerService(
   );
   const signal = runnerWaitSignal(runtime, options.signal);
   await waitForPromise(runtime.initPromise, signal);
-
   const serviceType = ScheduledTaskRunnerService.serviceType;
   if (runnerWaitStopped(runtime, signal)) {
     throwRunnerWaitStopped(serviceType);
@@ -194,7 +181,6 @@ export async function waitForScheduledTaskRunnerService(
   // Startup readiness is elapsed-time based; wall-clock corrections must not
   // shorten the registration allowance or keep a dependent service hung.
   const deadline = performance.now() + timeoutMs;
-
   while (!runtime.hasService(serviceType)) {
     if (runnerWaitStopped(runtime, signal)) {
       throwRunnerWaitStopped(serviceType);
@@ -206,7 +192,6 @@ export async function waitForScheduledTaskRunnerService(
         context: { serviceType, status },
       });
     }
-
     const remainingMs = deadline - performance.now();
     if (remainingMs <= 0) {
       throw new ElizaError(
@@ -219,22 +204,20 @@ export async function waitForScheduledTaskRunnerService(
     }
     await waitForPoll(Math.min(pollMs, remainingMs), signal);
   }
-
   if (runnerWaitStopped(runtime, signal)) {
     throwRunnerWaitStopped(serviceType);
   }
-
   return (await waitForPromise(
     runtime.getServiceLoadPromise(serviceType),
     signal,
   )) as ScheduledTaskRunnerService;
 }
-
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:
     "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, durable store, and default-pack seed registry. Owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
   dependencies: ["@elizaos/plugin-sql"],
+  databaseBackends: ["postgres", "pglite", "sqlite"],
   schema: schedulingDbSchema,
   services: [ScheduledTaskRunnerService],
   routes: buildSchedulingRoutes(),

@@ -20,15 +20,10 @@
  * `ELIZA_TRAJECTORY_STRICT`; embeddings, tokenizers, and speech/media models are
  * exempt from the generative-call guards.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getAmbientSingleton } from "./ambient-context.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 import { ElizaError } from "./errors";
-import {
-	CONTEXT_OBJECT_TRAJECTORY_VERSION,
-	type ContextObjectTrajectoryExport,
-	type JsonValue,
-	type Trajectory,
-} from "./features/trajectories/types";
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import {
@@ -36,8 +31,8 @@ import {
 	projectToolDiagnosticValue,
 } from "./security/tool-diagnostics";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
-import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json";
-import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
+import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json.ts";
+import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types.ts";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -46,6 +41,12 @@ import type { ActionResult } from "./types/components";
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
+import {
+	CONTEXT_OBJECT_TRAJECTORY_VERSION,
+	type ContextObjectTrajectoryExport,
+	type JsonValue,
+	type Trajectory,
+} from "./types/trajectory-export.ts";
 import { createHash } from "./utils/crypto-compat";
 
 export type TrajectoryFinalStatus =
@@ -67,6 +68,10 @@ export const TRAJECTORY_LLM_PURPOSES = [
 export type TrajectoryLlmPurpose = (typeof TRAJECTORY_LLM_PURPOSES)[number];
 
 export type TrajectoryLlmCallDetails = {
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 	model: string;
 	modelVersion?: string;
 	modelType?: string;
@@ -545,31 +550,7 @@ type TrajectoryContextWithLlmGuard = {
 	[RECORD_LLM_CALL_DEPTH_KEY]?: number;
 };
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
-function supportsAsyncLocalStorage(): boolean {
-	return isNodeEnvironment() && typeof process.getBuiltinModule === "function";
-}
-
 function createLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
-	if (!supportsAsyncLocalStorage()) {
-		throw new ElizaError(
-			"LLM input attestation requires AsyncLocalStorage isolation",
-			{
-				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-				severity: "fatal",
-			},
-		);
-	}
-	const { AsyncLocalStorage } = process.getBuiltinModule(
-		"node:async_hooks",
-	) as typeof import("node:async_hooks");
 	const storage = new AsyncLocalStorage<
 		LlmInputSubstringAttestationStore | undefined
 	>();
@@ -675,9 +656,6 @@ function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
  * with usage telemetry.
  */
 export function attestLlmInputSubstring(details: RecordLlmCallDetails): void {
-	// Attestation is an opt-in Node/Bun server capability. Ordinary browser/edge
-	// model calls do not initialize a request-scope manager.
-	if (!supportsAsyncLocalStorage()) return;
 	const store = getLlmInputSubstringAttestationContextManager().active();
 	if (!store) return;
 
@@ -733,15 +711,6 @@ export async function runWithLlmInputSubstringAttestation<T>(
 	expectedText: string,
 	fn: () => Promise<T> | T,
 ): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
-	if (!supportsAsyncLocalStorage()) {
-		throw new ElizaError(
-			"LLM input attestation requires AsyncLocalStorage isolation",
-			{
-				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-				severity: "fatal",
-			},
-		);
-	}
 	if (!expectedText) {
 		throw new ElizaError(
 			"LLM input attestation requires a non-empty expected instruction",
@@ -801,13 +770,6 @@ function isTrajectoryLoggerCandidate(
 }
 
 function readProcessEnv(name: string): string | undefined {
-	if (
-		typeof process === "undefined" ||
-		!process ||
-		typeof process.env !== "object"
-	) {
-		return undefined;
-	}
 	return process.env[name];
 }
 
@@ -1032,70 +994,10 @@ function getModelCallRecordingStorage(): ModelCallRecordingStorage {
 }
 
 function createModelCallRecordingStorage(): ModelCallRecordingStorage {
-	if (supportsAsyncLocalStorage()) {
-		const { AsyncLocalStorage } = process.getBuiltinModule(
-			"node:async_hooks",
-		) as typeof import("node:async_hooks");
-		const storage = new AsyncLocalStorage<ModelCallRecordingState>();
-		return {
-			getStore: () => storage.getStore(),
-			run: (store, fn) => storage.run(store, fn),
-		};
-	}
-	// Synchronous fallback for browser/edge. The store is a mutable object
-	// passed by reference, so `runWithModelCallRecordingScope` can read the
-	// `recorded` flag after `fn` settles. The run wrapper awaits async `fn`
-	// before restoring the previous slot, so marks made during async work
-	// (e.g. recordLlmCall) are captured.
-	//
-	// LIMITATION: This fallback does NOT support concurrent async useModel
-	// calls — without AsyncLocalStorage, overlapping scopes corrupt the
-	// single mutable slot. The corruption direction is asymmetric and
-	// dangerous: call A opens, call B opens (saving A as prev), A's provider
-	// finalizer marks — and mutates B's store. B then observes
-	// `recorded === true` and suppresses its generic fallback record, while
-	// A observes `false` and records. Net effect: one call double-counted
-	// and another silently dropped. Because the PR's goal is preventing
-	// duplicate accounting, converting duplicates into ABSENT records (which
-	// read as healthy zero-cost calls) is the wrong failure direction.
-	//
-	// Node always uses the AsyncLocalStorage path above; this only affects
-	// browser/edge runtimes, where concurrent model calls are rare.
-	// AsyncLocalStorage is a Node built-in, NOT available in browsers.
-	// The nearest browser equivalent is the TC39 AsyncContext proposal,
-	// which is not yet shipped. If browser/edge concurrent calls become
-	// common, either adopt AsyncContext when available or thread per-call
-	// recording state explicitly through provider recording APIs.
-	let syncStore: ModelCallRecordingState | undefined;
+	const storage = new AsyncLocalStorage<ModelCallRecordingState>();
 	return {
-		getStore: () => syncStore,
-		run: (store, fn) => {
-			const prev = syncStore;
-			syncStore = store;
-			const restore = () => {
-				syncStore = prev;
-			};
-			try {
-				const result = fn();
-				if (result instanceof Promise) {
-					return result.then(
-						(v) => {
-							restore();
-							return v;
-						},
-						(e) => {
-							restore();
-							throw e;
-						},
-					);
-				}
-				restore();
-				return result;
-			} catch (e) {
-				restore();
-				throw e;
-			}
-		},
+		getStore: () => storage.getStore(),
+		run: (store, fn) => storage.run(store, fn),
 	};
 }
 
@@ -1302,10 +1204,15 @@ export function logActiveTrajectoryLlmCall(
 		return false;
 	}
 
+	const context = getTrajectoryContext();
 	trajectoryLogger.logLlmCall({
 		stepId,
 		...details,
-		purpose: getTrajectoryContext()?.purpose ?? details.purpose,
+		runId: details.runId ?? context?.runId,
+		roomId: details.roomId ?? context?.roomId,
+		messageId: details.messageId ?? context?.messageId,
+		executionTraceId: details.executionTraceId ?? context?.traceId,
+		purpose: context?.purpose ?? details.purpose,
 	});
 
 	// Mark the current model-call scope as provider-recorded. This is the
@@ -1356,7 +1263,36 @@ export async function recordLlmCall<T>(
 		typeof performance !== "undefined" && typeof performance.now === "function"
 			? performance.now()
 			: Date.now();
-	const result = await runInsideRecordedLlmCall(fn);
+	let result: T;
+	try {
+		result = await runInsideRecordedLlmCall(fn);
+	} catch (error) {
+		// Preserve the provider-prepared request even when no result/usage arrives.
+		// Logging must not replace the original transport or cancellation error.
+		try {
+			const message = error instanceof Error ? error.message : String(error);
+			logActiveTrajectoryLlmCall(runtime, {
+				...details,
+				response:
+					details.response ||
+					`[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
+				finishReason: "error",
+				latencyMs: Math.max(
+					0,
+					Math.round(
+						(typeof performance !== "undefined" &&
+						typeof performance.now === "function"
+							? performance.now()
+							: Date.now()) - startedAt,
+					),
+				),
+			});
+		} catch (recordingError) {
+			// error-policy:J7 Failed-call diagnostics cannot change provider failure semantics.
+			runtime?.reportError?.("TrajectoryFailedProviderCall", recordingError);
+		}
+		throw error;
+	}
 	const elapsed =
 		(typeof performance !== "undefined" && typeof performance.now === "function"
 			? performance.now()

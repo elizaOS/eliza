@@ -3,20 +3,18 @@
  * The send pipeline consumes this pure routing description so view names,
  * context scopes, and capability hints stay independent of transport state.
  */
-
-import { asRecord } from "@elizaos/shared";
+import { asRecord } from "@elizaos/core/type-guards";
 import { readSettingsHashSectionId } from "../components/settings/settings-route";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import { getClientBrowserSurface } from "../platform/browser-surface";
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
-
 interface ChatViewRouting {
   view: string;
   primaryContext: string;
   secondaryContexts: string[];
   capabilities: string[];
 }
-
 function uniq(values: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -28,7 +26,6 @@ function uniq(values: string[]): string[] {
   }
   return result;
 }
-
 function asStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
@@ -38,7 +35,6 @@ function asStringList(value: unknown): string[] {
   }
   return [];
 }
-
 function normalizeViewPath(path: string | null | undefined): string {
   const trimmed = path?.trim() ?? "";
   if (!trimmed) return "/";
@@ -50,12 +46,10 @@ function normalizeViewPath(path: string | null | undefined): string {
     ? normalized.slice(0, -1)
     : normalized;
 }
-
 function dynamicViewNameFromPath(path: string): string {
   const slug = normalizeViewPath(path).split("/").filter(Boolean)[0];
   return slug || "views";
 }
-
 export function resolveChatViewRouting(
   tab: Tab,
   navigationPath: string,
@@ -119,7 +113,6 @@ export function resolveChatViewRouting(
       ],
     };
   }
-
   switch (tab) {
     case "apps":
       return {
@@ -203,7 +196,6 @@ export function resolveChatViewRouting(
       };
   }
 }
-
 export function buildChatViewMetadata(
   tab: Tab,
   metadata?: Record<string, unknown>,
@@ -219,15 +211,14 @@ export function buildChatViewMetadata(
     ...asStringList(existingRouting?.secondaryContexts),
     viewRouting.primaryContext,
   ]);
-
   const subview = tab === "settings" ? readSettingsHashSectionId() : null;
-
   return {
     ...(metadata ?? {}),
     uiView: viewRouting.view,
     ...(subview ? { uiViewSubview: subview } : {}),
     uiTab: tab,
     uiViewPath: normalizedViewPath,
+    uiBrowserSurface: getClientBrowserSurface(),
     uiViewCapabilities: viewRouting.capabilities,
     uiTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     [CONTEXT_ROUTING_METADATA_KEY]: {

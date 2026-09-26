@@ -6,20 +6,20 @@
  */
 import { createHash } from "node:crypto";
 import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
-import {
-  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
-  type CalendarOwnerMutationGateway,
-  CalendarService,
-  CalendarServiceError,
-} from "@elizaos/plugin-calendar";
-import { resolveCalendarEventRange } from "@elizaos/plugin-calendar/internal/calendar-normalize";
 import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsCalendarEventResponse,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventCancellationResult,
-} from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/core/contracts/calendar";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  type CalendarOwnerMutationGateway,
+  CalendarService,
+  CalendarServiceError,
+  resolveCalendarEventRange,
+} from "@elizaos/plugin-calendar";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalEnqueueInput,
@@ -49,10 +49,12 @@ export interface OwnerCalendarMutationGatewayDeps {
   readonly calendar?: Pick<
     CalendarService,
     | "getConditionalCalendarMutationTarget"
+    | "executeLinkedCalendarControl"
     | "executeLinkedCalendarLink"
     | "executeLinkedCalendarReconciliation"
     | "executeLinkedCalendarConflictResolution"
     | "executeLinkedCalendarDisconnect"
+    | "executeLinkedCalendarRebind"
     | "executeLinkedCalendarProviderChanges"
   >;
   readonly port?: CalendarMutationPort;
@@ -411,10 +413,12 @@ export class OwnerCalendarMutationGatewayService
   private calendar(): Pick<
     CalendarService,
     | "getConditionalCalendarMutationTarget"
+    | "executeLinkedCalendarControl"
     | "executeLinkedCalendarLink"
     | "executeLinkedCalendarReconciliation"
     | "executeLinkedCalendarConflictResolution"
     | "executeLinkedCalendarDisconnect"
+    | "executeLinkedCalendarRebind"
     | "executeLinkedCalendarProviderChanges"
   > {
     if (this.deps.calendar) return this.deps.calendar;
@@ -461,6 +465,9 @@ export class OwnerCalendarMutationGatewayService
     const requestSha256 = sha256({ operation: "create", request });
     const payload: CalendarEditorPayload = {
       action: "schedule_event",
+      ...(request.sourceNote !== undefined
+        ? { sourceNote: structuredClone(request.sourceNote) }
+        : {}),
       side: request.side ?? "owner",
       grantId: request.grantId ?? null,
       calendarId: request.calendarId ?? "primary",
@@ -694,6 +701,16 @@ export class OwnerCalendarMutationGatewayService
     return this.calendar().executeLinkedCalendarLink(request);
   }
 
+  async updateLinkedCalendarControl(
+    requestUrl: URL,
+    request: Parameters<
+      CalendarOwnerMutationGateway["updateLinkedCalendarControl"]
+    >[1],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarControl(requestUrl, request);
+  }
+
   async reconcileLinkedCalendar(
     _requestUrl: URL,
     linkId: string,
@@ -717,6 +734,21 @@ export class OwnerCalendarMutationGatewayService
   ) {
     requireOperationKey(request.idempotencyKey);
     return this.calendar().executeLinkedCalendarConflictResolution(
+      requireOperationKey(linkId),
+      request,
+    );
+  }
+
+  async rebindLinkedCalendar(
+    requestUrl: URL,
+    linkId: string,
+    request: Parameters<
+      CalendarOwnerMutationGateway["rebindLinkedCalendar"]
+    >[2],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarRebind(
+      requestUrl,
       requireOperationKey(linkId),
       request,
     );

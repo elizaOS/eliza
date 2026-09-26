@@ -21,7 +21,7 @@
  * The UI surfaces `reason` verbatim, so it should be short and user-facing.
  */
 
-import type { EvmSigningCapabilityKind } from "@elizaos/shared";
+import type { EvmSigningCapabilityKind } from "@elizaos/core";
 
 export type { EvmSigningCapabilityKind };
 

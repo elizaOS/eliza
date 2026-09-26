@@ -153,7 +153,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
     <th
       ref={ref}
       className={cn(
-        "h-10 px-3 text-left align-middle text-[11px] font-medium uppercase tracking-[0.24em] text-muted [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "h-10 px-3 text-left align-middle text-[11px] font-medium uppercase tracking-[0.24em] text-muted-strong [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         tableHeadVariants({ divider, interactive }),
         className,
       )}

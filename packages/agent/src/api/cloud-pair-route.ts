@@ -13,39 +13,37 @@
  * redemption to that LAN/VPC segment, so keep the list as narrow as the
  * deployment allows.
  */
-
 import type http from "node:http";
-import { logger } from "@elizaos/core";
-import {
-  isLoopbackRemoteAddress,
-  isRemoteAddressInCidrList,
-  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
 import {
   type CloudPairRelaySession,
+  logger,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/core";
+
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import {
+  isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
+} from "./loopback-trust.js";
 import { resolveDirectRequestOrigin } from "./request-origin.js";
 
-const RELAY_TIMEOUT_MS = 15_000;
-const RATE_LIMIT_WINDOW_MS = 60_000;
+const RELAY_TIMEOUT_MS = 15000;
+const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX = 20;
-
 interface RateBucket {
   count: number;
   resetAt: number;
 }
-
 const rateBuckets = new Map<string, RateBucket>();
-
 export function __resetCloudPairRateLimitForTests(): void {
   rateBuckets.clear();
 }
-
 function rateLimitConsume(key: string | null): boolean {
   const now = Date.now();
   const bucketKey = key || "unknown";
@@ -61,30 +59,25 @@ function rateLimitConsume(key: string | null): boolean {
   current.count += 1;
   return true;
 }
-
 function resolveCloudApiBaseUrl(): string {
   return resolveCanonicalCloudApiBaseUrl(
     process.env.NEXT_PUBLIC_API_URL,
   ).replace(/\/+$/, "");
 }
-
 function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
-
 interface CloudPairRelayPolicy {
   readonly directRelayEnabled: boolean;
   readonly allowedPeerCidrs: string | undefined;
   readonly agentEnv: Readonly<Record<string, string | undefined>>;
 }
-
 function resolveCloudPairRelayPolicy(): CloudPairRelayPolicy {
   const authority = resolveDevCloudEnvAuthority();
   const read = (key: string): string | undefined =>
     authority ? resolveDevCloudAuthorityEnvValue(key) : process.env[key];
   const activationBlocked =
     authority === "staging-default" || authority === "offline";
-
   return Object.freeze({
     directRelayEnabled:
       !activationBlocked && read("ELIZA_CLOUD_PAIR_DIRECT_RELAY") === "1",
@@ -95,7 +88,6 @@ function resolveCloudPairRelayPolicy(): CloudPairRelayPolicy {
     }),
   });
 }
-
 function canUseManagedDirectRelay(
   req: http.IncomingMessage,
   policy: CloudPairRelayPolicy,
@@ -115,13 +107,11 @@ function canUseManagedDirectRelay(
     isRemoteAddressInCidrList(peer, policy.allowedPeerCidrs)
   );
 }
-
 function escapeHtml(value: string): string {
   return value.replace(/[<>&"]/g, (c) =>
     c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : "&quot;",
   );
 }
-
 /**
  * Canonical staging hostnames — mirrors `STAGING_CONSOLE_HOSTS` in
  * `packages/ui/src/utils/cloud-agent-base.ts` plus the wildcard subdomain.
@@ -136,7 +126,6 @@ const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
   "api-staging.elizacloud.ai",
   "app-staging.elizacloud.ai",
 ]);
-
 function isStagingCloudHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
@@ -145,7 +134,6 @@ function isStagingCloudHostname(hostname: string): boolean {
     host.endsWith(".staging.elizacloud.ai")
   );
 }
-
 /**
  * Resolve the Eliza Cloud console dashboard URL for the environment the agent
  * is provisioned against. A staging agent (any canonical staging alias or
@@ -164,7 +152,6 @@ function resolveCloudConsoleUrl(): string {
   }
   return "https://cloud.eliza.app/cloud/agents";
 }
-
 function renderErrorHtml(
   title: string,
   message: string,
@@ -197,7 +184,6 @@ function renderErrorHtml(
 </body>
 </html>`;
 }
-
 function sendHtml(
   res: http.ServerResponse,
   status: number,
@@ -219,7 +205,6 @@ function sendHtml(
   });
   res.end(body);
 }
-
 export async function handleStandaloneCloudPairRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -227,7 +212,6 @@ export async function handleStandaloneCloudPairRoute(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
   if (method !== "GET" || url.pathname !== "/pair") return false;
-
   // Capture every authority-owned relay input once per request. Later env
   // writes cannot enable a blocked relay or redirect an admitted exchange.
   const relayPolicy = resolveCloudPairRelayPolicy();
@@ -242,7 +226,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   const ip = req.socket.remoteAddress ?? null;
   if (!rateLimitConsume(ip)) {
     sendHtml(
@@ -255,7 +238,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   const token = url.searchParams.get("token")?.trim();
   if (!token) {
     sendHtml(
@@ -268,7 +250,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   // The origin forwarded to the Cloud exchange is reconstructed from direct
   // request metadata only — forwarded headers are client-controlled and must
   // not be able to rewrite the origin the exchange is bound to (W1-037).
@@ -284,7 +265,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   const agentId = resolveCloudPairAgentIdFromEnv(relayPolicy.agentEnv);
   if (!agentId) {
     sendHtml(
@@ -297,7 +277,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
   let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
@@ -342,9 +321,7 @@ export async function handleStandaloneCloudPairRoute(
     // error-policy:J1 transport/abort failures become a structured 503 page.
     const timedOut = err instanceof Error && err.name === "AbortError";
     logger.error(
-      `[cloud-pair] exchange ${timedOut ? "timed out" : "failed"} url=${exchangeUrl} error=${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[cloud-pair] exchange ${timedOut ? "timed out" : "failed"} url=${exchangeUrl} error=${err instanceof Error ? err.message : String(err)}`,
     );
     sendHtml(
       res,
@@ -361,7 +338,6 @@ export async function handleStandaloneCloudPairRoute(
   } finally {
     clearTimeout(timeoutId);
   }
-
   if (status === 401 || status === 403 || status === 410) {
     // Cloud returns one opaque body for ALL rejection causes: expired,
     // already-redeemed, unknown-to-this-environment, origin-not-bound, and
@@ -381,7 +357,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   if (status === 429) {
     sendHtml(
       res,
@@ -393,7 +368,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   if (status >= 500) {
     // A 5xx does not reveal whether Cloud consumed the one-time token before
     // failing. Keep the copy neutral and recover through a fresh link rather
@@ -409,7 +383,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   if (!exchanged) {
     // Two remaining failure shapes: a 2xx whose body failed session parsing
     // (Cloud really did accept the link), or an unexpected non-2xx status.
@@ -427,7 +400,6 @@ export async function handleStandaloneCloudPairRoute(
     );
     return true;
   }
-
   logger.info(
     `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
   );

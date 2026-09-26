@@ -1,3 +1,4 @@
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
 /**
  * Plugin discovery and resolution logic.
  *
@@ -12,26 +13,20 @@
  *
  * @module plugin-resolver
  */
+
 import crypto from "node:crypto";
 import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-import { ElizaError, logger, type Plugin } from "@elizaos/core";
-import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
-  type AppManifestBlock,
-  applyAppManifestDefaults,
-  filterCandidatesByAppManifest,
-  readAppManifest,
-} from "@elizaos/shared/config/app-manifest";
-import {
-  applyPluginManifestVerdicts,
-  evaluatePluginManifests,
-  type PluginManifestCandidate,
-  type PluginManifestVerdict,
-} from "@elizaos/shared/config/plugin-manifest";
+  ElizaError,
+  formatError,
+  isMobilePlatform,
+  logger,
+  type Plugin,
+  type PluginInstallRecord,
+} from "@elizaos/core";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
@@ -40,13 +35,30 @@ import {
 } from "../config/dev-cloud-env-authority.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
-import type { PluginInstallRecord } from "../config/types.eliza.ts";
+import {
+  type AppManifestBlock,
+  applyAppManifestDefaults,
+  filterCandidatesByAppManifest,
+  readAppManifest,
+} from "../host-manifests/app-manifest.js";
+import {
+  applyPluginManifestVerdicts,
+  evaluatePluginManifests,
+  type PluginManifestCandidate,
+  type PluginManifestVerdict,
+} from "../host-manifests/plugin-manifest.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.ts";
 import {
   BLOCKING_CORE_PLUGINS,
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
+import {
+  isSQLiteSelected,
+  preparePluginForSelectedDatabase,
+  SQLITE_PLUGIN,
+  selectDatabasePluginNames,
+} from "./database-selection.ts";
 import {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
@@ -55,6 +67,10 @@ import {
   type PluginLoadReasons,
   resolvePluginPackageAlias,
 } from "./plugin-collector.ts";
+import {
+  collectStagedDirectoryLinks,
+  relocateStagedDirectoryLinks,
+} from "./plugin-staging-links.ts";
 import {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -88,13 +104,15 @@ let lastFailedPluginDetails: readonly FailedPluginDetail[] = [];
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-calendar",
-  "@elizaos/plugin-contacts",
+  "@elizaos/plugin-native-contacts",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-phone",
+  "@elizaos/plugin-native-phone",
   "@elizaos/plugin-notes",
-  "@elizaos/plugin-documents",
-  "@elizaos/plugin-wifi",
+  "@elizaos/plugin-knowledge",
+  "@elizaos/plugin-native-wifi",
+  "@elizaos/plugin-todos",
+  "@elizaos/plugin-relationships",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -153,18 +171,17 @@ const SOURCE_STAGED_ROOT_ENTRYPOINTS: Record<
 > = {
   "@elizaos/agent": {
     path: "./src/staged-runtime-index.ts",
-    source: `export { extractActionParamsViaLlm } from "./actions/extract-params.ts";
-export { renderGroundedActionReply } from "./actions/grounded-action-reply.ts";
-export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
+    source: `export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export { checkRateLimit } from "./api/rate-limiter.ts";
-export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export { loadEffectiveElizaConfig, loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export { loadOwnerContactRoutingHints, loadOwnerContactsConfig, resolveOwnerContactWithFallback } from "./config/owner-contacts.ts";
 export { resolveOAuthDir, resolveStateDir } from "./config/paths.ts";
 export { createIntegrationTelemetrySpan } from "./diagnostics/integration-observability.ts";
 export { getAgentEventService } from "./runtime/agent-event-service.ts";
 export { resolveOwnerEntityId } from "./runtime/owner-entity.ts";
 export { hasOwnerAccess } from "./security/access.ts";
+export { createLocalAgentBackup, listLocalAgentBackups } from "./services/agent-backup.ts";
 export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
 export { registerEscalationChannel } from "./services/escalation.ts";
 export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.ts";
@@ -461,15 +478,27 @@ async function ensureStagedPackageDependencies(params: {
   packageName: string;
   packageRoot: string;
   stagedPackageRoot: string;
-  ancestorPackageRoots?: ReadonlySet<string>;
+  stagedGraph?: Map<string, string>;
+  stagedGraphRoot?: string;
+  ancestorPackageIdentities?: ReadonlySet<string>;
+  sourceStaged?: boolean;
 }): Promise<void> {
   const canonicalPackageRoot = await fs.realpath(params.packageRoot);
-  const ancestorPackageRoots = params.ancestorPackageRoots ?? new Set<string>();
-  if (ancestorPackageRoots.has(canonicalPackageRoot)) {
-    return;
-  }
-  const dependencyAncestorRoots = new Set(ancestorPackageRoots);
-  dependencyAncestorRoots.add(canonicalPackageRoot);
+  const packageIdentity = JSON.stringify([
+    canonicalPackageRoot,
+    params.sourceStaged === true,
+  ]);
+  const ancestorPackageIdentities =
+    params.ancestorPackageIdentities ?? new Set<string>();
+  if (ancestorPackageIdentities.has(packageIdentity)) return;
+  const dependencyAncestorIdentities = new Set(ancestorPackageIdentities);
+  dependencyAncestorIdentities.add(packageIdentity);
+  const stagedGraph = params.stagedGraph ?? new Map<string, string>();
+  const stagedGraphRoot =
+    params.stagedGraphRoot ?? (await fs.realpath(params.stagedPackageRoot));
+  // Publish identity before walking edges: cycles and diamonds must resolve to
+  // the same staged module, while distinct physical versions stay distinct.
+  stagedGraph.set(packageIdentity, params.stagedPackageRoot);
 
   const stagedNodeModulesPath = path.join(
     params.stagedPackageRoot,
@@ -509,7 +538,50 @@ async function ensureStagedPackageDependencies(params: {
     }
 
     let stagedSourceRoot: string | null = null;
+    let reusedStagedDependency = false;
     for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
+      const sourceEntry = packageNodeModulesEntryPath(
+        sourceNodeModulesDir,
+        dependency.name,
+      );
+      if (!(await pathEntryExists(sourceEntry))) continue;
+      const canonicalSourceRoot =
+        await resolveSymlinkTargetIfPresent(sourceEntry);
+      if (!canonicalSourceRoot) continue;
+      const stagedIdentity = stagedGraph.get(
+        JSON.stringify([canonicalSourceRoot, shouldStageFromSource]),
+      );
+      if (stagedIdentity) {
+        const sourceManifest =
+          await readPluginPackageManifest(canonicalSourceRoot);
+        const stagedManifest = await readPluginPackageManifest(stagedIdentity);
+        const canonicalStagedIdentity = await fs.realpath(stagedIdentity);
+        if (
+          sourceManifest?.name === dependency.name &&
+          stagedManifest?.name === dependency.name &&
+          isPathInsideRoot(canonicalStagedIdentity, stagedGraphRoot)
+        ) {
+          // These targets were copied and audited by this invocation. Windows
+          // junctions avoid requiring symlink privilege; cold publication
+          // relocates their absolute targets before renaming the generation.
+          await fs.mkdir(path.dirname(stagedDependencyPath), {
+            recursive: true,
+          });
+          await fs.symlink(
+            process.platform === "win32"
+              ? canonicalStagedIdentity
+              : path.relative(
+                  path.dirname(stagedDependencyPath),
+                  stagedIdentity,
+                ),
+            stagedDependencyPath,
+            process.platform === "win32" ? "junction" : "dir",
+          );
+          stagedSourceRoot = canonicalSourceRoot;
+          reusedStagedDependency = true;
+          break;
+        }
+      }
       stagedSourceRoot = shouldStageFromSource
         ? await stageWorkspaceSourceDependencyIntoNodeModules({
             dependencyName: dependency.name,
@@ -533,7 +605,7 @@ async function ensureStagedPackageDependencies(params: {
       continue;
     }
 
-    if (!stagedSourceRoot) continue;
+    if (!stagedSourceRoot || reusedStagedDependency) continue;
     await ensureStagedPackageDependencies({
       installRoot: params.installRoot,
       packageName: dependency.name,
@@ -542,7 +614,10 @@ async function ensureStagedPackageDependencies(params: {
         stagedNodeModulesPath,
         dependency.name,
       ),
-      ancestorPackageRoots: dependencyAncestorRoots,
+      stagedGraph,
+      stagedGraphRoot,
+      ancestorPackageIdentities: dependencyAncestorIdentities,
+      sourceStaged: shouldStageFromSource,
     });
   }
 }
@@ -564,18 +639,6 @@ function uniquePaths(paths: string[]): string[] {
   return ordered;
 }
 
-function resolveWorkspaceRoots(): string[] {
-  const envRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
-  if (envRoot) {
-    return uniquePaths([envRoot]);
-  }
-
-  // Search cwd by default. Repo-local ./eliza submodule +
-  // setup:upstreams symlinks handle plugin resolution for development. Set
-  // ELIZA_WORKSPACE_ROOT explicitly for external override scenarios.
-  return uniquePaths([process.cwd()]);
-}
-
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
@@ -587,7 +650,7 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   const packageSegment = packageSegmentMatch?.[1];
   if (!packageSegment) return null;
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const candidates = [
       path.join(workspaceRoot, "plugins", packageSegment, "typescript"),
       path.join(workspaceRoot, "plugins", packageSegment),
@@ -650,7 +713,7 @@ async function hasNonSymlinkWorkspaceNodeModulesPackage(
 ): Promise<boolean> {
   for (const workspaceRoot of uniquePaths([
     process.cwd(),
-    ...resolveWorkspaceRoots(),
+    ...resolveWorkspaceRootsForDiscovery(),
   ])) {
     const candidate = path.join(
       workspaceRoot,
@@ -679,7 +742,7 @@ async function resolveWorkspaceNodeModulesPackageRoot(
 ): Promise<string | null> {
   for (const workspaceRoot of uniquePaths([
     process.cwd(),
-    ...resolveWorkspaceRoots(),
+    ...resolveWorkspaceRootsForDiscovery(),
   ])) {
     const candidate = path.join(
       workspaceRoot,
@@ -836,7 +899,9 @@ export async function importPluginModuleFromPath(
     isColdImport &&
     (existsSync(path.join(pkgRoot, "dist")) ||
       (await isWorkspacePluginPackageRoot(pkgRoot)));
+  const selectedEntryPoint = await resolvePackageEntry(pkgRoot, exportSubpath);
   const stageParams = {
+    entryPoint: selectedEntryPoint,
     installRoot: absPath,
     packageRoot: pkgRoot,
     packageRelativePath,
@@ -1235,6 +1300,26 @@ async function removeEscapingStagedSymlinks(
   }
 }
 
+const STAGED_COPY_CONCURRENCY = 16;
+const stagedCopyWaiters: (() => void)[] = [];
+let activeStagedCopies = 0;
+
+async function withStagedCopySlot(copy: () => Promise<void>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (activeStagedCopies < STAGED_COPY_CONCURRENCY) {
+      activeStagedCopies++;
+      resolve();
+    } else stagedCopyWaiters.push(resolve);
+  });
+  try {
+    await copy();
+  } finally {
+    const next = stagedCopyWaiters.shift();
+    if (next) next();
+    else activeStagedCopies--;
+  }
+}
+
 /**
  * Copy a plugin/package tree without materializing host files behind
  * out-of-tree symlinks. `fs.cp({ dereference: true })` followed those links
@@ -1250,27 +1335,123 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
 ): Promise<void> {
   const sourceRoot = await fs.realpath(sourcePath);
   try {
-    await fs.cp(sourceRoot, targetPath, {
-      recursive: true,
-      force: true,
-      dereference: false,
-      verbatimSymlinks: true,
-      filter: async (src) => {
-        const logicalSource = path.join(
-          sourcePath,
-          path.relative(sourceRoot, src),
+    const entries = [{ source: sourceRoot, target: targetPath }];
+    const queued = new Set([sourceRoot]);
+    const selections = new Map<string, boolean>();
+    const restrictiveModes: { target: string; mode: number }[] = [];
+    const copyEntry = async (entry: {
+      source: string;
+      target: string;
+    }): Promise<void> => {
+      const descendants: { source: string; target: string }[] = [];
+      if (!isPathInsideRoot(await fs.realpath(entry.source), sourceRoot)) {
+        throw new ElizaError(
+          "Plugin source entry changed outside its package during staging",
+          {
+            code: "PLUGIN_STAGING_SOURCE_CHANGED",
+            context: { sourceRoot, source: entry.source },
+          },
         );
-        if (options?.filter && !options.filter(logicalSource)) return false;
-        try {
-          const stat = await fs.lstat(src);
-          if (!stat.isSymbolicLink()) return true;
-          return (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null;
-        } catch {
-          // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
-          return false;
-        }
-      },
-    });
+      }
+      let existed = false;
+      let copiedDirectoryMode: number | undefined;
+      await fs.cp(entry.source, entry.target, {
+        recursive: true,
+        force: true,
+        dereference: false,
+        verbatimSymlinks: true,
+        filter: async (src) => {
+          if (options?.filter) {
+            let selected = selections.get(src);
+            if (selected === undefined) {
+              selected = options.filter(
+                path.join(sourcePath, path.relative(sourceRoot, src)),
+              );
+              selections.set(src, selected);
+            }
+            if (!selected) return false;
+          }
+          try {
+            const stat = await fs.lstat(src);
+            if (
+              stat.isSymbolicLink() &&
+              (await confinedTreeSymlinkTarget(src, sourceRoot)) === null
+            ) {
+              return false;
+            }
+            if (src !== entry.source) {
+              // Defer files as well as directories. A flat package must share
+              // the same bounded work budget as a tree of small directories.
+              if (!queued.has(src)) {
+                queued.add(src);
+                descendants.push({
+                  source: src,
+                  target: path.join(targetPath, path.relative(sourceRoot, src)),
+                });
+              }
+              return false;
+            }
+            if (stat.isDirectory()) copiedDirectoryMode = stat.mode;
+          } catch {
+            // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
+            return false;
+          }
+          // Only new directories need temporary permissions. Destination
+          // failures must reject the copy rather than look like skipped input.
+          if (copiedDirectoryMode !== undefined) {
+            existed = await pathEntryExists(entry.target);
+          }
+          return true;
+        },
+      });
+      // fs.cp applies a new directory's final mode before deferred children run.
+      // Keep only those new restrictive parents writable until their children
+      // finish, then restore their original modes from the leaves upward.
+      if (
+        !existed &&
+        copiedDirectoryMode !== undefined &&
+        (copiedDirectoryMode & 0o700) !== 0o700
+      ) {
+        await fs.chmod(entry.target, copiedDirectoryMode | 0o700);
+        restrictiveModes.push({
+          target: entry.target,
+          mode: copiedDirectoryMode,
+        });
+      }
+      // A child may run only after its parent exists with writable traversal
+      // permissions. Replenish workers without waiting for unrelated entries.
+      for (const descendant of descendants) entries.push(descendant);
+    };
+    const pending = new Set<Promise<void>>();
+    let nextEntry = 0;
+    let copyFailure: { error: unknown } | undefined;
+    while (nextEntry < entries.length || pending.size > 0) {
+      while (
+        !copyFailure &&
+        nextEntry < entries.length &&
+        pending.size < STAGED_COPY_CONCURRENCY
+      ) {
+        const entry = entries[nextEntry++];
+        let task: Promise<void>;
+        task = withStagedCopySlot(() => copyEntry(entry)).then(
+          () => {
+            pending.delete(task);
+          },
+          (error: unknown) => {
+            // error-policy:J5 rethrown below after every active writer settles.
+            copyFailure ??= { error };
+            pending.delete(task);
+          },
+        );
+        pending.add(task);
+      }
+      if (pending.size === 0) break;
+      await Promise.race(pending);
+    }
+    if (copyFailure) throw copyFailure.error;
+    for (const directory of restrictiveModes.reverse()) {
+      await fs.chmod(directory.target, directory.mode);
+    }
     await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
     await options?.afterCopyBeforeAudit?.();
     const canonicalTargetRoot = await fs.realpath(targetPath);
@@ -1477,10 +1658,13 @@ export async function pruneStalePluginInstances(
   }
 }
 
-function createPluginPackageStageFilter(packageRoot: string) {
+function createPluginPackageStageFilter(
+  packageRoot: string,
+  entryPoint: string,
+) {
   const distPath = path.join(packageRoot, "dist");
   const stageBuiltPackageOnly =
-    existsSync(distPath) && !stageFullPluginPackageEnabled();
+    isPathInsideRoot(entryPoint, distPath) && !stageFullPluginPackageEnabled();
 
   return (src: string): boolean => {
     const relativePath = path.relative(packageRoot, src);
@@ -1552,6 +1736,7 @@ async function linkHoistedNodeModulesPackages(params: {
 }
 
 type StagePluginParams = {
+  entryPoint?: string;
   installRoot: string;
   packageRoot: string;
   packageRelativePath: string[];
@@ -1619,7 +1804,12 @@ async function populateStagedImportRoot(
   await copyPluginTreeWithoutEscapingSymlinks(
     params.packageRoot,
     stagedPackageRoot,
-    { filter: createPluginPackageStageFilter(params.packageRoot) },
+    {
+      filter: createPluginPackageStageFilter(
+        params.packageRoot,
+        params.entryPoint ?? (await resolvePackageEntry(params.packageRoot)),
+      ),
+    },
   );
 
   const installNodeModulesPath = path.join(params.installRoot, "node_modules");
@@ -1705,7 +1895,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v1";
+const STAGE_DIGEST_VERSION = "v6";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
@@ -1729,7 +1919,7 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
 
   for (const workspaceRoot of uniquePaths([
     process.cwd(),
-    ...resolveWorkspaceRoots(),
+    ...resolveWorkspaceRootsForDiscovery(),
   ])) {
     let realWorkspaceRoot: string;
     try {
@@ -1764,8 +1954,9 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
  */
 async function collectStageDigestEntries(
   packageRoot: string,
+  entryPoint: string,
 ): Promise<string[]> {
-  const filter = createPluginPackageStageFilter(packageRoot);
+  const filter = createPluginPackageStageFilter(packageRoot, entryPoint);
   const entries: string[] = [];
   const walk = async (dir: string): Promise<void> => {
     const dirents = await fs.readdir(dir, { withFileTypes: true });
@@ -1858,6 +2049,8 @@ async function computePluginStageDigest(
   // one ELIZA_STATE_DIR never reuse each other's staged trees (their assembled
   // node_modules symlinks point into different source trees).
   const realInstallRoot = await fs.realpath(params.installRoot);
+  const entryPoint =
+    params.entryPoint ?? (await resolvePackageEntry(params.packageRoot));
   const parts: string[] = [
     STAGE_DIGEST_VERSION,
     params.packageName,
@@ -1865,7 +2058,8 @@ async function computePluginStageDigest(
     `root:${realInstallRoot}`,
     `full:${stageFullPluginPackageEnabled()}`,
     `hoistAll:${stageAllHoistedNodeModulesEnabled()}`,
-    ...(await collectStageDigestEntries(params.packageRoot)),
+    `entry:${path.relative(params.packageRoot, entryPoint)}`,
+    ...(await collectStageDigestEntries(params.packageRoot, entryPoint)),
     `installNM:${await nodeModulesGenerationSignature(path.join(params.installRoot, "node_modules"))}`,
   ];
   if (params.packageRoot !== params.installRoot) {
@@ -1953,6 +2147,13 @@ export async function stageColdPluginImportRoot(
       path.join(stagingBaseDir, STAGE_TMP_DIR_PREFIX),
     );
     await populateStagedImportRoot(tmpDir, params);
+    const directoryLinks =
+      process.platform === "win32"
+        ? await collectStagedDirectoryLinks(tmpDir)
+        : [];
+    if (directoryLinks.length > 0) {
+      await relocateStagedDirectoryLinks(directoryLinks, tmpDir, cacheDir);
+    }
     await fs.writeFile(path.join(tmpDir, STAGE_COMPLETE_MARKER), digest);
     try {
       await fs.rename(tmpDir, cacheDir);
@@ -1982,6 +2183,9 @@ export async function stageColdPluginImportRoot(
         stagingBaseDir,
         `${Date.now()}-${crypto.randomUUID()}-unpublished`,
       );
+      if (directoryLinks.length > 0) {
+        await relocateStagedDirectoryLinks(directoryLinks, tmpDir, fallbackDir);
+      }
       await fs.rename(tmpDir, fallbackDir);
       return stagedPackageRootPath(fallbackDir, params.packageRelativePath);
     }
@@ -2060,7 +2264,7 @@ function computeVerdictFingerprint(
  */
 async function computePluginCandidateSignature(): Promise<string> {
   const parts: string[] = [];
-  for (const root of resolveWorkspaceRoots()) {
+  for (const root of resolveWorkspaceRootsForDiscovery()) {
     await addDirectorySignature(parts, path.join(root, "node_modules"));
     for (const scopeDir of await listNodeModulesScopeDirs(root)) {
       await addDirectorySignature(parts, scopeDir);
@@ -2147,7 +2351,7 @@ async function discoverPluginCandidatesUncached(): Promise<
 
   // 1. node_modules plugin/app packages — covers npm-installed official and
   //    third-party plugins plus dev symlinks pointing at workspace packages.
-  for (const root of resolveWorkspaceRoots()) {
+  for (const root of resolveWorkspaceRootsForDiscovery()) {
     const nodeModulesDir = path.join(root, "node_modules");
     let entries: import("node:fs").Dirent[];
     try {
@@ -2194,7 +2398,7 @@ async function discoverPluginCandidatesUncached(): Promise<
   // 2. workspace `plugins/` dir — covers cases where the plugin is in the
   //    repo source tree without a matching node_modules link. Cheap
   //    fall-through.
-  for (const root of resolveWorkspaceRoots()) {
+  for (const root of resolveWorkspaceRootsForDiscovery()) {
     const pluginsDir = path.join(root, "plugins");
     let entries: import("node:fs").Dirent[];
     try {
@@ -2431,8 +2635,12 @@ export async function resolvePlugins(
     loadReasons,
     Array.from(forceIncludePluginNames),
   );
-  const corePluginSet = new Set<string>(CORE_PLUGINS);
-  const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  const corePluginSet = new Set<string>(
+    selectDatabasePluginNames(CORE_PLUGINS),
+  );
+  const blockingPluginSet = new Set<string>(
+    selectDatabasePluginNames(BLOCKING_CORE_PLUGINS),
+  );
   const routingOwnershipPluginNames = new Set<string>();
   const routingOnlyPluginNames = new Set<string>();
   for (const [pluginId, appDefault] of Object.entries(
@@ -2558,6 +2766,16 @@ export async function resolvePlugins(
     );
   }
 
+  if (isSQLiteSelected()) {
+    const selected = selectDatabasePluginNames(pluginsToLoad);
+    pluginsToLoad.clear();
+    for (const name of selected) pluginsToLoad.add(name);
+  } else if (pluginsToLoad.has(SQLITE_PLUGIN)) {
+    throw new ElizaError(
+      "Set ELIZA_DATABASE_PROVIDER=sqlite before enabling the SQLite database plugin",
+      { code: "SQLITE_SELECTION_REQUIRED" },
+    );
+  }
   if (phase !== "all") {
     const beforePhaseFilter = pluginsToLoad.size;
     // Model-provider plugins in the load set are blocking alongside
@@ -2827,10 +3045,12 @@ export async function resolvePlugins(
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {
+        const compatiblePlugin =
+          preparePluginForSelectedDatabase(pluginInstance);
         const routingOnly = routingOnlyPluginNames.has(pluginName);
         const pluginForRegistration = routingOnly
           ? projectRoutingOnlyPlugin(pluginInstance)
-          : pluginInstance;
+          : compatiblePlugin;
         // Generic pre-init hook: a plugin owning a load-time dependency (e.g.
         // plugin-browser's optional stagehand-server) prepares it here, before
         // its services start. Runs for every plugin that declares `preflight`,
@@ -2872,6 +3092,12 @@ export async function resolvePlugins(
         return null;
       }
     } catch (err) {
+      // error-policy:J1 Explicit database incompatibility aborts activation before plugin effects.
+      if (
+        err instanceof ElizaError &&
+        err.code === "SQLITE_PLUGIN_INCOMPATIBLE"
+      )
+        throw err;
       if (routingOnlyPluginNames.has(pluginName)) {
         if (err instanceof ElizaError) throw err;
         throw new ElizaError(

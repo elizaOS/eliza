@@ -7,9 +7,8 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "declaration": true,
-    "outDir": "dist",
-    "rootDir": "../../..",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node", "bun-types"]
   },
   "include": ["src/**/*"],

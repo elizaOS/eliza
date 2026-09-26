@@ -7,10 +7,13 @@
  * vehicle, or restraint, mutates a calendar, or sends a message.
  */
 import { randomUUID } from "node:crypto";
-import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import {
+  type EntityStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships";
 import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalQueue,

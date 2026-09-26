@@ -1,0 +1,1541 @@
+/** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
+
+import type {
+  GenerateTextResult,
+  JSONSchema,
+  JsonValue,
+  Memory,
+  MessageHandlerResult,
+  ResponseHandlerFieldContext,
+  ResponseHandlerFieldRunResult,
+  ResponseHandlerSenderRole,
+  TrajectoryRecorder,
+} from "@elizaos/core";
+import {
+  buildModelInputBudget,
+  buildResponseGrammar,
+  buildSpanSamplerPlan,
+  computePrefixHashes,
+  createHandleResponseTool,
+  ElizaError,
+  getCandidateActionBackstopRules,
+  getStreamingContext,
+  getUserMessageText,
+  guardOutboundEnvelopeText,
+  HANDLE_RESPONSE_TOOL_NAME,
+  hashString,
+  isObjectRecord,
+  ModelType,
+  providerReviewSources,
+  recordInferenceSpan,
+  sanitizeUserVisibleModelOutput,
+  timeInferenceSpan,
+  withGuidedDecodeProviderOptions,
+  withModelInputBudgetProviderOptions,
+  withProviderReviewSchema,
+  withRequiredCompletionSourceIdentity,
+} from "@elizaos/core";
+import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
+import {
+  completionContextFieldEvaluator,
+  contextRequestsFieldEvaluator,
+  replyTextFieldEvaluator,
+  topicsFieldEvaluator,
+} from "../../runtime/builtin-field-evaluators";
+import { getMessageHandlerReply } from "../../runtime/message-handler";
+import { cacheProviderOptions } from "../../runtime/planner-loop";
+import { getEvaluatorProgressState } from "../evaluator-progress.ts";
+import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
+import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
+import { resolveStage1SenderRole } from "./addressing.js";
+import { createV5MessageContextObject } from "./context-assembly.js";
+import { listAvailableContextsForTurn } from "./context-catalog.js";
+import {
+  createContextReadTool,
+  extractContextRead,
+  hasContextReadToolCall,
+  projectDiscoverableContext,
+  READ_CONTEXT_TOOL_NAME,
+  withAvailableContextRequests,
+} from "./context-discovery.js";
+import {
+  getActionInferenceMessageText,
+  isSubAgentCompletionArtifact,
+  resolveContinuationInferenceMessageText,
+} from "./dialogue-context.js";
+import { evaluatePlannedReplyEgress } from "./egress-policy.ts";
+import {
+  canRepairHistoryIdentity,
+  canRepairIncompleteHistorySelection,
+  HISTORY_REFERENCE_PREFIX,
+  type HistoryDiscovery,
+  historyReferences,
+  loadHistoryReferences,
+  projectReviewedHistory,
+  readHistoryContextRequests,
+  repairableHistorySourceIds,
+  requestedHistory,
+  withReviewedHistorySelection,
+} from "./history-discovery.js";
+import { withoutInactiveFields } from "./inactive-field-schema.js";
+import { composeResponseState } from "./provider-state.js";
+import { restorePiiInUserReplyText } from "./reply-policy.ts";
+import {
+  createSourceReplySnapshot,
+  resolveLiteralSourceReply,
+  SOURCE_REPLY_SCHEMA,
+  type SourceReplyRendering,
+} from "./source-reply.ts";
+import { createSourceSelectionBinding } from "./source-selection-binding.ts";
+import {
+  getStage1FinishReason,
+  stage1HitCompletionLimit,
+  synthesizeStage1CompletionLimitReply,
+} from "./stage1-completion.js";
+import {
+  getStage1DirectIgnoreReview,
+  getStage1RetryReason,
+  getStage1RoutingRepair,
+  getStage1UnusableDecisionRepair,
+  hasNavigationWithoutPendingIntent,
+  isEmptyStage1Result,
+  parseMessageHandlerModelOutput,
+  readStage1EmptyRetryLimit,
+  readStage1TerminalReaskSetting,
+  shouldRetryStage1Generation,
+  shouldUseStage1PlannerFallback,
+  synthesizePlannerFallbackFromStage1Failure,
+} from "./stage1-generation.ts";
+import {
+  CONTEXT_CATALOG_REFERENCE,
+  createContextCatalogReference,
+  renderMessageHandlerModelInput,
+} from "./stage1-input.ts";
+import {
+  extractMessageHandlerRawParsed,
+  hasHandleResponseToolCall,
+  messageHandlerFromFieldResult,
+  normalizeRawParsedForFieldRegistry,
+  reportRejectedUserVisibleModelOutput,
+} from "./stage1-output.ts";
+import { parseToolArguments } from "./tool-arguments.ts";
+import { recordMessageHandlerStage } from "./trajectory-stages.ts";
+import type { V5MessageRuntimeInput } from "./turn-input.ts";
+
+/**
+ * Trusted host routing for a dedicated coding turn. This deliberately looks
+ * like the canonical Stage 1 tool result so the existing parsing and safety
+ * pipeline stays shared, but it is never recorded or accounted as a model
+ * response. Authorization remains owned by the normal context/action gates.
+ */
+export function directCodingResponseHandlerResult(): GenerateTextResult {
+  return {
+    text: "",
+    toolCalls: [
+      {
+        id: "direct-coding-route",
+        name: HANDLE_RESPONSE_TOOL_NAME,
+        arguments: {
+          shouldRespond: "RESPOND",
+          contexts: [...CODING_SUB_AGENT_CONTEXTS],
+          intents: [],
+          replyText: "",
+          replyEffectStatus: "none",
+          candidateActionNames: [],
+          facts: [],
+          relationships: [],
+          topics: [],
+          addressedTo: [],
+          emotion: "none",
+        },
+      },
+    ],
+    finishReason: "tool_calls",
+  };
+}
+
+export async function generateStage1Decision(
+  args: V5MessageRuntimeInput,
+  {
+    senderRole,
+    context,
+    availableContexts,
+    directMessageChannel,
+    progressiveContextChannel,
+    stage1PreprocessStartedAt,
+    recorder,
+    trajectoryId,
+  }: {
+    senderRole: Awaited<ReturnType<typeof resolveStage1SenderRole>>;
+    context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
+    availableContexts: Awaited<ReturnType<typeof listAvailableContextsForTurn>>;
+    directMessageChannel: boolean;
+    progressiveContextChannel: boolean;
+    stage1PreprocessStartedAt: number;
+    recorder: TrajectoryRecorder | undefined;
+    trajectoryId: ReturnType<TrajectoryRecorder["startTrajectory"]> | undefined;
+  },
+  registerStageTask: (task: Promise<void>) => void,
+) {
+  const contextReadProgressEnabled = Boolean(
+    directMessageChannel &&
+      !args.codingMode &&
+      !args.stage1DecisionOnly &&
+      args.onPlanningAcknowledgment,
+  );
+  let contextReadAcknowledgmentSent = false;
+  const messageHandlerStartedAt = Date.now();
+  const stage1TurnSignal =
+    getStreamingContext()?.abortSignal ?? new AbortController().signal;
+
+  const responseHandlerFieldContext: ResponseHandlerFieldContext = {
+    runtime: args.runtime,
+    message: args.message,
+    state: args.state,
+    senderRole: senderRole as ResponseHandlerSenderRole,
+    turnSignal: stage1TurnSignal,
+  };
+  const topicsActive = await topicsFieldEvaluator.shouldRun?.(
+    responseHandlerFieldContext,
+  );
+  const selectedResponseHandlerFields =
+    args.runtime.responseHandlerFieldRegistry
+      .list()
+      .filter(
+        (field) =>
+          field !== completionContextFieldEvaluator &&
+          (field !== topicsFieldEvaluator || topicsActive),
+      );
+  const fieldSelection = {
+    includeFieldNames: selectedResponseHandlerFields.map((field) => field.name),
+  };
+  let responseHandlerFieldPrompt =
+    await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+      responseHandlerFieldContext,
+      fieldSelection,
+    );
+  const canonicalResponseHandlerSchema =
+    args.runtime.responseHandlerFieldRegistry.composeSchema(fieldSelection);
+  const loadedContext = new Set<string>();
+  const discoveryEnabled = progressiveContextChannel;
+  let history: HistoryDiscovery | undefined;
+  let historyReadEvidence: HistoryDiscovery | undefined;
+  if (
+    discoveryEnabled &&
+    args.runtime.evaluators?.some(
+      (evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
+    ) &&
+    !args.runtime.providers?.some((provider) =>
+      provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+    )
+  ) {
+    try {
+      const checkpoint = await getEvaluatorProgressState(
+        args.runtime,
+        args.message,
+        HISTORY_RETENTION_EVALUATOR,
+      );
+      stage1TurnSignal.throwIfAborted();
+      history = projectReviewedHistory(
+        context,
+        {
+          agentId: args.runtime.agentId,
+          roomId: args.message.roomId,
+          entityId: args.message.entityId,
+          roles: [senderRole],
+        },
+        checkpoint,
+      );
+    } catch (error) {
+      stage1TurnSignal.throwIfAborted();
+      args.runtime.reportError("MessageService.historyRetention", error, {
+        roomId: args.message.roomId,
+      });
+    }
+  }
+  // A plugin that owns this name retains its ordinary provider-reference
+  // contract; framework catalog discovery must not shadow its requests.
+  let contextCatalogRead = false;
+  let contextCatalog =
+    discoveryEnabled &&
+    Array.isArray(args.runtime.providers) &&
+    !args.runtime.providers.some(
+      (provider) => provider.name === CONTEXT_CATALOG_REFERENCE,
+    )
+      ? createContextCatalogReference(args.runtime, availableContexts)
+      : undefined;
+  let discovery = discoveryEnabled
+    ? projectDiscoverableContext(context, args.state, loadedContext)
+    : { context, available: new Set<string>() };
+  if (contextCatalog) discovery.available.add(CONTEXT_CATALOG_REFERENCE);
+  for (const reference of historyReferences(context, history))
+    discovery.available.add(reference);
+  let messageHandlerInput = renderMessageHandlerModelInput(
+    args.runtime,
+    discovery.context,
+    availableContexts,
+    {
+      directMessage: directMessageChannel,
+      nativeTools: true,
+      progressiveContext: discoveryEnabled,
+      responseHandlerFields: responseHandlerFieldPrompt.rendered,
+      contextCatalog,
+      history,
+    },
+  );
+  let stage1PrefixHashes = computePrefixHashes(
+    messageHandlerInput.promptSegments,
+  );
+  const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+    (segment) => segment.stable,
+  );
+  const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+  const stage1SystemContent =
+    typeof messageHandlerInput.messages[0]?.content === "string"
+      ? messageHandlerInput.messages[0].content
+      : "";
+  let stage1PrefixHash =
+    stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+    hashString(`stage1:${stage1SystemContent}`);
+  let repairHistoryIdentity = false;
+  let repairHistorySourceIds: string[] | undefined;
+  let nativeHistoryRead = false;
+  let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
+  let sourceReplySnapshot: ReturnType<typeof createSourceReplySnapshot>;
+  let sourceReplyRendering: SourceReplyRendering | undefined;
+  let effectiveReplySchema: JSONSchema | undefined;
+  const interpretNativeReply = (raw: string | GenerateTextResult) => {
+    sourceReplyRendering = undefined;
+    const bound = sourceSelectionBinding?.resolve(raw) ?? raw;
+    const snapshot = sourceReplySnapshot;
+    if (!snapshot) return bound;
+    const resolveParts = (parsed: Record<string, unknown>) => {
+      if (!Array.isArray(parsed.replyText)) return parsed;
+      const resolved = resolveLiteralSourceReply(
+        discovery.context,
+        snapshot,
+        parsed,
+        (rendering) => {
+          sourceReplyRendering = rendering;
+        },
+      );
+      return typeof resolved?.replyText === "string"
+        ? {
+            ...resolved,
+            replyText: sourceReplyRendering?.prose ?? resolved.replyText,
+          }
+        : parsed;
+    };
+    if (
+      typeof bound === "string" ||
+      !Array.isArray(bound.toolCalls) ||
+      bound.toolCalls.length === 0
+    ) {
+      const parsed = extractMessageHandlerRawParsed(bound);
+      if (!parsed || !Array.isArray(parsed.replyText)) return bound;
+      const resolved = resolveParts(parsed);
+      if (resolved === parsed) return bound;
+      const text = JSON.stringify(resolved);
+      return typeof bound === "string" ? text : { ...bound, text };
+    }
+    const decisions = bound.toolCalls.filter(
+      (entry) => entry?.name === HANDLE_RESPONSE_TOOL_NAME,
+    );
+    if (
+      decisions.length > 1 &&
+      decisions.some((entry) =>
+        Array.isArray(parseToolArguments(entry.arguments)?.replyText),
+      )
+    ) {
+      throw new ElizaError(
+        "Multiple source-backed response decisions are ambiguous; no response fields were processed",
+        { code: "STAGE1_DUPLICATE_SOURCE_REPLY", severity: "ephemeral" },
+      );
+    }
+    return {
+      ...bound,
+      toolCalls: bound.toolCalls.map((entry) => {
+        if (entry?.name !== HANDLE_RESPONSE_TOOL_NAME) return entry;
+        const parsed = parseToolArguments(entry.arguments);
+        if (!parsed || !Array.isArray(parsed.replyText)) return entry;
+        const resolved = resolveParts(parsed);
+        if (resolved === parsed || typeof resolved.replyText !== "string")
+          return entry;
+        return {
+          ...entry,
+          arguments:
+            typeof entry.arguments === "string"
+              ? JSON.stringify(resolved)
+              : { ...entry.arguments, replyText: resolved.replyText },
+        };
+      }),
+    };
+  };
+  let providerReviewSourceSetId: string | undefined;
+  const createMessageHandlerTools = () => {
+    context.metadata = {
+      ...context.metadata,
+      loadedContextProviders: [...loadedContext],
+    };
+    providerReviewSourceSetId = discoveryEnabled
+      ? providerReviewSources(context)?.sourceSetId
+      : undefined;
+    const responseHandlerSchema = {
+      ...canonicalResponseHandlerSchema,
+      properties: Object.fromEntries(
+        selectedResponseHandlerFields.map((field) => {
+          if (
+            responseHandlerFieldPrompt.skippedFieldNames.includes(field.name)
+          ) {
+            const { description: _description, ...inactiveSchema } =
+              field.schema;
+            return [field.name, inactiveSchema];
+          }
+          return [
+            field.name,
+            field.schema.description
+              ? field.schema
+              : { ...field.schema, description: field.description },
+          ];
+        }),
+      ),
+    };
+    let fieldSchema = withoutInactiveFields(
+      responseHandlerSchema,
+      responseHandlerFieldPrompt.skippedFieldNames,
+    );
+    sourceReplySnapshot = undefined;
+    effectiveReplySchema = undefined;
+    if (
+      discoveryEnabled &&
+      selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
+      canonicalResponseHandlerSchema.properties?.replyText ===
+        replyTextFieldEvaluator.schema &&
+      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+      canonicalResponseHandlerSchema.properties?.contextRequests ===
+        contextRequestsFieldEvaluator.schema
+    ) {
+      const recent = args.state.data?.providers?.RECENT_MESSAGES as
+        | { data?: { recentMessages?: unknown } }
+        | undefined;
+      const memories = recent?.data?.recentMessages;
+      sourceReplySnapshot = createSourceReplySnapshot(
+        discovery.context,
+        history ?? {
+          scope: {
+            agentId: args.runtime.agentId,
+            roomId: args.message.roomId,
+            entityId: args.message.entityId,
+            roles: [senderRole],
+          },
+        },
+        Array.isArray(memories) ? (memories as Memory[]) : [],
+      );
+      const replySchema = fieldSchema.properties?.replyText;
+      if (sourceReplySnapshot?.originals.size && replySchema) {
+        effectiveReplySchema = {
+          ...SOURCE_REPLY_SCHEMA,
+          description:
+            "Ordered reply parts: text is your own prose. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. Preserve speaker attribution. Use [] for no reply.",
+        };
+        fieldSchema = {
+          ...fieldSchema,
+          properties: {
+            ...fieldSchema.properties,
+            replyText: effectiveReplySchema,
+          },
+        };
+      } else sourceReplySnapshot = undefined;
+    }
+    if (discoveryEnabled)
+      fieldSchema = withProviderReviewSchema(fieldSchema, context);
+    const referenceSchema =
+      discoveryEnabled && !history
+        ? withAvailableContextRequests(fieldSchema, discovery.available)
+        : fieldSchema;
+    const readTool =
+      discoveryEnabled && discovery.available.size > 0
+        ? createContextReadTool(referenceSchema, contextReadProgressEnabled)
+        : undefined;
+    nativeHistoryRead = Boolean(
+      history &&
+        readTool &&
+        selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+        canonicalResponseHandlerSchema.properties?.contextRequests ===
+          contextRequestsFieldEvaluator.schema,
+    );
+    const parameters = withRequiredCompletionSourceIdentity(
+      history
+        ? withReviewedHistorySelection(
+            referenceSchema,
+            nativeHistoryRead,
+            repairHistorySourceIds,
+          )
+        : referenceSchema,
+      discovery.context,
+      repairHistoryIdentity,
+    );
+    // Only the registered native history contract supports request binding.
+    sourceSelectionBinding =
+      (history || sourceReplySnapshot) &&
+      !repairHistoryIdentity &&
+      selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
+      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+      canonicalResponseHandlerSchema.properties?.completionContext ===
+        completionContextFieldEvaluator.schema &&
+      canonicalResponseHandlerSchema.properties?.contextRequests ===
+        contextRequestsFieldEvaluator.schema
+        ? createSourceSelectionBinding(parameters, discovery.context)
+        : undefined;
+    return [
+      createHandleResponseTool({
+        directMessage: directMessageChannel,
+        parameters: sourceSelectionBinding?.parameters ?? parameters,
+        description:
+          "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
+      }),
+      ...(readTool ? [readTool] : []),
+    ];
+  };
+  let messageHandlerTools = createMessageHandlerTools();
+  // Discovery continues the same scoped workflow, even as its input expands.
+  const stage1ConversationId = args.message.roomId
+    ? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
+    : undefined;
+  const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
+    cacheProviderOptions({
+      prefixHash: stage1PrefixHash,
+      segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+      promptSegments: messageHandlerInput.promptSegments,
+      // Keep shared-room agents and pipeline stages on separate cache slots.
+      conversationId: stage1ConversationId,
+    }),
+    buildModelInputBudget({
+      messages: messageHandlerInput.messages,
+      promptSegments: messageHandlerInput.promptSegments,
+      tools: messageHandlerTools,
+    }),
+  );
+
+  if (!args.codingMode) {
+    // RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1
+    // model call. A direct coding turn has no such model boundary.
+    await timeInferenceSpan(
+      "actions:response-handler-before",
+      () =>
+        args.runtime.runActionsByMode(
+          "RESPONSE_HANDLER_BEFORE",
+          args.message,
+          args.state,
+        ),
+      { mode: "RESPONSE_HANDLER_BEFORE" },
+    );
+
+    // RESPONSE_HANDLER_DURING runs only alongside a real handler model call.
+    const responseHandlerDuring = args.runtime
+      .runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
+      .catch((err) =>
+        args.runtime.reportError("MessageService.runActionsByMode", err, {
+          mode: "RESPONSE_HANDLER_DURING",
+        }),
+      );
+    if (args.runTerminalOwner) {
+      args.runTerminalOwner.adopt(
+        "RESPONSE_HANDLER_DURING",
+        responseHandlerDuring,
+      );
+    } else {
+      void responseHandlerDuring;
+    }
+  }
+
+  // Per-turn structure forcing. `buildResponseGrammar` composes the
+  // HANDLE_RESPONSE envelope skeleton (fixed key order + the `contexts`
+  // element enum from the available context ids + any registered Stage-1
+  // field evaluators, single-value enums collapsed to literals) and a
+  // precise GBNF grammar. The local llama-server engine (W4) constrains the
+  // envelope with it so the model never spends tokens on the scaffold; the
+  // prompt text stays byte-stable, only the grammar varies per turn. Cloud
+  // adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
+  // equivalent (unforced) contract for them.
+  const createResponseGrammar = () =>
+    buildResponseGrammar(
+      {
+        actions: args.runtime.actions ?? [],
+        responseHandlerFields: selectedResponseHandlerFields
+          .filter(
+            (field) =>
+              !responseHandlerFieldPrompt.skippedFieldNames.includes(
+                field.name,
+              ),
+          )
+          .map((field) =>
+            field === replyTextFieldEvaluator && effectiveReplySchema
+              ? { ...field, schema: effectiveReplySchema }
+              : field,
+          ),
+        responseHandlerFieldSignature:
+          hashString(
+            JSON.stringify(responseHandlerFieldPrompt.skippedFieldNames),
+          ) +
+          (effectiveReplySchema
+            ? hashString(JSON.stringify(effectiveReplySchema)) +
+              args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
+                fieldSelection,
+              )
+            : args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
+                fieldSelection,
+              )),
+      },
+      {
+        contexts: availableContexts.map((definition) => String(definition.id)),
+        channelType:
+          typeof args.message.content?.channelType === "string"
+            ? args.message.content.channelType
+            : undefined,
+      },
+    );
+  let responseGrammar = createResponseGrammar();
+
+  // Per-span argmax sampling for the structured envelope: every enum,
+  // number, and boolean span gets temperature=0 / topK=1 so the model
+  // never randomly tips a decision (shouldRespond, requiresTool, …) that
+  // has a clear argmax winner. Free-string spans (replyText, thought)
+  // keep the call-level temperature. Engines that don’t honor per-span
+  // sampling ignore the field (grammar still constrains the tokens).
+  const stage1SpanSamplerPlan = buildSpanSamplerPlan(
+    responseGrammar.responseSkeleton,
+  );
+  const stage1ProviderOptions = withGuidedDecodeProviderOptions(
+    messageHandlerProviderOptions,
+  );
+  stage1ProviderOptions.eliza = {
+    ...((stage1ProviderOptions as { eliza?: Record<string, unknown> }).eliza ??
+      {}),
+    thinking: "off",
+  };
+  let stage1ModelParams = {
+    messages: messageHandlerInput.messages,
+    promptSegments: messageHandlerInput.promptSegments,
+    tools: messageHandlerTools,
+    toolChoice: "required" as const,
+    // Stage 1 packs the complete structured response and user-visible answer
+    // into one generation on every channel. Let the adapter use the selected
+    // provider/model maximum; an application-level ceiling can only turn a
+    // valid long answer into an incomplete envelope.
+    maxTokens: undefined,
+    omitMaxTokens: true,
+    // Streamed structured generation: the local engine (W4) streams the
+    // HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
+    // / `contexts` route the moment they are known. User-visible `replyText`
+    // remains buffered until routing and effect validation complete. Cloud
+    // adapters ignore the flag and return the result whole.
+    streamStructured: true,
+    // This is the only Stage 1 field intended for the user. Local voice
+    // consumes the validated replyText field; planner/evaluator calls leave
+    // this unset and therefore cannot leak their structured output to TTS.
+    voiceOutput: "user-visible" as const,
+    responseSkeleton: responseGrammar.responseSkeleton,
+    grammar: responseGrammar.grammar,
+    spanSamplerPlan: stage1SpanSamplerPlan,
+    signal: stage1TurnSignal,
+    // Guided structured decode on by default for Stage 1 (the call always
+    // carries a forced skeleton): the local engine derives the
+    // deterministic-token prefill plan and the fork fast-forwards the
+    // forced scaffold spans. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`.
+    // Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
+    providerOptions: stage1ProviderOptions,
+  };
+  let recordedCallCount = 0;
+  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+    // A cancelled turn that never enters useModel has no attempted model stage.
+    params.signal.throwIfAborted();
+    const startedAt = Date.now();
+    let outcome:
+      | { raw: string | GenerateTextResult }
+      | { error: unknown }
+      | undefined;
+    try {
+      const raw = (await args.runtime.useModel(
+        ModelType.RESPONSE_HANDLER,
+        params,
+      )) as string | GenerateTextResult;
+      outcome = { raw };
+      return raw;
+    } catch (error) {
+      outcome = { error };
+      throw error;
+    } finally {
+      // This semantic stage records an attempted runtime request, not proof of
+      // provider dispatch. Only completed results supply provider identity/usage.
+      // Keep every retry before parsing, discovery validation or field effects.
+      if (recorder && trajectoryId && outcome) {
+        recordedCallCount += 1;
+        registerStageTask(
+          recordMessageHandlerStage({
+            recorder,
+            trajectoryId,
+            stageId: `stage-msghandler-${messageHandlerStartedAt}-${recordedCallCount}`,
+            messages: params.messages,
+            tools: params.tools,
+            toolChoice: params.toolChoice,
+            providerOptions: params.providerOptions,
+            ...outcome,
+            startedAt,
+            endedAt: Date.now(),
+            segmentHashes: computePrefixHashes(params.promptSegments).map(
+              (entry) => entry.segmentHash,
+            ),
+            prefixHash: stage1PrefixHash,
+            provider:
+              "raw" in outcome
+                ? args.runtime.getLastResolvedModelProvider?.(
+                    ModelType.RESPONSE_HANDLER,
+                  )
+                : undefined,
+            state: args.state,
+            runtime: args.runtime,
+          }),
+        );
+      }
+    }
+  };
+  // Provider-shape retry: cloud reasoning models reached over
+  // OpenAI-compatible providers can intermittently return either no
+  // content at all or a required native tool call with no arguments. Both
+  // shapes have no recoverable Stage 1 payload, so retry a small bounded
+  // number of times before falling back to the planner.
+  const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
+  let stage1RetryCount = 0;
+  if (!args.codingMode) {
+    recordInferenceSpan(
+      "message:stage1:preprocess",
+      performance.now() - stage1PreprocessStartedAt,
+    );
+  } else {
+    args.runtime.logger.debug?.(
+      { src: "service:message", codingMode: true },
+      "Skipping Stage 1 model call for direct coding loop",
+    );
+  }
+  let rawMessageHandler: string | GenerateTextResult = args.codingMode
+    ? directCodingResponseHandlerResult()
+    : await generateRecordedStage1(stage1ModelParams);
+  rawMessageHandler = interpretNativeReply(rawMessageHandler);
+  const contextReadEnabled = () =>
+    messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
+  if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
+    extractContextRead(rawMessageHandler, false);
+  }
+  let stage1RetryReason = hasContextReadToolCall(rawMessageHandler)
+    ? null
+    : getStage1RetryReason(rawMessageHandler);
+  while (
+    !args.codingMode &&
+    stage1RetryCount < stage1RetryLimit &&
+    shouldRetryStage1Generation(
+      stage1RetryReason,
+      rawMessageHandler,
+      stage1ModelParams.maxTokens,
+    )
+  ) {
+    stage1RetryCount += 1;
+    args.runtime.logger?.warn?.(
+      {
+        src: "service:message",
+        attempt: stage1RetryCount + 1,
+        maxAttempts: stage1RetryLimit + 1,
+        reason: stage1RetryReason,
+      },
+      `[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
+    );
+    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
+    rawMessageHandler = interpretNativeReply(rawMessageHandler);
+    if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
+      extractContextRead(rawMessageHandler, false);
+    }
+    stage1RetryReason = hasContextReadToolCall(rawMessageHandler)
+      ? null
+      : getStage1RetryReason(rawMessageHandler);
+  }
+  // Terminal review shares a budget with direct IGNORE review below. A
+  // repeated terminal decision still passes through ordinary routing.
+  let terminalDecisionReviewed = false;
+  const terminalReaskEnabled =
+    readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
+  if (!args.codingMode && !hasContextReadToolCall(rawMessageHandler)) {
+    const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
+    // A source quotation is an answer even with no model-authored prose.
+    // Terminal decisions retain the channel policy and shared review budget.
+    const sourceReplyAnswer =
+      parsedForRepair?.shouldRespond === "RESPOND" &&
+      (sourceReplyRendering ||
+        (sourceReplySnapshot && Array.isArray(parsedForRepair.replyText)));
+    const unusableRepair = sourceReplyAnswer
+      ? undefined
+      : getStage1UnusableDecisionRepair(parsedForRepair, {
+          reaskTerminal: terminalReaskEnabled && !directMessageChannel,
+        });
+    if (
+      unusableRepair &&
+      shouldUseStage1PlannerFallback(args.runtime, args.message)
+    ) {
+      args.runtime.logger?.warn?.(
+        { src: "service:message", roomId: args.message.roomId },
+        "[message] Stage 1 decision receives one response-contract review",
+      );
+      terminalDecisionReviewed = true;
+      const repairedInput = {
+        ...messageHandlerInput,
+        messages: [
+          ...messageHandlerInput.messages,
+          { role: "user" as const, content: unusableRepair },
+        ],
+        promptSegments: [
+          ...messageHandlerInput.promptSegments,
+          { content: unusableRepair, stable: false },
+        ],
+      };
+      const repairedHashes = computePrefixHashes(repairedInput.promptSegments);
+      const repairedCacheOptions = cacheProviderOptions({
+        prefixHash: stage1PrefixHash,
+        segmentHashes: repairedHashes.map((entry) => entry.segmentHash),
+        promptSegments: repairedInput.promptSegments,
+        conversationId: stage1ConversationId,
+      });
+      stage1TurnSignal.throwIfAborted();
+      const repaired = await generateRecordedStage1({
+        ...stage1ModelParams,
+        messages: repairedInput.messages,
+        promptSegments: repairedInput.promptSegments,
+        providerOptions: withModelInputBudgetProviderOptions(
+          {
+            ...stage1ProviderOptions,
+            ...repairedCacheOptions,
+            eliza: {
+              ...(stage1ProviderOptions.eliza as object),
+              ...(repairedCacheOptions.eliza as object),
+            },
+          },
+          buildModelInputBudget({
+            messages: repairedInput.messages,
+            promptSegments: repairedInput.promptSegments,
+            tools: messageHandlerTools,
+          }),
+        ),
+      });
+      if (extractMessageHandlerRawParsed(repaired)) {
+        rawMessageHandler = interpretNativeReply(repaired);
+      }
+    }
+  }
+  // A context request is an incomplete decision. Recompose through the same
+  // permission/disclosure gates before another model call, and never dispatch
+  // its draft, extraction fields, or action candidates. Each provider can be
+  // expanded once; there is no action-planner loop for reading provider text.
+  let routingRepairAttempted = false;
+  let historySelectionRepairAttempted = false;
+  let historyReadForDecision = false;
+  while (discoveryEnabled) {
+    let nativeRead: ReturnType<typeof extractContextRead>;
+    let parsedDecision: ReturnType<typeof extractMessageHandlerRawParsed> =
+      null;
+    let explicit: string[] = [];
+    let invalidReadRepair: string | undefined;
+    try {
+      nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled());
+      parsedDecision =
+        nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
+      explicit = readHistoryContextRequests(
+        context,
+        history,
+        parsedDecision,
+        discovery.available,
+      );
+    } catch (error) {
+      if (
+        routingRepairAttempted ||
+        !(error instanceof ElizaError) ||
+        ![
+          "CONTEXT_DISCOVERY_INVALID_REQUEST",
+          "CONTEXT_DISCOVERY_INVALID_READ",
+        ].includes(error.code) ||
+        stage1HitCompletionLimit(rawMessageHandler, stage1ModelParams.maxTokens)
+      )
+        throw error;
+      // Nothing from an invalid control call can authorize a provider read,
+      // acknowledgment, extraction or action. Reuse the one routing repair;
+      // a repeated invalid response still fails closed.
+      invalidReadRepair = [
+        "context_read_repair: The previous context read was invalid. Nothing from it was read, delivered or executed.",
+        `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.`,
+        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations, use HANDLE_RESPONSE to select the appropriate available context and action candidates for the planner. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
+      ].join("\n");
+    }
+    const historyRequested = invalidReadRepair
+      ? []
+      : requestedHistory(
+          context,
+          history,
+          parsedDecision,
+          explicit,
+          Boolean(nativeRead),
+        );
+    const requested = [...new Set([...explicit, ...historyRequested])];
+    const routingRepair =
+      invalidReadRepair ??
+      (!routingRepairAttempted &&
+      explicit.length === 0 &&
+      (requested.length === 0 ||
+        canRepairIncompleteHistorySelection(context, history, parsedDecision))
+        ? getStage1RoutingRepair(parsedDecision)
+        : undefined);
+    repairHistoryIdentity =
+      !routingRepair &&
+      !historySelectionRepairAttempted &&
+      explicit.length === 0 &&
+      canRepairHistoryIdentity(context, history, parsedDecision);
+    repairHistorySourceIds =
+      nativeHistoryRead &&
+      !routingRepair &&
+      !repairHistoryIdentity &&
+      !historySelectionRepairAttempted &&
+      explicit.length === 0
+        ? repairableHistorySourceIds(context, history, parsedDecision)
+        : undefined;
+    const contentMetadata = args.message.content.metadata;
+    const messageMetadata = args.message.metadata;
+    const automatedSender =
+      (isObjectRecord(contentMetadata) &&
+        (contentMetadata.fromBot === true ||
+          contentMetadata.isAutonomous === true)) ||
+      (isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
+    const terminalReview =
+      directMessageChannel &&
+      !terminalDecisionReviewed &&
+      !routingRepairAttempted &&
+      !routingRepair &&
+      !repairHistoryIdentity &&
+      !repairHistorySourceIds &&
+      requested.length === 0 &&
+      args.message.entityId !== args.runtime.agentId &&
+      !automatedSender &&
+      !isSubAgentCompletionArtifact(args.message) &&
+      getActionInferenceMessageText(args.message).trim().length > 0
+        ? (getStage1DirectIgnoreReview(parsedDecision) ??
+          (terminalReaskEnabled &&
+          parsedDecision &&
+          "shouldRespond" in parsedDecision &&
+          parsedDecision.shouldRespond === "STOP" &&
+          shouldUseStage1PlannerFallback(args.runtime, args.message)
+            ? getStage1UnusableDecisionRepair(parsedDecision, {
+                reaskTerminal: true,
+              })
+            : undefined))
+        : undefined;
+    const decisionRepair =
+      routingRepair ??
+      (repairHistorySourceIds
+        ? "source_label_repair: A previous completionContext entry was not a history label. Nothing from that response was processed or executed. Regenerate the decision from the supplied originals using only the history labels allowed by HANDLE_RESPONSE. Record IDs belong to tool work, not source arrays. If dialogue evidence is missing, choose READ_CONTEXT first. Do not assume the previous draft or selection was correct."
+        : undefined) ??
+      terminalReview ??
+      (repairHistoryIdentity
+        ? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
+        : undefined);
+    if (requested.length === 0 && !decisionRepair) break;
+    stage1TurnSignal.throwIfAborted();
+    if (decisionRepair) {
+      // One correction before field processors/effects. If it remains
+      // contradictory, normal pending-intent guards still own routing.
+      if (routingRepair) routingRepairAttempted = true;
+      if (terminalReview && decisionRepair === terminalReview)
+        terminalDecisionReviewed = true;
+      if (repairHistoryIdentity || repairHistorySourceIds)
+        historySelectionRepairAttempted = true;
+      messageHandlerInput = {
+        ...messageHandlerInput,
+        messages: [
+          ...messageHandlerInput.messages,
+          { role: "user", content: decisionRepair },
+        ],
+        promptSegments: [
+          ...messageHandlerInput.promptSegments,
+          {
+            content: decisionRepair,
+            stable: false,
+          },
+        ],
+      };
+    } else {
+      const contextReadStartedAt = performance.now();
+      for (const name of requested) {
+        if (history && name.startsWith(HISTORY_REFERENCE_PREFIX)) continue;
+        if (name === CONTEXT_CATALOG_REFERENCE && contextCatalog) {
+          contextCatalogRead = true;
+          contextCatalog.loaded = true;
+        } else loadedContext.add(name);
+      }
+      if (contextCatalog?.loaded) {
+        // Re-read role-filtered definitions for this read. Never restore an
+        // old catalog after the requester's role or registrations changed.
+        const role = await resolveStage1SenderRole(args.runtime, args.message);
+        const current = await listAvailableContextsForTurn(
+          args.runtime,
+          args.message,
+          args.state,
+          role,
+        );
+        const refreshedCatalog = createContextCatalogReference(
+          args.runtime,
+          current,
+        );
+        if (refreshedCatalog) {
+          contextCatalog = { ...refreshedCatalog, loaded: true };
+        } else {
+          // A small/currently empty catalog or an optimized prompt needs no
+          // deferred representation. Render its complete current definitions.
+          contextCatalog = undefined;
+        }
+        availableContexts = current;
+      }
+      const refreshed = await composeResponseState(
+        args.runtime,
+        args.message,
+        true,
+      );
+      Object.assign(args.state, refreshed);
+      const historyScope = history ?? historyReadEvidence;
+      if (historyScope) {
+        const currentRole = await resolveStage1SenderRole(
+          args.runtime,
+          args.message,
+        );
+        if (currentRole !== senderRole) {
+          senderRole = currentRole;
+          availableContexts = await listAvailableContextsForTurn(
+            args.runtime,
+            args.message,
+            args.state,
+            currentRole,
+          );
+          responseHandlerFieldPrompt =
+            await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+              {
+                ...responseHandlerFieldContext,
+                senderRole: currentRole as ResponseHandlerSenderRole,
+              },
+              fieldSelection,
+            );
+          if (contextCatalog) {
+            const freshCatalog = createContextCatalogReference(
+              args.runtime,
+              availableContexts,
+            );
+            contextCatalog = freshCatalog
+              ? { ...freshCatalog, loaded: contextCatalog.loaded }
+              : undefined;
+          }
+        }
+        if (
+          historyScope.scope.roles.length !== 1 ||
+          historyScope.scope.roles[0] !== currentRole ||
+          args.runtime.providers?.some((provider) =>
+            provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+          )
+        ) {
+          history = undefined;
+          historyReadEvidence = undefined;
+        }
+      }
+      const refreshedRole = await resolveStage1SenderRole(
+        args.runtime,
+        args.message,
+      );
+      // Every reference read rechecks admission, even without a history projection.
+      // The refreshed role also owns the next native schema and field dispatch.
+      if (refreshedRole !== senderRole) {
+        senderRole = refreshedRole;
+        availableContexts = await listAvailableContextsForTurn(
+          args.runtime,
+          args.message,
+          args.state,
+          refreshedRole,
+        );
+      }
+      const refreshedContext = await createV5MessageContextObject({
+        ...args,
+        includeActionDiscovery: false,
+        userRoles: [refreshedRole],
+        availableContexts,
+      });
+      Object.assign(context, refreshedContext, { id: context.id });
+      if (history) {
+        const read = loadHistoryReferences(context, history, historyRequested);
+        history = read.projection;
+        historyReadEvidence = read.evidence;
+      }
+
+      // Read progress follows fresh authorization and never enters final delivery.
+      if (
+        contextReadProgressEnabled &&
+        canPublishProgressBeforeResponseDecision(args.message, refreshedRole) &&
+        !contextReadAcknowledgmentSent &&
+        nativeRead?.acknowledgment &&
+        guardOutboundEnvelopeText(
+          args.runtime,
+          nativeRead.acknowledgment,
+          "context-read-progress",
+        ) === nativeRead.acknowledgment
+      ) {
+        const progress = sanitizeUserVisibleModelOutput(
+          nativeRead.acknowledgment,
+        );
+        if (
+          progress.kind === "text" &&
+          evaluatePlannedReplyEgress({
+            pendingWork: true,
+            providers: args.state.data.providers,
+            request: getUserMessageText(args.message),
+            reply: progress.text,
+            actionResults: [],
+            actions: args.runtime.actions,
+          }).verdict !== "reject"
+        ) {
+          stage1TurnSignal.throwIfAborted();
+          args.onPlanningAcknowledgment?.(
+            restorePiiInUserReplyText(progress.text),
+          );
+          contextReadAcknowledgmentSent = true;
+        }
+      }
+      if (historyRequested.length) historyReadForDecision = true;
+      discovery = projectDiscoverableContext(
+        context,
+        args.state,
+        loadedContext,
+      );
+      const restoredProviders: string[] = [];
+      if (historyRequested.length && nativeHistoryRead) {
+        // A missing-dialogue read can refer to recalled originals from another
+        // room. Restore only freshly authorized, provider-indexed originals;
+        // leave the current-room search scope and its match receipt unchanged.
+        for (const event of context.events) {
+          if (
+            event.type === "provider" &&
+            "reviewableSources" in event &&
+            event.reviewableSources &&
+            "name" in event &&
+            typeof event.name === "string" &&
+            discovery.available.has(event.name)
+          ) {
+            loadedContext.add(event.name);
+            restoredProviders.push(event.name);
+          }
+        }
+        if (restoredProviders.length) {
+          discovery = projectDiscoverableContext(
+            context,
+            args.state,
+            loadedContext,
+          );
+          discovery.context = {
+            ...discovery.context,
+            events: [
+              ...discovery.context.events,
+              {
+                id: "history-read-provider-restoration",
+                type: "segment",
+                source: "message-service",
+                segment: {
+                  id: "history-read-provider-restoration",
+                  stable: false,
+                  content: `Additional authorized provider originals restored during this history read: ${JSON.stringify(restoredProviders)}. These are separate provider evidence, not matches in the current-conversation literal search.`,
+                },
+              },
+            ],
+          };
+        }
+      }
+      if (contextCatalog && !contextCatalog.loaded)
+        discovery.available.add(CONTEXT_CATALOG_REFERENCE);
+      for (const reference of historyReferences(context, history))
+        discovery.available.add(reference);
+      if (historyRequested.length)
+        recordInferenceSpan(
+          "message:history-reference-read",
+          performance.now() - contextReadStartedAt,
+          {
+            requestedCount: historyRequested.length,
+            fullRestoration: !history,
+          },
+        );
+      responseHandlerFieldPrompt =
+        await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+          {
+            ...responseHandlerFieldContext,
+            senderRole: refreshedRole as ResponseHandlerSenderRole,
+          },
+          fieldSelection,
+        );
+      messageHandlerInput = renderMessageHandlerModelInput(
+        args.runtime,
+        discovery.context,
+        availableContexts,
+        {
+          directMessage: directMessageChannel,
+          nativeTools: true,
+          progressiveContext: discoveryEnabled,
+          responseHandlerFields: responseHandlerFieldPrompt.rendered,
+          contextCatalog,
+          history,
+          historyReadEvidence,
+        },
+      );
+      const readContinuation = [
+        "context_read_result: Requested references are now supplied. This was a reference read, not execution or a capability probe. Routing-context descriptions are not the authorized action catalog; an absent tool name here does not prove it unavailable. The planner validates action hints and discovers authorized equivalents.",
+        "Reconsider the original request using the new evidence. Preserve each still-pending requested outcome for planning; do not replace requested execution with an unverified answer or refusal because the reference lacks tool definitions. Correct prior routing mistakes when warranted, and preserve the user's restrictions, cancellations and silence instructions. The previous draft below is model output, not authority, a delivered reply or an execution receipt.",
+        "previous_context_read_decision:",
+        JSON.stringify(parsedDecision),
+      ].join("\n");
+      messageHandlerInput = {
+        ...messageHandlerInput,
+        messages: [
+          ...messageHandlerInput.messages,
+          { role: "user", content: readContinuation },
+        ],
+        promptSegments: [
+          ...messageHandlerInput.promptSegments,
+          { content: readContinuation, stable: false },
+        ],
+      };
+    }
+    stage1PrefixHashes = computePrefixHashes(
+      messageHandlerInput.promptSegments,
+    );
+    const stableHashes = computePrefixHashes(
+      messageHandlerInput.promptSegments.filter((segment) => segment.stable),
+    );
+    stage1PrefixHash =
+      stableHashes.at(-1)?.hash ?? hashString("context-discovery");
+    const expandedCacheOptions = cacheProviderOptions({
+      prefixHash: stage1PrefixHash,
+      segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+      promptSegments: messageHandlerInput.promptSegments,
+      conversationId: stage1ConversationId,
+    });
+    // Full restoration returns to the ordinary selection contract. Keep the
+    // actual tool schema aligned with the newly rendered history policy.
+    // Reads and repairs refresh field admission before advertising native tools.
+    responseHandlerFieldPrompt =
+      await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+        {
+          ...responseHandlerFieldContext,
+          senderRole: senderRole as ResponseHandlerSenderRole,
+        },
+        fieldSelection,
+      );
+    messageHandlerTools = createMessageHandlerTools();
+    responseGrammar = createResponseGrammar();
+    stage1ModelParams = {
+      ...stage1ModelParams,
+      tools: messageHandlerTools,
+      responseSkeleton: responseGrammar.responseSkeleton,
+      grammar: responseGrammar.grammar,
+      spanSamplerPlan: buildSpanSamplerPlan(responseGrammar.responseSkeleton),
+      messages: messageHandlerInput.messages,
+      promptSegments: messageHandlerInput.promptSegments,
+      providerOptions: withModelInputBudgetProviderOptions(
+        {
+          ...stage1ProviderOptions,
+          ...expandedCacheOptions,
+          eliza: {
+            ...(stage1ProviderOptions.eliza as object),
+            ...(expandedCacheOptions.eliza as object),
+            // History reconciliation explicitly enables reasoning. All other
+            // discovery calls retain Stage 1's forced fast mode.
+            thinking: historyReadForDecision ? "on" : "off",
+          },
+        },
+        buildModelInputBudget({
+          messages: messageHandlerInput.messages,
+          promptSegments: messageHandlerInput.promptSegments,
+          tools: messageHandlerTools,
+        }),
+      ),
+    };
+    args.runtime.logger.debug(
+      {
+        providers: requested,
+        routingRepair: Boolean(routingRepair),
+        historyIdentityRepair: repairHistoryIdentity,
+      },
+      "[message] Resolving context or routing before final response decision",
+    );
+    stage1TurnSignal.throwIfAborted();
+    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
+    rawMessageHandler = interpretNativeReply(rawMessageHandler);
+  }
+  const messageHandlerEndedAt = Date.now();
+  // Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
+  // right after it completes, before any later model call could overwrite the
+  // runtime-wide last-resolved-provider, so the recorded stage names the real
+  // provider instead of the fabricated "default" literal (#13623).
+  const messageHandlerProvider = args.codingMode
+    ? undefined
+    : args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
+  const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+  if (sourceReplySnapshot && Array.isArray(rawFieldParsed?.replyText)) {
+    throw new ElizaError(
+      "Source reply selection remains unresolved; no response fields were processed",
+      { code: "STAGE1_INVALID_SOURCE_REPLY", severity: "ephemeral" },
+    );
+  }
+  if (
+    routingRepairAttempted &&
+    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+      rawFieldParsed?.replyEffectStatus === "non_applied" ||
+      rawFieldParsed?.shouldRespond === "STOP" ||
+      rawFieldParsed?.shouldRespond === "IGNORE") &&
+    getStage1RoutingRepair(rawFieldParsed)
+  ) {
+    // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
+    // terminal reply. Keep the recorded model attempts and reject before fields.
+    throw new ElizaError(
+      "Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",
+      {
+        code: "STAGE1_ROUTING_CONFLICT",
+        context: { messageId: args.message.id },
+      },
+    );
+  }
+  // An explicit continuation turn ("finish my request", "that is good")
+  // carries no inferable intent of its own, so candidate inference runs on
+  // the nearest pending prior user request instead. The substitution feeds
+  // only routing heuristics — prompts keep the literal user text.
+  const continuationResolvedMessageText =
+    resolveContinuationInferenceMessageText(
+      args.runtime,
+      args.message,
+      args.state,
+    );
+  const inferenceMessageText =
+    continuationResolvedMessageText ??
+    getActionInferenceMessageText(args.message);
+  if (continuationResolvedMessageText) {
+    args.runtime.logger?.debug?.(
+      { src: "service:message" },
+      "[message] continuation turn resolved to prior user request for candidate inference",
+    );
+  }
+  let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
+  let messageHandler: MessageHandlerResult | null = null;
+  if (rawFieldParsed) {
+    const normalizedRawParsed =
+      normalizeRawParsedForFieldRegistry(rawFieldParsed);
+    if (
+      !selectedResponseHandlerFields.some(
+        (field) => field.name === "completionContext",
+      )
+    )
+      delete normalizedRawParsed.completionContext;
+    // Reject progress armor before reply formatting can turn it into a partial
+    // visible fragment. The original wire output remains in the trajectory.
+    if (
+      args.onPlanningAcknowledgment &&
+      typeof normalizedRawParsed.replyEffectStatus === "string" &&
+      normalizedRawParsed.replyEffectStatus.trim().toLowerCase() ===
+        "pending" &&
+      typeof normalizedRawParsed.replyText === "string" &&
+      guardOutboundEnvelopeText(
+        args.runtime,
+        normalizedRawParsed.replyText,
+        "planning-progress",
+      ) !== normalizedRawParsed.replyText
+    )
+      normalizedRawParsed.replyText = "";
+    fieldRunResult = await timeInferenceSpan(
+      "evaluators:response-handler-fields",
+      () =>
+        args.runtime.responseHandlerFieldRegistry.dispatch({
+          rawParsed: normalizedRawParsed,
+          runtime: args.runtime,
+          message: args.message,
+          state: args.state,
+          senderRole: senderRole as ResponseHandlerSenderRole,
+          turnSignal: stage1TurnSignal,
+        }),
+    );
+    messageHandler = messageHandlerFromFieldResult(
+      {
+        ...fieldRunResult.parsed,
+        // Registry defaults are not an explicit model no-effect decision.
+        // Keep missing/malformed statuses conservative without discarding
+        // pending or applied statuses produced by field evaluators.
+        replyEffectStatus:
+          fieldRunResult.parsed.replyEffectStatus === "none" &&
+          !(
+            typeof normalizedRawParsed.replyEffectStatus === "string" &&
+            normalizedRawParsed.replyEffectStatus.trim().toLowerCase() ===
+              "none"
+          )
+            ? undefined
+            : fieldRunResult.parsed.replyEffectStatus,
+      },
+      fieldRunResult,
+      {
+        actions: args.runtime.actions,
+        messageText: inferenceMessageText,
+        candidateBackstopRules: getCandidateActionBackstopRules(args.runtime),
+        subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
+        sourceReplyRendering,
+      },
+    );
+  }
+  if (!messageHandler) {
+    messageHandler = parseMessageHandlerModelOutput(rawMessageHandler, {
+      actions: args.runtime.actions,
+      messageText: inferenceMessageText,
+      subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
+    });
+  }
+  if (
+    messageHandler &&
+    !selectedResponseHandlerFields.some(
+      (field) => field.name === "completionContext",
+    )
+  )
+    messageHandler.plan.completionContext = undefined;
+  const stage1CompletionLimitHit = stage1HitCompletionLimit(
+    rawMessageHandler,
+    stage1ModelParams.maxTokens,
+  );
+  if (stage1CompletionLimitHit) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "service:message",
+        finishReason: getStage1FinishReason(rawMessageHandler),
+        usage:
+          typeof rawMessageHandler === "string"
+            ? undefined
+            : rawMessageHandler.usage,
+        maxTokens: stage1ModelParams.maxTokens,
+        recovered: Boolean(messageHandler),
+      },
+      "[message] Stage 1 hit the completion-token limit",
+    );
+  }
+  if (stage1CompletionLimitHit) {
+    messageHandler = synthesizeStage1CompletionLimitReply();
+  }
+  if (
+    !messageHandler &&
+    shouldUseStage1PlannerFallback(args.runtime, args.message)
+  ) {
+    const stage1FailureKind = getStage1RetryReason(rawMessageHandler);
+    const stage1FailureReason =
+      stage1FailureKind === "empty completion"
+        ? `empty output after ${stage1RetryLimit + 1} attempts`
+        : stage1FailureKind === "malformed HANDLE_RESPONSE tool call"
+          ? `malformed HANDLE_RESPONSE tool call after ${stage1RetryLimit + 1} attempts`
+          : "unparseable output";
+    messageHandler = synthesizePlannerFallbackFromStage1Failure({
+      reason: stage1FailureReason,
+      actions: args.runtime.actions,
+      messageText: inferenceMessageText,
+    });
+    args.runtime.logger?.warn?.(
+      {
+        src: "service:message",
+        reason: stage1FailureReason,
+      },
+      "[message] Stage 1 did not produce a valid handler result; falling back to planner for explicitly addressed message",
+    );
+  }
+
+  // RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
+  // routing decision is parsed, but before the runtime acts on it.
+  // Lets a hook inspect / mutate the parsed plan.
+  if (!args.codingMode) {
+    await timeInferenceSpan(
+      "actions:response-handler-after",
+      () =>
+        args.runtime.runActionsByMode(
+          "RESPONSE_HANDLER_AFTER",
+          args.message,
+          args.state,
+        ),
+      { mode: "RESPONSE_HANDLER_AFTER" },
+    );
+  }
+
+  if (!messageHandler) {
+    if (isEmptyStage1Result(rawMessageHandler)) {
+      throw new Error(
+        `v5 messageHandler returned empty Stage 1 result after ${stage1RetryLimit + 1} attempts`,
+      );
+    }
+    throw new Error("v5 messageHandler returned invalid MessageHandlerResult");
+  }
+  const stageOneVisibleReply = sanitizeUserVisibleModelOutput(
+    getMessageHandlerReply(messageHandler),
+  );
+  if (stageOneVisibleReply.kind === "text") {
+    messageHandler.plan.reply = stageOneVisibleReply.text;
+  } else {
+    messageHandler.plan.reply = "";
+    if (stageOneVisibleReply.kind !== "empty") {
+      // error-policy:J3 Stage 1 is an untrusted model boundary. A
+      // control/invalid reply becomes an observable invalid signal,
+      // never a string that a direct or early-reply channel can send.
+      reportRejectedUserVisibleModelOutput({
+        runtime: args.runtime,
+        scope: "MessageService.runV5MessageRuntimeStage1",
+        code: "STAGE1_INVALID_USER_VISIBLE_OUTPUT",
+        message:
+          "Stage-1 model placed control data in the user-visible reply field",
+        stage: "response-handler",
+        output: stageOneVisibleReply,
+      });
+    }
+  }
+  const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+  args.onStage1Decision?.({
+    ...(trajectoryId ? { trajectoryId } : {}),
+    provider: messageHandlerProvider,
+    prefixHash: stage1PrefixHash,
+    decision: messageHandler.processMessage,
+    // Evaluators may patch the live handler later. Preserve the exact model
+    // boundary value observed here instead of exposing a mutable alias.
+    parsed: structuredClone(messageHandler),
+  });
+
+  return {
+    messageHandler,
+    providerReview:
+      providerReviewSourceSetId &&
+      typeof rawMessageHandler !== "string" &&
+      hasHandleResponseToolCall(rawMessageHandler) &&
+      rawFieldParsed?.providerReview &&
+      typeof rawFieldParsed.providerReview === "object" &&
+      !Array.isArray(rawFieldParsed.providerReview) &&
+      Object.keys(rawFieldParsed.providerReview).every(
+        (key) => key === "complete" || key === "keep",
+      )
+        ? ({
+            ...rawFieldParsed.providerReview,
+            sourceSetId: providerReviewSourceSetId,
+          } as JsonValue)
+        : undefined,
+    sourceReplyRendering,
+    contextReadAcknowledgmentSent,
+    providerDiscoveryEnabled: discoveryEnabled,
+    loadedContextProviders: [...loadedContext],
+    historyReadEvidence,
+    backgroundHistory: history,
+    contextCatalogRead,
+    fieldRunResult,
+    inferenceMessageText,
+    parsedResponseHandlerReply,
+    messageHandlerEndedAt,
+  };
+}

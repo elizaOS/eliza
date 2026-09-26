@@ -5,7 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 
 export const CALENDAR_AVAILABILITY_KINDS = ["travel", "hold"] as const;
 export type CalendarOwnedAvailabilityKind =

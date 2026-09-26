@@ -1,17 +1,16 @@
 /**
  * Automation catalog nodes owned by the wallet plugin. These cover EVM + Solana
  * swaps and cross-chain bridges backed by the wallet plugin's runtime actions.
- * They live here (not hardcoded in app-core) so a wallet action rename or plugin
+ * They live here (not hardcoded in app) so a wallet action rename or plugin
  * name change updates the node in one place with the code it gates.
  */
-
-import type { AutomationNodeDescriptor } from "@elizaos/shared";
 import {
   type AutomationNodeContributorContext,
   buildRuntimeCapabilityNodes,
   type RuntimeCapabilityNodeSpec,
   registerAutomationNodeContributor,
-} from "@elizaos/shared/automation-node-contributors";
+} from "@elizaos/core/automation-node-contributors";
+import { type AutomationNodeDescriptor } from "@elizaos/core/contracts/automation-nodes";
 
 const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
   {
@@ -67,13 +66,11 @@ const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
     disabledReason: "Load the Solana plugin with swap support.",
   },
 ];
-
 export function buildWalletAutomationNodes({
   runtime,
 }: AutomationNodeContributorContext): AutomationNodeDescriptor[] {
   return buildRuntimeCapabilityNodes(WALLET_AUTOMATION_NODE_SPECS, runtime);
 }
-
 export function registerWalletAutomationNodeContributor(): void {
   registerAutomationNodeContributor("wallet", buildWalletAutomationNodes);
 }

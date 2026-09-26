@@ -9,7 +9,8 @@
  * Single-account env-only configurations (TELEGRAM_BOT_TOKEN) are surfaced as
  * a synthesized 'default' account with role 'AGENT' so downstream consumers
  * see a uniform list. Multi-account configs declared on character.settings.telegram
- * are surfaced verbatim from manager-owned storage.
+ * retain manager-owned metadata while connection status comes from exact
+ * configured-token polling health. Personal configuration alone is pending.
  */
 import type {
   ConnectorAccount,
@@ -20,6 +21,7 @@ import type {
   ConnectorAccountRole,
   IAgentRuntime,
 } from "@elizaos/core";
+import { TelegramAccountService } from "./account-client-service";
 import {
   DEFAULT_ACCOUNT_ID,
   listEnabledTelegramAccounts,
@@ -27,7 +29,9 @@ import {
   resolveTelegramAccount,
   telegramPersonalExternalId,
 } from "./accounts";
+import { resolveTelegramBotCredential } from "./bot-credential";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { getTelegramPollerClaim } from "./poller-lock";
 
 // Suffix for the synthesized OWNER (user-account) entry so the agent's bot
 // identity and the human owner's personal identity for the same config never
@@ -78,7 +82,7 @@ function synthesizeAccount(
     role,
     purpose,
     accessGate,
-    status: "connected",
+    status: "pending",
     externalId,
     displayHandle: name,
     createdAt: nowMs(),
@@ -97,13 +101,14 @@ export function createTelegramConnectorAccountProvider(
   return {
     provider: TELEGRAM_SERVICE_NAME,
     label: "Telegram",
+    statusAuthority: "provider",
 
     listAccounts: async (
       manager: ConnectorAccountManager,
     ): Promise<ConnectorAccount[]> => {
       // Merge persisted accounts (from manager storage) with synthesized
       // accounts from env/character config. The persisted set wins on id
-      // collision so explicit overrides survive.
+      // collision so explicit metadata overrides survive; live status is derived below.
       const persisted = await manager
         .getStorage()
         .listAccounts(TELEGRAM_SERVICE_NAME);
@@ -152,7 +157,55 @@ export function createTelegramConnectorAccountProvider(
         }
       }
 
-      return [...persisted, ...synthesized];
+      return Promise.all(
+        [...persisted, ...synthesized].map(async (account) => {
+          if (account.status === "revoked" || account.status === "disabled")
+            return account;
+          if (
+            account.id.endsWith(PERSONAL_ACCOUNT_SUFFIX) ||
+            account.metadata?.personal === true
+          ) {
+            const service = runtime.getService("telegram-account");
+            const personal =
+              service instanceof TelegramAccountService ? service : null;
+            const summary = personal?.getAccountSummary(account.id);
+            return {
+              ...account,
+              role: "OWNER",
+              purpose: ["reading"],
+              accessGate: "owner_binding",
+              status: personal?.getAccountStatus(account.id) ?? "pending",
+              externalId: summary?.id ?? account.externalId,
+              metadata: {
+                ...account.metadata,
+                personal: true,
+                instanceId: String(runtime.runtimeInstanceId),
+              },
+            };
+          }
+          const resolved = resolveTelegramAccount(runtime, account.id);
+          if (!resolved.enabled)
+            return { ...account, status: "disabled" as const };
+          const token = await resolveTelegramBotCredential(
+            runtime,
+            resolved.botToken ?? null,
+            "telegram-account-status",
+          );
+          const claim = token ? getTelegramPollerClaim(token) : undefined;
+          const matches =
+            claim?.ownerId === String(runtime.agentId) &&
+            claim.accountId === account.id;
+          const connected = matches && claim?.ok && claim.connected;
+          return {
+            ...account,
+            status: connected
+              ? ("connected" as const)
+              : matches && claim?.lastError
+                ? ("error" as const)
+                : ("pending" as const),
+          };
+        }),
+      );
     },
 
     createAccount: async (input: ConnectorAccountPatch) => {
@@ -164,7 +217,7 @@ export function createTelegramConnectorAccountProvider(
         role: input.role ?? "AGENT",
         purpose: input.purpose ?? ["messaging"],
         accessGate: input.accessGate ?? "open",
-        status: input.status ?? "connected",
+        status: "pending",
       };
     },
 

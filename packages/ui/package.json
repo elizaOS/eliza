@@ -24,10 +24,10 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:voice-playback-e2e": "node src/voice/__e2e__/run-playback-sample-rate-e2e.mjs",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
@@ -35,7 +35,6 @@
     "test:agent-surface-e2e": "bun run --cwd ../.. packages/ui/src/agent-surface/__e2e__/run-e2e.mjs",
     "test:chat-sheet-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
     "test:chat-sheet-safari-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs --browser=webkit --smoke",
-    "test:chat-sheet-mobile-safari-smoke": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-mobile-safari-smoke.mjs",
     "test:settings-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-settings-e2e.mjs",
     "test:devices-runtimes-a11y-e2e": "bun run --cwd ../.. packages/ui/src/components/settings/__e2e__/run-devices-runtimes-a11y-e2e.mjs",
     "test:chat-scroll-web-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-scroll-web-e2e.mjs",
@@ -45,10 +44,10 @@
     "test:fused-wake-integration-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-fused-wake-integration-e2e.mjs",
     "test:warming-absorption-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-warming-absorption-e2e.mjs",
     "test:chat-sheet-frame-glitch-e2e": "node src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs",
-    "test:chatux-gesture-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chatux-gesture-e2e.mjs",
     "test:chat-perf-gate": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-perf-gate.mjs",
     "test:divider-drag-perf-gate": "bun run --cwd ../.. packages/ui/src/components/composites/__e2e__/run-divider-drag-perf-gate.mjs",
     "test:perf-gate-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-perf-gate-e2e.mjs",
+    "test:notifications-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/capture-default-notifications.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
     "test:launcher-loop-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs",
     "test:warmup-eviction-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-warmup-eviction-e2e.mjs",
@@ -64,11 +63,11 @@
     "test:frontend-hosting-e2e": "bun run --cwd ../.. packages/ui/src/cloud/applications/__e2e__/run-frontend-hosting-e2e.mjs",
     "test:credentials-e2e": "bun run --cwd ../.. packages/ui/src/cloud/organization/__e2e__/run-credentials-e2e.mjs",
     "test:slop-removal-e2e": "bun run --cwd ../.. packages/ui/src/cloud/__e2e__/run-slop-removal-e2e.mjs",
-    "lint": "bunx @biomejs/biome check --write src",
-    "lint:check": "bunx @biomejs/biome check src scripts/*.ts && node --test scripts/check-design-system.test.mjs scripts/find-duplicate-molecular-components.test.mjs scripts/stories-coverage-gate.test.mjs && node --import tsx --test scripts/design-component-graph.test.ts scripts/design-contract-graph.test.ts && node scripts/check-design-system.mjs --require-tight-baseline && node scripts/find-duplicate-molecular-components.mjs --check && node --import tsx scripts/check-design-contract-graph.ts --require-tight-debt && node scripts/stories-coverage.mjs --check",
+    "lint": "bunx @biomejs/biome check --write src scripts",
+    "lint:check": "bunx @biomejs/biome check src scripts",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
-    "build:dist": "node ../scripts/with-package-build-lock.mjs packages/ui -- bun run build:dist:unlocked",
+    "build:dist": "node ../scripts/with-package-build-lock.ts packages/ui -- bun run build:dist:unlocked",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "stories:dev": "vite --config stories/vite.config.ts",
     "design:lab": "vite --config stories/vite.config.ts --open /lab.html",
@@ -77,36 +76,29 @@
     "build-storybook": "storybook build",
     "audit:stories": "node test/story-gate/run-story-gate.mjs",
     "audit:stories:build": "bun run build-storybook --output-dir storybook-static --quiet && node test/story-gate/run-story-gate.mjs",
-    "audit:story-coverage": "node scripts/stories-coverage.mjs",
-    "audit:story-coverage:report": "node scripts/stories-coverage.mjs --write-report",
-    "audit:component-inventory": "node scripts/find-duplicate-components.mjs",
-    "audit:component-inventory:test": "node --test scripts/find-duplicate-components.test.mjs",
-    "audit:design-system": "node scripts/check-design-system.mjs",
-    "audit:design-system:test": "node --test scripts/check-design-system.test.mjs",
-    "audit:design-system:update-baseline": "node scripts/check-design-system.mjs --write-baseline",
-    "audit:design-contract-graph": "node --import tsx scripts/check-design-contract-graph.ts",
-    "audit:design-contract-graph:test": "node --import tsx --test scripts/design-contract-graph.test.ts",
-    "migrate:canonical-imports": "node scripts/migrate-canonical-imports.mjs --write",
-    "migrate:canonical-imports:check": "node scripts/migrate-canonical-imports.mjs",
-    "migrate:raw-tables": "node scripts/migrate-raw-tables.mjs --write",
-    "migrate:raw-tables:check": "node scripts/migrate-raw-tables.mjs",
-    "migrate:raw-controls": "node scripts/migrate-raw-controls.mjs --write",
-    "migrate:raw-controls:check": "node scripts/migrate-raw-controls.mjs",
-    "audit:molecular-inventory": "node scripts/find-duplicate-molecular-components.mjs",
-    "audit:molecular-inventory:test": "node --test scripts/find-duplicate-molecular-components.test.mjs",
+    "audit:story-coverage": "node scripts/stories-coverage.ts",
+    "migrate:canonical-imports": "node scripts/migrate-canonical-imports.ts --write",
+    "migrate:canonical-imports:check": "node scripts/migrate-canonical-imports.ts",
+    "migrate:raw-tables": "node scripts/migrate-raw-tables.ts --write",
+    "migrate:raw-tables:check": "node scripts/migrate-raw-tables.ts",
+    "migrate:raw-controls": "node scripts/migrate-raw-controls.ts --write",
+    "migrate:raw-controls:check": "node scripts/migrate-raw-controls.ts",
     "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",
-    "audit:public-api:test": "node --test scripts/public-api-explicit-subpaths.test.mjs",
-    "audit:public-api": "node --test scripts/public-api-explicit-subpaths.test.mjs",
-    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/voice/worklets src/components/views/view-icons src/login/LICENSE && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
-    "generate:view-icons": "node scripts/bake-view-icons.mjs",
+    "audit:public-api:test": "node --test scripts/public-api-explicit-subpaths.test.ts",
+    "audit:public-api": "node --test scripts/public-api-explicit-subpaths.test.ts",
+    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.ts packages/ui && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/styles src/cloud-ui/index.css src/voice/worklets src/components/views/view-icons src/login/LICENSE && node ../scripts/prepare-package-dist.ts packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/ui && node ../scripts/verify-package-runtime-exports.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/brand/brand.css src/brand-classic/brand.css",
+    "generate:view-icons": "node scripts/bake-view-icons.ts",
     "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs",
     "test:wallet-widget-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-wallet-widget-e2e.mjs",
     "test:task-pipeline-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-task-pipeline-e2e.mjs",
     "test:home-locale-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-locale-e2e.mjs",
-    "audit:surface-realm-writers": "node scripts/scan-reserved-storage-writers.mjs"
+    "audit:surface-realm-writers": "node scripts/scan-reserved-storage-writers.ts",
+    "audit:design": "node scripts/audit-design.ts",
+    "test:design-audit": "node --test scripts/audit-design.test.ts"
   },
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -183,12 +175,8 @@
       "default": "./dist/components/ui/input.js"
     },
     "./native-select": {
+      "eliza-source": "./src/components/ui/native-select.tsx",
       "types": "./dist/components/ui/native-select.d.ts",
-      "eliza-source": {
-        "types": "./src/components/ui/native-select.tsx",
-        "import": "./src/components/ui/native-select.tsx",
-        "default": "./src/components/ui/native-select.tsx"
-      },
       "import": "./dist/components/ui/native-select.js",
       "default": "./dist/components/ui/native-select.js"
     },
@@ -380,6 +368,11 @@
       "import": "./dist/state/*.js",
       "default": "./dist/state/*.js"
     },
+    "./storybook/*": {
+      "types": "./dist/storybook/*.d.ts",
+      "import": "./dist/storybook/*.js",
+      "default": "./dist/storybook/*.js"
+    },
     "./slots/*": {
       "types": "./dist/slots/*.d.ts",
       "import": "./dist/slots/*.js",
@@ -436,28 +429,209 @@
       "default": "./dist/widgets/index.js"
     },
     "./dist/styles/*.css": "./dist/styles/*.css",
-    "./*.css": "./dist/*.css"
+    "./*.css": "./dist/*.css",
+    "./app-hero-art": {
+      "eliza-source": "./src/app-hero-art.ts",
+      "types": "./dist/app-hero-art.d.ts",
+      "import": "./dist/app-hero-art.js",
+      "default": "./dist/app-hero-art.js"
+    },
+    "./apps/detail-extension-registry": {
+      "eliza-source": "./src/apps/detail-extension-registry.ts",
+      "types": "./dist/apps/detail-extension-registry.d.ts",
+      "import": "./dist/apps/detail-extension-registry.js",
+      "default": "./dist/apps/detail-extension-registry.js"
+    },
+    "./apps/detail-extension-types": {
+      "eliza-source": "./src/apps/detail-extension-types.ts",
+      "types": "./dist/apps/detail-extension-types.d.ts",
+      "import": "./dist/apps/detail-extension-types.js",
+      "default": "./dist/apps/detail-extension-types.js"
+    },
+    "./apps": {
+      "eliza-source": "./src/apps/index.ts",
+      "types": "./dist/apps/index.d.ts",
+      "import": "./dist/apps/index.js",
+      "default": "./dist/apps/index.js"
+    },
+    "./apps/overlay-app-api": {
+      "eliza-source": "./src/apps/overlay-app-api.ts",
+      "types": "./dist/apps/overlay-app-api.d.ts",
+      "import": "./dist/apps/overlay-app-api.js",
+      "default": "./dist/apps/overlay-app-api.js"
+    },
+    "./apps/overlay-app-registry": {
+      "eliza-source": "./src/apps/overlay-app-registry.ts",
+      "types": "./dist/apps/overlay-app-registry.d.ts",
+      "import": "./dist/apps/overlay-app-registry.js",
+      "default": "./dist/apps/overlay-app-registry.js"
+    },
+    "./backgrounds/catalog-index": {
+      "eliza-source": "./src/backgrounds/catalog-index.ts",
+      "types": "./dist/backgrounds/catalog-index.d.ts",
+      "import": "./dist/backgrounds/catalog-index.js",
+      "default": "./dist/backgrounds/catalog-index.js"
+    },
+    "./registry-host": {
+      "eliza-source": "./src/registry-host.ts",
+      "types": "./dist/registry-host.d.ts",
+      "import": "./dist/registry-host.js",
+      "default": "./dist/registry-host.js"
+    },
+    "./utils/asset-url": {
+      "eliza-source": "./src/utils/asset-url.ts",
+      "types": "./dist/utils/asset-url.d.ts",
+      "import": "./dist/utils/asset-url.js",
+      "default": "./dist/utils/asset-url.js"
+    },
+    "./utils/browser-tab-kit-types": {
+      "eliza-source": "./src/utils/browser-tab-kit-types.ts",
+      "types": "./dist/utils/browser-tab-kit-types.d.ts",
+      "import": "./dist/utils/browser-tab-kit-types.js",
+      "default": "./dist/utils/browser-tab-kit-types.js"
+    },
+    "./utils/browser-tabs-renderer-registry": {
+      "eliza-source": "./src/utils/browser-tabs-renderer-registry.ts",
+      "types": "./dist/utils/browser-tabs-renderer-registry.d.ts",
+      "import": "./dist/utils/browser-tabs-renderer-registry.js",
+      "default": "./dist/utils/browser-tabs-renderer-registry.js"
+    },
+    "./utils/cloud-status": {
+      "eliza-source": "./src/utils/cloud-status.ts",
+      "types": "./dist/utils/cloud-status.d.ts",
+      "import": "./dist/utils/cloud-status.js",
+      "default": "./dist/utils/cloud-status.js"
+    },
+    "./utils/documents-upload-image": {
+      "eliza-source": "./src/utils/documents-upload-image.ts",
+      "types": "./dist/utils/documents-upload-image.d.ts",
+      "import": "./dist/utils/documents-upload-image.js",
+      "default": "./dist/utils/documents-upload-image.js"
+    },
+    "./utils/eliza-cloud-model-route": {
+      "eliza-source": "./src/utils/eliza-cloud-model-route.ts",
+      "types": "./dist/utils/eliza-cloud-model-route.d.ts",
+      "import": "./dist/utils/eliza-cloud-model-route.js",
+      "default": "./dist/utils/eliza-cloud-model-route.js"
+    },
+    "./utils/format": {
+      "eliza-source": "./src/utils/format.ts",
+      "types": "./dist/utils/format.d.ts",
+      "import": "./dist/utils/format.js",
+      "default": "./dist/utils/format.js"
+    },
+    "./utils/host-capabilities": {
+      "eliza-source": "./src/utils/host-capabilities.ts",
+      "types": "./dist/utils/host-capabilities.d.ts",
+      "import": "./dist/utils/host-capabilities.js",
+      "default": "./dist/utils/host-capabilities.js"
+    },
+    "./utils/labels": {
+      "eliza-source": "./src/utils/labels.ts",
+      "types": "./dist/utils/labels.d.ts",
+      "import": "./dist/utils/labels.js",
+      "default": "./dist/utils/labels.js"
+    },
+    "./utils/namespace-defaults": {
+      "eliza-source": "./src/utils/namespace-defaults.ts",
+      "types": "./dist/utils/namespace-defaults.d.ts",
+      "import": "./dist/utils/namespace-defaults.js",
+      "default": "./dist/utils/namespace-defaults.js"
+    },
+    "./utils/owner-name": {
+      "eliza-source": "./src/utils/owner-name.ts",
+      "types": "./dist/utils/owner-name.d.ts",
+      "import": "./dist/utils/owner-name.js",
+      "default": "./dist/utils/owner-name.js"
+    },
+    "./utils/rate-limiter": {
+      "eliza-source": "./src/utils/rate-limiter.ts",
+      "types": "./dist/utils/rate-limiter.d.ts",
+      "import": "./dist/utils/rate-limiter.js",
+      "default": "./dist/utils/rate-limiter.js"
+    },
+    "./utils/streaming-text": {
+      "eliza-source": "./src/utils/streaming-text.ts",
+      "types": "./dist/utils/streaming-text.d.ts",
+      "import": "./dist/utils/streaming-text.js",
+      "default": "./dist/utils/streaming-text.js"
+    },
+    "./utils/subscription-auth": {
+      "eliza-source": "./src/utils/subscription-auth.ts",
+      "types": "./dist/utils/subscription-auth.d.ts",
+      "import": "./dist/utils/subscription-auth.js",
+      "default": "./dist/utils/subscription-auth.js"
+    },
+    "./utils/trajectory-format": {
+      "eliza-source": "./src/utils/trajectory-format.ts",
+      "types": "./dist/utils/trajectory-format.d.ts",
+      "import": "./dist/utils/trajectory-format.js",
+      "default": "./dist/utils/trajectory-format.js"
+    },
+    "./view-hero-art": {
+      "eliza-source": "./src/view-hero-art.ts",
+      "types": "./dist/view-hero-art.d.ts",
+      "import": "./dist/view-hero-art.js",
+      "default": "./dist/view-hero-art.js"
+    },
+    "./brand-classic/brand.css": "./src/brand-classic/brand.css",
+    "./brand-classic": {
+      "eliza-source": "./src/brand-classic/index.ts",
+      "types": "./dist/brand-classic/index.d.ts",
+      "import": "./dist/brand-classic/index.js",
+      "default": "./dist/brand-classic/index.js"
+    },
+    "./brand/brand.css": "./src/brand/brand.css",
+    "./brand": {
+      "eliza-source": "./src/brand/index.ts",
+      "types": "./dist/brand/index.d.ts",
+      "import": "./dist/brand/index.js",
+      "default": "./dist/brand/index.js"
+    },
+    "./views/swarm-activity": {
+      "eliza-source": "./src/views/swarm-activity.ts",
+      "types": "./dist/views/swarm-activity.d.ts",
+      "import": "./dist/views/swarm-activity.js",
+      "default": "./dist/views/swarm-activity.js"
+    },
+    "./logger": {
+      "eliza-source": "./src/logger.ts",
+      "types": "./dist/logger.d.ts",
+      "import": "./dist/logger.js",
+      "default": "./dist/logger.js"
+    },
+    "./brand.css": "./dist/brand/brand.css",
+    "./brand-classic.css": "./dist/brand-classic/brand.css",
+    "./assets/*": "./assets/*",
+    "./terminal/theme": {
+      "eliza-source": "./src/terminal/theme.ts",
+      "types": "./dist/terminal/theme.d.ts",
+      "import": "./dist/terminal/theme.js",
+      "default": "./dist/terminal/theme.js"
+    },
+    "./terminal/palette": {
+      "eliza-source": "./src/terminal/palette.ts",
+      "types": "./dist/terminal/palette.d.ts",
+      "import": "./dist/terminal/palette.js",
+      "default": "./dist/terminal/palette.js"
+    }
   },
   "peerDependencies": {
-    "@capacitor-community/bluetooth-le": ">=8.0.0",
     "@capacitor/app": "^8.0.0",
     "@elizaos/capacitor-agent": "workspace:*",
-    "@elizaos/capacitor-llama": "workspace:*",
+    "@elizaos/plugin-native-inference": "workspace:*",
     "llama-cpp-capacitor": "^0.1.5",
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "peerDependenciesMeta": {
-    "@capacitor-community/bluetooth-le": {
-      "optional": true
-    },
     "@capacitor/app": {
       "optional": true
     },
     "@elizaos/capacitor-agent": {
       "optional": true
     },
-    "@elizaos/capacitor-llama": {
+    "@elizaos/plugin-native-inference": {
       "optional": true
     },
     "llama-cpp-capacitor": {
@@ -470,14 +644,12 @@
     "@elizaos/capacitor-secure-store": "workspace:*"
   },
   "dependencies": {
-    "@babel/runtime": "^7.29.7",
+    "@babel/runtime": "^8.0.5",
     "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/logger": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
-    "@json-render/core": "0.19.0",
+    "@json-render/core": "0.20.0",
     "@json-render/react": "0.19.0",
     "@metamask/connect-evm": "2.1.1",
     "@paulmillr/qr": "0.2.1",
@@ -511,7 +683,7 @@
     "@solana/wallet-adapter-react-ui": "^0.9.39",
     "@solana/wallet-adapter-solflare": "^0.6.33",
     "@solana/web3.js": "1.98.4",
-    "@elizaos/login": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@tanstack/react-query": "^5.90.20",
     "@xyflow/react": "^12.10.2",
     "chalk": "^6.0.0",
@@ -524,7 +696,6 @@
     "lucide-react": "^1.0.0",
     "motion": "^12.38.0",
     "nprogress": "^0.2.0",
-    "opus-decoder": "0.7.11",
     "react-day-picker": "^10.0.1",
     "react-hook-form": "^7.74.0",
     "react-router-dom": "^7.0.0",
@@ -532,7 +703,7 @@
     "recharts": "^3.8.1",
     "refractor": "^5.0.0",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.4.0",
+    "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.1",
     "thinking-orbs": "0.2.0",
     "three": "^0.184.0",
@@ -542,47 +713,47 @@
     "ws": "^8.21.3",
     "@solana/wallet-adapter-coinbase": "^0.1.23",
     "@solana/wallet-adapter-trust": "^0.1.17",
-    "@solana/wallet-adapter-coin98": "^0.5.24"
+    "@solana/wallet-adapter-coin98": "^0.5.24",
+    "@elizaos/remote-control-host": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
-    "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/preferences": "^8.0.1",
-    "@elizaos/cloud-shared": "workspace:*",
-    "@storybook/addon-a11y": "^10.0.0",
-    "@storybook/addon-docs": "^10.0.0",
-    "@storybook/addon-themes": "^10.0.0",
-    "@storybook/react": "^10.0.0",
-    "@storybook/react-vite": "^10.0.0",
+    "@storybook/addon-a11y": "^10.6.0",
+    "@storybook/addon-docs": "^10.6.0",
+    "@storybook/addon-themes": "^10.6.0",
+    "@storybook/react": "^10.6.0",
+    "@storybook/react-vite": "^10.6.0",
     "@tailwindcss/postcss": "^4.3.1",
     "@tailwindcss/vite": "^4.3.1",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/jsdom": "^30.0.0",
     "@types/node": "25.6.2",
     "@types/nprogress": "^0.2.3",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react-swc": "^4.3.1",
     "esbuild": "^0.28.0",
-    "fast-check": "^4.8.0",
+    "fast-check": "^4.10.2",
     "jsdom": "^29.0.0",
     "pixelmatch": "^7.2.0",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "pngjs": "^7.0.0",
     "postcss": "^8.5.16",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "sharp": "^0.35.3",
-    "storybook": "^10.0.0",
+    "storybook": "^10.6.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.8",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   },
   "publishConfig": {
     "access": "public",
@@ -594,7 +765,8 @@
       "coreBuild": true,
       "testLanes": [
         "client"
-      ]
+      ],
+      "buildOnInstall": {}
     }
   }
 }

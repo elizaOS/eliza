@@ -3,13 +3,15 @@
  * policies so the app shell does not maintain parallel routing tables.
  */
 
+import type {
+  AppShellBackgroundPolicy,
+  PageLayoutManifest,
+  ResolvedSurfaceManifest,
+} from "@elizaos/core";
 import {
-  type AppShellBackgroundPolicy,
-  type PageLayoutManifest,
-  type ResolvedSurfaceManifest,
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/core/views/surface-manifest";
 import {
   BUILTIN_ROUTE_IDS,
   type BuiltinRouteSurfaceDeclaration,

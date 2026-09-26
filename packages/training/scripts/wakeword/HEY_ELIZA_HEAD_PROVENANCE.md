@@ -59,7 +59,7 @@ mono PCM16 with gain + additive-noise augmentation.
 
 openWakeWord's Python pipeline rescales the melspectrogram before the embedding
 model: `mel = mel/10 + 2`. The `wakeword-cpp` C runtime
-(`packages/native/plugins/wakeword-cpp/src/wakeword_runtime.c`) does **not** —
+(`plugins/plugin-local-inference/native/wakeword-cpp/src/wakeword_runtime.c`) does **not** —
 it feeds the raw log-mel straight into the embedding model, and its parity test
 (`test/wakeword_parity_test.py`) confirms the C path agrees with a *no-rescale*
 ONNX reference. So a head trained with the rescale is featurized differently
@@ -124,13 +124,13 @@ python3 packages/training/scripts/wakeword/train_eliza1_wakeword_head.py \
     --front-end-dir <front-end> --out hey-eliza.onnx --epochs 40
 
 # 3. convert to the runtime's three GGUFs
-python3 packages/native/plugins/wakeword-cpp/scripts/wakeword_to_gguf.py \
+python3 packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py \
     --melspec-onnx <front-end>/melspectrogram.onnx \
     --embedding-onnx <front-end>/embedding_model.onnx \
     --classifier-onnx hey-eliza.onnx --phrase "hey eliza" --out-dir gguf
 
 # 4. build + verify on the HELD-OUT set through the real FFI
-cmake -S packages/native/plugins/wakeword-cpp -B .../build -DCMAKE_BUILD_TYPE=Release
+cmake -S plugins/plugin-local-inference/native/wakeword-cpp -B .../build -DCMAKE_BUILD_TYPE=Release
 cmake --build .../build -j
 bun verify_ffi.ts .../build/libwakeword.so gguf/hey-eliza.{melspec,embedding,classifier}.gguf \
     /tmp/wakeword/rate/pos /tmp/wakeword/rate/neg 0.5
@@ -176,11 +176,11 @@ Publish status:
    `voice/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf`, commit
    `c544bb4c78a601a0da8372b9399dfe668fbadb1e`.
 2. ✅ **DONE** — registered in the voice catalog as `wakeword` v0.3.0 in
-   `packages/shared/src/local-inference/voice-models.ts` (sha256s above +
+   `plugins/plugin-native-inference/src/model-catalog/voice-models.ts` (sha256s above +
    that `hfRevision`), via `append_voice_model_version.py`.
 3. ⏳ **REMAINING (gated)** — assemble the three GGUFs into each tier bundle's
    `wake/` dir through `scripts/publish/publish_all_eliza1.sh` (per
-   `packages/training/CLAUDE.md` §6 the bundles reach `elizaos/eliza-1` ONLY
+   `packages/training/AGENTS.md` §6 the bundles reach `elizaos/eliza-1` ONLY
    through that gated flow — hardware verification + eval gates + manifest
    regeneration; do NOT hand-assemble bundles).
 4. ⏳ **THEN** remove `hey-eliza` from `OPENWAKEWORD_PLACEHOLDER_HEADS`.
