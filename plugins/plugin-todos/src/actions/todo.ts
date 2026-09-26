@@ -676,10 +676,12 @@ async function actionClear({
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
+  // Clear reconciles on the same (entityId, agentId) scope every read uses,
+  // so it removes the user's whole cross-room list (#28006).
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "clear", roomId: scope.roomId },
+    mutation: { action: "clear" },
   });
   if (execution.result.action !== "clear") {
     throw new Error("Todo mutation result does not match action=clear");
@@ -764,7 +766,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       "CLEAR_TODOS",
     ],
     description:
-      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear (remove the user's entire list). Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
     descriptionCompressed:
       "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
     parameters: [
