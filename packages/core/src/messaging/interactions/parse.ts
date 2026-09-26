@@ -284,7 +284,7 @@ function scanRawInteractionRegions(text: string): RawInteractionRegion[] {
 			continue;
 		}
 		if (!marker.closing) {
-			if (!isValidOpeningMarker(marker) || active.has(marker.kind)) continue;
+			if (!isValidOpeningMarker(marker)) continue;
 			let bodyStart = bracketEnd + 1;
 			if (marker.kind !== "TASK") {
 				while (bodyStart < text.length && /[ \t]/.test(text[bodyStart]))
