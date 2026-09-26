@@ -18,6 +18,7 @@ import {
 import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
+import { parseProvisioningBody } from "./provisioning-response.ts";
 
 export type TelegramAccountAuthStatus =
   | "idle"
@@ -578,10 +579,7 @@ async function sendProvisioningCode(phone: string): Promise<string> {
     signal: AbortSignal.timeout(15_000),
   });
   const text = await response.text();
-  if (text.includes("Sorry, too many tries")) {
-    throw new Error("Telegram provisioning is rate limited right now");
-  }
-  const parsed = JSON.parse(text) as unknown;
+  const parsed = parseProvisioningBody(text);
   const randomHash = extractRandomHash(parsed);
   if (!randomHash) {
     throw new Error("Telegram provisioning did not return a login token");
