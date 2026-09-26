@@ -12,6 +12,10 @@ import type {
   LifeOpsHealthSleepStage,
   LifeOpsHealthWorkout,
 } from "../contracts/health.js";
+import {
+  buildUtcDateFromLocalParts,
+  type ZonedDateParts,
+} from "../util/time.js";
 import type { StoredHealthConnectorToken } from "./health-oauth.js";
 import { requireHealthProviderSpec } from "./health-provider-registry.js";
 import {
@@ -272,6 +276,8 @@ function sample(args: {
   startAt: string | null;
   endAt?: string | null;
   sourceExternalId: string;
+  // Provider-reported local calendar date; defaults to the UTC date of startAt.
+  localDate?: string;
   metadata?: Record<string, unknown>;
 }): LifeOpsHealthMetricSample | null {
   if (args.value === null || !Number.isFinite(args.value) || !args.startAt) {
@@ -286,7 +292,7 @@ function sample(args: {
     unit: args.unit,
     startAt: args.startAt,
     endAt: args.endAt ?? args.startAt,
-    localDate: localDateFromIso(args.startAt),
+    localDate: args.localDate ?? localDateFromIso(args.startAt),
     sourceExternalId: args.sourceExternalId,
     metadata: args.metadata ?? {},
   });
@@ -450,6 +456,120 @@ function fitbitWeightKg(weight: number, weightUnit: string | null): number {
   return weight;
 }
 
+// Fitbit timestamps (sleep startTime/endTime, stage dateTime, weight
+// date+time) carry no zone designator: they are wall-clock times in the
+// account's profile zone. `Date.parse` would read them in the HOST zone, so the
+// stored instant would depend on where the agent runs. The profile's IANA
+// `timezone` is preferred because it is DST-correct for every wall time in the
+// sync range; `offsetFromUTCMillis` is only the account's current offset.
+type FitbitClock =
+  | { kind: "zone"; timeZone: string }
+  | { kind: "offset"; offsetMinutes: number };
+
+const MINUTE_MS = 60_000;
+const FITBIT_WALL_TIME_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+const EXPLICIT_ZONE_SUFFIX_PATTERN = /(?:Z|[+-]\d{2}:?\d{2})$/;
+
+function isSupportedTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    // error-policy:J3 an unknown IANA name is an explicit invalid result so the
+    // caller falls back to the profile's fixed offset instead of a host guess.
+    return false;
+  }
+}
+
+function resolveFitbitClock(
+  profileUser: Record<string, unknown> | null,
+  agentId: string,
+): FitbitClock {
+  const timeZone = profileUser ? getText(profileUser, "timezone") : null;
+  const offsetMillis = profileUser
+    ? getNumber(profileUser, "offsetFromUTCMillis")
+    : null;
+  const offsetMinutes =
+    offsetMillis === null ? null : Math.round(offsetMillis / MINUTE_MS);
+  if (timeZone && isSupportedTimeZone(timeZone)) {
+    return { kind: "zone", timeZone };
+  }
+  if (offsetMinutes !== null) {
+    logger.warn(
+      {
+        boundary: "lifeops",
+        operation: "health_connector_sync",
+        provider: "fitbit",
+        agentId,
+        timezone: timeZone,
+        offsetMinutes,
+      },
+      "[lifeops] Fitbit profile timezone is unusable; resolving wall times with the fixed profile offset",
+    );
+    return { kind: "offset", offsetMinutes };
+  }
+  throw new HealthConnectorApiError(
+    502,
+    "fitbit",
+    "Fitbit profile carries neither a usable timezone nor offsetFromUTCMillis; wall-clock timestamps cannot be resolved.",
+  );
+}
+
+function inRange(value: number, min: number, max: number): boolean {
+  return value >= min && value <= max;
+}
+
+function fitbitWallTimeToIso(
+  value: string | null,
+  clock: FitbitClock,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  const match = FITBIT_WALL_TIME_PATTERN.exec(value);
+  if (!match) {
+    // Fitbit does not document zoned values, but one is unambiguous if present.
+    return EXPLICIT_ZONE_SUFFIX_PATTERN.test(value)
+      ? normalizeIso(value)
+      : null;
+  }
+  const parts: ZonedDateParts = {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    second: Number(match[6] ?? "0"),
+  };
+  const millis = Number((match[7] ?? "0").padEnd(3, "0"));
+  if (
+    !inRange(parts.month, 1, 12) ||
+    !inRange(parts.day, 1, 31) ||
+    !inRange(parts.hour, 0, 23) ||
+    !inRange(parts.minute, 0, 59) ||
+    !inRange(parts.second, 0, 59)
+  ) {
+    return null;
+  }
+  const wallUtcMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  if (!Number.isFinite(wallUtcMs)) {
+    return null;
+  }
+  const instantMs =
+    clock.kind === "zone"
+      ? buildUtcDateFromLocalParts(clock.timeZone, parts).getTime()
+      : wallUtcMs - clock.offsetMinutes * MINUTE_MS;
+  return new Date(instantMs + millis).toISOString();
+}
+
 async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const dates = dateRange(args.startDate, args.endDate);
   const identityJson = await fetchHealthJson({
@@ -461,6 +581,7 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     ? getText(profileUser, "distanceUnit")
     : null;
   const weightUnit = profileUser ? getText(profileUser, "weightUnit") : null;
+  const clock = resolveFitbitClock(profileUser, args.token.agentId);
   const samples: LifeOpsHealthMetricSample[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
   const workouts: LifeOpsHealthWorkout[] = [];
@@ -585,8 +706,11 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       const logId =
         getText(sleepLog, "logId") ??
         `${date}:${getText(sleepLog, "startTime") ?? "sleep"}`;
-      const startAt = normalizeIso(getText(sleepLog, "startTime"));
-      const endAt = normalizeIso(getText(sleepLog, "endTime"));
+      const startAt = fitbitWallTimeToIso(
+        getText(sleepLog, "startTime"),
+        clock,
+      );
+      const endAt = fitbitWallTimeToIso(getText(sleepLog, "endTime"), clock);
       if (!startAt || !endAt) {
         continue;
       }
@@ -597,7 +721,7 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           grantId: args.grantId,
           sourceExternalId: logId,
           localDate: date,
-          timezone: null,
+          timezone: clock.kind === "zone" ? clock.timeZone : null,
           startAt,
           endAt,
           isMainSleep: getBoolean(sleepLog, "isMainSleep") ?? false,
@@ -630,15 +754,17 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           averageHrvMs: null,
           respiratoryRate: null,
           bloodOxygenPercent: null,
-          stageSamples: fitbitStageSamples(sleepLog),
+          stageSamples: fitbitStageSamples(sleepLog, clock),
           metadata: { rawDateOfSleep: getText(sleepLog, "dateOfSleep") },
         }),
       );
     }
 
     for (const log of getArray(weight, "weight")) {
-      const loggedAt = normalizeIso(
-        `${getText(log, "date") ?? date}T${getText(log, "time") ?? "12:00:00"}`,
+      const logDate = getText(log, "date") ?? date;
+      const loggedAt = fitbitWallTimeToIso(
+        `${logDate}T${getText(log, "time") ?? "12:00:00"}`,
+        clock,
       );
       const rawWeight = getNumber(log, "weight");
       samples.push(
@@ -651,6 +777,7 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
               rawWeight !== null ? fitbitWeightKg(rawWeight, weightUnit) : null,
             unit: "kg",
             startAt: loggedAt,
+            localDate: logDate,
             sourceExternalId:
               getText(log, "logId") ?? `${date}:fitbit:weight_kg`,
             // providerUnit is the unit label Fitbit attached to THIS weight log;
@@ -675,12 +802,13 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
 
 function fitbitStageSamples(
   sleepLog: Record<string, unknown>,
+  clock: FitbitClock,
 ): LifeOpsHealthSleepEpisode["stageSamples"] {
   const levels = getRecord(sleepLog, "levels");
   const data = levels ? getArray(levels, "data") : [];
   const samples: LifeOpsHealthSleepEpisode["stageSamples"] = [];
   for (const entry of data) {
-    const startAt = normalizeIso(getText(entry, "dateTime"));
+    const startAt = fitbitWallTimeToIso(getText(entry, "dateTime"), clock);
     const seconds = getNumber(entry, "seconds");
     if (!startAt || seconds === null || seconds <= 0) {
       continue;

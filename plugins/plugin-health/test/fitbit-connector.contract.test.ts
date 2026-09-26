@@ -186,6 +186,9 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(weight?.value).toBe(61.2);
     expect(weight?.unit).toBe("kg");
     expect(weight?.sourceExternalId).toBe("38291077001");
+    // date + time are profile-zone wall times; localDate is the log's date.
+    expect(weight?.startAt).toBe("2026-05-01T06:15:00.000Z");
+    expect(weight?.localDate).toBe("2026-05-01");
     // providerUnit is the per-log unit label; providerLocaleUnit is the account
     // locale that drives the conversion.
     expect(weight?.metadata.providerUnit).toBe("kg");
@@ -203,16 +206,12 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(ep.agentId).toBe("agent-fitbit");
     expect(ep.grantId).toBe("grant-fitbit");
     // startTime/endTime arrive ZONELESS on the Fitbit wire
-    // ("2026-04-30T22:48:00.000"); the normalizer's Date.parse interprets them
-    // in the RUNTIME-LOCAL zone, which the suite pins to America/Los_Angeles
-    // (UTC-7), so 22:48 local -> 05:48Z next day. Asserting the parsed value
-    // pins both the transform and this zoneless->local-time behavior.
-    expect(ep.startAt).toBe(
-      new Date(Date.parse("2026-04-30T22:48:00.000")).toISOString(),
-    );
-    expect(ep.endAt).toBe(
-      new Date(Date.parse("2026-05-01T06:54:00.000")).toISOString(),
-    );
+    // ("2026-04-30T22:48:00.000") as wall times in profile.user.timezone
+    // (Europe/London, BST = UTC+1 on these dates), so they resolve to 21:48Z /
+    // 05:54Z regardless of the host zone the suite pins.
+    expect(ep.startAt).toBe("2026-04-30T21:48:00.000Z");
+    expect(ep.endAt).toBe("2026-05-01T05:54:00.000Z");
+    expect(ep.timezone).toBe("Europe/London");
     // localDate is the iterated date.
     expect(ep.localDate).toBe("2026-05-01");
     // isMainSleep verbatim; type -> sleepType.
@@ -241,10 +240,8 @@ describe("Fitbit connector — recorded real API contract", () => {
     if (!first) throw new Error("missing stage sample");
     expect(first.stage).toBe("light");
     expect(first.providerCode).toBe("light");
-    // levels.data[].dateTime is likewise zoneless -> parsed in runtime-local.
-    const firstStageStart = new Date(
-      Date.parse("2026-04-30T22:48:00.000"),
-    ).toISOString();
+    // levels.data[].dateTime is likewise a profile-zone wall time.
+    const firstStageStart = "2026-04-30T21:48:00.000Z";
     expect(first.startAt).toBe(firstStageStart);
     // endAt = startAt + seconds (1800s).
     expect(first.endAt).toBe(
