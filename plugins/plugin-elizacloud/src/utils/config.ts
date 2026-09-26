@@ -155,7 +155,7 @@ export function getAppId(runtime: IAgentRuntime): string | undefined {
  * `ELIZAOS_CLOUD_ENABLED`. Runtime boolean `true` arrives here as the
  * string "true" (getSetting/resolveSetting coerce to string).
  */
-function isTruthyCloudFlag(value: string | undefined): boolean {
+export function isTruthyCloudFlag(value: string | undefined): boolean {
     if (!value)
         return false;
     const lower = value.trim().toLowerCase();
