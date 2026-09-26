@@ -173,7 +173,9 @@ it.each(
             expect(read).toHaveBeenCalledTimes(1);
             // The settled synthesis must reach its completion evaluator.
             return JSON.stringify({
-              completed: false,
+              // Exercise evaluator fallback for missing synthesis text, without
+              // depending on the separate settled pending-scope repair.
+              completed: true,
               toolCalls: [],
               messageToUser: "",
             });
