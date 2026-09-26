@@ -109,6 +109,7 @@ function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   }
   return out;
 }
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 /**
  * Mount every `runtime.routes` entry onto the given Hono app.
  *
@@ -179,7 +180,8 @@ export function mountRoutesOnHono(
         });
       }
       let bodyOut: BodyInit | null = null;
-      if (result.body == null) {
+      // The Fetch Response constructor throws for a body on a null-body status.
+      if (result.body == null || NULL_BODY_STATUSES.has(result.status)) {
         bodyOut = null;
       } else if (typeof result.body === "string") {
         bodyOut = result.body;

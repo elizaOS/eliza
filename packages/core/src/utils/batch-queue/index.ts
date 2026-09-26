@@ -47,10 +47,10 @@ export interface BatchQueueOptions<T> {
 	/**
 	 * Optional batched processor. When provided, a drain calls this ONCE with the
 	 * whole dequeued slice (so a provider that supports a batched request — e.g.
-	 * embeddings — sends one call instead of N). If it throws, the drain falls
-	 * back to the per-item {@link process} path, so all retry / `onExhausted`
-	 * semantics are preserved for failures. Existing per-item callers that don't
-	 * set this are completely unaffected.
+	 * embeddings — sends one call instead of N). If it throws, every item falls
+	 * back to the per-item {@link process} path; failed item outcomes it returns
+	 * fall back the same way, so retry / `onExhausted` semantics are preserved.
+	 * Existing per-item callers that don't set this are completely unaffected.
 	 */
 	processBatch?: (items: T[]) => Promise<BatchItemOutcome<T>[]>;
 	maxParallel?: number;
@@ -153,12 +153,31 @@ export class BatchQueue<T> {
 			if (batch.length === 0) {
 				return 0;
 			}
-			// Prefer the batched processor when provided; on ANY batch-wide failure
-			// fall back to the per-item path so retry / onExhausted still apply.
+			// Prefer the batched processor when provided. A batch-wide throw fails
+			// every item; explicit failed outcomes fail only those items. Either
+			// way, failures go through the per-item retry / onExhausted path.
 			let outcomes: BatchItemOutcome<T>[];
 			if (this.options.processBatch) {
+				let settled: Array<BatchItemOutcome<T> | undefined>;
+				let failures: Array<{ index: number; item: T; error: Error }>;
 				try {
-					outcomes = await this.options.processBatch(batch);
+					const batchOutcomes = await this.options.processBatch(batch);
+					settled = batchOutcomes.map((outcome) =>
+						outcome.success ? outcome : undefined,
+					);
+					failures = [];
+					batchOutcomes.forEach((outcome, index) => {
+						if (outcome.success) return;
+						failures.push({
+							index,
+							item: outcome.item,
+							error:
+								outcome.error ??
+								new Error(
+									`BatchQueue "${this.options.name}" processBatch reported a failed item without an error`,
+								),
+						});
+					});
 				} catch (error) {
 					// error-policy:J4 A batch-wide provider failure degrades to
 					// the per-item retry path and remains observable.
@@ -168,32 +187,16 @@ export class BatchQueue<T> {
 					});
 					const failure =
 						error instanceof Error ? error : new Error(String(error));
-					const retryable: T[] = [];
-					outcomes = [];
-					for (const item of batch) {
-						if (this.options.shouldRetry?.(item, failure, 1) !== false)
-							retryable.push(item);
-						else {
-							outcomes.push({
-								item,
-								success: false,
-								error: failure,
-								retryCount: 0,
-							});
-							try {
-								await this.options.onExhausted?.(item, failure);
-							} catch (callbackError) {
-								// error-policy:J7 The original failed outcome remains visible when its reporting callback fails.
-								this.runtime?.reportError(
-									"BatchQueue.onExhausted",
-									callbackError,
-									{ queue: this.options.name },
-								);
-							}
-						}
-					}
-					outcomes.push(...(await this.batchProcessor.processBatch(retryable)));
+					settled = batch.map(() => undefined);
+					failures = batch.map((item, index) => ({
+						index,
+						item,
+						error: failure,
+					}));
 				}
+				// Kept outside the processBatch try: a per-item retry failure must
+				// never replay items the batched call already settled.
+				outcomes = await this.retryBatchFailures(settled, failures);
 			} else {
 				outcomes = await this.batchProcessor.processBatch(batch);
 			}
@@ -224,6 +227,48 @@ export class BatchQueue<T> {
 		} finally {
 			this.isDraining = false;
 		}
+	}
+
+	/**
+	 * Route failed `processBatch` items through the per-item processor, honoring
+	 * `shouldRetry` for the failed batched attempt. Outcomes keep batch order.
+	 */
+	private async retryBatchFailures(
+		settled: Array<BatchItemOutcome<T> | undefined>,
+		failures: Array<{ index: number; item: T; error: Error }>,
+	): Promise<BatchItemOutcome<T>[]> {
+		const retryable: Array<{ index: number; item: T }> = [];
+		for (const failure of failures) {
+			if (
+				this.options.shouldRetry?.(failure.item, failure.error, 1) !== false
+			) {
+				retryable.push(failure);
+				continue;
+			}
+			settled[failure.index] = {
+				item: failure.item,
+				success: false,
+				error: failure.error,
+				retryCount: 0,
+			};
+			try {
+				await this.options.onExhausted?.(failure.item, failure.error);
+			} catch (callbackError) {
+				// error-policy:J7 The original failed outcome remains visible when its reporting callback fails.
+				this.runtime?.reportError("BatchQueue.onExhausted", callbackError, {
+					queue: this.options.name,
+				});
+			}
+		}
+		const retried = await this.batchProcessor.processBatch(
+			retryable.map(({ item }) => item),
+		);
+		retryable.forEach(({ index }, position) => {
+			settled[index] = retried[position];
+		});
+		return settled.filter(
+			(outcome): outcome is BatchItemOutcome<T> => outcome !== undefined,
+		);
 	}
 
 	/** Wire `TaskDrain` (worker + repeat task unless `skipRegisterWorker`). */

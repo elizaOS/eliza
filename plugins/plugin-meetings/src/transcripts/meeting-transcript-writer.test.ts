@@ -7,7 +7,7 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Memory, type UUID } from "@elizaos/core";
+import type { Memory, UUID } from "@elizaos/core";
 import {
   summarizeTranscript,
   type Transcript,
@@ -328,6 +328,52 @@ describe("MeetingTranscriptWriter — throttling", () => {
       fake.memories.get(writer.transcriptId) as Memory,
     );
     expect(live?.segments[0].text).toBe("t19"); // latest state won
+  });
+});
+describe("MeetingTranscriptWriter — finalize vs in-flight flush", () => {
+  it("keeps the finalized row ready when an earlier recording flush completes late", async () => {
+    const fake = makeFakeRuntime();
+    const applyWrite = fake.runtime.updateMemory.bind(fake.runtime);
+    let releaseFirst: (() => void) | null = null;
+    let calls = 0;
+    (
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
+    ).updateMemory = async (patch) => {
+      calls += 1;
+      if (calls === 1) {
+        // Park the incremental "recording" write until the test releases it.
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return applyWrite(patch);
+    };
+    let clock = 1_000;
+    const writer = new MeetingTranscriptWriter(
+      fake.runtime,
+      5_000,
+      () => clock,
+    );
+    await writer.start(START_INPUT);
+    clock += 6_000;
+    const s1 = segment("s1", "Jill", "hello", 0, 1_000);
+    writer.updateSegments([s1]);
+    const finalized = writer.finalize({
+      segments: [s1, segment("s2", "Bob", "bye", 1_000, 2_000)],
+      endReason: "normal_completion",
+      participants: [],
+      audioWav: null,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(releaseFirst).not.toBeNull();
+    releaseFirst?.();
+    await finalized;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const row = fake.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(row)?.status).toBe("ready");
+    expect(transcriptsViewReader(row)?.segments).toHaveLength(2);
   });
 });
 describe("persistMeetingAudioWav", () => {
