@@ -381,6 +381,28 @@ export async function runPlannerLoop(
         modelUsage: usage,
       };
     }
+    if (
+      params.codingMode === true &&
+      liveTrajectory &&
+      isModelProviderError(error) &&
+      modelProviderErrorDetail(error)?.status === undefined
+    ) {
+      const message =
+        "The coding task remains incomplete because the model connection failed. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
+      return {
+        status: "finished",
+        trajectory: liveTrajectory,
+        evaluator: { success: false, decision: "FINISH", thought: message },
+        terminalFailure: {
+          kind: "provider_issue",
+          code: "MODEL_PROVIDER_TRANSPORT_FAILED",
+          transient: true,
+          message,
+        },
+        finalMessage: message,
+        modelUsage: usage,
+      };
+    }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
     const budget =

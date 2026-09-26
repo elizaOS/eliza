@@ -823,11 +823,27 @@ describe("coding verification recovery guidance", () => {
 
 describe("terminal coding model failures", () => {
   it.each([
-    { code: "MODEL_OUTPUT_INCOMPLETE", kind: "provider_issue" },
-    { code: "PROVIDER_CONTEXT_OVERFLOW", kind: "context_overflow" },
+    {
+      code: "MODEL_OUTPUT_INCOMPLETE",
+      kind: "provider_issue",
+      transient: false,
+      network: false,
+    },
+    {
+      code: "PROVIDER_CONTEXT_OVERFLOW",
+      kind: "context_overflow",
+      transient: false,
+      network: false,
+    },
+    {
+      code: "MODEL_PROVIDER_TRANSPORT_FAILED",
+      kind: "provider_issue",
+      transient: true,
+      network: true,
+    },
   ])(
     "preserves settled effects without retry after $code",
-    async ({ code, kind }) => {
+    async ({ code, kind, transient, network }) => {
       let calls = 0;
       let effects = 0;
       const result = await runPlannerLoop({
@@ -836,6 +852,15 @@ describe("terminal coding model failures", () => {
         runtime: {
           useModel: async () => {
             calls++;
+            if (calls > 1 && network)
+              throw Object.assign(
+                new Error("Provider transport failed", {
+                  cause: Object.assign(new TypeError("socket closed"), {
+                    code: "ECONNRESET",
+                  }),
+                }),
+                { name: "AI_APICallError" },
+              );
             if (calls > 1)
               throw new ElizaError("Provider output stopped", {
                 code,
@@ -873,7 +898,7 @@ describe("terminal coding model failures", () => {
       expect(result.terminalFailure).toMatchObject({
         code,
         kind,
-        transient: false,
+        transient,
       });
       expect(result.finalMessage).toContain("incomplete");
     },
@@ -886,6 +911,16 @@ describe("terminal coding model failures", () => {
       }),
     },
     { codingMode: true, error: new TypeError("Implementation bug") },
+    {
+      codingMode: false,
+      error: Object.assign(new Error("socket closed"), { code: "ECONNRESET" }),
+    },
+    {
+      codingMode: true,
+      error: Object.assign(new Error("Invalid JSON schema"), {
+        statusCode: 400,
+      }),
+    },
   ])(
     "does not swallow unrelated failures ($codingMode)",
     async ({ codingMode, error }) => {
