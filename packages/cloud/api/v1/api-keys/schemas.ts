@@ -15,13 +15,6 @@ const optionalExpiresAtSchema = z
     return new Date(value);
   });
 
-// Accepts a JSON number or a numeric string (form-encoded clients) but never a
-// boolean: z.coerce.number() alone would silently map `true` to quota 1.
-const rateLimitSchema = z
-  .union([z.number(), z.string()])
-  .transform((value) => Number(value))
-  .pipe(z.number().int().min(1).max(100000));
-
 export const createApiKeySchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   description: z
@@ -32,7 +25,7 @@ export const createApiKeySchema = z.object({
       const trimmed = value.trim();
       return trimmed.length ? trimmed : null;
     }),
-  rate_limit: rateLimitSchema.default(1000),
+  rate_limit: z.coerce.number().int().min(1).max(100000).default(1000),
   expires_at: optionalExpiresAtSchema,
 });
 
@@ -48,7 +41,7 @@ export const updateApiKeySchema = z
         const trimmed = value.trim();
         return trimmed.length ? trimmed : null;
       }),
-    rate_limit: rateLimitSchema.optional(),
+    rate_limit: z.coerce.number().int().min(1).max(100000).optional(),
     is_active: z.boolean().optional(),
     expires_at: optionalExpiresAtSchema,
   })

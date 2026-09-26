@@ -280,7 +280,6 @@ export async function describeInboundImageMedia(
   );
   let completion: Awaited<ReturnType<typeof generateText>>;
   try {
-    // The admitted claim accounts for one provider attempt.
     completion = await generateText({
       model,
       messages: [
@@ -296,7 +295,6 @@ export async function describeInboundImageMedia(
           ],
         },
       ],
-      maxRetries: 0,
       abortSignal: AbortSignal.timeout(INBOUND_MEDIA_VISION_TIMEOUT_MS),
     });
   } catch (error) {
