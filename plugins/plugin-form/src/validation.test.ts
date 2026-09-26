@@ -342,10 +342,12 @@ describe("boolean contract", () => {
   });
 
   it("reports unknown input instead of guessing a boolean", () => {
-    for (const unknown of ["maybe", "", "2", "yep", "perhaps"]) {
+    for (const unknown of ["maybe", "2", "yep", "perhaps"]) {
       expect(parseBoolean(unknown)).toEqual({ known: false });
       expect(validateField(unknown, booleanControl).valid).toBe(false);
     }
+    // An empty optional field is valid before type validation runs.
+    expect(parseBoolean("")).toEqual({ known: false });
     expect(parseBoolean(null)).toEqual({ known: false });
   });
 
