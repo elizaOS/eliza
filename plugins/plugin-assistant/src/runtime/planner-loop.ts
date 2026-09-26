@@ -355,6 +355,28 @@ export async function runPlannerLoop(
   } catch (error) {
     // error-policy:J4 Preserve settled effects and pending work at a resource boundary.
     getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (
+      params.codingMode === true &&
+      liveTrajectory &&
+      error instanceof ElizaError &&
+      error.code === "MODEL_OUTPUT_INCOMPLETE"
+    ) {
+      const message =
+        "The model returned an incomplete response, so the coding task could not finish. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
+      return {
+        status: "finished",
+        trajectory: liveTrajectory,
+        evaluator: { success: false, decision: "FINISH", thought: message },
+        terminalFailure: {
+          kind: "provider_issue",
+          code: error.code,
+          transient: false,
+          message,
+        },
+        finalMessage: message,
+        modelUsage: usage,
+      };
+    }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
     const budget =
