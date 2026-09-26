@@ -5732,10 +5732,10 @@ export class AcpService extends Service {
     if (!lease) return;
     if (expectedLeaseId && lease.leaseId !== expectedLeaseId) return;
     this.modelLeases.delete(sessionId);
-    const gateway = resolveModelGatewayConfig();
-    const broker = gateway ? resolveLeaseBroker(gateway) : null;
-    if (!broker) return;
     try {
+      const gateway = resolveModelGatewayConfig();
+      const broker = gateway ? resolveLeaseBroker(gateway) : null;
+      if (!broker) return;
       await broker.revoke(lease.leaseId);
       this.log("info", "model-gateway lease revoked", {
         sessionId,

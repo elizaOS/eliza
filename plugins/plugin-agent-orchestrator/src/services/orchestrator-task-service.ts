@@ -130,6 +130,7 @@ import {
   runIndependentVerification,
   shouldRunIndependentVerify,
 } from "./independent-verifier.js";
+import { resolveModelGatewayConfig } from "./model-gateway.js";
 import {
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
   type OrchestratorOwnedArtifact,
@@ -6770,7 +6771,21 @@ export class OrchestratorTaskService extends Service {
     opts: { rotation?: boolean } = {},
   ): CodingAccountReadiness {
     const availability = getCodingAccountBridge()?.describe() ?? {};
-    return assessCodingAccountReadiness(availability, opts);
+    const readiness = assessCodingAccountReadiness(availability, opts);
+    try {
+      resolveModelGatewayConfig();
+    } catch (error) {
+      // error-policy:J1 expose the typed credential refusal through existing readiness diagnostics.
+      if (
+        !(error instanceof ElizaError) ||
+        error.code !== "MODEL_GATEWAY_CREDENTIAL_UNAVAILABLE"
+      ) {
+        throw error;
+      }
+      readiness.ready = false;
+      readiness.problems.push(error.message);
+    }
+    return readiness;
   }
 
   /**
