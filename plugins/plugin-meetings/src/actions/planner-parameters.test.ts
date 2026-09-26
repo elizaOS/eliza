@@ -117,6 +117,12 @@ describe("JOIN_MEETING planner parameters", () => {
     ]);
   });
 
+  it("rejects an undeclared url alias instead of rewriting planner input", () => {
+    const validation = plannerArgs(joinMeetingAction, { url: MEET });
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toContain("Unexpected argument 'url'");
+  });
+
   it("still rejects an undeclared argument", () => {
     const validation = plannerArgs(joinMeetingAction, {
       meetingUrl: MEET,
@@ -161,6 +167,12 @@ describe("LEAVE_MEETING planner parameters", () => {
       data: { sessionId: "sess-b", transcriptId: "trans-b" },
     });
     expect(stopped).toEqual(["sess-b"]);
+  });
+
+  it("requires the declared meetingUrl for link-based targeting", () => {
+    const validation = plannerArgs(leaveMeetingAction, { url: ZOOM });
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toContain("Unexpected argument 'url'");
   });
 
   it("still rejects an undeclared argument", () => {

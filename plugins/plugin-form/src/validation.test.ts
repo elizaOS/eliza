@@ -346,9 +346,12 @@ describe("boolean contract", () => {
       expect(parseBoolean(unknown)).toEqual({ known: false });
       expect(validateField(unknown, booleanControl).valid).toBe(false);
     }
-    // An empty optional field is valid before type validation runs.
-    expect(parseBoolean("")).toEqual({ known: false });
     expect(parseBoolean(null)).toEqual({ known: false });
+    expect(parseBoolean("")).toEqual({ known: false });
+    expect(validateField("", booleanControl).valid).toBe(true);
+    expect(validateField("", { ...booleanControl, required: true }).valid).toBe(
+      false,
+    );
   });
 
   it("keeps an unrecognised extraction as its original string", () => {
