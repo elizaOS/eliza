@@ -69,6 +69,20 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     if (!active) decisions.delete(message);
     return active;
   },
+  getContext({ runtime, message, senderRole, turnSignal }) {
+    turnSignal.throwIfAborted();
+    if (senderRole === "SYSTEM" || senderRole === "SELF") return "";
+    const metadata = message.content.metadata;
+    const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
+    const view = listViews(runtime, { viewType: "gui" }).find(
+      (entry) =>
+        entry.id === currentView &&
+        entry.available !== false &&
+        satisfiesRoleGate([senderRole], entry.roleGate),
+    );
+    if (!view) return "";
+    return `Current request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale. For relative navigation such as back, resolve the prior destination from delivered navigation history relative to this snapshot; if that history is insufficient, keep the destination unresolved rather than guess.`;
+  },
   parse(value, { message }) {
     decisions.delete(message);
     if (!value || typeof value !== "object" || Array.isArray(value))

@@ -26,6 +26,7 @@ import {
 import { toolMessageContent } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
+import { renderMessageHandlerModelInput } from "../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import {
@@ -587,6 +588,90 @@ const clientMessage = (): Memory => ({
 });
 
 describe("model-selected host navigation", () => {
+  it("composes fresh view identity without changing schema or retaining another turn's view", async () => {
+    const f = await fixture();
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    const ctx = {
+      runtime: f.runtime,
+      message: input,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "OWNER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    const schema = JSON.stringify(fields.composeSchema());
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      uiView: "notes",
+      uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
+    };
+    expect((await fields.composePromptSlices(ctx)).context).toContain(
+      '"viewId":"notes","label":"Notes"',
+    );
+    input.content.metadata.uiView = "chat";
+    const home = await fields.composePromptSlices(ctx);
+    expect(home.context).toContain('"viewId":"chat","label":"Home"');
+    expect(home.context).not.toContain('"viewId":"notes"');
+    expect(home.context).not.toContain("PRIVATE_CONTROL_SENTINEL");
+    for (const nativeTools of [false, true]) {
+      const rendered = renderMessageHandlerModelInput(
+        { character: { name: "Agent" } },
+        { id: "request", events: [] },
+        [],
+        { nativeTools, responseHandlerContext: home.context },
+      );
+      expect(rendered.messages[1].content).toContain(home.context);
+      expect(rendered.messages[0].content).not.toContain(home.context);
+      expect(
+        rendered.promptSegments.find((segment) =>
+          segment.content.includes(home.context),
+        )?.stable,
+      ).toBe(false);
+    }
+    expect(JSON.stringify(fields.composeSchema())).toBe(schema);
+    input.content.metadata.uiView = "unknown-view";
+    expect((await fields.composePromptSlices(ctx)).context).toBe("");
+    input.content.metadata.uiView = "chat";
+    input.content.source = "external";
+    expect((await fields.composePromptSlices(ctx)).context).toBe("");
+    expect(f.requests()).toBe(0);
+  });
+  it("does not expose a view outside the current caller's role", async () => {
+    const f = await fixture();
+    await registerPluginViews(
+      f.runtime,
+      {
+        name: "restricted-test",
+        description: "Restricted view",
+        views: [
+          {
+            id: "restricted",
+            label: "PRIVATE_VIEW_SENTINEL",
+            path: "/restricted",
+            roleGate: { minRole: "OWNER" },
+          },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      uiView: "restricted",
+    };
+    const ctx = {
+      runtime: f.runtime,
+      message: input,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "USER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    expect((await fields.composePromptSlices(ctx)).context).toBe("");
+    expect(f.requests()).toBe(0);
+  });
   it.each([
     [
       "notes",
@@ -898,6 +983,11 @@ describe("model-selected host navigation", () => {
       const f = await fixture();
       const input = clientMessage();
       input.content.text = "Open Home";
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "notes",
+        uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
+      };
       const fields = new ResponseHandlerFieldRegistry();
       for (const field of [
         ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
@@ -915,6 +1005,18 @@ describe("model-selected host navigation", () => {
         // Verify the host contract reaches the real Stage 1 model request.
         expect(JSON.stringify(params)).toContain(
           JSON.stringify(viewNavigationField.description).slice(1, -1),
+        );
+        const request = params as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        expect(
+          request.messages.find((entry) => entry.role === "user")?.content,
+        ).toContain('"viewId":"notes","label":"Notes"');
+        expect(
+          request.messages.find((entry) => entry.role === "system")?.content,
+        ).not.toContain("Current request's renderer view");
+        expect(JSON.stringify(params)).not.toContain(
+          "PRIVATE_CONTROL_SENTINEL",
         );
         return {
           text: "",
