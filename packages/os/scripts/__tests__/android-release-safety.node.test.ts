@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -1429,8 +1429,8 @@ test("fastboot replacement is rejected before inventory, getvar and write dispat
 });
 
 test("image and credential named pipes fail without waiting for a writer", {
-  skip: process.platform !== "linux",
-}, (t) => {
+  skip: process.platform === "win32",
+}, async (t) => {
   const f = fixture(t);
   const pipe = path.join(f.directory, "pipe");
   const made = spawnSync("mkfifo", ["-m", "600", pipe]);
@@ -1440,23 +1440,57 @@ test("image and credential named pipes fail without waiting for a writer", {
     ["post-boot.ts", "readHealthToken"],
   ]) {
     const url = new URL(`../android/${module}`, import.meta.url).href;
-    const result = spawnSync(
+    const child = spawn(
       process.execPath,
       [
         "--input-type=module",
         "-e",
-        `import { ${method} } from ${JSON.stringify(url)}; ${method}(process.argv[1]);`,
+        `import { ${method} } from ${JSON.stringify(url)};
+process.once("message", () => ${method}(process.argv[1]));
+process.send("ready");`,
         pipe,
       ],
-      { timeout: 2000, encoding: "utf8" },
+      { stdio: ["ignore", "ignore", "pipe", "ipc"] },
     );
-    assert.equal(
-      result.error,
-      undefined,
-      "file validation must not hang on FIFO open",
-    );
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /regular/);
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const status = await new Promise((resolve, reject) => {
+        const expire = (message) => {
+          child.kill("SIGKILL");
+          reject(new Error(message));
+        };
+        // Startup is not FIFO validation. Keep the original two-second bound
+        // around the operation after the real child has imported its module.
+        timer = setTimeout(
+          () => expire("validation child did not start"),
+          20_000,
+        );
+        child.once("error", reject);
+        child.once("message", (message) => {
+          if (message !== "ready") {
+            reject(new Error("validation child sent an unexpected message"));
+            return;
+          }
+          clearTimeout(timer);
+          timer = setTimeout(
+            () => expire("file validation must not hang on FIFO open"),
+            2000,
+          );
+          child.send("validate");
+        });
+        child.once("close", (code) => resolve(code));
+      });
+      assert.equal(status, 1);
+      assert.match(stderr, /regular/);
+    } finally {
+      clearTimeout(timer);
+      if (child.exitCode === null) child.kill("SIGKILL");
+    }
   }
 });
 
