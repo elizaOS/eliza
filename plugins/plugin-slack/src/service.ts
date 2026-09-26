@@ -412,7 +412,8 @@ interface SlackMessageEventType {
   thread_ts?: string;
   team?: string;
   bot_id?: string;
-  files?: SlackFile[];
+  /** Raw Slack file objects (snake_case wire shape); normalized at use. */
+  files?: unknown[];
 }
 
 interface SlackAppMentionEventType {
@@ -502,6 +503,7 @@ import {
   resolveDefaultSlackAccountId,
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
+import { normalizeSlackFiles, slackFilesToMedia } from "./inbound-files";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -521,7 +523,6 @@ import {
   type SlackBlock,
   type SlackChannel,
   SlackEventTypes,
-  type SlackFile,
   type SlackMessage,
   type SlackMessageSendOptions,
   type SlackReactionPayload,
@@ -2255,19 +2256,12 @@ export class SlackService extends Service implements ISlackService {
       : null;
     const displayName = user ? getSlackUserDisplayName(user) : senderId;
 
-    // Extract media from files
-    const media: Media[] = [];
-    if ("files" in message && message.files) {
-      for (const file of message.files) {
-        media.push({
-          id: file.id,
-          url: file.urlPrivate,
-          title: file.title || file.name,
-          source: "slack",
-          description: file.name,
-        });
-      }
-    }
+    // Slack sends url_private / url_private_download; normalize at the boundary
+    // so every attachment carries a fetchable url (#31767).
+    const media: Media[] = slackFilesToMedia(
+      "files" in message ? normalizeSlackFiles(message.files) : undefined,
+      { channelId: message.channel, messageTs: message.ts },
+    );
 
     const memory: Memory = {
       id: createUniqueUuid(
@@ -3240,18 +3234,16 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    const rawMessages = threadTs
+    const historyMessages = threadTs
       ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
       : await this.readHistory(channelId, undefined, accountId);
     const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
-    for (const rawMessage of rawMessages.slice().reverse()) {
-      const text = String((rawMessage as SlackMessage).text ?? "");
+    for (const message of historyMessages.slice().reverse()) {
+      const text = String(message.text ?? "");
       if (!text.trim()) {
         continue;
       }
-      const userId =
-        (rawMessage as SlackMessage).user ??
-        (rawMessage as Record<string, string | undefined>).user;
+      const userId = message.user;
       const user =
         typeof userId === "string"
           ? await this.getUser(userId, accountId)
@@ -3260,10 +3252,10 @@ export class SlackService extends Service implements ISlackService {
         entityId: userId ? (userId as UUID) : undefined,
         name: user ? getSlackUserDisplayName(user) : userId,
         text,
-        timestamp: Number((rawMessage as SlackMessage).ts) * 1000 || undefined,
+        timestamp: Number(message.ts) * 1000 || undefined,
         metadata: {
           accountId,
-          slackMessageTs: (rawMessage as SlackMessage).ts,
+          slackMessageTs: message.ts,
           slackUserId: userId,
         },
       });
@@ -3369,13 +3361,13 @@ export class SlackService extends Service implements ISlackService {
         ? ChannelType.DM
         : ChannelType.GROUP;
 
-    const attachments: Media[] = (message.files ?? []).map((file) => ({
-      id: file.id,
-      url: file.urlPrivate,
-      title: file.title || file.name,
-      source: "slack",
-      description: file.name,
-    }));
+    // Callers that hand in a raw API payload cast as SlackMessage still carry
+    // snake_case url_private fields; normalizing here is idempotent for the
+    // camelCase shape and keeps every history reader on one mapping.
+    const attachments: Media[] = slackFilesToMedia(
+      normalizeSlackFiles(message.files),
+      { channelId, messageTs: message.ts },
+    );
 
     return {
       id: createUniqueUuid(
@@ -4201,7 +4193,7 @@ export class SlackService extends Service implements ISlackService {
         reactions: item.message.reactions as
           | { name: string; count: number; users: string[] }[]
           | undefined,
-        files: item.message.files as SlackFile[] | undefined,
+        files: normalizeSlackFiles(item.message.files),
         attachments: item.message.attachments as SlackAttachment[] | undefined,
         blocks: item.message.blocks as SlackBlock[] | undefined,
       }));
@@ -4247,7 +4239,18 @@ export class SlackService extends Service implements ISlackService {
       requestedLimit === undefined
         ? rawMessages
         : rawMessages.slice(0, requestedLimit);
-    return selected.map((msg) => ({
+    return selected.map((msg) => this.wireMessageToSlackMessage(msg));
+  }
+
+  /**
+   * Map one Web API message payload (conversations.history / replies) onto the
+   * camelCase SlackMessage the memory builder reads, normalizing the file
+   * objects so their url_private fields survive.
+   */
+  private wireMessageToSlackMessage(
+    msg: Record<string, unknown>,
+  ): SlackMessage {
+    return {
       type: msg.type as string,
       subtype: msg.subtype as string | undefined,
       ts: msg.ts as string,
@@ -4260,10 +4263,10 @@ export class SlackService extends Service implements ISlackService {
       reactions: msg.reactions as
         | { name: string; count: number; users: string[] }[]
         | undefined,
-      files: msg.files as SlackFile[] | undefined,
+      files: normalizeSlackFiles(msg.files),
       attachments: msg.attachments as SlackAttachment[] | undefined,
       blocks: msg.blocks as SlackBlock[] | undefined,
-    }));
+    };
   }
 
   private async readThreadReplies(
@@ -4276,11 +4279,11 @@ export class SlackService extends Service implements ISlackService {
       cursor?: string;
     },
     accountId?: string | null,
-  ): Promise<Array<SlackMessage | Record<string, unknown>>> {
+  ): Promise<SlackMessage[]> {
     const client = this.getClientForAccount(accountId);
     if (!client) throw new Error("Slack client not initialized");
     const requestedLimit = normalizeConnectorLimit(options?.limit);
-    const messages: Array<SlackMessage | Record<string, unknown>> = [];
+    const rawMessages: Array<Record<string, unknown>> = [];
     const seen = new Set<string>();
     let cursor = options?.cursor;
     if (cursor) seen.add(cursor);
@@ -4293,18 +4296,18 @@ export class SlackService extends Service implements ISlackService {
         oldest: options?.after,
         cursor,
       });
-      messages.push(
-        ...((result.messages ?? []) as Array<
-          SlackMessage | Record<string, unknown>
-        >),
+      rawMessages.push(
+        ...((result.messages ?? []) as Array<Record<string, unknown>>),
       );
-      if (requestedLimit !== undefined && messages.length >= requestedLimit)
+      if (requestedLimit !== undefined && rawMessages.length >= requestedLimit)
         break;
       cursor = nextSlackCursor(result, seen, "thread replies");
     } while (cursor);
-    return requestedLimit === undefined
-      ? messages
-      : messages.slice(0, requestedLimit);
+    const selected =
+      requestedLimit === undefined
+        ? rawMessages
+        : rawMessages.slice(0, requestedLimit);
+    return selected.map((msg) => this.wireMessageToSlackMessage(msg));
   }
 
   private async listAllConnectorUsers(
