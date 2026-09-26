@@ -86,6 +86,7 @@ import {
   projectToolDiagnosticArgs,
   projectToolDiagnosticValue,
   promotedParentRoutingHint,
+  providerRateLimitRetryAt,
   type ResponseSkeleton,
   readSubaction,
   readWorkspaceDeltaReceipt,
@@ -3328,7 +3329,48 @@ async function dispatchWithCodingCallTimeout<T>(args: {
     (timer as { unref?: () => void }).unref?.();
   });
   try {
-    return await Promise.race([dispatch(controller.signal), timeout]);
+    const dispatchWithRateLimitRetry = async (): Promise<T> => {
+      for (let attempt = 0; ; attempt++) {
+        controller.signal.throwIfAborted();
+        try {
+          return await dispatch(controller.signal);
+        } catch (error) {
+          controller.signal.throwIfAborted();
+          const retryAt = providerRateLimitRetryAt(error);
+          // Only an explicit temporary provider window qualifies. Retry the
+          // inference, never the already-settled tools, under the same deadline.
+          if (attempt >= 2 || retryAt === undefined) throw error;
+          const delayMs = Math.max(0, Math.ceil(retryAt - Date.now()));
+          // Node timers overflow above this bound; never turn a long provider
+          // cooldown into an immediate retry.
+          if (delayMs > 2_147_483_647) throw error;
+          args.logger?.warn?.(
+            {
+              src: "planner-loop",
+              iteration: args.iteration,
+              attempt: attempt + 1,
+              delayMs,
+            },
+            "[planner-loop] coding inference is rate limited; waiting for the provider window",
+          );
+          await new Promise<void>((resolve, reject) => {
+            const onAbort = (): void => {
+              clearTimeout(retryTimer);
+              reject(controller.signal.reason);
+            };
+            const retryTimer = setTimeout(() => {
+              controller.signal.removeEventListener("abort", onAbort);
+              resolve();
+            }, delayMs);
+            controller.signal.addEventListener("abort", onAbort, {
+              once: true,
+            });
+            if (controller.signal.aborted) onAbort();
+          });
+        }
+      }
+    };
+    return await Promise.race([dispatchWithRateLimitRetry(), timeout]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     if (ambientSignal)
