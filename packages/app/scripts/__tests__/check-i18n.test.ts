@@ -220,6 +220,90 @@ describe("check-i18n contract", () => {
     expect(result.ok).toBe(true);
   });
 
+  test("rejects a raw JavaScript placeholder in any locale value", () => {
+    const result = run(
+      buildFixture({
+        en: {
+          "app.title": "Hello",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: the leaked placeholder IS the fixture
+          "app.reauth": "Reauthenticate ${account.label}",
+        },
+        locales: { es: { "app.title": "Hola", "app.reauth": "Reautenticar" } },
+        source:
+          'export const x = t("app.title");\nexport const y = t("app.reauth", { account: "a" });\n',
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(
+      /en\.json has 1 value\(s\) with a raw JavaScript/,
+    );
+    expect(result.errors.join("\n")).toMatch(/app\.reauth/);
+  });
+
+  test("a dollar sign before an interpolation is a currency amount, not a leak", () => {
+    const result = run(
+      buildFixture({
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: a currency-prefixed {{amount}} IS the fixture
+        en: { "app.title": "Hello", "app.spent": "${{amount}} spent" },
+        source:
+          'export const x = t("app.title");\nexport const y = t("app.spent", { amount: 3 });\n',
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("fails when a catalog value is its key's own name while the call site supplies text", () => {
+    const result = run(
+      buildFixture({
+        en: {
+          "app.title": "Hello",
+          "editor.UnsavedChangesTitle": "Unsaved Changes Title",
+          "editor.ModeLine": "Mode Line",
+          "editor.DontSave": "Dont Save",
+        },
+        source: [
+          'export const x = t("app.title");',
+          't("editor.UnsavedChangesTitle", { defaultValue: "Unsaved changes" });',
+          't("editor.ModeLine", { defaultValue: "Approval mode: {{mode}}.", mode });',
+          't("editor.DontSave", { defaultValue: "Don\'t save" });',
+          "",
+        ].join("\n"),
+      }),
+    );
+    expect(result.ok).toBe(false);
+    const text = result.errors.join("\n");
+    expect(text).toMatch(
+      /en\.json has 3 value\(s\) that are the key's own name/,
+    );
+    expect(text).toMatch(/editor\.UnsavedChangesTitle/);
+    expect(text).toMatch(/editor\.ModeLine/);
+    expect(text).toMatch(/editor\.DontSave/);
+  });
+
+  test("short labels whose key is the text are not flagged against a different call-site wording", () => {
+    const result = run(
+      buildFixture({
+        en: {
+          "app.title": "Hello",
+          "config.Secrets": "Secrets",
+          "plugins.SaveSettings": "Save Settings",
+          "common.loading": "Loading",
+        },
+        source: [
+          'export const x = t("app.title");',
+          't("config.Secrets", { defaultValue: "Vault" });',
+          't("plugins.SaveSettings", { defaultValue: "Save changes" });',
+          // Call sites disagree, so no single catalog value can match them.
+          't("common.loading", { defaultValue: "Loading…" });',
+          't("common.loading", { defaultValue: "Loading..." });',
+          "",
+        ].join("\n"),
+      }),
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   // Unlike every fixture case above, this one walks the real packages/ui/src and
   // packages/app/src trees synchronously: ~5-8s locally, and a CI runner on
   // a cold filesystem is not faster. bun's default per-test budget is 5s, so

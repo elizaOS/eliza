@@ -236,10 +236,12 @@ export function ComputerUseApprovalOverlay() {
         setActionNotice(
           approved
             ? t("computeruseapprovaloverlay.ApprovedNotice", {
-                defaultValue: `Approved ${resolution.command}.`,
+                defaultValue: "Approved {{command}}.",
+                command: resolution.command,
               })
             : t("computeruseapprovaloverlay.RejectedNotice", {
-                defaultValue: `Rejected ${resolution.command}.`,
+                defaultValue: "Rejected {{command}}.",
+                command: resolution.command,
               }),
           approved ? "success" : "info",
           2600,
