@@ -2,6 +2,7 @@
 
 import type { Action } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { routeMessageHandlerOutput } from "../runtime/message-handler.ts";
 import { retrieveContextualPlannerActions } from "./message/action-surface.ts";
 import { inferDirectCurrentRequestCandidateInference } from "./message/direct-action-heuristics.ts";
 import { parseMessageHandlerModelOutput } from "./message/stage1-generation.ts";
@@ -548,4 +549,82 @@ describe("budgeted model-selected action surface", () => {
       }).map((action) => action.name),
     ).toEqual(["VIEWS", "CALENDAR"]);
   });
+});
+
+describe("answered arithmetic routing", () => {
+  const available = [{ name: "CALCULATE" }];
+  const answered = {
+    shouldRespond: "RESPOND",
+    contexts: ["simple"],
+    intents: [],
+    replyText: "15.",
+    replyEffectStatus: "none",
+    facts: [],
+    relationships: [],
+    addressedTo: [],
+  };
+  it.each([
+    "Hello Eliza, this is a voice development check. What is 7 plus 8? Please answer briefly.",
+    "What is 7 plus 8? Do not use tools.",
+    "Do not ever use tools; what is 7 plus 8?",
+    "Never actually use a calculator; what is 7 plus 8?",
+    "What is 7 plus 8? Don't use a calculator.",
+    "What is 7 plus 8? Do not use the CALCULATE tool.",
+  ])("preserves a complete simple arithmetic answer: %s", (messageText) => {
+    for (const result of [
+      messageHandlerFromFieldResult(answered, undefined, {
+        actions: available,
+        messageText,
+      }),
+      parseMessageHandlerModelOutput(JSON.stringify(answered), {
+        actions: available,
+        messageText,
+      }),
+    ]) {
+      if (!result) throw new Error("Missing parsed response");
+      expect(routeMessageHandlerOutput(result)).toMatchObject({
+        type: "final_reply",
+        reply: "15.",
+      });
+      expect(result.plan.requiresTool).not.toBe(true);
+      expect(result?.plan.contexts).toEqual(["simple"]);
+      expect(result?.plan.candidateActions ?? []).toEqual([]);
+      expect(result?.plan.reply).toBe("15.");
+    }
+  });
+  it.each([
+    { messageText: "Use a calculator for 7 plus 8.", fields: {} },
+    { messageText: "Call CALCULATE for 7 plus 8.", fields: {} },
+    { messageText: "Use a tool to calculate 7 plus 8.", fields: {} },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: { contexts: ["general"], intents: ["Compute the sum"] },
+    },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: { candidateActionNames: ["CALCULATE"] },
+    },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: {
+        replyEffectStatus: "pending",
+        replyText: "Checking the result.",
+      },
+    },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: { replyEffectStatus: "applied" },
+    },
+  ])(
+    "retains explicit or pending tool work: $messageText $fields",
+    ({ messageText, fields }) => {
+      const result = messageHandlerFromFieldResult(
+        { ...answered, ...fields },
+        undefined,
+        { actions: available, messageText },
+      );
+      expect(result.plan.requiresTool).toBe(true);
+      expect(result.plan.candidateActions).toContain("CALCULATE");
+    },
+  );
 });
