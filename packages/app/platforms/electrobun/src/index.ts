@@ -29,6 +29,7 @@ import {
 	resolveDesktopRuntimeModeWithDeployment,
 	resolveInitialApiBase,
 	resolveRendererFacingApiBase,
+	setBootedDesktopRuntimeMode,
 } from "./api-base";
 import {
 	buildApplicationMenu,
@@ -2530,6 +2531,7 @@ async function main(): Promise<void> {
 		env: desktopEnv,
 		deployment: persistedDeployment,
 	});
+	setBootedDesktopRuntimeMode(preparedDesktopRuntime);
 	if (
 		unverifiedDesktopRuntime.mode === "external" &&
 		preparedDesktopRuntime.mode === "local" &&
