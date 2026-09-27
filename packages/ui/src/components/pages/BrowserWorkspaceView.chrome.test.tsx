@@ -784,6 +784,41 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
   });
 
+  it("stops polling a deterministic missing-route 404 instead of re-requesting it every tick", async () => {
+    vi.useFakeTimers();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockRejectedValue(
+        new ApiError({
+          kind: "http",
+          path: "/api/browser-workspace",
+          status: 404,
+          message: "Not found",
+        }),
+      );
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByText("Browser view unavailable")).not.toBeNull();
+      expect(
+        screen.getByText("In-app browsing isn’t available here."),
+      ).not.toBeNull();
+      expect(screen.queryByText("Not found")).toBeNull();
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the StrictMode initial load single-flight and loading until it settles", async () => {
     const pendingInitialLoad = deferred<typeof APPLE_WORKSPACE>();
     vi.mocked(client.getBrowserWorkspace)

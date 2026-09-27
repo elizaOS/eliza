@@ -9,14 +9,14 @@
  * {@link InventoryView} renders it as the real-DOM child of its `Escape` hatch.
  * This is the DOM-only dashboard reached only through that wrapper.
  */
-import {
-  type WalletBalancesResponse,
-  type WalletConfigStatus,
-  type WalletMarketMover,
-  type WalletMarketOverviewResponse,
-  type WalletMarketOverviewSource,
-  type WalletNftsResponse,
-  type WalletTradingProfileResponse,
+import type {
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletMarketMover,
+  WalletMarketOverviewResponse,
+  WalletMarketOverviewSource,
+  WalletNftsResponse,
+  WalletTradingProfileResponse,
 } from "@elizaos/core/contracts/wallet-types";
 import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -892,6 +892,31 @@ function WalletEmptyHero() {
   );
 }
 
+// A turned-off wallet is not an empty wallet: nothing has been read, so the
+// surface must not claim there is no balance. The Enable control sits below.
+function WalletDisabledHero() {
+  return (
+    <div
+      data-testid="wallet-disabled"
+      className="flex min-h-36 flex-col items-center justify-center gap-3 px-5 py-6 text-center"
+    >
+      <span
+        className="flex size-11 items-center justify-center rounded-sm bg-surface text-muted"
+        role="img"
+        aria-label="Wallet off"
+      >
+        <Wallet className="size-5" aria-hidden />
+      </span>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-txt">Wallet is off.</p>
+        <p className="text-xs-tight text-muted">
+          Enable the wallet to load balances and activity.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function WalletBalancesUnavailableInline({ onRetry }: { onRetry: () => void }) {
   return (
     <div
@@ -1690,7 +1715,7 @@ function WalletHoldingsSection({
 
       {walletEnabled === false ? (
         <div className="border-t border-border/70 py-4">
-          <WalletEmptyHero />
+          <WalletDisabledHero />
           <Button
             ref={enableWalletRef}
             className="w-full"
@@ -2089,15 +2114,17 @@ export function InventoryAppView() {
   // but its performance model remains intentionally absent from this surface.
   const primaryTradingProfile: WalletTradingProfileResponse | null = null;
 
+  // Only a settled, enabled wallet with an account can be "empty". Disabled and
+  // account-less wallets render their own states in WalletHoldingsSection.
   const showWalletEmptyState =
-    walletEnabled === false ||
-    !hasWalletAccount ||
-    (walletBalancesStatus === "ready" &&
-      walletNftsStatus === "ready" &&
-      displayedAssetRows.length === 0 &&
-      lpPositions.length === 0 &&
-      visibleNfts.length === 0 &&
-      activityEvents.length === 0);
+    walletEnabled !== false &&
+    hasWalletAccount &&
+    walletBalancesStatus === "ready" &&
+    walletNftsStatus === "ready" &&
+    displayedAssetRows.length === 0 &&
+    lpPositions.length === 0 &&
+    visibleNfts.length === 0 &&
+    activityEvents.length === 0;
 
   const handleHideToken = useCallback(
     (row: TokenRow) => {
