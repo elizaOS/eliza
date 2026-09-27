@@ -1155,6 +1155,88 @@ describe("native MODEL_USED token attribution (#27732)", () => {
     return events.filter((e) => e.source === "elizacloud" && e.type != null);
   }
 
+  for (const usage of [
+    undefined,
+    {},
+    { total_tokens: 150 },
+    { prompt_tokens: 100 },
+    { completion_tokens: 50 },
+  ]) {
+    for (const mode of ["buffered", "sse", "fallback"] as const) {
+      it(`keeps incomplete usage unavailable in ${mode}: ${JSON.stringify(usage)}`, async () => {
+        nextResponse =
+          mode === "sse"
+            ? sseResponse([
+                dataFrame(contentDelta("complete reply")),
+                dataFrame(finishFrame("stop")),
+                ...(usage === undefined ? [] : [dataFrame({ choices: [], usage })]),
+                DONE_FRAME,
+              ])
+            : new Response(
+                JSON.stringify({
+                  choices: [
+                    { index: 0, message: { content: "complete reply" }, finish_reason: "stop" },
+                  ],
+                  usage,
+                }),
+                { headers: { "content-type": "application/json" } }
+              );
+        const { runtime, events } = recordingRuntime();
+        const context = { modelName: "gpt-oss-120b", prompt: "hi" };
+        if (mode === "buffered") {
+          const result = await generateNativeChatCompletion(
+            runtime,
+            "TEXT_LARGE" as never,
+            nativeParams(),
+            context
+          );
+          expect(result.text).toBe("complete reply");
+          expect(result.usage).toBeUndefined();
+        } else {
+          const result = await streamNativeChatCompletion(
+            runtime,
+            "TEXT_LARGE" as never,
+            nativeParams(),
+            context
+          );
+          await readStream(result);
+          expect(await result.text).toBe("complete reply");
+          expect(await result.usage).toBeUndefined();
+        }
+        expect(usageEvents(events)).toEqual([]);
+      });
+    }
+  }
+
+  it.each([
+    [{ input_tokens: 10 }, undefined],
+    [{ total_tokens: 12 }, undefined],
+    [
+      { input_tokens: 10, output_tokens: 2 },
+      { prompt: 10, completion: 2, total: 12 },
+    ],
+    [
+      { input_tokens: 0, output_tokens: 0 },
+      { prompt: 0, completion: 0, total: 0 },
+    ],
+  ])(
+    "preserves Responses usage availability and derives a missing total: %j",
+    async (usage, expected) => {
+      nextResponse = new Response(
+        JSON.stringify({
+          output: [{ type: "message", content: [{ type: "output_text", text: "complete reply" }] }],
+          usage,
+        }),
+        { headers: { "content-type": "application/json" } }
+      );
+      const { runtime, events } = recordingRuntime();
+      expect(await handleResponseHandler(runtime, { prompt: "hi" } as never)).toBe(
+        "complete reply"
+      );
+      expect(usageEvents(events).map((event) => event.tokens)).toEqual(expected ? [expected] : []);
+    }
+  );
+
   it("buffered generateNativeChatCompletion emits gateway prompt/completion counts", async () => {
     nextResponse = new Response(
       JSON.stringify({
