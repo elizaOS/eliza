@@ -18,6 +18,7 @@ import {
 } from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
+import { parsePersonalSharedFallbackAccountState } from "@/lib/services/shared-runtime/personal-fallback-account-state";
 import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
@@ -60,6 +61,7 @@ type ConversationRequest =
       transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedAccountState?: unknown;
     }
   | {
       operation: "stream";
@@ -82,6 +84,7 @@ type ConversationRequest =
       transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedAccountState?: unknown;
     }
   | {
       operation: "prewarm";
@@ -1292,6 +1295,25 @@ export class SharedRuntimeConversation {
       );
     }
     const validatedChannel = channel ?? undefined;
+    const suppliedAccountState =
+      "trustedAccountState" in payload
+        ? payload.trustedAccountState
+        : undefined;
+    const accountState =
+      suppliedAccountState === undefined
+        ? undefined
+        : parsePersonalSharedFallbackAccountState(suppliedAccountState);
+    if (suppliedAccountState !== undefined && accountState === null) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid personal fallback account state",
+          code: "invalid_account_state",
+        },
+        { status: 400 },
+      );
+    }
+    const validatedAccountState = accountState ?? undefined;
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -1897,6 +1919,9 @@ export class SharedRuntimeConversation {
           transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          ...(personal && validatedAccountState
+            ? { trustedAccountState: validatedAccountState }
+            : {}),
           mobilePushDispatch: personal
             ? async (message: MobilePushMessage) => {
                 this.enqueueMobilePush(message);
@@ -1915,6 +1940,9 @@ export class SharedRuntimeConversation {
         transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
+        ...(personal && validatedAccountState
+          ? { trustedAccountState: validatedAccountState }
+          : {}),
         mobilePushDispatch: personal
           ? async (message: MobilePushMessage) => {
               this.enqueueMobilePush(message);
