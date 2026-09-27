@@ -273,7 +273,16 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierSnapshot
  */
 export async function getOrgTier(orgId: string): Promise<OrgTierSnapshot> {
   const cached = await cache.get<OrgTierSnapshot>(CacheKeys.org.rateLimitTier(orgId));
-  if (cached && isOrgTierData(cached) && isOrganizationPolicyStamp(cached.authority)) return cached;
+  if (cached && isOrgTierData(cached) && isOrganizationPolicyStamp(cached.authority)) {
+    // Checkout, renewal and cancellation advance the policy generation; a
+    // cached tier from an older generation is stale and must be rebuilt.
+    const { readOrganizationPolicyGeneration } = await import(
+      "../../db/repositories/organization-policy-generation"
+    );
+    if ((await readOrganizationPolicyGeneration(orgId)) === cached.authority.generation) {
+      return cached;
+    }
+  }
   return recalculateOrgTier(orgId);
 }
 

@@ -7,6 +7,7 @@ import type { AgentHourlyBillingInput } from "../../db/repositories/agent-billin
 import { parseOrgCreditBalance } from "../../db/repositories/agent-billing-numeric";
 import type { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
+import { observeSubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { agentBillingRecords } from "../../db/schemas/compute-billing";
@@ -93,6 +94,18 @@ export async function settleFundedAgentBillingInTransaction(
     .where(eq(organizations.id, input.organizationId));
   if (!organization) throw new Error("Dedicated funding organization disappeared");
   const newBalance = parseOrgCreditBalance(organization.balance);
+  // A subscriber's remaining allowance funds renewals before purchased credit,
+  // so the low-funds warning considers both sources.
+  const allowance = await observeSubscriptionAllowanceEligibility(
+    tx,
+    input.organizationId,
+    await readPostLockDatabaseNow(tx),
+  );
+  const fundingAvailable =
+    newBalance +
+    (allowance.status === "available" && allowance.period
+      ? Number(allowance.period.available_amount)
+      : 0);
   const effectiveRate = meter.amount
     .mul(3_600_000)
     .div(input.now.getTime() - periodStart.getTime())
@@ -114,7 +127,7 @@ export async function settleFundedAgentBillingInTransaction(
     .update(agentSandboxes)
     .set({
       last_billed_at: input.now,
-      billing_status: newBalance < input.lowCreditWarningAmount ? "warning" : "active",
+      billing_status: fundingAvailable < input.lowCreditWarningAmount ? "warning" : "active",
       shutdown_warning_sent_at: null,
       scheduled_shutdown_at: null,
       hourly_rate: effectiveRate,

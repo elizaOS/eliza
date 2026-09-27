@@ -4,6 +4,7 @@
  * released to their exact sources, ended and terminal periods are retired, a
  * resubscription can be granted over a canceled bucket, windows that straddle a
  * period end fund the remainder from credits, and ex-subscribers stay on cash.
+ * Policy caches are exercised on the explicit in-memory test cache backend.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -11,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.ENVIRONMENT = "local";
+process.env.MOCK_REDIS = "1";
 
 let client: typeof import("../../db/client");
 let helpers: typeof import("../../db/helpers");
@@ -531,5 +533,64 @@ describe("subscription allowance lifecycle", () => {
         reservationTtlMs: 60_000,
       }),
     ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INVALID_AMOUNT });
+  }, 60_000);
+
+  test("a policy-generation bump repairs the admission snapshot and the tier cache", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "1.000000",
+      credits: "1.000000",
+    });
+    const { cache } = await import("../cache/client");
+    const { CacheKeys } = await import("../cache/keys");
+    const snapshots = await import("./inference-admission-snapshot");
+    const { admitOrganizationInference, InferenceAdmissionUnavailableError } = await import(
+      "./organization-inference-admission"
+    );
+    const { getOrgTier } = await import("./org-rate-limits");
+    const { advanceOrganizationPolicyGeneration } = await import(
+      "../../db/repositories/organization-policy-generation"
+    );
+    const stale = await snapshots.warmInferenceAdmissionSnapshot(org);
+    const staleTier = await getOrgTier(org);
+    expect(staleTier.authority.generation).toBe(stale.authority.generation);
+
+    // Renewal, cancellation and overrides all advance the policy generation.
+    await helpers.writeTransaction((tx) =>
+      advanceOrganizationPolicyGeneration(tx, {
+        organizationId: org,
+        reason: "entitlement",
+        actor: "system:test",
+        change: { projectionRevision: 2 },
+      }),
+    );
+    const next = (BigInt(stale.authority.generation) + 1n).toString();
+
+    // The stale snapshot still fails its request closed, but the shared
+    // projection is republished at once instead of waiting out its TTL.
+    await expect(
+      admitOrganizationInference({
+        context: {
+          organizationId: org,
+          userId: "74000000-0000-4000-8000-000000000001",
+          model: "gpt-4o-mini",
+          provider: "openai",
+          billingSource: "gateway",
+          requestId: "req_stale_snapshot_0001",
+        },
+        estimatedInputTokens: 1,
+        estimatedOutputTokens: 1,
+        admissionSnapshot: stale,
+      }),
+    ).rejects.toBeInstanceOf(InferenceAdmissionUnavailableError);
+    const republished = await cache.get<{ authority: { generation: string } }>(
+      CacheKeys.inference.orgAdmission(org),
+    );
+    expect(republished?.authority.generation).toBe(next);
+
+    // The display tier cache is rebuilt once its stamp is older than the generation.
+    expect((await getOrgTier(org)).authority.generation).toBe(next);
   }, 60_000);
 });
