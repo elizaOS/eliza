@@ -537,6 +537,9 @@ async function main() {
           : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      // Bun's socket idle timeout is independent of the complete-turn deadline.
+      // Admission-paced turns may be silent longer; keep one explicit deadline.
+      timeout: false,
       signal: AbortSignal.timeout(
         Number(process.env.BENCHMARK_TURN_TIMEOUT_MS ?? 300_000),
       ),
