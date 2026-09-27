@@ -56,7 +56,7 @@ export const readAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Omit for an initial read from the beginning. For a reference or nonzero offset, copy the revision from the latest READ of this exact file; never invent or reuse another file’s revision. After WRITE or EDIT, read from the beginning without expectedRevision to obtain the new revision.",
+        "For continuation only, copy the opaque revision from the latest READ of this file, never a write receipt version or content hash. Omit on initial reads and after writes or edits.",
       required: false,
       schema: { type: "string" },
     },
@@ -79,7 +79,8 @@ export const writeAction: Action = {
     },
     {
       name: "content",
-      description: "Complete replacement file content.",
+      description:
+        "Exact complete replacement text, preserving all whitespace including the final newline.",
       required: true,
       schema: { type: "string" },
     },

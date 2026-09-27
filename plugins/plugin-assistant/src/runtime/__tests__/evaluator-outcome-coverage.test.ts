@@ -215,6 +215,57 @@ describe("auditable evaluator outcome coverage", () => {
     }
   });
 
+  it("supplies original literals and distinct executed content for semantic verification", async () => {
+    const value = fixture();
+    const requested = "  user-owned token: alpha-37\r\nlast line  \n";
+    const executed = requested.trimEnd();
+    value.context.events.unshift({
+      id: "original",
+      type: "instruction",
+      role: "user",
+      content: `Save exactly:\n${requested}`,
+    });
+    value.trajectory.archivedSteps[0].toolCall.params = { content: executed };
+    value.trajectory.steps[0].result = {
+      success: true,
+      text: executed,
+      data: { sourceSha256: "integrity-hash-not-content" },
+    };
+    let messages: string[] = [];
+    let system = "";
+    await runEvaluator({
+      ...value,
+      runtime: {
+        useModel: async (_type, options) => {
+          messages = options.messages.map((message) =>
+            typeof message.content === "string"
+              ? message.content
+              : JSON.stringify(message.content),
+          );
+          system = messages[0];
+          return JSON.stringify({
+            thought: "The saved content omits requested whitespace.",
+            decision: "CONTINUE",
+            success: false,
+          });
+        },
+      },
+    });
+    expect(messages.some((content) => content.includes(requested))).toBe(true);
+    expect(messages.join("\n")).toContain("integrity-hash-not-content");
+    expect(system).toContain(
+      "compare the original request with executed arguments and returned content",
+    );
+    expect(system).toContain(
+      "including leading/trailing whitespace and final newlines",
+    );
+    expect(system).toContain("content questions require the returned content");
+    expect(system).toContain(
+      "Integrity hashes and effect receipts do not substitute for values inside a document",
+    );
+    expect(value.trajectory.steps[0].result?.text).toBe(executed);
+  });
+
   it("advertises source IDs after the original request and complete native evidence", async () => {
     const value = fixture();
     let wire = "";

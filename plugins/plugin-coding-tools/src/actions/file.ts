@@ -469,7 +469,8 @@ export const fileAction: Action = {
     },
     {
       name: "content",
-      description: "Full file contents for action=write.",
+      description:
+        "Exact full text for action=write, preserving all whitespace including the final newline.",
       required: false,
       schema: { type: "string" },
     },
@@ -583,7 +584,7 @@ export const fileAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "For action=read continuation, reject if the file revision changed.",
+        "For read continuation only, copy the opaque revision from the latest READ of this file, never a write receipt version or content hash. Omit on initial reads and after writes or edits.",
       required: false,
       schema: { type: "string" },
     },
