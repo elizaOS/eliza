@@ -5,6 +5,7 @@
  */
 
 import z from "zod";
+import { canonicalBackupJson } from "./agent-backup-canonical-json.js";
 import {
 	AGENT_BACKUP_CAPTURE_V2_LIMITS,
 	AgentBackupCaptureV2ComponentDescriptorSchema,
@@ -624,31 +625,13 @@ export interface AgentBackupRestoreV3StagedRecord {
 	readonly payload: Uint8Array;
 }
 
+const RESTORE_RECEIPT_JSON_ERRORS = {
+	nonCanonicalNumber: "Restore receipt contains a non-canonical number",
+	nonJsonValue: "Restore receipt contains a non-JSON value",
+} as const;
+
 function canonicalJson(value: unknown): string {
-	if (
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "boolean"
-	) {
-		return JSON.stringify(value);
-	}
-	if (typeof value === "number") {
-		if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
-			throw new TypeError("Restore receipt contains a non-canonical number");
-		}
-		return String(value);
-	}
-	if (Array.isArray(value)) {
-		return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
-	}
-	if (typeof value !== "object" || value === undefined) {
-		throw new TypeError("Restore receipt contains a non-JSON value");
-	}
-	const record = value as Record<string, unknown>;
-	return `{${Object.keys(record)
-		.sort()
-		.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-		.join(",")}}`;
+	return canonicalBackupJson(value, RESTORE_RECEIPT_JSON_ERRORS);
 }
 
 function freezeDeep<T>(value: T): AgentBackupRestoreV3DeepReadonly<T> {

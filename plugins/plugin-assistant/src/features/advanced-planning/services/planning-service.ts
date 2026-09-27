@@ -25,11 +25,13 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   isElizaError,
+  isProcessingPolicyDenial,
   isObjectRecord as isRecord,
   logger,
   type Memory,
   ModelType,
   parseJsonObject,
+  resolveActionGateFailure,
   runWithActionRoutingContext,
   Service,
   type State,
@@ -951,6 +953,27 @@ Focus on:
       throw new Error(`Action '${step.actionName}' not found`);
     }
 
+    // Plan steps invoke handlers directly, so they apply the same unified gate
+    // as the planned tool-call executor (private, disclosure, role policy,
+    // role) against the plan's originating message. Plans do not carry the
+    // turn's selected contexts, so context declarations are not re-evaluated.
+    const gateFailure = await resolveActionGateFailure(runtime, action, {
+      message,
+      evaluateContexts: false,
+    });
+    if (gateFailure) {
+      return {
+        success: false,
+        text: gateFailure,
+        error: gateFailure,
+        data: {
+          stepId: step.id ? String(step.id) : "",
+          executedAt: Date.now(),
+          actionName: action.name,
+        },
+      };
+    }
+
     const actionContext: ActionContext = {
       previousResults,
       getPreviousResult: (actionName: string) =>
@@ -1015,8 +1038,9 @@ Focus on:
       } catch (error) {
         // error-policy:J1 action invocation enforces the step's bounded retry contract
         if (
-          isElizaError(error) &&
-          error.code === "ACTION_RESULT_INVALID_AFTER_HANDLER"
+          (isElizaError(error) &&
+            error.code === "ACTION_RESULT_INVALID_AFTER_HANDLER") ||
+          isProcessingPolicyDenial(error)
         ) {
           throw error;
         }

@@ -8,6 +8,11 @@
  */
 
 import { ElizaError } from "../errors";
+import {
+	admitProcessing,
+	PROCESSING_POLICY_DENIED,
+	processingPolicyFor,
+} from "../security/processing-policy";
 import { runWithSuppressedModelStream } from "../streaming-context";
 import {
 	type ActionFailureProvenance,
@@ -356,6 +361,35 @@ export async function settleActionHandler(
 				return deliverWithoutModelStream(buffered);
 			}
 		: undefined;
+
+	// Host processing admission runs before the handler so a denied effect sends
+	// nothing. No policy installed means nothing is consulted.
+	try {
+		await admitProcessing(
+			processingPolicyFor(options.runtime),
+			options.runtime.agentId,
+			{
+				kind: "action_effect",
+				action: { name: options.action.name, egress: options.action.egress },
+			},
+		);
+	} catch (error) {
+		// error-policy:J1 a denial is a terminal pre-effect failure: no handler
+		// ran, so it is never retryable and no callback may be delivered.
+		phase = "failed";
+		if (options.handlerError === "rethrow") throw error;
+		return actionFailureResult(
+			options.action.name,
+			stringifyActionError(error),
+			{ error, retryable: false, processingDenied: true },
+			{
+				kind: "handler_error",
+				boundary: "handler",
+				code: PROCESSING_POLICY_DENIED,
+				retryable: false,
+			},
+		);
+	}
 
 	let rawResult: unknown;
 	try {

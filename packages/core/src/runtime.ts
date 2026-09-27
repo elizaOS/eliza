@@ -29,6 +29,11 @@ import {
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./runtime/model-dispatch/policy.js";
 import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
+import {
+	bindProcessingPolicy,
+	type ProcessingPolicy,
+	processingPolicyFor,
+} from "./security/processing-policy.js";
 
 export {
 	NoModelProviderConfiguredError,
@@ -59,6 +64,7 @@ import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
+import { resolveActionGateFailure } from "./runtime/action-gate";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
 import { getActionRolePolicyWarnings } from "./runtime/action-role-policy";
 import { runWithActionRoutingContext } from "./runtime/action-routing-context";
@@ -116,7 +122,6 @@ import {
 	pendingPostDeliveryTaskCount,
 } from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
-import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	getTrajectoryContext,
@@ -237,7 +242,6 @@ import {
 import type { RuntimeSettings } from "./types/settings.js";
 import type { State } from "./types/state.js";
 import type { Task, TaskWorker } from "./types/task.js";
-import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
@@ -404,6 +408,7 @@ export class AgentRuntime implements IAgentRuntime {
 		| undefined;
 	private readonly modelDispatch = new RuntimeModelDispatch(this, {
 		confidentialInference: () => this.confidentialInference,
+		processingPolicy: () => processingPolicyFor(this),
 		models: () => this.models,
 		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
 		validateEmbeddingOutput: (...args) =>
@@ -580,6 +585,12 @@ export class AgentRuntime implements IAgentRuntime {
 	constructor(opts: {
 		/** Measured host authority; never populated from character or client settings. */
 		confidentialInference?: ConfidentialInferenceAuthority;
+		/**
+		 * Host processing admission for every model attempt and action effect.
+		 * Absent means no admission is consulted. Never populated from character
+		 * or client settings; it cannot be replaced after construction.
+		 */
+		processingPolicy?: ProcessingPolicy;
 		conversationLength?: number;
 		agentId?: UUID;
 		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
@@ -629,6 +640,9 @@ export class AgentRuntime implements IAgentRuntime {
 		enableAutonomy?: boolean;
 	}) {
 		this.confidentialInference = opts.confidentialInference;
+		if (opts.processingPolicy) {
+			bindProcessingPolicy(this, opts.processingPolicy);
+		}
 		// Create default anonymous character if none provided
 		let character: Character;
 		if (opts.character) {
@@ -2581,86 +2595,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return [...this.actions];
 	}
 
-	/**
-	 * Get actions filtered by tool policy.
-	 *
-	 * @param context - Optional policy context for filtering
-	 * @returns Filtered actions based on policy
-	 */
-	async getFilteredActions(context?: {
-		profile?: ToolProfileId;
-		characterPolicy?: ToolPolicyConfig;
-		channelPolicy?: ToolPolicyConfig;
-		providerPolicy?: ToolPolicyConfig;
-		worldPolicy?: ToolPolicyConfig;
-		roomPolicy?: ToolPolicyConfig;
-	}): Promise<Action[]> {
-		let policyService: ToolPolicyService | null;
-		try {
-			policyService = (await this._ensureServiceStarted(
-				"tool_policy",
-			)) as ToolPolicyService | null;
-		} catch (error) {
-			// error-policy:J4 explicit user-facing degrade — a tool_policy service
-			// that was configured but failed to start cannot safely authorize tools.
-			// Keep the turn alive with no executable actions and surface the failure.
-			this.reportError("AgentRuntime.getFilteredActions", error, {
-				serviceType: "tool_policy",
-			});
-			return [];
-		}
-
-		if (!policyService || !context) {
-			return [...this.actions];
-		}
-
-		return policyService.filterActions(this.actions, context);
-	}
-
-	/**
-	 * Check if a specific action is allowed by tool policy.
-	 *
-	 * @param actionName - The action name to check
-	 * @param context - Optional policy context
-	 * @returns Whether the action is allowed
-	 */
-	async isActionAllowed(
-		actionName: string,
-		context?: {
-			profile?: ToolProfileId;
-			characterPolicy?: ToolPolicyConfig;
-			channelPolicy?: ToolPolicyConfig;
-			providerPolicy?: ToolPolicyConfig;
-			worldPolicy?: ToolPolicyConfig;
-			roomPolicy?: ToolPolicyConfig;
-		},
-	): Promise<{ allowed: boolean; reason: string }> {
-		let policyService: ToolPolicyService | null;
-		try {
-			policyService = (await this._ensureServiceStarted(
-				"tool_policy",
-			)) as ToolPolicyService | null;
-		} catch (error) {
-			// error-policy:J4 explicit user-facing degrade — a tool_policy service
-			// that was configured but failed to start cannot safely authorize tools.
-			// Deny the action and surface the service failure.
-			this.reportError("AgentRuntime.isActionAllowed", error, {
-				serviceType: "tool_policy",
-			});
-			return {
-				allowed: false,
-				reason: "Tool policy service failed to start",
-			};
-		}
-
-		if (!policyService) {
-			return { allowed: true, reason: "No policy service available" };
-		}
-
-		const result = policyService.isToolAllowed(actionName, context);
-		return { allowed: result.allowed, reason: result.reason };
-	}
-
 	getActionResults(messageId: UUID): ActionResult[] {
 		const cachedState = this.stateCache.get(`${messageId}_action_results`);
 		return (
@@ -2714,9 +2648,47 @@ export class AgentRuntime implements IAgentRuntime {
 
 		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
 
+		const isContextMode =
+			mode === "CONTEXT_BEFORE" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "CONTEXT_AFTER";
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
+				// Mode hooks run handlers directly, so they apply the same unified
+				// gate as the planned tool-call executor (private, disclosure, role
+				// policy, role). Context declarations on non-CONTEXT hooks were never
+				// an execution filter; only CONTEXT modes evaluate them, against the
+				// contexts selected for this turn.
+				let gateFailure: string | undefined;
+				try {
+					gateFailure = await resolveActionGateFailure(this, action, {
+						message,
+						activeContexts: options?.selectedContexts,
+						evaluateContexts: isContextMode,
+					});
+				} catch (err) {
+					// error-policy:J4 A caller-role lookup failure cannot authorize the
+					// hook; it is reported and this hook is skipped.
+					this.reportError("AgentRuntime.modeActionGate", err, {
+						action: action.name,
+						mode,
+					});
+					return;
+				}
+				if (gateFailure) {
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							mode,
+							reason: gateFailure,
+						},
+						"Mode action denied by action gate",
+					);
+					return;
+				}
 				if (action.disclosureGate?.require === "owner_exclusive") {
 					const disclosure = await authorizeOwnerExclusiveDisclosure(
 						this,
@@ -3608,30 +3580,6 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * The runtime-selected text-model provider, or undefined to use the default
-	 * (highest-priority) handler. Read from `ELIZA_BRAIN_PROVIDER` so an owner
-	 * action that mutates `character.settings` (and/or persists it to config)
-	 * flips the chat brain on the next model call with no restart. Returns
-	 * undefined when the setting is empty OR names a provider that has no
-	 * registered text handler, so a stale or mistyped value never strands the
-	 * brain — it simply falls back to the default provider. The same contract
-	 * holds at call time: useModel keeps the default-chain registrations behind
-	 * the override as a failover tail, so a rate-limited/exhausted override
-	 * provider falls to the registered backups instead of stranding the brain.
-	 */
-	/**
-	 * Record the provider that served a successful `useModel` call, keyed by the
-	 * requested model-type string. Only real (non-empty) provider names are
-	 * stored so a caller reading it back never sees a fabricated value (#13623).
-	 */
-	private noteResolvedModelProvider(
-		modelTypeKey: string,
-		provider: string | undefined,
-	): void {
-		this.modelDispatch.noteResolvedModelProvider(modelTypeKey, provider);
-	}
-
-	/**
 	 * The provider name that served the most recent successful `useModel` call
 	 * for the given model type, or `undefined` if no such call has completed
 	 * (so callers can fail-closed rather than fabricate a provider). Lets the
@@ -3645,68 +3593,11 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.modelDispatch.getLastResolvedModelProvider(modelType);
 	}
 
-	private resolveTextProviderOverride(): string | undefined {
-		return this.modelDispatch.resolveTextProviderOverride();
-	}
-
-	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
-		return this.modelDispatch.isCanonicalModelCapabilityDisabled(modelType);
-	}
-
-	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
-		this.modelDispatch.assertCanonicalModelCapabilityEnabled(modelType);
-	}
-
-	private resolveModelRegistration(
-		modelType: ModelTypeName | string,
-		provider?: string,
-	): ResolvedModelRegistration | undefined {
-		return this.modelDispatch.resolveModelRegistration(modelType, provider);
-	}
-
 	private resolveModelRegistrations(
 		modelType: ModelTypeName | string,
 		provider?: string,
 	): ResolvedModelRegistration[] {
 		return this.modelDispatch.resolveModelRegistrations(modelType, provider);
-	}
-
-	private logModelProviderFailover(args: {
-		requestedModelKey: string;
-		failedModel: ResolvedModelRegistration;
-		nextModel: ResolvedModelRegistration;
-		error: unknown;
-	}): void {
-		this.modelDispatch.logModelProviderFailover(args);
-	}
-
-	private shouldFailOverModelProvider(
-		error: unknown,
-		modelType: string,
-	): boolean {
-		return this.modelDispatch.shouldFailOverModelProvider(error, modelType);
-	}
-
-	private throwNoModelHandler(requestedModelKey: string): never {
-		return this.modelDispatch.throwNoModelHandler(requestedModelKey);
-	}
-
-	/**
-	 * Surface the failure that ends a `useModel` failover chain. A real `Error`
-	 * with a message rethrows unchanged so provider SDK stack traces and typed
-	 * subclasses (e.g. `NoModelProviderConfiguredError`, which the chat UI
-	 * narrows on) survive the boundary. Everything else — the bare
-	 * `{ status, error }` objects some providers/AI-SDK paths throw, or a
-	 * message-less `Error` — becomes an `ElizaError` whose message names the
-	 * provider, HTTP status, and underlying cause. Without this, a bare object
-	 * stringified to the diagnostically useless "[object Object]" in logs,
-	 * trajectories, and any user-surfaced failure text.
-	 */
-	private rethrowModelFailoverError(
-		error: unknown,
-		failed?: { modelKey: string; provider: string },
-	): never {
-		return this.modelDispatch.rethrowModelFailoverError(error, failed);
 	}
 
 	getModel(
@@ -3720,26 +3611,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.modelDispatch.getModel(modelType);
 	}
 
-	/**
-	 * Retrieves model configuration settings from character settings with support for
-	 * model-specific overrides and default fallbacks.
-	 *
-	 * Precedence order (highest to lowest):
-	 * 1. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
-	 * 2. Default settings (e.g., DEFAULT_TEMPERATURE)
-	 *
-	 * @param modelType The specific model type to get settings for
-	 * @returns Object containing model parameters if they exist, or null if no settings are configured
-	 */
-	private getModelSettings(
-		modelType?: ModelTypeName,
-	): Record<string, number> | null {
-		return this.modelDispatch.getModelSettings(modelType);
-	}
-
-	/**
-	 * Helper to log model calls to the database (used by both streaming and non-streaming paths)
-	 */
 	private buildRuntimeSystemPrompt(): string | undefined {
 		const prompt = buildCanonicalSystemPrompt({
 			character: this.character,
@@ -3772,41 +3643,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return systemPrompt;
 	}
 
-	/** Resolve the concrete provider model id used for final-wire budgeting. */
-	private resolveRegistrationModelName(
-		metadata: ModelRegistrationMetadata | undefined,
-	): string | undefined {
-		return this.modelDispatch.resolveRegistrationModelName(metadata);
-	}
-
-	/**
-	 * Budget the exact text-generation request after runtime transforms and
-	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound, so the
-	 * runtime can reject before a provider handler without silently rewriting
-	 * any model-facing field.
-	 */
-	private buildFinalModelInputBudget(
-		params: unknown,
-		metadata: ModelRegistrationMetadata | undefined,
-	) {
-		return this.modelDispatch.buildFinalModelInputBudget(params, metadata);
-	}
-
-	/** Clone caller-owned request data before runtime transforms. Arrays and
-	 * plain records become handler-owned; opaque transport collaborators retain
-	 * identity because cloning them would change platform semantics. */
-	private cloneModelRequestGraph<T>(value: T): T {
-		return this.modelDispatch.cloneModelRequestGraph<T>(value);
-	}
-
-	/** Freeze the complete admitted handler payload so provider code cannot add,
-	 * remove, or rewrite model-bound data after the final measurement. Only
-	 * arrays and plain records belong to the request graph; platform objects
-	 * such as AbortSignal remain opaque transport collaborators. */
-	private freezeAdmittedModelRequest(value: unknown): void {
-		this.modelDispatch.freezeAdmittedModelRequest(value);
-	}
-
 	private getFirstUserPromptFromMessages(
 		messages: unknown,
 	): string | undefined {
@@ -3829,82 +3665,12 @@ export class AgentRuntime implements IAgentRuntime {
 		return undefined;
 	}
 
-	private logModelCall(
-		modelType: string,
-		modelKey: string,
-		_params: unknown,
-		promptContent: string | null,
-		systemPrompt: string | undefined,
-		elapsedTime: number,
-		provider: string | undefined,
-		response: unknown,
-	): void {
-		this.modelDispatch.logModelCall(
-			modelType,
-			modelKey,
-			_params,
-			promptContent,
-			systemPrompt,
-			elapsedTime,
-			provider,
-			response,
-		);
-	}
-
 	useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
 		modelType: T,
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
 		return this.modelDispatch.useModel<T, R>(modelType, params, provider);
-	}
-
-	/**
-	 * Emit an llm-call entry against the current trajectory step for a
-	 * `useModel` call. Pure dedupe of the streaming and non-streaming paths
-	 * inside {@link useModel}; both paths formerly inlined an identical block.
-	 *
-	 * Skipped while the runtime is still initializing because
-	 * {@link _ensureServiceStarted} awaits `initPromise` and would deadlock.
-	 * Trajectory logging must never break core model flow, so any thrown
-	 * error here is swallowed.
-	 */
-	private recordUseModelTrajectory(args: {
-		modelType: string;
-		resolvedModelKey: string;
-		provider?: string;
-		modelParams: unknown;
-		promptContent: string | null | undefined;
-		result?: unknown;
-		response: string;
-		elapsedTime: number;
-		providerRecorded: boolean;
-	}): Promise<void> {
-		return this.modelDispatch.recordUseModelTrajectory(args);
-	}
-
-	/**
-	 * Emit a failure llm-call entry for a `useModel` attempt that threw before
-	 * producing a usable result. Without this, a rejected provider attempt is
-	 * invisible in the trajectory: if failover succeeds, only the successful
-	 * call appears and the failed (and often billed) attempt is lost; if every
-	 * attempt fails, the step has zero model entries at all (#17532).
-	 *
-	 * Records the real error — sanitized of secrets — as the response payload
-	 * with `finishReason: "error"`, and does NOT fabricate an empty response or
-	 * zero token counts. Trajectory logging never breaks core model flow, so
-	 * failures here are swallowed and surfaced via reportError instead.
-	 */
-	private recordFailedModelTrajectory(args: {
-		modelType: string;
-		resolvedModelKey: string;
-		provider?: string;
-		modelParams: unknown;
-		promptContent: string | null | undefined;
-		error: unknown;
-		elapsedTime: number;
-	}): Promise<void> {
-		return this.modelDispatch.recordFailedModelTrajectory(args);
 	}
 
 	/**
