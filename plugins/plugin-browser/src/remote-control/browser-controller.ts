@@ -495,35 +495,43 @@ function owner(context: RouteHandlerContext) {
       "Only the authenticated agent owner may configure browser device authority.",
     );
 }
+function remoteBrowserControllerRoutes(
+  expectedOwnerId?: string,
+): NonNullable<HttpPlugin["routes"]> {
+  return ["status", "pair", "confirm", "revoke"].map((operation) => ({
+    type: operation === "status" ? "GET" : "POST",
+    path: `/api/remote-browser/${operation}`,
+    rawPath: true,
+    modes: ["local", "local-only", "cloud", "remote"],
+    routeHandler: async (context) => {
+      owner(context);
+      const controller = remoteBrowserController(context.runtime);
+      if (expectedOwnerId) controller.assertOwner(expectedOwnerId);
+      const result =
+        operation === "status"
+          ? controller.status()
+          : operation === "pair"
+            ? await controller.pair(context.body, expectedOwnerId)
+            : operation === "confirm"
+              ? await controller.confirm(context.body)
+              : await controller.revoke();
+      return { status: 200, body: result };
+    },
+  }));
+}
+
+export const remoteBrowserControllerPlugin: HttpPlugin = {
+  name: "remote-browser-controller",
+  description: "Owner-paired device browser preferences for hosted agents.",
+  routes: remoteBrowserControllerRoutes(),
+};
+
 export function createRemoteBrowserControllerPlugin(
   expectedOwnerId?: string,
 ): HttpPlugin {
   if (expectedOwnerId !== undefined) identifier(expectedOwnerId);
   return {
-    name: "remote-browser-controller",
-    description: "Owner-paired device browser preferences for hosted agents.",
-    routes: ["status", "pair", "confirm", "revoke"].map((operation) => ({
-      type: operation === "status" ? "GET" : "POST",
-      path: `/api/remote-browser/${operation}`,
-      rawPath: true,
-      modes: ["local", "local-only", "cloud", "remote"],
-      routeHandler: async (context) => {
-        owner(context);
-        const controller = remoteBrowserController(context.runtime);
-        if (expectedOwnerId) controller.assertOwner(expectedOwnerId);
-        const result =
-          operation === "status"
-            ? controller.status()
-            : operation === "pair"
-              ? await controller.pair(context.body, expectedOwnerId)
-              : operation === "confirm"
-                ? await controller.confirm(context.body)
-                : await controller.revoke();
-        return { status: 200, body: result };
-      },
-    })),
+    ...remoteBrowserControllerPlugin,
+    routes: remoteBrowserControllerRoutes(expectedOwnerId),
   };
 }
-
-export const remoteBrowserControllerPlugin =
-  createRemoteBrowserControllerPlugin();
