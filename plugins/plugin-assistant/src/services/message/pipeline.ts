@@ -129,7 +129,6 @@ import {
   checkpointActivePlanner,
   getActivePlannerContinuation,
   persistPlannerContinuation,
-  registerPlannerContinuationWorker,
 } from "./planner-continuation.ts";
 import { finalizePlannerReply } from "./planner-reply.ts";
 import {
@@ -223,7 +222,6 @@ export function actionOwnsResponseHandlerEarlyReply(
 export async function runV5MessageRuntimeStage1(
   args: V5MessageRuntimeInput,
 ): Promise<V5MessageRuntimeStage1Result> {
-  await registerPlannerContinuationWorker(args.runtime);
   const resumedPlanner = getActivePlannerContinuation(
     args.runtime,
     args.message,

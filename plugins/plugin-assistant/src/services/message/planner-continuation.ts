@@ -488,7 +488,7 @@ export async function registerPlannerContinuationWorker(
  * Once per live runtime, park checkpoints left by a previous process. Only
  * settled snapshots are resumable; executing and unacknowledged delivery
  * checkpoints stay parked (never replayed) with a cancel choice. A failed scan
- * is reported and retried on the next message instead of failing this turn.
+ * is reported and retried on the next worker registration.
  */
 async function recoverPlannerContinuations(
   runtime: IAgentRuntime,
