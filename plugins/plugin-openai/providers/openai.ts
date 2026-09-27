@@ -15,6 +15,10 @@ import {
   type InferenceTimingMeta,
   logger,
 } from "@elizaos/core";
+import {
+  applyCerebrasReasoningReplay,
+  type CerebrasReasoningReplay,
+} from "../utils/cerebras-reasoning";
 import { getApiKey, getBaseURL } from "../utils/config";
 
 const SAFE_RESPONSE_HEADERS = [
@@ -54,7 +58,8 @@ function observeHttpDiagnostic<T>(observe: () => T): T | undefined {
 
 export function createOpenAIClient(
   runtime: IAgentRuntime,
-  endpoint?: { baseURL: string; apiKey: string; provider: "openrouter" }
+  endpoint?: { baseURL: string; apiKey: string; provider: "openrouter" },
+  reasoningReplay?: CerebrasReasoningReplay
 ): OpenAIProvider {
   const baseURL = endpoint?.baseURL ?? getBaseURL(runtime);
   const apiKey = endpoint?.apiKey ?? getApiKey(runtime);
@@ -115,6 +120,11 @@ export function createOpenAIClient(
           if (typeof reasoning === "string") {
             body.reasoning = reasoning === "none" ? { enabled: false } : { effort: reasoning };
           }
+          init = { ...init, body: JSON.stringify(body) };
+        }
+        if (reasoningReplay && typeof init?.body === "string") {
+          const body = JSON.parse(init.body) as Record<string, unknown>;
+          applyCerebrasReasoningReplay(body, reasoningReplay);
           init = { ...init, body: JSON.stringify(body) };
         }
         const attempt = ++httpAttempt;

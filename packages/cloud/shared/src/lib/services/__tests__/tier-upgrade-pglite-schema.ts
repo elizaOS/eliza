@@ -258,6 +258,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "replacement_cleanup_vpn_registration_started_at" timestamptz,
   "replacement_cleanup_allocation_counted" boolean,
   "replacement_cleanup_created_at" timestamptz,
+  "retained_runtime" jsonb CHECK ("retained_runtime" IS NULL OR jsonb_typeof("retained_runtime") = 'object'),
   "activation_generation" uuid,
   "activation_lifecycle_revision" bigint,
   "activation_phase" text,

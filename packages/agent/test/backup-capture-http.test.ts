@@ -1,6 +1,13 @@
-/** Exercises both backup formats over the real host HTTP server and filesystem-backed PGlite, including complete file bytes, empty files, admission failures and tamper rejection. */
+/** Exercises both backup formats over the real host HTTP server and filesystem-backed PGlite, including complete file bytes, empty files, admission failures, tamper rejection and the actionable local-backup size refusal. */
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -161,3 +168,31 @@ it("rejects unauthenticated, wrong-agent and expired captures before streaming",
   });
   expect(expired.status, await expired.text()).toBe(408);
 });
+
+it("answers an over-limit local backup with an actionable 413 and creates it once the state fits", async () => {
+  // A sparse file declares 200 MiB without allocating it; capture refuses from
+  // its stat size before reading any bytes.
+  const oversized = path.join(directory, "media", "oversized.bin");
+  await writeFile(oversized, "");
+  await truncate(oversized, 200 * 1024 * 1024);
+  try {
+    const refused = await request("/api/backups");
+    expect(refused.status).toBe(413);
+    const body = (await refused.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
+      unit: "bytes",
+      retryable: false,
+    });
+    expect(body.observed as number).toBeGreaterThan(body.limit as number);
+    expect(String(body.error)).toMatch(/too large for a local backup/);
+    expect(JSON.stringify(body)).not.toContain(directory);
+  } finally {
+    await rm(oversized, { force: true });
+  }
+
+  const created = await request("/api/backups");
+  expect(created.status, await created.clone().text()).toBe(200);
+  const { backup } = (await created.json()) as { backup: { fileName: string } };
+  expect(backup.fileName).toBeTruthy();
+}, 120_000);

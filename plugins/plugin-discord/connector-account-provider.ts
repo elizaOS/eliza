@@ -7,9 +7,10 @@
  *
  * Source of truth for accounts is character settings (`character.settings.discord`)
  * plus the legacy env-only DISCORD_API_TOKEN. The manager observes those via
- * `listAccounts`. `createAccount`/`patchAccount`/`deleteAccount` here are
- * adapters that surface a `ConnectorAccount` shape; persistent storage is
- * delegated to the manager's `ConnectorAccountStorage`.
+ * `listAccounts`. `createAccount`/`patchAccount` are adapters that surface a
+ * `ConnectorAccount` shape; persistent storage is delegated to the manager's
+ * `ConnectorAccountStorage`. `deleteAccount` persists a disabled policy
+ * (`connector-account-policy.ts`) and stops that account's gateway.
  *
  * OAuth: Discord uses bot installation (out-of-band) plus an in-app pairing
  * flow handled by `owner-pairing-service.ts`. `startOAuth` returns a Discord
@@ -37,6 +38,11 @@ import {
 	resolveDiscordAccount,
 } from "./accounts";
 
+import {
+	isDiscordAccountDisabledByPolicy,
+	persistDiscordAccountDisabled,
+	readDiscordAccountPolicy,
+} from "./connector-account-policy";
 import type { DiscordService } from "./service";
 
 export const DISCORD_PROVIDER_ID = "discord";
@@ -115,9 +121,11 @@ export function createDiscordConnectorAccountProvider(
 			_manager: ConnectorAccountManager,
 		): Promise<ConnectorAccount[]> => {
 			const service = runtime.getService<DiscordService>(DISCORD_PROVIDER_ID);
-			return listDiscordAccountIds(runtime).map((accountId) =>
-				toConnectorAccount(resolveDiscordAccount(runtime, accountId), service),
-			);
+			const policy = await readDiscordAccountPolicy(runtime);
+			return listDiscordAccountIds(runtime)
+				.map((accountId) => resolveDiscordAccount(runtime, accountId))
+				.filter((account) => !isDiscordAccountDisabledByPolicy(policy, account))
+				.map((account) => toConnectorAccount(account, service));
 		},
 		createAccount: async (
 			input: ConnectorAccountPatch,
@@ -142,11 +150,19 @@ export function createDiscordConnectorAccountProvider(
 			return { ...patch, provider: DISCORD_PROVIDER_ID };
 		},
 		deleteAccount: async (
-			_accountId: string,
+			accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// Provider-layer deletion returns cleanly; runtime credentials live in character
-			// settings; deletion of those is out of band.
+			// Persist the disabled policy before touching the gateway so a crash
+			// or restart mid-disconnect cannot bring the account back. The token
+			// itself lives in character settings or env, which the host owns; the
+			// policy is keyed by its fingerprint, so that token stays unused until
+			// it is replaced or the account is re-created. A failure below throws
+			// before the manager removes its row, and a retry is idempotent.
+			const account = resolveDiscordAccount(runtime, accountId);
+			await persistDiscordAccountDisabled(runtime, account);
+			const service = runtime.getService<DiscordService>(DISCORD_PROVIDER_ID);
+			await service?.disconnectAccount(account.accountId);
 		},
 		startOAuth: async (
 			request: ConnectorOAuthStartRequest,

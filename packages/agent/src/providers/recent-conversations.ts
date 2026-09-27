@@ -1,9 +1,10 @@
 /**
- * Exposes an authorized cross-platform conversation manifest with an explicit
- * storage-backed recall contract. Current dialogue stays in RECENT_MESSAGES;
+ * Exposes the complete authorized cross-platform conversation history inline,
+ * with a room index for exact storage-backed reads when a permitted
+ * memory-read action exists. Current dialogue stays in RECENT_MESSAGES;
  * relevant-conversations independently recalls matching historical evidence.
- * No stored record is shortened or removed. When no permitted memory-read
- * action exists, the complete authorized transcript remains inline instead.
+ * No authorized body is replaced by the index, shortened or dropped under an
+ * estimated budget; a genuine model input boundary rejects explicitly.
  * Automation/page rooms are excluded and owner-private disclosure is checked
  * before identity expansion or history reads.
  */
@@ -56,9 +57,9 @@ function attachmentPromptSummary(attachments: readonly Media[]): string {
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
   description:
-    "Authorized conversation-room manifest for storage-backed cross-platform recall.",
+    "Complete authorized cross-platform conversation history with a room index for storage-backed recall.",
   descriptionCompressed:
-    "authorized conversation room manifest search stored cross platform history",
+    "authorized cross platform conversation history room index stored recall",
   dynamic: true,
   // Cross-room originals load for selected recall contexts; current-room
   // dialogue remains available independently through RECENT_MESSAGES.
@@ -143,45 +144,42 @@ export const recentConversationsProvider: Provider = {
         });
         return rejection === undefined;
       });
-      let sorted: Memory[] = [];
-      if (!recallAction) {
-        const memories = await runtime.getMemoriesByRoomIds({
-          tableName: "messages",
-          roomIds,
-          accessContext,
-        });
-        // Share RECENT_MESSAGES source hygiene: only identical copies of the
-        // same source ID collapse. Distinct connector records and repeated turns
-        // keep their provenance even when their visible text is identical.
-        const byRoom = new Map<string, Memory[]>();
-        for (const memory of memories) {
-          if (
-            !(
-              Boolean(memory.content.text) ||
-              (memory.content.attachments?.length ?? 0) > 0
-            )
-          ) {
-            continue;
-          }
-          const bucket = byRoom.get(memory.roomId) ?? [];
-          bucket.push(memory);
-          byRoom.set(memory.roomId, bucket);
-        }
-        sorted = [...byRoom.values()]
-          .flatMap((roomMemories) =>
-            dedupeHygienicDialogueMessages(
-              roomMemories.sort(
-                (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
-              ),
-              runtime.agentId,
-            ),
+      // Complete authorized bodies are always inline. A recall action adds a
+      // room index for exact reads; it never replaces the bodies.
+      const memories = await runtime.getMemoriesByRoomIds({
+        tableName: "messages",
+        roomIds,
+        accessContext,
+      });
+      // Share RECENT_MESSAGES source hygiene: only identical copies of the
+      // same source ID collapse. Distinct connector records and repeated turns
+      // keep their provenance even when their visible text is identical.
+      const byRoom = new Map<string, Memory[]>();
+      for (const memory of memories) {
+        if (
+          !(
+            Boolean(memory.content.text) ||
+            (memory.content.attachments?.length ?? 0) > 0
           )
-          .sort(
-            (left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0),
-          );
-        if (sorted.length === 0) {
-          return { text: "", values: {}, data: {} };
+        ) {
+          continue;
         }
+        const bucket = byRoom.get(memory.roomId) ?? [];
+        bucket.push(memory);
+        byRoom.set(memory.roomId, bucket);
+      }
+      const sorted = [...byRoom.values()]
+        .flatMap((roomMemories) =>
+          dedupeHygienicDialogueMessages(
+            roomMemories.sort(
+              (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+            ),
+            runtime.agentId,
+          ),
+        )
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+      if (sorted.length === 0) {
+        return { text: "", values: {}, data: {} };
       }
 
       // Resolve room labels in one adapter read. Missing cosmetic labels do not
@@ -210,41 +208,32 @@ export const recentConversationsProvider: Provider = {
           label: toWellFormedUnicode(roomSourceTag(room)),
         };
       });
-      const manifestLines = [
-        "Stored conversation manifest:",
-        `${rooms.length} authorized room(s); message bodies are retrieved on demand.`,
-        "This is a room index, not a summary or a claim about what was said. Full message bodies remain stored.",
-        "Use current dialogue and relevant recalled evidence for continuity. If an answer needs history not already present, select the memory context and retrieve it before answering; do not guess or treat this index as empty history.",
-        `Read with ${recallAction?.name ?? "MEMORY_SEARCH"}${recallAction?.name === "MEMORY" ? " action=search" : ""}, type=messages and an exact roomId below. query optionally narrows by text; omit query to read the whole room. For large results request limit and follow nextOffset/snapshot with identical filters until the needed range is complete. Never treat a page as all history.`,
-        ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
-      ];
       markOwnerExclusiveDisclosureUsed(message);
 
-      const manifestText = manifestLines.join("\n");
-      let text = manifestText;
-      if (!recallAction) {
-        const lines = [
-          "Stored conversations (complete inline history; no permitted memory retrieval action is registered):",
-        ];
-        for (const memory of sorted) {
-          const room = roomCache.get(memory.roomId) ?? null;
-          const body = toWellFormedUnicode(memory.content.text ?? "");
-          const attachments = attachmentPromptSummary(
-            memory.content.attachments ?? [],
-          );
-          lines.push(
-            `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[body, attachments].filter(Boolean).join(" ")}`,
-          );
-        }
-        text = lines.join("\n");
+      const lines = ["Stored conversations (complete authorized history):"];
+      for (const memory of sorted) {
+        const room = roomCache.get(memory.roomId) ?? null;
+        const body = toWellFormedUnicode(memory.content.text ?? "");
+        const attachments = attachmentPromptSummary(
+          memory.content.attachments ?? [],
+        );
+        lines.push(
+          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[body, attachments].filter(Boolean).join(" ")}`,
+        );
       }
+      if (recallAction) {
+        lines.push(
+          "",
+          `Room index for exact reads with ${recallAction.name}${recallAction.name === "MEMORY" ? " action=search" : ""}, type=messages and a roomId below:`,
+          ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
+        );
+      }
+      // No `overflowText`: an estimated budget must not swap these bodies for
+      // a body-free index. A genuine model input boundary rejects explicitly.
       return {
-        text,
-        // A missing retrieval capability must not become an overflow-time
-        // permission bypass or an inaccessible body-free replacement.
-        ...(recallAction ? { overflowText: manifestText } : {}),
+        text: lines.join("\n"),
         values: {
-          ...(!recallAction ? { recentConversationCount: sorted.length } : {}),
+          recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,
         },
         data: { rooms },

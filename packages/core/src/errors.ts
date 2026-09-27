@@ -34,10 +34,35 @@ export interface ElizaErrorOptions {
 }
 
 /**
+ * Process-wide brand shared by every bundled copy of this module. The package
+ * root, the lean `./errors` subpath and other compiled entrypoints each inline
+ * their own `ElizaError` class, so prototype identity alone would make an error
+ * thrown through one entrypoint fail `instanceof` against another.
+ */
+const ELIZA_ERROR_BRAND: unique symbol = Symbol.for("elizaos.core.ElizaError");
+
+/**
  * Structured error with a classification `code`, optional `context`, an
  * optional `severity`, and a preserved `cause` chain.
+ *
+ * `value instanceof ElizaError` recognizes an `ElizaError` (or subclass)
+ * created by any bundled copy of this module through the shared brand.
+ * Subclasses keep ordinary prototype-chain `instanceof` semantics.
  */
 export class ElizaError extends Error {
+	static override [Symbol.hasInstance](value: unknown): boolean {
+		// biome-ignore lint/complexity/noThisInStatic: `this` is the class on the right of `instanceof`; subclasses keep prototype semantics.
+		if (this !== ElizaError) {
+			// biome-ignore lint/complexity/noThisInStatic: see above.
+			return Function.prototype[Symbol.hasInstance].call(this, value);
+		}
+		return (
+			(typeof value === "object" || typeof value === "function") &&
+			value !== null &&
+			(value as { [ELIZA_ERROR_BRAND]?: unknown })[ELIZA_ERROR_BRAND] === true
+		);
+	}
+
 	override readonly name: string = "ElizaError";
 	readonly code: string;
 	readonly retryAt?: number;
@@ -60,6 +85,10 @@ export class ElizaError extends Error {
 		Object.setPrototypeOf(this, new.target.prototype);
 	}
 }
+
+Object.defineProperty(ElizaError.prototype, ELIZA_ERROR_BRAND, {
+	value: true,
+});
 
 /**
  * A single entry in the runtime's in-memory reported-error ring, produced by

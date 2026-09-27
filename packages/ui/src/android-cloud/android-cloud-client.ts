@@ -103,6 +103,8 @@ interface AndroidCloudPendingLogin {
 
 export interface AndroidCloudClientOptions {
   cloudApiBase?: string;
+  /** Device label recorded on the mobile credential; defaults to Android. */
+  deviceName?: string;
   fetchImpl?: typeof fetch;
   credentialStore?: AndroidCloudCredentialStore;
   pendingLoginStore?: AndroidCloudPendingLoginStore;
@@ -378,6 +380,7 @@ export class AndroidCloudClient {
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
   private readonly pendingLoginStore: AndroidCloudPendingLoginStore;
+  private readonly deviceName: string;
   private pendingLogin: AndroidCloudPendingLogin | null = null;
 
   constructor(options: AndroidCloudClientOptions = {}) {
@@ -386,6 +389,7 @@ export class AndroidCloudClient {
     this.credentialStore = options.credentialStore ?? browserCredentialStore;
     this.pendingLoginStore =
       options.pendingLoginStore ?? browserPendingLoginStore;
+    this.deviceName = options.deviceName ?? "Android";
   }
 
   async readToken(): Promise<string | null> {
@@ -497,7 +501,7 @@ export class AndroidCloudClient {
     authorizePath.searchParams.set("state", state);
     authorizePath.searchParams.set("code_challenge", codeChallenge);
     authorizePath.searchParams.set("code_challenge_method", "S256");
-    authorizePath.searchParams.set("device_name", "Android");
+    authorizePath.searchParams.set("device_name", this.deviceName);
 
     const loginUrl = new URL("/login", directCloudAppBaseForApi(this.apiBase));
     loginUrl.searchParams.set(

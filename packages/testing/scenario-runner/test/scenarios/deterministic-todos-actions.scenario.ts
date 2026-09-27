@@ -285,26 +285,61 @@ async function seedTodos(ctx: ScenarioContext): Promise<string | undefined> {
   }
 }
 
-async function finalTodosCheck(
-  ctx: ScenarioContext,
-): Promise<string | undefined> {
-  const runtime =
-    (ctx.runtime as RuntimeWithPlugins | undefined) ?? scenarioRuntime;
+type TodosStateCheck = {
+  runtime: RuntimeWithPlugins;
+  service: TodosService;
+  agentId: string;
+  ownerId: string;
+  roomId: string;
+};
+
+function todosStateCheck(
+  runtime: RuntimeWithPlugins | null | undefined,
+): TodosStateCheck | string {
   if (!runtime) return "scenario runtime was not available";
   const service = runtime.getService?.(TodosService.serviceType) as
     | TodosService
     | null
     | undefined;
-  if (!service) return "TodosService missing in final check";
+  if (!service) return "TodosService missing in state check";
   if (!scenarioAgentId || !scenarioOwnerId || !scenarioRoomId) {
-    return "scenario owner identity was not retained for final checks";
+    return "scenario owner identity was not retained for state checks";
   }
-  if (!updateId || !completeId || !cancelId || !deleteId) {
-    return "seeded TODO identities were not retained for final checks";
-  }
-  const todos = await service.list({
-    entityId: scenarioOwnerId,
+  return {
+    runtime,
+    service,
     agentId: scenarioAgentId,
+    ownerId: scenarioOwnerId,
+    roomId: scenarioRoomId,
+  };
+}
+
+async function currentTodosFor(state: TodosStateCheck) {
+  return currentTodosProvider.get(
+    state.runtime as never,
+    {
+      entityId: state.ownerId,
+      roomId: state.roomId,
+      worldId: WORLD_ID,
+      content: { text: "show my todos" },
+    } as never,
+  );
+}
+
+// Runs before CLEAR: clear removes the user's whole cross-room list (#28006),
+// so the update/complete/cancel/delete effects must be proven while the rows
+// still exist.
+async function persistedTodosCheck(
+  runtime: RuntimeWithPlugins | null,
+): Promise<string | undefined> {
+  const state = todosStateCheck(runtime);
+  if (typeof state === "string") return state;
+  if (!updateId || !completeId || !cancelId || !deleteId) {
+    return "seeded TODO identities were not retained for state checks";
+  }
+  const todos = await state.service.list({
+    entityId: state.ownerId,
+    agentId: state.agentId,
     includeCompleted: true,
   });
   const byId = new Map(todos.map((todo) => [todo.id, todo]));
@@ -324,19 +359,8 @@ async function finalTodosCheck(
   if (byId.has(deleteId)) {
     failures.push("delete action left the deleted fixture row in the store");
   }
-  if (todos.some((todo) => todo.roomId === scenarioRoomId)) {
-    failures.push("clear action did not remove room-scoped write/create todos");
-  }
 
-  const providerResult = await currentTodosProvider.get(
-    runtime as never,
-    {
-      entityId: scenarioOwnerId,
-      roomId: scenarioRoomId,
-      worldId: WORLD_ID,
-      content: { text: "show my todos" },
-    } as never,
-  );
+  const providerResult = await currentTodosFor(state);
   const providerTodos = records(providerResult.data?.todos);
   if (!providerResult.text.includes("Polish TODO scenario")) {
     failures.push("CURRENT_TODOS provider did not render active updated todo");
@@ -345,6 +369,36 @@ async function finalTodosCheck(
     providerTodos.some((todo) => todo.id === completeId || todo.id === cancelId)
   ) {
     failures.push("CURRENT_TODOS provider included completed/cancelled todos");
+  }
+  return failures.length > 0 ? failures.join("\n") : undefined;
+}
+
+async function finalTodosCheck(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const state = todosStateCheck(
+    (ctx.runtime as RuntimeWithPlugins | undefined) ?? scenarioRuntime,
+  );
+  if (typeof state === "string") return state;
+  const todos = await state.service.list({
+    entityId: state.ownerId,
+    agentId: state.agentId,
+    includeCompleted: true,
+  });
+  const failures: string[] = [];
+  if (todos.length > 0) {
+    failures.push(
+      `clear left ${todos.length} of the user's todos: ${JSON.stringify(
+        todos.map((todo) => ({ id: todo.id, roomId: todo.roomId })),
+      )}`,
+    );
+  }
+  const providerResult = await currentTodosFor(state);
+  if (
+    providerResult.text !== "" ||
+    records(providerResult.data?.todos).length > 0
+  ) {
+    failures.push("CURRENT_TODOS provider still rendered todos after clear");
   }
   return failures.length > 0 ? failures.join("\n") : undefined;
 }
@@ -545,35 +599,39 @@ export default scenario({
       actionName: "TODO",
       text: "list todos",
       options: { parameters: { action: "list", includeCompleted: true } },
-      assertTurn: expectTodoTurn("list", (data) => {
-        if (!updateId || !completeId || !cancelId || !deleteId) {
-          return "seeded TODO identities were not available to list assertion";
-        }
-        if (!findTodo(data, updateId)) return "list omitted updated fixture";
-        if (!findTodo(data, completeId))
-          return "list omitted completed fixture";
-        if (!findTodo(data, cancelId)) return "list omitted cancelled fixture";
-        if (findTodo(data, deleteId)) return "list included deleted fixture";
-        return undefined;
-      }),
+      assertTurn: async (execution) =>
+        expectTodoTurn("list", (data) => {
+          if (!updateId || !completeId || !cancelId || !deleteId) {
+            return "seeded TODO identities were not available to list assertion";
+          }
+          if (!findTodo(data, updateId)) return "list omitted updated fixture";
+          if (!findTodo(data, completeId))
+            return "list omitted completed fixture";
+          if (!findTodo(data, cancelId))
+            return "list omitted cancelled fixture";
+          if (findTodo(data, deleteId)) return "list included deleted fixture";
+          return undefined;
+        })(execution) ?? (await persistedTodosCheck(scenarioRuntime)),
     },
     {
       kind: "action",
-      name: "TODO clear removes room-scoped todos",
+      name: "TODO clear removes the user's whole cross-room list",
       actionName: "TODO",
       text: "clear todos",
       options: { parameters: { action: "clear" } },
+      // Clear is user-scoped (#28006): the 3 surviving seeded rows (roomId
+      // null), the 2 full-write rows and the 1 created row are all removed.
       assertTurn: expectTodoTurn("clear", (data) =>
-        data.count === 3
+        data.count === 6
           ? undefined
-          : `expected clear count=3 for room-scoped write/create rows, saw ${String(data.count)}`,
+          : `expected clear count=6 for the user's whole list (3 seeded + 2 written + 1 created), saw ${String(data.count)}`,
       ),
     },
   ],
   finalChecks: [
     {
       type: "custom",
-      name: "real TodosService state and CURRENT_TODOS provider are exact",
+      name: "real TodosService state and CURRENT_TODOS provider are empty after clear",
       predicate: finalTodosCheck,
     },
   ],

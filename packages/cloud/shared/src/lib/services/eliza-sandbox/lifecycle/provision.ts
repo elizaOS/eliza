@@ -11,6 +11,7 @@ import {
 } from "../../../../db/repositories/agent-sandboxes";
 import {
   agentSandboxBackups,
+  agentSandboxes,
   type NewAgentSandbox,
   WARM_POOL_ORG_ID,
 } from "../../../../db/schemas/agent-sandboxes";
@@ -49,10 +50,11 @@ import {
   storedRestoreChainMatchesReviewedAuthority,
   storedRestoreChainStillCanonical,
 } from "../backup/authority.js";
-import { isPermanentlyLostSnapshot, isUnrecoverableSnapshotError } from "../backup/policy.js";
+import { isUnrecoverableSnapshotError } from "../backup/policy.js";
 import { isExplicitBackupRestore, ProvisionRestoreOverride } from "../backup/restore-contract.js";
 import { SandboxBackup } from "../backup/service.js";
 import { RuntimeAgentSummary } from "../bridge/contracts.js";
+import { SandboxLifecycleAuthority } from "./authority.js";
 import { digestPinnedImageRef } from "./image-contracts.js";
 import { isDockerBackedMetadata, isDockerSandboxMetadata } from "./provider-metadata.js";
 import { ProvisionResult, rejectNonContainerBackedProvision } from "./provision-contracts.js";
@@ -63,6 +65,114 @@ import {
 import { ElizaSandboxServiceTestHooks } from "./provision-hooks.js";
 import { SandboxReplacementCleanup } from "./replacement-cleanup.js";
 import { SandboxWarmClaim } from "./warm-claim.js";
+
+const lifecycleAuthority = new SandboxLifecycleAuthority();
+
+/** A stopped runtime retained in place holds writes that no backup covers (#30746). */
+export const RETAINED_RUNTIME_PROVISION_REFUSAL =
+  "Agent retains an unbacked runtime in place; resume it or delete it before provisioning a replacement";
+
+/**
+ * Maps a known-backup restore failure to its retry contract without ever
+ * authorizing a fresh boot or pruning the chain (#30697). Transient failures
+ * propagate unchanged so the owning job retries; failures that re-fail
+ * identically become the typed consent error that only wake's explicit
+ * forceFreshBoot can bypass.
+ */
+function restoreFailure(agentId: string, backupId: string | undefined, error: unknown): unknown {
+  if (
+    error instanceof ElizaError &&
+    error.code === "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT"
+  ) {
+    return error;
+  }
+  const reason = error instanceof Error ? error.message : String(error);
+  const permanent =
+    error instanceof SnapshotPayloadTooLargeError ||
+    isUnrecoverableSnapshotError(error) ||
+    (error instanceof ElizaError && error.code === "SNAPSHOT_RESTORE_RECONSTRUCTION_FAILED");
+  logger.error("[agent-sandbox] Backup restore failed; retained state preserved", {
+    agentId,
+    backupId,
+    retryable: !permanent,
+    backupChain: "preserved",
+    error: reason,
+  });
+  if (!permanent) return error;
+  return new ElizaError(
+    `Restore refused: ${reason}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+    {
+      code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+      cause: error,
+      context: {
+        agentId,
+        backupId,
+        ...(error instanceof SnapshotPayloadTooLargeError
+          ? { payloadBytes: error.payloadBytes, limitBytes: error.limitBytes }
+          : {}),
+      },
+      severity: "fatal",
+    },
+  );
+}
+
+/**
+ * Publishes an unfunded provision as `running` only after its restore tail
+ * applied any known backup. The CAS binds the exact lifecycle generation and
+ * adopted container, so a deletion, replacement or newer generation that won
+ * during restore cannot be reopened for customer traffic.
+ */
+async function commitProvisionReadiness(
+  expected: AgentSandbox,
+  handle: SandboxHandle,
+): Promise<AgentSandbox> {
+  return dbWrite.transaction(async (tx) => {
+    await lifecycleAuthority.lockLifecycle(tx, expected.id, expected.organization_id);
+    const current = await lifecycleAuthority.getAgentForLifecycleMutation(
+      tx,
+      expected.id,
+      expected.organization_id,
+    );
+    if (
+      !current ||
+      current.status !== "provisioning" ||
+      current.lifecycle_revision !== expected.lifecycle_revision ||
+      current.environment_revision !== expected.environment_revision ||
+      current.lifecycle_job_id !== expected.lifecycle_job_id ||
+      current.lifecycle_execution_generation !== expected.lifecycle_execution_generation ||
+      current.sandbox_id !== handle.sandboxId ||
+      current.bridge_url !== handle.bridgeUrl ||
+      current.health_url !== handle.healthUrl ||
+      current.replacement_cleanup_sandbox_id !== null ||
+      current.deletion_attempt_id !== null ||
+      current.deleted_at !== null
+    ) {
+      throw new ElizaError("Provision readiness generation changed before restore commit", {
+        code: "PROVISION_READINESS_CAS_MISSED",
+        context: { agentId: expected.id, sandboxId: handle.sandboxId },
+      });
+    }
+    const now = new Date();
+    const [ready] = await tx
+      .update(agentSandboxes)
+      .set({ status: "running", error_message: null, last_heartbeat_at: now, updated_at: now })
+      .where(
+        and(
+          eq(agentSandboxes.id, current.id),
+          eq(agentSandboxes.organization_id, current.organization_id),
+          eq(agentSandboxes.status, "provisioning"),
+        ),
+      )
+      .returning();
+    if (!ready) {
+      throw new ElizaError("Provision readiness CAS matched no row", {
+        code: "PROVISION_READINESS_CAS_MISSED",
+        context: { agentId: expected.id },
+      });
+    }
+    return ready;
+  });
+}
 export interface SandboxProvisionHost {
   getProvisionTestHooks(): ElizaSandboxServiceTestHooks | undefined;
   retireFailedWarmClaimForRetry(
@@ -102,6 +212,9 @@ export interface SandboxProvisionHost {
   transferReplacementToPrimary(
     ...args: Parameters<SandboxReplacementCleanup["transferReplacementToPrimary"]>
   ): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]>;
+  fenceAdoptedProvisionForCleanup(
+    ...args: Parameters<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>
+  ): ReturnType<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>;
   pushState(
     ...args: Parameters<SandboxBackup["pushState"]>
   ): ReturnType<SandboxBackup["pushState"]>;
@@ -112,11 +225,11 @@ export class SandboxProvision {
   /**
    * `restoreOverride` narrows step 5's backup restore for callers that have
    * already decided the restore source: `executeWake` (#15603 B6) and manual
-   * `restore()`. `from-backup` restores a specific validated backup and NEVER
-   * degrades an unrecoverable restore error to a fresh boot; manual restore also
-   * requires the endpoint, while wake retains its custom-image 404 compatibility
-   * skip. `fresh-boot` skips restore after explicit data-loss consent. Omitted:
-   * latest-backup auto-restore with the designed unrecoverable-snapshot degrade.
+   * `restore()`. `from-backup` restores a specific validated backup. `fresh-boot`
+   * skips restore after explicit data-loss consent. Omitted: latest-backup
+   * auto-restore. No lane degrades a known-backup failure to a fresh boot or
+   * prunes the chain, and the row stays non-routable until restore commits
+   * (#30697).
    */
   async provision(
     agentId: string,
@@ -215,6 +328,13 @@ export class SandboxProvision {
         if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
         const cleanupTierRejection = rejectNonContainerBackedProvision(candidate);
         if (cleanupTierRejection) return cleanupTierRejection;
+      }
+      if (candidate.retained_runtime) {
+        return {
+          success: false,
+          sandboxRecord: candidate,
+          error: RETAINED_RUNTIME_PROVISION_REFUSAL,
+        };
       }
       previousStatus = candidate.status;
       const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
@@ -555,11 +675,13 @@ export class SandboxProvision {
                     await this.host.ensureRuntimeAgentStarted(runtimeRec);
                     // 4. Persist the reachable container and provider-specific metadata.
                     //
-                    // Funded containers remain non-public until the complete restore tail
-                    // commits readiness. A crash leaves a retryable provisioning row.
-                    // Pool rows similarly remain unclaimable until their final readiness CAS.
+                    // Every container remains non-routable (`provisioning`) until the
+                    // restore tail commits readiness (#30697): the proxy readiness gate
+                    // must not open while a known backup is still unapplied. A crash
+                    // leaves a retryable provisioning row. Pool rows similarly remain
+                    // unclaimable until their final readiness CAS.
                     const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-                        status: computeFundingId || recoveringPendingWarmClaim || isWarmPoolProvision ? "provisioning" : "running",
+                        status: "provisioning",
                         sandbox_id: handle.sandboxId,
                         bridge_url: handle.bridgeUrl,
                         health_url: handle.healthUrl,
@@ -603,41 +725,25 @@ export class SandboxProvision {
                     }
                     const updated = await this.host.transferReplacementToPrimary(rec.id, rec.organization_id, handle, rec.environment_revision, updateData);
                     rec = updated;
-                    // Re-enter the billable set on every successful provision. A
-                    // credit-suspended agent (billing_status='suspended') that a user tops
-                    // up and resumes/wakes via the user-facing routes would otherwise run
-                    // (status='running') permanently EXCLUDED from listBillableSandboxes =
-                    // free dedicated compute forever. The service-key resume/restart routes
-                    // already reactivate; do it here so ALL provision paths re-enter billing.
-                    // Idempotent + exempt-guarded (ne billing_status 'exempt').
-                    if (!computeFundingId) {
-                        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
-                    }
                     // 5. Restore from backup (reconstructs incrementals back to a full).
                     //
-                    // The snapshot holds only volatile in-memory session state — the agent's
-                    // identity, config, and durable data live in the DB record — so an
-                    // UNRECOVERABLE snapshot degrades to a FRESH boot instead of failing the
-                    // whole provision closed (error-policy:J4 designed degrade — the state is
-                    // unrestorable regardless of retries, so booting without prior in-memory
-                    // state is correct, not a fabricated success). Two unrecoverable shapes,
-                    // classified by `isUnrecoverableSnapshotError`: UNDECRYPTABLE (the org
-                    // DEK that encrypted it is gone — the ephemeral `memory` KMS backend
-                    // rotates its key on every restart — or the bytes are corrupt) and
-                    // UNRESTORABLE (the restore push is rejected with a permanent HTTP
-                    // status; HQ 14308 bricked an agent on a deterministic 401). Degrading on
-                    // FIRST detection matters: these failures re-fail identically on every
-                    // attempt, so retrying only burns the provision attempts and lands in
-                    // markError. A transient DB/IO/network/5xx error is rethrown so the
-                    // provision fails and the resume job retries rather than silently
-                    // discarding recoverable state.
+                    // A known backup is the agent's retained state. Every lookup,
+                    // reconstruction or application failure fails this provision and
+                    // leaves the stored chain intact (#30697): nothing here prunes, and
+                    // nothing boots a reachable empty runtime around a known backup.
+                    // Transient failures (5xx, network, DB) propagate unchanged so the
+                    // job retries. Failures that cannot heal on retry (crypto, 401/403,
+                    // 404/410, an image without the restore endpoint, null
+                    // reconstruction, size refusal) become the typed consent error:
+                    // the only way to boot without that state is wake's explicit
+                    // forceFreshBoot. First creation without a backup is unaffected.
                     let backup: Awaited<ReturnType<typeof agentSandboxesRepository.getLatestBackup>>;
                     let restoreState: Awaited<ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>>;
                     if (restoreOverride?.kind === "fresh-boot" ||
                         restoreOverride?.kind === "reviewed-fresh-boot") {
                         // Explicit opt-in (wake forceFreshBoot): the caller accepted the
-                        // data loss, so no backup is read, degraded, or pruned — the stored
-                        // chain stays intact for a later explicit restore.
+                        // data loss, so no backup is read or pruned — the stored chain
+                        // stays intact for a later explicit restore.
                         backup = undefined;
                         restoreState = undefined;
                         logger.warn("[agent-sandbox] Backup restore skipped: explicit fresh boot requested", {
@@ -663,45 +769,21 @@ export class SandboxProvision {
                                 : backup
                                     ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
                                     : undefined;
-                            if (isExplicitBackupRestore(restoreOverride) && !restoreState) {
-                                // The exact row can disappear or leave the legacy-visible lane
-                                // between lookup and chain reconstruction. An explicit restore
-                                // must fail closed instead of booting a reachable empty runtime.
-                                throw new Error(`Restore backup ${restoreOverride.backupId} could not be reconstructed`);
-                            }
-                        }
-                        catch (error) {
-                            // An explicitly-requested backup must NEVER silently degrade to a
-                            // fresh boot — the caller opted into THAT restore point, so a
-                            // failure here fails the provision (retryable by the wake job)
-                            // instead of booting empty (#15603 B6).
-                            // Ordered before the from-backup rethrow: the gated wake ALWAYS
-                            // passes `from-backup`, so checking that first would swallow the
-                            // consent sentence on the one path where the consent mechanism
-                            // exists.
-                            if (error instanceof SnapshotPayloadTooLargeError) {
-                                // Size refusal fails CLOSED even on an ordinary provision: the
-                                // chain is intact, only too large — booting empty would silently
-                                // drop every byte of it. The one consent path is wake's
-                                // forceFreshBoot.
-                                throw new ElizaError(`Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`, {
-                                    code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
-                                    cause: error,
-                                    context: {
-                                        agentId: rec.id,
-                                        payloadBytes: error.payloadBytes,
-                                        limitBytes: error.limitBytes,
-                                    },
+                            if (backup && !restoreState) {
+                                // The row can disappear or leave the legacy-visible lane
+                                // between lookup and chain reconstruction. A known backup
+                                // that cannot be reconstructed is a recovery failure, not
+                                // permission to boot a reachable empty runtime.
+                                throw new ElizaError(`Restore backup ${backup.id} could not be reconstructed`, {
+                                    code: "SNAPSHOT_RESTORE_RECONSTRUCTION_FAILED",
+                                    context: { agentId: rec.id, backupId: backup.id },
                                     severity: "fatal",
                                 });
                             }
-                            if (isExplicitBackupRestore(restoreOverride))
-                                throw error;
-                            if (!isUnrecoverableSnapshotError(error))
-                                throw error;
-                            await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
-                            backup = undefined;
-                            restoreState = undefined;
+                        }
+                        catch (error) {
+                            // error-policy:J1 translate unrecoverable restore failures to the consent contract.
+                            throw restoreFailure(rec.id, backup?.id, error);
                         }
                     }
                     if (restoreState) {
@@ -733,61 +815,23 @@ export class SandboxProvision {
                             }
                         }
                         catch (error) {
-                            const message = error instanceof Error ? error.message : String(error);
-                            const missingCustomRestoreEndpoint = rec.execution_tier === "custom" &&
-                                message.startsWith("State restore failed: HTTP 404");
-                            if (error instanceof SnapshotPayloadTooLargeError) {
-                                // Ordered before the from-backup rethrow for the same reason as
-                                // the fetch branch: a gated wake would otherwise never see the
-                                // consent sentence.
-                                throw new ElizaError(`Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`, {
-                                    code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
-                                    cause: error,
-                                    context: {
-                                        agentId: rec.id,
-                                        payloadBytes: error.payloadBytes,
-                                        limitBytes: error.limitBytes,
-                                    },
-                                    severity: "fatal",
-                                });
-                            }
-                            else if (isExplicitBackupRestore(restoreOverride) &&
-                                (restoreOverride.kind === "from-reviewed-backup" ||
-                                    restoreOverride.requireRestoreEndpoint ||
-                                    !missingCustomRestoreEndpoint)) {
-                                // Same no-silent-fresh-boot rule as the fetch above: an explicit
-                                // restore point that cannot be pushed fails the provision. A
-                                // manual restore requires the endpoint because restore() reports
-                                // that exact point as applied; the historical wake lane alone
-                                // keeps its custom-image 404 compatibility skip (#15603 B6).
-                                throw error;
-                            }
-                            else if (missingCustomRestoreEndpoint) {
-                                // Ordinary custom-image provisions may legitimately lack the
-                                // restore endpoint. Keep the snapshot intact for a future image;
-                                // manual restores opt into strict endpoint enforcement above.
-                                logger.info("[agent-sandbox] Backup restore skipped: custom image has no restore endpoint", {
-                                    agentId: rec.id,
-                                    backupId: backup?.id,
-                                });
-                            }
-                            else if (isUnrecoverableSnapshotError(error)) {
-                                await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
-                            }
-                            else {
-                                throw error;
-                            }
+                            // error-policy:J1 translate unrecoverable restore failures to the consent contract.
+                            throw restoreFailure(rec.id, backup?.id, error);
                         }
                     }
-                    else if (backup) {
-                        logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
-                            agentId: rec.id,
-                            backupId: backup.id,
-                        });
+                    // Re-enter the billable set only once the retained state is
+                    // applied. A credit-suspended agent (billing_status='suspended')
+                    // that a user tops up and resumes/wakes would otherwise run
+                    // permanently EXCLUDED from listBillableSandboxes. Idempotent and
+                    // exempt-guarded. Funded compute owns its own billing window.
+                    if (!computeFundingId) {
+                        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
                     }
                     let completed = computeFundingId
                         ? await completeProvisionCompute(updated, computeFundingId, handle)
-                        : updated;
+                        : recoveringPendingWarmClaim || isWarmPoolProvision
+                            ? updated
+                            : await commitProvisionReadiness(updated, handle);
                     if (isWarmPoolProvision) {
                         const ready = await agentSandboxesRepository.commitPoolEntryReady(updated);
                         if (!ready) {
@@ -857,15 +901,44 @@ export class SandboxProvision {
                             skipFundingCleanup = true;
                         }
                         const current = await agentSandboxesRepository.findByIdAndOrg(rec.id, rec.organization_id);
+                        let retiredExactly = false;
                         if (current && this.host.getReplacementCleanupLocator(current)) {
                             await this.host.retirePersistedReplacementCleanup(rec.id, rec.organization_id, undefined, undefined, "lifecycle", handle);
+                            retiredExactly = true;
+                        }
+                        else if (!computeFundingId && isDockerBackedMetadata(handle.metadata)) {
+                            // Adoption cleared the create-time fence. The container name
+                            // is reusable, so delayed teardown by name could resolve a
+                            // healthy successor (#29678). Re-fence the exact node,
+                            // immutable container ID, attempt label and VPN identity,
+                            // then retire through the same exact authority. Incomplete
+                            // identity throws and stays a retryable cleanup failure.
+                            await this.host.fenceAdoptedProvisionForCleanup(rec.id, rec.organization_id, handle, rec.environment_revision);
+                            await this.host.retirePersistedReplacementCleanup(rec.id, rec.organization_id, undefined, undefined, "lifecycle", handle);
+                            retiredExactly = true;
                         }
                         else if (!computeFundingId) {
+                            // Non-Docker providers own no reusable fleet name.
                             const provider = await this.host.getProvider();
                             if (!provider.stopForReplacement) {
                                 throw new Error("Sandbox provider cannot prove failed provision absent");
                             }
                             await provider.stopForReplacement(handle.sandboxId);
+                        }
+                        if (retiredExactly) {
+                            // The fence writes advanced the lifecycle revision under this
+                            // provision's own authority. Rebind the failure mark only when
+                            // generation and job ownership are otherwise unchanged, so the
+                            // failed recovery stays visible instead of a stale CAS miss.
+                            const retired = await agentSandboxesRepository.findByIdAndOrgForWrite(rec.id, rec.organization_id);
+                            if (retired &&
+                                retired.environment_revision === rec.environment_revision &&
+                                retired.lifecycle_job_id === rec.lifecycle_job_id &&
+                                retired.lifecycle_execution_generation === rec.lifecycle_execution_generation &&
+                                retired.deletion_attempt_id === null &&
+                                retired.replacement_cleanup_sandbox_id === null) {
+                                rec = retired;
+                            }
                         }
                     }
                     catch (stopErr) {
@@ -927,49 +1000,6 @@ export class SandboxProvision {
                 }
             }
         }
-  }
-  /**
-   * The single degrade path for a snapshot `isUnrecoverableSnapshotError`
-   * cannot restore on THIS provision (#15210): log it loudly, then boot fresh
-   * instead of bricking the agent. Never throws — the caller continues to a
-   * fresh boot, which must not be derailed by cleanup.
-   *
-   * Pruning the backup chain is gated on `isPermanentlyLostSnapshot` (#15274):
-   * only drop it when the snapshot can NEVER be restored (crypto corruption /
-   * gone-key, or HTTP 404/410). For a RECOVERABLE auth failure (401/403) we
-   * still boot fresh but PRESERVE the chain, so a later token-corrected resume
-   * (#15263) can restore it — pruning a recoverable snapshot on a transient 401
-   * is silent, permanent data loss (`pruneBackups(agentId, 0)` deletes the
-   * whole chain and there is no undo).
-   */
-  async degradeUnrecoverableSnapshot(
-    agentId: string,
-    backupId: string | undefined,
-    error: unknown,
-  ): Promise<void> {
-    const permanentlyLost = isPermanentlyLostSnapshot(error);
-    logger.error("[agent-sandbox] Unrecoverable snapshot, booting fresh", {
-      agentId,
-      backupId,
-      permanentlyLost,
-      // A recoverable auth failure keeps the chain for the next authenticated
-      // resume; a permanent loss drops it so the next resume boots clean.
-      backupChain: permanentlyLost ? "pruned" : "preserved",
-      error: error instanceof Error ? error.message : String(error),
-    });
-    // Preserve the chain on a recoverable failure (auth 401/403): a
-    // token-corrected resume can still restore it, so pruning here would be
-    // silent, permanent data loss (#15274).
-    if (!permanentlyLost) return;
-    // error-policy:J6 best-effort — a failed prune only means we warn + degrade
-    // again next boot, never that we fail to boot fresh, so it must not throw
-    // out of the provision.
-    await agentSandboxesRepository.pruneBackups(agentId, 0).catch((pruneErr) => {
-      logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
-        agentId,
-        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
-      });
-    });
   }
   async markError(rec: AgentSandbox, msg: string) {
     return agentSandboxesRepository.markProvisionFailed(rec, msg);

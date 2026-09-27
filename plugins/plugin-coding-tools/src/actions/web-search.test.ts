@@ -128,13 +128,30 @@ describe("coding-tools WEB_SEARCH", () => {
     });
   });
 
-  it("returns a clear failure when Parallel fails", async () => {
+  it("reports a Parallel outage as unavailable, not no_match", async () => {
     mockSearchProviders({});
 
     const result = await runSearch({ query: "no providers" });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("search returned no usable results");
+    expect(result.text).toContain("io_error");
+    expect(result.text).not.toContain("no_match");
+    expect(result.data).toMatchObject({
+      provider: "parallel",
+      unavailable: true,
+      unavailable_reason: "http_error",
+    });
+  });
+
+  it("reports a successful zero-hit search as no_match", async () => {
+    mockSearchProviders({
+      parallel: mcpJson(JSON.stringify({ search_id: "s", results: [] })),
+    });
+
+    const result = await runSearch({ query: "nothing matches" });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("no_match");
   });
 
   it("requires a query", async () => {

@@ -937,6 +937,31 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
               "Subscription plans are temporarily unavailable. Please try again.",
             ),
           ).toHaveCount(0);
+
+          // #31531: the renewal disclosure and Open billing link must be
+          // reachable with real wheel input. Programmatic scrollIntoView would
+          // also scroll an overflow-hidden root, so it cannot prove this.
+          const openBilling = page.getByRole("link", {
+            name: "Open billing",
+            exact: true,
+          });
+          await page.mouse.move(vp.width / 2, vp.height / 2);
+          await expect
+            .poll(
+              async () => {
+                const inView = await openBilling.evaluate((el) => {
+                  const r = el.getBoundingClientRect();
+                  return r.top >= 0 && r.bottom <= window.innerHeight;
+                });
+                if (!inView) await page.mouse.wheel(0, 400);
+                return inView;
+              },
+              { timeout: 10_000 },
+            )
+            .toBe(true);
+          await page
+            .getByTestId("pricing-page-scroll")
+            .evaluate((el) => el.scrollTo({ top: 0 }));
         }
 
         const billingEvidenceTarget =

@@ -260,7 +260,7 @@ export class SnapshotBudget {
     this.fileCount += 1;
     if (this.fileCount > this.maxFiles) {
       throw new AgentSnapshotBudgetExceededError(
-        "file capture",
+        "file count",
         this.fileCount,
         this.maxFiles,
       );

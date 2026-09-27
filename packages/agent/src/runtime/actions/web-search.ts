@@ -30,7 +30,10 @@ import type {
   State,
 } from "@elizaos/core";
 
-import { searchBrowserFirstWeb } from "@elizaos/plugin-web-search/browser-web-search";
+import {
+  isKeylessWebSearchUnavailableError,
+  searchBrowserFirstWeb,
+} from "@elizaos/plugin-web-search/browser-web-search";
 
 function readBooleanEnv(name: string): boolean | undefined {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -158,6 +161,27 @@ export const webSearch: Action & Record<string, unknown> = {
     } catch (err) {
       // error-policy:J1 Action failures are returned to the planner for recovery.
       const message = err instanceof Error ? err.message : String(err);
+      if (isKeylessWebSearchUnavailableError(err)) {
+        // A provider outage is not an empty search: say so, with retry timing.
+        const text = `Web search is temporarily unavailable (${err.reason}); no results were retrieved for "${query}".`;
+        callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: {
+            actionName: "WEB_SEARCH",
+            query,
+            unavailable: true,
+            provider: err.provider,
+            reason: err.reason,
+            ...(err.status !== undefined ? { status: err.status } : {}),
+            ...(err.retryAfterMs !== undefined
+              ? { retryAfterMs: err.retryAfterMs }
+              : {}),
+          },
+          error: message,
+        };
+      }
       const text = `Web search failed for "${query}": ${message}`;
       callback?.({ text });
       return {

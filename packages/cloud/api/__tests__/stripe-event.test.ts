@@ -28,6 +28,10 @@ const refundCredits = mock(async () => ({
   newBalance: 100,
 }));
 const failChargeAndEnqueue = mock(async () => undefined);
+const recordLostChargebackHold = mock(async () => ({
+  hold: { id: "hold-1" },
+  created: true,
+}));
 const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
 const retrieveInvoice = mock(async (id: string) => ({
@@ -76,6 +80,9 @@ mock.module("@/db/repositories/users", () => ({
 mock.module("@/db/schemas/agent-sandboxes", () => ({ agentSandboxes: {} }));
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: mock(async () => Response.json({ ok: true })),
+}));
+mock.module("@/db/repositories/payment-reversal-holds", () => ({
+  recordLostChargebackHold,
 }));
 mock.module("@/lib/services/app-charge-callbacks", () => ({
   appChargeCallbacksService: { failChargeAndEnqueue },
@@ -188,6 +195,7 @@ beforeEach(() => {
   clawbackCredits.mockClear();
   refundCredits.mockClear();
   failChargeAndEnqueue.mockClear();
+  recordLostChargebackHold.mockClear();
   getByStripeInvoiceId.mockClear();
   getByStripeInvoiceId.mockResolvedValue(null);
   createInvoice.mockClear();
@@ -700,6 +708,60 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       ),
     ).toBe("ack");
     expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test("a lost dispute places one organization hold without touching credits", async () => {
+    getTransactionByStripePaymentIntent.mockResolvedValue({
+      id: "tx-grant",
+      organization_id: "org-1",
+      amount: "45",
+      type: "credit",
+    });
+    const lost = {
+      id: "dp_lost",
+      status: "lost",
+      amount: 4500,
+      charge: "ch_1",
+      payment_intent: "pi_1",
+    };
+    expect(
+      await processStripeEvent(delivery("charge.dispute.closed", lost)),
+    ).toBe("ack");
+    expect(recordLostChargebackHold).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      stripeDisputeId: "dp_lost",
+      stripeChargeId: "ch_1",
+      stripePaymentIntentId: "pi_1",
+      amountCents: 4500,
+    });
+    expect(clawbackCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test("won disputes and lost disputes without a credit grant place no hold", async () => {
+    expect(
+      await processStripeEvent(
+        delivery("charge.dispute.closed", {
+          id: "dp_won",
+          status: "won",
+          amount: 4500,
+          charge: "ch_1",
+          payment_intent: "pi_1",
+        }),
+      ),
+    ).toBe("ack");
+    expect(
+      await processStripeEvent(
+        delivery("charge.dispute.closed", {
+          id: "dp_unattributed",
+          status: "lost",
+          amount: 4500,
+          charge: "ch_2",
+          payment_intent: "pi_no_grant",
+        }),
+      ),
+    ).toBe("ack");
+    expect(recordLostChargebackHold).not.toHaveBeenCalled();
   });
 
   test("acks a lookup whose error message is a permanent 'not found'", async () => {

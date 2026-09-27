@@ -6,6 +6,13 @@
  * relationships, rooms, participants, worlds, tasks, and optionally logs)
  * into a single password-encrypted binary file (.eliza-agent).
  *
+ * Secrets: by default the bundle carries the agent's complete configuration,
+ * including the decrypted `secrets` and `settings.secrets` containers from the
+ * stored agent record, so a migration restores provider credentials on the
+ * new install. The bundle password is the only barrier. Pass
+ * `excludeSecrets: true` for a credential-free bundle; both containers are
+ * then removed from the agent record and the runtime character config.
+ *
  * Encryption: PBKDF2-SHA256 key derivation + AES-256-GCM
  * Compression: gzip
  *
@@ -26,6 +33,7 @@ import {
   type AgentRuntime,
   type CanonicalJsonOptions,
   type Character,
+  type CharacterSettings,
   type Component,
   canonicalJsonString,
   ElizaError,
@@ -82,6 +90,13 @@ const MAX_IMPORT_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB safety cap
 export interface AgentExportOptions {
   /** Include execution logs in the export. Can be large. Defaults to false. */
   includeLogs?: boolean;
+  /**
+   * Remove both secret containers (`secrets` and `settings.secrets`) from the
+   * agent record and the runtime character config before they enter the
+   * bundle. Defaults to false: a migration bundle carries the agent's
+   * credentials, protected by the bundle password.
+   */
+  excludeSecrets?: boolean;
 }
 
 export interface AgentExportPayload {
@@ -210,6 +225,8 @@ export const AGENT_EXPORT_CANONICALIZE_UNBOUNDED =
 
 /** Default classification for export/import failures without a finer code. */
 export const AGENT_EXPORT_FAILED = "AGENT_EXPORT_FAILED";
+/** Secret exclusion was requested but the agent's `settings` is not an object. */
+export const AGENT_EXPORT_INVALID_SETTINGS = "AGENT_EXPORT_INVALID_SETTINGS";
 
 /**
  * Export/import domain failure. Extends {@link ElizaError} so every throw site
@@ -712,6 +729,45 @@ async function gunzipWithSizeLimit(
 }
 
 // ---------------------------------------------------------------------------
+// Secret stripping
+// ---------------------------------------------------------------------------
+
+/** A character-shaped record with both secret containers removed. */
+type WithoutCharacterSecrets<T extends Partial<Character>> = Omit<
+  T,
+  "secrets" | "settings"
+> & { settings?: Omit<CharacterSettings, "secrets"> };
+
+/**
+ * Remove every secret container the character encryption boundary knows about:
+ * `secrets` and `settings.secrets` (the two containers core's
+ * `encryptedCharacter` / `decryptedCharacter` transform). The SQL adapter hands
+ * back `settings.secrets` decrypted, so a credential-free export must strip the
+ * DB agent record as well as the runtime character. Every other field is kept.
+ */
+function stripCharacterSecrets<T extends Partial<Character>>(
+  value: T,
+): WithoutCharacterSecrets<T> {
+  const { secrets: _secrets, settings, ...rest } = value;
+  if (settings === undefined || settings === null) {
+    return rest as WithoutCharacterSecrets<T>;
+  }
+  if (typeof settings !== "object" || Array.isArray(settings)) {
+    throw new AgentExportError(
+      "Agent settings must be an object to strip secrets from it.",
+      {
+        code: AGENT_EXPORT_INVALID_SETTINGS,
+        context: {
+          settingsType: Array.isArray(settings) ? "array" : typeof settings,
+        },
+      },
+    );
+  }
+  const { secrets: _settingsSecrets, ...safeSettings } = settings;
+  return { ...rest, settings: safeSettings } as WithoutCharacterSecrets<T>;
+}
+
+// ---------------------------------------------------------------------------
 // Data extraction
 // ---------------------------------------------------------------------------
 
@@ -748,12 +804,16 @@ async function extractAgentData(
 
   logger.info(`[agent-export] Extracting data for agent ${agentId}`);
 
-  // 1. Agent record
+  // 1. Agent record. The adapter returns `settings.secrets` decrypted; it stays
+  // in the bundle unless the caller asked for a credential-free export.
   const agents = await db.getAgentsByIds([agentId]);
-  const agent = agents[0];
-  if (!agent) {
+  const storedAgent = agents[0];
+  if (!storedAgent) {
     throw new AgentExportError(`Agent ${agentId} not found in database.`);
   }
+  const agent: Partial<Agent> = options.excludeSecrets
+    ? stripCharacterSecrets(storedAgent)
+    : storedAgent;
 
   // 2. Worlds owned by this agent
   const allWorlds = await db.getAllWorlds();
@@ -909,8 +969,13 @@ async function extractAgentData(
   // messageExamples, postExamples, knowledge sources, etc.)
   let characterConfig: Omit<Character, "secrets"> | undefined;
   if (runtime.character) {
-    // Clone and strip secrets/sensitive fields
-    const { secrets: _secrets, ...safeChar } = runtime.character;
+    // Top-level `secrets` never enters characterConfig (the agent record is the
+    // credential carrier); a credential-free export also drops
+    // `settings.secrets`.
+    const { secrets: _secrets, ...charWithoutRootSecrets } = runtime.character;
+    const safeChar = options.excludeSecrets
+      ? stripCharacterSecrets(runtime.character)
+      : charWithoutRootSecrets;
     characterConfig = safeChar;
     logger.info(
       `[agent-export] Captured runtime character config (${Object.keys(safeChar).length} fields)`,
@@ -1338,6 +1403,7 @@ export async function exportAgent(
 
   const payload = await extractAgentData(runtime, {
     includeLogs: options.includeLogs ?? false,
+    excludeSecrets: options.excludeSecrets ?? false,
   });
 
   // Extraction has already applied the bounded manifest walk to each collection.

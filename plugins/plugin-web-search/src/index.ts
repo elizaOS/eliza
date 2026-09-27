@@ -34,9 +34,12 @@ export {
     webSearchSourceUrls,
 } from "./edge";
 export {
+    isKeylessWebSearchUnavailableError,
+    type KeylessWebSearchFailureReason,
     type KeylessWebSearchFetch,
     type KeylessWebSearchOptions,
     type KeylessWebSearchProvider,
     type KeylessWebSearchResult,
+    KeylessWebSearchUnavailableError,
     searchKeylessWeb,
 } from "./keyless-web-search";

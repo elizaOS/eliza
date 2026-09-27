@@ -39,21 +39,14 @@ describe("getStage1RoutingRepair", () => {
       contexts: ["notes"],
       replyEffectStatus: "non_applied",
       intents: ["open Notes", "read the grocery note"],
-      visualContinuation: {
-        disposition: "requested",
-        navigationOnly: false,
-        singleViewOnly: true,
-      },
+      visualContinuation: { disposition: "planning" },
     });
     delete raw.candidateActionNames;
     const repair = getStage1RoutingRepair(raw);
     expect(repair).toContain("retain every pending outcome");
     expect(repair).toContain("read the grocery note");
   });
-  it.each([
-    { disposition: "none", singleViewOnly: false, navigationOnly: false },
-    { disposition: "requested", singleViewOnly: false, navigationOnly: true },
-  ])(
+  it.each([{ disposition: "none" }])(
     "reviews contradictory navigation fields before effects: %j",
     (visualContinuation) => {
       expect(
@@ -80,16 +73,14 @@ describe("getStage1RoutingRepair", () => {
           replyEffectStatus: "applied",
           candidateActionNames: ["VIEWS_SHOW"],
           visualContinuation: {
-            disposition: "requested",
-            singleViewOnly: true,
-            navigationOnly: true,
+            disposition: "direct",
           },
         }),
       ),
     ).toBeDefined();
   });
 
-  it.each(["forbidden", "unresolved", "requested"])(
+  it.each(["forbidden", "unresolved", "planning"])(
     "does not override %s navigation with candidate hints",
     (disposition) => {
       expect(
@@ -101,8 +92,6 @@ describe("getStage1RoutingRepair", () => {
             candidateActionNames: ["VIEWS_SHOW", "NOTES_GET"],
             visualContinuation: {
               disposition,
-              singleViewOnly: true,
-              navigationOnly: false,
             },
           }),
         ),
