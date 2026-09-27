@@ -3,6 +3,8 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
+import { type Organization, organizations } from "../schemas/organizations";
+import { type User, users } from "../schemas/users";
 
 export type { ApiKey, NewApiKey };
 
@@ -60,6 +62,32 @@ export class ApiKeysRepository {
     return await dbRead.query.apiKeys.findFirst({
       where: eq(apiKeys.key_hash, hash),
     });
+  }
+
+  /**
+   * Reads the key, its owning user, and that user's organization from the
+   * primary in one statement. Callers keep their own rejection ordering; a
+   * missing user or organization is returned as null rather than filtered.
+   */
+  async findIdentityByHashConsistent(hash: string): Promise<
+    | {
+        apiKey: ApiKey;
+        user: (User & { organization: Organization | null }) | null;
+      }
+    | undefined
+  > {
+    const [row] = await dbWrite
+      .select({ apiKey: apiKeys, user: users, organization: organizations })
+      .from(apiKeys)
+      .leftJoin(users, eq(users.id, apiKeys.user_id))
+      .leftJoin(organizations, eq(organizations.id, users.organization_id))
+      .where(eq(apiKeys.key_hash, hash))
+      .limit(1);
+    if (!row) return undefined;
+    return {
+      apiKey: row.apiKey,
+      user: row.user ? { ...row.user, organization: row.organization } : null,
+    };
   }
 
   /** Reads any matching row from the primary, including inactive mobile credentials. */
