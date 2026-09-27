@@ -377,7 +377,7 @@ function EmailCallbackContent() {
         ? t("cloud.emailCallback.continueToEliza", {
             defaultValue: "Continue to Eliza",
           })
-        : t("cloud.emailCallback.continue", {
+        : t("common.continue", {
             defaultValue: "Continue",
           });
     return (

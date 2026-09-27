@@ -2066,7 +2066,7 @@ export default function StewardLoginSection() {
               )
             }
           >
-            {t("cloud.emailCallback.continue", { defaultValue: "Continue" })}
+            {t("common.continue", { defaultValue: "Continue" })}
           </Button>
         </div>
       </ReservedLoginFrame>
