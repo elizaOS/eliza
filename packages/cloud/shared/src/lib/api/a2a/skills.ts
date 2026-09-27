@@ -27,6 +27,7 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   getSupportedImageModelDefinition,
 } from "../../services/ai-pricing-definitions";
+import { reserveAllowanceEligibleCredits } from "../../services/allowance-first-credits";
 import {
   createHostedBrowserSession,
   deleteHostedBrowserSession,
@@ -40,11 +41,7 @@ import {
 import { charactersService } from "../../services/characters/characters";
 import { containersService } from "../../services/containers";
 import { conversationsService } from "../../services/conversations";
-import {
-  type CreditReservation,
-  creditsService,
-  InsufficientCreditsError,
-} from "../../services/credits";
+import { type CreditReservation, InsufficientCreditsError } from "../../services/credits";
 import { generationsService } from "../../services/generations";
 import { executeHostedGoogleSearch } from "../../services/google-search";
 import { memoryService } from "../../services/memory";
@@ -114,11 +111,12 @@ export async function executeSkillChatCompletion(
   // Reserve credits BEFORE the operation (TOCTOU-safe)
   let reservation: CreditReservation;
   try {
-    reservation = await creditsService.reserve({
+    reservation = await reserveAllowanceEligibleCredits("ai_inference", {
       organizationId: ctx.user.organization_id,
       amount: estimatedCost,
       userId: ctx.user.id,
       description: `A2A chat: ${model}`,
+      operationKey: { prefix: "a2a:", identity: crypto.randomUUID() },
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -377,11 +375,12 @@ export async function executeSkillImageGeneration(
   // Reserve credits BEFORE the operation (TOCTOU-safe)
   let reservation: CreditReservation;
   try {
-    reservation = await creditsService.reserve({
+    reservation = await reserveAllowanceEligibleCredits("media_generation", {
       organizationId: ctx.user.organization_id,
       amount: imageCost.totalCost,
       userId: ctx.user.id,
       description: "A2A image generation",
+      operationKey: { prefix: "a2a:", identity: crypto.randomUUID() },
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -532,11 +531,12 @@ export async function executeSkillSaveMemory(
   // Reserve credits BEFORE the operation (TOCTOU-safe)
   let reservation: CreditReservation;
   try {
-    reservation = await creditsService.reserve({
+    reservation = await reserveAllowanceEligibleCredits("ai_inference", {
       organizationId: ctx.user.organization_id,
       amount: SAVE_MEMORY_PRICE_USD,
       userId: ctx.user.id,
       description: `A2A memory: ${type}`,
+      operationKey: { prefix: "a2a:", identity: crypto.randomUUID() },
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -627,11 +627,12 @@ export async function executeSkillCreateConversation(
   // Reserve credits BEFORE the operation (TOCTOU-safe)
   let reservation: CreditReservation;
   try {
-    reservation = await creditsService.reserve({
+    reservation = await reserveAllowanceEligibleCredits("ai_inference", {
       organizationId: ctx.user.organization_id,
       amount: COST,
       userId: ctx.user.id,
       description: `A2A conversation: ${title}`,
+      operationKey: { prefix: "a2a:", identity: crypto.randomUUID() },
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {

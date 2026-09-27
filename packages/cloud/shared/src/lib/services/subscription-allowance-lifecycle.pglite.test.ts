@@ -535,6 +535,93 @@ describe("subscription allowance lifecycle", () => {
     ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INVALID_AMOUNT });
   }, 60_000);
 
+  test("request-scoped allowance-eligible spend is funded allowance-first for subscribers", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "0.300000",
+      credits: "1.000000",
+    });
+    const {
+      deductAllowanceEligibleCredits,
+      isSubscriptionFundedReservation,
+      reserveAllowanceEligibleCredits,
+      settleSubscriptionFundedReservation,
+    } = await import("./allowance-first-credits");
+    const { InsufficientCreditsError } = await import("./credits");
+    const { parseVideoPendingSettlement } = await import("./video-generation-reconcile");
+
+    // A search hold draws allowance first and settles the actual cost.
+    const search = await reserveAllowanceEligibleCredits("search", {
+      organizationId: org,
+      amount: 0.2,
+      description: "search proxy",
+      operationKey: { prefix: "search:", identity: "request-search-000001" },
+    });
+    expect(isSubscriptionFundedReservation(search)).toBe(true);
+    expect(await search.reconcile(0.15)).toMatchObject({
+      collectedAmount: 0.15,
+      adjustmentType: "refund",
+    });
+    // An immediate charge spends the remaining allowance, then cash.
+    const deducted = await deductAllowanceEligibleCredits("search", {
+      organizationId: org,
+      amount: 0.25,
+      description: "dexscreener request",
+      operationKey: { prefix: "search:", identity: "request-dex-0000001" },
+    });
+    expect(deducted).toMatchObject({ success: true, newBalance: 0.9 });
+    let state = await readState(org);
+    expect(state.periods[0]).toMatchObject({
+      available_amount: "0.000000",
+      settled_amount: "0.300000",
+    });
+    expect(state.balance).toBe("0.900000");
+
+    // A shortfall keeps the credit lane's typed contract, reporting both sources.
+    await expect(
+      reserveAllowanceEligibleCredits("voice", {
+        organizationId: org,
+        amount: 5,
+        description: "meeting window",
+        operationKey: { prefix: "voice:", identity: "meeting-window-00001" },
+      }),
+    ).rejects.toBeInstanceOf(InsufficientCreditsError);
+
+    // A pending video hold carries its funding identity to the reconcile sweep.
+    const video = await reserveAllowanceEligibleCredits("media_generation", {
+      organizationId: org,
+      amount: 0.5,
+      description: "pending video",
+      operationKey: { prefix: "video:", identity: "upstream-job-000001" },
+    });
+    if (!isSubscriptionFundedReservation(video)) throw new Error("Expected a funded hold");
+    const pending = parseVideoPendingSettlement({
+      settlement_marker: "video_pending_settlement_v1",
+      reservation_transaction_id: video.reservationTransactionId,
+      reserved_amount: video.reservedAmount,
+      billed_cost: 0.5,
+      billing_source: "fal",
+      funding: {
+        logical_operation_id: video.funding.logicalOperationId,
+        operation: video.funding.operation,
+        occurred_at: video.funding.occurredAt.toISOString(),
+      },
+    });
+    expect(pending?.funding?.logical_operation_id).toBe("video:upstream-job-000001");
+    // A verified upstream failure releases the whole hold to purchased credit.
+    await settleSubscriptionFundedReservation({
+      organizationId: org,
+      logicalOperationId: pending!.funding!.logical_operation_id,
+      operation: pending!.funding!.operation,
+      actualCost: 0,
+      occurredAt: new Date(pending!.funding!.occurred_at),
+    });
+    state = await readState(org);
+    expect(state.balance).toBe("0.900000");
+  }, 60_000);
+
   test("a policy-generation bump repairs the admission snapshot and the tier cache", async () => {
     const now = await databaseNow();
     const { org } = await seedSubscriber({
