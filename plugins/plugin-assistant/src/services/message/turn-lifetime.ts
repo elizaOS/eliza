@@ -19,6 +19,7 @@ import type {
 import {
   asUUID,
   attestDeliveryAudienceFromCanonicalRoom,
+  beginTrustedDeliveryAudienceTurn,
   ContentType,
   createFirstSentenceStreamTracker,
   createOutboundEnvelopeStreamLatch,
@@ -710,6 +711,13 @@ export class MessageTurnLifetime {
                 opts.abortSignal,
                 turnSignal,
               ]);
+              // Owner-private audience evidence may be renewed from current
+              // authority only while this turn runs and is not cancelled.
+              const endAudienceTurn = beginTrustedDeliveryAudienceTurn(
+                runtime,
+                message,
+                abortSignal ? { signal: abortSignal } : {},
+              );
               const scopedStreamingContext: StreamingContext | undefined =
                 streamingContext
                   ? {
@@ -735,7 +743,7 @@ export class MessageTurnLifetime {
                     opts,
                   ),
                 ),
-              );
+              ).finally(endAudienceTurn);
             },
           );
 

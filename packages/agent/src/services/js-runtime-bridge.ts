@@ -123,24 +123,35 @@ function marshalValue(
     return { kind: "function", functionId: id };
   }
 
+  // `seen` holds only the open ancestor path: a value reached again through a
+  // sibling path (a shared, non-cyclic reference) is marshalled in full, and
+  // only a reference back to an ancestor is a cycle.
   if (Array.isArray(input)) {
     if (seen.has(input)) return { kind: "string", value: "[cycle]" };
     seen.add(input);
-    return {
-      kind: "array",
-      items: input.map((item) => marshalValue(item, ctx, depth + 1, seen)),
-    };
+    try {
+      return {
+        kind: "array",
+        items: input.map((item) => marshalValue(item, ctx, depth + 1, seen)),
+      };
+    } finally {
+      seen.delete(input);
+    }
   }
 
   if (t === "object") {
     const obj = input as Record<string, unknown>;
     if (seen.has(obj)) return { kind: "string", value: "[cycle]" };
     seen.add(obj);
-    const entries: Array<[string, JsValue]> = [];
-    for (const key of Object.keys(obj)) {
-      entries.push([key, marshalValue(obj[key], ctx, depth + 1, seen)]);
+    try {
+      const entries: Array<[string, JsValue]> = [];
+      for (const key of Object.keys(obj)) {
+        entries.push([key, marshalValue(obj[key], ctx, depth + 1, seen)]);
+      }
+      return { kind: "object", entries };
+    } finally {
+      seen.delete(obj);
     }
-    return { kind: "object", entries };
   }
 
   return { kind: "undefined" };

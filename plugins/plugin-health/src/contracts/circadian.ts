@@ -21,10 +21,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsCircadianState,
-  type LifeOpsScheduleInsight,
-  type LifeOpsScheduleMealLabel,
+import type {
+  LifeOpsCircadianState,
+  LifeOpsScheduleInsight,
+  LifeOpsScheduleMealLabel,
 } from "@elizaos/core/contracts/personal-assistant";
 
 /**

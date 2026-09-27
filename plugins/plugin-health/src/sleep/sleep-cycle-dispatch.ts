@@ -4,14 +4,14 @@
  */
 
 import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
-import {
-  type LifeOpsCircadianState,
-  type LifeOpsPersonalBaseline,
-  type LifeOpsRegularityClass,
-  type LifeOpsScheduleRegularity,
+import type {
+  LifeOpsCircadianState,
+  LifeOpsPersonalBaseline,
+  LifeOpsRegularityClass,
+  LifeOpsScheduleRegularity,
 } from "../contracts/health.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
-import { type SleepRecap } from "./sleep-recap.js";
+import type { SleepRecap } from "./sleep-recap.js";
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;
 // Default bedtime when an irregular-schedule owner has not configured a

@@ -222,7 +222,8 @@ beforeAll(async () => {
       status text NOT NULL,
       node_id text,
       replacement_cleanup_node_id text,
-      replacement_cleanup_container_name text
+      replacement_cleanup_container_name text,
+      retained_runtime jsonb
     );
     CREATE TABLE agent_sandbox_replacement_attempts (
       id uuid PRIMARY KEY,

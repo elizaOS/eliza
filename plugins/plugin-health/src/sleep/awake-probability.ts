@@ -13,7 +13,7 @@ import {
   type LifeOpsSleepCycle,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import { type LifeOpsActivityWindow } from "./sleep-cycle.js";
+import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 
 function clamp(value: number, min: number, max: number): number {
