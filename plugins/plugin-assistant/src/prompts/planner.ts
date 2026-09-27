@@ -14,7 +14,7 @@
 import type { JSONSchema } from "@elizaos/core";
 
 export const plannerBatchScopeDescription =
-  '"final" means all requested actions are in this queue; their results need not be known yet. The evaluator verifies results and composes the answer. "more_work_pending" means these results must ground a later action (e.g. read an ID before updating). Queued actions, recalling prior dialogue, and writing the final answer do not require another batch. Use final for a read whose result only needs reporting or combining with known conversation details. Use more_work_pending only when a concrete additional operation must be chosen from the returned evidence, not because the evaluator still needs to answer.';
+  '"final" means all remaining requested actions are in this queue; their results need not be known yet. The evaluator verifies results and composes the answer. "more_work_pending" means these results must ground a later action (e.g. read an ID before updating). Queued actions, recalling prior dialogue, and writing the final answer do not require another batch. Use final for a read whose result only needs reporting or combining with known conversation details. Use more_work_pending only when a concrete additional operation must be chosen from the returned evidence, not because the evaluator still needs to answer.';
 
 /** Canonical mandatory rules shared by default and custom planner prompts. */
 export const plannerRequiredPolicy = {

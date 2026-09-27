@@ -30,6 +30,7 @@ import {
   parentAliasesForCandidateAction,
   preferredOperationNames,
   retrieveActions,
+  tokenizeActionSearchText,
 } from "../../runtime/action-retrieval.ts";
 import { tierActionResults } from "../../runtime/action-tiering.ts";
 import {
@@ -75,6 +76,69 @@ function plannerDomainOwnership(action: Action, domain: string): number {
 
 export const DEFAULT_PLANNER_QUERY_TOOL_LIMIT = 10;
 
+/** Shared domain matching for explicit discovery and pending-intent bootstrap. */
+export function inferActionSearchContexts(
+  actions: readonly Action[],
+  query: string,
+  aliases?: (context: string) => readonly string[] | undefined,
+): string[] {
+  const words = ` ${tokenizeActionSearchText(query).join(" ")} `;
+  return [
+    ...new Set(actions.flatMap((action) => actionDiscoveryContexts(action))),
+  ].filter((context) => {
+    const normalized = normalizeContextId(context);
+    return (
+      normalized !== "general" &&
+      normalized !== "simple" &&
+      [normalized, ...(aliases?.(normalized) ?? [])].some((name) => {
+        const phrase = tokenizeActionSearchText(name).join(" ");
+        return phrase.length > 0 && words.includes(` ${phrase} `);
+      })
+    );
+  });
+}
+
+function pendingActionContexts(
+  actions: readonly Action[],
+  intents: readonly string[] | undefined,
+  aliases?: (context: string) => readonly string[] | undefined,
+): string[] {
+  // These are exposure hints only. Ambiguous/negated clauses and navigation
+  // destinations remain discoverable instead of loading their record tools.
+  const domainIntents = (intents ?? [])
+    .map(positiveIntentText)
+    .filter((intent) => {
+      const words = tokenizeActionSearchText(intent);
+      return (
+        words.length > 0 &&
+        ![
+          "open",
+          "navigate",
+          "switch",
+          "go",
+          "show",
+          "close",
+          "return",
+        ].includes(words[0])
+      );
+    });
+  return inferActionSearchContexts(
+    actions,
+    domainIntents.join("\n"),
+    aliases,
+  ).map(normalizeContextId);
+}
+
+function positiveIntentText(intent: string): string {
+  const unquoted = intent.replace(
+    /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
+    " ",
+  );
+  return /\b(?:not|never|without|don['’]t|cannot|can['’]t)\b/iu.test(unquoted)
+    ? ""
+    : unquoted.trim();
+}
+
 /**
  * Retrieve complete operation definitions from an already authorized registry.
  * Search operates on individual operations rather than expanding every matched
@@ -89,6 +153,7 @@ export function retrieveContextualPlannerActions(args: {
   contexts?: readonly string[];
   /** Preserve exact hints while filling only domains they do not own. */
   selectedActions?: readonly Action[];
+  contextAliases?: (context: string) => readonly string[] | undefined;
 }): {
   actions: Action[];
   matchCount: number;
@@ -116,11 +181,15 @@ export function retrieveContextualPlannerActions(args: {
   // Routing narrows the bootstrap, not registry availability. A mistaken or
   // unknown domain with no matches falls back to the authorized global search;
   // DISCOVER_ACTIONS also permits explicit searches outside the initial domains.
-  const domains = new Set(
-    args.contexts
-      ?.map(normalizeContextId)
+  const declaredDomains = new Set(
+    (args.contexts ?? [])
+      .map(normalizeContextId)
       .filter((context) => context !== "general" && context !== "simple"),
   );
+  const domains = new Set([
+    ...declaredDomains,
+    ...pendingActionContexts(args.actions, args.intents, args.contextAliases),
+  ]);
   const selectMatches = (ranked: readonly Action[]) => {
     const required = [
       ...new Map(
@@ -207,7 +276,12 @@ export function retrieveContextualPlannerActions(args: {
             ),
           );
     const operationNames = preferredOperationNames(
-      operationQuery,
+      domain !== undefined && !declaredDomains.has(domain)
+        ? (args.intents ?? [])
+            .map(positiveIntentText)
+            .filter(Boolean)
+            .join("\n")
+        : operationQuery,
       candidates.map((action) => action.name),
     );
     const operations = candidates.filter(
@@ -289,6 +363,8 @@ export async function collectV5PlannerCandidateActions(args: {
   state: State;
   selectedContexts?: readonly AgentContext[];
   candidateActions?: readonly string[];
+  /** Positive requested outcomes may bootstrap discovery outside an incomplete context hint. */
+  intents?: readonly string[];
   /** Discover routable actions before Stage 1 has selected their contexts. */
   discoverActions?: boolean;
   userRoles?: readonly RoleGateRole[];
@@ -327,6 +403,35 @@ export async function collectV5PlannerCandidateActions(args: {
   // an action outside its declared context, while avoiding dead tools the planner
   // could select but execution would immediately reject.
   const allRuntimeActions = args.runtime.actions;
+  const declaredAdmissionDomains = new Set(
+    (args.selectedContexts ?? []).map(normalizeContextId),
+  );
+  const pendingDomains = new Set(
+    pendingActionContexts(
+      allRuntimeActions,
+      args.intents,
+      (context) => args.runtime.contexts?.get(context)?.aliases,
+    ).filter((context) => !declaredAdmissionDomains.has(context)),
+  );
+  // Bound additional admission checks before validate()/connector policy can
+  // perform I/O. Unknown parent-only families remain explicit discovery work.
+  const supplementalNames = new Set(
+    pendingDomains.size > 0
+      ? retrieveContextualPlannerActions({
+          actions: allRuntimeActions.filter(
+            (action) =>
+              !action.subActions?.length &&
+              actionDiscoveryContexts(action).some((context) =>
+                pendingDomains.has(normalizeContextId(context)),
+              ),
+          ),
+          query: (args.intents ?? []).join("\n"),
+          intents: args.intents,
+          contextAliases: (context) =>
+            args.runtime.contexts?.get(context)?.aliases,
+        }).actions.map((action) => action.name)
+      : [],
+  );
   const actionLookup = buildRuntimeActionLookup(args.runtime);
   const actionsByName = new Map(
     allRuntimeActions.map((action) => [action.name, action]),
@@ -556,7 +661,7 @@ export async function collectV5PlannerCandidateActions(args: {
     await appendIfAllowed(
       action,
       undefined,
-      args.discoverActions
+      args.discoverActions || supplementalNames.has(action.name)
         ? actionDiscoveryContexts(action, args.selectedContexts)
         : args.selectedContexts,
     );
