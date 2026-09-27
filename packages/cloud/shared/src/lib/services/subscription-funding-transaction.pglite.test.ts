@@ -132,6 +132,12 @@ beforeAll(async () => {
   await fixture.exec(minimumReceiptMigration);
   await fixture.exec(minimumReceiptMigration);
   await fixture.exec(receiptMigration);
+  const reservedReceiptMigration = await readFile(
+    new URL("../../db/migrations/0477_agent_billing_funding_reservations.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(reservedReceiptMigration);
+  await fixture.exec(reservedReceiptMigration);
   await fixture.exec(
     await readFile(
       new URL("../../db/migrations/0274_agent_billing_run_receipts.sql", import.meta.url),

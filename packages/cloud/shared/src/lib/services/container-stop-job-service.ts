@@ -44,6 +44,7 @@ import { dbWrite } from "../../db/helpers";
 import { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";
 import {
   containerBillingRepository,
+  readContainerComputeAllowanceInTransaction,
   unreconciledContainerStopProviderEffectExistsSql,
 } from "../../db/repositories/container-billing";
 import { containersRepository } from "../../db/repositories/containers";
@@ -56,6 +57,7 @@ import { organizations } from "../../db/schemas/organizations";
 import { redeemableEarnings } from "../../db/schemas/redeemable-earnings";
 import { users } from "../../db/schemas/users";
 import type { ContainerJobsWriter } from "./container-job-service";
+import { creditsService } from "./credits";
 import { JOB_TYPES } from "./provisioning-job-types";
 
 /** Outcome of a daemon-side container stop. */
@@ -647,7 +649,9 @@ export async function dispatchContainerStopJob(
       if (!creditAvailable.isFinite() || !earningsAvailable.isFinite()) {
         throw new Error("CONTAINER_STOP funding source contains an invalid numeric balance");
       }
-      if (creditAvailable.plus(earningsAvailable).gte(settled.amount)) {
+      const allowanceAvailable =
+        (await readContainerComputeAllowanceInTransaction(tx, organizationId)) ?? 0;
+      if (creditAvailable.plus(earningsAvailable).plus(allowanceAvailable).gte(settled.amount)) {
         const fundedAt = new Date();
         await tx
           .update(containerComputeStopIntents)
@@ -806,7 +810,11 @@ export async function dispatchContainerStopJob(
             updated_at: confirmedAt,
           })
           .where(eq(containerComputeStopIntents.id, intentId));
-        return { outcome: { stopped: true }, releaseNodeId: providerNodeId };
+        return {
+          outcome: { stopped: true },
+          releaseNodeId: providerNodeId,
+          creditCachesStale: settlement.creditCachesStale === true,
+        };
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -827,6 +835,10 @@ export async function dispatchContainerStopJob(
   });
   if ("error" in dispatch && dispatch.error) {
     throw dispatch.error;
+  }
+  if ("creditCachesStale" in dispatch && dispatch.creditCachesStale) {
+    // Terminal settlement funded allowance-first debited purchased credits.
+    await creditsService.invalidateCreditCaches(organizationId);
   }
   if (dispatch.releaseNodeId) {
     await containersRepository.tryReleaseNodeSlot(
@@ -1538,7 +1550,9 @@ export async function enqueueContainerStopOnce(p: {
     if (!creditAvailable.isFinite() || !earningsAvailable.isFinite()) {
       throw new Error("Container stop funding source contains an invalid numeric balance");
     }
-    if (creditAvailable.plus(earningsAvailable).gte(settled.amount)) {
+    const allowanceAvailable =
+      (await readContainerComputeAllowanceInTransaction(tx, p.organizationId)) ?? 0;
+    if (creditAvailable.plus(earningsAvailable).plus(allowanceAvailable).gte(settled.amount)) {
       await tx
         .update(containerComputeStopIntents)
         .set({ status: "superseded", superseded_at: now, updated_at: now })

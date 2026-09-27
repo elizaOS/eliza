@@ -35,6 +35,7 @@ mock.module("@/db/repositories/container-billing", () => ({
         billing_email: "fixture@example.com",
         credit_balance: "0",
         pay_as_you_go_from_earnings: false,
+        subscription_allowance_available: "0.000000",
       },
     ],
     scheduleShutdownWarning: async () => true,

@@ -221,6 +221,7 @@ beforeAll(async () => {
       billing_period_end timestamp NOT NULL,
       status text NOT NULL DEFAULT 'success',
       credit_transaction_id uuid,
+      funding_reservation_id uuid,
       error_message text,
       created_at timestamp NOT NULL DEFAULT now()
     )`,
@@ -241,6 +242,20 @@ beforeAll(async () => {
   ];
   for (const stmt of ddl) {
     await dbWrite.execute(stmt);
+  }
+  // The writer resolves allowance-first subscription funding from the real
+  // organization policy authority; this tenant remains on the credit lane.
+  if (isolatedDsn) {
+    const { installOrganizationPolicyTestSchema } = await import(
+      "../organization-policy-test-fixture"
+    );
+    const schemaClient = new Client({ connectionString: isolatedDsn });
+    await schemaClient.connect();
+    try {
+      await installOrganizationPolicyTestSchema((query) => schemaClient.query(query));
+    } finally {
+      await schemaClient.end();
+    }
   }
 }, 30_000);
 
