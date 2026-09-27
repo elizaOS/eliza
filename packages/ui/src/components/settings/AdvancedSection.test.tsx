@@ -146,6 +146,45 @@ describe("AdvancedSection agent backups", () => {
     ).toBeTruthy();
   });
 
+  it("shows the size-limit refusal as-is and without a retry hint", async () => {
+    const message =
+      "Agent state is too large for a local backup (150.0 MB; the limit is 128.0 MB). Retrying will not help until the agent's state is smaller.";
+    clientMock.createLocalAgentBackup.mockRejectedValue(
+      Object.assign(new Error(message), {
+        status: 413,
+        code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
+        data: { error: message, retryable: false },
+      }),
+    );
+    render(<AdvancedSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
+    await screen.findByText("No backups yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+  });
+
+  it("marks an unexpected backup failure as retryable", async () => {
+    clientMock.createLocalAgentBackup.mockRejectedValue(
+      Object.assign(new Error("Backup failed"), {
+        status: 500,
+        data: { error: "Backup failed" },
+      }),
+    );
+    render(<AdvancedSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
+    await screen.findByText("No backups yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "Backup failed. This may be temporary; try again.",
+    );
+  });
+
   it("restores the selected backup through the API", async () => {
     clientMock.listLocalAgentBackups.mockResolvedValue([backup]);
     render(<AdvancedSection />);
