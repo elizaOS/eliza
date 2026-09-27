@@ -63,6 +63,7 @@ import {
   IosCloudAuthError,
   isIosNativeCloudAuthAvailable,
   recoverIosCloudCredential,
+  revokeIosCloudStagedCredential,
   signInWithIosCloud,
   signOutIosCloud,
 } from "../ios-cloud/ios-cloud-auth";
@@ -1969,6 +1970,14 @@ export function useCloudState({
             getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
           );
         } else {
+          if (
+            Capacitor.getPlatform() === "ios" &&
+            Capacitor.isNativePlatform()
+          ) {
+            await revokeIosCloudStagedCredential(
+              getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+            );
+          }
           await clearStoredStewardToken();
         }
         setElizaCloudEnabled(false);
@@ -2060,6 +2069,11 @@ export function useCloudState({
           getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
         );
       } else {
+        if (Capacitor.getPlatform() === "ios" && Capacitor.isNativePlatform()) {
+          await revokeIosCloudStagedCredential(
+            getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+          );
+        }
         await signOutFromSsoBridgedHost();
       }
       // A managed agent selection is scoped to the account that proved

@@ -450,8 +450,8 @@ export class AndroidCloudClient {
   /**
    * Reconciles a staged credential left by an interrupted login. An
    * acknowledged credential is already active on the server, so it is promoted
-   * exactly; an unacknowledged one is still inactive server-side (and expires
-   * there), so it is discarded rather than ever becoming the session.
+   * exactly. An unacknowledged record may have lost the server's ACK response,
+   * so it is revoked before being discarded without replacing the session.
    */
   async recoverStagedCredential(): Promise<AndroidCloudStagedCredentialRecovery> {
     const staging = this.credentialStagingStore;
@@ -459,8 +459,12 @@ export class AndroidCloudClient {
     const stored = await staging.read();
     if (!stored?.trim()) return "none";
     const staged = parseStagedCredential(stored);
-    if (!staged?.acknowledged) {
+    if (!staged) {
       await staging.clear();
+      return "discarded";
+    }
+    if (!staged.acknowledged) {
+      await this.revokeStagedCredential();
       return "discarded";
     }
     await this.activateCredential(staged.secret);
@@ -779,14 +783,17 @@ export class AndroidCloudClient {
           );
         }
       } catch (error) {
-        // Before the ACK the credential is inactive server-side. A staged
-        // secret is discarded without touching the active session; a
-        // direct write restores the previous session exactly.
-        if (staging) await staging.clear();
-        else if (previousSecret)
-          await this.credentialStore.write(previousSecret);
-        else await this.credentialStore.clear();
-        throw error;
+        // error-policy:J2 retain ambiguous staging after a lost ACK response
+        // and preserve the callback failure for the native retry boundary.
+        if (!staging) {
+          if (previousSecret) await this.credentialStore.write(previousSecret);
+          else await this.credentialStore.clear();
+        }
+        if (error instanceof AndroidCloudAuthError) throw error;
+        throw new AndroidCloudAuthError(
+          "Eliza Cloud could not confirm mobile session activation.",
+          { attemptId: pending.state, cause: error, disposition: "retry" },
+        );
       }
       let pendingCleanupRequired = false;
       if (staging) {
@@ -916,12 +923,28 @@ export class AndroidCloudClient {
     return id;
   }
 
+  /** Revokes staged sessions, including ambiguous ACKs, before removing recovery records. */
+  async revokeStagedCredential(): Promise<void> {
+    const staging = this.credentialStagingStore;
+    if (!staging) return;
+    const stored = await staging.read();
+    if (!stored?.trim()) return;
+    const staged = parseStagedCredential(stored);
+    if (staged) {
+      await this.revokeCredential(staged.secret);
+    }
+    await staging.clear();
+  }
+
   async signOut(): Promise<void> {
     const token = await this.readToken();
-    if (!token) {
-      await this.credentialStagingStore?.clear();
-      return;
-    }
+    await this.revokeStagedCredential();
+    if (!token) return;
+    await this.revokeCredential(token);
+    await this.credentialStore.clear();
+  }
+
+  private async revokeCredential(token: string): Promise<void> {
     const response = await this.fetchImpl(
       `${this.apiBase}/api/v1/api-keys/current`,
       {
@@ -938,8 +961,6 @@ export class AndroidCloudClient {
         ),
       );
     }
-    await this.credentialStore.clear();
-    await this.credentialStagingStore?.clear();
   }
 
   async getConversationMessages(

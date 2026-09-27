@@ -34,12 +34,18 @@ vi.mock("@capacitor/core", () => ({
   }),
 }));
 
-const credential = vi.hoisted(() => ({ token: null as string | null }));
+const credential = vi.hoisted(() => ({
+  token: null as string | null,
+  writeUnavailable: false,
+}));
 const keychain = vi.hoisted(() => new Map<string, string>());
+const keychainFailure = vi.hoisted(() => ({ acknowledgedWrite: false }));
 
 vi.mock("@elizaos/plugin-elizacloud/steward-session-client", () => ({
   readStoredStewardToken: () => credential.token,
   writeStoredStewardToken: async (token: string) => {
+    if (credential.writeUnavailable)
+      throw new Error("Keychain write unavailable");
     credential.token = token;
   },
   clearStoredStewardToken: async () => {
@@ -54,6 +60,12 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
         ? { ok: true, value: keychain.get(key) }
         : { ok: false, error: "not_found" },
     set: async ({ key, value }: { key: string; value: string }) => {
+      if (
+        keychainFailure.acknowledgedWrite &&
+        JSON.parse(value).acknowledged === true
+      ) {
+        return { ok: false, error: "Keychain write unavailable" };
+      }
       keychain.set(key, value);
       return { ok: true };
     },
@@ -70,6 +82,7 @@ import {
   IosCloudAuthError,
   isIosNativeCloudAuthAvailable,
   recoverIosCloudCredential,
+  revokeIosCloudStagedCredential,
   signInWithIosCloud,
   signOutIosCloud,
 } from "./ios-cloud-auth";
@@ -89,6 +102,7 @@ let calls: Call[];
 let tokenStatus: number;
 let ackStatus: number;
 let revokeStatus: number;
+let ackResponseLost: boolean;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -106,8 +120,11 @@ beforeEach(() => {
   calls = [];
   tokenStatus = 200;
   ackStatus = 200;
+  ackResponseLost = false;
+  keychainFailure.acknowledgedWrite = false;
   revokeStatus = 200;
   credential.token = null;
+  credential.writeUnavailable = false;
   keychain.clear();
   native.starts = [];
   native.next = null;
@@ -167,6 +184,7 @@ beforeEach(() => {
             error: "temporarily_unavailable",
           });
         }
+        if (ackResponseLost) throw new Error("ACK response lost after commit");
         return jsonResponse(200, {
           success: true,
           status: "acknowledged",
@@ -235,13 +253,16 @@ describe("iOS native Eliza Cloud sign-in", () => {
     ).toHaveLength(1);
   });
 
-  it("discards the staged credential and keeps the prior session when ACK fails", async () => {
+  it("retains ambiguous staging after ACK failure until recovery confirms revocation", async () => {
     credential.token = "previous-session";
     ackStatus = 400;
     native.next = async () => ({
       callbackUrl: callbackFor(lastStart()),
     });
     await expect(signInWithIosCloud(API)).rejects.toThrow();
+    expect(credential.token).toBe("previous-session");
+    expect(stagedRecord()?.secret).toBe(SECRET);
+    await expect(recoverIosCloudCredential(API)).resolves.toBe("discarded");
     expect(credential.token).toBe("previous-session");
     expect(keychain.has(STAGED_KEY)).toBe(false);
   });
@@ -342,6 +363,119 @@ describe("iOS Keychain credential recovery", () => {
 });
 
 describe("iOS Cloud sign-out", () => {
+  function stageCredential(acknowledged = true): void {
+    keychain.set(
+      STAGED_KEY,
+      JSON.stringify({
+        version: 1,
+        acknowledged,
+        credentialId: CREDENTIAL_ID,
+        secret: SECRET,
+      }),
+    );
+  }
+
+  it.each([null, `eliza_mobile_${"b".repeat(64)}`])(
+    "revokes an acknowledged staged credential without promoting it over %s",
+    async (previous) => {
+      credential.token = previous;
+      credential.writeUnavailable = true;
+      native.next = async () => ({ callbackUrl: callbackFor(lastStart()) });
+      await expect(signInWithIosCloud(API)).rejects.toThrow(
+        "the session could not be saved",
+      );
+      expect(stagedRecord()?.acknowledged).toBe(true);
+      expect(credential.token).toBe(previous);
+      credential.writeUnavailable = false;
+
+      await signOutIosCloud(API);
+
+      expect(
+        calls
+          .filter((call) => call.method === "DELETE")
+          .map((call) => call.authorization),
+      ).toEqual([
+        `Bearer ${SECRET}`,
+        ...(previous ? [`Bearer ${previous}`] : []),
+      ]);
+      expect(credential.token).toBeNull();
+      expect(keychain.has(STAGED_KEY)).toBe(false);
+      await expect(recoverIosCloudCredential(API)).resolves.toBe("none");
+    },
+  );
+
+  it("preserves both sessions when staged revocation is unavailable and retries", async () => {
+    const previous = `eliza_mobile_${"b".repeat(64)}`;
+    credential.token = previous;
+    stageCredential();
+    revokeStatus = 503;
+
+    await expect(signOutIosCloud(API)).rejects.toThrow(
+      "Revocation unavailable",
+    );
+    expect(credential.token).toBe(previous);
+    expect(stagedRecord()?.secret).toBe(SECRET);
+    expect(calls.map((call) => call.authorization)).toEqual([
+      `Bearer ${SECRET}`,
+    ]);
+
+    revokeStatus = 200;
+    await signOutIosCloud(API);
+    expect(credential.token).toBeNull();
+    expect(keychain.has(STAGED_KEY)).toBe(false);
+    expect(calls.map((call) => call.authorization)).toEqual([
+      `Bearer ${SECRET}`,
+      `Bearer ${SECRET}`,
+      `Bearer ${previous}`,
+    ]);
+  });
+
+  it("revokes an unacknowledged staged credential without activating it", async () => {
+    stageCredential(false);
+    await signOutIosCloud(API);
+    expect(calls.map((call) => call.authorization)).toEqual([
+      `Bearer ${SECRET}`,
+    ]);
+    expect(credential.token).toBeNull();
+    await expect(recoverIosCloudCredential(API)).resolves.toBe("none");
+  });
+
+  it.each(["ack-response", "ack-record"])(
+    "revokes the issued credential when %s is lost after server activation",
+    async (failure) => {
+      ackResponseLost = failure === "ack-response";
+      keychainFailure.acknowledgedWrite = failure === "ack-record";
+      native.next = async () => ({ callbackUrl: callbackFor(lastStart()) });
+
+      await expect(signInWithIosCloud(API)).rejects.toThrow();
+      expect(stagedRecord()?.acknowledged).toBe(false);
+      expect(credential.token).toBeNull();
+
+      await signOutIosCloud(API);
+
+      expect(
+        calls
+          .filter((call) => call.method === "DELETE")
+          .map((call) => call.authorization),
+      ).toEqual([`Bearer ${SECRET}`]);
+      expect(keychain.has(STAGED_KEY)).toBe(false);
+      await expect(recoverIosCloudCredential(API)).resolves.toBe("none");
+    },
+  );
+
+  it("revokes staging separately from an active SSO session", async () => {
+    credential.token = "existing-sso-session";
+    stageCredential();
+
+    await revokeIosCloudStagedCredential(API);
+
+    expect(calls.map((call) => call.authorization)).toEqual([
+      `Bearer ${SECRET}`,
+    ]);
+    expect(credential.token).toBe("existing-sso-session");
+    await expect(recoverIosCloudCredential(API)).resolves.toBe("none");
+  });
+
   it("revokes exactly the presented mobile credential, then clears the Keychain", async () => {
     credential.token = SECRET;
     await signOutIosCloud(API);

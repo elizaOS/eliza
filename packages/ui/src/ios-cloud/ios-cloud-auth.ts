@@ -13,9 +13,9 @@
  * Keychain-backed through the storage bridge) only after the ACK, so an
  * unacknowledged secret never becomes the renderer's session. A staged
  * credential left by an interrupted launch is promoted only if its ACK was
- * recorded; otherwise it is discarded (the server keeps it inactive and
- * expires it). Sign-out revokes exactly the presented mobile credential
- * before removing the local copies.
+ * recorded; otherwise it is revoked before discard because a lost ACK can
+ * leave the server active. Sign-out revokes both active and staged mobile
+ * credentials before removing their local copies.
  *
  * One browser session owns a sign-in at a time, and a callback code is
  * exchanged exactly once: a failed exchange is never retried with the same
@@ -191,7 +191,8 @@ function iosCloudClient(cloudApiBase: string | undefined): AndroidCloudClient {
 
 /**
  * Reconciles a Keychain-staged credential left by an interrupted sign-in:
- * promotes it only when its ACK was recorded, otherwise discards it.
+ * promotes a recorded ACK, otherwise revokes the ambiguous credential before
+ * discarding it without replacing the active session.
  */
 export async function recoverIosCloudCredential(
   cloudApiBase?: string,
@@ -209,10 +210,16 @@ export function hasIosNativeCloudCredential(): boolean {
   return Boolean(token && MOBILE_CREDENTIAL_RE.test(token));
 }
 
+/** Revokes staged native credentials before a different active session signs out. */
+export async function revokeIosCloudStagedCredential(
+  cloudApiBase?: string,
+): Promise<void> {
+  await iosCloudClient(cloudApiBase).revokeStagedCredential();
+}
+
 /**
- * Revokes exactly the presented mobile credential on Eliza Cloud, then removes
- * the active and staged Keychain copies. A refused revocation throws and keeps
- * the local credential so the user can retry instead of stranding a live key.
+ * Revokes active and staged mobile credentials before removing
+ * their Keychain copies. Refused revocations preserve credentials for retry.
  */
 export async function signOutIosCloud(cloudApiBase?: string): Promise<void> {
   await iosCloudClient(cloudApiBase).signOut();
