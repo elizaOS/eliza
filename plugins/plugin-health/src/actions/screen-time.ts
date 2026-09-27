@@ -19,10 +19,10 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
+  normalizeTimeZone,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { normalizeTimeZone } from "@elizaos/core";
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSource,
