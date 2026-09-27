@@ -13,6 +13,7 @@ import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../schemas/agent-sandboxes";
 import { jobs } from "../schemas/jobs";
 import { organizations } from "../schemas/organizations";
+import { organizationHasNoActivePaymentReversalHold } from "./payment-reversal-holds";
 
 /** Minimum quiet period before a failed automatic resume for the same stop may be retried. */
 export const AUTOMATIC_RESUME_RETRY_BACKOFF_MINUTES = 15;
@@ -25,14 +26,16 @@ export interface BillingResumeCandidate {
 }
 
 /**
- * The organization may admit paid work at all. Account deletion, deactivation
- * and the paid-work fence always win over an automatic resume.
+ * The organization may admit paid work at all. Account deletion, deactivation,
+ * the paid-work fence and a final payment reversal hold always win over an
+ * automatic resume.
  */
 export function organizationAdmitsPaidWork(): SQL {
   return sql`${organizations.is_active} = true
     AND ${organizations.account_lifecycle_state} = 'active'
     AND ${organizations.account_deletion_request_id} IS NULL
-    AND ${organizations.paid_work_fenced_at} IS NULL`;
+    AND ${organizations.paid_work_fenced_at} IS NULL
+    AND ${organizationHasNoActivePaymentReversalHold()}`;
 }
 
 /**

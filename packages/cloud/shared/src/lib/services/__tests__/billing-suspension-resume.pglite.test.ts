@@ -84,12 +84,19 @@ beforeAll(async () => {
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
-  const migration = await readFile(
-    join(import.meta.dir, "../../../db/migrations/0189_agent_sandbox_lifecycle_revision_scope.sql"),
-    "utf8",
-  );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+  // The reversal-hold migration is replayed to prove it is idempotent.
+  for (const name of [
+    "0189_agent_sandbox_lifecycle_revision_scope.sql",
+    "0475_organization_payment_reversal_holds.sql",
+    "0475_organization_payment_reversal_holds.sql",
+  ]) {
+    const migration = await readFile(
+      join(import.meta.dir, `../../../db/migrations/${name}`),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+    }
   }
   for (const [name, table] of [
     ["docker_nodes", dockerNodes],
@@ -343,6 +350,60 @@ test(
     } finally {
       resume.mockRestore();
     }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a lost chargeback hold fails paid admission and automatic resume closed until explicit release",
+  async () => {
+    const held = await seedBillingSuspendedAgent(FUNDED);
+    const holds = await import("../../../db/repositories/payment-reversal-holds");
+    const { checkAgentCreditGate } = await import("../agent-billing-gate");
+    const disputeId = unique("dp_lost");
+    const first = await holds.recordLostChargebackHold({
+      organizationId: held.orgId,
+      stripeDisputeId: disputeId,
+      stripeChargeId: "ch_lost",
+      stripePaymentIntentId: "pi_lost",
+      amountCents: 2_500,
+    });
+    const replay = await holds.recordLostChargebackHold({
+      organizationId: held.orgId,
+      stripeDisputeId: disputeId,
+    });
+    expect(first.created).toBe(true);
+    expect(replay).toMatchObject({ created: false, hold: { id: first.hold.id } });
+    await expect(
+      holds.recordLostChargebackHold({
+        organizationId: (await seedBillingSuspendedAgent(FUNDED)).orgId,
+        stripeDisputeId: disputeId,
+      }),
+    ).rejects.toMatchObject({ code: "PAYMENT_REVERSAL_HOLD_CONFLICT" });
+
+    // A funded balance does not override the hold.
+    const gate = await checkAgentCreditGate(held.orgId);
+    expect(gate).toMatchObject({ allowed: false, paymentReversalHold: true });
+    await reconcileAll();
+    expect(await resumeJobs(held.agentId)).toHaveLength(0);
+
+    await expect(
+      holds.releasePaymentReversalHold({
+        organizationId: held.orgId,
+        stripeDisputeId: disputeId,
+        releasedBy: "",
+        reason: "",
+      }),
+    ).rejects.toMatchObject({ code: "PAYMENT_REVERSAL_HOLD_RELEASE_INVALID" });
+    await holds.releasePaymentReversalHold({
+      organizationId: held.orgId,
+      stripeDisputeId: disputeId,
+      releasedBy: "operator:test",
+      reason: "repayment verified",
+    });
+    expect(await checkAgentCreditGate(held.orgId)).toMatchObject({ allowed: true });
+    await reconcileAll();
+    expect(await resumeJobs(held.agentId)).toHaveLength(1);
   },
   TEST_TIMEOUT,
 );
