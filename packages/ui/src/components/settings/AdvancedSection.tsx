@@ -34,6 +34,26 @@ function backupErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
+/**
+ * The agent answers a deterministic refusal (e.g. state over the backup size
+ * limit, HTTP 413) with `retryable: false` and a server-authored explanation
+ * of what must change; show it as-is. Any other failure may be transient
+ * (transport, storage, runtime not ready), so say that a retry can succeed.
+ */
+function createBackupErrorMessage(err: unknown): string {
+  const message = backupErrorMessage(err, "Backup failed.");
+  const data =
+    err && typeof err === "object" ? (err as { data?: unknown }).data : null;
+  if (
+    data &&
+    typeof data === "object" &&
+    (data as { retryable?: unknown }).retryable === false
+  ) {
+    return message;
+  }
+  return `${/[.!?]$/.test(message) ? message : `${message}.`} This may be temporary; try again.`;
+}
+
 function backupOptionInputId(fileName: string): string {
   return `agent-backup-file-${fileName.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
@@ -178,7 +198,7 @@ export function AdvancedSection() {
         )}).`,
       );
     } catch (err) {
-      setBackupError(backupErrorMessage(err, "Backup failed."));
+      setBackupError(createBackupErrorMessage(err));
     } finally {
       setCreateBackupBusy(false);
     }
