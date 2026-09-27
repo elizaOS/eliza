@@ -22,6 +22,7 @@ import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import { type BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
+import { type PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import { type SharedAgentCharacter } from "./run-shared-agent-turn";
 import { type SharedRuntimeAgent } from "./shared-runtime-agent";
 import { type SharedRuntimeChannel } from "./shared-runtime-channel";
@@ -593,11 +594,15 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
+  /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
+  trustedAccountState?: PersonalSharedFallbackAccountState,
 ): Promise<{
   text: string;
   agentName: string;
   timing?: SharedProviderTimingReceipt;
   mediaUrls?: string[];
+  responded?: false;
+  responseReason?: "no_response";
 }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -619,6 +624,7 @@ export async function sharedRestMessageSend(
     namespace,
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
+    ...(trustedAccountState ? { trustedAccountState } : {}),
     channel: trustedChannel ?? {
       type: ChannelType.DM,
       source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,
@@ -637,6 +643,7 @@ export async function sharedRestMessageSend(
     text?: unknown;
     timing?: unknown;
     actionResults?: unknown;
+    responded?: unknown;
   };
   const replyText = typeof result.text === "string" ? result.text : "";
   const mediaUrls = Array.isArray(result.actionResults)
@@ -666,6 +673,9 @@ export async function sharedRestMessageSend(
   return {
     text: replyText,
     agentName: agentName || "Eliza",
+    ...(result.responded === false
+      ? { responded: false as const, responseReason: "no_response" as const }
+      : {}),
     ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
     ...(timing ? { timing } : {}),
   };
