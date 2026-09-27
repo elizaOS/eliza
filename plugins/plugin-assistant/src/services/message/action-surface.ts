@@ -207,28 +207,29 @@ export function retrieveContextualPlannerActions(args: {
               (context) => normalizeContextId(context) === domain,
             ),
           );
-    const operationNames = preferredOperationNames(
-      operationQuery,
-      candidates.map((action) => action.name),
-    );
-    const operations = candidates.filter(
-      (action) => operationNames.size === 0 || operationNames.has(action.name),
-    );
+    // Resolve domain ownership before operation verbs: a cross-domain helper
+    // named *_READ must not eliminate the actual FILE/NOTES owner umbrella.
     const strongest =
       domain === undefined
         ? 0
         : Math.max(
             0,
-            ...operations.map((action) =>
+            ...candidates.map((action) =>
               plannerDomainOwnership(action, domain),
             ),
           );
-    for (const action of operations)
-      if (
+    const owners = candidates.filter(
+      (action) =>
         domain === undefined ||
         strongest === 0 ||
-        plannerDomainOwnership(action, domain) === strongest
-      )
+        plannerDomainOwnership(action, domain) === strongest,
+    );
+    const operationNames = preferredOperationNames(
+      operationQuery,
+      owners.map((action) => action.name),
+    );
+    for (const action of owners)
+      if (operationNames.size === 0 || operationNames.has(action.name))
         selected.add(action);
   }
   // A selected context with no registry matches must still permit global lookup.

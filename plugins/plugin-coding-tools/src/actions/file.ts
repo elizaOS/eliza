@@ -416,8 +416,9 @@ async function deviceFileHandler(
 
 export const fileAction: Action = {
   name: "FILE",
-  contexts: [...CODING_TOOLS_CONTEXTS],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  contexts: ["files", ...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: ["files", ...CODING_TOOLS_CONTEXTS] },
+  tags: ["resource:files"],
   roleGate: { minRole: "ADMIN" },
   // Stage-1 models routinely hint file work with invented names like
   // FILES_READ / FILES_LIST; the retrieval layer resolves simile hints to this

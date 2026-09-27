@@ -2,6 +2,7 @@
 import {
   type Action,
   AgentRuntime,
+  actionGateRejection,
   buildPlannerToolsFromActions,
   ContextRegistry,
   type IAgentRuntime,
@@ -9,6 +10,7 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { fileAction } from "../../../../plugin-coding-tools/src/actions/file.ts";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
@@ -36,6 +38,111 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("admits the real FILE owner for files-only work without promoting plugin configuration", async () => {
+    const request = {
+      content: {
+        text: "Create /tmp/index.html with the supplied HTML, then read the file back.",
+      },
+    } as Memory;
+    const incidental: Action[] = ["PLUGIN_LIST", "PLUGIN_READ_CONFIG"].map(
+      (name) => ({
+        name,
+        description: "Read plugin configuration files",
+        contexts: ["files", "settings"],
+      }),
+    );
+    const actions = [...incidental, fileAction];
+    expect(
+      actionGateRejection(fileAction, {
+        message: request,
+        userRoles: ["OWNER"],
+        activeContexts: ["files"],
+      }),
+    ).toBeUndefined();
+    expect(
+      actionGateRejection(fileAction, {
+        message: request,
+        userRoles: ["USER"],
+        activeContexts: ["files"],
+      }),
+    ).toBeDefined();
+    expect(
+      retrieveContextualPlannerActions({
+        actions,
+        query: request.content.text as string,
+        contexts: ["files"],
+        intents: ["Create the HTML file", "Read saved file back"],
+      }).actions,
+    ).toEqual([fileAction]);
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (selected) => {
+        loaded = selected;
+      },
+      async () => actions,
+      { taskIntents: ["Create HTML file", "Read saved file back"] },
+    );
+    const result = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["files"] },
+    });
+    expect(result?.data?.loadedTools).toEqual(["FILE"]);
+    expect(loaded).toEqual([fileAction]);
+    expect(loaded[0]?.parameters).toEqual(fileAction.parameters);
+  });
+
+  it.each([{}, { names: [] }, { mode: "load", names: [] }])(
+    "searches current work for empty selectors %j without dumping unrelated catalog bodies",
+    async (parameters) => {
+      const original = "Complete unrelated action documentation Ω\n".repeat(
+        200,
+      );
+      const actions: Action[] = [
+        {
+          name: "NOTES_LIST",
+          description: "Search notes",
+          contexts: ["notes"],
+        },
+        { name: "UNRELATED", description: original, contexts: ["other"] },
+        {
+          name: "REVOKED",
+          description: "Private revoked action",
+          contexts: ["notes"],
+        },
+      ];
+      let loaded: Action[] = [];
+      const fresh = actions.slice(0, 2);
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        (selected) => {
+          loaded = selected;
+        },
+        async () => fresh,
+        { taskIntents: ["search notes"] },
+      );
+      const request = {
+        content: { text: "Search notes for groceries" },
+      } as Memory;
+      const result = await discovery.handler?.(runtime, request, undefined, {
+        parameters,
+      });
+      expect(result?.success).toBe(true);
+      expect(loaded).toEqual([actions[0]]);
+      expect(result?.data?.catalog).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain(original);
+      expect(JSON.stringify(result)).not.toContain("REVOKED");
+      const full = await discovery.handler?.(runtime, request, undefined, {
+        parameters: { mode: "describe", names: [] },
+      });
+      expect(full?.data?.catalog).toHaveLength(2);
+      expect(JSON.stringify(full)).toContain(
+        JSON.stringify(original).slice(1, -1),
+      );
+      expect(JSON.stringify(full)).not.toContain("REVOKED");
+      expect(loaded).toEqual([actions[0]]);
+    },
+  );
+
   it("ranks context-only loads by the current task while keeping explicit queries and catalog reads intact", async () => {
     const unrelated: Action[] = Array.from({ length: 12 }, (_, index) => ({
       name: `NOTES_DELETE_${index}`,
@@ -134,7 +241,7 @@ describe("contextual native discovery", () => {
     ).toBe(true);
     expect(loaded).toEqual([omitted]);
     const catalog = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { names: [] },
+      parameters: { names: [], mode: "describe" },
     });
     expect(catalog?.data?.catalog).toHaveLength(24);
   });

@@ -620,7 +620,14 @@ describe("planner tool discovery", () => {
       }
       expect(results[1]).toEqual(results[0]);
       expect(executions).toBe(0);
-      if (parameters.names.length === 0) {
+      if (parameters.names.length === 0 && parameters.mode !== "describe") {
+        expect(results[1]?.reads).toEqual([]);
+        expect(results[1]?.loads).toEqual([]);
+        expect(results[1]?.result).toMatchObject({
+          success: false,
+          data: { coachingFailure: true },
+        });
+      } else if (parameters.names.length === 0) {
         expect(results[1]?.reads).toEqual([[]]);
         expect(results[1]?.loads).toEqual([]);
         expect(JSON.stringify(results[1]?.result)).toContain(
@@ -1043,7 +1050,14 @@ describe("planner tool discovery", () => {
         discovery.handler?.(actualRuntime, turn, undefined, {
           parameters: { names },
         });
-      const catalogRead = await invoke([]);
+      const catalogRead = await discovery.handler?.(
+        actualRuntime,
+        turn,
+        undefined,
+        {
+          parameters: { names: [], mode: "describe" },
+        },
+      );
       expect(catalogRead?.success).toBe(true);
       const entries = catalogRead?.data?.catalog;
       if (!Array.isArray(entries)) throw new Error("Missing discovery catalog");
@@ -1192,7 +1206,7 @@ describe("planner tool discovery", () => {
         ]),
       );
       const result = await discovery.handler?.(runtime, message, undefined, {
-        parameters: { names: [] },
+        parameters: { names: [], mode: "describe" },
       });
       const catalog = result?.data?.catalog as Array<{
         name: string;
@@ -1249,7 +1263,7 @@ describe("planner tool discovery", () => {
     expect(discovery.description).toContain("NOTES_READ");
     expect(discovery.description).not.toContain("FINAL_DETAIL");
     const result = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { names: [] },
+      parameters: { names: [], mode: "describe" },
     });
     expect(result?.success).toBe(true);
     expect(JSON.stringify(result?.data)).toContain(
