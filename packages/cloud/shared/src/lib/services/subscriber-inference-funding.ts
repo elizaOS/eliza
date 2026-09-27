@@ -179,6 +179,7 @@ export async function fundSubscriberInferenceCharge(
     let purchasedCreditDebited = false;
     let purchasedCreditRefunded = false;
     let replayed = false;
+    let actualCost = input.amountUsd;
     if (existing) {
       replayed = true;
       reservationId = existing.id;
@@ -197,6 +198,9 @@ export async function fundSubscriberInferenceCharge(
         collected = new Decimal(settled.collectedAmount);
       } else if (existing.status === "finalized") {
         collected = new Decimal(existing.requested_amount);
+        if (collected.isZero()) {
+          actualCost = new Decimal(existing.uncollected_overage_amount).toNumber();
+        }
       }
     } else {
       const allowance = await readEligibleSubscriptionAllowance(
@@ -230,6 +234,14 @@ export async function fundSubscriberInferenceCharge(
         reservationId = reserved.reservation.id;
         purchasedCreditDebited = reserved.purchasedCreditDebited;
         collected = funded;
+      } else {
+        const receipt = await subscriptionFundingService.recordUnfundedInferenceInTransaction(tx, {
+          organizationId: input.organizationId,
+          logicalOperationId,
+          actualAmount: requested.toFixed(6),
+          reservationTtlMs: RESERVATION_SWEEP_GRACE_MS,
+        });
+        reservationId = receipt.id;
       }
     }
     const capacity = await readSubscriberFundingCapacityInTransaction(tx, input.organizationId, {
@@ -237,6 +249,7 @@ export async function fundSubscriberInferenceCharge(
     });
     return {
       collected,
+      actualCost,
       reservationId,
       replayed,
       capacity,
@@ -246,7 +259,9 @@ export async function fundSubscriberInferenceCharge(
   if (outcome.invalidate) {
     await creditsService.invalidateCreditCaches(input.organizationId);
   }
-  const uncollected = requested.minus(outcome.collected);
+  const uncollected = new Decimal(canonicalFundingAmount(outcome.actualCost)).minus(
+    outcome.collected,
+  );
   if (uncollected.gt(0) && !outcome.replayed) {
     logger.warn("[SubscriberInferenceFunding] capacity could not fund the full inference charge", {
       organizationId: input.organizationId,
@@ -259,7 +274,7 @@ export async function fundSubscriberInferenceCharge(
   return {
     reconciliation: {
       reservedAmount: collectedUsd,
-      actualCost: input.amountUsd,
+      actualCost: outcome.actualCost,
       collectedAmount: collectedUsd,
       reservationTransactionId: outcome.reservationId,
       settlementTransactionIds: outcome.reservationId ? [outcome.reservationId] : [],

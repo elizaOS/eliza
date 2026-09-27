@@ -58,6 +58,7 @@ beforeAll(async () => {
   for (const name of [
     "0177_organization_balance_revision.sql",
     "0491_allowance_advances_balance_revision.sql",
+    "0493_zero_collected_inference_receipts.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -326,6 +327,64 @@ describe("deferred subscriber inference funding", () => {
     expect(replayed.periods).toEqual(settled.periods);
     expect(replayed.reservations).toEqual(settled.reservations);
     expect(replay.capacity).toEqual(live.capacity);
+  });
+
+  test("a zero-collected live settlement cannot debit a larger recovery estimate after top-up", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "0.200000",
+      credits: "0.300000",
+    });
+    await subscriber.fundSubscriberInferenceCharge(charge(org, "subscriber-drain-zero-0001", 0.5));
+    const [live, concurrent] = await Promise.all([
+      subscriber.fundSubscriberInferenceCharge(charge(org, "subscriber-zero-replay-0001", 0.4)),
+      subscriber.fundSubscriberInferenceCharge(charge(org, "subscriber-zero-replay-0001", 0.4)),
+    ]);
+    expect(concurrent.reconciliation).toEqual(live.reconciliation);
+    expect(live.reconciliation).toMatchObject({
+      actualCost: 0.4,
+      collectedAmount: 0,
+      adjustmentType: "uncollected_overage",
+    });
+    const { rows: receipts } = await fixture.query<{
+      status: string;
+      requested: string;
+      reserved: string;
+      uncollected: string;
+    }>(
+      "SELECT status, requested_amount::text AS requested, reserved_amount::text AS reserved, uncollected_overage_amount::text AS uncollected FROM billing_funding_reservations WHERE organization_id = $1 AND logical_operation_id = $2",
+      [org, "inference-gate:subscriber-zero-replay-0001"],
+    );
+    expect(receipts).toEqual([
+      { status: "finalized", requested: "0.000000", reserved: "0.000000", uncollected: "0.400000" },
+    ]);
+    await expect(
+      fixture.query(
+        "UPDATE billing_funding_reservations SET status = 'reserved', finalized_at = NULL, settlement_key = NULL, settlement_digest = NULL, uncollected_overage_amount = 0 WHERE organization_id = $1 AND logical_operation_id = $2",
+        [org, "inference-gate:subscriber-zero-replay-0001"],
+      ),
+    ).rejects.toThrow("billing_funding_reservations_amount_check");
+    await expect(
+      fixture.query(
+        "UPDATE billing_funding_reservations SET status = 'canceled', finalized_at = NULL, settlement_key = NULL, settlement_digest = NULL, cancellation_key = 'zero-cancel-test', cancellation_digest = repeat('a', 64), canceled_at = now(), uncollected_overage_amount = 0 WHERE organization_id = $1 AND logical_operation_id = $2",
+        [org, "inference-gate:subscriber-zero-replay-0001"],
+      ),
+    ).rejects.toThrow("billing_funding_reservations_amount_check");
+    // A lost gate-settlement response leaves the original $1.50 lease for alarm
+    // recovery. The later top-up must not turn the completed $0.40 operation
+    // into a new debit at that larger estimate.
+    await fixture.query(
+      "UPDATE organizations SET credit_balance = credit_balance + 2 WHERE id = $1",
+      [org],
+    );
+    const beforeReplay = await readState(org);
+    const replay = await subscriber.fundSubscriberInferenceCharge(
+      charge(org, "subscriber-zero-replay-0001", 1.5),
+    );
+    expect(replay.reconciliation).toEqual(live.reconciliation);
+    expect(await readState(org)).toEqual(beforeReplay);
   });
 
   test("an ex-subscriber's lapsed allowance is not counted as capacity", async () => {
