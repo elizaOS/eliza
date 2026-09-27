@@ -108,6 +108,7 @@ describe("CloudRouterShell private Cloud registration UI", () => {
   });
 
   it("keeps registered Cloud routes on the hosted management renderer", async () => {
+    setPrivateCloudLoadForTests(async () => undefined);
     registerCloudRoute({
       path: "cloud/billing/hosted-test",
       group: "cloud",
@@ -129,6 +130,34 @@ describe("CloudRouterShell private Cloud registration UI", () => {
     expect(
       `${window.location.pathname}${window.location.search}${window.location.hash}`,
     ).toBe("/cloud/billing/hosted-test?accountId=workspace#invoice");
+  });
+
+  it("keeps a route registered mid-load behind the pending registration barrier (#29283)", async () => {
+    let finishLoad!: () => void;
+    setPrivateCloudLoadForTests(async () => {
+      registerCloudRoute({
+        path: "cloud/billing/pending-test",
+        group: "cloud",
+        element: () => <div>Route body</div>,
+      });
+      await new Promise<void>((resolve) => {
+        finishLoad = resolve;
+      });
+    });
+    window.history.replaceState({}, "", "/cloud/billing/pending-test");
+
+    render(<CloudRouterShell appElement={<div data-testid="app-probe" />} />);
+    await waitFor(() => expect(finishLoad).toBeTypeOf("function"));
+
+    expect(document.querySelector("[aria-busy='true']")).toBeTruthy();
+    expect(screen.queryByTestId("app-probe")).toBeNull();
+
+    await act(async () => {
+      finishLoad();
+      await Promise.resolve();
+    });
+    await screen.findByTestId("app-probe");
+    expect(window.location.pathname).toBe("/cloud/billing/pending-test");
   });
 
   it("shows pending then mounts the app after ready (idle → pending → ready)", async () => {
