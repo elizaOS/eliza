@@ -33,6 +33,7 @@ import type {
   TrajectoryRecorder,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   appendContextEvent,
   assertRepeatedFailureLimit,
   assertTrajectoryLimit,
@@ -1292,6 +1293,13 @@ async function runPlannerLoopIterations(
           err.code === PROVIDER_CONTEXT_OVERFLOW
         ) {
           throw err;
+        }
+        // error-policy:J4 Post-effect replanning can fail just like evaluation.
+        // Preserve pending scope and receipts before the outer message rescue
+        // can mistake an earlier operation's confirmation for task completion.
+        if (!codingMode && hasExecutedNonTerminalTool(trajectory)) {
+          const incomplete = incompleteProviderFailure(err);
+          if (incomplete) return incomplete;
         }
         // error-policy:J4 the sole tool already committed; an expected model
         // provider outage degrades to its vetted action-owned fallback without replay.
@@ -2695,7 +2703,12 @@ async function runPlannerLoopIterations(
       !latestResult.failureProvenance &&
       (latestResult.effectReceipts?.length ?? 0) === 0 &&
       !latestUnresolvedFailedNonTerminalToolStep(trajectory);
-    if (queueAdvance || pendingReadReplan) {
+    const pendingMutationReplan = canReplanPendingCommittedMutation({
+      trajectory,
+      failures,
+      lastPlannerExplicitCompleted,
+    });
+    if (queueAdvance || pendingReadReplan || pendingMutationReplan) {
       // Live 2026-09-05: two planned creates (or deletes) paid a full
       // evaluator call (0.8–1.3 s) between the steps only to pick the call
       // that was already queued. Receipt-based queue advancement and a
@@ -2712,8 +2725,9 @@ async function runPlannerLoopIterations(
         : {
             success: false,
             decision: "CONTINUE",
-            thought:
-              "The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
+            thought: pendingMutationReplan
+              ? "The mutation is committed. The planner explicitly declared more work pending; use the recorded result to plan remaining work or a grounded final reply without repeating the effect."
+              : "The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
           };
       trajectory.evaluatorOutputs.push(
         projectToolDiagnosticValue(
@@ -2736,7 +2750,11 @@ async function runPlannerLoopIterations(
         startedAt: gateStartedAt,
         endedAt: Date.now(),
         output: gated,
-        reason: queueAdvance ? "queue_auto_advance" : "pending_read_replan",
+        reason: queueAdvance
+          ? "queue_auto_advance"
+          : pendingMutationReplan
+            ? "pending_mutation_replan"
+            : "pending_read_replan",
         logger: params.runtime.logger,
       });
       if (queueAdvance) preferRecommendedToolCall(trajectory, gated);
@@ -9512,6 +9530,55 @@ function selectQueueAutoAdvance(args: {
   const next = trajectory.plannedQueue[0];
   if (!next || isTerminalToolCall(next)) return null;
   return { nextToolCallId: next.id ?? next.name };
+}
+
+/** Pending scope and a settled commit permit replanning, never completion or replay. */
+function canReplanPendingCommittedMutation(args: {
+  trajectory: PlannerTrajectory;
+  failures: readonly FailureLike[];
+  lastPlannerExplicitCompleted: boolean | undefined;
+}): boolean {
+  const { trajectory } = args;
+  if (
+    args.lastPlannerExplicitCompleted !== false ||
+    trajectory.plannedQueue.length > 0 ||
+    args.failures.length > 0 ||
+    latestUnresolvedFailedNonTerminalToolStep(trajectory)
+  )
+    return false;
+  const step = trajectory.steps.at(-1);
+  const result = step?.result;
+  if (
+    !step?.toolCall ||
+    isTerminalToolCall(step.toolCall) ||
+    !result ||
+    result.success !== true ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    hasAwaitingUserInputMarker(result) ||
+    hasRequiresConfirmationMarker(result)
+  )
+    return false;
+  const verifiedVisible =
+    result.verifiedUserFacing === true && result.turnComplete === true;
+  if (!isSettledInternalSuccess(result) && !verifiedVisible) return false;
+  const committed = committedReceiptIdsForGate(result);
+  if (!committed?.length) return false;
+  const active = new Set(
+    activeCommittedEffectReceipts(
+      allTrajectorySteps(trajectory).flatMap(
+        (item) => item.result?.effectReceipts ?? [],
+      ),
+    ).map((receipt) => receipt.receiptId),
+  );
+  return (
+    committed.every((id) => active.has(id)) &&
+    (result.effectReceipts ?? []).some(
+      (receipt) =>
+        committed.includes(receipt.receiptId) &&
+        !READ_EFFECT_OPERATION_PATTERN.test(receipt.operation),
+    )
+  );
 }
 
 function tryGateEvaluator(args: {

@@ -424,6 +424,14 @@ export function plannerRateLimitEvidence(
 }
 
 async function main() {
+  // Operator stops never abort a dispatched request or replay its effects.
+  let operatorStopRequested = false;
+  let wakePacing: (() => void) | undefined;
+  const stopAtBoundary = () => {
+    operatorStopRequested = true;
+    wakePacing?.();
+  };
+  process.on("SIGUSR1", stopAtBoundary);
   const count = Number(process.env.BENCHMARK_PAIRS ?? 30);
   const offset = Number(process.env.BENCHMARK_OFFSET ?? 0);
   if (
@@ -492,6 +500,7 @@ async function main() {
         {
           runId,
           status,
+          operatorStopRequested,
           origins,
           baselineRevision: process.env.BENCHMARK_BASELINE_REVISION ?? null,
           candidateRevision: process.env.BENCHMARK_CANDIDATE_REVISION ?? null,
@@ -577,6 +586,7 @@ async function main() {
     const variants: Variant[] =
       index % 2 === 0 ? ["baseline", "candidate"] : ["candidate", "baseline"];
     for (const variant of variants) {
+      if (operatorStopRequested) break study;
       const workspace = join(output, "fixtures", String(index), variant);
       await mkdir(workspace, { recursive: true });
       const fixture = plannerWorkloadFixture(index, workspace);
@@ -615,13 +625,29 @@ async function main() {
         row.pacingDelayMs = delayMs;
         if (delayMs > 0) {
           await persist("pacing");
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await new Promise<void>((resolve) => {
+            const finish = () => {
+              clearTimeout(timer);
+              wakePacing = undefined;
+              resolve();
+            };
+            const timer = setTimeout(finish, delayMs);
+            wakePacing = finish;
+            if (operatorStopRequested) finish();
+          });
+        }
+        if (operatorStopRequested) {
+          row.status = "interrupted";
+          row.dispatched = false;
+          row.interruption = "Operator stopped before message dispatch";
+          break study;
         }
         reserved = { ...estimates[variant] };
         row.tokenReservation = reserved;
         tokenPacer.reserve(reserved);
         previousTurnStartedAt = Date.now();
         const started = performance.now();
+        row.dispatched = true;
         const response = await request(
           variant,
           `/api/conversations/${conversation.id}/messages`,
@@ -757,7 +783,7 @@ async function main() {
       process.stderr.write(
         `[planner-workload] ${index + 1}/30 ${variant}: ${row.status}\n`,
       );
-      if (rateLimited) break study;
+      if (rateLimited || operatorStopRequested) break study;
     }
   }
   // Refresh every synthetic room after the study: background workers may not
@@ -765,7 +791,9 @@ async function main() {
   await persist("observing-background");
   const backgroundDeadline = performance.now() + 30_000;
   let pending = rows.filter(
-    (row) => typeof record(row.conversation).roomId === "string",
+    (row) =>
+      row.dispatched === true &&
+      typeof record(row.conversation).roomId === "string",
   );
   while (pending.length) {
     const retry: Json[] = [];
@@ -813,12 +841,19 @@ async function main() {
   await persist(
     rateLimited
       ? "interrupted-provider-rate-limit"
-      : rows.every((row) => row.status === "passed")
-        ? "complete"
-        : "completed-with-failures",
+      : operatorStopRequested
+        ? "interrupted-operator"
+        : rows.every((row) => row.status === "passed")
+          ? "complete"
+          : "completed-with-failures",
   );
   process.stdout.write(`${join(output, "report.json")}\n`);
-  if (rateLimited || rows.some((row) => row.status !== "passed"))
+  process.removeListener("SIGUSR1", stopAtBoundary);
+  if (
+    rateLimited ||
+    operatorStopRequested ||
+    rows.some((row) => row.status !== "passed")
+  )
     process.exitCode = 1;
 }
 if (import.meta.main)

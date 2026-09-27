@@ -1,6 +1,8 @@
 /** Runs the real CLI, provider, coding tools, database state and process shutdown. */
 import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
@@ -344,3 +346,159 @@ test("paired planner fixtures validate actual file bytes and do not fabricate ab
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+test.each(["pacing", "request"] as const)(
+  "planner benchmark stops gracefully during %s without a second dispatch",
+  async (phase) => {
+    const output = await mkdtemp(path.join(tmpdir(), "planner-stop-"));
+    let messages = 0;
+    let conversations = 0;
+    let child: ReturnType<typeof spawn> | undefined;
+    const server = createServer(async (request, response) => {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      const reply = (value: unknown) => {
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify(value));
+      };
+      if (url.pathname === "/api/conversations") {
+        conversations++;
+        reply({
+          conversation: {
+            id: `c${conversations}`,
+            roomId: `r${conversations}`,
+          },
+        });
+      } else if (url.pathname.endsWith("/messages")) {
+        messages++;
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const body = JSON.parse(Buffer.concat(chunks).toString());
+        if (phase === "request") {
+          child?.kill("SIGUSR1");
+          // The response and real local write settle after the stop signal.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        const matched = String(body.text).match(
+          /^Create (.+?) containing exactly ("(?:[^"\\]|\\.)*")\./,
+        );
+        if (!matched) throw new Error("Unexpected fixture prompt");
+        const content: string = JSON.parse(matched[2]);
+        await writeFile(matched[1], content);
+        reply({ text: content });
+      } else if (url.pathname === "/api/trajectories") {
+        reply({ total: 2, trajectories: [{ id: "fg" }, { id: "bg" }] });
+      } else if (url.pathname === "/api/trajectories/fg") {
+        reply({
+          trajectory: { id: "fg", status: "completed" },
+          llmCalls: [
+            {
+              modelType: "ACTION_PLANNER",
+              promptTokens: 10,
+              completionTokens: 2,
+              cacheReadInputTokens: 0,
+            },
+          ],
+          toolEvents: [
+            {
+              actionName: "READ",
+              success: true,
+              parameters: { file_path: "index.html" },
+            },
+          ],
+        });
+      } else if (url.pathname === "/api/trajectories/bg") {
+        reply({
+          trajectory: { id: "bg", status: "completed" },
+          llmCalls: [
+            {
+              modelType: "TEXT_SMALL",
+              systemPrompt: "Evaluate the completed turn",
+              promptTokens: 2,
+              completionTokens: 1,
+              cacheReadInputTokens: 0,
+            },
+          ],
+        });
+      } else {
+        response.statusCode = 404;
+        reply({ error: "Unknown test route" });
+      }
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing test port");
+    const origin = `http://127.0.0.1:${address.port}`;
+    try {
+      child = spawn(
+        "bun",
+        [
+          "--conditions=eliza-source",
+          path.join(
+            repoRoot,
+            "packages/agent/scripts/cerebras-planner-workload.ts",
+          ),
+        ],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            BUN_OPTIONS: "",
+            BENCHMARK_PAIRS: "2",
+            BENCHMARK_OUTPUT_DIR: output,
+            BENCHMARK_BASELINE_URL: origin,
+            BENCHMARK_CANDIDATE_URL: origin,
+            BENCHMARK_MIN_TURN_INTERVAL_MS: "60000",
+            BENCHMARK_FRESH_TOKENS_PER_MINUTE: "90000",
+            BENCHMARK_TOTAL_TOKENS_PER_MINUTE: "400000",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      const exited = once(child, "exit");
+      if (phase === "pacing") {
+        const deadline = Date.now() + 10000;
+        let found = false;
+        while (Date.now() < deadline) {
+          try {
+            const report = JSON.parse(
+              await readFile(path.join(output, "report.json"), "utf8"),
+            );
+            if (report.status === "pacing") {
+              found = true;
+              break;
+            }
+          } catch {
+            /* Report is created and replaced by the running child. */
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(found).toBe(true);
+        child.kill("SIGUSR1");
+      }
+      expect((await exited)[0]).toBe(1);
+      const report = JSON.parse(
+        await readFile(path.join(output, "report.json"), "utf8"),
+      );
+      expect(report.status).toBe("interrupted-operator");
+      expect(messages).toBe(1);
+      expect(report.rows[0].response.text).toContain("CHECK-137");
+      expect(report.rows[0].validation.passed).toBe(true);
+      expect(
+        JSON.parse(await readFile(report.rows[0].trajectoryFile, "utf8")),
+      ).toHaveLength(2);
+      expect(
+        JSON.parse(await readFile(report.rows[0].finalTrajectoryFile, "utf8")),
+      ).toHaveLength(2);
+      if (phase === "pacing") expect(report.rows[1].dispatched).toBe(false);
+      else expect(report.rows).toHaveLength(1);
+    } finally {
+      if (child?.exitCode === null) child.kill("SIGKILL");
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(output, { recursive: true, force: true });
+    }
+  },
+  30000,
+);

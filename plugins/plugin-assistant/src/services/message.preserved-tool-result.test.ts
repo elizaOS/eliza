@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { createAssistantPlugin } from "../index.ts";
 
@@ -246,6 +249,104 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+  it("retains a failed public outcome when post-write replanning is throttled", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "planner-post-write-outage-"),
+    );
+    const path = join(directory, "result.txt");
+    const content = "Exact original  output\nwith final newline.\n";
+    let writes = 0;
+    let evaluations = 0;
+    let plans = 0;
+    const failure = Object.assign(new Error("token quota exceeded"), {
+      status: 429,
+    });
+    try {
+      const h = await createHarness({
+        evaluatorFailure: failure,
+        onEvaluator: () => {
+          evaluations++;
+        },
+        plannerCall: () => {
+          if (++plans > 1) throw failure;
+          return {
+            ...plannerCalendarCall(),
+            toolCalls: [
+              {
+                id: "write-once",
+                name: "LOOKUP",
+                arguments: {
+                  action: "create",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+            ],
+          };
+        },
+        actionGate: async () => {
+          writes++;
+          await writeFile(path, content);
+        },
+        actionResult: {
+          success: true,
+          userFacingText: "Saved the requested file.",
+          verifiedUserFacing: true,
+          turnComplete: true,
+          effectReceipts: [
+            {
+              receiptId: "file-saved",
+              operation: "file.write",
+              outcome: "applied",
+              resource: { kind: "file", id: path },
+              artifacts: [],
+              idempotency: { key: null, replayed: false },
+              observedAt: "2026-09-26T00:00:00.000Z",
+              commit: {
+                kind: "durable",
+                id: path,
+                committedAt: "2026-09-26T00:00:00.000Z",
+              },
+            },
+          ],
+        },
+      });
+      const result = await new DefaultMessageService().handleMessage(
+        h.runtime,
+        makeMessage(
+          h.runtime,
+          "Save the entry, then verify it and report the final details.",
+        ),
+        h.callback,
+      );
+      expect(writes).toBe(1);
+      expect(plans).toBe(2);
+      expect(evaluations).toBe(0);
+      expect(await readFile(path, "utf8")).toBe(content);
+      expect(result.requestFulfilled).toBe(false);
+      expect(result.outcome).toMatchObject({
+        status: "failed",
+        error: {
+          code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
+          transient: false,
+        },
+        effects: [
+          expect.objectContaining({
+            receiptId: "file-saved",
+            outcome: "applied",
+          }),
+        ],
+      });
+      expect(result.responseContent?.text).toContain(
+        "Saved the requested file.",
+      );
+      expect(result.responseContent?.text).toContain(
+        "request remains incomplete",
+      );
+      expect(visibleTexts(h.callbacks)).toEqual([result.responseContent?.text]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it("delivers an honest partial outcome after evaluator throttling without replaying the completed action", async () => {
     let actionCalls = 0;
     let evaluatorCalls = 0;
@@ -274,7 +375,7 @@ describe("planner-loop death after a completed tool", () => {
         success: true,
         userFacingText: USER_FACING,
         verifiedUserFacing: true,
-        turnComplete: true,
+        turnComplete: false,
         effectReceipts: [
           {
             receiptId: "calendar-saved",

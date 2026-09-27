@@ -8,6 +8,7 @@ import {
   type EffectReceipt,
   ElizaError,
   type PlannerRuntime,
+  type PlannerToolResult,
   type PlannerTrajectory,
   PROVIDER_CONTEXT_OVERFLOW,
   type RecordedStage,
@@ -94,6 +95,249 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it.each([false, true])(
+    "replans a committed pending write without evaluation and preserves final verification (already complete=%s)",
+    async (alreadyComplete) => {
+      const directory = await mkdtemp(join(tmpdir(), "pending-commit-"));
+      const path = join(directory, "result.txt");
+      const content = "Complete original output";
+      let plans = 0;
+      let writes = 0;
+      let reads = 0;
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: true,
+        thought: "Final evidence and answer verified.",
+        messageToUser: `Saved contents: ${content}`,
+        replyEffectStatus: "applied" as const,
+        effectReceiptIds: [receipt.receiptId],
+      }));
+      try {
+        const result = await runPlannerLoop({
+          codingMode: false,
+          context: {
+            id: "pending-committed-write",
+            events: [
+              {
+                id: "handler",
+                type: "message_handler",
+                metadata: {
+                  plan: {
+                    intents: alreadyComplete
+                      ? ["write the file"]
+                      : ["write the file", "read and report exact contents"],
+                  },
+                },
+              },
+            ],
+          },
+          runtime: {
+            useModel: async () => {
+              plans++;
+              if (plans > 2) throw new Error("Unexpected extra work");
+              expect(evaluate).not.toHaveBeenCalled();
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    id: `step-${plans}`,
+                    name:
+                      plans === 1
+                        ? "WRITE"
+                        : alreadyComplete
+                          ? "REPLY"
+                          : "READ",
+                    arguments: {
+                      ...(plans === 2 && alreadyComplete
+                        ? { text: `Saved contents: ${content}` }
+                        : {}),
+                      eliza_turn_scope:
+                        plans === 1 ? "more_work_pending" : "final",
+                    },
+                  },
+                ],
+              };
+            },
+          },
+          executeToolCall: async (call) => {
+            if (call.name === "WRITE") {
+              writes++;
+              await writeFile(path, content);
+              return {
+                success: true,
+                verifiedUserFacing: true,
+                turnComplete: true,
+                userFacingText: "Written.",
+                effectReceipts: [receipt],
+                userFacingEffectReceiptIds: [receipt.receiptId],
+              };
+            }
+            reads++;
+            return { success: true, text: await readFile(path, "utf8") };
+          },
+          evaluate,
+        });
+        expect(writes).toBe(1);
+        expect(reads).toBe(alreadyComplete ? 0 : 1);
+        expect(plans).toBe(2);
+        expect(evaluate).toHaveBeenCalledTimes(1);
+        expect(result.finalMessage).toContain(content);
+        expect(await readFile(path, "utf8")).toBe(content);
+        expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain(
+          "without repeating the effect",
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+  it.each([
+    "preview",
+    "noop",
+    "rollback",
+    "failed",
+    "evaluation-required",
+    "awaiting-input",
+    "confirmation",
+    "wrapped-awaiting-input",
+    "wrapped-confirmation",
+    "final-scope",
+    "undefined-scope",
+    "failure-provenance",
+    "read-receipt",
+    "prior-rollback",
+    "reply-failure",
+  ])(
+    "retains evaluation at the pending mutation boundary for %s",
+    async (kind) => {
+      const resultReceipt: EffectReceipt =
+        kind === "preview"
+          ? { ...receipt, outcome: "preview" }
+          : kind === "noop"
+            ? { ...receipt, outcome: "noop" }
+            : kind === "rollback"
+              ? {
+                  ...receipt,
+                  outcome: "rolled_back",
+                  rollback: {
+                    receiptId: "undo",
+                    revertedReceiptIds: [receipt.receiptId],
+                    rolledBackAt: receipt.observedAt,
+                  },
+                }
+              : kind === "read-receipt"
+                ? { ...receipt, operation: "record.read" }
+                : receipt;
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: false,
+        thought: "Settled without advancing the effect.",
+        messageToUser: "The requested work remains incomplete.",
+      }));
+      const useModel = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "write",
+            name: "WRITE",
+            arguments:
+              kind === "undefined-scope"
+                ? {}
+                : {
+                    eliza_turn_scope:
+                      kind === "final-scope" ? "final" : "more_work_pending",
+                  },
+          },
+        ],
+      }));
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: { id: `guard-${kind}` },
+        runtime: { useModel },
+        ...(kind === "prior-rollback"
+          ? {
+              resumeState: {
+                trajectory: {
+                  context: { id: "earlier-rollback" },
+                  steps: [],
+                  archivedSteps: [
+                    {
+                      toolCall: { id: "undo", name: "UNDO", params: {} },
+                      result: {
+                        success: true,
+                        effectReceipts: [
+                          {
+                            ...receipt,
+                            receiptId: "undo-receipt",
+                            outcome: "rolled_back" as const,
+                            rollback: {
+                              receiptId: "undo-commit",
+                              revertedReceiptIds: [receipt.receiptId],
+                              rolledBackAt: receipt.observedAt,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                  plannedQueue: [],
+                  evaluatorOutputs: [],
+                },
+                modelUsage: {
+                  promptTokens: 0,
+                  completionTokens: 0,
+                  modelCalls: 0,
+                },
+              },
+            }
+          : {}),
+        evaluate,
+        executeToolCall: async (): Promise<PlannerToolResult> => ({
+          success: kind !== "failed",
+          transcriptVisibility: "internal",
+          turnComplete: kind === "evaluation-required" ? false : undefined,
+          effectReceipts: [resultReceipt],
+          ...(kind === "reply-failure"
+            ? {
+                replyFailure: {
+                  kind: "reply_generation_error" as const,
+                  code: "DELIVERY_FAILED",
+                  message: "Reply failed after commit.",
+                  transient: false as const,
+                },
+              }
+            : {}),
+          ...(kind === "awaiting-input"
+            ? { data: { awaitingUserInput: true } }
+            : {}),
+          ...(kind === "confirmation"
+            ? { data: { requiresConfirmation: true } }
+            : {}),
+          ...(kind === "wrapped-awaiting-input"
+            ? { data: { values: { awaitingUserInput: true } } }
+            : {}),
+          ...(kind === "wrapped-confirmation"
+            ? { data: { values: { requiresConfirmation: true } } }
+            : {}),
+          ...(kind === "failure-provenance"
+            ? {
+                failureProvenance: {
+                  kind: "handler_error",
+                  boundary: "handler",
+                  code: "POST_COMMIT_BOOKKEEPING",
+                  retryable: false,
+                },
+              }
+            : {}),
+        }),
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(kind === "reply-failure" ? 0 : 1);
+      if (kind === "reply-failure")
+        expect(result.terminalFailure?.code).toBe("DELIVERY_FAILED");
+    },
+  );
+
   it("retains a single verified action-owned reply after evaluator protocol failure", async () => {
     const result = await runPlannerLoop({
       context: {
@@ -353,6 +597,7 @@ describe("long progressive planner trajectories", () => {
   it.each([false, true])(
     "preserves verified complete relays and internal effect failure authority (internal=%s)",
     async (internal) => {
+      let modelCalls = 0;
       const result = await runPlannerLoop({
         context: {
           id: "provider-fallback-authority",
@@ -365,18 +610,22 @@ describe("long progressive planner trajectories", () => {
           ],
         },
         runtime: {
-          useModel: async () => ({
-            text: "",
-            toolCalls: [
-              {
-                id: "save",
-                name: "SAVE",
-                arguments: {
-                  eliza_turn_scope: internal ? "more_work_pending" : "final",
+          useModel: async () => {
+            if (++modelCalls > 1)
+              throw Object.assign(new Error("rate limited"), { status: 429 });
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "save",
+                  name: "SAVE",
+                  arguments: {
+                    eliza_turn_scope: internal ? "more_work_pending" : "final",
+                  },
                 },
-              },
-            ],
-          }),
+              ],
+            };
+          },
         },
         executeToolCall: async () => ({
           success: true,
@@ -411,28 +660,35 @@ describe("long progressive planner trajectories", () => {
     },
   );
   it.each(["more_work_pending", "final"])(
-    "preserves a real write without claiming unfinished readback completed after evaluator 429 (%s)",
+    "preserves a real write without claiming unfinished readback completed after next model boundary 429 (%s)",
     async (scope) => {
       const directory = await mkdtemp(join(tmpdir(), "planner-incomplete-"));
       const path = join(directory, "index.html");
       const content = "<html><body>read me back exactly</body></html>";
       const version = `sha256:${createHash("sha256").update(content).digest("hex")}`;
       let mutations = 0;
-      const useModel = vi.fn(async () => ({
-        text: "",
-        toolCalls: [
-          {
-            id: "write",
-            name: "FILE",
-            arguments: {
-              action: "write",
-              path,
-              content,
-              eliza_turn_scope: scope,
+      let plannerCalls = 0;
+      const useModel = vi.fn(async () => {
+        if (++plannerCalls > 1)
+          throw Object.assign(new Error("token quota exceeded"), {
+            status: 429,
+          });
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: "write",
+              name: "FILE",
+              arguments: {
+                action: "write",
+                path,
+                content,
+                eliza_turn_scope: scope,
+              },
             },
-          },
-        ],
-      }));
+          ],
+        };
+      });
       const evaluate = vi.fn(async () => {
         throw Object.assign(new Error("token quota exceeded"), { status: 429 });
       });
@@ -482,8 +738,12 @@ describe("long progressive planner trajectories", () => {
           },
         });
         expect(mutations).toBe(1);
-        expect(useModel).toHaveBeenCalledTimes(1);
-        expect(evaluate).toHaveBeenCalledTimes(1);
+        expect(useModel).toHaveBeenCalledTimes(
+          scope === "more_work_pending" ? 2 : 1,
+        );
+        expect(evaluate).toHaveBeenCalledTimes(
+          scope === "more_work_pending" ? 0 : 1,
+        );
         expect(await readFile(path, "utf8")).toBe(content);
         expect(result.terminalFailure).toMatchObject({
           code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
@@ -1217,48 +1477,52 @@ describe("long progressive planner trajectories", () => {
     expect(result.modelUsage?.modelCalls).toBe(3);
     expect(result.finalMessage).toContain("before the request was complete");
   });
-  it("cancels after a settled operation without dispatching the next call", async () => {
-    const h = harness(8);
-    const controller = new AbortController();
-    const stopped = new Error("Caller cancelled");
-    let trajectory: PlannerTrajectory | undefined;
-    const turn = runWithStreamingContext(
-      { onStreamChunk: async () => {}, abortSignal: controller.signal },
-      () =>
-        runPlannerLoop({
-          ...h,
-          context: { id: "cancelled" },
-          codingMode: true,
-          runtime: {
-            useModel: async () => ({
-              text: "",
-              toolCalls: [
-                {
-                  id: "save-before-cancel",
-                  name: "SAVE_RECORD",
-                  arguments: { eliza_turn_scope: "more_work_pending" },
-                },
-              ],
-            }),
-          },
-          executeToolCall: async (call, execution) => {
-            trajectory = execution.trajectory;
-            await h.executeToolCall(call);
-            controller.abort(stopped);
-            return {
-              success: true,
-              effectReceipts: [receipt],
-              data: { recordId: "saved-record" },
-            };
-          },
-        }),
-    );
-    await expect(turn).rejects.toBe(stopped);
-    expect(h.executed).toHaveLength(1);
-    expect(trajectory?.steps).toHaveLength(1);
-    expect(trajectory?.steps[0]?.result?.success).toBe(true);
-    expect(trajectory?.steps[0]?.result?.effectReceipts).toEqual([receipt]);
-  });
+  it.each([false, true])(
+    "cancels after a settled operation without dispatching the next call (coding=%s)",
+    async (codingMode) => {
+      const h = harness(8);
+      const controller = new AbortController();
+      const stopped = new Error("Caller cancelled");
+      let trajectory: PlannerTrajectory | undefined;
+      const turn = runWithStreamingContext(
+        { onStreamChunk: async () => {}, abortSignal: controller.signal },
+        () =>
+          runPlannerLoop({
+            ...h,
+            context: { id: "cancelled" },
+            codingMode,
+            runtime: {
+              useModel: async () => ({
+                text: "",
+                toolCalls: [
+                  {
+                    id: "save-before-cancel",
+                    name: "SAVE_RECORD",
+                    arguments: { eliza_turn_scope: "more_work_pending" },
+                  },
+                ],
+              }),
+            },
+            executeToolCall: async (call, execution) => {
+              trajectory = execution.trajectory;
+              await h.executeToolCall(call);
+              controller.abort(stopped);
+              return {
+                success: true,
+                transcriptVisibility: "internal",
+                effectReceipts: [receipt],
+                data: { recordId: "saved-record" },
+              };
+            },
+          }),
+      );
+      await expect(turn).rejects.toBe(stopped);
+      expect(h.executed).toHaveLength(1);
+      expect(trajectory?.steps).toHaveLength(1);
+      expect(trajectory?.steps[0]?.result?.success).toBe(true);
+      expect(trajectory?.steps[0]?.result?.effectReceipts).toEqual([receipt]);
+    },
+  );
   it("preserves a committed result when the next coding model call times out", async () => {
     const previous = process.env.ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS;
     process.env.ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS = "1000";
