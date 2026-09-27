@@ -97,6 +97,27 @@ export async function warmInferenceAdmissionSnapshot(
 }
 
 /**
+ * Repairs a projection that the authoritative admission check proved stale
+ * (for example after a policy-generation bump from renewal, cancellation or an
+ * override). The isolate copy is dropped at once and the shared entry is
+ * republished from the primary, so the stale window closes on the first
+ * rejected request instead of lasting the full cache TTL.
+ */
+export async function refreshStaleInferenceAdmissionSnapshot(
+  organizationId: string,
+): Promise<void> {
+  const key = CacheKeys.inference.orgAdmission(organizationId);
+  admissionMemoryCache.delete(key);
+  try {
+    await warmInferenceAdmissionSnapshot(organizationId);
+  } catch (error) {
+    // error-policy:J7 a failed republish must not leave the stale entry usable.
+    await cache.del(key);
+    throw error;
+  }
+}
+
+/**
  * Resolve the shared-runtime billing and rate policy with one remote cache read.
  * Misses hydrate from authoritative stores only under the Worker lifetime.
  */

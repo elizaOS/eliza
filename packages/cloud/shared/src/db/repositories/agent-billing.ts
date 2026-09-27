@@ -1,9 +1,15 @@
 /** Persists elapsed agent-compute charges and billing lifecycle transitions. */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { settleFundedAgentBillingInTransaction } from "../../lib/services/agent-compute-billing";
+import {
+  fundAllowanceEligibleChargeInTransaction,
+  isAllowanceFirstOrganizationInTransaction,
+} from "../../lib/services/allowance-first-credits";
 import { creditsService } from "../../lib/services/credits";
+import { SUBSCRIPTION_FUNDING_INSUFFICIENT } from "../../lib/services/subscription-funding";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -22,6 +28,8 @@ import {
   recordAgentBillingRunItemInTransaction,
 } from "./agent-billing-runs";
 import { settleComputeRateSegments } from "./compute-billing-segments";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
+import { observeSubscriptionAllowanceEligibility } from "./subscription-allowance-eligibility";
 
 export interface AgentBillingSandbox {
   id: string;
@@ -525,6 +533,18 @@ export class AgentBillingRepository {
         .div(elapsedMs)
         .toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
 
+      if (
+        chargeDecimal.gt(0) &&
+        (await isAllowanceFirstOrganizationInTransaction(tx, input.organizationId))
+      ) {
+        return this.settleSubscriptionFundedHourlyCharge(tx, input, options.runAuthority, {
+          settled,
+          periodStart,
+          effectiveHourlyRate,
+          claimedStatus: claimedSandbox.status,
+        });
+      }
+
       const [updatedOrg] = await tx
         .update(organizations)
         .set({
@@ -638,6 +658,148 @@ export class AgentBillingRepository {
       await creditsService.invalidateCreditCaches(input.organizationId);
     }
     return result;
+  }
+
+  /**
+   * Funds a subscriber's metered legacy hour allowance-first, then from
+   * purchased credit, inside the caller's transaction. The sandbox row lock is
+   * already held, so funding takes the organization lock second. A funding
+   * shortfall rolls back only its savepoint and enters the existing
+   * insufficient-credits stop path with nothing debited.
+   */
+  private async settleSubscriptionFundedHourlyCharge(
+    tx: DbTransaction,
+    input: AgentHourlyBillingInput,
+    runAuthority: AgentBillingRunLeaseAuthority | undefined,
+    charge: {
+      settled: Awaited<ReturnType<typeof settleComputeRateSegments>>;
+      periodStart: Date;
+      effectiveHourlyRate: Decimal;
+      claimedStatus: AgentSandboxStatus;
+    },
+  ): Promise<AgentHourlyBillingOutcome> {
+    const { settled, periodStart, effectiveHourlyRate } = charge;
+    const amountDecimal = settled.amount.toFixed(6);
+    const billingType =
+      settled.segments.length === 1
+        ? `agent_${settled.segments[0]?.state ?? "unknown"}`
+        : "agent_mixed";
+    let funded: Awaited<ReturnType<typeof fundAllowanceEligibleChargeInTransaction>>;
+    try {
+      funded = await tx.transaction((nested) =>
+        fundAllowanceEligibleChargeInTransaction(nested, {
+          organizationId: input.organizationId,
+          operation: "managed_agent_compute",
+          // One deterministic identity per metered period: a retried settlement
+          // of the same period replays instead of funding it twice.
+          logicalOperationId: `agent-bill.${input.sandboxId}.${periodStart.getTime()}`,
+          amount: amountDecimal,
+          description: input.billingDescription,
+          occurredAt: input.now,
+          metadata: {
+            sandbox_id: input.sandboxId,
+            agent_name: input.agentName,
+            billing_type: billingType,
+            hourly_rate: effectiveHourlyRate.toFixed(6),
+            billing_period_start: periodStart.toISOString(),
+            billing_period_end: input.now.toISOString(),
+          },
+        }),
+      );
+    } catch (error) {
+      if (error instanceof ElizaError && error.code === SUBSCRIPTION_FUNDING_INSUFFICIENT) {
+        // error-policy:J4 allowance plus purchased credit cannot cover the
+        // metered hour; the canonical insufficient-credits stop path applies.
+        return { status: "insufficient_credits" };
+      }
+      throw error;
+    }
+
+    const [organization] = await tx
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId));
+    if (!organization) {
+      throw new ElizaError("Subscription-funded agent billing organization disappeared", {
+        code: "AGENT_BILLING_ORGANIZATION_MISSING",
+        context: { organizationId: input.organizationId },
+        severity: "fatal",
+      });
+    }
+    const newBalance = parseOrgCreditBalance(organization.credit_balance);
+    // Remaining allowance funds the next hour before purchased credit, so the
+    // low-funds warning considers both sources.
+    const allowance = await observeSubscriptionAllowanceEligibility(
+      tx,
+      input.organizationId,
+      await readPostLockDatabaseNow(tx),
+    );
+    const fundingAvailable = new Decimal(organization.credit_balance).plus(
+      allowance.status === "available" && allowance.period
+        ? allowance.period.available_amount
+        : "0",
+    );
+    const nextBillingStatus: AgentBillingStatus = fundingAvailable.lt(input.lowCreditWarningAmount)
+      ? "warning"
+      : "active";
+
+    await tx
+      .update(agentSandboxes)
+      .set({
+        last_billed_at: input.now,
+        billing_status: nextBillingStatus,
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
+        hourly_rate: effectiveHourlyRate.toFixed(6),
+        total_billed: sql`${agentSandboxes.total_billed} + ${amountDecimal}`,
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, input.sandboxId),
+          eq(agentSandboxes.organization_id, input.organizationId),
+          ...agentComputeBillingAuthority(),
+        ),
+      );
+
+    await tx.insert(agentBillingRecords).values({
+      organization_id: input.organizationId,
+      sandbox_id: input.sandboxId,
+      sandbox_status:
+        settled.segments.length === 1
+          ? (settled.segments[0]?.state ?? charge.claimedStatus)
+          : "mixed",
+      billing_period_start: periodStart,
+      billing_period_end: input.now,
+      hourly_rate: effectiveHourlyRate.toFixed(6),
+      amount: amountDecimal,
+      rate_segments: settled.segments,
+      credit_transaction_id: null,
+      funding_reservation_id: funded.reservation.id,
+      created_at: input.now,
+    });
+
+    const transactionId = `funding-reservation:${funded.reservation.id}`;
+    if (runAuthority) {
+      await recordAgentBillingRunItemInTransaction(tx, runAuthority, {
+        sandboxId: input.sandboxId,
+        organizationId: input.organizationId,
+        agentName: input.agentName,
+        action: "billed",
+        amountDecimal,
+        newBalanceDecimal: organization.credit_balance,
+        transactionId,
+        completedAt: new Date(),
+      });
+    }
+
+    return {
+      status: "billed",
+      newBalance,
+      transactionId,
+      amount: settled.amount.toNumber(),
+      amountDecimal,
+    };
   }
 }
 
