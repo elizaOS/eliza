@@ -1,4 +1,4 @@
-/** Drives billing-suspension recovery through real ProvisioningJobService discovery, lifecycle-locked admission, job claim and execution-time recheck on PGlite. Funding is read through the real credit gate; only the provider-level resume effect is controlled. */
+/** Drives billing-suspension recovery and the Dedicated-to-Shared fallback authority through real ProvisioningJobService discovery, lifecycle-locked admission, job claim and execution-time recheck on PGlite. Funding is read through the real credit gate; only the provider-level resume effect is controlled. */
 
 import { afterAll, beforeAll, beforeEach, expect, spyOn, test } from "bun:test";
 import { readFile } from "node:fs/promises";
@@ -89,6 +89,8 @@ beforeAll(async () => {
     "0189_agent_sandbox_lifecycle_revision_scope.sql",
     "0475_organization_payment_reversal_holds.sql",
     "0475_organization_payment_reversal_holds.sql",
+    "0476_personal_dedicated_fallbacks.sql",
+    "0476_personal_dedicated_fallbacks.sql",
   ]) {
     const migration = await readFile(
       join(import.meta.dir, `../../../db/migrations/${name}`),
@@ -404,6 +406,105 @@ test(
     expect(await checkAgentCreditGate(held.orgId)).toMatchObject({ allowed: true });
     await reconcileAll();
     expect(await resumeJobs(held.agentId)).toHaveLength(1);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "Dedicated access is withdrawn only by a confirmed unfunded billing stop, into a scoped reversible journal",
+  async () => {
+    const fallback = await import("../personal-dedicated-fallback");
+    const suspended = await seedBillingSuspendedAgent("0.000000");
+    const sourceAgentId = `personal:${crypto.randomUUID()}`;
+    const target = { id: suspended.agentId, status: "stopped" as const };
+    const input = {
+      dedicated: target,
+      organizationId: suspended.orgId,
+      userId: suspended.userId,
+      sourceAgentId,
+    };
+
+    // Transient and non-billing states never withdraw access.
+    for (const status of ["running", "provisioning", "sleeping", "error"] as const) {
+      expect(
+        await fallback.resolvePersonalDedicatedAccess({ ...target, status }, suspended.orgId),
+      ).toEqual({ access: "dedicated" });
+    }
+    // A different organization cannot read this agent's suspension.
+    expect(
+      await fallback.resolvePersonalDedicatedAccess(
+        target,
+        (await seedBillingSuspendedAgent(FUNDED)).orgId,
+      ),
+    ).toEqual({ access: "dedicated" });
+
+    const first = await fallback.preparePersonalSharedFallback(input);
+    const replay = await fallback.preparePersonalSharedFallback(input);
+    if (!first || !replay) throw new Error("Expected an active Shared fallback");
+    expect(first.accountState).toEqual({
+      access: "shared_fallback",
+      reason: "billing_suspended",
+      dedicatedMemory: "unavailable",
+      generation: 1,
+      recoveryAction: { kind: "billing", path: "/cloud/billing" },
+    });
+    // The journal is a new scoped room, never the canonical conversation.
+    expect(first.journalRoomId).toStartWith("fallback:");
+    expect(first.journalRoomId).not.toBe(sourceAgentId);
+    expect(replay.journalRoomId).toBe(first.journalRoomId);
+    const concurrent = await Promise.all([
+      fallback.preparePersonalSharedFallback(input),
+      fallback.preparePersonalSharedFallback(input),
+    ]);
+    expect(concurrent.map((entry) => entry?.journalRoomId)).toEqual([
+      first.journalRoomId,
+      first.journalRoomId,
+    ]);
+
+    // Funding returning keeps Dedicated authority (automatic resume owns it).
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: FUNDED })
+      .where(eq(organizations.id, suspended.orgId));
+    expect(await fallback.preparePersonalSharedFallback(input)).toBeNull();
+    const recovered = await fallback.recoverPersonalSharedFallback({
+      organizationId: suspended.orgId,
+      userId: suspended.userId,
+      sourceAgentId,
+      dedicatedAgentId: suspended.agentId,
+    });
+    expect(recovered).toMatchObject({ state: "recovered", generation: 1 });
+    expect(
+      await fallback.recoverPersonalSharedFallback({
+        organizationId: suspended.orgId,
+        userId: suspended.userId,
+        sourceAgentId,
+        dedicatedAgentId: suspended.agentId,
+      }),
+    ).toBeNull();
+
+    // A later withdrawal opens a new generation and journal; the recovered
+    // interval is never reopened.
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "0.000000" })
+      .where(eq(organizations.id, suspended.orgId));
+    const second = await fallback.preparePersonalSharedFallback(input);
+    expect(second?.accountState.generation).toBe(2);
+    expect(second?.journalRoomId).not.toBe(first.journalRoomId);
+
+    // A later user stop wins: the billing suspension no longer withdraws access.
+    await dbWrite.insert(agentComputeStopIntents).values({
+      organization_id: suspended.orgId,
+      agent_id: suspended.agentId,
+      lifecycle_revision: 2_000,
+      authorization: "user_request",
+      status: "provider_confirmed",
+      provider_confirmed_at: new Date(),
+    });
+    expect(await fallback.resolvePersonalDedicatedAccess(target, suspended.orgId)).toEqual({
+      access: "dedicated",
+    });
   },
   TEST_TIMEOUT,
 );

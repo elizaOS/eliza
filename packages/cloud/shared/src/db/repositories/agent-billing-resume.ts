@@ -49,7 +49,7 @@ export function organizationAdmitsPaidWork(): SQL {
  *   Only this stop's own automatic resume may exist: in flight (reused by
  *   enqueue), or failed and quiesced for the retry backoff.
  */
-function resumableBillingStop(ownerJobId?: string): SQL {
+function resumableBillingStop(ownerJobId?: string, requireOrganizationAdmission = true): SQL {
   const intents = agentComputeStopIntents;
   const exclusive = sql.join(
     EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.map((type) => sql`${type}`),
@@ -95,7 +95,7 @@ function resumableBillingStop(ownerJobId?: string): SQL {
           )
         )
     )`,
-    organizationAdmitsPaidWork(),
+    requireOrganizationAdmission ? organizationAdmitsPaidWork() : undefined,
   ) as SQL;
 }
 
@@ -162,4 +162,25 @@ export async function billingResumeStillAuthorizedInTransaction(
     ),
   ).limit(1);
   return row !== undefined;
+}
+
+/**
+ * The provider-confirmed billing suspension that is still the agent's latest
+ * lifecycle decision, regardless of whether the organization is funded now.
+ * Dedicated-to-Shared fallback (#25146) uses this as its only withdrawal
+ * signal; it never treats transient or unknown state as a suspension.
+ */
+export async function findConfirmedBillingSuspension(input: {
+  agentId: string;
+  organizationId: string;
+}): Promise<BillingResumeCandidate | undefined> {
+  const [row] = await candidateQuery(
+    dbWrite,
+    and(
+      resumableBillingStop(undefined, false),
+      eq(agentSandboxes.id, input.agentId),
+      eq(agentSandboxes.organization_id, input.organizationId),
+    ),
+  ).limit(1);
+  return row;
 }
