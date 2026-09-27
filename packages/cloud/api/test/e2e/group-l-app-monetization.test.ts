@@ -1,6 +1,5 @@
 /**
- * Group L — App charges + app update + the #10423 monetization attribution
- * money chain.
+ * Group L — app update + the #10423 monetization attribution money chain.
  *
  * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
  * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
@@ -27,14 +26,14 @@ const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
 if (!serverReachable) {
   console.warn(
-    `[group-l-app-charges] ${getBaseUrl()} did not respond to /api/health. ` +
+    `[group-l-app-monetization] ${getBaseUrl()} did not respond to /api/health. ` +
       "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
       "or set TEST_API_BASE_URL to a reachable host.",
   );
 }
 if (!hasTestApiKey) {
   console.warn(
-    "[group-l-app-charges] TEST_API_KEY is not set; the preload could not " +
+    "[group-l-app-monetization] TEST_API_KEY is not set; the preload could not " +
       "bootstrap a test API key. Tests will SKIP.",
   );
 }
@@ -51,7 +50,7 @@ const liveInferenceAvailable = Boolean(
 );
 if (!liveInferenceAvailable) {
   console.warn(
-    "[group-l-app-charges] OPENAI_API_KEY is unset and E2E_LIVE_INFERENCE!=1 — the #10423 live " +
+    "[group-l-app-monetization] OPENAI_API_KEY is unset and E2E_LIVE_INFERENCE!=1 — the #10423 live " +
       "attribution test will SKIP.",
   );
 }
@@ -65,8 +64,8 @@ async function createTestApp(
   const res = await api.post(
     "/api/v1/apps",
     {
-      name: `Dollar Charge ${suffix}`,
-      description: "One dollar app charge regression test",
+      name: `Monetized App ${suffix}`,
+      description: "App monetization attribution regression test",
       app_url: "https://example.com/app",
       website_url: "https://example.com",
       allowed_origins: ["https://example.com"],
@@ -81,8 +80,8 @@ async function createTestApp(
   expect(body.app?.id).toBeTruthy();
   const appId = body.app?.id as string;
   createdAppIds.push(appId);
-  // Charges require a compliance-approved app (#10732). This suite exercises the
-  // charge/settlement path, not the review gate, so approve the app directly.
+  // Monetization requires a compliance-approved app (#10732). This suite
+  // exercises attribution, not the review gate, so approve the app directly.
   await approveAppInDb(appId);
   return appId;
 }
@@ -94,101 +93,6 @@ afterAll(async () => {
       headers: bearerHeaders(),
     });
   }
-});
-
-describeE2E("App charge requests", () => {
-  test("auth gate: rejects one dollar charge creation without credentials", async () => {
-    const res = await api.post(
-      "/api/v1/apps/00000000-0000-4000-8000-000000000000/charges",
-      {
-        amount: 1,
-      },
-    );
-    expect(res.status).toBe(401);
-  });
-
-  test("happy path: creates a five dollar card/crypto charge with callback metadata", async () => {
-    const appId = await createTestApp();
-
-    const res = await api.post(
-      `/api/v1/apps/${appId}/charges`,
-      {
-        amount: 5,
-        description: "Agent says: sure, please send me $5",
-        providers: ["stripe", "oxapay"],
-        callback_url: "https://example.com/payment-callback",
-        callback_secret: "test-callback-secret",
-        callback_channel: {
-          source: "cloud",
-          roomId: "00000000-0000-4000-8000-000000000001",
-          agentId: "00000000-0000-4000-8000-000000000002",
-        },
-        callback_metadata: {
-          initiatedBy: "group-l-app-charges",
-        },
-      },
-      { headers: bearerHeaders() },
-    );
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      success?: boolean;
-      charge?: {
-        id?: string;
-        appId?: string;
-        amountUsd?: number;
-        paymentUrl?: string;
-        status?: string;
-        providers?: string[];
-        metadata?: Record<string, unknown>;
-      };
-    };
-
-    expect(body.success).toBe(true);
-    expect(body.charge?.appId).toBe(appId);
-    expect(body.charge?.amountUsd).toBe(5);
-    expect(body.charge?.status).toBe("requested");
-    expect(body.charge?.providers).toEqual(["stripe", "oxapay"]);
-    expect(body.charge?.paymentUrl).toContain(`/payment/app-charge/${appId}/`);
-    expect(body.charge?.metadata?.callback_secret).toBeUndefined();
-    expect(body.charge?.metadata?.callback_secret_set).toBe(true);
-
-    const publicRes = await api.get(
-      `/api/v1/apps/${appId}/charges/${body.charge?.id}`,
-    );
-    expect(publicRes.status).toBe(200);
-    const publicBody = (await publicRes.json()) as {
-      charge?: { amountUsd?: number; metadata?: Record<string, unknown> };
-      app?: { id?: string; name?: string };
-    };
-    expect(publicBody.charge?.amountUsd).toBe(5);
-    expect(publicBody.app?.id).toBe(appId);
-    expect(publicBody.charge?.metadata?.callback_secret).toBeUndefined();
-
-    const listRes = await api.get(`/api/v1/apps/${appId}/charges?limit=5`, {
-      headers: bearerHeaders(),
-    });
-    expect(listRes.status).toBe(200);
-    const listBody = (await listRes.json()) as {
-      charges?: Array<{ id?: string; amountUsd?: number; paymentUrl?: string }>;
-    };
-    const listed = listBody.charges?.find(
-      (charge) => charge.id === body.charge?.id,
-    );
-    expect(listed?.amountUsd).toBe(5);
-    expect(listed?.paymentUrl).toBe(body.charge?.paymentUrl);
-  });
-
-  test("validation: rejects charges below one dollar", async () => {
-    const appId = await createTestApp();
-    const res = await api.post(
-      `/api/v1/apps/${appId}/charges`,
-      { amount: 0.99 },
-      { headers: bearerHeaders() },
-    );
-
-    expect(res.status).toBe(400);
-  });
 });
 
 // -------- POST /api/v1/apps/check-name -------------------------------------

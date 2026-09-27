@@ -36,7 +36,6 @@ export { default as AccountDeletionPage } from "./pages/legal/account-deletion-p
 export { default as PrivacyPolicyPage } from "./pages/legal/privacy-policy-page";
 export { default as TermsOfServicePage } from "./pages/legal/terms-of-service-page";
 export { default as LoginPage } from "./pages/login/login-page";
-export { default as AppChargePaymentPage } from "./pages/payment/app-charge-page";
 export { default as PaymentRequestPage } from "./pages/payment/payment-request-page";
 export { default as PaymentSuccessPage } from "./pages/payment/payment-success-page";
 export { default as SensitiveRequestPage } from "./pages/sensitive-requests/sensitive-request-page";

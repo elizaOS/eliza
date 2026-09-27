@@ -1,5 +1,5 @@
 /**
- * Service for managing app-specific credit balances and purchases.
+ * Service for app monetization settings and app-attributed inference billing.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -342,33 +342,6 @@ function totalInferenceChargeForApp(app: AppCreditAccountingApp, baseCost: numbe
 }
 
 /**
- * Parameters for purchasing app credits.
- */
-export interface AppCreditPurchaseParams {
-  appId: string;
-  userId: string;
-  organizationId: string;
-  purchaseAmount: number | string;
-  stripePaymentIntentId?: string; // For deduplication on webhook retries
-  /** Reuse the caller's settlement transaction so every purchase projection commits together. */
-  transaction?: DbTransaction;
-}
-
-/**
- * Result of purchasing app credits.
- *
- * `newBalance` is the purchasing user's ORGANIZATION credit balance — app
- * purchases and app inference share the single org ledger (#8253).
- */
-export interface AppCreditPurchaseResult {
-  success: boolean;
-  creditsAdded: number;
-  platformOffset: number;
-  creatorEarnings: number;
-  newBalance: number;
-}
-
-/**
  * Parameters for deducting app credits.
  */
 export interface AppCreditDeductionParams {
@@ -490,10 +463,10 @@ export interface AppCreditReconciliationResult {
 }
 
 /**
- * Service for managing app-specific credit balances, purchases, and deductions.
+ * Service for app monetization settings and app-attributed inference debits.
  */
 export class AppCreditsService {
-  /** The org credit balance — the single ledger app purchases fund and app inference debits (#8253). */
+  /** The org credit balance — the single ledger app inference debits (#8253). */
   private async readOrgBalance(
     organizationId: string,
     transaction?: DbTransaction,
@@ -510,250 +483,6 @@ export class AppCreditsService {
     // error-policy:J6 missing org preserves the existing no-credit result path; a present
     // org with corrupt money data must fail closed.
     return org ? parseOrgCreditBalance(org.credit_balance) : 0;
-  }
-
-  async processPurchase(params: AppCreditPurchaseParams): Promise<AppCreditPurchaseResult> {
-    const { appId, userId, organizationId, stripePaymentIntentId, transaction } = params;
-    const purchaseAmountDecimal = new Decimal(params.purchaseAmount);
-    if (!purchaseAmountDecimal.isFinite() || !purchaseAmountDecimal.gt(0)) {
-      throw new Error("App credit purchase amount must be a positive decimal");
-    }
-    const purchaseAmount = purchaseAmountDecimal.toFixed();
-    // Preserve string-valued provider money end to end. Existing internal
-    // number callers retain their metadata shape for API compatibility.
-    const purchaseAmountValue =
-      typeof params.purchaseAmount === "string" ? purchaseAmount : purchaseAmountDecimal.toNumber();
-
-    const app = transaction
-      ? (await transaction.select().from(apps).where(eq(apps.id, appId)).limit(1))[0]
-      : await appsRepository.findById(appId);
-    if (!app) {
-      throw new Error(`App not found: ${appId}`);
-    }
-
-    if (stripePaymentIntentId) {
-      const existingTransaction = await appEarningsRepository.findTransactionByPaymentIntent(
-        appId,
-        stripePaymentIntentId,
-        transaction,
-      );
-      if (existingTransaction) {
-        const existingMetadata =
-          existingTransaction.metadata && typeof existingTransaction.metadata === "object"
-            ? existingTransaction.metadata
-            : {};
-        if (
-          existingTransaction.app_id !== appId ||
-          existingTransaction.user_id !== userId ||
-          existingMetadata.organizationId !== organizationId ||
-          !new Decimal(String(existingMetadata.purchaseAmount)).equals(purchaseAmountDecimal) ||
-          existingMetadata.stripePaymentIntentId !== stripePaymentIntentId
-        ) {
-          throw new Error(`App purchase projection replay mismatch for ${stripePaymentIntentId}`);
-        }
-        return {
-          success: true,
-          creditsAdded: 0,
-          platformOffset: 0,
-          creatorEarnings: 0,
-          newBalance: await this.readOrgBalance(organizationId, transaction),
-        };
-      }
-    }
-
-    // Only apply platform offset and creator share if monetization is active
-    // (enabled AND not review-rejected — a ban revokes earnings); users always
-    // get full credits for their purchase. Math in app-credit-math.ts.
-    const monetizationActive = isAppMonetizationActive(app);
-    const quotedCreatorSharePercentage = monetizationActive
-      ? parseAppMonetizationNumber("purchase_share_percentage", app.purchase_share_percentage, {
-          min: 0,
-          max: 100,
-        })
-      : 0;
-    const quotedPlatformOffset = monetizationActive
-      ? Decimal.min(
-          purchaseAmountDecimal,
-          new Decimal(
-            parseAppMonetizationNumber("platform_offset_amount", app.platform_offset_amount, {
-              min: 0,
-            }),
-          ),
-        )
-      : new Decimal(0);
-    const quotedCreatorEarnings = purchaseAmountDecimal
-      .minus(quotedPlatformOffset)
-      .mul(quotedCreatorSharePercentage)
-      .div(100)
-      .toDecimalPlaces(6);
-    const quotedSplit = {
-      creditsToAdd: purchaseAmountDecimal.toDecimalPlaces(6).toFixed(6),
-      platformOffset: quotedPlatformOffset.toDecimalPlaces(6).toFixed(6),
-      creatorEarnings: quotedCreatorEarnings.toFixed(6),
-    };
-
-    logger.info("[AppCredits] Processing purchase", {
-      appId,
-      userId,
-      purchaseAmount: purchaseAmountValue,
-      platformOffset: quotedSplit.platformOffset,
-      creatorEarnings: quotedSplit.creatorEarnings,
-      creditsToAdd: quotedSplit.creditsToAdd,
-    });
-
-    // Credit the purchasing user's ORG balance — the same ledger
-    // `deductCredits()` debits — so purchased credits are spendable on app
-    // inference (#8253: previously this funded the per-app
-    // `app_credit_balances` pool, which the spend path no longer reads, so
-    // purchased credits were stranded).
-    const { transaction: purchaseCredit, newBalance } = await creditsService.addCredits({
-      organizationId,
-      amount:
-        typeof params.purchaseAmount === "string"
-          ? quotedSplit.creditsToAdd
-          : purchaseAmountDecimal.toNumber(),
-      description: `App credit purchase (${app.name ?? appId})`,
-      metadata: {
-        appId,
-        userId,
-        organizationId,
-        purchaseAmount: purchaseAmountValue,
-        creditsToAdd: quotedSplit.creditsToAdd,
-        platformOffset: quotedSplit.platformOffset,
-        creatorEarnings: quotedSplit.creatorEarnings,
-        creatorSharePercentage: quotedCreatorSharePercentage,
-        creatorUserId: app.created_by_user_id,
-        type: "app_credit_purchase",
-      },
-      ...(stripePaymentIntentId && { stripePaymentIntentId }),
-      db: transaction,
-    });
-
-    const persistedPurchaseMetadata =
-      purchaseCredit.metadata && typeof purchaseCredit.metadata === "object"
-        ? purchaseCredit.metadata
-        : {};
-    const persistedPurchaseAmount = new Decimal(purchaseCredit.amount);
-    const creditsToAdd = parseAppMonetizationNumber(
-      "purchase_credit_transaction.creditsToAdd",
-      persistedPurchaseMetadata.creditsToAdd,
-      { min: 0 },
-    );
-    const platformOffset = parseAppMonetizationNumber(
-      "purchase_credit_transaction.platformOffset",
-      persistedPurchaseMetadata.platformOffset,
-      { min: 0 },
-    );
-    const creatorEarnings = parseAppMonetizationNumber(
-      "purchase_credit_transaction.creatorEarnings",
-      persistedPurchaseMetadata.creatorEarnings,
-      { min: 0 },
-    );
-    const creatorSharePercentage = parseAppMonetizationNumber(
-      "purchase_credit_transaction.creatorSharePercentage",
-      persistedPurchaseMetadata.creatorSharePercentage,
-      { min: 0, max: 100 },
-    );
-    const pinnedCreatorUserId =
-      typeof persistedPurchaseMetadata.creatorUserId === "string"
-        ? persistedPurchaseMetadata.creatorUserId
-        : null;
-    if (
-      purchaseCredit.organization_id !== organizationId ||
-      purchaseCredit.type !== "credit" ||
-      !persistedPurchaseAmount.isFinite() ||
-      !persistedPurchaseAmount.equals(purchaseAmountDecimal.toDecimalPlaces(6)) ||
-      persistedPurchaseMetadata.appId !== appId ||
-      persistedPurchaseMetadata.userId !== userId ||
-      persistedPurchaseMetadata.organizationId !== organizationId ||
-      !new Decimal(creditsToAdd).equals(purchaseAmountDecimal.toDecimalPlaces(6)) ||
-      new Decimal(platformOffset).greaterThan(persistedPurchaseAmount) ||
-      new Decimal(creatorEarnings).greaterThan(persistedPurchaseAmount.minus(platformOffset)) ||
-      !new Decimal(creatorEarnings)
-        .toDecimalPlaces(6)
-        .equals(
-          persistedPurchaseAmount
-            .minus(platformOffset)
-            .mul(creatorSharePercentage)
-            .div(100)
-            .toDecimalPlaces(6),
-        ) ||
-      (stripePaymentIntentId &&
-        purchaseCredit.stripe_payment_intent_id !== stripePaymentIntentId) ||
-      (creatorEarnings > 0 && !pinnedCreatorUserId)
-    ) {
-      throw new Error(
-        `App purchase credit replay mismatch for ${stripePaymentIntentId ?? purchaseCredit.id}`,
-      );
-    }
-    const chargeTimeApp: AppCreditAccountingApp = {
-      ...app,
-      created_by_user_id: pinnedCreatorUserId,
-    };
-
-    // Track app user activity for purchase (this will create app_users record if new user)
-    await this.trackAppUserActivity(
-      app,
-      userId,
-      "0.00",
-      {
-        type: "purchase",
-        purchaseAmount: purchaseAmountValue,
-        creditsAdded: creditsToAdd,
-        ...(stripePaymentIntentId && { stripePaymentIntentId }),
-      },
-      transaction,
-    );
-
-    // CRITICAL: Always create a transaction record for deduplication purposes
-    // Even when monetization is disabled, we need to track the purchase
-    if (creatorEarnings > 0) {
-      await this.recordCreatorEarnings(
-        appId,
-        userId,
-        "purchase_share",
-        creatorEarnings,
-        platformOffset,
-        "purchase",
-        {
-          purchaseAmount: purchaseAmountValue,
-          organizationId,
-          platformOffset,
-          creatorSharePercentage,
-          chargeTransactionId: purchaseCredit.id,
-          ...(stripePaymentIntentId && { stripePaymentIntentId }),
-        },
-        chargeTimeApp,
-        transaction,
-      );
-    } else if (stripePaymentIntentId) {
-      // Monetization disabled but still need transaction record for deduplication
-      await appEarningsRepository.createTransaction(
-        {
-          app_id: appId,
-          user_id: userId,
-          type: "credit_purchase",
-          amount: "0", // No earnings when monetization disabled
-          description: "Credit purchase (monetization disabled)",
-          metadata: {
-            organizationId,
-            purchaseAmount: purchaseAmountValue,
-            creditsAdded: creditsToAdd,
-            stripePaymentIntentId,
-            monetizationDisabled: true,
-          },
-        },
-        transaction,
-      );
-    }
-
-    return {
-      success: true,
-      creditsAdded: creditsToAdd,
-      platformOffset,
-      creatorEarnings,
-      newBalance,
-    };
   }
 
   async reserveInferenceCredits(

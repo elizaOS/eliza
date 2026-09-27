@@ -497,8 +497,8 @@ describe("runParentAgentBroker", () => {
       message: brokerMessage(),
       args: {
         mode: "cloud-command",
-        command: "apps.charges.create",
-        params: { id: "app-1", body: { amount: 10 } },
+        command: "x402.requests.create",
+        params: { body: { amountUsd: 10 } },
       },
     });
 

@@ -6,12 +6,10 @@
  *   POST /api/v1/apps/:id/review         — submit for automated review
  *   GET  /api/v1/apps/:id/review         — current review status + latest decision
  *   PUT  /api/v1/apps/:id/monetization   — 403 unless review_status = approved
- *   POST /api/v1/apps/:id/charges        — 403 unless review_status = approved
  *
  * Route handlers under test:
  *   packages/cloud/api/v1/apps/[id]/review/route.ts
  *   packages/cloud/api/v1/apps/[id]/monetization/route.ts
- *   packages/cloud/api/v1/apps/[id]/charges/route.ts
  * Gate logic:
  *   packages/cloud/shared/src/lib/services/app-review.ts
  *
@@ -211,19 +209,6 @@ describeE2E("App compliance-review gate", () => {
     expect(body.review_status).toBe("draft");
   });
 
-  test("draft app CANNOT create a charge (403)", async () => {
-    const appId = await createApp(
-      "Unreviewed Charger",
-      "wants to charge before review",
-    );
-    const res = await api.post(
-      `/api/v1/apps/${appId}/charges`,
-      { amount: 5 },
-      { headers: bearerHeaders() },
-    );
-    expect(res.status).toBe(403);
-  });
-
   test("prohibited listing is BANNED by the pre-filter (no model needed)", async () => {
     // Keyword the deterministic pre-filter catches → ban, no LLM call.
     const appId = await createApp(
@@ -256,7 +241,7 @@ describeE2E("App compliance-review gate", () => {
     expect(mon.status).toBe(403);
   });
 
-  test("approval opens the gate: approved app CAN monetize and charge", async () => {
+  test("approval opens the gate: approved app CAN monetize", async () => {
     const appId = await createApp(
       "Recipe Finder",
       "Find dinner recipes from your pantry.",
@@ -285,19 +270,6 @@ describeE2E("App compliance-review gate", () => {
       { headers: bearerHeaders() },
     );
     expect(mon.status).toBe(200);
-
-    const charge = await api.post(
-      `/api/v1/apps/${appId}/charges`,
-      { amount: 5, description: "unlock premium recipes" },
-      { headers: bearerHeaders() },
-    );
-    expect(charge.status).toBe(200);
-    const chargeBody = (await charge.json()) as {
-      success?: boolean;
-      charge?: { status?: string };
-    };
-    expect(chargeBody.success).toBe(true);
-    expect(chargeBody.charge?.status).toBe("requested");
   });
 
   // Loud, counted skip when no review-model provider key is present.
