@@ -198,6 +198,19 @@ describe("stable evaluator schema with authoritative decision state", () => {
     );
   });
 
+  it("keeps every violated decision contract in the retry diagnosis", async () => {
+    const result = await captureSchema([], {
+      output: {
+        ...continuing,
+        decision: "NEXT_RECOMMENDED",
+        effectReceiptIds: ["invented-receipt"],
+      },
+    });
+    expect(result.output.decision).toBe("CONTINUE");
+    expect(result.output.thought).toContain("current executable queue");
+    expect(result.output.thought).toContain("committed effect receipt");
+  });
+
   it("never exposes redacted queue IDs or allows their selection", async () => {
     const result = await captureSchema(
       [{ id: "private-call-id", name: "LOOKUP", params: {} }],

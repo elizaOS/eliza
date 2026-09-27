@@ -369,22 +369,25 @@ function enforceEvaluatorDecisionState(
   output: EvaluatorOutput,
   state: EvaluatorDecisionState,
 ): EvaluatorOutput {
-  let invalid: string | undefined;
+  // Collect every violated contract so the retry sees each diagnosis.
+  const invalid: string[] = [];
   if (
     output.decision === "NEXT_RECOMMENDED" &&
     (state.queuedCallIds.length === 0 ||
       (output.recommendedToolCallId !== undefined &&
         !state.queuedCallIds.includes(output.recommendedToolCallId)))
   )
-    invalid =
-      "The recommended call is not in the current executable queue. Plan remaining work from the recorded results.";
+    invalid.push(
+      "The recommended call is not in the current executable queue. Plan remaining work from the recorded results.",
+    );
   if (
     output.effectReceiptIds?.some(
       (id) => !state.availableReceiptIds.includes(id),
     )
   )
-    invalid =
-      "The selected receipt is not a current committed effect receipt. Ground the outcome in recorded evidence.";
+    invalid.push(
+      "The selected receipt is not a current committed effect receipt. Ground the outcome in recorded evidence.",
+    );
   if (
     output.decision === "FINISH" &&
     state.requiresReplyField &&
@@ -392,20 +395,23 @@ function enforceEvaluatorDecisionState(
       (typeof output.raw?.messageToUser === "string" &&
         !output.raw.messageToUser.trim()))
   )
-    invalid =
-      "The internal result still requires a grounded user-facing answer. Produce that answer from recorded results without repeating completed effects.";
-  if (invalid)
+    invalid.push(
+      "The internal result still requires a grounded user-facing answer. Produce that answer from recorded results without repeating completed effects.",
+    );
+  if (invalid.length > 0)
     return {
       ...output,
       success: false,
       decision: "CONTINUE",
-      thought: invalid,
+      thought: invalid.join(" "),
       messageToUser: undefined,
       copyToClipboard: undefined,
       effectReceiptIds: undefined,
       plannerReply: undefined,
       recommendedToolCallId: undefined,
     };
+  // The evaluator contract ends an unrecovered failure with FINISH
+  // success=false and the failure cause in the reply; only the verdict flips.
   if (state.hasUnresolvedToolFailure && output.success)
     return { ...output, success: false };
   return output;
