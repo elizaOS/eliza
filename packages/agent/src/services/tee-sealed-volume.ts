@@ -6,6 +6,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+import { protectedKeyReleaseClient } from "../security/protected-profile.ts";
 import { teeBootGateBlocksSecrets } from "./tee-boot-gate-state.ts";
 import type { TeeMeasurementName } from "./tee-evidence.ts";
 import type {
@@ -107,7 +108,11 @@ export async function unsealStateVolumeKey(
     config.requiredMeasurements ?? STATE_VOLUME_REQUIRED_MEASUREMENTS;
   assertPolicyGatesRequiredMeasurements(config.policy, required);
 
-  const release = await config.keyReleaseClient.releaseKey({
+  const keyReleaseClient = protectedKeyReleaseClient(
+    config.keyReleaseClient,
+    "state-volume",
+  );
+  const release = await keyReleaseClient.releaseKey({
     keyId: STATE_VOLUME_KEY_ID,
     ...(config.context === undefined ? {} : { context: config.context }),
     policy: config.policy,

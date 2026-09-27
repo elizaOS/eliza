@@ -272,13 +272,13 @@ export {
 } from "./api/server-helpers.ts";
 // Loopback-trust + token helpers. These come from the canonical
 // `./api/server-helpers-auth.js` (the same module the live server uses), not a
-// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/core`
-// and are not re-surfaced here; the `PluginConfigMutationRejection` type is
-// exported through `./api/server.js`.
+// divergent copy. `isLoopbackBindHost` lives in `@elizaos/core`; the
+// `PluginConfigMutationRejection` type is exported through `./api/server.js`.
 export {
   getConfiguredApiToken,
   isCredentialedCorsOrigin,
   isTrustedLocalRequest,
+  tokenMatches,
 } from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
 // shapes. `server.ts` already re-exports the bulk of these (see line ~520
@@ -378,6 +378,7 @@ export {
   resolveRetentionConfigWithPrefix,
 } from "./runtime/memory-retention.ts";
 export {
+  MEMORY_RETENTION_PREFIX,
   MEMORY_RETENTION_SERVICE,
   MemoryRetentionService,
   RETENTION_PARTITIONS,
@@ -461,6 +462,10 @@ export {
   installProcessSignalHandlers,
 } from "./runtime/process-lifecycle.ts";
 export * from "./runtime/release-plugin-policy.ts";
+export {
+  RETENTION_BOUNDS_REQUIRED_SETTING,
+  retentionBoundsRequired,
+} from "./runtime/retention-task.ts";
 export { default as rolesPlugin } from "./runtime/roles/src/index.ts";
 export { rolesProvider } from "./runtime/roles/src/provider.ts";
 export {
@@ -559,11 +564,30 @@ export {
   type AuditFeedSubscriber,
   type AuditLogConfig,
   type AuditSeverity,
+  type AuditSink,
+  CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
+  createRuntimeLogAuditSink,
+  DURABLE_AUDIT_LOG_TYPES,
   getAuditFeedSize,
   queryAuditFeed,
+  reportDetachedAuditRecord,
+  SANDBOX_AUDIT_LOG_TYPE,
   SandboxAuditLog,
   subscribeAuditFeed,
 } from "./security/audit-log.ts";
+export {
+  assertProtectedKeyReleaseClient,
+  assertProtectedReleaseEvidence,
+  captureProtectedProfile,
+  ensureProtectedProfileAdmission,
+  getProtectedProfile,
+  isProtectedProfileSelected,
+  PROTECTED_PROFILE_ENV,
+  PROTECTED_PROFILES,
+  type ProtectedProfile,
+  protectedKeyReleaseClient,
+  protectedTeeEnvironment,
+} from "./security/protected-profile.ts";
 export * from "./services/agent-backup.ts";
 export {
   AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS,

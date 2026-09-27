@@ -13,13 +13,13 @@
 import {
   type IAgentRuntime,
   toWellFormedUnicode,
+  trimEndCharacters,
   truncateWellFormed,
 } from "@elizaos/core";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { trimEndCharacters } from "../utils/string-boundaries.ts";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,
   connectRemoteCapabilityEndpointProvider,

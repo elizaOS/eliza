@@ -157,6 +157,16 @@ export class HttpTeeKeyReleaseClient implements TeeKeyReleaseClient {
     this.request = config.fetch ?? fetch;
   }
 
+  /** Evidence provider this client binds each release request to. */
+  get attestationProvider(): TeeReportDataBoundEvidenceProvider {
+    return this.config.evidenceProvider;
+  }
+
+  /** True when HTTPS and TLS verification are enforced for the KMS. */
+  get secureTransport(): boolean {
+    return this.config.requireSecureTransport === true;
+  }
+
   async releaseKey(
     request: TeeKeyReleaseRequest,
   ): Promise<TeeKeyReleaseResult> {

@@ -207,11 +207,21 @@ export function applyCors(
 // ---------------------------------------------------------------------------
 // Auth token
 // ---------------------------------------------------------------------------
-function tokenMatches(expected: string, provided: string): boolean {
+/**
+ * Timing-safe token equality for every agent API credential comparison. Both
+ * values are padded to one length so the comparison time does not reveal the
+ * expected token's length.
+ */
+export function tokenMatches(expected: string, provided: string): boolean {
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  const length = Math.max(a.length, b.length);
+  const paddedA = Buffer.alloc(length);
+  const paddedB = Buffer.alloc(length);
+  a.copy(paddedA);
+  b.copy(paddedB);
+  const contentMatches = crypto.timingSafeEqual(paddedA, paddedB);
+  return a.length === b.length && contentMatches;
 }
 export function getConfiguredApiToken(): string | undefined {
   // Deliberately NOT resolveSelfApiCredential: this helper backs isAuthorized,

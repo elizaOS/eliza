@@ -5,7 +5,6 @@
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
  * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.ts).
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import {
@@ -90,6 +89,7 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.ts";
+import { ensureProtectedProfileAdmission } from "../security/protected-profile.ts";
 import {
   type AgentBackupStateData,
   createAgentSnapshot,
@@ -259,6 +259,7 @@ import {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
+  tokenMatches,
   tryAcquirePendingWebSocket,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
@@ -384,14 +385,6 @@ import {
 import type { X402PluginModule } from "./x402-contract.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
-function tokenMatches(expected: string, provided: string): boolean {
-  const expectedBuf = Buffer.from(expected);
-  const providedBuf = Buffer.from(provided);
-  return (
-    expectedBuf.length === providedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, providedBuf)
-  );
-}
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -3364,6 +3357,8 @@ export async function startApiServer(opts?: {
     },
   ) => void;
 }> {
+  // Hosts that listen before startEliza must still pass protected admission.
+  await ensureProtectedProfileAdmission();
   const apiStartTime = Date.now();
   const hostAdmission = opts?.hostAdmission;
   const hostConfig =

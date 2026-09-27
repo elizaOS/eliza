@@ -16,6 +16,7 @@ import {
   type ServiceRouteConfig,
 } from "@elizaos/core";
 
+import { isProcessOnlyEnvKey } from "../config/blocked-env-keys.ts";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
@@ -110,6 +111,7 @@ export function hydrateConfigEnvForBoot(
   const hydrateEntries = (values: Record<string, unknown>): void => {
     for (const [key, value] of Object.entries(values)) {
       if (isElizaCloudManagedProcessEnvKey(key)) continue;
+      if (isProcessOnlyEnvKey(key)) continue;
       if (
         typeof value === "string" &&
         !isUnresolvedVaultRef(value) &&

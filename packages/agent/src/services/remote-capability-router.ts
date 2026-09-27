@@ -58,9 +58,8 @@ import {
   Service,
   type TerminalCapability,
   type TerminalRunParams,
+  trimEndCharacters,
 } from "@elizaos/core";
-
-import { trimEndCharacters } from "../utils/string-boundaries.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;

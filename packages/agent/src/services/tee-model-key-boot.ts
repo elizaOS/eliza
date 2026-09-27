@@ -5,6 +5,10 @@
  * in single-blob and per-shard streaming forms, and fails closed if the boot
  * gate has already blocked secrets.
  */
+import {
+  protectedKeyReleaseClient,
+  protectedTeeEnvironment,
+} from "../security/protected-profile.ts";
 import { teeBootGateBlocksSecrets } from "./tee-boot-gate-state.ts";
 import {
   type InferenceTopology,
@@ -88,13 +92,16 @@ export type PrepareConfidentialModelWeightsConfig = {
 export async function prepareConfidentialModelWeights(
   config: PrepareConfidentialModelWeightsConfig,
 ): Promise<ModelKeyUnsealResult | undefined> {
-  const env = config.env ?? process.env;
+  const env = config.env ?? protectedTeeEnvironment();
   if (!confidentialWeightsEnabled(env)) return undefined;
 
   assertBootGateAllowsModelKey();
 
   return unsealModelWeights({
-    keyReleaseClient: config.keyReleaseClient,
+    keyReleaseClient: protectedKeyReleaseClient(
+      config.keyReleaseClient,
+      "model-weights",
+    ),
     policy: config.policy,
     sealedWeights: config.sealedWeights,
     requiredMeasurements: config.requiredMeasurements,
@@ -127,14 +134,17 @@ export async function prepareConfidentialModelWeightsStreaming(
   config: PrepareConfidentialModelWeightsStreamingConfig,
   onShard: ShardSink,
 ): Promise<StreamingUnsealResult | undefined> {
-  const env = config.env ?? process.env;
+  const env = config.env ?? protectedTeeEnvironment();
   if (!confidentialWeightsEnabled(env)) return undefined;
 
   assertBootGateAllowsModelKey();
 
   return unsealModelWeightsStreaming(
     {
-      keyReleaseClient: config.keyReleaseClient,
+      keyReleaseClient: protectedKeyReleaseClient(
+        config.keyReleaseClient,
+        "model-weights",
+      ),
       policy: config.policy,
       sealedWeights: config.sealedWeights,
       requiredMeasurements: config.requiredMeasurements,
