@@ -7,6 +7,7 @@ import { expect, test } from "vitest";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   plannerWorkloadFixture,
+  summarizePlannerObservation,
   summarizePlannerTrajectories,
   validatePlannerFixture,
 } from "../scripts/cerebras-planner-workload.ts";
@@ -271,6 +272,42 @@ test("paired planner fixtures validate actual file bytes and do not fabricate ab
     });
     expect(summary.providerWireTTFT).toBeNull();
     expect(summary.successfulReadReceipts).toBe(0);
+    const foreground = {
+      trajectory: { id: "foreground", status: "completed" },
+      llmCalls: [
+        { modelType: "ACTION_PLANNER", promptTokens: 100, completionTokens: 5 },
+      ],
+    };
+    const initial = summarizePlannerObservation([foreground]);
+    expect(initial.foreground?.modelCalls).toBe(1);
+    expect(initial.observedBackground).toBeNull();
+    expect(initial.backgroundObservation).toBe("not-observed");
+    const refreshed = summarizePlannerObservation([
+      foreground,
+      {
+        trajectory: { id: "late-background", status: "completed" },
+        llmCalls: [
+          {
+            modelType: "TEXT_SMALL",
+            systemPrompt: "Evaluate the completed turn using supplied evidence",
+            promptTokens: 30,
+            completionTokens: 2,
+          },
+        ],
+      },
+    ]);
+    expect(refreshed.foreground?.metrics.promptTokens.totalReported).toBe(100);
+    expect(
+      refreshed.observedBackground?.metrics.promptTokens.totalReported,
+    ).toBe(30);
+    expect(refreshed.allObserved.metrics.promptTokens.totalReported).toBe(130);
+    expect(refreshed.backgroundObservation).toBe("observed-completed");
+    expect(refreshed.futureBackgroundQuiescence).toBe("not-established");
+    expect(initial.observedBackground).toBeNull();
+    expect(
+      summarizePlannerObservation([{ llmCalls: [{ modelType: "TEXT_SMALL" }] }])
+        .unclassified?.modelCalls,
+    ).toBe(1);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

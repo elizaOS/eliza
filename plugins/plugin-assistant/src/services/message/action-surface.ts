@@ -207,6 +207,49 @@ export function retrieveContextualPlannerActions(args: {
               (context) => normalizeContextId(context) === domain,
             ),
           );
+    // Navigation changes the view, not its domain records. Retain an already
+    // selected navigation operation only when every declared intent resolves
+    // to it; a read/update intent must still load its resource owner.
+    const selectedNames = new Set(
+      args.selectedActions?.map((action) => action.name),
+    );
+    const navigationNames = new Set(
+      [...selectedNames].filter(
+        (name) => name === "VIEWS" || name === "VIEWS_SHOW",
+      ),
+    );
+    // VIEWS is the authorized umbrella for the same show operation; using its
+    // operation name here does not expose or authorize a separate child tool.
+    if (navigationNames.has("VIEWS")) navigationNames.add("VIEWS_SHOW");
+    const operationCandidates = [
+      ...new Set([
+        ...candidates.map((action) => action.name),
+        ...navigationNames,
+      ]),
+    ];
+    const intents = args.intents?.filter((intent) => intent.trim()) ?? [];
+    const navigationOnly = (
+      intents.length > 0 ? intents : [operationQuery]
+    ).every((intent) => {
+      const operations = preferredOperationNames(intent, operationCandidates);
+      return (
+        operations.size > 0 &&
+        [...operations].every(
+          (name) =>
+            (name === "VIEWS" || name === "VIEWS_SHOW") &&
+            navigationNames.has(name),
+        )
+      );
+    });
+    if (navigationOnly) {
+      for (const action of candidates)
+        if (
+          selectedNames.has(action.name) &&
+          (action.name === "VIEWS" || action.name === "VIEWS_SHOW")
+        )
+          selected.add(action);
+      continue;
+    }
     // Resolve domain ownership before operation verbs: a cross-domain helper
     // named *_READ must not eliminate the actual FILE/NOTES owner umbrella.
     const strongest =

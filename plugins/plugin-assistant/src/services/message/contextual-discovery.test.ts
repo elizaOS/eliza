@@ -89,6 +89,15 @@ describe("contextual native discovery", () => {
     expect(result?.data?.loadedTools).toEqual(["FILE"]);
     expect(loaded).toEqual([fileAction]);
     expect(loaded[0]?.parameters).toEqual(fileAction.parameters);
+    expect(
+      retrieveContextualPlannerActions({
+        actions,
+        query: request.content.text as string,
+        intents: ["Read the file"],
+        contexts: ["files"],
+        selectedActions: [incidental[1]],
+      }).actions,
+    ).toEqual([incidental[1], fileAction]);
   });
 
   it.each([{}, { names: [] }, { mode: "load", names: [] }])(
@@ -555,21 +564,40 @@ describe("contextual native discovery", () => {
       ),
     ).toBe(true);
   });
-  it("does not load record operations for a navigation-only intent", () => {
+  it.each(["VIEWS", "VIEWS_SHOW"])(
+    "does not load record operations for navigation-only %s",
+    (name) => {
+      const view: Action = {
+        name,
+        description: "Open a view",
+        contexts: ["general", "notes", "calendar"],
+      };
+      expect(
+        retrieveContextualPlannerActions({
+          actions: [view, ...(notesPlugin.actions ?? [])],
+          query: "Open Notes view",
+          intents: ["Open Notes view"],
+          contexts: ["general", "notes"],
+          selectedActions: [view],
+        }).actions,
+      ).toEqual([view]);
+    },
+  );
+  it("keeps the Notes read owner when selected navigation accompanies a read intent", () => {
     const view: Action = {
       name: "VIEWS_SHOW",
       description: "Open a view",
-      contexts: ["general", "notes", "calendar"],
+      contexts: ["general", "notes"],
     };
-    expect(
-      retrieveContextualPlannerActions({
-        actions: [view, ...(notesPlugin.actions ?? [])],
-        query: "Open Notes view",
-        intents: ["Open Notes view"],
-        contexts: ["general", "notes"],
-        selectedActions: [view],
-      }).actions,
-    ).toEqual([view]);
+    const selected = retrieveContextualPlannerActions({
+      actions: [view, ...(notesPlugin.actions ?? [])],
+      query: "Open Notes and read my grocery note",
+      intents: ["Open Notes view", "Read grocery note"],
+      contexts: ["general", "notes"],
+      selectedActions: [view],
+    }).actions;
+    expect(selected[0]).toBe(view);
+    expect(selected.map((action) => action.name)).toContain("NOTES_LIST");
   });
   it("discovers gate-only domains while preserving required, forbidden and role terms", async () => {
     const runtime = new AgentRuntime({

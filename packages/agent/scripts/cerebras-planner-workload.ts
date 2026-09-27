@@ -278,6 +278,63 @@ export function summarizePlannerTrajectories(details: unknown[]) {
   };
 }
 
+/** Separate synchronous turn evidence from observed asynchronous extraction.
+ * An absent background trajectory is unknown, never proof of zero future work. */
+export function summarizePlannerObservation(details: unknown[]) {
+  const foreground: unknown[] = [],
+    background: unknown[] = [],
+    unclassified: unknown[] = [];
+  for (const detail of details) {
+    const value = record(detail);
+    const kinds = array(value.semanticStages).map(
+      (stage) => record(stage).kind,
+    );
+    const calls = array(value.llmCalls).map(record);
+    if (
+      kinds.some((kind) =>
+        ["messageHandler", "planner", "evaluation"].includes(String(kind)),
+      ) ||
+      calls.some((call) =>
+        ["RESPONSE_HANDLER", "ACTION_PLANNER"].includes(String(call.modelType)),
+      )
+    ) {
+      foreground.push(detail);
+    } else if (
+      calls.length > 0 &&
+      calls.every(
+        (call) =>
+          call.modelType === "TEXT_SMALL" &&
+          String(call.systemPrompt).includes("Evaluate the completed turn"),
+      )
+    ) {
+      background.push(detail);
+    } else unclassified.push(detail);
+  }
+  const summary = (items: unknown[]) =>
+    items.length ? summarizePlannerTrajectories(items) : null;
+  return {
+    foreground: summary(foreground),
+    observedBackground: summary(background),
+    unclassified: summary(unclassified),
+    allObserved: summarizePlannerTrajectories(details),
+    foregroundCompleted:
+      foreground.length > 0 &&
+      foreground.every(
+        (detail) => record(record(detail).trajectory).status === "completed",
+      ),
+    backgroundObservation:
+      background.length === 0
+        ? "not-observed"
+        : background.every(
+              (detail) =>
+                record(record(detail).trajectory).status === "completed",
+            )
+          ? "observed-completed"
+          : "observed-pending",
+    futureBackgroundQuiescence: "not-established",
+  };
+}
+
 async function main() {
   const count = Number(process.env.BENCHMARK_PAIRS ?? 30);
   const offset = Number(process.env.BENCHMARK_OFFSET ?? 0);
@@ -329,7 +386,7 @@ async function main() {
           design:
             "Paired synthetic fixtures, fresh empty conversation per attempt, alternating order; no cache isolation; complete room-scoped trajectories and filesystem readbacks",
           limitations:
-            "Multiline fixtures test ordinary requested text: recovery is demonstrated only when failedActions > 0 and final validation succeeds. No wire TTFT. Existing host background work may affect latency.",
+            "Multiline fixtures test ordinary requested text: recovery is demonstrated only when failedActions > 0 and final validation succeeds. No wire TTFT. Foreground metrics are primary. Background is an end-of-study observation, not proof of future quiescence; absent background is null. Existing host background work may affect latency.",
           requestedPairs: count,
           offset,
           rows,
@@ -465,27 +522,34 @@ async function main() {
           previous = signature;
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-        row.trajectoriesSettled = settled;
+        row.initialExportCapturedAt = new Date().toISOString();
+        row.initialExportStableAcrossPolls = settled;
+        row.initialExportScope =
+          "Initial room snapshot after a one-second unchanged interval; not proof of asynchronous background completion";
         row.trajectoryFile = join(
           output,
-          `${fixture.id}-${variant}-trajectories.json`,
+          `${fixture.id}-${variant}-trajectories-initial.json`,
         );
         await writeFile(
           String(row.trajectoryFile),
           `${JSON.stringify(details, null, 2)}\n`,
           { mode: 0o600 },
         );
-        const summary = summarizePlannerTrajectories(details);
+        const observation = summarizePlannerObservation(details);
+        const summary = observation.foreground;
+        row.initialObservation = observation;
+        row.summaryScope = "foreground-only";
         row.summary = summary;
         row.readbackCoverage = Object.keys(fixture.filesAfter).map((name) => ({
           name,
-          evidenced: summary.readReceiptInputs.some((input) =>
-            JSON.stringify(input).includes(name),
-          ),
+          evidenced:
+            summary?.readReceiptInputs.some((input) =>
+              JSON.stringify(input).includes(name),
+            ) ?? false,
         }));
         row.status =
           record(row.validation).passed &&
-          settled &&
+          observation.foregroundCompleted &&
           array(row.readbackCoverage).every(
             (item) => record(item).evidenced === true,
           )
@@ -513,6 +577,51 @@ async function main() {
         `[planner-workload] ${index + 1}/30 ${variant}: ${row.status}\n`,
       );
     }
+  }
+  // Refresh every synthetic room after the study: background workers may not
+  // have started during the initial quiet interval. Preserve both exports.
+  await persist("observing-background");
+  const backgroundDeadline = performance.now() + 30_000;
+  let pending = rows.filter(
+    (row) => typeof record(row.conversation).roomId === "string",
+  );
+  while (pending.length) {
+    const retry: Json[] = [];
+    for (const row of pending) {
+      try {
+        const details = await trajectories(
+          row.variant as Variant,
+          String(record(row.conversation).roomId),
+        );
+        const observation = summarizePlannerObservation(details);
+        const file = join(
+          output,
+          `${record(row.fixture).id}-${row.variant}-trajectories-final.json`,
+        );
+        await writeFile(file, `${JSON.stringify(details, null, 2)}\n`, {
+          mode: 0o600,
+        });
+        delete row.finalObservationError;
+        row.finalTrajectoryFile = file;
+        row.finalObservationScope =
+          "End-of-study room re-export with up to 30 seconds of additional observation for missing background work; future quiescence is not established";
+        row.finalObservationCapturedAt = new Date().toISOString();
+        row.finalObservation = observation;
+        row.summary = observation.foreground;
+        row.observedBackgroundSummary = observation.observedBackground;
+        if (observation.backgroundObservation !== "observed-completed")
+          retry.push(row);
+      } catch (error) {
+        row.finalObservationError =
+          error instanceof Error ? error.message : String(error);
+        row.observedBackgroundSummary = null;
+        retry.push(row);
+      }
+    }
+    await persist("observing-background");
+    if (!retry.length || performance.now() >= backgroundDeadline) break;
+    pending = retry;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   await persist(
     rows.every((row) => row.status === "passed")
