@@ -429,11 +429,10 @@ export function validateActionParams(
 		} else {
 			const typeError = validateParamType(paramDef, extractedValue);
 			if (typeError) {
-				if (paramDef.required) {
-					errors.push(typeError);
-				} else if (paramDef.schema.default !== undefined) {
-					params[paramDef.name] = paramDef.schema.default;
-				}
+				// A supplied value that fails its declared schema is an error even
+				// for optional parameters. Substituting the default or omitting the
+				// value would run the handler on input the caller never requested.
+				errors.push(typeError);
 			} else {
 				params[paramDef.name] = extractedValue;
 			}
@@ -532,8 +531,12 @@ function validateParamType(
 		}
 
 		case "number":
-			if (typeof value !== "number") {
-				return `Parameter '${name}' expected number, got ${typeof value}`;
+		case "integer":
+			if (typeof value !== "number" || !Number.isFinite(value)) {
+				return `Parameter '${name}' expected ${schema.type}, got ${typeof value === "number" ? String(value) : typeof value}`;
+			}
+			if (schema.type === "integer" && !Number.isInteger(value)) {
+				return `Parameter '${name}' expected integer, got ${value}`;
 			}
 			if (schema.minimum !== undefined && value < schema.minimum) {
 				return `Parameter '${name}' value ${value} is below minimum ${schema.minimum}`;

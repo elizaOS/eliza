@@ -1,8 +1,10 @@
 /**
  * Routes a normalized personal connector turn to the user's active Dedicated
  * runtime when present, otherwise to their rowless personal Shared runtime.
- * A Dedicated target withdrawn by a confirmed, unfunded billing suspension is
- * answered by Shared in a separately scoped fallback journal (#25146).
+ * A Dedicated target whose entitlement was withdrawn (lapsed paid plan or a
+ * confirmed, unfunded billing stop) is answered by Shared in a separately
+ * scoped fallback journal (#25146), which is reconciled back into Dedicated
+ * before routing returns.
  */
 
 import { ChannelType } from "@elizaos/core";
@@ -15,9 +17,9 @@ import { preparePersonalDedicatedDelivery } from "./personal-dedicated-delivery"
 import {
   type PersonalSharedFallbackAccountState,
   type PersonalSharedFallbackDelivery,
-  preparePersonalSharedFallback,
-  recoverPersonalSharedFallback,
+  resolvePersonalDedicatedRoute,
 } from "./personal-dedicated-fallback";
+import { reconcilePersonalFallbackIntoDedicated } from "./personal-dedicated-fallback-reconcile";
 import { coordinateSharedHistory } from "./shared-runtime/conversation-coordinator";
 import { personalSharedAgent } from "./shared-runtime/personal-shared-agent";
 import { sharedRestMessageSend } from "./shared-runtime/shared-rest-adapter";
@@ -69,18 +71,28 @@ export async function deliverPersonalTextMessage(params: {
   );
   let sharedFallback: PersonalSharedFallbackDelivery | null = null;
   if (dedicated) {
-    const preparation = await preparePersonalDedicatedDelivery(dedicated);
-    if (preparation.state === "unavailable") {
-      sharedFallback =
-        preparation.code === "DEDICATED_PRICE_CONFIRMATION_REQUIRED"
-          ? await preparePersonalSharedFallback({
-              dedicated,
-              organizationId: account.organization.id,
-              userId: account.user.id,
-              sourceAgentId: agent.id,
-            })
-          : null;
-      if (!sharedFallback) {
+    // One entitlement/route authority decides the single active destination.
+    const route = await resolvePersonalDedicatedRoute({
+      dedicated,
+      organizationId: account.organization.id,
+      userId: account.user.id,
+      sourceAgentId: agent.id,
+    });
+    if (route.route === "unavailable") {
+      return {
+        success: false,
+        status: route.status,
+        code: route.code,
+        error: route.error,
+        retryable: route.retryable,
+        retryAfterSeconds: route.retryAfterSeconds,
+      };
+    }
+    if (route.route === "shared_fallback") {
+      sharedFallback = route.delivery;
+    } else {
+      const preparation = await preparePersonalDedicatedDelivery(dedicated);
+      if (preparation.state === "unavailable") {
         return {
           success: false,
           status: preparation.status,
@@ -90,17 +102,27 @@ export async function deliverPersonalTextMessage(params: {
           retryAfterSeconds: preparation.retryAfterSeconds,
         };
       }
+      if (route.reconcile) {
+        // The recovered Shared interval reaches Dedicated before routing
+        // returns, so the two runtimes never both own the conversation.
+        const reconciled = await reconcilePersonalFallbackIntoDedicated({
+          fallback: route.reconcile,
+          namespace: params.namespace,
+        });
+        if (!reconciled.reconciled) {
+          return {
+            success: false,
+            status: 503,
+            code: "dedicated_reconciling",
+            error: "Dedicated Eliza is restoring your recent conversation. Try again shortly.",
+            retryable: true,
+            retryAfterSeconds: 5,
+          };
+        }
+      }
     }
   }
   if (dedicated && !sharedFallback) {
-    // Dedicated is running again: close any active fallback interval before
-    // routing returns, so the two runtimes never both own the conversation.
-    await recoverPersonalSharedFallback({
-      organizationId: account.organization.id,
-      userId: account.user.id,
-      sourceAgentId: agent.id,
-      dedicatedAgentId: dedicated.id,
-    });
     const bridgeRequest = {
       jsonrpc: "2.0" as const,
       id: params.messageId,
@@ -199,6 +221,7 @@ export async function deliverPersonalTextMessage(params: {
     undefined,
     params.message,
     { type: ChannelType.DM, source: params.platform },
+    sharedFallback?.accountState,
   );
   return {
     success: true,

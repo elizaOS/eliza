@@ -16,6 +16,7 @@ import type {
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -44,6 +45,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedUserUtterance?: string;
   /** Authenticated transport semantics; never accepted from bridge RPC params. */
   channel?: SharedRuntimeChannel;
+  /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
+  trustedAccountState?: PersonalSharedFallbackAccountState;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -340,6 +343,9 @@ export async function coordinateSharedBridge(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedAccountState
+          ? { trustedAccountState: options.trustedAccountState }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
