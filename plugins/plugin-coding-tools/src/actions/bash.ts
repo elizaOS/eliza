@@ -2205,10 +2205,10 @@ export const shellAction: Action = {
       });
     }
     const artifactNotice = [
-      `[private output artifact ${artifact.handle}; expires=${artifact.expiresAt}; revision=${artifact.contentRevision}]`,
+      `[private output artifact ${artifact.handle}; expires=${artifact.expiresAt}; shellOutputRevision=${artifact.contentRevision}]`,
       `stdout source=${artifact.source.stdout.bytes} bytes/${artifact.source.stdout.lines} lines, stored=${artifact.stdout.bytes} bytes/${artifact.stdout.lines} lines, completeInModel=${result.projection.stdoutComplete}`,
       `stderr source=${artifact.source.stderr.bytes} bytes/${artifact.source.stderr.lines} lines, stored=${artifact.stderr.bytes} bytes/${artifact.stderr.lines} lines, completeInModel=${result.projection.stderrComplete}`,
-      "Use SHELL action=read_output_artifact with handle, artifact_stream, and artifact_offset for exact continuation.",
+      "This shellOutputRevision identifies captured command output, not any file. Never use it as READ expectedRevision. Use SHELL action=read_output_artifact with handle, artifact_stream, and artifact_offset for exact continuation.",
     ].join("\n");
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
