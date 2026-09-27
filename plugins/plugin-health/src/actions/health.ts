@@ -24,9 +24,9 @@ import type {
 import {
   applyGroundedActionReply,
   ModelType,
+  normalizeTimeZone,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
-import { normalizeTimeZone } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 import type {
   HealthBackend,
