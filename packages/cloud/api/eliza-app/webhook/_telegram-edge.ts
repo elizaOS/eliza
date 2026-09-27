@@ -1263,6 +1263,24 @@ export async function handlePersonalTelegramEdge(
     if (error instanceof TelegramEgressAlreadyClaimedError) {
       return c.json({ success: false, error: "Egress already claimed" }, 503);
     }
+    if (error instanceof TelegramApiResponseError) {
+      // A private chat that just delivered this update is only unreachable
+      // when the attested outbound bot is not the bot that received it (for
+      // example, a retired bot still pointing its webhook here with a shared
+      // secret). Record that value-safe classification before propagating.
+      logger.error("[PersonalTelegramEdge] provider rejected egress", {
+        traceId,
+        project,
+        connectorAccountId,
+        messageId: event.messageId,
+        chatType: event.chatType,
+        providerErrorCode: error.errorCode,
+        recipientUnreachable:
+          event.chatType === "private" &&
+          (error.errorCode === 403 ||
+            (error.errorCode === 400 && /chat not found/i.test(error.message))),
+      });
+    }
     throw error;
   }
 }
