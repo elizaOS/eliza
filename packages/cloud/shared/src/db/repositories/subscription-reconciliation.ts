@@ -1,4 +1,4 @@
-/** Claims fair primary-database recovery work and atomically publishes terminal and paid-renewal observations with immutable attempt provenance. Provider reads happen outside these transactions. */
+/** Claims fair primary-database recovery work and atomically publishes terminal, dunning and paid-renewal observations with immutable attempt provenance. Provider reads happen outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
@@ -20,6 +20,10 @@ import {
 } from "../schemas/subscription-reconciliation";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
+import {
+  type DunningObservation,
+  publishDunningReconciliationInTransaction,
+} from "./subscription-dunning-finalization";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
 import {
   sameTerminalLifecycle,
@@ -45,6 +49,8 @@ function unavailable(reason: string): never {
     context: { reason },
   });
 }
+// Published terminal sources are final (the terminal finalizer never rewrites
+// them), so they no longer occupy recovery slots.
 const eligibleStatuses = [
   "pending",
   "incomplete",
@@ -52,8 +58,6 @@ const eligibleStatuses = [
   "grace",
   "past_due",
   "unpaid",
-  "canceled",
-  "incomplete_expired",
 ] as const;
 export async function listDueSubscriptionReconciliations(limit: number) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5) unavailable("invalid_batch_size");
@@ -332,6 +336,7 @@ export async function failSubscriptionReconciliation(
 export type ReconciliationObservation =
   | { kind: "paid_renewal"; invoiceId: string; objects: PaidRenewalObjects }
   | { kind: "terminal"; value: unknown }
+  | { kind: "dunning"; observation: DunningObservation }
   | { kind: "owned_schedule"; scheduled: boolean; canceledAt: Date | null };
 export async function finalizeSubscriptionReconciliation(
   input: ReconciliationClaim,
@@ -407,6 +412,29 @@ export async function finalizeSubscriptionReconciliation(
         digest: observationDigest,
         observedRevision: result.subscriptionRevision,
         ...(result.replayed ? {} : { resultRevision: result.subscriptionRevision }),
+      });
+    }
+    if (observation.kind === "dunning") {
+      const result = await publishDunningReconciliationInTransaction(tx, {
+        identity: input,
+        source,
+        observation: observation.observation,
+        databaseNow: liveLease.now,
+        expectedProjectionRevision: attempt.expected_projection_revision,
+      });
+      if (!result.changed) {
+        await requireReconciliationProjection(tx, source, attempt.expected_projection_revision);
+        return complete(tx, input, {
+          disposition: "no_change",
+          digest: observationDigest,
+          observedRevision: source.lifecycle_revision,
+        });
+      }
+      return complete(tx, input, {
+        disposition: "applied",
+        digest: observationDigest,
+        observedRevision: result.revision,
+        resultRevision: result.revision,
       });
     }
     if (observation.kind === "owned_schedule") {

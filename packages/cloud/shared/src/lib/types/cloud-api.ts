@@ -479,28 +479,6 @@ export interface SubscriptionPlansDto {
   plans: readonly SubscriptionPlanDto[];
 }
 
-export type SubscriptionPublicState = "active" | "grace" | "past_due" | "unpaid" | "canceled";
-
-/**
- * Public lifecycle projection for later subscription APIs. Provider object,
- * product, price, invoice, and payment identifiers never cross this boundary.
- */
-export interface SubscriptionDto {
-  catalogVersion: SubscriptionCatalogVersion;
-  planKey: SubscriptionPlanKey;
-  state: SubscriptionPublicState;
-  currentPeriodStartsAt: IsoDateString;
-  currentPeriodEndsAt: IsoDateString;
-  cancelAtPeriodEnd: boolean;
-  pendingPlanKey: SubscriptionPlanKey | null;
-  allowanceGrantedUsd: string;
-  allowanceRemainingUsd: string;
-  allowanceExpiresAt: IsoDateString;
-  rateLimits: SubscriptionRateEnvelopeDto;
-  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
-  resourceCeilings: SubscriptionResourceCeilingsDto | null;
-}
-
 // Transport mirror of the DB `AgentSandboxStatus` in
 // db/schemas/agent-sandboxes.ts — keep the two unions in sync.
 export type AgentSandboxStatus =

@@ -165,7 +165,25 @@ test("current-source read preserves exact allowance and strips all provider auth
       },
     },
   });
-  const json = JSON.stringify(actual);
+  // The durable subscription id is the cancel/undo command subject (already echoed by the
+  // cancellation DTO); provider identifiers, tenant id and digests never cross this boundary.
+  expect(actual).toMatchObject({
+    value: {
+      subscriptionId: SUB_A,
+      cancellationControl: {
+        action: "cancel",
+        subscriptionId: SUB_A,
+        expectedSubscriptionRevision: 1,
+        eligible: false,
+        blockers: [
+          "interactive_session_required",
+          "billing_account_ineligible",
+          "owner_or_admin_role_required",
+        ],
+      },
+    },
+  });
+  const json = JSON.stringify(actual).replaceAll(`"${SUB_A}"`, '"<subscription>"');
   for (const value of [
     "cus_repoa",
     "sub_repoa",

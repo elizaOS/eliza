@@ -34,7 +34,8 @@ type RebuildValues = Omit<
   "organization_id" | "created_at" | "updated_at" | "rebuilt_at" | "projection_revision"
 >;
 
-const FREE_ENTITLEMENT_VALUES = {
+/** Free-tier projection values, also served for a lapsed paid projection. */
+export const SUBSCRIPTION_FREE_ENTITLEMENT_VALUES = {
   completions_rpm: 60,
   embeddings_rpm: 100,
   standard_rpm: 30,
@@ -89,7 +90,7 @@ export function deriveSubscriptionEntitlementValues(
     });
   if (revision.status === "canceled" || revision.status === "incomplete_expired") {
     return {
-      ...FREE_ENTITLEMENT_VALUES,
+      ...SUBSCRIPTION_FREE_ENTITLEMENT_VALUES,
       effective_from: revision.ended_at ?? revision.canceled_at ?? revision.recorded_at,
       source_digest: revision.provider_object_digest,
       source_subscription_id: revision.subscription_id,

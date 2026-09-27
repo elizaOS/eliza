@@ -40,8 +40,23 @@ vi.mock("./data/billing-data", () => ({
   },
 }));
 
+const subscriptionPlansProps = vi.hoisted(() => ({
+  current: null as { subscribeBlockedReason?: string | null } | null,
+}));
+const snapshotState = vi.hoisted(() => ({
+  current: { data: undefined as unknown, isPending: false },
+}));
 vi.mock("./components/subscription-plans", () => ({
-  SubscriptionPlans: () => <div>Subscription comparison</div>,
+  SubscriptionPlans: (props: { subscribeBlockedReason?: string | null }) => {
+    subscriptionPlansProps.current = props;
+    return <div>Subscription comparison</div>;
+  },
+}));
+vi.mock("./components/subscription-status-card", () => ({
+  SubscriptionStatusCard: () => null,
+}));
+vi.mock("./data/billing-snapshot", () => ({
+  useBillingSnapshotV2: () => snapshotState.current,
 }));
 
 vi.mock("./components/billing-tab", () => ({
@@ -279,5 +294,60 @@ describe("BillingSectionBody", () => {
       requireFreshOrganization: true,
     });
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("withholds Subscribe from non-managers and while a live subscription exists", () => {
+    setBillingState({
+      user: { id: "user-1", organization_id: "org-1" },
+      isReady: true,
+      isAuthenticated: true,
+      isPending: false,
+      isFetchedAfterMount: true,
+    });
+    renderBillingSurface();
+    expect(subscriptionPlansProps.current?.subscribeBlockedReason).toBe(
+      "not_billing_manager",
+    );
+    cleanup();
+
+    snapshotState.current = {
+      isPending: false,
+      data: {
+        subscription: { status: "available", value: { state: "past_due" } },
+      },
+    };
+    setBillingState({
+      user: { id: "user-1", organization_id: "org-1", role: "owner" } as {
+        id: string;
+        organization_id: string;
+      },
+    });
+    renderBillingSurface();
+    expect(subscriptionPlansProps.current?.subscribeBlockedReason).toBe(
+      "live_subscription",
+    );
+    snapshotState.current = { data: undefined, isPending: false };
+  });
+
+  it("explains a canceled subscription checkout", () => {
+    setBillingState({
+      user: { id: "user-1", organization_id: "org-1" },
+      isReady: true,
+      isAuthenticated: true,
+      isPending: false,
+      isFetchedAfterMount: true,
+    });
+    window.history.replaceState(
+      null,
+      "",
+      "/cloud/billing?subscription_checkout=canceled",
+    );
+    renderBillingSurface();
+    expect(
+      screen.getByText(
+        /Subscription checkout canceled\. No subscription was started/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Payment canceled/)).toBeNull();
   });
 });

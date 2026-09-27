@@ -883,33 +883,6 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/v1/apps/app-smoke-1/public"),
     body: { app: { id: "app-smoke-1", name: "Smoke App", logo_url: null } },
   },
-  {
-    // Public payment page for an app charge (AppChargeDetails shape —
-    // app-charge-page.tsx formats expiresAt/paidAt with Intl, so they must
-    // be valid dates, and reads amountUsd/providers/paymentUrl).
-    match: path_("/api/v1/apps/app-smoke-1/charges/charge-smoke-1"),
-    body: {
-      charge: {
-        id: "charge-smoke-1",
-        appId: "app-smoke-1",
-        amountUsd: 5,
-        description: "Smoke charge",
-        providers: ["stripe"],
-        paymentUrl: "https://example.com/pay/charge-smoke-1",
-        status: "pending",
-        paidAt: null,
-        expiresAt: FUTURE_ISO,
-        createdAt: NOW_ISO,
-      },
-      app: {
-        id: "app-smoke-1",
-        name: "Smoke App",
-        description: "Deterministic ui-smoke application fixture",
-        logo_url: null,
-        website_url: null,
-      },
-    },
-  },
   // approvals/ dashboard list + public approve/:id page.
   {
     match: path_("/api/v1/approval-requests/approval-smoke-1"),

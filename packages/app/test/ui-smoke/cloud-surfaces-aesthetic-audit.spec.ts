@@ -280,12 +280,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     expectedFinalPath: /^\/cloud\/billing$/,
   },
   {
-    slug: "payment-app-charge",
-    path: "/payment/app-charge/app-smoke-1/charge-smoke-1",
-    route: "payment/app-charge/:appId/:chargeId",
-    auth: PUBLIC,
-  },
-  {
     slug: "approve-approval",
     path: "/approve/approval-smoke-1",
     route: "approve/:approvalId",

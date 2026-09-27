@@ -28,9 +28,9 @@ export const orgStorageObjects = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
     logical_key: text("logical_key").notNull(),
-    generation: bigint("generation", { mode: "bigint" }).notNull().default(0n),
+    generation: bigint("generation", { mode: "bigint" }).notNull().default(sql`0`),
     provider_key: text("provider_key"),
-    size_bytes: bigint("size_bytes", { mode: "bigint" }).notNull().default(0n),
+    size_bytes: bigint("size_bytes", { mode: "bigint" }).notNull().default(sql`0`),
     content_type: text("content_type"),
     content_sha256: text("content_sha256"),
     etag: text("etag"),

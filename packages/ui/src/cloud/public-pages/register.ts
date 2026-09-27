@@ -27,9 +27,6 @@ const PaymentRequestPage = lazy(
 const PaymentSuccessPage = lazy(
   () => import("./pages/payment/payment-success-page"),
 );
-const AppChargePaymentPage = lazy(
-  () => import("./pages/payment/app-charge-page"),
-);
 const ApprovalPage = lazy(() => import("./pages/approve/approval-page"));
 const BallotPage = lazy(() => import("./pages/ballot/ballot-page"));
 const SensitiveRequestPage = lazy(
@@ -93,12 +90,6 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "payment/success",
     element: PaymentSuccessPage,
-    ...PUBLIC_ROUTE_ACCESS,
-    group: "payment",
-  });
-  registerCloudRoute({
-    path: "payment/app-charge/:appId/:chargeId",
-    element: AppChargePaymentPage,
     ...PUBLIC_ROUTE_ACCESS,
     group: "payment",
   });

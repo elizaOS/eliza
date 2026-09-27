@@ -279,6 +279,8 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionCommands.organization_id, organizationId),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.idempotency_key, idempotencyKey),
         ),
       )
@@ -296,6 +298,8 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionCommands.organization_id, organizationId),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.kind, "checkout"),
           inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
         ),
@@ -380,6 +384,8 @@ export class SubscriptionBillingOperationsRepository {
         .where(
           and(
             eq(billingSubscriptionCommands.organization_id, input.organizationId),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             inArray(billingSubscriptionCommands.status, [
               "PREPARED",
               "OUTCOME_UNKNOWN",

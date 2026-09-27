@@ -248,7 +248,6 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
     )
   )
     return true;
-  if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (isPublicOutOfBandTokenPath(pathname, method)) return true;
   return publicPathPrefixes.some(

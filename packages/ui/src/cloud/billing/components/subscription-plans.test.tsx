@@ -1,5 +1,6 @@
-/** Exercises catalog fetch failure, retry, and stale-price withdrawal through the real React Query consumer with a deterministic HTTP boundary. */
+/** Exercises catalog fetch failure, retry, purchase-intent lifecycle and stale-price withdrawal through the real React Query consumer with a deterministic SDK boundary. */
 // @vitest-environment jsdom
+import { CloudApiError } from "@elizaos/cloud-sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -10,12 +11,18 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { SubscriptionPlans } from "./subscription-plans";
+import {
+  type SubscribeBlockedReason,
+  SubscriptionPlans,
+} from "./subscription-plans";
 
-const request = vi.hoisted(() => vi.fn());
-vi.mock("../../lib/api-client", () => ({
-  api: (...args: unknown[]) => request(...args),
+const sdk = vi.hoisted(() => ({
+  getSubscriptionPlans: vi.fn(),
+  startSubscriptionCheckout: vi.fn(),
+  confirmSubscriptionCheckout: vi.fn(),
 }));
+vi.mock("../../lib/cloud-sdk", () => ({ sessionCloudSdk: sdk }));
+
 const response = {
   success: true,
   data: {
@@ -31,24 +38,42 @@ const response = {
     ],
   },
 };
-function mount(organizationId?: string) {
+function mount(
+  organizationId?: string,
+  options: { userId?: string; blocked?: SubscribeBlockedReason } = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   render(
     <QueryClientProvider client={client}>
-      <SubscriptionPlans organizationId={organizationId} />
+      <SubscriptionPlans
+        organizationId={organizationId}
+        userId={options.userId ?? "user-1"}
+        subscribeBlockedReason={options.blocked ?? null}
+      />
     </QueryClientProvider>,
   );
   return client;
 }
+function checkoutKeys(): string[] {
+  return sdk.startSubscriptionCheckout.mock.calls.map(
+    (call) => call[0].idempotencyKey,
+  );
+}
+function checkoutResult(status: string, checkoutUrl: string | null = null) {
+  return { success: true, data: { status, commandId: "command", checkoutUrl } };
+}
 afterEach(() => {
   cleanup();
-  request.mockReset();
+  for (const fn of Object.values(sdk)) fn.mockReset();
   localStorage.clear();
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
 });
+
 test("an unavailable provider is retryable without presenting a successful purchase", async () => {
-  request
+  sdk.getSubscriptionPlans
     .mockRejectedValueOnce(new Error("catalog unavailable"))
     .mockResolvedValueOnce(response);
   mount();
@@ -57,10 +82,10 @@ test("an unavailable provider is retryable without presenting a successful purch
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByText("Plus")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(request).toHaveBeenCalledTimes(2);
+  expect(sdk.getSubscriptionPlans).toHaveBeenCalledTimes(2);
 });
 test("a failed provider revalidation withdraws cached offers", async () => {
-  request
+  sdk.getSubscriptionPlans
     .mockResolvedValueOnce(response)
     .mockRejectedValue(new Error("price binding changed"));
   const client = mount();
@@ -73,10 +98,13 @@ test("a failed provider revalidation withdraws cached offers", async () => {
 });
 
 test("retry keeps the same account-bound purchase intent after an uncertain response", async () => {
-  request.mockImplementation((path: string) =>
-    path.endsWith("/plans")
-      ? Promise.resolve(response)
-      : Promise.reject(new Error("Payment service unavailable")),
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout.mockRejectedValue(
+    new CloudApiError(503, {
+      success: false,
+      error: "Payment service unavailable",
+      code: "service_unavailable",
+    }),
   );
   mount("org-checkout");
   const button = await screen.findByRole("button", {
@@ -85,62 +113,83 @@ test("retry keeps the same account-bound purchase intent after an uncertain resp
   fireEvent.click(button);
   await screen.findByText("Payment service unavailable");
   fireEvent.click(button);
-  await waitFor(() =>
-    expect(
-      request.mock.calls.filter((call) => call[0].endsWith("/checkout")),
-    ).toHaveLength(2),
+  await waitFor(() => expect(checkoutKeys()).toHaveLength(2));
+  expect(checkoutKeys()[0]).toBe(checkoutKeys()[1]);
+  expect(
+    Object.keys(localStorage).some((key) =>
+      key.includes("user-1:org-checkout:plus_monthly"),
+    ),
+  ).toBe(true);
+});
+test("a billing conflict ends the purchase intent", async () => {
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout.mockRejectedValue(
+    new CloudApiError(409, {
+      success: false,
+      error: "An existing subscription or checkout requires attention.",
+      code: "billing_state_conflict",
+    }),
   );
-  const calls = request.mock.calls.filter((call) =>
-    call[0].endsWith("/checkout"),
-  );
-  expect(JSON.parse(calls[0]![1].body).idempotencyKey).toBe(
-    JSON.parse(calls[1]![1].body).idempotencyKey,
-  );
-  expect(screen.queryByText("Your subscription is active.")).toBeNull();
+  mount("org-conflict");
+  const button = await screen.findByRole("button", {
+    name: "Subscribe to Plus",
+  });
+  fireEvent.click(button);
+  await screen.findByText(/requires attention/);
+  fireEvent.click(button);
+  await waitFor(() => expect(checkoutKeys()).toHaveLength(2));
+  expect(checkoutKeys()[0]).not.toBe(checkoutKeys()[1]);
 });
 test("an expired checkout requires a fresh click and intent before another purchase", async () => {
-  request.mockImplementation((path: string) =>
-    path.endsWith("/plans")
-      ? Promise.resolve(response)
-      : Promise.resolve({
-          success: true,
-          data: { status: "expired", commandId: "command", checkoutUrl: null },
-        }),
-  );
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout.mockResolvedValue(checkoutResult("expired"));
   mount("org-expired");
   const button = await screen.findByRole("button", {
     name: "Subscribe to Plus",
   });
   fireEvent.click(button);
   await screen.findByText(/previous checkout expired/);
-  expect(
-    request.mock.calls.filter((call) => call[0].endsWith("/checkout")),
-  ).toHaveLength(1);
+  expect(checkoutKeys()).toHaveLength(1);
   fireEvent.click(button);
-  await waitFor(() =>
-    expect(
-      request.mock.calls.filter((call) => call[0].endsWith("/checkout")),
-    ).toHaveLength(2),
+  await waitFor(() => expect(checkoutKeys()).toHaveLength(2));
+  expect(checkoutKeys()[0]).not.toBe(checkoutKeys()[1]);
+});
+test("a completed purchase clears its intent so a later purchase is never a stale replay", async () => {
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout.mockResolvedValue(checkoutResult("completed"));
+  mount("org-completed");
+  const button = await screen.findByRole("button", {
+    name: "Subscribe to Plus",
+  });
+  fireEvent.click(button);
+  await screen.findByText(/Subscription payment confirmed/);
+  fireEvent.click(button);
+  await waitFor(() => expect(checkoutKeys()).toHaveLength(2));
+  expect(checkoutKeys()[0]).not.toBe(checkoutKeys()[1]);
+});
+test("a spent intent is replaced once instead of reporting a false confirmation", async () => {
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout
+    .mockResolvedValueOnce(checkoutResult("stale_intent"))
+    .mockResolvedValueOnce(
+      checkoutResult(
+        "open",
+        "https://checkout.stripe.com.attacker.example/pay",
+      ),
+    );
+  mount("org-stale");
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Subscribe to Plus" }),
   );
-  const calls = request.mock.calls.filter((call) =>
-    call[0].endsWith("/checkout"),
-  );
-  expect(JSON.parse(calls[0]![1].body).idempotencyKey).not.toBe(
-    JSON.parse(calls[1]![1].body).idempotencyKey,
-  );
+  await screen.findByText("Checkout returned an invalid destination.");
+  expect(checkoutKeys()).toHaveLength(2);
+  expect(checkoutKeys()[0]).not.toBe(checkoutKeys()[1]);
+  expect(screen.queryByText(/Subscription payment confirmed/)).toBeNull();
 });
 test("checkout never navigates to a provider lookalike", async () => {
-  request.mockImplementation((path: string) =>
-    path.endsWith("/plans")
-      ? Promise.resolve(response)
-      : Promise.resolve({
-          success: true,
-          data: {
-            status: "open",
-            commandId: "command",
-            checkoutUrl: "https://checkout.stripe.com.attacker.example/pay",
-          },
-        }),
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout.mockResolvedValue(
+    checkoutResult("open", "https://checkout.stripe.com.attacker.example/pay"),
   );
   mount("org-redirect");
   fireEvent.click(
@@ -149,4 +198,60 @@ test("checkout never navigates to a provider lookalike", async () => {
   expect(
     await screen.findByText("Checkout returned an invalid destination."),
   ).toBeTruthy();
+});
+test("unavailable storage keeps retries idempotent within the tab", async () => {
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.startSubscriptionCheckout.mockRejectedValue(new Error("uncertain"));
+  mount("org-no-storage");
+  const button = await screen.findByRole("button", {
+    name: "Subscribe to Plus",
+  });
+  fireEvent.click(button);
+  await screen.findByText("uncertain");
+  fireEvent.click(button);
+  await waitFor(() => expect(checkoutKeys()).toHaveLength(2));
+  expect(checkoutKeys()[0]).toBe(checkoutKeys()[1]);
+});
+test("a confirmed return clears intents and drops the provider session marker", async () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/cloud/billing?subscription_session_id=cs_test_abc&tab=1",
+  );
+  localStorage.setItem(
+    "eliza-subscription-checkout:user-1:org-return:plus_monthly",
+    "old-intent",
+  );
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  sdk.confirmSubscriptionCheckout.mockResolvedValue({
+    success: true,
+    data: { subscriptionId: "sub", replayed: false },
+  });
+  mount("org-return");
+  await screen.findByText(/Subscription payment confirmed/);
+  expect(sdk.confirmSubscriptionCheckout).toHaveBeenCalledWith("cs_test_abc");
+  await waitFor(() => expect(window.location.search).toBe("?tab=1"));
+  expect(
+    localStorage.getItem(
+      "eliza-subscription-checkout:user-1:org-return:plus_monthly",
+    ),
+  ).toBeNull();
+});
+test.each([
+  ["live_subscription", /already has a subscription/],
+  ["not_billing_manager", /Only organization owners and admins/],
+] as const)("%s withholds the Subscribe action", async (reason, text) => {
+  sdk.getSubscriptionPlans.mockResolvedValue(response);
+  mount("org-blocked", { blocked: reason });
+  await screen.findByText("Plus");
+  expect(screen.getByText(text)).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "Subscribe to Plus" }),
+  ).toBeNull();
 });
