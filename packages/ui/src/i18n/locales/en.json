@@ -1434,6 +1434,7 @@
   "cloud.billing.signInError": "Could not start Eliza Cloud sign-in.",
   "cloud.billing.signInFailed": "Sign in unavailable",
   "cloud.billing.signInTitle": "Sign in required",
+  "cloud.billing.subscriptionCheckoutCanceled": "Subscription checkout canceled. No subscription was started and no charge was made.",
   "cloud.billing.unavailableDescription": "Your session is active, but no billing account is available.",
   "cloud.billing.unavailableTitle": "Billing unavailable",
   "cloud.billing.metaDescription": "Add funds and manage your billing",
