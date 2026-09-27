@@ -246,6 +246,73 @@ describe("next-event temporal evidence", () => {
     );
   });
 
+  it.each([
+    [
+      "2026-09-26T06:18:42.538Z",
+      "America/Los_Angeles",
+      "Friday, September 25, 2026 at 11:18:42 PM PDT",
+    ],
+    [
+      "2026-09-25T16:18:42.538Z",
+      "Asia/Tokyo",
+      "Saturday, September 26, 2026 at 1:18:42 AM GMT+9",
+    ],
+    [
+      "2026-11-01T08:30:00.000Z",
+      "America/Los_Angeles",
+      "Sunday, November 1, 2026 at 1:30:00 AM PDT",
+    ],
+    [
+      "2026-11-01T09:30:00.000Z",
+      "America/Los_Angeles",
+      "Sunday, November 1, 2026 at 1:30:00 AM PST",
+    ],
+    [
+      "2027-01-01T07:30:00.000Z",
+      "America/Los_Angeles",
+      "Thursday, December 31, 2026 at 11:30:00 PM PST",
+    ],
+  ])(
+    "projects the existing snapshot %s in requested zone %s",
+    async (asOf, timeZone, display) => {
+      const now = new Date(asOf);
+      const next = event(
+        new Date(now.getTime() + 3600000).toISOString(),
+        "Europe/London",
+      );
+      const runtime = new AgentRuntime({
+        character: { name: "Reference proof", bio: [] },
+      });
+      const service = new CalendarService(runtime);
+      const feed = {
+        calendarId: "primary",
+        events: [next],
+        source: "synced" as const,
+        state: "complete" as const,
+        sources: [],
+        timeMin: asOf,
+        timeMax: next.endAt,
+        syncedAt: asOf,
+      };
+      const original = structuredClone(feed);
+      const read = vi.spyOn(service, "getCalendarFeed").mockResolvedValue(feed);
+      const result = await service.getNextCalendarEventContext(
+        new URL("http://localhost/"),
+        { timeZone },
+        now,
+      );
+      expect(result.timeReference).toEqual({ asOf, timeZone, display });
+      expect(read.mock.calls[0]?.[2]).toBe(now);
+      expect(now.toISOString()).toBe(asOf);
+      expect(feed).toEqual(original);
+      expect(result.event).toEqual(next);
+      const legacyReference = { ...result, timeReference: { asOf, timeZone } };
+      expect(formatNextEventContext(result)).toBe(
+        formatNextEventContext(legacyReference),
+      );
+    },
+  );
+
   it("carries the exact service clock and tomorrow fact through the Calendar action without a model call", async () => {
     const now = new Date("2026-09-26T05:28:48.434Z");
     const next = event("2026-09-26T17:00:00.000Z");
@@ -274,6 +341,7 @@ describe("next-event temporal evidence", () => {
     expect(projection.timeReference).toEqual({
       asOf: now.toISOString(),
       timeZone: "America/Los_Angeles",
+      display: "Friday, September 25, 2026 at 10:28:48 PM PDT",
     });
     vi.spyOn(service, "getNextCalendarEventContext").mockResolvedValue(
       projection,
