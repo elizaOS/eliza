@@ -174,16 +174,44 @@ export const DEFAULT_EVM_CHAINS: readonly EvmChainConfig[] = [
 
 // ── Internal helpers ──────────────────────────────────────────────────
 
-/** Parse JSON from a fetch response. If the body isn't JSON, throw with the raw text. */
+/**
+ * Parse JSON from a fetch response. If the body isn't JSON, throw with the raw
+ * text. Alchemy and Ankr answer HTTP 200 with a JSON-RPC `error` member (a bare
+ * string on Alchemy's NFT REST API) for throttling, bad keys, and unsupported
+ * chains; that envelope is thrown too, so a missing `result` is never read as a
+ * healthy zero balance.
+ */
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!res.ok)
     throw new Error(toWellFormedUnicode(text) || `HTTP ${res.status}`);
+  let data: unknown;
   try {
-    return JSON.parse(text) as T;
+    data = JSON.parse(text);
   } catch {
     throw new Error(toWellFormedUnicode(text) || "Invalid JSON");
   }
+  const envelopeError =
+    data && typeof data === "object"
+      ? (data as { error?: unknown }).error
+      : undefined;
+  if (envelopeError !== undefined && envelopeError !== null) {
+    const record =
+      typeof envelopeError === "object"
+        ? (envelopeError as { code?: unknown; message?: unknown })
+        : {};
+    const message =
+      typeof envelopeError === "string"
+        ? envelopeError
+        : typeof record.message === "string"
+          ? record.message
+          : "";
+    const code = typeof record.code === "number" ? ` ${record.code}` : "";
+    throw new Error(
+      toWellFormedUnicode(message).trim() || `JSON-RPC error${code}`,
+    );
+  }
+  return data as T;
 }
 
 function normalizeApiKey(value: string | null | undefined): string | null {
