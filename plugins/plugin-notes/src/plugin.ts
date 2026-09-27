@@ -47,13 +47,13 @@ export const notesPlugin: Plugin = {
       overrides: {
         list: {
           description:
-            "Read current saved notes, including their IDs, exact titles/bodies and timestamps. Use content for a title/topic filter, noteId for an exact ID, and dateRange whenever the user requests creation/update date bounds. Pass that window in this read rather than listing all notes and filtering in the reply. Filters combine; omit all for the full list. The result contains every matching note and the applied date window. Saved-note provider text has no timestamps; restoring it cannot answer a date question. This operation does not change notes or open their view.",
+            "Read current saved notes, including their IDs, exact titles/bodies and timestamps. Use content for a title/topic filter, noteId for an exact ID, and dateRange whenever the user requests creation/update date bounds. Pass that window in this read rather than listing all notes and filtering in the reply. Filters combine; omit all for the full list. The result contains every matching note and the applied date window unless latestBy explicitly selects the newest createdAt or updatedAt instant; all ties remain. Resolve that basis from user wording/context and state it; bare latest has no automatic default. Saved-note provider text has no timestamps; restoring it cannot answer a date question. This operation does not change notes or open their view.",
           parameters: notesAction.parameters?.map((parameter) =>
             parameter.name === "content"
               ? {
                   ...parameter,
                   description:
-                    "Optional title/topic text filter. Omit for all notes or date/recency comparisons; dates are not text-search terms. Use noteId instead for an exact ID.",
+                    "Optional title/topic text filter. Omit for all notes or recency selection without a title/topic; use latestBy for its explicit timestamp basis and dateRange for date bounds. Dates are not text-search terms. Use noteId instead for an exact ID.",
                 }
               : parameter,
           ),
