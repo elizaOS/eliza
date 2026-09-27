@@ -28,7 +28,6 @@ const refundCredits = mock(async () => ({
   transaction: { id: "tx-reinstated" },
   newBalance: 100,
 }));
-const failChargeAndEnqueue = mock(async () => undefined);
 const recordLostChargebackHold = mock(async () => ({
   hold: { id: "hold-1" },
   created: true,
@@ -102,12 +101,6 @@ mock.module("@/lib/security/safe-fetch", () => ({
 }));
 mock.module("@/db/repositories/payment-reversal-holds", () => ({
   recordLostChargebackHold,
-}));
-mock.module("@/lib/services/app-charge-callbacks", () => ({
-  appChargeCallbacksService: { failChargeAndEnqueue },
-}));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {},
 }));
 mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
 mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
@@ -217,7 +210,6 @@ beforeEach(() => {
   addCredits.mockClear();
   clawbackCredits.mockClear();
   refundCredits.mockClear();
-  failChargeAndEnqueue.mockClear();
   recordLostChargebackHold.mockClear();
   logWarning.mockClear();
   getByStripeInvoiceId.mockClear();
