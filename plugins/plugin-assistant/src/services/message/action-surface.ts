@@ -140,11 +140,23 @@ function pendingActionContexts(
         ].includes(words[0])
       );
     });
-  return inferActionSearchContexts(
-    actions,
-    domainIntents.join("\n"),
-    aliases,
-  ).map(normalizeContextId);
+  const domainText = domainIntents.join("\n");
+  // Readback identifiers are data, not programming work. This affects only
+  // inferred extra domains; explicit contexts, action names and discovery
+  // queries retain their ordinary meaning and complete source text.
+  const programmingText = domainText.replace(
+    /\b(?:verification|reference)\s+codes?\b/giu,
+    " ",
+  );
+  return inferActionSearchContexts(actions, domainText, aliases)
+    .filter(
+      (context) =>
+        normalizeContextId(context) !== "code" ||
+        ["code", ...(aliases?.("code") ?? [])].some((name) =>
+          containsDomainPhrase(programmingText, name),
+        ),
+    )
+    .map(normalizeContextId);
 }
 
 function positiveIntentText(intent: string): string {

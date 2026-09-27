@@ -40,45 +40,106 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
-  it("keeps actual FILE bootstrap scoped despite an output field named verificationCode", async () => {
-    const currentRuntime = new AgentRuntime({
-      character: { name: "File field boundary", bio: "Test" },
-      logLevel: "fatal",
-    });
-    currentRuntime.contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
-    currentRuntime.actions.push(
+  it.each([
+    {
+      query: "Read input.json and report product and verificationCode",
+      intents: ["read input.json", "report product and verificationCode"],
+    },
+    {
+      query:
+        "Save the following text exactly, including its final newline, to /tmp/planner-readback/note.txt, then read the file and report its verification code:\nCHECK-2877\nSecond line: blue\nThird line: ready\n",
+      intents: [
+        "Write the exact provided text with its final newline to /tmp/planner-readback/note.txt",
+        "Read the resulting file and report its verification code",
+      ],
+    },
+    {
+      query: "Read note.txt and report its reference code.",
+      intents: ["Read note.txt", "Report its reference code"],
+    },
+  ])(
+    "keeps FILE bootstrap scoped for readback identifiers: $query",
+    async ({ query, intents }) => {
+      const originalIntents = [...intents];
+      const currentRuntime = new AgentRuntime({
+        character: { name: "File field boundary", bio: "Test" },
+        logLevel: "fatal",
+      });
+      currentRuntime.contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      currentRuntime.actions.push(
+        fileAction,
+        {
+          name: "TASKS_CREATE",
+          contexts: ["code"],
+          description: "Create coding tasks",
+        },
+        {
+          name: "PLUGIN_READ_CONFIG",
+          contexts: ["files", "settings"],
+          description: "Read plugin configuration files",
+        },
+      );
+      const admitted = await collectV5PlannerCandidateActions({
+        runtime: currentRuntime,
+        message: { content: { text: query, channelType: "DM" } } as Memory,
+        state: { text: "", values: {}, data: {} },
+        selectedContexts: ["files"],
+        intents,
+        userRoles: ["OWNER"],
+      });
+      expect(admitted.map((action) => action.name)).not.toContain(
+        "TASKS_CREATE",
+      );
+      expect(
+        retrieveContextualPlannerActions({
+          actions: admitted,
+          query,
+          intents,
+          contexts: ["files"],
+          deferUnscopedBootstrap: true,
+        }).actions,
+      ).toEqual([fileAction]);
+      expect(intents).toEqual(originalIntents);
+    },
+  );
+
+  it.each([
+    "Build the code in the repository",
+    "Edit the code after reading note.txt",
+    "Read note.txt and refactor the code",
+  ])("keeps genuine pending programming work: %s", async (intent) => {
+    const actions: Action[] = [
       fileAction,
       {
         name: "TASKS_CREATE",
         contexts: ["code"],
-        description: "Create coding tasks",
+        description: "Create a coding task",
       },
-      {
-        name: "PLUGIN_READ_CONFIG",
-        contexts: ["files", "settings"],
-        description: "Read plugin configuration files",
-      },
-    );
-    const query = "Read input.json and report product and verificationCode";
-    const intents = ["read input.json", "report product and verificationCode"];
-    const admitted = await collectV5PlannerCandidateActions({
-      runtime: currentRuntime,
-      message: { content: { text: query, channelType: "DM" } } as Memory,
-      state: { text: "", values: {}, data: {} },
-      selectedContexts: ["files"],
-      intents,
-      userRoles: ["OWNER"],
-    });
-    expect(admitted.map((action) => action.name)).not.toContain("TASKS_CREATE");
-    expect(
-      retrieveContextualPlannerActions({
-        actions: admitted,
-        query,
-        intents,
-        contexts: ["files"],
-        deferUnscopedBootstrap: true,
-      }).actions,
-    ).toEqual([fileAction]);
+    ];
+    const selected = retrieveContextualPlannerActions({
+      actions,
+      query: intent,
+      intents: [intent],
+      contexts: ["files"],
+      deferUnscopedBootstrap: true,
+    }).actions;
+    expect(selected.map((action) => action.name)).toContain("TASKS_CREATE");
+  });
+
+  it("preserves an explicit programming domain for editing verification code", () => {
+    const codingAction: Action = {
+      name: "TASKS_CREATE",
+      contexts: ["code"],
+      description: "Create a coding task",
+    };
+    const selected = retrieveContextualPlannerActions({
+      actions: [fileAction, codingAction],
+      query: "Edit verification code",
+      intents: ["Edit verification code"],
+      contexts: ["code"],
+      deferUnscopedBootstrap: true,
+    }).actions;
+    expect(selected).toContain(codingAction);
   });
 
   it("defers ambiguous initial routing but preserves explicit hints and global discovery", async () => {
