@@ -19,6 +19,8 @@ type MacEffectsSymbols = {
 	setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
 	setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
 	disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
+	elizaSetTrustedMediaCaptureOrigins(origins: Pointer): boolean;
+	elizaInstallMediaCapturePermissionPolicy(ptr: Pointer): boolean;
 	orderOutWindow(ptr: Pointer): boolean;
 	makeKeyAndOrderFrontWindow(ptr: Pointer): boolean;
 	isAppActive(): boolean;
@@ -87,6 +89,14 @@ function loadLib(): MacEffectsLib {
 				returns: FFIType.bool,
 			},
 			disableWindowBackForwardNavigationGestures: {
+				args: [FFIType.ptr],
+				returns: FFIType.bool,
+			},
+			elizaSetTrustedMediaCaptureOrigins: {
+				args: [FFIType.ptr],
+				returns: FFIType.bool,
+			},
+			elizaInstallMediaCapturePermissionPolicy: {
 				args: [FFIType.ptr],
 				returns: FFIType.bool,
 			},
@@ -206,6 +216,35 @@ export function setNativeDragRegion(
 export function disableBackForwardNavigationGestures(ptr: Pointer): boolean {
 	return (
 		getLib()?.symbols.disableWindowBackForwardNavigationGestures(ptr) ?? false
+	);
+}
+
+/**
+ * Register the app renderer origins whose WKWebView media capture follows the
+ * signed app's macOS microphone/camera grant instead of Electrobun's
+ * per-origin in-process prompt cache. Only scheme, host and port are used.
+ * `views://` is always trusted. Returns true when at least one origin parsed.
+ */
+export function setTrustedMediaCaptureOrigins(origins: string[]): boolean {
+	const lib = getLib();
+	if (!lib) return false;
+	const buffer = cStringBuffer(origins.join("\n"));
+	return lib.symbols.elizaSetTrustedMediaCaptureOrigins(ptr(buffer));
+}
+
+/**
+ * Install the media-capture permission policy on the window's WKWebView
+ * delegate class so chat capture presents (or honors) the macOS microphone
+ * grant and a grant made in Settings applies to the next capture (#30676).
+ * Idempotent; returns true once the delegate class is patched. WKWebView is
+ * often inserted after first layout, so callers retry until it returns true.
+ */
+export function installMediaCapturePermissionPolicy(
+	windowPtr: Pointer,
+): boolean {
+	return (
+		getLib()?.symbols.elizaInstallMediaCapturePermissionPolicy(windowPtr) ??
+		false
 	);
 }
 

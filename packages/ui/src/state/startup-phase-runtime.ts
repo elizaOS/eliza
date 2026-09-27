@@ -149,6 +149,23 @@ async function hydrateReadyAgentStatus(
 }
 
 /**
+ * Reads the remote backend's reported runtime state. `null` means the status
+ * endpoint did not answer; the caller keeps its existing already-running
+ * treatment for backends that do not expose it.
+ */
+async function readRemoteRuntimeState(): Promise<string | null> {
+  try {
+    const status = await client.getStatus();
+    return typeof status?.state === "string" ? status.state : null;
+  } catch (err) {
+    logger.warn(
+      `[eliza][startup:init] remote backend status probe failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+/**
  * True when the persisted active server is an Eliza-managed cloud agent
  * (`kind: "cloud"`). Written on every cloud entry path (first-run completion,
  * session restore, profile switch) and NEVER for the desktop/mobile embedded
@@ -324,8 +341,31 @@ export async function runStartingRuntime(
     }
 
     // Self-hosted remote backend (or a cloud-managed target with no persisted
-    // cloud record): treat the already-running remote agent as ready and
-    // advance straight to hydration — today's behavior, unchanged.
+    // cloud record): an already-running remote agent advances straight to
+    // hydration. A remote-backend whose runtime reports it has not booted
+    // (for example the desktop shell's own embedded API with its boot
+    // deferred until onboarding commits, reached through a restored loopback
+    // record) is not ready: fall through to the agent-readiness loop below,
+    // which starts it and waits for "running" instead of presenting the ready
+    // UI over a backend whose database is not open yet (#30744).
+    if (target === "remote-backend") {
+      const runtimeState = await readRemoteRuntimeState();
+      if (cancelled.current || effectRunRef.current !== effectRunId) return;
+      if (runtimeState !== null && runtimeState !== "running") {
+        logger.info(
+          `[eliza][startup:init] remote backend runtime is ${runtimeState}; waiting for it to run before declaring ready`,
+        );
+        return runStartingRuntime(
+          deps,
+          dispatch,
+          effectRunId,
+          effectRunRef,
+          cancelled,
+          tidRef,
+          "embedded-local",
+        );
+      }
+    }
     await hydrateReadyAgentStatus(deps);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
     deps.setConnected(true);
