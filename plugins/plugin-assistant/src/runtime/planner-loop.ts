@@ -4112,6 +4112,39 @@ async function dispatchPlannerModelCall(params: {
   const endedAt = Date.now();
 
   const parsed = parsePlannerOutput(raw);
+  const privateContent =
+    typeof raw !== "string" && Array.isArray(raw.content)
+      ? raw.content.flatMap((part) =>
+          part.type === "reasoning" &&
+          typeof part.text === "string" &&
+          part.providerOptions
+            ? [
+                {
+                  type: "reasoning",
+                  text: part.text,
+                  providerOptions: part.providerOptions,
+                },
+              ]
+            : [],
+        )
+      : [];
+  if (privateContent.length > 0) {
+    const modelMessage: ChatMessage = {
+      role: "assistant",
+      content: privateContent,
+    };
+    const redactText = composeToolDiagnosticRedactor(params.runtime);
+    // Model history owns generated continuation content. Do not add a tool step:
+    // terminal settlement must still inspect the latest actual tool result.
+    const history = (params.trajectory.modelHistory ??=
+      trajectoryStepsToMessages(
+        [...params.trajectory.archivedSteps, ...params.trajectory.steps],
+        { redactText },
+      ));
+    history.push(
+      projectToolDiagnosticValue(modelMessage, redactText) as ChatMessage,
+    );
+  }
 
   // A per-tool subset cannot narrow later planning. Only unanimous, complete,
   // request-bound whole-turn review may select originals for subsequent stages.
@@ -4493,6 +4526,9 @@ async function recordPlannerStage(args: {
         toolChoice: args.modelParams.toolChoice,
         providerOptions: args.modelParams.providerOptions,
         response: responseText,
+        ...(typeof args.raw !== "string" && args.raw.content
+          ? { responseContent: args.raw.content }
+          : {}),
         toolCalls: recordedCalls.map<RecordedToolCall>((tc) => ({
           id: tc.id,
           name: tc.name,
