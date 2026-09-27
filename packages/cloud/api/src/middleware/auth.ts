@@ -213,6 +213,14 @@ function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
   ) {
     return true;
   }
+  // Signed, expiring Dedicated-fallback recovery link (#25146). The route
+  // verifies the token and only redirects to the signed-in billing page.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    /^\/api\/v1\/eliza\/personal\/recovery\/[^/]+\/?$/.test(pathname)
+  ) {
+    return true;
+  }
   return false;
 }
 
