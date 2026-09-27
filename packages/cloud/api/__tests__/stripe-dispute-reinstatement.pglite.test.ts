@@ -114,12 +114,16 @@ function disputeEvent(
   amountCents: number,
   paymentIntentId: string,
 ) {
+  const eventId = `evt_${randomUUID()}`;
   return {
     attempts: 1,
     body: {
-      eventId: `evt_${randomUUID()}`,
+      kind: "stripe.event" as const,
+      eventId,
+      eventType: type,
+      receivedAt: Date.now(),
       event: {
-        id: `evt_${randomUUID()}`,
+        id: eventId,
         type,
         data: {
           object: {
