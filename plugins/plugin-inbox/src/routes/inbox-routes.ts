@@ -7,21 +7,18 @@
  * bodies before handing pre-validated input to the service.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
 } from "@elizaos/core/api/http-plugin";
 import {
   executeInboxQueueOperation,
   type InboxQueueOperationResult,
 } from "../actions/inbox.ts";
 import { InboxService } from "../inbox/service.ts";
-import {
-  type InboundMessage,
-  type TriageClassification,
-} from "../inbox/types.ts";
+import type { InboundMessage, TriageClassification } from "../inbox/types.ts";
 
 type InboxRouteOperation = "reply" | "snooze" | "archive" | "approve";
 const TRIAGE_CLASSIFICATIONS = new Set<TriageClassification>([
@@ -119,6 +116,12 @@ async function runOperation(
       runtime,
       subaction: operation,
       params,
+      // The owner's explicit UI decision authorizes the send: approve always
+      // sends, reply sends only when the request says `confirmed`.
+      authorization: {
+        kind: "route",
+        send: operation === "approve" || queryBool(params.confirmed),
+      },
     });
   } catch (error) {
     // error-policy:J1 boundary translation — distinguish not-found (404) and

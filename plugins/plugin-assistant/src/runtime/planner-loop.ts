@@ -155,8 +155,9 @@ export {
 // Underscore-prefixed so they're impossible to mistake for production API.
 export function __renderRoutingHintsBlockForTests(
   context: ContextObject,
+  tools?: readonly ToolDefinition[],
 ): string | null {
-  return renderRoutingHintsBlock(context);
+  return renderRoutingHintsBlock(context, tools);
 }
 export type {
   ContextObject,
@@ -3077,10 +3078,13 @@ function renderPlannerModelInput(params: {
     compactCanonicalToolMessagesForModel(completeStepMessages);
   // Action names + parameter schemas now ride directly on the tools array
   // (each Action is exposed as its own native tool), so there is no separate
-  // available_actions block rendered into the prompt. Routing hints stay as a
-  // dedicated section since they layer business advice on top of the bare
-  // action descriptions.
-  const routingHintsBlock = renderRoutingHintsBlock(params.context);
+  // available_actions block rendered into the prompt. A routing hint already
+  // carried by its native tool's description is not repeated; the section
+  // keeps only hints no wire tool carries (e.g. promoted-family parents).
+  const routingHintsBlock = renderRoutingHintsBlock(
+    params.context,
+    params.tools,
+  );
   const extraSegments: PromptSegment[] = [];
   if (routingHintsBlock) {
     extraSegments.push({ content: routingHintsBlock, stable: false });
@@ -3224,8 +3228,13 @@ function normalizePlannerToolName(name: string): string {
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
  *
- * Memoized on `context.events` identity; the events array is immutable per
- * planner iteration (`appendContextEvent` returns a new array each time).
+ * When native `tools` are supplied, a hint that its own wire tool's
+ * description already carries (core's actionToPlannerTool prepends it) is
+ * omitted here instead of being sent twice.
+ *
+ * Memoized on `context.events` identity when no tools are supplied; the events
+ * array is immutable per planner iteration (`appendContextEvent` returns a new
+ * array each time).
  */
 const ROUTING_HINTS_MEMO = new WeakMap<
   NonNullable<ContextObject["events"]>,
@@ -3247,10 +3256,21 @@ function appendMandatoryPlannerPolicy(instructions: string): string {
     : `${instructions}\n\nmandatory planner policy:\n${missing.join("\n")}`;
 }
 
-function renderRoutingHintsBlock(context: ContextObject): string | null {
+function renderRoutingHintsBlock(
+  context: ContextObject,
+  tools?: readonly ToolDefinition[],
+): string | null {
   const events = context.events;
-  if (events && ROUTING_HINTS_MEMO.has(events)) {
+  const memoize = !tools?.length;
+  if (memoize && events && ROUTING_HINTS_MEMO.has(events)) {
     return ROUTING_HINTS_MEMO.get(events) ?? null;
+  }
+  const wireDescriptions = new Map<string, string>();
+  for (const tool of tools ?? []) {
+    wireDescriptions.set(
+      normalizePlannerToolName(tool.name),
+      tool.description ?? "",
+    );
   }
   const seenOwners = new Set<string>();
   const seenHints = new Set<string>();
@@ -3274,11 +3294,12 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
     if (seenOwners.has(key) || seenHints.has(normalizedHint)) continue;
     seenOwners.add(key);
     seenHints.add(normalizedHint);
+    if (wireDescriptions.get(key)?.includes(hint)) continue;
     lines.push(`- ${hint}`);
   }
   const result =
     lines.length === 0 ? null : ["# Routing hints", ...lines].join("\n");
-  if (events) {
+  if (memoize && events) {
     ROUTING_HINTS_MEMO.set(events, result);
   }
   return result;

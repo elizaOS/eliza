@@ -30,6 +30,8 @@ export {
   getDefaultMessageRefStore,
   MessageRefStore,
 } from "./message-ref-store.ts";
+export type { SendConsentOptions } from "./send-consent.ts";
+export { requireSendConsent, sendConsentDigest } from "./send-consent.ts";
 export type { SendPolicy } from "./send-policy.ts";
 export {
   __resetSendPolicyForTests,
