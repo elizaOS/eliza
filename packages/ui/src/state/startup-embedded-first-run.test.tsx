@@ -41,6 +41,7 @@ vi.mock("../platform", async (importOriginal) => ({
   isIOS: false,
 }));
 
+import { getAgentReadyTimeoutMs } from "./agent-startup-timing";
 import type { PersistedActiveServer } from "./persistence";
 import {
   createDesktopPolicy,
@@ -315,6 +316,41 @@ describe("desktop embedded first-run startup gating (#30744)", () => {
         { type: "AGENT_ERROR", message: "db_unavailable" },
       ]);
       expect(deps.setStartupError).toHaveBeenCalled();
+    });
+
+    it("retries a failed status probe before declaring a remote backend ready", async () => {
+      clientMock.getStatus
+        .mockRejectedValueOnce(new Error("Backend transport unavailable"))
+        .mockResolvedValue({ state: "running" });
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(clientMock.getLaunchProgress).toHaveBeenCalled();
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+      expect(deps.setAgentStatus).toHaveBeenCalledWith({ state: "running" });
+    });
+
+    it("times out an unavailable remote backend without presenting ready", async () => {
+      vi.useFakeTimers();
+      try {
+        clientMock.getStatus.mockRejectedValue(
+          new Error("Backend transport unavailable"),
+        );
+        const deps = createRuntimeDeps();
+        const pending = runRemoteRuntime(deps);
+
+        await vi.advanceTimersByTimeAsync(getAgentReadyTimeoutMs() + 1_000);
+        const events = await pending;
+
+        expect(events).toEqual([{ type: "AGENT_TIMEOUT" }]);
+        expect(deps.setConnected).not.toHaveBeenCalledWith(true);
+        expect(deps.setStartupError).toHaveBeenCalledWith(
+          expect.objectContaining({ reason: "agent-timeout" }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("keeps the immediate ready path for an already-running remote agent", async () => {

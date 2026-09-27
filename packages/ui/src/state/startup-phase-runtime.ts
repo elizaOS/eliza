@@ -150,14 +150,15 @@ async function hydrateReadyAgentStatus(
 
 /**
  * Reads the remote backend's reported runtime state. `null` means the status
- * endpoint did not answer; the caller keeps its existing already-running
- * treatment for backends that do not expose it.
+ * endpoint did not establish readiness; the caller enters the bounded
+ * readiness loop so an unavailable backend cannot present a ready UI.
  */
 async function readRemoteRuntimeState(): Promise<string | null> {
   try {
     const status = await client.getStatus();
     return typeof status?.state === "string" ? status.state : null;
   } catch (err) {
+    // error-policy:J4 an unavailable probe enters the bounded readiness loop.
     logger.warn(
       `[eliza][startup:init] remote backend status probe failed: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -351,7 +352,7 @@ export async function runStartingRuntime(
     if (target === "remote-backend") {
       const runtimeState = await readRemoteRuntimeState();
       if (cancelled.current || effectRunRef.current !== effectRunId) return;
-      if (runtimeState !== null && runtimeState !== "running") {
+      if (runtimeState !== "running") {
         logger.info(
           `[eliza][startup:init] remote backend runtime is ${runtimeState}; waiting for it to run before declaring ready`,
         );
