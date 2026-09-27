@@ -12,6 +12,11 @@ Storybook catalog rendering and isolated Discord gateway reruns remain on demand
 Cloud already owns the gateway tests.
 Live deployment requires the protected environment gates.
 
+`staging-launch-gate.yml` is the manual exact-SHA staging certification. It
+runs front door, first turn, reload, messaging, and routing against the staging
+head that Pages and the API Worker both serve, and uploads privacy-safe lane
+receipts plus one composed receipt naming the owner of the first failed lane.
+
 `deploy-gateway-webhook.yml` deploys these fixed targets:
 
 | Environment | Branch | Service |
