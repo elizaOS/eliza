@@ -301,6 +301,7 @@ export function __setDepsForTests(deps: WorkerDeps | null): void {
   if (!deps) {
     cachedWarmPoolManagerInstance = null;
     billingResumeCursor = undefined;
+    personalDedicatedEntitlementCursor = undefined;
   }
 }
 
@@ -893,6 +894,27 @@ async function processReplacementCleanupReconcileCycle(
 ) {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.reconcileReplacementCleanupFences(batchSize);
+}
+
+let personalDedicatedEntitlementCursor: string | undefined;
+
+/**
+ * Advance one page of personal Dedicated entitlement convergence (#25146):
+ * stop the preserved runtime promptly when a paid plan lapses and restart the
+ * same runtime when it is restored. Runs before billing resume so a lapsed
+ * plan fences credit-driven automatic resume in the same cycle.
+ */
+export async function processPersonalDedicatedEntitlementReconcileCycle(
+  batchSize: number,
+) {
+  const { provisioningJobService } = await loadDeps();
+  const result =
+    await provisioningJobService.reconcilePersonalDedicatedEntitlements({
+      limit: batchSize,
+      afterAuthorityId: personalDedicatedEntitlementCursor,
+    });
+  personalDedicatedEntitlementCursor = result.nextCursor ?? undefined;
+  return result;
 }
 
 let billingResumeCursor: string | undefined;
@@ -1848,6 +1870,20 @@ async function runWorkCycle(
         if (result.total > 0) {
           logger.info(
             "[provisioning-worker] expired Dedicated funding reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "personal dedicated entitlement reconcile",
+      () => processPersonalDedicatedEntitlementReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.open > 0 || result.failures.length > 0) {
+          logger.info(
+            "[provisioning-worker] personal dedicated entitlement reconcile complete",
             result,
           );
         }
