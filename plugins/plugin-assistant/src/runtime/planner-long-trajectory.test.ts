@@ -15,6 +15,7 @@ import {
   type TrajectoryRecorder,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { runEvaluator } from "./evaluator.ts";
 import {
   partitionRedundantSucceededCalls,
   runPlannerLoop,
@@ -93,6 +94,177 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("retains a single verified action-owned reply after evaluator protocol failure", async () => {
+    const result = await runPlannerLoop({
+      context: {
+        id: "single-protocol-relay",
+        events: [
+          {
+            id: "handler",
+            type: "message_handler",
+            metadata: { plan: { intents: ["create the record"] } },
+          },
+        ],
+      },
+      runtime: {
+        useModel: async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "create",
+              name: "CREATE",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async () => ({
+        success: true,
+        userFacingText: "Created the record.",
+        turnComplete: true,
+        verifiedUserFacing: true,
+        effectReceipts: [receipt],
+        userFacingEffectReceiptIds: [receipt.receiptId],
+      }),
+      evaluate: async () => ({
+        success: false,
+        decision: "CONTINUE",
+        thought: "Malformed provider output.",
+        protocolFailure: true,
+      }),
+    });
+    expect(result.finalMessage).toBe("Created the record.");
+    expect(result.trajectory.steps.filter((step) => step.result)).toHaveLength(
+      1,
+    );
+  });
+
+  it("composes readback after a clipboard-only malformed evaluator without replaying the write", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "planner-protocol-readback-"),
+    );
+    const path = join(directory, "index.html");
+    const content = "<html><body>exact readback</body></html>";
+    let writes = 0;
+    let reads = 0;
+    let plans = 0;
+    let evaluations = 0;
+    try {
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: {
+          id: "protocol-readback",
+          events: [
+            {
+              id: "handler",
+              type: "message_handler",
+              metadata: {
+                plan: {
+                  intents: ["write the file", "read and report exact contents"],
+                },
+              },
+            },
+          ],
+        },
+        runtime: {
+          useModel: async () => {
+            if (++plans > 2) throw new Error("Repeated completed work");
+            return {
+              text: "",
+              toolCalls:
+                plans === 1
+                  ? [
+                      {
+                        id: "write",
+                        name: "FILE",
+                        arguments: {
+                          action: "write",
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                      {
+                        id: "read",
+                        name: "FILE",
+                        arguments: {
+                          action: "read",
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ]
+                  : [
+                      {
+                        id: "reply",
+                        name: "REPLY",
+                        arguments: {
+                          text: `Saved contents: ${content}`,
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          if (call.params?.action === "write") {
+            writes++;
+            await writeFile(path, content);
+            return {
+              success: true,
+              text: "Wrote the file.",
+              userFacingText: "Wrote the file.",
+              verifiedUserFacing: true,
+              turnComplete: true,
+              effectReceipts: [receipt],
+              userFacingEffectReceiptIds: [receipt.receiptId],
+            };
+          }
+          reads++;
+          return { success: true, text: await readFile(path, "utf8") };
+        },
+        evaluate: async ({ context, trajectory }) =>
+          runEvaluator({
+            context,
+            trajectory,
+            effects: { copyToClipboard: false },
+            runtime: {
+              useModel: async () =>
+                JSON.stringify(
+                  ++evaluations === 1
+                    ? {
+                        thought: "Write and read succeeded.",
+                        success: true,
+                        decision: "FINISH",
+                        replyEffectStatus: "applied",
+                        effectReceiptIds: [receipt.receiptId],
+                        copyToClipboard: { title: "contents", content },
+                      }
+                    : {
+                        thought: "The final reply reports the saved contents.",
+                        success: true,
+                        decision: "FINISH",
+                        messageToUser: `Saved contents: ${content}`,
+                        replyEffectStatus: "none",
+                      },
+                ),
+            },
+          }),
+      });
+      expect(writes).toBe(1);
+      expect(reads).toBe(1);
+      expect(plans).toBe(2);
+      expect(evaluations).toBe(2);
+      expect(result.finalMessage).toContain(content);
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toContainEqual(receipt);
+      expect(await readFile(path, "utf8")).toBe(content);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each(["unsafe", "failure"])(
     "retains the incomplete notice and safe failure authority (%s)",
     async (kind) => {

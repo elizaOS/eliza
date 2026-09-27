@@ -8313,7 +8313,16 @@ function deterministicEvaluatorProtocolFailureRelay(
       ? groundedFailedToolMessage(unresolvedFailure)
       : undefined;
   }
-  return deterministicSuccessfulToolRelay(trajectory);
+  // A protocol error cannot approve a whole trajectory by replaying an older
+  // operation's confirmation. In particular, a later read may still need its
+  // answer composed even though an earlier write owns a durable receipt.
+  // Preserve the narrow action-owned single-operation reply contract; every
+  // other successful trajectory continues from its complete recorded evidence.
+  if (trajectory.plannedQueue.length > 0) return undefined;
+  if ((trajectory.outcomeIntents?.length ?? 0) > 1) return undefined;
+  const result = singleVerifiedUserFacingToolResult(trajectory);
+  if (result?.turnComplete !== true) return undefined;
+  return result.userFacingText?.trim() || undefined;
 }
 
 /**
