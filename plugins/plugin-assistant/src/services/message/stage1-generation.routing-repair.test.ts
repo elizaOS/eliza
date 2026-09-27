@@ -22,10 +22,7 @@ function decision(overrides: Record<string, unknown>): Record<string, unknown> {
 }
 
 describe("getStage1RoutingRepair", () => {
-  it.each([
-    { disposition: "none", singleViewOnly: false, navigationOnly: false },
-    { disposition: "requested", singleViewOnly: false, navigationOnly: true },
-  ])(
+  it.each([{ disposition: "none" }])(
     "reviews contradictory navigation fields before effects: %j",
     (visualContinuation) => {
       expect(
@@ -52,16 +49,14 @@ describe("getStage1RoutingRepair", () => {
           replyEffectStatus: "applied",
           candidateActionNames: ["VIEWS_SHOW"],
           visualContinuation: {
-            disposition: "requested",
-            singleViewOnly: true,
-            navigationOnly: true,
+            disposition: "direct",
           },
         }),
       ),
     ).toBeDefined();
   });
 
-  it.each(["forbidden", "unresolved", "requested"])(
+  it.each(["forbidden", "unresolved", "planning"])(
     "does not override %s navigation with candidate hints",
     (disposition) => {
       expect(
@@ -73,8 +68,6 @@ describe("getStage1RoutingRepair", () => {
             candidateActionNames: ["VIEWS_SHOW", "NOTES_GET"],
             visualContinuation: {
               disposition,
-              singleViewOnly: true,
-              navigationOnly: false,
             },
           }),
         ),

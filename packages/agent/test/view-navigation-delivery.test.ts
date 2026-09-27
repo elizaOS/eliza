@@ -600,10 +600,8 @@ async function selectNavigation(
     turnSignal: new AbortController().signal,
     rawParsed: {
       visualContinuation: {
-        disposition: "requested",
+        disposition: "direct",
         viewId: "notes",
-        singleViewOnly: true,
-        navigationOnly: true,
         reason: "Requested navigation",
         ...overrides,
       },
@@ -740,8 +738,6 @@ describe("model-selected host navigation", () => {
         {
           disposition: "unresolved",
           viewId,
-          singleViewOnly: false,
-          navigationOnly: false,
         },
         {
           contexts: ["general", "notes", "calendar"],
@@ -789,8 +785,6 @@ describe("model-selected host navigation", () => {
         {
           disposition,
           viewId: "",
-          singleViewOnly: false,
-          navigationOnly: false,
         },
         {
           contexts: ["notes"],
@@ -817,8 +811,6 @@ describe("model-selected host navigation", () => {
       {
         disposition: "none",
         viewId: "",
-        singleViewOnly: false,
-        navigationOnly: false,
       },
       {
         contexts: ["notes"],
@@ -886,25 +878,36 @@ describe("model-selected host navigation", () => {
       expect(f.requests()).toBe(0);
     },
   );
-  it.each(["compound", "conditional", "unknown"])(
+  it.each([
+    ["compound", "notes", ["Read notes", "Open Notes"], ["NOTES_LIST"]],
+    [
+      "conditional",
+      "notes",
+      ["Open Notes only if the record exists"],
+      ["VIEWS"],
+    ],
+    [
+      "multiple destinations",
+      "notes",
+      ["Open Notes, then Calendar"],
+      ["VIEWS"],
+    ],
+    ["unknown", "unregistered", ["Open the requested destination"], ["VIEWS"]],
+  ])(
     "keeps %s navigation and domain work in the planner",
-    async (mode) => {
+    async (_mode, viewId, intents, candidateActions) => {
       const f = await fixture();
       const selected = await selectNavigation(
         f,
         clientMessage(),
-        {
-          navigationOnly: false,
-          ...(mode === "unknown" ? { viewId: "unregistered" } : {}),
-        },
-        {
-          intents: ["Read notes", "Open Notes"],
-          candidateActions: ["NOTES_LIST"],
-        },
+        { disposition: "planning", viewId },
+        { intents, candidateActions },
       );
       expect(selected.plan.deterministicToolCall).toBeUndefined();
-      expect(selected.plan.candidateActions).toEqual(["NOTES_LIST", "VIEWS"]);
-      expect(selected.plan.intents).toEqual(["Read notes", "Open Notes"]);
+      expect(selected.plan.candidateActions).toEqual([
+        ...new Set([...candidateActions, "VIEWS"]),
+      ]);
+      expect(selected.plan.intents).toEqual(intents);
       expect(f.requests()).toBe(0);
     },
   );
@@ -934,7 +937,7 @@ describe("model-selected host navigation", () => {
       expect(f.requests()).toBe(0);
     },
   );
-  it.each(["requested", "unresolved"])(
+  it.each(["direct", "planning", "unresolved"])(
     "rechecks owner role and cancellation for %s",
     async (disposition) => {
       const f = await fixture();
@@ -989,19 +992,55 @@ describe("model-selected host navigation", () => {
     expect(selected.plan.candidateActions).toContain("NOTES_LIST");
     expect(selected.plan.candidateActions).toContain("VIEWS");
   });
+  it.each([
+    { disposition: "requested", singleViewOnly: false, navigationOnly: true },
+    { disposition: "direct", singleViewOnly: false, navigationOnly: true },
+    { disposition: ["direct", "planning"] },
+  ])(
+    "rejects conflicting legacy or multiple routing states: %j",
+    async (decision) => {
+      const f = await fixture();
+      const selected = await selectNavigation(f, clientMessage(), decision);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+      expect(f.frames).toHaveLength(0);
+    },
+  );
+
   it("ignores missing, malformed and client-metadata decisions", async () => {
     const f = await fixture();
-    for (const disposition of ["invalid", null]) {
+    for (const disposition of [
+      "invalid",
+      null,
+      undefined,
+      42,
+      true,
+      ["direct"],
+      ["planning"],
+      ["none"],
+      ["forbidden"],
+      { toString: () => "direct" },
+    ]) {
       const input = clientMessage();
       input.content.metadata = {
         viewClientId: "origin-client",
         visualContinuation: {
-          disposition: "requested",
+          disposition: "direct",
           viewId: "chat",
-          navigationOnly: true,
-          singleViewOnly: true,
         },
       };
+      expect(
+        viewNavigationField.parse?.(
+          { disposition, viewId: "chat", reason: "Malformed field" },
+          {
+            runtime: f.runtime,
+            message: input,
+            state: { values: {}, data: {}, text: "" },
+            senderRole: "OWNER",
+            turnSignal: new AbortController().signal,
+          },
+        ),
+      ).toBeNull();
       const selected = await selectNavigation(f, input, {
         disposition,
         viewId: "chat",
@@ -1075,10 +1114,8 @@ describe("model-selected host navigation", () => {
                 addressedTo: [],
                 emotion: "none",
                 visualContinuation: {
-                  disposition: "requested",
+                  disposition: "direct",
                   viewId: "chat",
-                  singleViewOnly: true,
-                  navigationOnly: true,
                   reason: "Only requested navigation",
                 },
               },
@@ -1207,8 +1244,6 @@ describe("model-selected host navigation", () => {
               visualContinuation: {
                 disposition: scenario.disposition,
                 viewId: "",
-                singleViewOnly: false,
-                navigationOnly: false,
                 reason: "The current request does not authorize navigation",
               },
             },
