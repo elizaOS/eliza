@@ -87,10 +87,10 @@ beforeAll(async () => {
   // The reversal-hold migration is replayed to prove it is idempotent.
   for (const name of [
     "0189_agent_sandbox_lifecycle_revision_scope.sql",
-    "0475_organization_payment_reversal_holds.sql",
-    "0475_organization_payment_reversal_holds.sql",
-    "0476_personal_dedicated_fallbacks.sql",
-    "0476_personal_dedicated_fallbacks.sql",
+    "0479_organization_payment_reversal_holds.sql",
+    "0479_organization_payment_reversal_holds.sql",
+    "0480_personal_dedicated_fallbacks.sql",
+    "0480_personal_dedicated_fallbacks.sql",
   ]) {
     const migration = await readFile(
       join(import.meta.dir, `../../../db/migrations/${name}`),
