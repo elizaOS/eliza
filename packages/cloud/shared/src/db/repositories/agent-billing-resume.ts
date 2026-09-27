@@ -13,6 +13,7 @@ import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../schemas/agent-sandboxes";
 import { jobs } from "../schemas/jobs";
 import { organizations } from "../schemas/organizations";
+import { personalDedicatedFallbacks } from "../schemas/personal-dedicated-fallbacks";
 import { organizationHasNoActivePaymentReversalHold } from "./payment-reversal-holds";
 
 /** Minimum quiet period before a failed automatic resume for the same stop may be retried. */
@@ -47,7 +48,9 @@ export function organizationAdmitsPaidWork(): SQL {
  *   has no unresolved replacement cleanup and no other owner job;
  * - no other exclusive lifecycle job was requested after the billing stop.
  *   Only this stop's own automatic resume may exist: in flight (reused by
- *   enqueue), or failed and quiesced for the retry backoff.
+ *   enqueue), or failed and quiesced for the retry backoff;
+ * - for automatic resume, no lapsed paid plan currently withdraws the
+ *   runtime's personal Dedicated access.
  */
 function resumableBillingStop(ownerJobId?: string, requireOrganizationAdmission = true): SQL {
   const intents = agentComputeStopIntents;
@@ -96,7 +99,23 @@ function resumableBillingStop(ownerJobId?: string, requireOrganizationAdmission 
         )
     )`,
     requireOrganizationAdmission ? organizationAdmitsPaidWork() : undefined,
+    requireOrganizationAdmission ? noPlanWithdrawnFallback() : undefined,
   ) as SQL;
+}
+
+/**
+ * A lapsed paid plan withdrew this runtime's Dedicated access (#25146):
+ * credits alone cannot restart it until the fallback authority has observed
+ * restored entitlement and moved the interval to recovery.
+ */
+function noPlanWithdrawnFallback(): SQL {
+  return sql`NOT EXISTS (
+    SELECT 1 FROM ${personalDedicatedFallbacks}
+    WHERE ${personalDedicatedFallbacks.dedicated_agent_id} = ${agentSandboxes.id}
+      AND ${personalDedicatedFallbacks.organization_id} = ${agentSandboxes.organization_id}
+      AND ${personalDedicatedFallbacks.state} IN ('fallback_pending', 'shared_active')
+      AND ${personalDedicatedFallbacks.reason} <> 'billing_suspended'
+  )`;
 }
 
 function candidateQuery(executor: typeof dbWrite | DbTransaction, scope: SQL | undefined) {

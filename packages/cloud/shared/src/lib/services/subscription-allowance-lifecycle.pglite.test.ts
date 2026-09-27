@@ -12,6 +12,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.ENVIRONMENT = "local";
+// CI runs cloud unit tests with CACHE_ENABLED=false; MOCK_REDIS only takes
+// effect on an enabled cache, so opt this suite in explicitly.
+process.env.CACHE_ENABLED = "true";
 process.env.MOCK_REDIS = "1";
 
 let client: typeof import("../../db/client");

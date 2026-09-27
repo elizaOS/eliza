@@ -2,7 +2,7 @@
  * Proves deferred subscriber inference funding against real subscription
  * migrations on PGlite: funding capacity is purchased credit plus spendable
  * allowance at the organization balance revision, allowance-only spend advances
- * that revision (migration 0485), settlement funds allowance first then
+ * that revision (migration 0491), settlement funds allowance first then
  * purchased credit and never overdraws, the post-accounting capacity comes from
  * the funding transaction itself, and alarm recovery replays live settlement.
  */
@@ -54,10 +54,10 @@ beforeAll(async () => {
     CREATE TABLE generations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, status text, metadata jsonb);
   `);
   // Production revision authority: purchased-credit changes (0177) and
-  // platform allowance changes (0485) advance the organization revision.
+  // platform allowance changes (0491) advance the organization revision.
   for (const name of [
     "0177_organization_balance_revision.sql",
-    "0485_allowance_advances_balance_revision.sql",
+    "0491_allowance_advances_balance_revision.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),

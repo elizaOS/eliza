@@ -3252,6 +3252,22 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Converges personal Dedicated access on the organization's current paid
+   * plan entitlement (#25146), one cursor page per call. The fallback
+   * authority admits its stop/resume effects back through this queue.
+   */
+  async reconcilePersonalDedicatedEntitlements(input: {
+    limit: number;
+    afterAuthorityId?: string;
+  }) {
+    // Lazy: the fallback authority itself enqueues through this service.
+    const { reconcilePersonalDedicatedEntitlements } = await import(
+      "./personal-dedicated-fallback"
+    );
+    return reconcilePersonalDedicatedEntitlements(input);
+  }
+
+  /**
    * Admits at most one resume job for a discovered billing suspension. Funding
    * is re-read from the primary before admission, and the stop authority is
    * re-verified under the agent lifecycle lock in the enqueue transaction, so

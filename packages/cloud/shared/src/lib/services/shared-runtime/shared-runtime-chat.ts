@@ -70,6 +70,10 @@ import {
   InferenceAdmissionUnavailableError,
 } from "../organization-inference-admission";
 import { hydrationSettledWithin, SHARED_TURN_HYDRATION_WAIT_MS } from "./bounded-hydration";
+import {
+  formatPersonalSharedFallbackAccountContext,
+  type PersonalSharedFallbackAccountState,
+} from "./personal-fallback-account-state";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
   estimatePersonalSharedSeedanceCostUsd,
@@ -354,6 +358,12 @@ export interface SharedRuntimeChatOptions {
   trustedUserUtterance?: string;
   /** Server-resolved transport semantics; untrusted RPC params never populate this. */
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"];
+  /**
+   * Server-resolved Dedicated fallback account state (#25146). Present only on
+   * a scoped fallback journal turn: adds the account provider block and denies
+   * agent-scoped facts that converge with Dedicated memory.
+   */
+  trustedAccountState?: PersonalSharedFallbackAccountState;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -729,7 +739,11 @@ async function sharedTurnRecallContext(
  */
 async function sharedTurnFactsContext(
   store: SharedMemoryStore | null,
+  accountState?: PersonalSharedFallbackAccountState,
 ): Promise<string | undefined> {
+  // Facts are agent-scoped and converge with Dedicated knowledge. A fallback
+  // turn (#25146) has zero Dedicated memory access, so it never reads them.
+  if (accountState) return undefined;
   if (!store || !sharedFactsEnabled()) return undefined;
   try {
     const facts = await store.listFacts();
@@ -746,12 +760,16 @@ async function sharedTurnFactsContext(
   }
 }
 
-/** Joins the facts and recall provider blocks into one runtime context block. */
+/** Joins the account, facts and recall provider blocks into one runtime context block. */
 function combinedTurnContext(
   factsContext: string | undefined,
   recallContext: string | undefined,
+  accountState?: PersonalSharedFallbackAccountState,
 ): string | undefined {
-  const parts = [factsContext, recallContext].filter(
+  const accountContext = accountState
+    ? formatPersonalSharedFallbackAccountContext(accountState)
+    : undefined;
+  const parts = [accountContext, factsContext, recallContext].filter(
     (part): part is string => typeof part === "string" && part.length > 0,
   );
   return parts.length ? parts.join("\n\n") : undefined;
@@ -1412,10 +1430,14 @@ export class SharedRuntimeChatService {
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const memoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
     const [factsContext, recallBlock] = await Promise.all([
-      sharedTurnFactsContext(memoryStore),
+      sharedTurnFactsContext(memoryStore, options.trustedAccountState),
       sharedTurnRecallContext(memoryStore, text, history),
     ]);
-    const recallContext = combinedTurnContext(factsContext, recallBlock);
+    const recallContext = combinedTurnContext(
+      factsContext,
+      recallBlock,
+      options.trustedAccountState,
+    );
     const turnStartedAtEpochMs = Date.now();
     let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
@@ -1707,11 +1729,15 @@ export class SharedRuntimeChatService {
     try {
       const [streamFactsContext, streamRecallBlock] = await withinTerminalDeadline(
         Promise.all([
-          sharedTurnFactsContext(streamMemoryStore),
+          sharedTurnFactsContext(streamMemoryStore, options.trustedAccountState),
           sharedTurnRecallContext(streamMemoryStore, text, history),
         ]),
       );
-      const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
+      const streamRecallContext = combinedTurnContext(
+        streamFactsContext,
+        streamRecallBlock,
+        options.trustedAccountState,
+      );
       const providerSetupStartedAt = performance.now();
       turn = await withinTerminalDeadline(
         runSharedAgentTurnStream({

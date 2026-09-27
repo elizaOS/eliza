@@ -3,7 +3,7 @@
  *
  * Admission reserves only the organization's Durable Object lease against the
  * subscriber's funding capacity: purchased credit plus currently spendable
- * allowance, fenced by the organization balance revision (migration 0485 makes
+ * allowance, fenced by the organization balance revision (migration 0491 makes
  * every platform allowance change advance it). After the provider responds, one
  * primary transaction reserves and settles the exact charge allowance-first
  * under the request's retry-stable funding key, then reads the post-accounting
