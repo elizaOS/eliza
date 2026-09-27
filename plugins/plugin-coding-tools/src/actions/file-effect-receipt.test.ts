@@ -19,6 +19,81 @@ describe("FILE mutation receipts", () => {
     await env.cleanup();
   });
 
+  it.each([
+    ["plain", "none"],
+    ["plain\n", "LF"],
+    ["plain\r\n", "CRLF"],
+    ["plain\r", "CR"],
+    ["", "none"],
+    ["猫🙂  \n", "LF"],
+    ["plain\n ", "none"],
+  ])(
+    "exposes exact whole-file line ending for %j without changing bytes",
+    async (content, ending) => {
+      const file = path.join(env.tmpDir, "ending.txt");
+      const run = (parameters: Record<string, unknown>) =>
+        fileAction.handler(env.runtime, env.message, undefined, {
+          parameters: { file_path: file, ...parameters },
+        });
+      const written = await run({ action: "write", content });
+      expect(written.success).toBe(true);
+      expect(written.data?.finalLineEnding).toBe(ending);
+      expect(await fs.readFile(file)).toEqual(Buffer.from(content));
+      expect(written.effectReceipts?.[0].resource.version).toBe(
+        version(Buffer.from(content)),
+      );
+      const read = await run({ action: "read" });
+      expect(read.success).toBe(true);
+      expect(read.text).toBe(content);
+      expect(read.data?.finalLineEnding).toBe(ending);
+      if (content) {
+        const updated = "replacement 🙂\r\n";
+        const edited = await run({
+          action: "edit",
+          old_string: content,
+          new_string: updated,
+        });
+        expect(edited.success).toBe(true);
+        expect(edited.data?.finalLineEnding).toBe("CRLF");
+        expect(await fs.readFile(file)).toEqual(Buffer.from(updated));
+        expect(edited.effectReceipts?.[0].resource.version).toBe(
+          version(Buffer.from(updated)),
+        );
+      }
+    },
+  );
+
+  it("omits whole-file line-ending metadata for partial reads, including an EOF suffix", async () => {
+    const file = path.join(env.tmpDir, "slice.txt");
+    await fs.writeFile(file, "a\nb\r\n");
+    const run = (parameters: Record<string, unknown>) =>
+      fileAction.handler(env.runtime, env.message, undefined, {
+        parameters: {
+          action: "read",
+          file_path: file,
+          unit: "byte",
+          ...parameters,
+        },
+      });
+    const complete = await run({});
+    expect(complete.success).toBe(true);
+    expect(complete.data?.finalLineEnding).toBe("CRLF");
+    const view = complete.data?.readView as { reference: { revision: string } };
+    for (const [offset, limit, expected] of [
+      [0, 2, "a\n"],
+      [2, 3, "b\r\n"],
+    ] as const) {
+      const slice = await run({
+        offset,
+        limit,
+        expectedRevision: view.reference.revision,
+      });
+      expect(slice.success).toBe(true);
+      expect(slice.text).toBe(expected);
+      expect(slice.data).not.toHaveProperty("finalLineEnding");
+    }
+  });
+
   it("preserves byte-exact write and edit receipts through the umbrella", async () => {
     const file = path.join(env.tmpDir, "unicode.html");
     const callback = vi.fn(async () => []);
@@ -129,6 +204,7 @@ describe("FILE mutation receipts", () => {
       expect(result.turnComplete).toBeUndefined();
       expect(result.data).toMatchObject({
         confirmationDeliveryError: "transport disconnected",
+        finalLineEnding: "none",
       });
       expect(callback).toHaveBeenCalledTimes(1);
       expect(reportError).toHaveBeenCalledTimes(1);

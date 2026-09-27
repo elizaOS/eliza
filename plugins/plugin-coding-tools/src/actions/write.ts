@@ -224,7 +224,7 @@ export async function writeFileHandler(
   try {
     receipt = await fileEffectReceipt({
       path: resolved,
-      content: content,
+      content,
       operation: "write",
       ...(routed.ok ? { acceptedBytes: routed.bytesWritten } : {}),
     });
@@ -277,6 +277,7 @@ export async function writeFileHandler(
     runtime,
     receipt,
     text,
+    content,
     data: { path: resolved, bytes },
     callback,
   });

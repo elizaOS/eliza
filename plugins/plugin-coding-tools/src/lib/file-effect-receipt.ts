@@ -9,6 +9,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { userFacingSuccessResult } from "./format.js";
+import { finalLineEnding } from "./text-boundary.js";
 
 export async function fileEffectReceipt(params: {
   path: string;
@@ -61,9 +62,14 @@ export async function fileMutationResult(params: {
   runtime: IAgentRuntime;
   receipt: AppliedEffectReceipt;
   text: string;
+  content: string;
   data: Record<string, unknown>;
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
+  const data = {
+    ...params.data,
+    finalLineEnding: finalLineEnding(params.content),
+  };
   if (params.callback) {
     try {
       await params.callback({ text: params.text, source: "coding-tools" });
@@ -82,7 +88,7 @@ export async function fileMutationResult(params: {
       return {
         success: true,
         text: params.text,
-        data: { ...params.data, confirmationDeliveryError: diagnostic },
+        data: { ...data, confirmationDeliveryError: diagnostic },
         effectReceipts: [params.receipt],
         replyFailure: {
           kind: "reply_generation_error",
@@ -95,7 +101,7 @@ export async function fileMutationResult(params: {
     }
   }
   return {
-    ...userFacingSuccessResult(params.text, params.data),
+    ...userFacingSuccessResult(params.text, data),
     effectReceipts: [params.receipt],
     userFacingEffectReceiptIds: [params.receipt.receiptId],
     verifiedUserFacing: true,

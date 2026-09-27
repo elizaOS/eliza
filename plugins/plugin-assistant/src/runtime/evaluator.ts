@@ -558,6 +558,11 @@ async function runEvaluatorWithSelectedModel(
     providerOptions.eliza = {
       ...(providerOptions.eliza ?? {}),
       thinking: "off",
+      ...(evaluatorEvidenceSteps(params.trajectory).some(
+        ({ step }) => step.toolCall && !step.terminalOnly,
+      )
+        ? { preferToolReasoning: true }
+        : {}),
     };
     return { providerOptions, prefixHashes, prefixHash };
   };

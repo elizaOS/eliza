@@ -7,7 +7,11 @@ import type {
   PlannerTrajectory,
   RunEvaluatorParams,
 } from "@elizaos/core";
-import { computePrefixHashes, normalizePromptSegments } from "@elizaos/core";
+import {
+  computePrefixHashes,
+  ModelType,
+  normalizePromptSegments,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATOR_CONTEXT_ROUTES,
@@ -45,8 +49,11 @@ async function captureSchema(
     output?: Record<string, unknown>;
     unresolvedFailure?: boolean;
     effects?: RunEvaluatorParams["effects"];
+    prepareAttempts?: boolean;
   } = {},
 ) {
+  let modelCalls = 0;
+  const attemptOptions: unknown[] = [];
   let schema: JSONSchema | undefined;
   let messages: ChatMessage[] = [];
   let prefixHash: string | undefined;
@@ -63,6 +70,24 @@ async function captureSchema(
     runtime: {
       redactSecrets: options.redactSecrets ?? ((text) => text),
       useModel: async (_type, input) => {
+        modelCalls++;
+        attemptOptions.push(structuredClone(input.providerOptions));
+        if (options.prepareAttempts) {
+          for (const provider of ["primary", "backup"]) {
+            const prepared = { ...input };
+            await input.prepareModelAttempt?.(
+              {
+                modelType: ModelType.RESPONSE_HANDLER,
+                provider,
+                metadata: { contextWindowTokens: 131_072 },
+              },
+              prepared,
+            );
+            expect(prepared.messages).toEqual(input.messages);
+            expect(prepared.responseSchema).toEqual(input.responseSchema);
+            attemptOptions.push(structuredClone(prepared.providerOptions));
+          }
+        }
         schema = input.responseSchema as JSONSchema;
         messages = input.messages as ChatMessage[];
         prefixHash = (
@@ -79,6 +104,8 @@ async function captureSchema(
   expect(trajectory).toEqual(before);
   return {
     schema,
+    modelCalls,
+    attemptOptions,
     messages,
     output,
     prefixHash,
@@ -385,3 +412,96 @@ describe("stable evaluator schema with authoritative decision state", () => {
     expect(evaluatorSchema).toEqual(original);
   });
 });
+
+it.each([
+  ["none", "  exact body"],
+  ["LF", "  exact body\n"],
+  ["CRLF", "  exact body\r\n"],
+  ["CR", "  exact body\r"],
+  [undefined, "partial body"],
+] as const)(
+  "preserves file boundary evidence %s and complete bytes in one evaluator call",
+  async (finalLineEnding, text) => {
+    const data = {
+      readOnlyOperation: true,
+      ...(finalLineEnding === undefined ? {} : { finalLineEnding }),
+    };
+    const readView = {
+      slice: {
+        completeness:
+          finalLineEnding === undefined ? "partial-recoverable" : "complete",
+      },
+    };
+    const captured = await captureSchema([], {
+      trajectory: {
+        steps: [
+          {
+            iteration: 1,
+            toolCall: {
+              id: "read-file",
+              name: "READ",
+              params: { file_path: "/fixture.txt" },
+            },
+            result: { success: true, text, data, promptData: { readView } },
+          },
+        ],
+      },
+    });
+    const tool = captured.messages.find((message) => message.role === "tool");
+    if (!tool || !Array.isArray(tool.content))
+      throw new Error("Missing complete native tool result");
+    const part = tool.content.find((entry) => entry.type === "tool-result");
+    if (part?.type !== "tool-result" || part.output.type !== "text")
+      throw new Error("Expected native text result");
+    const result = JSON.parse(part.output.value);
+    expect(result.text).toBe(text);
+    expect(result.data).toEqual(data);
+    expect(result.promptData).toEqual({ readView });
+    expect(captured.modelCalls).toBe(1);
+    expect(captured.text).toContain(
+      "Whole-file data.finalLineEnding=none contradicts an explicitly required final newline",
+    );
+    expect(captured.text).toContain("an absent field makes no boundary claim");
+  },
+);
+
+it.each(["none", "terminal", "current", "archived"] as const)(
+  "preserves semantic reasoning preference through attempts for %s evidence",
+  async (placement) => {
+    const step = {
+      iteration: 1,
+      toolCall: {
+        id: "read-proof",
+        name: "READ",
+        params: { path: "/fixture" },
+      },
+      result: { success: true, text: "complete original evidence\n" },
+    };
+    const captured = await captureSchema([], {
+      prepareAttempts: true,
+      trajectory: {
+        steps:
+          placement === "current"
+            ? [step]
+            : placement === "terminal"
+              ? [{ ...step, terminalOnly: true }]
+              : [],
+        archivedSteps: placement === "archived" ? [step] : [],
+      },
+    });
+    expect(captured.modelCalls).toBe(1);
+    expect(captured.attemptOptions).toHaveLength(3);
+    for (const options of captured.attemptOptions) {
+      expect(options).toHaveProperty("eliza.thinking", "off");
+      if (placement === "none" || placement === "terminal") {
+        expect(options).not.toHaveProperty("eliza.preferToolReasoning");
+      } else {
+        expect(options).toHaveProperty("eliza.preferToolReasoning", true);
+      }
+    }
+    expect(captured.schema).toEqual(evaluatorSchema);
+    if (placement === "current" || placement === "archived") {
+      expect(captured.text).toContain("complete original evidence");
+    }
+  },
+);

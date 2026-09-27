@@ -260,6 +260,7 @@ export async function editFileHandler(
     runtime,
     receipt,
     text,
+    content: updated,
     data: { path: resolved, replacements, firstLine, addedLines, removedLines },
     callback,
   });
