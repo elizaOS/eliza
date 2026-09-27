@@ -7838,6 +7838,7 @@ export class CalendarService extends Service {
       ) ?? null;
     return {
       ...buildNextCalendarEventContext(nextEvent, now),
+      timeReference: { asOf: now.toISOString(), timeZone },
       readScope: {
         selection: "next_event",
         timeMin: feed.timeMin,
