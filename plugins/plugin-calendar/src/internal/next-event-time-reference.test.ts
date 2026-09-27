@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../actions/calendar-handler.js";
 import { CalendarService } from "../service/CalendarService.js";
 import { buildNextCalendarEventContext } from "./calendar-normalize.js";
-import { formatNextEventContext } from "./format.js";
+import { formatCalendarFeed, formatNextEventContext } from "./format.js";
 
 function event(
   startAt: string,
@@ -128,8 +128,74 @@ describe("next-event temporal evidence", () => {
       "Europe/London",
     );
     expect(formatNextEventContext(source)).toContain(
-      "Sep 25, 11:30 PM – 12:30 AM PDT; today",
+      "Sep 25, 11:30 PM – Sep 26, 12:30 AM PDT; today",
     );
+  });
+
+  it("preserves the ordinary same-day text and a quoted relative-day title", () => {
+    const source = context(
+      "2026-09-26T06:18:42.538Z",
+      "2026-09-26T17:00:00.000Z",
+      "America/Los_Angeles",
+    );
+    if (!source.event) throw new Error("Missing event fixture");
+    source.event.title = '"today" and "tomorrow"';
+    source.event.endAt = "2026-09-26T17:15:00.000Z";
+    expect(formatNextEventContext(source).split(" — ")[0]).toBe(
+      '**Next event: "today" and "tomorrow"** (Sep 26, 10:00 AM – 10:15 AM PDT; tomorrow)',
+    );
+  });
+
+  it.each([
+    [
+      "2026-03-08T07:30:00.000Z",
+      "2026-03-08T10:30:00.000Z",
+      "Mar 7, 11:30 PM PST – Mar 8, 3:30 AM PDT",
+    ],
+    [
+      "2026-11-01T06:30:00.000Z",
+      "2026-11-01T10:30:00.000Z",
+      "Oct 31, 11:30 PM PDT – Nov 1, 2:30 AM PST",
+    ],
+    [
+      "2027-01-01T07:30:00.000Z",
+      "2027-01-01T09:00:00.000Z",
+      "Dec 31, 2026, 11:30 PM – Jan 1, 2027, 1:00 AM PST",
+    ],
+  ])(
+    "retains both civil dates across midnight for %s",
+    (start, end, expected) => {
+      const source = context(
+        start,
+        start,
+        "America/Los_Angeles",
+        "Europe/London",
+      );
+      if (!source.event) throw new Error("Missing event fixture");
+      source.event.endAt = end;
+      const before = structuredClone(source);
+      expect(formatNextEventContext(source)).toContain(expected);
+      expect(source).toEqual(before);
+    },
+  );
+
+  it("renders feed ranges without a reference while preserving same-day output", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-26T06:18:42.538Z"));
+    try {
+      const spanning = event("2026-11-01T06:30:00.000Z");
+      spanning.endAt = "2026-11-01T10:30:00.000Z";
+      const ordinary = event("2026-09-26T17:00:00.000Z");
+      ordinary.endAt = "2026-09-26T17:15:00.000Z";
+      const feed = {
+        events: [spanning, ordinary],
+      } as Parameters<typeof formatCalendarFeed>[0];
+      expect(formatCalendarFeed(feed, "in range")).toBe(
+        "Events in range:\n- **Review** (Oct 31, 11:30 PM PDT – Nov 1, 2:30 AM PST)\n- **Review** (Sep 26, 10:00 AM – 10:15 AM)",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps both offsets explicit when an event crosses a DST fold", () => {
