@@ -2402,8 +2402,8 @@ async function runPlannerLoopIterations(
           source: "planner-loop",
           createdAt: Date.now(),
           content:
-            `${instructionParts.join(" ")} Answer the user now from the ` +
-            "results already gathered.",
+            `${instructionParts.join(" ")} If a requested outcome remains unmet, ` +
+            "choose a different currently authorized operation or arguments to correct the evidenced mismatch; otherwise answer from the gathered results. Do not retry effects whose outcomes are uncertain.",
         });
         if (repeatedNonTerminalToolCalls > config.maxRepeatedToolCalls) {
           return finishWithForcedSynthesis({

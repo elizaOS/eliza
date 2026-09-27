@@ -95,6 +95,156 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("skips an identical settled write while permitting an evidenced corrective write", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "corrective-write-"));
+    const path = join(directory, "literal.txt");
+    const requested = "An exact literal.  \n";
+    const initial = requested.slice(0, -1);
+    let plans = 0;
+    let reads = 0;
+    const writes: string[] = [];
+    const receipts: EffectReceipt[] = [];
+    const feedback: string[] = [];
+    try {
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: {
+          id: "corrective-write",
+          events: [
+            {
+              id: "handler",
+              type: "message_handler",
+              content: `Save this exact text including its final newline, then read it back:\n${requested}`,
+              metadata: {
+                plan: {
+                  intents: [
+                    "save the exact literal",
+                    "read back the saved literal",
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        runtime: {
+          useModel: async (_type, input) => {
+            plans++;
+            if (plans > 5)
+              throw new Error("Planner failed to settle corrected work");
+            if (plans === 4) {
+              expect(writes).toEqual([initial]);
+              const messages = JSON.stringify(input.messages);
+              feedback.push(messages);
+              expect(messages).toContain(
+                "different currently authorized operation or arguments",
+              );
+              expect(messages).not.toContain(
+                "Answer the user now from the results already gathered",
+              );
+            }
+            const reading = plans === 2 || plans === 5;
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: `correction-${plans}`,
+                  name: reading ? "READ" : "WRITE",
+                  arguments: {
+                    path,
+                    ...(!reading
+                      ? { content: plans === 4 ? requested : initial }
+                      : {}),
+                    eliza_turn_scope: reading ? "final" : "more_work_pending",
+                  },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          if (call.name === "WRITE") {
+            const content = call.params.content;
+            if (typeof content !== "string")
+              throw new Error("Expected literal write content");
+            writes.push(content);
+            await writeFile(path, content);
+            const bytes = await readFile(path);
+            const applied: EffectReceipt = {
+              ...receipt,
+              receiptId: `corrective-write-${writes.length}`,
+              operation: "file.write",
+              resource: {
+                kind: "file",
+                id: path,
+                version: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+              },
+            };
+            receipts.push(applied);
+            return {
+              success: true,
+              userFacingText: "Written.",
+              effectReceipts: [applied],
+            };
+          }
+          reads++;
+          return {
+            success: true,
+            text: await readFile(path, "utf8"),
+            data: { readOnlyOperation: true },
+          };
+        },
+        evaluate: async ({ trajectory }) => {
+          const latest = trajectory.steps.at(-1);
+          if (latest?.toolCall?.name === "WRITE") {
+            expect(writes).toEqual(
+              plans === 1 ? [initial] : [initial, requested],
+            );
+            expect(reads).toBe(plans === 1 ? 0 : 1);
+            expect(latest.result?.effectReceipts).toEqual([receipts.at(-1)]);
+            return {
+              decision: "CONTINUE",
+              success: false,
+              thought:
+                "The corrective write committed; read it back before completing.",
+            };
+          }
+          const observed = latest?.result?.text;
+          expect(observed).toBe(reads === 1 ? initial : requested);
+          if (reads === 1)
+            return {
+              decision: "CONTINUE",
+              success: false,
+              thought:
+                "The committed value lacks the requested final newline; correct it and verify.",
+            };
+          return {
+            decision: "FINISH",
+            success: true,
+            thought: "The corrected content was read back exactly.",
+            messageToUser: "Saved and verified the exact requested text.",
+            replyEffectStatus: "applied",
+            effectReceiptIds: [receipts[1].receiptId],
+          };
+        },
+      });
+      expect(plans).toBe(5);
+      expect(writes).toEqual([initial, requested]);
+      expect(reads).toBe(2);
+      expect(feedback).toHaveLength(1);
+      expect(await readFile(path, "utf8")).toBe(requested);
+      expect(result.evaluator?.success).toBe(true);
+      expect(result.finalMessage).toBe(
+        "Saved and verified the exact requested text.",
+      );
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toEqual(receipts);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it.each([false, true])(
     "replans a committed pending write without evaluation and preserves final verification (already complete=%s)",
     async (alreadyComplete) => {

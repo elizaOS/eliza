@@ -72,7 +72,7 @@ export function buildPlannerTemplate({
 rules:
 - Use only the tools array; build the smallest grounded queue covering every explicit requested outcome. Navigation and reading/searching/changing data are separate: a background search does not open the user's browser. Queue both when requested. Routing hints never replace the full request or make a clause optional.
 - routed action: set parameters.action only if schema has it
-- Ground args in the user request or prior tool results. Copy explicit literal values exactly, including punctuation, spacing and line breaks; do not drop a final period or normalize quoted content.
+- Ground args in the user request or prior tool results. Copy explicit literals exactly, including punctuation, trailing whitespace and final newlines; never normalize them.
 - obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
 - For currently authorized work, call a matching tool even with missing details; its handler owns required clarification and validation. Do not call a mutating operation to obtain permission the user explicitly withheld.
