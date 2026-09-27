@@ -1,4 +1,4 @@
-/** Exercises remote browser authority and encrypted runtime persistence through the existing host contract. */
+/** Verifies disk-backed encrypted credentials and controller capacity/recovery through real PGlite SQL. */
 import { expect, it } from "bun:test";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -14,19 +14,24 @@ import {
 } from "../../src/remote-control/controller";
 import { createRuntimePlatformSecureStore } from "../../src/remote-control/runtime-store";
 
-it("provisions only the missing self world on fresh SQL storage and persists encrypted credentials", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "remote-secret-sql-"));
+function createSqlRuntime(dataDir: string): AgentRuntime {
   const salt = randomBytes(32).toString("hex");
-  const runtime = new AgentRuntime({
+  return new AgentRuntime({
     character: createCharacter({
       name: `Remote secret regression ${randomUUID()}`,
-      settings: { PGLITE_DATA_DIR: directory },
+      settings: { PGLITE_DATA_DIR: dataDir },
       secrets: { ENCRYPTION_SALT: salt, SECRET_SALT: salt },
     }),
     plugins: [sqlPlugin, secretsManagerPlugin],
   });
+}
+
+it("provisions only the missing self world on fresh SQL storage and persists encrypted credentials", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "remote-secret-sql-"));
+  const runtime = createSqlRuntime(directory);
   try {
     await runtime.initialize();
+    await runtime.getServiceLoadPromise("SECRETS");
     expect(await runtime.getWorld(runtime.agentId)).toBeNull();
     const selfRoom = await runtime.getRoom(runtime.agentId);
     const selfEntity = await runtime.getEntityById(runtime.agentId);
@@ -52,6 +57,33 @@ it("provisions only the missing self world on fresh SQL storage and persists enc
       JSON.parse(value).privateKey,
     );
     expect(JSON.stringify(components)).toContain('"encrypted":true');
+    const reopened = createRuntimePlatformSecureStore(runtime);
+    expect(await reopened.get("controller", "runtime.agent_profiles")).toEqual({
+      ok: true,
+      value,
+    });
+    expect(
+      await reopened.delete("controller", "runtime.agent_profiles"),
+    ).toEqual({ ok: true, deleted: true });
+    expect(await reopened.get("controller", "runtime.agent_profiles")).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+  } finally {
+    await runtime.stop();
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120000);
+
+it("preserves encrypted SQL state and pending commands when session capacity is exhausted", async () => {
+  // Capacity exercises PostgreSQL constraints and encrypted component updates;
+  // the separate disk test owns filesystem-backed credential persistence.
+  const runtime = createSqlRuntime("memory://");
+  try {
+    await runtime.initialize();
+    await runtime.getServiceLoadPromise("SECRETS");
+    const store = createRuntimePlatformSecureStore(runtime);
     const reopened = createRuntimePlatformSecureStore(runtime);
     // Exercise the capacity boundary through real encrypted SQL persistence.
     const identityRequest = {
@@ -118,20 +150,8 @@ it("provisions only the missing self world on fresh SQL storage and persists enc
     ).toEqual({ acknowledged: true });
     const next = await desktopCreateRemoteCommand(request, reopened);
     expect(next.command.body.sequence).toBe(first.command.body.sequence + 1);
-    expect(await reopened.get("controller", "runtime.agent_profiles")).toEqual({
-      ok: true,
-      value,
-    });
-    expect(
-      await reopened.delete("controller", "runtime.agent_profiles"),
-    ).toEqual({ ok: true, deleted: true });
-    expect(await reopened.get("controller", "runtime.agent_profiles")).toEqual({
-      ok: false,
-      reason: "not_found",
-    });
   } finally {
     await runtime.stop();
     await runtime.close();
-    await rm(directory, { recursive: true, force: true });
   }
 }, 120000);
