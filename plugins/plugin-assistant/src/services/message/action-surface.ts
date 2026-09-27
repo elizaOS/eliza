@@ -76,13 +76,31 @@ function plannerDomainOwnership(action: Action, domain: string): number {
 
 export const DEFAULT_PLANNER_QUERY_TOOL_LIMIT = 10;
 
+/** Domain phrases are natural words, not subwords of identifiers or paths. */
+function containsDomainPhrase(query: string, name: string): boolean {
+  const variants = new Set([name, name.replace(/_/g, " ")]);
+  return [...variants].some((variant) => {
+    const phrase = variant
+      .trim()
+      .split(/\s+/u)
+      .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    if (!phrase) return false;
+    // A final period/colon is sentence punctuation; punctuation joining a
+    // following identifier is part of a filename, path or compound key.
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}_./:\\\\-])${phrase}(?![\\p{L}\\p{N}_/\\\\]|[.:-]+[\\p{L}\\p{N}_])`,
+      "iu",
+    ).test(query);
+  });
+}
+
 /** Shared domain matching for explicit discovery and pending-intent bootstrap. */
 export function inferActionSearchContexts(
   actions: readonly Action[],
   query: string,
   aliases?: (context: string) => readonly string[] | undefined,
 ): string[] {
-  const words = ` ${tokenizeActionSearchText(query).join(" ")} `;
   return [
     ...new Set(actions.flatMap((action) => actionDiscoveryContexts(action))),
   ].filter((context) => {
@@ -90,10 +108,9 @@ export function inferActionSearchContexts(
     return (
       normalized !== "general" &&
       normalized !== "simple" &&
-      [normalized, ...(aliases?.(normalized) ?? [])].some((name) => {
-        const phrase = tokenizeActionSearchText(name).join(" ");
-        return phrase.length > 0 && words.includes(` ${phrase} `);
-      })
+      [normalized, ...(aliases?.(normalized) ?? [])].some((name) =>
+        containsDomainPhrase(query, name),
+      )
     );
   });
 }
@@ -154,6 +171,8 @@ export function retrieveContextualPlannerActions(args: {
   /** Preserve exact hints while filling only domains they do not own. */
   selectedActions?: readonly Action[];
   contextAliases?: (context: string) => readonly string[] | undefined;
+  /** Initial routing may defer ambiguous domains; explicit discovery stays global. */
+  deferUnscopedBootstrap?: boolean;
 }): {
   actions: Action[];
   matchCount: number;
@@ -191,6 +210,21 @@ export function retrieveContextualPlannerActions(args: {
     ...declaredDomains,
     ...pendingActionContexts(args.actions, args.intents, args.contextAliases),
   ]);
+  if (args.deferUnscopedBootstrap && domains.size === 0) {
+    const required = [
+      ...new Map(
+        (args.selectedActions ?? []).map((action) => [action.name, action]),
+      ).values(),
+    ];
+    const requiredNames = new Set(required.map((action) => action.name));
+    return {
+      actions: required,
+      matchCount: matches.length,
+      selectedCount: required.length,
+      deferredCount: matches.filter((action) => !requiredNames.has(action.name))
+        .length,
+    };
+  }
   const selectMatches = (ranked: readonly Action[]) => {
     const required = [
       ...new Map(

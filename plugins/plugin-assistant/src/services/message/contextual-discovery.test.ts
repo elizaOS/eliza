@@ -19,6 +19,7 @@ import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
   collectV5PlannerCandidateActions,
+  inferActionSearchContexts,
   retrieveContextualPlannerActions,
 } from "./action-surface";
 import {
@@ -39,6 +40,167 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("keeps actual FILE bootstrap scoped despite an output field named verificationCode", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "File field boundary", bio: "Test" },
+      logLevel: "fatal",
+    });
+    currentRuntime.contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+    currentRuntime.actions.push(
+      fileAction,
+      {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create coding tasks",
+      },
+      {
+        name: "PLUGIN_READ_CONFIG",
+        contexts: ["files", "settings"],
+        description: "Read plugin configuration files",
+      },
+    );
+    const query = "Read input.json and report product and verificationCode";
+    const intents = ["read input.json", "report product and verificationCode"];
+    const admitted = await collectV5PlannerCandidateActions({
+      runtime: currentRuntime,
+      message: { content: { text: query, channelType: "DM" } } as Memory,
+      state: { text: "", values: {}, data: {} },
+      selectedContexts: ["files"],
+      intents,
+      userRoles: ["OWNER"],
+    });
+    expect(admitted.map((action) => action.name)).not.toContain("TASKS_CREATE");
+    expect(
+      retrieveContextualPlannerActions({
+        actions: admitted,
+        query,
+        intents,
+        contexts: ["files"],
+        deferUnscopedBootstrap: true,
+      }).actions,
+    ).toEqual([fileAction]);
+  });
+
+  it("defers ambiguous initial routing but preserves explicit hints and global discovery", async () => {
+    const actions: Action[] = [
+      { name: "FILE_READ", contexts: ["files"], description: "Read file" },
+      {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create coding tasks",
+      },
+    ];
+    const query = "Read input.json without modifying the file";
+    const args = {
+      actions,
+      query,
+      intents: [query],
+      contexts: [],
+      deferUnscopedBootstrap: true,
+    };
+    expect(retrieveContextualPlannerActions(args).actions).toEqual([]);
+    expect(
+      retrieveContextualPlannerActions({
+        ...args,
+        selectedActions: [actions[0]],
+      }).actions,
+    ).toEqual([actions[0]]);
+    const copiedSelection = retrieveContextualPlannerActions({
+      ...args,
+      selectedActions: [{ ...actions[0] }],
+    });
+    expect(copiedSelection.deferredCount).toBe(copiedSelection.matchCount - 1);
+
+    expect(
+      retrieveContextualPlannerActions({
+        ...args,
+        intents: [query, "inspect source code"],
+      }).actions,
+    ).toContain(actions[1]);
+    expect(
+      retrieveContextualPlannerActions({
+        ...args,
+        deferUnscopedBootstrap: false,
+      }).actions.length,
+    ).toBeGreaterThan(0);
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      async () => actions,
+    );
+    const exact = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "fileRead" },
+    });
+    expect(exact?.data?.loadedTools).toEqual(["FILE_READ"]);
+  });
+
+  it.each([
+    ["report verificationCode", []],
+    ["report verification_code", []],
+    ["report verification-code", []],
+    ["report verification.code", []],
+    ["read /tmp/code/input.json", []],
+    ["read /code", []],
+    ["read code/", []],
+    ["read code\\", []],
+    ["read code/input.json", []],
+    ["read C:\\code\\input.json", []],
+    ["read sourceCode", []],
+    ["inspect source code", ["code"]],
+    ["inspect code.", ["code"]],
+    ["code: inspect the repository", ["code"]],
+    ["inspect (code), then report", ["code"]],
+    ["read screen_time", ["screen_time"]],
+    ["read screen time", ["screen_time"]],
+    ["read app usage", ["screen_time"]],
+    ["read screen_time_value", []],
+    ["read screenTimeValue", []],
+    ["read files and inspect source code", ["files", "code"]],
+  ])("infers whole domain phrases from %s", (query, expected) => {
+    const actions: Action[] = [
+      {
+        name: "FILE_READ",
+        contexts: ["files"],
+        description: "Read local files",
+      },
+      {
+        name: "CODE_INSPECT",
+        contexts: ["code"],
+        description: "Inspect source code",
+      },
+      {
+        name: "SCREEN_TIME_GET",
+        contexts: ["screen_time"],
+        description: "Read screen time",
+      },
+    ];
+    expect(
+      inferActionSearchContexts(actions, query, (context) =>
+        context === "screen_time" ? ["app usage"] : [],
+      ),
+    ).toEqual(expected);
+  });
+
+  it("does not expand a file read into coding tools because of an output field identifier", () => {
+    const read: Action = {
+      name: "FILE_READ",
+      contexts: ["files"],
+      description: "Read file contents",
+    };
+    const code: Action = {
+      name: "CODE_READ",
+      contexts: ["code"],
+      description: "Read source code",
+    };
+    const found = retrieveContextualPlannerActions({
+      actions: [read, code],
+      contexts: ["files"],
+      query: "Read input.json and report product and verificationCode",
+      intents: ["read input.json", "report product and verificationCode"],
+    }).actions;
+    expect(found).toEqual([read]);
+  });
+
   it("recovers the authorized FILE owner from empty routing contexts and singular file intents", async () => {
     const currentRuntime = new AgentRuntime({
       character: { name: "File bootstrap", bio: "Test" },

@@ -36,8 +36,9 @@ the native tool schemas.
 
 Use `query` and optional `contexts` when an action name is unknown. When contexts
 are omitted, exact registered domain phrases or declared aliases in the query scope the search; the
-result reports those inferred domains. Queries without a domain retain global
-search, and explicit contexts or catalog reads remain available. Search ranks
+result reports those inferred domains. Identifier fragments and path components do not
+supply domain hints. Unresolved initial routing starts with discovery; explicit queries
+without a domain retain global search, and explicit contexts or catalog reads remain available. Search ranks
 complete authorized operations and prefers matching operation names over
 incidental words in long descriptions. Multiple requested operations remain
 eligible. Ambiguous wording falls back to the existing lexical matches; a miss

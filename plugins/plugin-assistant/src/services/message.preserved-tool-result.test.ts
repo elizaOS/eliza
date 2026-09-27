@@ -250,6 +250,129 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+  it.each([false, true])(
+    "starts ambiguous read work with discovery and refreshes role (revoked=%s)",
+    async (revoked) => {
+      let calls = 0;
+      const h = await createHarness({
+        actionResult: {
+          success: true,
+          userFacingText: "Read complete.",
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { readOnlyOperation: true },
+        },
+        actionGate: async () => {
+          calls++;
+        },
+      });
+      const action = h.runtime.actions.find((entry) => entry.name === "LOOKUP");
+      if (!action) throw new Error("Missing lookup");
+      action.contexts = ["files"];
+      action.roleGate = { minRole: "USER" };
+      const request = "Read input.json without modifying the file";
+      const stageOne = stageOneToolTurn("pending");
+      stageOne.toolCalls[0].arguments.contexts = [];
+      stageOne.toolCalls[0].arguments.intents = [request];
+      stageOne.toolCalls[0].arguments.candidateActionNames = [];
+      let handlerCalls = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++handlerCalls === 1) return stageOne;
+          return JSON.stringify({
+            decision: "FINISH",
+            thought: revoked
+              ? "Discovery rejected the current role."
+              : "The requested read completed.",
+            success: !revoked,
+            messageToUser: revoked
+              ? "The current role cannot read that file."
+              : "Read complete.",
+          });
+        },
+        "bootstrap-discovery-test",
+        300,
+      );
+      let plannerCalls = 0;
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          const tools = (params.tools ?? []).map((tool) => tool.name);
+          expect(JSON.stringify(params.messages ?? params.prompt)).toContain(
+            request,
+          );
+          if (++plannerCalls === 1) {
+            expect(tools).toContain("DISCOVER_ACTIONS");
+            expect(tools).not.toContain("LOOKUP");
+            if (revoked) {
+              const freshWorld = await h.runtime.getWorld(h.runtime.agentId);
+              if (!freshWorld) throw new Error("Missing current world");
+              await h.runtime.updateWorlds([
+                {
+                  ...freshWorld,
+                  metadata: {
+                    ...freshWorld.metadata,
+                    roles: { [USER_ID]: "GUEST" },
+                  },
+                },
+              ]);
+            }
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "discover-files",
+                  name: "DISCOVER_ACTIONS",
+                  arguments: {
+                    names: ["LOOKUP"],
+                    eliza_turn_scope: "more_work_pending",
+                  },
+                },
+              ],
+            };
+          }
+          if (revoked) {
+            expect(tools).not.toContain("LOOKUP");
+            return {
+              text: "The current role cannot read that file.",
+              completed: true,
+              toolCalls: [],
+            };
+          }
+          expect(tools).toContain("LOOKUP");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "read-file",
+                name: "LOOKUP",
+                arguments: { action: "verify", eliza_turn_scope: "final" },
+              },
+            ],
+          };
+        },
+        "bootstrap-discovery-test",
+        300,
+      );
+      const result = await new DefaultMessageService().handleMessage(
+        h.runtime,
+        makeMessage(h.runtime, request),
+        h.callback,
+      );
+      expect(plannerCalls).toBe(2);
+      expect(calls).toBe(revoked ? 0 : 1);
+      if (revoked) {
+        expect(result.actionResults).toEqual([
+          expect.objectContaining({
+            success: false,
+            data: expect.objectContaining({ actionName: "DISCOVER_ACTIONS" }),
+          }),
+        ]);
+      } else expect(result.responseContent?.text).toContain("Read complete");
+    },
+  );
+
   it("retains a failed public outcome when post-write replanning is throttled", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "planner-post-write-outage-"),

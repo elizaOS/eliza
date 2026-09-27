@@ -1258,6 +1258,7 @@ export async function runV5MessageRuntimeStage1(
         : stageOneCandidates.length === 0
           ? retrieveContextualPlannerActions({
               actions: plannerCandidateActions,
+              deferUnscopedBootstrap: true,
               query: getUserMessageText(args.message),
               intents: messageHandler.plan.intents,
               contexts: selectedContexts,
