@@ -1,6 +1,9 @@
 /** Exposes cloud sandbox operations and composes lifecycle, bridge, backup, and transport owners. All owners share the service’s provider instance and lifecycle authority; the facade preserves existing callers and orchestration boundaries. */
 
-import { SandboxProvision } from "./eliza-sandbox/lifecycle/provision.js";
+import {
+  RETAINED_RUNTIME_PROVISION_REFUSAL,
+  SandboxProvision,
+} from "./eliza-sandbox/lifecycle/provision.js";
 import { ElizaSandboxServiceTestHooks } from "./eliza-sandbox/lifecycle/provision-hooks.js";
 
 export { SandboxReachabilityUnresolvedError } from "./eliza-sandbox/lifecycle/provision-errors.js";
@@ -2262,6 +2265,10 @@ export class ElizaSandboxService {
     }
 
     const restoringRunningGeneration = rec.status === "running";
+    if (!restoringRunningGeneration && rec.retained_runtime) {
+      // Replacing a retained runtime would discard writes no backup covers.
+      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL };
+    }
     if (restoringRunningGeneration && !rec.bridge_url) {
       return { success: false, error: "Running agent is missing its restore endpoint" };
     }

@@ -68,6 +68,10 @@ import { SandboxWarmClaim } from "./warm-claim.js";
 
 const lifecycleAuthority = new SandboxLifecycleAuthority();
 
+/** A stopped runtime retained in place holds writes that no backup covers (#30746). */
+export const RETAINED_RUNTIME_PROVISION_REFUSAL =
+  "Agent retains an unbacked runtime in place; resume it or delete it before provisioning a replacement";
+
 /**
  * Maps a known-backup restore failure to its retry contract without ever
  * authorizing a fresh boot or pruning the chain (#30697). Transient failures
@@ -324,6 +328,13 @@ export class SandboxProvision {
         if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
         const cleanupTierRejection = rejectNonContainerBackedProvision(candidate);
         if (cleanupTierRejection) return cleanupTierRejection;
+      }
+      if (candidate.retained_runtime) {
+        return {
+          success: false,
+          sandboxRecord: candidate,
+          error: RETAINED_RUNTIME_PROVISION_REFUSAL,
+        };
       }
       previousStatus = candidate.status;
       const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
