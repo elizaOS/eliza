@@ -1233,13 +1233,15 @@ export {
 // ---------------------------------------------------------------------------
 export interface RuntimeRestartOptions {
   /**
-   * The active adapter has already been closed to replace its on-disk data.
-   * The host must fully dispose that runtime before opening the replacement.
+   * The host must fully dispose the active runtime before opening the replacement.
+   * Restore may already have closed its adapter, or the replacement may require
+   * exclusive access to the same committed physical store.
    */
   disposeCurrentBeforeBuild?: boolean;
 }
 interface RequestContext {
   hostRuntimeMode?: RuntimeModeSnapshot;
+  restartRequiresRuntimeDisposal?: boolean;
   onRestart:
     | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
     | null;
@@ -1371,6 +1373,9 @@ async function applyRuntimeRestart(
   reason: string,
   options?: RuntimeRestartOptions,
 ): Promise<boolean> {
+  if (ctx?.restartRequiresRuntimeDisposal) {
+    options = { ...options, disposeCurrentBeforeBuild: true };
+  }
   if (!ctx?.onRestart) {
     return false;
   }
@@ -1386,6 +1391,7 @@ async function applyRuntimeRestart(
     const previousRuntime = state.runtime;
     const newRuntime = await ctx.onRestart(options);
     if (!newRuntime) {
+      if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
       state.agentState = options?.disposeCurrentBeforeBuild
         ? "error"
         : previousState;
@@ -1429,6 +1435,8 @@ async function applyRuntimeRestart(
     logger.warn(
       `[eliza-api] Runtime reload failed: ${err instanceof Error ? err.message : String(err)}`,
     );
+    // A failed replacement is an unavailable host, never a live disposed runtime.
+    if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
     state.agentState = options?.disposeCurrentBeforeBuild
       ? "error"
       : previousState;
@@ -2197,6 +2205,7 @@ async function handleRequestForViewClient(
       method,
       pathname,
       state,
+      restartRequiresRuntimeDisposal: ctx?.restartRequiresRuntimeDisposal,
       onRestart: ctx?.onRestart ?? undefined,
       onRuntimeSwapped: ctx?.onRuntimeSwapped,
       onRuntimeActivated: ctx?.onRuntimeActivated,
@@ -3355,6 +3364,8 @@ export async function startApiServer(opts?: {
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
   onRestart?: (options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>;
+  /** A replacement shares the exact physical store and cannot overlap its predecessor. */
+  restartRequiresRuntimeDisposal?: boolean;
   /** Runs after the server atomically publishes the replacement runtime. */
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -3600,6 +3611,8 @@ export async function startApiServer(opts?: {
   };
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
+  const restartRequiresRuntimeDisposal =
+    opts?.restartRequiresRuntimeDisposal === true;
   const onRuntimeActivated = opts?.onRuntimeActivated;
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
@@ -3609,6 +3622,7 @@ export async function startApiServer(opts?: {
     hostRuntimeMode:
       hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
     onRestart,
+    restartRequiresRuntimeDisposal,
     onRuntimeActivated,
     onRuntimeSwapped: () => {
       bindInProcessApi();
