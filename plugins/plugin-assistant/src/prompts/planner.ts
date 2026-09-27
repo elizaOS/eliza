@@ -33,7 +33,7 @@ export const plannerRequiredPolicy = {
   codingDelegation:
     "- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
   workClaims:
-    '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. The planner stops after returning; further work requires a new user message. If iterations end without usable results, state the actual attempt and outcome; never promise work that is not running.',
+    '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. A final user-facing reply ends this turn; tool-call returns still proceed through evaluation and continuation. If iterations end without usable results, state the actual attempt and outcome; never promise work that is not running.',
   errorClaims:
     "- messageToUser and REPLY must not invent a failure, error, interruption or retry excuse in any wording. Require a real tool error or empty result THIS turn before reporting one or asking for retry. Choosing not to act is not a malfunction: take the appropriate available action or truthfully explain what is possible and clarify scope as needed.",
 } as const;

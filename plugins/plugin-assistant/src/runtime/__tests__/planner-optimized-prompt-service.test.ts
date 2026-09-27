@@ -59,6 +59,10 @@ it("uses only the registered service and checks its baseline before a model requ
   await run();
   expect(requests).toHaveLength(1);
   expect(requests[0]).not.toContain("INACTIVE_DISK_INSTRUCTION");
+  expect(requests[0]).toContain(
+    "A final user-facing reply ends this turn; tool-call returns still proceed through evaluation and continuation",
+  );
+  expect(requests[0]).not.toContain("The planner stops after returning");
   service = new OptimizedPromptService();
   service.setStoreRoot(store);
   service.setDisabledTasksFromEnv(undefined);

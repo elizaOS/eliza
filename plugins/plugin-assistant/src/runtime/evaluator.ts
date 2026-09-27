@@ -57,6 +57,7 @@ import {
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
 import {
+  EVALUATOR_CONTEXT_ROUTES,
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
@@ -394,7 +395,11 @@ export async function runEvaluator(
         : {
             decision: {
               ...baseProperties.decision,
-              enum: ["FINISH", "CONTINUE"],
+              enum: [
+                "FINISH",
+                "CONTINUE",
+                ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
+              ],
             },
           }),
       ...(requiresReplyField
@@ -402,7 +407,7 @@ export async function runEvaluator(
             messageToUser: {
               ...evaluatorSchema.properties?.messageToUser,
               description:
-                "This internal result requires a model-authored reply. For FINISH, provide the grounded outcome or necessary question here. For CONTINUE or contextRequest, use an empty string; do not publish a progress draft.",
+                "This internal result requires a model-authored reply. For FINISH, provide the grounded outcome or necessary question here. For CONTINUE or a restoration decision, use an empty string; do not publish a progress draft.",
             },
           }
         : {}),
@@ -698,6 +703,7 @@ export async function runEvaluator(
     };
   }
   const snapshot = selectedCall?.preparedAttempt;
+  const contextRequest = evaluatorContextRequest(output.raw);
   const recordOutput = () =>
     recordEvaluationStage({
       runtime: params.runtime,
@@ -705,7 +711,7 @@ export async function runEvaluator(
       trajectoryId: params.trajectoryId,
       parentStageId: params.parentStageId,
       iteration: params.iteration ?? 1,
-      ...(typeof output.raw?.contextRequest === "string" &&
+      ...(contextRequest &&
       (snapshot?.input ?? renderedInput).completionSelectionApplied
         ? { attempt: 0 }
         : {}),
@@ -723,14 +729,12 @@ export async function runEvaluator(
       prefixHash: snapshot?.prefixHash ?? prefixHash,
       logger: params.runtime.logger,
     });
-  if (
-    typeof output.raw?.contextRequest === "string" &&
-    ["history", "providers", "full"].includes(output.raw.contextRequest)
-  ) {
-    const scope = output.raw?.contextRequest;
+  if (contextRequest) {
     const original = params.trajectory.modelBaseContext ?? params.context;
-    const readHistory = scope === "history" || scope === "full";
-    const readProviders = scope === "providers" || scope === "full";
+    const readHistory =
+      contextRequest === "history" || contextRequest === "full";
+    const readProviders =
+      contextRequest === "providers" || contextRequest === "full";
     if (
       (readHistory &&
         (selectCompletionContext(original).applied ||
@@ -820,12 +824,14 @@ async function recordEvaluationStage(args: {
         : typeof args.raw.text === "string"
           ? args.raw.text
           : JSON.stringify(args.raw.object ?? {});
+    const contextRequest = evaluatorContextRequest(args.output.raw);
     const usage = extractEvaluatorUsage(args.raw);
     const modelName = extractEvaluatorModelName(args.raw);
     const stage: RecordedStage = {
+      // Distinct restoration calls can share the same millisecond and attempt label.
       stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}${
         args.attempt === undefined ? "" : `-attempt-${args.attempt}`
-      }`,
+      }-${crypto.randomUUID()}`,
       kind: "evaluation",
       iteration: args.iteration,
       parentStageId: args.parentStageId,
@@ -853,12 +859,7 @@ async function recordEvaluationStage(args: {
         replyEffectStatus: args.output.replyEffectStatus,
         copyToClipboard: args.output.copyToClipboard,
         recommendedToolCallId: args.output.recommendedToolCallId,
-        ...(typeof args.output.raw?.contextRequest === "string" &&
-        ["history", "providers", "full"].includes(
-          args.output.raw.contextRequest,
-        )
-          ? { contextRequest: args.output.raw.contextRequest }
-          : {}),
+        ...(contextRequest ? { contextRequest } : {}),
         protocolFailure: args.output.protocolFailure,
         parseError: args.output.parseError,
       },
@@ -992,20 +993,20 @@ function renderEvaluatorModelInput(params: {
       id: "completion-provider-discovery",
       label: "completion_context",
       stable: false,
-      content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their advertised complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. A provider reference does not promise fields it explicitly excludes: use a current record tool for those fields rather than expanding history. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
+      content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their advertised complete syntax or factual details are needed, use decision=RESTORE_PROVIDERS, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. A provider reference does not promise fields it explicitly excludes: use a current record tool for those fields rather than expanding history. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
     });
   if (background.applied)
     renderedContext.promptSegments.push({
       id: "completion-background-history",
       stable: false,
-      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals, not a current-request source review. For missing or uncertain constraints, corrections, referents or historical evidence request contextRequest=history with decision=CONTINUE, success=false and no user reply or effects. Full canonical originals will be restored without repeating actions.`,
+      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals, not a current-request source review. For missing or uncertain constraints, corrections, referents or historical evidence use decision=RESTORE_HISTORY, success=false and no user reply or effects. Full canonical originals will be restored without repeating actions.`,
     });
   if (completion.applied) {
     renderedContext.promptSegments.push({
       id: "completion-context-selection",
       label: "completion_context",
       stable: false,
-      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, use decision=RESTORE_HISTORY, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
   const template =
@@ -1224,7 +1225,7 @@ function evaluatorEnvelopeProtocolError(
     return 'required field "success" must be a boolean';
   const decision = output.decision ?? output.route;
   if (!parseEvaluatorRoute(decision)) {
-    return 'required field "decision" must be FINISH, NEXT_RECOMMENDED, or CONTINUE';
+    return 'required field "decision" must be a supported routing or restoration decision';
   }
   if (
     output.decision !== undefined &&
@@ -1234,17 +1235,20 @@ function evaluatorEnvelopeProtocolError(
     return 'fields "decision" and legacy "route" must agree';
   if (typeof output.thought !== "string")
     return 'required field "thought" must be a string';
+  const contextRequest = evaluatorContextRequest(output);
   if (
-    Object.hasOwn(output, "contextRequest") &&
-    (!["full", "history", "providers"].includes(
-      String(output.contextRequest),
-    ) ||
-      output.success !== false ||
-      parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
-      (Object.hasOwn(output, "messageToUser") && output.messageToUser !== "") ||
-      Object.hasOwn(output, "copyToClipboard"))
+    (Object.hasOwn(output, "contextRequest") &&
+      !["history", "providers", "full"].includes(
+        String(output.contextRequest),
+      )) ||
+    (contextRequest &&
+      (output.success !== false ||
+        parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
+        (Object.hasOwn(output, "messageToUser") &&
+          output.messageToUser !== "") ||
+        Object.hasOwn(output, "copyToClipboard")))
   )
-    return "contextRequest must be full, history or providers with CONTINUE, success=false, no reply text, and no copyToClipboard";
+    return "Context restoration requires a restoration decision (or legacy contextRequest with CONTINUE), success=false, no reply text, and no copyToClipboard";
   if (
     Object.hasOwn(output, "messageToUser") &&
     typeof output.messageToUser !== "string"
@@ -2277,6 +2281,29 @@ export async function applyEvaluatorEffects(
   }
 }
 
+/** New wire decisions and legacy captured requests share the same restoration authority. */
+function evaluatorContextRequest(
+  output: RawEvaluatorOutput | undefined,
+): "history" | "providers" | "full" | undefined {
+  const scopes = new Set<"history" | "providers" | "full">();
+  for (const route of [output?.decision, output?.route]) {
+    const key = String(route ?? "")
+      .trim()
+      .toUpperCase();
+    if (Object.hasOwn(EVALUATOR_CONTEXT_ROUTES, key)) {
+      scopes.add(
+        EVALUATOR_CONTEXT_ROUTES[key as keyof typeof EVALUATOR_CONTEXT_ROUTES],
+      );
+    }
+  }
+  const legacy = output?.contextRequest;
+  if (legacy === "history" || legacy === "providers" || legacy === "full") {
+    scopes.add(legacy);
+  }
+  // A provider ignoring the new schema must not narrow either requested source.
+  return scopes.size > 1 ? "full" : scopes.values().next().value;
+}
+
 export function normalizeEvaluatorRoute(route: unknown): EvaluatorRoute {
   return parseEvaluatorRoute(route) ?? "CONTINUE";
 }
@@ -2285,6 +2312,7 @@ function parseEvaluatorRoute(route: unknown): EvaluatorRoute | undefined {
   const normalized = String(route ?? "")
     .trim()
     .toUpperCase();
+  if (Object.hasOwn(EVALUATOR_CONTEXT_ROUTES, normalized)) return "CONTINUE";
   if (
     normalized === "FINISH" ||
     normalized === "NEXT_RECOMMENDED" ||
