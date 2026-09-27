@@ -818,24 +818,8 @@ it.each(["valid", "unknown"])(
         ],
       },
       plan("READ_RECORD", "more_work_pending"),
-      JSON.stringify({
-        thought: "The returned ID grounds the completion.",
-        success: false,
-        decision: "CONTINUE",
-      }),
       plan("COMPLETE_RECORD"),
       plan("COMPLETE_RECORD", "final"),
-      JSON.stringify({
-        thought: "The completion receipt proves the requested result.",
-        success: true,
-        decision: "FINISH",
-        messageToUser: finalText,
-        effectReceiptIds: [
-          receiptSelection === "valid"
-            ? receipt.receiptId
-            : "unknown-mutated-receipt",
-        ],
-      }),
     ];
     if (receiptSelection === "unknown")
       responses.push(
@@ -850,10 +834,46 @@ it.each(["valid", "unknown"])(
             "The selected durable receipt supports completion of the requested record.",
         }),
       );
+    const evaluationInputs: unknown[] = [];
+    const evaluationOutputs = [
+      JSON.stringify({
+        thought: "The returned ID grounds the completion.",
+        success: false,
+        decision: "CONTINUE",
+      }),
+      JSON.stringify({
+        thought: "The completion receipt proves the requested result.",
+        success: true,
+        decision: "FINISH",
+        messageToUser: finalText,
+        effectReceiptIds: [
+          receiptSelection === "valid"
+            ? receipt.receiptId
+            : "unknown-mutated-receipt",
+        ],
+      }),
+    ];
     const modelInputs: unknown[] = [];
     runtime.useModel = vi.fn(async (type, params) => {
       if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
       modelInputs.push(params);
+      const messages =
+        (params as { messages?: Array<{ role: string; content: unknown }> })
+          .messages ?? [];
+      if (
+        messages.some(
+          (message) =>
+            message.role === "system" &&
+            typeof message.content === "string" &&
+            message.content.includes("evaluator_stage:"),
+        )
+      ) {
+        evaluationInputs.push(params);
+        const output = evaluationOutputs.shift();
+        if (output === undefined)
+          throw new Error("Unexpected completion evaluation");
+        return output;
+      }
       const output = responses.shift();
       if (output === undefined)
         throw new Error("Unexpected additional model call");
@@ -874,9 +894,13 @@ it.each(["valid", "unknown"])(
     );
     expect(writes).toBe(1);
     expect(responses).toEqual([]);
-    expect(JSON.stringify(modelInputs[4])).toContain(
-      "PLANNER_SCOPE_DECLARATION_REQUIRED",
-    );
+    expect(evaluationOutputs).toEqual([]);
+    expect(evaluationInputs).toHaveLength(2);
+    expect(
+      modelInputs.some((input) =>
+        JSON.stringify(input).includes("PLANNER_SCOPE_DECLARATION_REQUIRED"),
+      ),
+    ).toBe(true);
     expect(deliveries.map((content) => content.text)).toContain(finalText);
     expect(
       deliveries.find((content) => content.text === finalText)
@@ -995,34 +1019,20 @@ it.each([
       },
     ];
     if (earlierFailure)
-      responses.push(
-        plan("FAILED_READ", "more_work_pending"),
-        JSON.stringify({
-          success: false,
-          decision: "CONTINUE",
-          thought: "The initial read failed; continue independent writes.",
-        }),
-      );
+      responses.push(plan("FAILED_READ", "more_work_pending"));
     for (const name of names) {
       responses.push(plan(name, "more_work_pending"));
-      responses.push(
-        JSON.stringify({
-          success: false,
-          decision: "CONTINUE",
-          thought: "Continue the explicitly requested work.",
-        }),
-      );
     }
     responses.push(plan("UPDATE_REMAINING"), plan("UPDATE_REMAINING"));
-    responses.push(
+    const presentationResponse =
       presentation === "available"
         ? partial
         : presentation === "empty"
           ? { text: "", toolCalls: [] }
           : presentation === "rejected"
             ? "I'm working on the remaining event now."
-            : new Error("presentation provider unavailable"),
-    );
+            : new Error("presentation provider unavailable");
+    responses.push(presentationResponse);
     if (presentation === "available")
       responses.push(
         JSON.stringify({
@@ -1036,11 +1046,33 @@ it.each([
             "All four completed operations retain their selected receipts; remaining work is incomplete.",
         }),
       );
+    let failedScopePresentation: unknown;
+    const evaluationInputs: unknown[] = [];
     const modelInputs: unknown[] = [];
     runtime.useModel = vi.fn(async (type, params) => {
       if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
       modelInputs.push(params);
+      const messages =
+        (params as { messages?: Array<{ role: string; content: unknown }> })
+          .messages ?? [];
+      if (
+        messages.some(
+          (message) =>
+            message.role === "system" &&
+            typeof message.content === "string" &&
+            message.content.includes("evaluator_stage:"),
+        )
+      ) {
+        evaluationInputs.push(params);
+        return JSON.stringify({
+          success: false,
+          decision: "CONTINUE",
+          thought:
+            "Continue the explicitly requested work; committed operations remain settled.",
+        });
+      }
       const response = responses.shift();
+      if (response === presentationResponse) failedScopePresentation = params;
       if (response instanceof Error) throw response;
       if (response === undefined)
         throw new Error("Unexpected extra model call");
@@ -1080,13 +1112,13 @@ it.each([
       code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
       transient: false,
     });
-    expect(JSON.stringify(modelInputs[earlierFailure ? 13 : 11])).toContain(
+    expect(failedScopePresentation).toBeDefined();
+    expect(JSON.stringify(failedScopePresentation)).toContain(
       "PLANNER_SCOPE_DECLARATION_REQUIRED",
     );
     for (const name of names)
-      expect(JSON.stringify(modelInputs[earlierFailure ? 13 : 11])).toContain(
-        name,
-      );
+      expect(JSON.stringify(failedScopePresentation)).toContain(name);
+    expect(evaluationInputs).toHaveLength(earlierFailure ? 5 : 0);
     if (presentation === "available") {
       expect(result.outcome.error.message).toBe(partial);
       expect(delivered.map((content) => content.text)).toContain(partial);
