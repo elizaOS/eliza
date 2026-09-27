@@ -1158,6 +1158,45 @@ export function autoProvisionSeccompShim({
   return fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"));
 }
 
+/** ELF `e_type` for a shared object / dynamic loader (`ET_DYN`). */
+const ELF_TYPE_SHARED_OBJECT = 3;
+
+/**
+ * Read the ELF `e_type` field from `filePath`, or `null` when the file is
+ * missing or is not an ELF image.
+ *
+ * The Alpine musl loader is an ELF shared object (ET_DYN); our `loader-wrap`
+ * is a static executable. Reading the header gives an explicit identity so we
+ * no longer need a byte-size threshold to tell them apart (#32511).
+ */
+function readElfType(filePath: string): number | null {
+  let fd: number;
+  try {
+    fd = fs.openSync(filePath, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const header = Buffer.alloc(18);
+    if (fs.readSync(fd, header, 0, header.length, 0) < header.length) {
+      return null;
+    }
+    // 0x7f 'E' 'L' 'F'
+    if (
+      header[0] !== 0x7f ||
+      header[1] !== 0x45 ||
+      header[2] !== 0x4c ||
+      header[3] !== 0x46
+    ) {
+      return null;
+    }
+    // `e_type` is a u16 at offset 16, in the file's byte order (EI_DATA @ 5).
+    return header[5] === 2 ? header.readUInt16BE(16) : header.readUInt16LE(16);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export function stageSeccompShimForAbi({
   androidAbi,
   ldName,
@@ -1193,14 +1232,19 @@ export function stageSeccompShimForAbi({
 
   // Detect whether the existing `<ldName>` is the Alpine loader (which
   // we need to relocate to .real) or our wrapper (already in place from
-  // a prior run). The wrapper is a tiny static binary (~30 KB on
-  // x86_64-linux-musl); the Alpine loader is ~600 KB. A size check is
-  // good enough as a discriminator and avoids shelling out to readelf.
-  const ALPINE_LOADER_MIN_BYTES = 200 * 1024;
+  // a prior run). Identify the loader by explicit ELF identity — it is a
+  // shared object (ET_DYN) — and also rule out our own cached wrapper by
+  // byte identity. The previous byte-size threshold (>200 KiB ⇒ loader)
+  // was unsound: on arm64 the static wrapper is ~1 MiB, so a second
+  // staging pass mistook the wrapper for the Alpine loader, overwrote
+  // `<ldName>.real` with the wrapper and left both names pointing at the
+  // wrapper, so the runtime execve handoff to musl could never complete
+  // (#32511).
   const stagedLoaderExists = fs.existsSync(stagedLoader);
   const stagedLoaderIsAlpine =
     stagedLoaderExists &&
-    fs.statSync(stagedLoader).size >= ALPINE_LOADER_MIN_BYTES;
+    !fs.readFileSync(stagedLoader).equals(fs.readFileSync(cachedWrap)) &&
+    readElfType(stagedLoader) === ELF_TYPE_SHARED_OBJECT;
 
   if (stagedLoaderIsAlpine) {
     // Move the Alpine loader to .real so the wrapper can exec it. Use
