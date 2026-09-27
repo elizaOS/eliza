@@ -37,7 +37,6 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: {
     request: harness.directCloudRequest,
   },
-  registerPlugin: () => ({}),
 }));
 
 vi.mock(

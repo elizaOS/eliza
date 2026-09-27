@@ -13,6 +13,8 @@
 #import <CoreLocation/CoreLocation.h>
 #import <EventKit/EventKit.h>
 #import <UserNotifications/UserNotifications.h>
+#import <objc/message.h>
+#import <objc/runtime.h>
 #include <atomic>
 #include <math.h>
 #include <stdlib.h>
@@ -2745,6 +2747,248 @@ extern "C" bool disableWindowBackForwardNavigationGestures(void *windowPtr) {
 	});
 
 	return success;
+}
+
+// ============================================================================
+// WKWebView media-capture permission policy (#30676)
+// ============================================================================
+
+/*
+ * Electrobun's WKUIDelegate answers requestMediaCapturePermissionForOrigin
+ * with its own in-process NSAlert and caches the answer per origin for the
+ * lifetime of the process. For the app's own renderer that is the wrong
+ * authority: the signed app's TCC microphone/camera grant is what macOS
+ * enforces, a "Block" answered once stays cached after the user grants
+ * access in Settings or System Settings, and a first-use capture shows an
+ * extra app-level dialog in front of the system prompt.
+ *
+ * This policy replaces that delegate method on Electrobun's delegate class.
+ * For views:// and the renderer origins the host registers, the decision is
+ * derived from the live TCC state on every request: authorized grants,
+ * not-determined asks macOS through AVCaptureDevice (the same request Settings
+ * makes) and grants only on approval, denied/restricted denies. Nothing is
+ * cached, so a later grant is honored on the next capture. Every other origin
+ * (browser-workspace pages, remote content) keeps Electrobun's per-origin
+ * prompt. The file keeps zero WebKit imports; WKSecurityOrigin is read via
+ * KVC and WKPermissionDecision/WKMediaCaptureType are their NSInteger values.
+ */
+
+static const NSInteger kElizaPermissionDecisionPrompt = 0;
+static const NSInteger kElizaPermissionDecisionGrant = 1;
+static const NSInteger kElizaPermissionDecisionDeny = 2;
+static const NSInteger kElizaMediaCaptureTypeCamera = 0;
+static const NSInteger kElizaMediaCaptureTypeMicrophone = 1;
+static const NSInteger kElizaMediaCaptureTypeCameraAndMicrophone = 2;
+
+typedef void (*ElizaMediaCaptureDecisionIMP)(id, SEL, id, id, id, NSInteger,
+	id);
+
+static NSObject *elizaMediaPolicyLock() {
+	static NSObject *lock = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		lock = [NSObject new];
+	});
+	return lock;
+}
+
+/** Trusted renderer origins as "scheme://host:port" (port 0 = default). */
+static NSSet<NSString *> *elizaTrustedMediaOrigins = nil;
+/** Delegate classes already patched: class name -> original IMP (or null). */
+static NSMutableDictionary<NSString *, NSValue *> *elizaPatchedMediaClasses =
+	nil;
+
+static NSString *elizaMediaOriginKey(NSString *scheme, NSString *host,
+	NSInteger port) {
+	return [NSString stringWithFormat:@"%@://%@:%ld",
+		[scheme lowercaseString] ?: @"", [host lowercaseString] ?: @"",
+		(long)port];
+}
+
+static BOOL elizaIsTrustedMediaOrigin(id origin) {
+	if (origin == nil) return NO;
+	NSString *protocol = nil;
+	NSString *host = nil;
+	NSInteger port = 0;
+	@try {
+		protocol = [origin valueForKey:@"protocol"];
+		host = [origin valueForKey:@"host"];
+		port = [[origin valueForKey:@"port"] integerValue];
+	} @catch (NSException *exception) {
+		NSLog(@"[ElizaMediaPolicy] Unreadable security origin: %@", exception);
+		return NO;
+	}
+	if ([[protocol lowercaseString] isEqualToString:@"views"]) return YES;
+	NSString *key = elizaMediaOriginKey(protocol, host, port);
+	@synchronized(elizaMediaPolicyLock()) {
+		return [elizaTrustedMediaOrigins containsObject:key];
+	}
+}
+
+static NSString *elizaDescribeMediaOrigin(id origin) {
+	@try {
+		return elizaMediaOriginKey([origin valueForKey:@"protocol"],
+			[origin valueForKey:@"host"],
+			[[origin valueForKey:@"port"] integerValue]);
+	} @catch (NSException *exception) {
+		return @"(unreadable origin)";
+	}
+}
+
+static void elizaResolveMediaAccess(NSArray<AVMediaType> *mediaTypes,
+	NSUInteger index, void (^decide)(NSInteger)) {
+	if (index >= mediaTypes.count) {
+		decide(kElizaPermissionDecisionGrant);
+		return;
+	}
+	AVMediaType mediaType = mediaTypes[index];
+	switch ([AVCaptureDevice authorizationStatusForMediaType:mediaType]) {
+		case AVAuthorizationStatusAuthorized:
+			elizaResolveMediaAccess(mediaTypes, index + 1, decide);
+			return;
+		case AVAuthorizationStatusNotDetermined: {
+			[AVCaptureDevice requestAccessForMediaType:mediaType
+			                         completionHandler:^(BOOL granted) {
+				dispatch_async(dispatch_get_main_queue(), ^{
+					if (!granted) {
+						decide(kElizaPermissionDecisionDeny);
+						return;
+					}
+					elizaResolveMediaAccess(mediaTypes, index + 1, decide);
+				});
+			}];
+			return;
+		}
+		default:
+			decide(kElizaPermissionDecisionDeny);
+			return;
+	}
+}
+
+static void elizaDecideMediaCaptureFromSystemGrant(NSInteger captureType,
+	NSString *originDescription, void (^decisionHandler)(NSInteger)) {
+	NSArray<AVMediaType> *mediaTypes;
+	if (captureType == kElizaMediaCaptureTypeCamera) {
+		mediaTypes = @[ AVMediaTypeVideo ];
+	} else if (captureType == kElizaMediaCaptureTypeMicrophone) {
+		mediaTypes = @[ AVMediaTypeAudio ];
+	} else if (captureType == kElizaMediaCaptureTypeCameraAndMicrophone) {
+		mediaTypes = @[ AVMediaTypeAudio, AVMediaTypeVideo ];
+	} else {
+		// Unknown capture kind: let WebKit apply its default prompt.
+		decisionHandler(kElizaPermissionDecisionPrompt);
+		return;
+	}
+	elizaResolveMediaAccess(mediaTypes, 0, ^(NSInteger decision) {
+		NSLog(@"[ElizaMediaPolicy] %@ media capture (type %ld) for %@",
+			decision == kElizaPermissionDecisionGrant ? @"Granted" : @"Denied",
+			(long)captureType, originDescription);
+		decisionHandler(decision);
+	});
+}
+
+static BOOL elizaPatchMediaCaptureDelegateClass(Class delegateClass) {
+	if (delegateClass == Nil) return NO;
+	NSString *className = NSStringFromClass(delegateClass);
+	SEL selector = NSSelectorFromString(
+		@"webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:"
+		@"decisionHandler:");
+	@synchronized(elizaMediaPolicyLock()) {
+		if (elizaPatchedMediaClasses == nil) {
+			elizaPatchedMediaClasses = [NSMutableDictionary new];
+		}
+		if (elizaPatchedMediaClasses[className] != nil) return YES;
+		Method existing = class_getInstanceMethod(delegateClass, selector);
+		IMP original = existing ? method_getImplementation(existing) : NULL;
+		IMP replacement = imp_implementationWithBlock(
+			^(id delegate, id webView, id origin, id frame, NSInteger type,
+				id handlerObject) {
+				void (^decisionHandler)(NSInteger) = handlerObject;
+				if (elizaIsTrustedMediaOrigin(origin)) {
+					elizaDecideMediaCaptureFromSystemGrant(
+						type, elizaDescribeMediaOrigin(origin), decisionHandler);
+					return;
+				}
+				if (original != NULL) {
+					((ElizaMediaCaptureDecisionIMP)original)(delegate, selector,
+						webView, origin, frame, type, handlerObject);
+					return;
+				}
+				decisionHandler(kElizaPermissionDecisionPrompt);
+			});
+		const char *types = existing ? method_getTypeEncoding(existing)
+		                             : "v@:@@@q@?";
+		class_replaceMethod(delegateClass, selector, replacement, types);
+		elizaPatchedMediaClasses[className] =
+			[NSValue valueWithPointer:(const void *)original];
+		NSLog(@"[ElizaMediaPolicy] Installed media-capture policy on %@%@",
+			className, original ? @"" : @" (no prior handler)");
+	}
+	return YES;
+}
+
+/**
+ * Registers the renderer origins whose media capture follows the app's TCC
+ * grant. `origins` is a newline-separated list of absolute URLs; only the
+ * scheme, host and port are used. Replaces the previous list.
+ */
+extern "C" bool elizaSetTrustedMediaCaptureOrigins(const char *origins) {
+	NSMutableSet<NSString *> *keys = [NSMutableSet new];
+	if (origins != nullptr) {
+		NSString *list = [NSString stringWithUTF8String:origins] ?: @"";
+		for (NSString *line in [list componentsSeparatedByString:@"\n"]) {
+			NSString *trimmed = [line stringByTrimmingCharactersInSet:
+				[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+			if (trimmed.length == 0) continue;
+			NSURL *url = [NSURL URLWithString:trimmed];
+			if (url.scheme.length == 0 || url.host.length == 0) continue;
+			[keys addObject:elizaMediaOriginKey(url.scheme, url.host,
+				url.port ? url.port.integerValue : 0)];
+		}
+	}
+	@synchronized(elizaMediaPolicyLock()) {
+		elizaTrustedMediaOrigins = [keys copy];
+	}
+	return keys.count > 0;
+}
+
+/**
+ * Installs the media-capture policy on the WKUIDelegate class of every
+ * WKWebView in the window (direct subviews and one level down, matching the
+ * isolated BrowserView embed). Electrobun shares one delegate class across its
+ * webviews, so detached windows are covered once any window is patched.
+ * Idempotent; returns true once a delegate class is patched.
+ */
+extern "C" bool elizaInstallMediaCapturePermissionPolicy(void *windowPtr) {
+	if (windowPtr == nullptr) return false;
+	__block BOOL installed = NO;
+	elizaRunOnMainThreadSync(^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		Class webViewClass = NSClassFromString(@"WKWebView");
+		NSView *contentView = [window contentView];
+		if (webViewClass == Nil || contentView == nil) return;
+		SEL uiDelegateSelector = NSSelectorFromString(@"UIDelegate");
+		void (^patchWebView)(NSView *) = ^(NSView *view) {
+			if (![view isKindOfClass:webViewClass] ||
+				![view respondsToSelector:uiDelegateSelector]) {
+				return;
+			}
+			id delegate = ((id (*)(id, SEL))objc_msgSend)(view,
+				uiDelegateSelector);
+			if (delegate != nil &&
+				elizaPatchMediaCaptureDelegateClass(object_getClass(delegate))) {
+				installed = YES;
+			}
+		};
+		for (NSView *sv in [contentView subviews]) {
+			patchWebView(sv);
+			for (NSView *inner in [sv subviews]) {
+				patchWebView(inner);
+			}
+		}
+	});
+	return installed;
 }
 
 // ============================================================================

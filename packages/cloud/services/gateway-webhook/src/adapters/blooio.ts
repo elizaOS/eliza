@@ -154,14 +154,21 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
 
   const message = v4.data.data;
   const sender = message.sender ?? message.contact?.identifier ?? null;
+  const receivingNumber =
+    normalizedIdentifier(message.recipient) ??
+    normalizedIdentifier(message.channel_address);
   return {
     event: v4.data.type,
     message_id: message.message_id ?? message.id,
     external_id: sender,
-    internal_id: message.recipient ?? message.channel_address,
+    internal_id: receivingNumber,
     sender,
     chat_id: message.chat_id,
-    channel_id: message.channel_id,
+    // Like v2's internal_id fallback, the number that received the message is
+    // the sender identity for the reply. Falling through to the configured
+    // project number would answer a multi-number account from a different
+    // line than the one the user wrote to.
+    channel_id: normalizedIdentifier(message.channel_id) ?? receivingNumber,
     channel_type: message.channel_type,
     text: message.text,
     reply_to_message_id: message.reply_to_message_id,

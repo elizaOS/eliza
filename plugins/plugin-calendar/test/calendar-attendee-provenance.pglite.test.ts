@@ -3,7 +3,7 @@
  * model extraction are deterministic; no model or external calendar is called. */
 import { PGlite } from "@electric-sql/pglite";
 import {
-  actionToTool,
+  buildPlannerToolsFromActions,
   type ContextObject,
   completionContextSources,
   type IAgentRuntime,
@@ -262,7 +262,7 @@ describe("Calendar attendee original-source contract", {
     try {
       const result = await runPlannerLoop({
         context: full,
-        tools: [actionToTool(action)],
+        tools: buildPlannerToolsFromActions([action]),
         runtime: {
           useModel: async (_type, params) => {
             calls.push(JSON.stringify(params));

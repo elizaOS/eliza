@@ -34,7 +34,10 @@ import {
   readAgentBackupCatalogRuntimeConfig,
   runAgentBackupCatalogRuntimeCycle,
 } from "./agent-backup-catalog-runtime";
-import type { AgentBackupCatalogWorkerComposition } from "./agent-backup-catalog-worker-composition";
+import {
+  type AgentBackupCatalogWorkerComposition,
+  runAgentBackupCatalogCycleStage,
+} from "./agent-backup-catalog-worker-composition";
 import { createAgentBackupCatalogPublicationExecutor } from "./agent-backup-publication-executor";
 
 const MAX_SPOOL_BYTES = 1024 ** 4;
@@ -484,7 +487,9 @@ export async function createAccountDeletionBackupAuthorityComposition(input: {
     enabled: true,
     accountDeletionAuthorities,
     async runCycle() {
-      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
+        dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
+      );
       return accountDeletionAuthoritySummary();
     },
   });
@@ -534,15 +539,19 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
     enabled: true,
     accountDeletionAuthorities,
     async runCycle(signal?: AbortSignal) {
-      const summary = await dependencies.runCycle({
-        config: config.runtime,
-        registry,
-        captureExecutor,
-        publicationExecutor,
-        spoolCleanupJanitor,
-        signal,
-      });
-      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      const summary = await runAgentBackupCatalogCycleStage("catalog-runtime", () =>
+        dependencies.runCycle({
+          config: config.runtime,
+          registry,
+          captureExecutor,
+          publicationExecutor,
+          spoolCleanupJanitor,
+          signal,
+        }),
+      );
+      await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
+        dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
+      );
       return summary;
     },
   });
