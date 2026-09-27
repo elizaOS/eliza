@@ -11,7 +11,7 @@
  * the cent. They fail loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -1529,6 +1529,52 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       // Balance: 100 - 10 + 4 - 4 = 90 — the org holds exactly what the fiat
       // flows imply (grant refunded in full, only $4 was ever reinstated).
       expect(await getBalance()).toBeCloseTo(90, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("CreditsService.collectAffiliateInferenceFallback fenced settlement (#30865)", () => {
+  test(
+    "publishes the committed debit result without a balance readback",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("1");
+      const snapshotSpy = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+      const inferenceBalanceFence = {
+        lowerCommittedBalance: mock(async (_balance: number, _revision: string) => undefined),
+        publishAuthoritativeBalance: mock(async (_balance: number, _revision: string) => undefined),
+      };
+      try {
+        await expect(
+          creditsService.collectAffiliateInferenceFallback({
+            organizationId: ORG_ID,
+            userId: USER_ID,
+            requestId: "req-affiliate-readback-30865",
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            actualCost: 0.9,
+            reservationMetadata: {},
+            preserveInferenceBalanceHint: true,
+            inferenceBalanceFence,
+          }),
+        ).resolves.toMatchObject({ actualCost: 0.9, collectedAmount: 0.9 });
+        // The atomic debit already returned the authoritative balance and
+        // revision; the settlement must not read the organization back.
+        expect(snapshotSpy).not.toHaveBeenCalled();
+      } finally {
+        snapshotSpy.mockRestore();
+      }
+
+      const authoritative = await creditsService.getOrganizationBalanceSnapshot(ORG_ID);
+      expect(authoritative.balanceUsd).toBeCloseTo(0.1, 6);
+      const [lowered] = inferenceBalanceFence.lowerCommittedBalance.mock.calls;
+      const [published] = inferenceBalanceFence.publishAuthoritativeBalance.mock.calls;
+      expect(lowered?.[0]).toBeCloseTo(0.1, 6);
+      expect(published?.[0]).toBeCloseTo(0.1, 6);
+      expect(published?.[1]).toBe(authoritative.revision);
+      expect(lowered?.[1]).toBe(authoritative.revision);
     },
     PGLITE_TIMEOUT,
   );

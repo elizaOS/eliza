@@ -25,7 +25,7 @@
             --resize_factor 32 \
             --prompt_style S2
 
-    
+
     Example Usage (S1):
         python3 run_multienv_evocua.py \
             --headless \
@@ -130,7 +130,7 @@ def config() -> argparse.Namespace:
     )
     parser.add_argument("--sleep_after_execution", type=float, default=5.0)
     parser.add_argument("--max_steps", type=int, default=50)
-    
+
     # evaluation config
     parser.add_argument(
         "--test_config_base_dir", type=str, default="evaluation_examples"
@@ -147,11 +147,11 @@ def config() -> argparse.Namespace:
     parser.add_argument("--history_type", type=str, default="action_history", help="[S1] History type")
     parser.add_argument("--coordinate_type", type=str, default="relative", help="Coordinate type: relative, absolute, qwen25")
     parser.add_argument("--password", type=str, default="osworld-public-evaluation", help="VM Password")
-    
+
     # History Parameter
     parser.add_argument("--max_history_turns", type=int, default=3, help="Number of history turns to include")
     parser.add_argument("--resize_factor", type=int, default=32, help="Image resize factor (S1: 28, S2: 32)")
-    
+
     # example config
     parser.add_argument("--domain", type=str, default="all")
     parser.add_argument(
@@ -160,8 +160,8 @@ def config() -> argparse.Namespace:
 
     # logging related
     parser.add_argument("--result_dir", type=str, default="./results")
-    parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to run in parallel")  
-    parser.add_argument("--log_level", type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], 
+    parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to run in parallel")
+    parser.add_argument("--log_level", type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                        default='INFO', help="Set the logging level")
     # aws config
     parser.add_argument(
@@ -179,7 +179,7 @@ def config() -> argparse.Namespace:
     parser.add_argument(
         "--screen_height", type=int, default=1080, help="Screen height"
     )
-    
+
     args = parser.parse_args()
     return args
 
@@ -239,7 +239,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
     try:
         REGION = args.region
         screen_size = (args.screen_width, args.screen_height)
-        
+
         # Determine snapshot based on provider
         snapshot_name = "init_state"
         if args.provider_name == "aws":
@@ -262,7 +262,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
         )
 
         active_environments.append(env)
-        
+
         logger.info(f"Process {current_process().name} started.")
         while True:
             try:
@@ -289,7 +289,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     example_id,
                 )
                 os.makedirs(example_result_dir, exist_ok=True)
-                
+
                 # Initialize EvoCUAAgent
                 agent = EvoCUAAgent(
                     model=args.model,
@@ -306,7 +306,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     password=args.password,
                     resize_factor=args.resize_factor,
                 )
-                
+
                 try:
                     lib_run_single.run_single_example_evocua(
                         agent,
@@ -322,7 +322,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     import traceback
                     logger.error(f"Exception in {current_process().name} {domain}/{example_id}: {e}")
                     logger.error(traceback.format_exc())
-                    
+
                     try:
                         env.controller.end_recording(
                             os.path.join(example_result_dir, "recording.mp4")
@@ -356,13 +356,13 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
 def signal_handler(signum, frame):
     """Handle termination signals (SIGINT, SIGTERM) to gracefully shutdown environments."""
     global is_terminating, active_environments, processes
-    
+
     if is_terminating:
         return
-    
+
     is_terminating = True
     logger.info(f"Received signal {signum}. Gracefully shutting down...")
-    
+
     for env in active_environments:
         try:
             logger.info(f"Closing environment...")
@@ -370,7 +370,7 @@ def signal_handler(signum, frame):
             logger.info(f"Environment closed successfully")
         except Exception as e:
             logger.error(f"Error closing environment: {e}")
-    
+
     for p in processes:
         if p.is_alive():
             try:
@@ -378,9 +378,9 @@ def signal_handler(signum, frame):
                 p.terminate()
             except Exception as e:
                 logger.error(f"Error sending termination signal to process: {e}")
-    
+
     time.sleep(1)
-    
+
     for p in processes:
         if p.is_alive():
             try:
@@ -389,7 +389,7 @@ def signal_handler(signum, frame):
                 os.kill(p.pid, sig.SIGKILL)
             except Exception as e:
                 logger.error(f"Error forcefully terminating process: {e}")
-    
+
     logger.info("Shutdown complete. Exiting.")
     sys.exit(0)
 
@@ -531,14 +531,14 @@ def get_result(action_space, use_model, observation_type, result_dir, total_file
 
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    
+
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     try:
         args = config()
-        
+
         path_to_args = os.path.join(
             args.result_dir,
             args.action_space,
@@ -590,14 +590,14 @@ if __name__ == "__main__":
                     env.close()
                 except Exception as e:
                     logger.error(f"Error during final environment cleanup: {e}")
-        
+
         for p in processes:
             if p is not None and p.is_alive():
                 try:
                     p.terminate()
                 except Exception as e:
                     logger.error(f"Error terminating process: {e}")
-        
+
         time.sleep(1)
         for p in processes:
             if p is not None and p.is_alive():

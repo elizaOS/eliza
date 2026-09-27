@@ -16,12 +16,12 @@ def create_mock_observation():
     # Create a simple black 100x100 image
     from PIL import Image
     from io import BytesIO
-    
+
     img = Image.new('RGB', (100, 100), color = 'black')
     buffered = BytesIO()
     img.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-    
+
     return {
         "screenshot": img_str,
         "accessibility_tree": "tag\tname\ttext\tclass\tdescription\tposition\tsize\nbutton\tSubmit\tSubmit\tButton\t\t10,10\t50,20"
@@ -30,25 +30,25 @@ def create_mock_observation():
 def run_mock_benchmark():
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("mock_bench")
-    
+
     # Configure env to enable computer use plugin if needed
     os.environ.copy()
-    
+
     # Set env vars globally so ElizaServerManager picks them up
     os.environ["COMPUTER_USE_ENABLED"] = "1"
     os.environ["ELIZA_BENCH_PORT"] = "3939"
     os.environ["PGLITE_DATA_DIR"] = ":memory:" # Force in-memory DB for plugin-sql
-    # os.environ["ELIZA_BENCH_MOCK"] = "true" # Disable mock for real test  
+    # os.environ["ELIZA_BENCH_MOCK"] = "true" # Disable mock for real test
     # The benchmark server TypeScript lives in the elizaOS monorepo;
     # ElizaServerManager resolves it via ELIZA_MONOREPO_ROOT or ancestor scan.
     mgr = ElizaServerManager()
-    
+
     try:
         mgr.start()
-        
+
         # Create client
         client = mgr.client
-        
+
         # Sample context from OSWorld
         # We need to construct a valid observation
         context = {
@@ -58,23 +58,23 @@ def run_mock_benchmark():
                 "som": { "1": [10, 10, 50, 20] } # Simulated SOM coordinates
             }
         }
-        
+
         logger.info("Sending message to agent...")
         resp = client.send_message(
             text="Please click the Submit button.",
             context=context
         )
-        
+
         logger.info(f"Agent response: {resp}")
-        
+
         # Verify response contains BENCHMARK_ACTION
         # ElizaAdapter response object has: text, thought, actions?, params?
         # The client returns whatever the server sends, parsed into an object.
         # Let's verify what we get.
-        
+
         if resp.params:
             logger.info("✅ SUCCESS: Agent returned actions/params.")
-            
+
             # Check if it tried to click
             if "command" in resp.params and "CLICK" in str(resp.params["command"]):
                  logger.info("✅ SUCCESS: Agent generated a CLICK command.")

@@ -4,7 +4,7 @@ SQLite storage for benchmark results.
 Schema per implementation plan:
 - runs: Run configuration and metadata
 - trials: Per-trial results
-- tasks: Per-task results  
+- tasks: Per-task results
 - scores: Aggregate scores
 """
 
@@ -20,7 +20,7 @@ from gauntlet.scoring.engine import OverallScore
 class SQLiteStorage:
     """
     SQLite-based storage for benchmark results.
-    
+
     Provides persistence for:
     - Run configurations and seeds
     - Per-task metrics
@@ -39,7 +39,7 @@ class SQLiteStorage:
         config_json TEXT NOT NULL
     );
 
-    -- Per-trial results  
+    -- Per-trial results
     CREATE TABLE IF NOT EXISTS trials (
         trial_id TEXT PRIMARY KEY,
         run_id TEXT REFERENCES runs(run_id),
@@ -75,7 +75,7 @@ class SQLiteStorage:
         value REAL NOT NULL,
         passed INTEGER NOT NULL
     );
-    
+
     -- Create indices
     CREATE INDEX IF NOT EXISTS idx_tasks_run ON tasks(run_id);
     CREATE INDEX IF NOT EXISTS idx_scores_run ON scores(run_id);
@@ -84,7 +84,7 @@ class SQLiteStorage:
     def __init__(self, db_path: Path):
         """
         Initialize storage with database path.
-        
+
         Args:
             db_path: Path to SQLite database file
         """
@@ -107,7 +107,7 @@ class SQLiteStorage:
     def save_run(self, run_metrics: RunMetrics, config: dict) -> None:
         """
         Save a complete run to the database.
-        
+
         Args:
             run_metrics: Collected run metrics
             config: Run configuration dict
@@ -142,7 +142,7 @@ class SQLiteStorage:
 
             cursor.execute(
                 """
-                INSERT INTO tasks (task_id, run_id, level, scenario_id, task_type, agent_action, 
+                INSERT INTO tasks (task_id, run_id, level, scenario_id, task_type, agent_action,
                                    outcome_classification, transaction_signature, duration_ms, metrics_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -165,7 +165,7 @@ class SQLiteStorage:
     def save_scores(self, run_id: str, overall_score: OverallScore) -> None:
         """
         Save computed scores to the database.
-        
+
         Args:
             run_id: Run identifier
             overall_score: Computed overall score

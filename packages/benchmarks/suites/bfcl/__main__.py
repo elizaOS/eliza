@@ -358,7 +358,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
                     print(f"   Provider: {model_config.provider.value}")
                 else:
                     print("\n⚠️  No model available, running in mock mode")
-        
+
         if args.sample:
             # Run sample
             print(f"\n🚀 Running BFCL sample ({args.sample} tests)...\n")
@@ -411,11 +411,11 @@ def show_models(args: argparse.Namespace) -> int:
         get_available_providers,
         get_model_display_info,
     )
-    
+
     if getattr(args, 'all', False):
         # Show all supported models
         print("\n📋 All Supported Models\n")
-        
+
         current_provider = None
         for model_name, config in sorted(SUPPORTED_MODELS.items()):
             if config.provider != current_provider:
@@ -425,7 +425,7 @@ def show_models(args: argparse.Namespace) -> int:
                 status = "✓" if is_available else "✗"
                 env_hint = f"({provider_config.api_key_env})" if not provider_config.is_local else "(local)"
                 print(f"\n{status} {current_provider.value.upper()} {env_hint}")
-            
+
             default_marker = " [DEFAULT]" if config.is_default else ""
             cost = f"${config.cost_per_1k_tokens:.5f}/1K tokens" if config.cost_per_1k_tokens else "free"
             print(f"    {model_name}: {config.display_name}")
@@ -433,7 +433,7 @@ def show_models(args: argparse.Namespace) -> int:
     else:
         # Show available models
         print("\n" + get_model_display_info())
-        
+
         available = get_available_providers()
         if not available:
             print("\n⚠️  No providers available. Set one of these API keys:")
@@ -446,9 +446,9 @@ def show_models(args: argparse.Namespace) -> int:
         else:
             print("\nDefault: Groq openai/gpt-oss-120b")
             print("Override: --provider <name> or --model <provider/model>")
-        
+
         print("\nUse --all to see all supported models")
-    
+
     print()
     return 0
 

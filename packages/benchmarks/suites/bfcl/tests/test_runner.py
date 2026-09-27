@@ -290,5 +290,5 @@ async def test_run_bfcl_benchmark_mock() -> None:
     # Verify the config is valid
     assert benchmark_config.max_tests_per_category == 2
     assert not benchmark_config.generate_report
-    
+
     # Note: Full run requires dataset access

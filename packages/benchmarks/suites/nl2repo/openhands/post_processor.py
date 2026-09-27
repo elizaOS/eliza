@@ -34,7 +34,7 @@ def log_to_both(original_logger, log_file_path: str, level: str, message: str):
         level: Log level (info, warning, error, debug)
         message: Log message
     """
- 
+
     if level == 'info':
         original_logger.info(message)
     elif level == 'warning':
@@ -69,7 +69,7 @@ class DualLogger:
         # Make sure the directory exists
         os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
 
-        # Initialize 
+        # Initialize
         try:
             with open(log_file_path, 'w', encoding='utf-8') as f:
                 f.write(f"=== Post Process Log Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
@@ -143,7 +143,7 @@ def load_docker_image(tar_path: str, host_info: DockerHostInfo, logger) -> Dict[
         if loaded_images:
             logger.info(f"Loaded Images：{loaded_images}")
 
-       
+
             if isinstance(loaded_images, list):
                 image_name_str = loaded_images[0]
             else:
@@ -158,7 +158,7 @@ def load_docker_image(tar_path: str, host_info: DockerHostInfo, logger) -> Dict[
                 logger.warning(f"Failed to inspect image: {str(e)}")
                 image_obj = None
 
-         
+
             if ':' in image_name_str:
                 image_name, image_tag = image_name_str.split(':', 1)
             else:
@@ -264,7 +264,7 @@ def remove_test_files(workspace_path: str, test_files: List[str], logger):
 
 def create_dockerfile(workspace_path: str, base_image_tag: str, logger) -> str:
     """
-    Create Dockerfile 
+    Create Dockerfile
 
     Args:
         workspace_path: workspace path
@@ -319,7 +319,7 @@ def build_test_image(dockerfile_path: str, image_tag: str, host_info: DockerHost
     Returns:
         image id
     """
-    logger.info(f"Start building test image: {image_tag}")  
+    logger.info(f"Start building test image: {image_tag}")
 
     try:
         build_context = os.path.dirname(dockerfile_path)
@@ -371,7 +371,7 @@ def run_test_commands(image_tag: str, container_name: str, test_commands: List[s
         command_results = []
         last_exit_code = 0
 
-       
+
         for i, command in enumerate(test_commands):
             logger.info(f"Executing command {i + 1}/{len(test_commands)}: {command}")
 
@@ -432,7 +432,7 @@ def analyze_pytest_results(command_results: List[Dict], total_test_cases: int, l
 
     Args:
         command_results: Command execution results list
-        total_test_cases: Total test case count 
+        total_test_cases: Total test case count
         logger: Logger instance
 
     Returns:
@@ -458,17 +458,17 @@ def analyze_pytest_results(command_results: List[Dict], total_test_cases: int, l
 
 
             for line in output.split('\n'):
-               
+
                 passed_match = re.search(r'(\d+) passed', line)
                 if passed_match:
                     pytest_results['passed'] += int(passed_match.group(1))
 
-               
+
                 failed_match = re.search(r'(\d+) failed', line)
                 if failed_match:
                     pytest_results['failed'] += int(failed_match.group(1))
 
-                
+
                 error_match = re.search(r'(\d+) error', line)
                 if error_match:
                     pytest_results['errors'] += int(error_match.group(1))
@@ -507,23 +507,23 @@ def post_process_task(task_uuid: str, workspace_path: str, test_data: TestData, 
     host_info = DockerHostInfo(hostname=docker_host)
 
     try:
-        
+
         zip_path = create_workspace_zip(workspace_path, logger)
 
-        
+
         #image_info = load_docker_image(test_data.imageTar, host_info, logger)
         image_info = {"full_tag": test_data.proName + ":1.0"}
 
-        
+
         remove_package_files(workspace_path, logger)
 
-        
+
         remove_test_files(workspace_path, test_data.pyTestFileList, logger)
 
-       
+
         dockerfile_path = create_dockerfile(workspace_path, image_info['full_tag'], logger)
 
-        
+
         test_image_tag = f"python-test-{task_uuid}"
         image_id = build_test_image(dockerfile_path, test_image_tag, host_info, logger)
 

@@ -511,5 +511,3 @@ if __name__ == "__main__":
                     logger.info(f"Process {p.name} force killed")
                 except Exception as e:
                     logger.error(f"Error force killing process: {e}")
-
-

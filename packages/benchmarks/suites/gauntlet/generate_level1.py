@@ -78,21 +78,21 @@ for cat in categories:
     for scenario in cat["scenarios"]:
         filename = f"{scenario['id']}.yaml"
         filepath = os.path.join(base_dir, filename)
-        
+
         # Build task type based on category
         task_type = cat["type"]
         if task_type == "nft":
             task_type = "analyze"  # Use analyze for NFT ops
         elif task_type == "defi":
             task_type = "trade"  # Use trade for DeFi
-        
+
         # Build state based on scenario
         state = {
             "accounts": [
                 {"name": "agent_wallet", "sol_balance": 10.0, "tokens": {"USDC": 1000, "BONK": 10000000}}
             ]
         }
-        
+
         # Add pools for swap scenarios
         if cat["type"] == "swap":
             state["pools"] = [
@@ -104,7 +104,7 @@ for cat in categories:
                     "price": 100.0 if scenario["to"] == "USDC" else 1.0
                 }
             ]
-        
+
         data = {
             "id": scenario["id"],
             "level": 1,
@@ -126,7 +126,7 @@ for cat in categories:
                 "silent_failure": "-1"
             }
         }
-        
+
         with open(filepath, "w") as f:
             yaml.dump(data, f, sort_keys=False, default_flow_style=False)
         generated += 1
