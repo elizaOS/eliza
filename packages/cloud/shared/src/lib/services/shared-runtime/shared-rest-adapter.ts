@@ -598,6 +598,8 @@ export async function sharedRestMessageSend(
   agentName: string;
   timing?: SharedProviderTimingReceipt;
   mediaUrls?: string[];
+  responded?: false;
+  responseReason?: "no_response";
 }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -637,6 +639,7 @@ export async function sharedRestMessageSend(
     text?: unknown;
     timing?: unknown;
     actionResults?: unknown;
+    responded?: unknown;
   };
   const replyText = typeof result.text === "string" ? result.text : "";
   const mediaUrls = Array.isArray(result.actionResults)
@@ -666,6 +669,9 @@ export async function sharedRestMessageSend(
   return {
     text: replyText,
     agentName: agentName || "Eliza",
+    ...(result.responded === false
+      ? { responded: false as const, responseReason: "no_response" as const }
+      : {}),
     ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
     ...(timing ? { timing } : {}),
   };
