@@ -20,6 +20,7 @@ import {
   normalizeContextId,
   readEnvBool,
   recordInferenceSpan,
+  renewExpiredTrustedDeliveryAudience,
   withActiveRoutingContexts,
 } from "@elizaos/core";
 import {
@@ -393,6 +394,9 @@ export async function collectV5PlannerCandidateActions(args: {
     nonDisclosureRejectedExplicitCandidates: string[];
   };
 }): Promise<Action[]> {
+  // Exposure gates below are synchronous and reject expired audience
+  // evidence; an active long turn renews it from current authority first.
+  await renewExpiredTrustedDeliveryAudience(args.runtime, args.message);
   // The candidate surface starts from every runtime action and applies only the
   // same execution gates the planner executor will enforce — it deliberately does
   // NOT pre-filter by `action.contexts` against the messageHandler-picked
