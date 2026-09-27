@@ -53,13 +53,15 @@ export function useBillingUser(
     queryKey: authKey(["billing-user"], gate),
     queryFn: async ({ signal }): Promise<BillingUser | null> => {
       const res = await api<CurrentUserResponse>("/api/v1/user", { signal });
-      const { id, organization_id, wallet_address, organization } = res.data;
+      const { id, organization_id, wallet_address, organization, role } =
+        res.data;
       const userId = typeof id === "string" ? id.trim() : "";
       if (!userId || !organization_id || !organization) return null;
       return {
         id: userId,
         organization_id,
         wallet_address,
+        role: typeof role === "string" ? role : null,
       };
     },
     enabled: gate.enabled,

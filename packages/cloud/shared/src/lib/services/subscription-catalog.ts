@@ -18,6 +18,8 @@ import { logger } from "../utils/logger";
 
 const CATALOG_VERSION = "v1" as const;
 const VERIFIED_CACHE_TTL_MS = 5 * 60 * 1_000;
+/** Brief negative cache: public catalog reads cannot amplify a provider outage into a Stripe request storm. */
+const FAILED_CACHE_TTL_MS = 5 * 1_000;
 
 const planDefinitionSchema = z
   .object({
@@ -183,6 +185,8 @@ interface SubscriptionCatalogBindings {
 export interface SubscriptionCatalogProviderPrice {
   active: boolean;
   currency: string;
+  /** Every multi-currency option key on the Price (retrieved with `expand: ["currency_options"]`). */
+  currencyOptions: string[];
   unitAmount: number | null;
   type: string;
   billingScheme: string;
@@ -215,6 +219,7 @@ const providerPriceSchema = z
   .object({
     active: z.boolean(),
     currency: z.string().min(1),
+    currencyOptions: z.array(z.string().min(1)),
     unitAmount: z.number().int().safe().nullable(),
     type: z.string().min(1),
     billingScheme: z.string().min(1),
@@ -384,6 +389,9 @@ async function verifyPlan(
 
   if (!price.active) mismatch(plan.key, "price.active");
   if (price.currency !== plan.currency) mismatch(plan.key, "price.currency");
+  // A Price with additional currency options could be presented and charged in another currency.
+  if (price.currencyOptions.some((currency) => currency !== plan.currency))
+    mismatch(plan.key, "price.currency_options");
   if (price.unitAmount !== plan.amountCents) mismatch(plan.key, "price.unit_amount");
   if (price.type !== "recurring") mismatch(plan.key, "price.type");
   if (price.billingScheme !== "per_unit") mismatch(plan.key, "price.billing_scheme");
@@ -456,7 +464,8 @@ export function validateSubscriptionCatalogConfiguration(env: NodeJS.ProcessEnv)
 /**
  * Read and validate both approved provider objects, then return only the public
  * catalog projection. Successful checks are briefly coalesced per isolate;
- * failures are never cached and stale success is never served after expiry.
+ * failures are negatively cached for a few seconds and replay the same typed
+ * error (never an empty catalog); stale success is never served after expiry.
  */
 export async function getVerifiedSubscriptionPlans(options: {
   env: NodeJS.ProcessEnv;
@@ -479,7 +488,6 @@ export async function getVerifiedSubscriptionPlans(options: {
     .catch((error) => {
       // error-policy:J2 Provider transport failures become one typed catalog
       // failure while preserving the SDK error as the native cause.
-      verificationCache.delete(cacheKey);
       const catalogError =
         error instanceof SubscriptionCatalogError
           ? error
@@ -493,6 +501,9 @@ export async function getVerifiedSubscriptionPlans(options: {
         code: catalogError.code,
         context: catalogError.context,
       });
+      const current = verificationCache.get(cacheKey);
+      if (current?.pending === pending)
+        verificationCache.set(cacheKey, { expiresAt: now() + FAILED_CACHE_TTL_MS, pending });
       throw catalogError;
     });
 
@@ -516,10 +527,11 @@ export function adaptStripeSubscriptionCatalogProvider(
 ): SubscriptionCatalogProvider {
   return {
     async retrievePrice(priceId) {
-      const price = await stripe.prices.retrieve(priceId);
+      const price = await stripe.prices.retrieve(priceId, { expand: ["currency_options"] });
       return {
         active: price.active,
         currency: price.currency,
+        currencyOptions: Object.keys(price.currency_options ?? {}),
         unitAmount: price.unit_amount,
         type: price.type,
         billingScheme: price.billing_scheme,

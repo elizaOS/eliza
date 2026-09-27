@@ -316,8 +316,32 @@ export interface SubscriptionCancellationNoticeSnapshot {
   delivery: "not_observed";
 }
 
+export type SubscriptionCancellationBlockerCode =
+  | ActiveComputeCancellationBlockerCode
+  /** Only an active, undunned, in-period subscription without a pending plan change is eligible. */
+  | "subscription_state_unsupported";
+
+/**
+ * Server-owned period-end cancel/undo descriptor. `action` is what the current state allows
+ * (`undo` when cancellation is already scheduled); the body echoes `subscriptionId` and
+ * `expectedSubscriptionRevision` with a client idempotency key.
+ */
+export interface SubscriptionCancellationControlSnapshot {
+  action: "cancel" | "undo";
+  method: "POST";
+  endpoint:
+    | "/api/v1/subscriptions/cancel"
+    | "/api/v1/subscriptions/cancel/undo";
+  subscriptionId: string;
+  expectedSubscriptionRevision: number;
+  eligible: boolean;
+  blockers: SubscriptionCancellationBlockerCode[];
+}
+
 /** Organization infrastructure billing only; never an app subscriber's merchant account. */
 export interface OrganizationSubscriptionSnapshot {
+  /** Durable organization subscription id (never a provider identifier). */
+  subscriptionId: string;
   planKey: "plus_monthly" | "pro_monthly";
   catalogVersion: string;
   lifecycleRevision: string;
@@ -339,6 +363,7 @@ export interface OrganizationSubscriptionSnapshot {
   graceExpiresAt: string | null;
   dunningStartedAt: string | null;
   cancellationNotice: Observed<SubscriptionCancellationNoticeSnapshot>;
+  cancellationControl: SubscriptionCancellationControlSnapshot;
   allowance: Observed<{
     sourceLifecycleRevision: string;
     periodStart: string;

@@ -4,6 +4,10 @@
  */
 
 import { Hono } from "hono";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import {
   adaptStripeSubscriptionCatalogProvider,
@@ -18,7 +22,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // cache would bypass that fail-closed boundary after a binding rotation or
 // deploy, so clients must re-enter the Worker for every catalog read.
 const SUCCESS_CACHE_CONTROL = "no-store";
-const FAILURE_RETRY_SECONDS = "60";
+// Matches the catalog's short negative cache so clients retry after it clears.
+const FAILURE_RETRY_SECONDS = "5";
 
 interface SubscriptionPlansRouteDependencies {
   loadPlans(): Promise<SubscriptionPlansDto>;
@@ -38,7 +43,8 @@ export function createSubscriptionPlansRoute(
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  app.get("/", async (c) => {
+  // Unauthenticated and provider-backed: bound per-IP reads before any Stripe lookup.
+  app.get("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     try {
       const plans = await dependencies.loadPlans();
       c.header("Cache-Control", SUCCESS_CACHE_CONTROL);
