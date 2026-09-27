@@ -11,6 +11,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 it.each([
+  { stream: false, structured: false, malformed: false, buffered: false, noOptIn: true },
+  { stream: true, structured: true, malformed: false, buffered: false, noOptIn: true },
   {
     stream: false,
     structured: false,
@@ -53,10 +55,11 @@ it.each([
     callCount = 1,
     hookFailure = false,
     hookOnly = false,
+    noOptIn = false,
   }) => {
     const expected = ' "quoted 雪" \r\n';
     const rawArguments = JSON.stringify({
-      content: malformed ? "not-a-json-string" : JSON.stringify(expected),
+      content: malformed ? "not-a-json-string" : noOptIn ? expected : JSON.stringify(expected),
     });
     const requests: Array<{ tools: unknown[]; messages: unknown[] }> = [];
     const server = createServer((req, res) => {
@@ -156,6 +159,7 @@ it.each([
       const run = async () => {
         const result = await handleActionPlanner(runtime, {
           model: "qwen-3.8-27b",
+          providerOptions: noOptIn ? {} : { eliza: { preferLosslessToolArguments: true } },
           messages: [{ role: "user", content: "Preserve exact content." }],
           tools: hookFailure
             ? {
@@ -200,7 +204,9 @@ it.each([
           expect(calls).toHaveLength(callCount);
           for (const call of calls ?? [])
             expect(call).toMatchObject({ arguments: { content: expected } });
-          if (structured)
+          if (structured && noOptIn)
+            expect(callbacks.join("")).toBe(JSON.stringify({ content: expected }));
+          if (structured && !noOptIn)
             expect(callbacks).toEqual([
               callCount === 1 ? JSON.stringify({ content: expected }) : "Complete retained prose.",
             ]);
@@ -212,7 +218,8 @@ it.each([
       } else await run();
       expect(requests).toHaveLength(1);
       if (hookFailure) expect(inputEffects).toBe(1);
-      expect(JSON.stringify(requests[0].tools)).toContain("JSON string literals");
+      if (noOptIn) expect(JSON.stringify(requests[0].tools)).not.toContain("JSON string literals");
+      else expect(JSON.stringify(requests[0].tools)).toContain("JSON string literals");
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

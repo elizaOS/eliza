@@ -4160,6 +4160,13 @@ async function dispatchPlannerModelCall(params: {
       ...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
         .eliza ?? {}),
       thinking: "off",
+      ...(hasTools &&
+      params.allowReplyContextProjection !== true &&
+      params.tools?.some(
+        (tool) => !["REPLY", "IGNORE", "STOP"].includes(tool.name),
+      )
+        ? { preferLosslessToolArguments: true }
+        : {}),
       ...(params.trajectory.codingMode === true
         ? { preferToolReasoning: true }
         : {}),

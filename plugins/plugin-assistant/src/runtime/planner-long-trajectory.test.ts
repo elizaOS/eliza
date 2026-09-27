@@ -1567,6 +1567,14 @@ describe("long progressive planner trajectories", () => {
       const result = await runPlannerLoop({
         ...h,
         context: { id: "long-work" },
+        tools: ["DISCOVER_ACTIONS", "MEMORY_SEARCH"].map((name) => ({
+          name,
+          description: "Read requested evidence",
+          parameters: {
+            type: "object",
+            properties: { query: { type: "string" } },
+          },
+        })),
         codingMode,
       });
       expect(h.executed).toHaveLength(40);
@@ -1576,6 +1584,7 @@ describe("long progressive planner trajectories", () => {
         providerOptions: {
           eliza: {
             thinking: "off",
+            preferLosslessToolArguments: true,
             ...(codingMode ? { preferToolReasoning: true } : {}),
           },
         },

@@ -3152,7 +3152,12 @@ async function generateTextAtEndpoint(
   }
   const toolStringCodec = await prepareCerebrasToolStringCodec(
     normalizedToolResult.tools,
-    cerebrasMode &&
+    (
+      paramsWithAttachments.providerOptions as
+        | { eliza?: { preferLosslessToolArguments?: unknown } }
+        | undefined
+    )?.eliza?.preferLosslessToolArguments === true &&
+      cerebrasMode &&
       usesCerebrasToolStringCodec(
         typeof endpoint === "object" ? endpoint.baseURL : (endpoint ?? getBaseURL(runtime)),
         modelName
