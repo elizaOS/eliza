@@ -379,6 +379,7 @@
         "typecheck:deps",
         "@elizaos/ui#build",
         "@elizaos/plugin-assistant#build",
+        "@elizaos/plugin-elizacloud#build",
         "@elizaos/app#typecheck:deps"
       ]
     },

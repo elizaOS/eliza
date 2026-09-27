@@ -49,9 +49,9 @@ class ModelConfig:
     temperature: float = 0.0  # Low temp for function calling accuracy
     supports_function_calling: bool = True
     cost_per_1k_tokens: Optional[float] = None  # For cost tracking
-    
-    
-@dataclass 
+
+
+@dataclass
 class ProviderConfig:
     """Configuration for a model provider."""
     provider: ModelProvider
@@ -185,7 +185,7 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=32768,
         cost_per_1k_tokens=0.00075,
     ),
-    
+
     # OpenAI models
     "openai/gpt-5": ModelConfig(
         provider=ModelProvider.OPENAI,
@@ -208,7 +208,7 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=4096,
         cost_per_1k_tokens=0.01,
     ),
-    
+
     # Anthropic models
     "anthropic/claude-sonnet-4.6": ModelConfig(
         provider=ModelProvider.ANTHROPIC,
@@ -231,7 +231,7 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=4096,
         cost_per_1k_tokens=0.015,
     ),
-    
+
     # Google GenAI models
     "google/gemini-2.0-flash": ModelConfig(
         provider=ModelProvider.GOOGLE_GENAI,
@@ -247,7 +247,7 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=8192,
         cost_per_1k_tokens=0.00125,
     ),
-    
+
     # XAI Grok models
     "xai/grok-3": ModelConfig(
         provider=ModelProvider.XAI,
@@ -263,7 +263,7 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=8192,
         cost_per_1k_tokens=0.0003,
     ),
-    
+
     # OpenRouter models (access to many OSS models)
     "openrouter/meta-llama/llama-3.1-8b-instruct": ModelConfig(
         provider=ModelProvider.OPENROUTER,
@@ -300,7 +300,7 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=65536,
         cost_per_1k_tokens=0.00014,
     ),
-    
+
     # Ollama local models
     "ollama/llama3.1:8b": ModelConfig(
         provider=ModelProvider.OLLAMA,
@@ -336,7 +336,7 @@ class BenchmarkModelConfig:
     base_url: Optional[str] = None
     temperature: float = 0.0
     max_tokens: int = 4096
-    
+
     @property
     def full_model_name(self) -> str:
         """Get the full model name for results tracking."""
@@ -346,7 +346,7 @@ class BenchmarkModelConfig:
 def get_available_providers() -> list[ModelProvider]:
     """Get list of providers with available API keys/configs."""
     available: list[ModelProvider] = []
-    
+
     for provider, config in PROVIDER_CONFIGS.items():
         if config.is_local:
             # Check if local service is available
@@ -361,7 +361,7 @@ def get_available_providers() -> list[ModelProvider]:
             api_key = os.environ.get(config.api_key_env, "")
             if api_key:
                 available.append(provider)
-    
+
     # Sort by priority
     available.sort(key=lambda p: PROVIDER_CONFIGS[p].priority, reverse=True)
     return available
@@ -370,7 +370,7 @@ def get_available_providers() -> list[ModelProvider]:
 def get_default_model_config() -> Optional[BenchmarkModelConfig]:
     """
     Get the default model configuration.
-    
+
     Priority:
     1. BFCL_MODEL env var (if set to specific model)
     2. BFCL_PROVIDER env var (if set to specific provider)
@@ -383,7 +383,7 @@ def get_default_model_config() -> Optional[BenchmarkModelConfig]:
         model_config = SUPPORTED_MODELS[explicit_model]
         provider_config = PROVIDER_CONFIGS[model_config.provider]
         api_key = os.environ.get(provider_config.api_key_env, "")
-        
+
         if api_key or provider_config.is_local:
             return BenchmarkModelConfig(
                 provider=model_config.provider,
@@ -397,7 +397,7 @@ def get_default_model_config() -> Optional[BenchmarkModelConfig]:
                 temperature=model_config.temperature,
                 max_tokens=model_config.max_tokens,
             )
-    
+
     # Check for explicit provider override
     explicit_provider = os.environ.get("BFCL_PROVIDER", "")
     if explicit_provider:
@@ -418,22 +418,22 @@ def get_default_model_config() -> Optional[BenchmarkModelConfig]:
                 )
         except ValueError:
             logger.warning(f"Unknown provider: {explicit_provider}")
-    
+
     # Use default: Groq with gpt-oss-120b
     available = get_available_providers()
     if not available:
         logger.warning("No model providers available")
         return None
-    
+
     # Prefer Groq as default
     if ModelProvider.GROQ in available:
         provider = ModelProvider.GROQ
     else:
         provider = available[0]
-    
+
     provider_config = PROVIDER_CONFIGS[provider]
     api_key = os.environ.get(provider_config.api_key_env, "")
-    
+
     return BenchmarkModelConfig(
         provider=provider,
         model_id=provider_config.small_model,
@@ -451,15 +451,15 @@ def get_model_config(model_name: str) -> Optional[BenchmarkModelConfig]:
     if model_name not in SUPPORTED_MODELS:
         logger.warning(f"Unknown model: {model_name}")
         return None
-    
+
     model_config = SUPPORTED_MODELS[model_name]
     provider_config = PROVIDER_CONFIGS[model_config.provider]
     api_key = os.environ.get(provider_config.api_key_env, "")
-    
+
     if not api_key and not provider_config.is_local:
         logger.warning(f"No API key for provider {model_config.provider.value}")
         return None
-    
+
     return BenchmarkModelConfig(
         provider=model_config.provider,
         model_id=model_config.model_id,
@@ -486,14 +486,14 @@ def list_available_models() -> list[str]:
 def get_model_display_info() -> str:
     """Get formatted display info about available models."""
     lines = ["Available Model Providers:", ""]
-    
+
     for provider in get_available_providers():
         config = PROVIDER_CONFIGS[provider]
         lines.append(f"  ✓ {provider.value}")
         lines.append(f"    Small: {config.small_model}")
         lines.append(f"    Large: {config.large_model}")
         lines.append("")
-    
+
     unavailable = set(ModelProvider) - set(get_available_providers())
     if unavailable:
         lines.append("Unavailable (set API key to enable):")
@@ -501,5 +501,5 @@ def get_model_display_info() -> str:
             config = PROVIDER_CONFIGS[provider]
             if not config.is_local:
                 lines.append(f"  ✗ {provider.value} ({config.api_key_env})")
-    
+
     return "\n".join(lines)

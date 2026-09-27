@@ -470,7 +470,7 @@ function patchLlamaCppCapacitorAndroidEmbeddingParams() {
                     jstring normalizeKey = jni_utils::string_to_jstring(env, "embd_normalize");
                     jobject normalizeObj = env->CallObjectMethod(params, getDoubleMethod, normalizeKey);
                     if (normalizeObj != nullptr && !env->ExceptionCheck()) {
-                        embd_normalize = env->CallDoubleMethod(normalizeObj, 
+                        embd_normalize = env->CallDoubleMethod(normalizeObj,
                             env->GetMethodID(env->FindClass("java/lang/Double"), "doubleValue", "()D"));
                         env->DeleteLocalRef(normalizeObj);
                     }

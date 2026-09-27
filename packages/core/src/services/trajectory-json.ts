@@ -54,6 +54,24 @@ function reserveContainer(state: SanitizationState): JsonValue | undefined {
 	return undefined;
 }
 
+/**
+ * Record one own entry. Plain assignment would run the inherited `__proto__`
+ * setter for an own `__proto__` key (e.g. from `JSON.parse`), dropping the
+ * entry and re-parenting the sanitized object.
+ */
+function defineOwnEntry(
+	target: Record<string, JsonValue>,
+	key: string,
+	value: JsonValue,
+): void {
+	Object.defineProperty(target, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
 function reserveObjectKey(state: SanitizationState, key: string): boolean {
 	if (state.remainingBytes === Number.POSITIVE_INFINITY) return true;
 	return reserveBytes(
@@ -132,7 +150,7 @@ function sanitizeTrajectoryJsonValueInternal(
 				state,
 				depth + 1,
 			);
-			if (sanitized !== undefined) output[key] = sanitized;
+			if (sanitized !== undefined) defineOwnEntry(output, key, sanitized);
 		}
 		state.seen.delete(value);
 		return output;
@@ -193,7 +211,7 @@ function sanitizeTrajectoryJsonValueInternal(
 				state,
 				depth + 1,
 			);
-			if (sanitized !== undefined) output[key] = sanitized;
+			if (sanitized !== undefined) defineOwnEntry(output, key, sanitized);
 		}
 		state.seen.delete(value);
 		return output;

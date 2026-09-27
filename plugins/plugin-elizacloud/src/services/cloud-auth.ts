@@ -27,6 +27,7 @@ import { logger } from "@elizaos/core";
 import { resolveApiSecurityConfig } from "@elizaos/core/runtime-env";
 import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
 import { type CloudBootstrapService } from "./cloud-bootstrap";
+import { getSetting, isTruthyCloudFlag } from "../utils/config";
 import { type CloudCredentials } from "../types/cloud";
 import { type DeviceAuthResponse } from "../types/cloud";
 import { type DevicePlatform } from "../types/cloud";
@@ -503,9 +504,10 @@ export class CloudAuthService extends Service {
             this.scheduleRevalidation(0);
             return;
         }
-        // Device-based auto-signup when explicitly enabled
-        const enabled = this.runtime.getSetting("ELIZAOS_CLOUD_ENABLED");
-        if (enabled === "true" || enabled === "1") {
+        // Device-based auto-signup when explicitly enabled. The runtime returns
+        // the flag as boolean `true` for "true", so read it through the
+        // stringifying helper rather than comparing against string literals.
+        if (isTruthyCloudFlag(getSetting(this.runtime, "ELIZAOS_CLOUD_ENABLED"))) {
             try {
                 await this.authenticateWithDevice();
             }

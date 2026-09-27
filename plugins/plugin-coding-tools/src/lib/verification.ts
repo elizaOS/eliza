@@ -16,7 +16,8 @@ export function shellVerificationReceipt(args: {
   output: string;
   signal?: string | null;
 }): ActionResult["verification"] {
-  const kind = codingVerificationKind(args.command);
+  const verifier = codingVerificationCommand(args.command);
+  const kind = verifier ? codingVerificationKind(verifier) : undefined;
   if (
     !kind ||
     args.signal ||
@@ -32,10 +33,8 @@ export function shellVerificationReceipt(args: {
       : kind === "test" && verificationRanNoTests(args.output)
         ? "no_tests"
         : "passed";
-  const segment =
-    splitSafeShellVerificationChain(args.command)?.[0] ?? args.command;
-  const family = stripShellVerificationPrefix(segment)
-    .trim()
+  const family = verifier
+    ?.trim()
     .split(/\s+/u)
     .slice(0, 2)
     .join(" ")
@@ -74,45 +73,43 @@ const CODING_VERIFICATION_PATTERNS = [
   /^(?:python\d*\s+-m\s+(?:pytest|unittest|compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)(?:\s|$)/i,
 ] as const;
 
-function codingVerificationKind(
-  command: string,
-): CodingVerificationKind | undefined {
+function codingVerificationCommand(command: string): string | undefined {
   const segments = splitSafeShellVerificationChain(command);
   if (!segments) return undefined;
   for (const segment of segments) {
     const normalized = stripShellVerificationPrefix(segment);
-    if (
-      isNoopShellVerificationCommand(normalized) ||
-      !CODING_VERIFICATION_PATTERNS.some((pattern) => pattern.test(normalized))
-    ) {
-      continue;
+    if (isNoopShellVerificationCommand(normalized)) continue;
+    for (const pattern of CODING_VERIFICATION_PATTERNS) {
+      const verifier = normalized.match(pattern)?.[0];
+      if (verifier) return verifier;
     }
-    if (
-      /\b(?:test|vitest|jest|pytest|rspec|phpunit|mocha|ava|unittest|nextest)\b/i.test(
-        normalized,
-      )
-    ) {
-      return "test";
-    }
-    if (
-      /\b(?:typecheck|tsc|mypy|deno\s+check|cargo\s+check)\b/i.test(normalized)
-    ) {
-      return "typecheck";
-    }
-    if (/\b(?:lint|eslint|biome|ruff|clippy|go\s+vet)\b/i.test(normalized)) {
-      return "lint";
-    }
-    if (/\bbuild\b/i.test(normalized)) return "build";
-    if (
-      /\b(?:compileall|py_compile)\b|\b(?:ruby|bash)\s+-[cn]\b|\bnode\s+--check\b/i.test(
-        normalized,
-      )
-    ) {
-      return "compile";
-    }
-    return "other_verification";
   }
   return undefined;
+}
+
+function codingVerificationKind(verifier: string): CodingVerificationKind {
+  if (
+    /\b(?:test|vitest|jest|pytest|rspec|phpunit|mocha|ava|unittest|nextest)\b/i.test(
+      verifier,
+    )
+  ) {
+    return "test";
+  }
+  if (/\b(?:typecheck|tsc|mypy|deno\s+check|cargo\s+check)\b/i.test(verifier)) {
+    return "typecheck";
+  }
+  if (/\b(?:lint|eslint|biome|ruff|clippy|go\s+vet)\b/i.test(verifier)) {
+    return "lint";
+  }
+  if (/\bbuild\b/i.test(verifier)) return "build";
+  if (
+    /\b(?:compileall|py_compile)\b|\b(?:ruby|bash)\s+-[cn]\b|\bnode\s+--check\b/i.test(
+      verifier,
+    )
+  ) {
+    return "compile";
+  }
+  return "other_verification";
 }
 
 function isNoopShellVerificationCommand(command: string): boolean {

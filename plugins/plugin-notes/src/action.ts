@@ -291,7 +291,7 @@ export const notesAction: Action = {
   descriptionCompressed:
     "notes: create, list/search, patch title/body or exact text, legacy whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
-    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic); date/period queries -> NOTES_LIST(dateRange={field:createdAt/updatedAt,startAt,endAt}, content=optional topic). Omit dateRange only when no date window is requested, and omit content when no topic is requested. Resolve relative windows from the current date and user timezone; last week is the previous Monday-to-Monday calendar week. Read timestamps from the action result, not provider restoration. Delete -> NOTES_DELETE(content=identifying text); edit -> NOTES_PATCH(target={kind:id/text,value}, changes=[{field:title/body,value:exact replacement}], or changes=[] with textEdit for literal substitution); omitted fields remain unchanged. NOTES_UPDATE supports exact textEdit substitutions and legacy complete-note replacement. Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
+    "Use the Notes store for saved-note work; MEMORY, documents, files and DATABASE do not search it. Do not use raw SQL. Prefer available NOTES child operations; discover the required operation when missing. Never substitute a read for a requested edit or deletion. A title index is not body or timestamp evidence; use supplied current complete records or the appropriate read. Keep exact wording, punctuation and line breaks. Dates inside note text are content unless scheduling or a reminder is explicitly requested. Opening Notes is separate navigation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -574,7 +574,7 @@ export const notesAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Required for replacementContent and nonempty PATCH changes: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Literal textEdit may omit it.",
+        "Required for every PATCH, including textEdit, and for UPDATE replacementContent: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
       subactions: ["update", "patch"],
       required: false,
       requiredForSubactions: ["patch"],

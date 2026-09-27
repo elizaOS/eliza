@@ -339,7 +339,7 @@ export function persistPrivateMediaBytes(
   const nonce = crypto.randomBytes(8).toString("hex");
   const fileName = `${hash}.private-${nonce}.${extForMime(mimeType)}`;
   const filePath = path.join(mediaDir(), fileName);
-  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, buffer);
+  writeMediaFileAtomic(filePath, buffer);
   return { hash, fileName };
 }
 /** Read private media bytes; public media names and traversal are rejected. */
@@ -361,6 +361,28 @@ export function deletePrivateMediaFile(fileName: string): boolean {
   fs.unlinkSync(filePath);
   return true;
 }
+/**
+ * Write a media file so its final name is only ever observed complete: bytes go
+ * to a private `.pending-*` sibling that is renamed into place. An existing file
+ * of the right size is kept; one of the wrong size (an interrupted earlier
+ * write) is replaced. Returns whether the file was written.
+ */
+function writeMediaFileAtomic(filePath: string, bytes: Buffer): boolean {
+  const existing = fs.statSync(filePath, { throwIfNoEntry: false });
+  if (existing?.isFile() && existing.size === bytes.byteLength) return false;
+  const pendingPath = path.join(
+    path.dirname(filePath),
+    `.pending-${crypto.randomUUID()}`,
+  );
+  try {
+    fs.writeFileSync(pendingPath, bytes, { flag: "wx", mode: 0o600 });
+    fs.renameSync(pendingPath, filePath);
+  } catch (err) {
+    fs.rmSync(pendingPath, { force: true });
+    throw err;
+  }
+  return true;
+}
 /** Write bytes to the content-addressed store (idempotent) and return the served URL. */
 export function persistMediaBytes(
   buffer: Buffer,
@@ -374,10 +396,7 @@ export function persistMediaBytes(
   const hash = crypto.createHash("sha256").update(buffer).digest("hex");
   const fileName = `${hash}.${extForMime(effectiveMime)}`;
   const filePath = path.join(mediaDir(), fileName);
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, buffer);
-    maybeEvict();
-  }
+  if (writeMediaFileAtomic(filePath, buffer)) maybeEvict();
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
 }
 /**
@@ -585,7 +604,7 @@ export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
   if (path.dirname(filePath) !== mediaDir()) return false;
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
-    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, bytes);
+    writeMediaFileAtomic(filePath, bytes);
     return true;
   } catch (err) {
     // error-policy:J2 context-adding rethrow — a failed restore write is data

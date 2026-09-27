@@ -15,4 +15,4 @@ python ../../scripts/osworld/python/run_multienv_dart_gui.py \
   --model dart-gui \
   --model_type qwen25vl \
   --infer_mode dart_mode \
-  --result_dir ./result_multi_apps_pengxiang_transformers12 | tee run_20251103_multi_apps_pengxiang_transformers12.log 
+  --result_dir ./result_multi_apps_pengxiang_transformers12 | tee run_20251103_multi_apps_pengxiang_transformers12.log

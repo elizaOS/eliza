@@ -45,6 +45,7 @@ function makeRunner(
     renderReply,
     recentConversationTexts: async () => [],
     runJsonModel: async () => null,
+    resolveTimeZone: () => "UTC",
   });
 }
 
@@ -221,6 +222,7 @@ describe("health action runner", () => {
       renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       recentConversationTexts,
       runJsonModel,
+      resolveTimeZone: () => "UTC",
     });
 
     // resolveHealthPlanWithLlm short-circuits unless runtime.useModel exists.
@@ -259,6 +261,7 @@ describe("health action runner", () => {
       getHealthDailySummary: vi.fn(),
     } satisfies HealthActionService;
     const runner = createHealthActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => false,
       createService: () => service,
       messageText: (m) =>
@@ -303,6 +306,7 @@ describe("health action runner", () => {
       }),
     );
     const runner = createHealthActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => true,
       createService: () => service,
       messageText: (m) =>
@@ -415,5 +419,59 @@ describe("health action runner", () => {
       status: { available: false, backend: "none" },
       healthConnectors: [],
     });
+  });
+
+  it("uses the owner's local calendar day for today and the trend window", async () => {
+    // 22:30Z on Sep 13 is already Sep 14 in Tokyo; the UTC day would be wrong.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-13T22:30:00.000Z"));
+    try {
+      const service = {
+        getHealthConnectorStatus: vi.fn(async () => ({
+          available: true,
+          backend: "healthkit" as const,
+        })),
+        getHealthSummary: vi.fn(async () => ({
+          providers: [],
+          summaries: [],
+          samples: [],
+          workouts: [],
+          sleepEpisodes: [],
+          syncedAt: "2026-09-13T22:30:00.000Z",
+        })),
+        getHealthTrend: vi.fn(async () => []),
+        getHealthDataPoints: vi.fn(),
+        getHealthDailySummary: vi.fn(async (date: string) => ({
+          date,
+          steps: 1200,
+          activeMinutes: 30,
+          sleepHours: 7.5,
+          source: "healthkit" as const,
+        })),
+      } satisfies HealthActionService;
+      const runner = createHealthActionRunner({
+        hasAccess: async () => true,
+        createService: () => service,
+        messageText: () => "",
+        renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
+        recentConversationTexts: async () => [],
+        runJsonModel: async () => null,
+        resolveTimeZone: () => "Asia/Tokyo",
+      });
+
+      await runner(runtime, message, undefined, {
+        parameters: { subaction: "today" },
+      });
+      expect(service.getHealthDailySummary).toHaveBeenCalledWith("2026-09-14");
+
+      await runner(runtime, message, undefined, {
+        parameters: { subaction: "trend", days: 3 },
+      });
+      expect(service.getHealthTrend).toHaveBeenCalledWith(3, {
+        timeZone: "Asia/Tokyo",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
