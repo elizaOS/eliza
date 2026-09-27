@@ -24,8 +24,14 @@ describe("coding pending terminal recovery", () => {
     const result = await runPlannerLoop({
       codingMode: true,
       context: { id: "pending-coding" },
+      tools: ["SHELL", "WRITE", "REPLY"].map((name) => ({
+        name,
+        description: name,
+        parameters: { type: "object", properties: {} },
+      })),
       runtime: {
-        useModel: async () => {
+        useModel: async (_type, params) => {
+          expect(params.toolChoice).toBe("required");
           round++;
           if (round > 5) throw new Error("Unexpected retry");
           if (round === 4) return { text: "\n\n", toolCalls: [] };
@@ -39,7 +45,7 @@ describe("coding pending terminal recovery", () => {
                 arguments: {
                   command: round === 1 ? "git status" : "rg close src",
                   text: "I will keep working.",
-                  eliza_turn_scope: "more_work_pending",
+                  eliza_turn_scope: round === 3 ? "final" : "more_work_pending",
                 },
               },
             ],
@@ -62,6 +68,87 @@ describe("coding pending terminal recovery", () => {
     expect(executed).toEqual(["SHELL", "SHELL", "WRITE"]);
     expect(result.terminalFailure).toBeUndefined();
     expect(result.trajectory.evaluatorOutputs).toEqual([]);
+  });
+
+  it("resets empty-response retries after successful tool progress", async () => {
+    let round = 0;
+    let executions = 0;
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "empty-coding-progress" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 7) throw new Error("Unexpected retry");
+          return round % 2 === 0
+            ? { text: "", toolCalls: [] }
+            : {
+                text: "",
+                toolCalls: [
+                  {
+                    id: `read-${round}`,
+                    name: "READ",
+                    arguments: {
+                      file_path: `/app/${round}.ts`,
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+        },
+      },
+      executeToolCall: async () => {
+        executions++;
+        return {
+          success: true,
+          text: `Source ${executions} read`,
+          data: { readOnlyOperation: true },
+          ...(executions === 4 ? { continueChain: false } : {}),
+        };
+      },
+    });
+    expect(round).toBe(7);
+    expect(executions).toBe(4);
+    expect(result.terminalFailure).toBeUndefined();
+  });
+
+  it("bounds consecutive empty completions even after the model declared final scope", async () => {
+    let round = 0;
+    let executions = 0;
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "empty-coding-limit" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 4) throw new Error("Unbounded empty retries");
+          return round === 1
+            ? {
+                text: "",
+                toolCalls: [
+                  {
+                    id: "inspection",
+                    name: "READ",
+                    arguments: { eliza_turn_scope: "final" },
+                  },
+                ],
+              }
+            : { text: "\n\n", toolCalls: [] };
+        },
+      },
+      executeToolCall: async () => {
+        executions++;
+        return {
+          success: true,
+          text: "Source read",
+          data: { readOnlyOperation: true },
+        };
+      },
+    });
+    expect(round).toBe(4);
+    expect(executions).toBe(1);
+    expect(result.terminalFailure?.kind).toBe("resource_limit");
+    expect(result.evaluator?.success).not.toBe(true);
   });
 
   it("keeps final completion gated without claiming an indeterminate observation changed files", async () => {

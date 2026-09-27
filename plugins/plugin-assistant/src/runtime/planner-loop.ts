@@ -410,7 +410,9 @@ export async function runPlannerLoop(
       (error.kind === "tool_calls" ||
         error.kind === "trajectory_token_budget" ||
         error.kind === "repeated_observations" ||
-        (params.codingMode === true && error.kind === "repeated_failures") ||
+        (params.codingMode === true &&
+          (error.kind === "repeated_failures" ||
+            error.kind === "terminal_only_continuations")) ||
         error.kind === "memory_search_rounds");
     if (liveTrajectory && (timeout || budget)) {
       const message = timeout
@@ -524,6 +526,7 @@ async function runPlannerLoopIterations(
   });
   const failures: FailureLike[] = [];
   let terminalOnlyContinuations = 0;
+  let consecutiveCodingTerminalContinuations = 0;
   let codingVerificationDeferrals = 0;
   let lastCodingVerificationProgressCount = -1;
   let requiredToolMisses = 0;
@@ -1105,13 +1108,15 @@ async function runPlannerLoopIterations(
               // pending chat work also needs a native continuation or scope release:
               // REPLY/IGNORE/STOP can close the turn without repeating an action.
               // Bare prose has no native scope field and can trigger redundant
-              // evaluation/synthesis. Other settled turns retain the explicit auto
-              // choice; omitting it would default back to required in callPlanner.
+              // evaluation/synthesis. Coding keeps native calls required because
+              // REPLY supplies its explicit final scope without another mutation.
+              // Other settled turns retain the explicit auto choice.
               toolChoice: synthesizingRequiredModelReply
                 ? undefined
                 : requireNonTerminalToolCall
-                  ? hasExecutedNonTerminalTool(trajectory) &&
-                    (codingMode || lastPlannerExplicitCompleted !== false)
+                  ? !codingMode &&
+                    hasExecutedNonTerminalTool(trajectory) &&
+                    lastPlannerExplicitCompleted !== false
                     ? "auto"
                     : "required"
                   : params.toolChoice,
@@ -1598,16 +1603,16 @@ async function runPlannerLoopIterations(
         };
       }
 
-      // A progress-only REPLY or empty native response cannot close work the
-      // coding planner explicitly left pending. Keep this separate from the
-      // verification-repair budget, which applies only to attempted completion.
+      // Pending progress replies and empty native responses are not completion,
+      // even when an earlier inspection call declared final scope. Keep their
+      // consecutive retries separate from attempted-final verification repairs.
       if (
         codingDrainQueue &&
-        lastPlannerExplicitCompleted === false &&
         plannerOutput.toolCalls.every(
           (call) => call.name.toUpperCase() === "REPLY",
         ) &&
-        (plannerOutput.completed === false ||
+        ((lastPlannerExplicitCompleted === false &&
+          plannerOutput.completed === false) ||
           (plannerOutput.toolCalls.length === 0 &&
             !plannerOutput.messageToUser?.trim()))
       ) {
@@ -1622,7 +1627,7 @@ async function runPlannerLoopIterations(
           assertTrajectoryLimit({
             kind: "terminal_only_continuations",
             max: config.maxTerminalOnlyContinuations,
-            observed: ++terminalOnlyContinuations,
+            observed: ++consecutiveCodingTerminalContinuations,
           });
           appendPlannerModelFeedbackEvent(trajectory, {
             id: `coding-pending-terminal:${iteration}`,
@@ -1630,7 +1635,7 @@ async function runPlannerLoopIterations(
             source: "planner-loop",
             createdAt: Date.now(),
             content:
-              "The coding work is still explicitly pending. A progress reply or empty response does not complete it. Continue with the next necessary native tool call. When the task is complete or a genuine blocker prevents further work, provide a grounded final reply with final scope. Do not repeat settled mutations or claim unrecorded changes.",
+              "A progress reply or empty response does not complete the coding task. Continue with the next necessary native tool call. When the task is complete or a genuine blocker prevents further work, provide a grounded final reply with final scope. Do not repeat settled mutations or claim unrecorded changes.",
           });
           continue;
         }
@@ -2438,6 +2443,9 @@ async function runPlannerLoopIterations(
     }
 
     const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+    if (codingDrainQueue && latestResult?.success === true) {
+      consecutiveCodingTerminalContinuations = 0;
+    }
     if (
       isDiscoveryActionName(toolCall.name) &&
       latestResult?.success === true &&
