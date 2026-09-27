@@ -6,7 +6,8 @@
  * `updateMemory`. When a TEXT_EMBEDDING_BATCH model is registered it collapses a
  * per-turn embed burst into one round-trip, falling back per-item on any batch
  * failure. Without a model it waits without a drain task, then activates when
- * an embedding handler registers, including handlers installed after boot.
+ * an embedding handler registers, including handlers installed after boot. A
+ * failed activation is withdrawn, so the next registration retries it.
  */
 
 import { shouldSkipResponseMemoryPersistence } from "../memory";
@@ -124,7 +125,15 @@ export class EmbeddingGenerationService extends Service {
 		)
 			return;
 		this.isDisabled = false;
-		await this.initialize();
+		try {
+			await this.initialize();
+		} catch (error) {
+			// error-policy:J2 return to the waiting state so the next registration
+			// retries activation; the registerModel dispatch boundary reports the
+			// preserved failure.
+			this.isDisabled = true;
+			throw error;
+		}
 	};
 
 	private static readonly EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN";
@@ -167,7 +176,21 @@ export class EmbeddingGenerationService extends Service {
 		if (this.stopped || this.isDisabled) return Promise.resolve();
 		// Model registration and incoming requests can overlap. They share one
 		// queue initialization, including any failure from task registration.
-		this.initialization ??= this.initializeQueue();
+		this.initialization ??= this.initializeQueue().catch((error: unknown) => {
+			// error-policy:J2 withdraw the failed activation and preserve its
+			// failure. A cached rejection would replay to every later request and
+			// block retry, and the handlers must not stack on the next attempt.
+			this.initialization = null;
+			this.runtime.unregisterEvent(
+				EventType.EMBEDDING_GENERATION_REQUESTED,
+				this.embeddingRequestHandler,
+			);
+			this.runtime.unregisterEvent(
+				EventType.MESSAGE_SENT,
+				this.messageSentHandler,
+			);
+			throw error;
+		});
 		return this.initialization;
 	}
 
@@ -568,7 +591,21 @@ export class EmbeddingGenerationService extends Service {
 			this.messageSentHandler,
 		);
 
-		await this.initialization;
+		try {
+			await this.initialization;
+		} catch (error) {
+			// error-policy:J6 teardown-only: the activation's own caller receives
+			// this failure and has already returned the service to waiting, so
+			// no drain task was started and nothing needs disposal.
+			this.runtime.logger.debug(
+				{
+					src: "plugin:basic-capabilities:service:embedding",
+					agentId: this.runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Activation failed while stopping; nothing to dispose",
+			);
+		}
 		this.runtime.logger.info(
 			{
 				src: "plugin:basic-capabilities:service:embedding",
