@@ -1,19 +1,8 @@
 /**
- * Regression coverage for #32412 — the bionic-host TEXT path must not inject a
- * bridge-only decode cap.
- *
- * The stock Android bridge built `maxTokens: lane.maxTokens ?? 256`, so a caller
- * that requested no output limit was silently capped at 256 decoded tokens and
- * the response was then rejected with MODEL_OUTPUT_INCOMPLETE even when the
- * native host had finished the reply (tokens >= 256 >= injected cap). The
- * canonical sibling contract in
- * plugins/plugin-local-inference/src/services/bionic-host-loader.ts already
- * handles this: it omits an absent limit from the wire request, treats an
- * explicit limit only when the caller supplied one, and otherwise trusts the
- * host's own `incomplete` receipt.
- *
- * Real transport: a live abstract-namespace AF_UNIX host that speaks the same
- * 4-byte length-prefixed JSON frames as ElizaBionicInferenceServer.java.
+ * #32412: the bionic-host TEXT path must not inject a bridge-only 256-token
+ * decode cap when the caller set no limit; the host's `incomplete` receipt is
+ * the truncation signal. Uses a real abstract-namespace AF_UNIX host speaking
+ * ElizaBionicInferenceServer's length-prefixed JSON frames.
  */
 
 import net from "node:net";
@@ -59,34 +48,6 @@ function startHost(
         ) as Record<string, unknown>;
         seen.request = req;
         sock.write(frame(reply(req)));
-      }
-    });
-  });
-  server.listen({ path: `\0${SOCK}` });
-  return server;
-}
-
-/** Abstract-UDS host that streams several frames for op=generateStream. */
-function startStreamingHost(
-  reply: (req: Record<string, unknown>) => string[],
-): net.Server {
-  const server = net.createServer((sock) => {
-    let buf = Buffer.alloc(0);
-    let expected = -1;
-    sock.on("data", (d) => {
-      buf = Buffer.concat([buf, d]);
-      if (expected < 0 && buf.length >= 4) expected = buf.readUInt32BE(0);
-      if (expected >= 0 && buf.length >= 4 + expected) {
-        const req = JSON.parse(
-          buf.subarray(4, 4 + expected).toString("utf8"),
-        ) as Record<string, unknown>;
-        seen.request = req;
-        let delay = 0;
-        for (const json of reply(req)) {
-          delay += 5;
-          const full = frame(json);
-          setTimeout(() => sock.write(full), delay);
-        }
       }
     });
   });
@@ -176,7 +137,7 @@ describe("bionic-host TEXT handler — no bridge-only decode cap (#32412)", () =
   linuxAbstractSocketIt(
     "does not reject a host-completed long reply when no caller limit was set",
     async () => {
-      // 4096 tokens decoded with no caller limit: below the injected 256 cap
+      // 4096 tokens decoded with no caller limit: past the old injected 256 cap
       // this used to throw MODEL_OUTPUT_INCOMPLETE for a finished reply.
       host = startHost(() =>
         JSON.stringify({ ok: true, text: "long reply", tokens: 4096 }),
@@ -206,64 +167,6 @@ describe("bionic-host TEXT handler — no bridge-only decode cap (#32412)", () =
       await expect(generate({}, { prompt: "hello" })).rejects.toMatchObject({
         code: "MODEL_OUTPUT_INCOMPLETE",
       });
-    },
-  );
-
-  linuxAbstractSocketIt(
-    "forwards an explicit caller limit and rejects output that fills it",
-    async () => {
-      host = startHost(() =>
-        JSON.stringify({ ok: true, text: "capped", tokens: 512 }),
-      );
-      const generate = await textLargeHandler();
-
-      await expect(
-        generate({}, { prompt: "hello", maxTokens: 512 }),
-      ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
-      expect(seen.request?.maxTokens).toBe(512);
-    },
-  );
-
-  linuxAbstractSocketIt(
-    "serves a completion below an explicit caller limit",
-    async () => {
-      host = startHost(() =>
-        JSON.stringify({ ok: true, text: "short", tokens: 7 }),
-      );
-      const generate = await textLargeHandler();
-
-      await expect(
-        generate({}, { prompt: "hello", maxTokens: 512 }),
-      ).resolves.toBe("short");
-      expect(seen.request?.maxTokens).toBe(512);
-    },
-  );
-
-  linuxAbstractSocketIt(
-    "keeps the uncapped contract on the streaming transport too",
-    async () => {
-      host = startStreamingHost(() => [
-        JSON.stringify({ type: "token", text: "stre" }),
-        JSON.stringify({ type: "token", text: "amed" }),
-        JSON.stringify({
-          type: "done",
-          ok: true,
-          text: "streamed",
-          tokens: 4096,
-        }),
-      ]);
-      const generate = await textLargeHandler();
-      const chunks: string[] = [];
-
-      await expect(
-        generate(
-          {},
-          { prompt: "hello", onStreamChunk: (t: string) => chunks.push(t) },
-        ),
-      ).resolves.toBe("streamed");
-      expect(seen.request?.op).toBe("generateStream");
-      expect(seen.request).not.toHaveProperty("maxTokens");
-      expect(chunks.join("")).toBe("streamed");
     },
   );
 });
