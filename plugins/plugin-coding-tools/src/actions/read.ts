@@ -252,6 +252,18 @@ export async function readFileHandler(
   options: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  const result = await readFileContent(runtime, message, options, callback);
+  // READ cannot mutate the workspace. Preserve failed reads in the trajectory
+  // without giving an exploratory miss authority over later completed work.
+  return { ...result, data: { ...result.data, readOnlyOperation: true } };
+}
+
+async function readFileContent(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
   const conversationId =
     message.roomId == null ? undefined : String(message.roomId);
   if (!conversationId)
