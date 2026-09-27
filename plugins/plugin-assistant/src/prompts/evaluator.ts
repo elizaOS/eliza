@@ -13,20 +13,82 @@ export const EVALUATOR_CONTEXT_ROUTES = {
   RESTORE_FULL: "full",
 } as const;
 
+/** Which deferred sources this evaluator call can restore. */
+export interface EvaluatorRestorableContext {
+  /** Selected or background-reviewed dialogue left originals out. */
+  history: boolean;
+  /** Provider bodies were deferred behind references. */
+  providers: boolean;
+}
+
+const ALL_RESTORABLE: EvaluatorRestorableContext = {
+  history: true,
+  providers: true,
+};
+
+/**
+ * Restoration decisions the runtime can honor. Advertising a route with
+ * nothing deferred only invites a protocol failure, so the template and the
+ * response schema offer exactly these.
+ */
+export function evaluatorContextRouteNames(
+  restorable: EvaluatorRestorableContext = ALL_RESTORABLE,
+): Array<keyof typeof EVALUATOR_CONTEXT_ROUTES> {
+  return [
+    ...(restorable.history ? (["RESTORE_HISTORY"] as const) : []),
+    ...(restorable.providers ? (["RESTORE_PROVIDERS"] as const) : []),
+    ...(restorable.history && restorable.providers
+      ? (["RESTORE_FULL"] as const)
+      : []),
+  ];
+}
+
+const EVALUATOR_CONTEXT_ROUTE_LINES: Record<
+  keyof typeof EVALUATOR_CONTEXT_ROUTES,
+  string
+> = {
+  RESTORE_HISTORY:
+    "- RESTORE_HISTORY: read missing original dialogue before deciding",
+  RESTORE_PROVIDERS:
+    "- RESTORE_PROVIDERS: read needed deferred provider content before deciding",
+  RESTORE_FULL:
+    "- RESTORE_FULL: read both missing dialogue and provider content before deciding",
+};
+
+/** Restoration guidance limited to the routes this call can honor. */
+function restorationRule(restorable: EvaluatorRestorableContext): string {
+  if (restorable.history && restorable.providers)
+    return "- Choose one restoration decision only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.\n";
+  if (restorable.history)
+    return "- Choose RESTORE_HISTORY only for missing evidence, not merely omitted dialogue: a specific missing original dialogue constraint, correction, referent or historical fact. Explain that deficit in thought. Missing live-record fields are tool work: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or live-record fields. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. RESTORE_HISTORY requires success=false and no messageToUser/copyToClipboard; it cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call; never infer omitted facts or repeat completed mutations.\n";
+  if (restorable.providers)
+    return "- Choose RESTORE_PROVIDERS only for missing evidence, not merely omitted categories: needed content advertised by a deferred provider reference. Explain that deficit in thought. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. RESTORE_PROVIDERS requires success=false and no messageToUser/copyToClipboard; it cannot simultaneously select a queued call or finish. The runtime restores complete provider content in one tool-free evaluator call; never infer omitted facts or repeat completed mutations.\n";
+  return "";
+}
+
 export function evaluatorTemplateForQueue(
   hasQueuedCalls: boolean,
   clipboardAvailable = true,
   requiresReplyField = false,
+  restorable: EvaluatorRestorableContext = ALL_RESTORABLE,
+  /** False when this turn produced no committed receipt to cite. */
+  effectReceiptsAvailable = true,
 ): string {
+  const contextRoutes = evaluatorContextRouteNames(restorable);
+  const decisions = [
+    "FINISH",
+    ...(hasQueuedCalls ? ["NEXT_RECOMMENDED"] : []),
+    "CONTINUE",
+    ...contextRoutes,
+  ]
+    .map((decision) => `"${decision}"`)
+    .join("|");
   return `task: Evaluate latest action; route planner-loop next step.
 
 routes:
 - FINISH: the task is complete or should stop
 ${hasQueuedCalls ? "- NEXT_RECOMMENDED: one queued tool should run next before replanning\n" : ""}- CONTINUE: call the planner again because the queued plan is missing or stale
-- RESTORE_HISTORY: read missing original dialogue before deciding
-- RESTORE_PROVIDERS: read needed deferred provider content before deciding
-- RESTORE_FULL: read both missing dialogue and provider content before deciding
-
+${contextRoutes.map((route) => `${EVALUATOR_CONTEXT_ROUTE_LINES[route]}\n`).join("")}
 rules:
 - Judge accumulated results against every explicit requested outcome; no clause is optional because another seems central. Retrieval proves information, not visible navigation. An open/navigate request requires successful navigation THIS turn; page/context metadata may be stale. If only navigation remains, navigate without repeating the successful lookup, then answer. Continue while any requested outcome has an available tool.
 - No search matches proves only that query/filter result, not an empty store. Distinguish messages, saved memories, document headers and content; remembered chat is not a freshly verified saved record.
@@ -43,8 +105,7 @@ rules:
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 ${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning." : "- No executable calls remain queued. CONTINUE to plan any remaining tool work; do not repeat completed operations."}
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
-- Choose one restoration decision only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
-- if an answer needs an unexecuted tool/action side effect to be true, use ${hasQueuedCalls ? "NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE" : "CONTINUE"} to plan the missing work; do not imagine the result or declare success before it executes
+${restorationRule(restorable)}- if an answer needs an unexecuted tool/action side effect to be true, use ${hasQueuedCalls ? "NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE" : "CONTINUE"} to plan the missing work; do not imagine the result or declare success before it executes
 ${requiresReplyField ? "- This internal result has no delivered answer or terminal planner reply to approve. For FINISH, write the grounded answer or necessary question in messageToUser now; do not leave it empty. CONTINUE or a restoration decision uses an empty string, not a progress draft." : "- For FINISH, omit messageToUser when the latest terminal planner reply already answers every requested outcome accurately from the evidence; this approves that exact reply for delivery. Otherwise supply the corrected answer. Verified tool text and explicit reply suppression also need no new message. Internal results and undelivered Stage-1 drafts alone are not replies. For other routes, messageToUser is optional. Never add process-status bubbles after tools finish."}
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
 - messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Use supplied local date/time labels and their timezone; keep AM/PM consistent and omit redundant daypart summaries. A past scheduled time proves neither attendance nor completion; describe it as scheduled or past, not done. Translate other machine dates and timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request. Copy requested checksums, opaque identifiers and other exact tool-returned values verbatim from the current receipt; never reconstruct, abbreviate or normalize them. Compare the answer value with the receipt before finishing.
@@ -53,8 +114,7 @@ ${requiresReplyField ? "- This internal result has no delivered answer or termin
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
 - Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, omit messageToUser entirely unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
 - If setting messageToUser, ground it in THIS request's outcome in everyday language. Do not rely on a fixed canned phrase list or use a process-status ack as the whole message.
-- For every completed change claimed in messageToUser or an approved terminal reply, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].
-- Classify the reply's claimed outcome in replyEffectStatus: applied for a claimed committed mutation or send, even indirect or non-English wording; non_applied for a stopped, failed or clarification-only outcome; none for reads, receipt-grounded view navigation or other prose without a mutation claim. An applied claim needs committed receipt proof; the classification itself proves no execution.
+${effectReceiptsAvailable ? `- For every completed change claimed in messageToUser or an approved terminal reply, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].\n` : ""}- Classify the reply's claimed outcome in replyEffectStatus: applied for a claimed committed mutation or send, even indirect or non-English wording; non_applied for a stopped, failed or clarification-only outcome; none for reads, receipt-grounded view navigation or other prose without a mutation claim. An applied claim needs committed receipt proof; the classification itself proves no execution.
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Rejecting or cancelling queued approvals, stored events, jobs, notes or other persisted state requires its own committed receipt; a promise not to execute the original action does not settle a pending request. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result. Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
@@ -63,7 +123,7 @@ ${clipboardAvailable ? "- copyToClipboard optional; requires title + content\n" 
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.
-Fields in order: thought string; success boolean; decision "FINISH"|${hasQueuedCalls ? '"NEXT_RECOMMENDED"|' : ""}"CONTINUE"|"RESTORE_HISTORY"|"RESTORE_PROVIDERS"|"RESTORE_FULL". Use decision, not route or contextRequest. Any requested outcome still pending with an available tool means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
+Fields in order: thought string; success boolean; decision ${decisions}. Use decision, not route or contextRequest. Any requested outcome still pending with an available tool means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
 
 context_object:
 {{contextObject}}

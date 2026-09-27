@@ -324,6 +324,41 @@ describe("managed incremental evaluators", () => {
     ).toHaveLength(1);
   });
 
+  it("states an identical evidence contract once for every extractor on the same page", async () => {
+    const { runtime, service, addMessage } = harness();
+    const evaluator: Evaluator = {
+      name: "first",
+      description: "First extractor",
+      incremental: true,
+      schema: { type: "object", properties: {} },
+      shouldRun: async () => true,
+      prompt: () => "Evaluate the selected evidence.",
+      processors: [],
+    };
+    runtime.registerEvaluator(evaluator);
+    runtime.registerEvaluator({ ...evaluator, name: "second" });
+    runtime.useModel = vi.fn(async () => ({
+      first: {},
+      second: {},
+    })) as AgentRuntime["useModel"];
+    const current = await addMessage("SHARED_PAGE_EVIDENCE", 1);
+    const result = await service.run(current, undefined, {
+      phase: "post_turn",
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.processedEvaluators).toEqual(["first", "second"]);
+    const prompt = vi.mocked(runtime.useModel).mock.calls[0]?.[1]?.messages?.[0]
+      ?.content;
+    if (typeof prompt !== "string")
+      throw new Error("Expected evaluator prompt");
+    expect(prompt).toContain(
+      "Every active evaluator below: Incremental evidence contract: process all evidence records above. Removed source IDs: []. Edited source IDs: [].",
+    );
+    expect(prompt.match(/Incremental evidence contract:/g)).toHaveLength(1);
+    expect(prompt).toContain("### first\nEvaluate the selected evidence.");
+    expect(prompt).toContain("### second\nEvaluate the selected evidence.");
+  });
+
   it("excludes replay-only evidence from a fresh extractor's prompt without changing the durable replay", async () => {
     const { runtime, roomId, service, addMessage } = harness();
     let fail = true;
