@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentBackupCatalogRuntimeSummary } from "@elizaos/cloud-shared/lib/services/agent-backup-catalog-runtime";
 import {
   type AgentBackupCatalogWorkerComposition,
+  agentBackupCatalogCycleFailureDiagnostic,
   createAgentBackupCatalogWorkerComposition,
 } from "@elizaos/cloud-shared/lib/services/agent-backup-catalog-worker-composition";
 
@@ -325,9 +326,29 @@ function ownDataString(error: unknown, property: string): string | undefined {
   }
 }
 
+function ownDataCause(error: unknown): unknown {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) {
+    return undefined;
+  }
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
+    return descriptor && "value" in descriptor ? descriptor.value : undefined;
+  } catch {
+    // error-policy:J1 hostile thrown values end the bounded cause walk.
+    return undefined;
+  }
+}
+
 function safeErrorCode(error: unknown): string {
-  const code = ownDataString(error, "code");
-  if (code && SAFE_BACKUP_CATALOG_ERROR_CODES.has(code)) return code;
+  // Stage attribution wraps the original failure; keep its allowlisted code.
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const code = ownDataString(current, "code");
+    if (code && SAFE_BACKUP_CATALOG_ERROR_CODES.has(code)) return code;
+    current = ownDataCause(current);
+  }
   return "AGENT_BACKUP_CATALOG_CYCLE_FAILED";
 }
 
@@ -658,6 +679,9 @@ export async function runBackupCatalogWorker(input: {
         {
           code: safeErrorCode(error),
           failures,
+          // Closed stage/class/code/status only: never messages, queries,
+          // parameters, hosts, buckets, object keys, or credentials.
+          diagnostic: agentBackupCatalogCycleFailureDiagnostic(error),
         },
       );
       if (config.runOnce) {
