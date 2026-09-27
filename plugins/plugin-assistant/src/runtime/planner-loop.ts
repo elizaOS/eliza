@@ -181,7 +181,8 @@ rules:
 - prefer EDIT for existing files; never change tests or fixtures only to hide a failure
 - pass only schema-declared arguments; never invent placeholders
 - after a tool result, continue with the next concrete step until the task is complete
-- after WRITE or EDIT, run a successful narrow SHELL verification before finishing
+- establish the relevant test baseline before editing; distinguish pre-existing failures from regressions and do not expand the task to repair unrelated baseline defects
+- after WRITE or EDIT, run a successful narrow test, typecheck, lint, or build through SHELL before finishing; use a standalone foreground command with cwd or cd &&, without pipes to head, tail, or tee, backgrounding, or operators that hide failure
 - do not claim success when a tool failed or verification is still pending
 - use messageToUser only for the final grounded result or a genuinely blocking question
 - every native tool call requires eliza_turn_scope: use the same value on every call in one batch, more_work_pending if a later batch is needed or final if this batch covers the full request; final does not skip result verification
@@ -380,6 +381,28 @@ export async function runPlannerLoop(
         modelUsage: usage,
       };
     }
+    if (
+      params.codingMode === true &&
+      liveTrajectory &&
+      isModelProviderError(error) &&
+      modelProviderErrorDetail(error)?.status === undefined
+    ) {
+      const message =
+        "The coding task remains incomplete because the model connection failed. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
+      return {
+        status: "finished",
+        trajectory: liveTrajectory,
+        evaluator: { success: false, decision: "FINISH", thought: message },
+        terminalFailure: {
+          kind: "provider_issue",
+          code: "MODEL_PROVIDER_TRANSPORT_FAILED",
+          transient: true,
+          message,
+        },
+        finalMessage: message,
+        modelUsage: usage,
+      };
+    }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
     const budget =
@@ -387,6 +410,7 @@ export async function runPlannerLoop(
       (error.kind === "tool_calls" ||
         error.kind === "trajectory_token_budget" ||
         error.kind === "repeated_observations" ||
+        (params.codingMode === true && error.kind === "repeated_failures") ||
         error.kind === "memory_search_rounds");
     if (liveTrajectory && (timeout || budget)) {
       const message = timeout
@@ -394,7 +418,10 @@ export async function runPlannerLoop(
         : error instanceof TrajectoryLimitExceeded &&
             error.kind === "repeated_observations"
           ? "Planning stopped after repeated checks returned unchanged results. The request remains incomplete; earlier recorded outcomes are preserved."
-          : "Planning reached its configured resource limit before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
+          : error instanceof TrajectoryLimitExceeded &&
+              error.kind === "repeated_failures"
+            ? "Planning stopped after repeated tool failures. The request remains incomplete; earlier recorded outcomes are preserved."
+            : "Planning reached its configured resource limit before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
       return {
         status: "finished",
         trajectory: liveTrajectory,

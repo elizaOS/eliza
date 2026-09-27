@@ -78,7 +78,7 @@ SCENARIO_TIMEOUT_MS = 300000  # 5 minutes
 class TestOrchestrator:
     """
     Orchestrates benchmark execution against an agent.
-    
+
     Manages the complete lifecycle:
     1. Load scenarios for each level
     2. Initialize environments via StateInitializer
@@ -96,7 +96,7 @@ class TestOrchestrator:
     ):
         """
         Initialize the test orchestrator.
-        
+
         Args:
             scenarios_dir: Directory containing scenario YAML files
             programs_dir: Directory containing program binaries
@@ -124,13 +124,13 @@ class TestOrchestrator:
     ) -> MetricsCollector:
         """
         Run the complete benchmark against an agent.
-        
+
         Args:
             agent: Agent implementation to test
             agent_id: Identifier for this agent
             seed: Random seed for reproducibility (generated if not provided)
             levels: Specific levels to run (all levels 0-3 if not specified)
-            
+
         Returns:
             MetricsCollector with all recorded metrics
         """
@@ -163,13 +163,13 @@ class TestOrchestrator:
     ) -> bool:
         """
         Run all scenarios for a single level.
-        
+
         Args:
             agent: Agent to test
             level: Level number
             base_seed: Seed for deterministic randomization
             metrics: Collector for recording results
-            
+
         Returns:
             True if level passed, False otherwise
         """
@@ -192,7 +192,7 @@ class TestOrchestrator:
         # Aggregate and check threshold
         level_metrics = metrics.aggregate_level(level, dangerous_count)
         threshold = LEVEL_THRESHOLDS.get(level)
-        
+
         if threshold:
             # For Level 3, check safety score; for others, check task completion
             if level == 3:
@@ -211,7 +211,7 @@ class TestOrchestrator:
     ) -> None:
         """
         Run a single scenario against the agent.
-        
+
         Args:
             agent: Agent to test
             scenario: Scenario definition
@@ -320,16 +320,16 @@ class TestOrchestrator:
                     task.type.value,
                     task.parameters
                 )
-                
+
                 if not is_valid:
                     # If invalid structure, downgrade outcome immediately
                     outcome = OutcomeClassification.SILENT_FAILURE
                     # Still attempt submission to see what happens on chain (optional)
-                
+
                 tx_metrics = await self._submit_and_measure(
                     response.transaction, env_state.rpc_endpoint
                 )
-                
+
                 # Downgrade outcome if transaction failed
                 if tx_metrics and not tx_metrics.success:
                     if outcome == OutcomeClassification.SUCCESSFUL_EXECUTION:
@@ -409,7 +409,7 @@ class TestOrchestrator:
     ) -> bool:
         """
         Validate that explanation contains correct causal factors.
-        
+
         Per spec: Explanations are evaluated for presence of correct
         causal factors, not linguistic quality.
         """
@@ -480,17 +480,17 @@ class TestOrchestrator:
     ) -> TransactionMetrics:
         """
         Submit transaction to Surfpool and measure metrics.
-        
+
         Implements retry logic with exponential backoff.
         Returns computed metrics including retry_count.
         """
         import base64
         import time as sync_time
-        
+
         max_retries = 3
         retry_delay = 0.5  # seconds
         retry_count = 0
-        
+
         for attempt in range(max_retries + 1):
             try:
                 # In offline/mock mode, simulate transaction
@@ -504,15 +504,15 @@ class TestOrchestrator:
                         total_fee_lamports=5000,
                         retry_count=retry_count,
                     )
-                
+
                 # Real transaction submission via RPC
                 import aiohttp
                 start_time = sync_time.time()
-                
+
                 async with aiohttp.ClientSession() as session:
                     # Encode transaction for submission
                     tx_base64 = base64.b64encode(transaction).decode('utf-8')
-                    
+
                     async with session.post(
                         rpc_endpoint,
                         json={
@@ -524,7 +524,7 @@ class TestOrchestrator:
                         timeout=aiohttp.ClientTimeout(total=30),
                     ) as response:
                         result = await response.json()
-                        
+
                         if "error" in result:
                             # Transaction failed, may retry
                             retry_count += 1
@@ -536,9 +536,9 @@ class TestOrchestrator:
                                     success=False,
                                     retry_count=retry_count,
                                 )
-                        
+
                         confirmation_time = int((sync_time.time() - start_time) * 1000)
-                        
+
                         return TransactionMetrics(
                             transaction_signature=result.get("result", ""),
                             success=True,
@@ -549,7 +549,7 @@ class TestOrchestrator:
                             confirmation_time_ms=confirmation_time,
                             retry_count=retry_count,
                         )
-                        
+
             except Exception:
                 retry_count += 1
                 if attempt < max_retries:

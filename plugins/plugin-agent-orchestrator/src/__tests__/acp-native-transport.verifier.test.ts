@@ -63,3 +63,54 @@ describe("acp-native-transport approval preset 'verifier' (#8898 AC4)", () => {
     expect(approves(readonly, "execute")).toBe(false);
   });
 });
+
+describe("acp-native-transport verifier session mode negotiation", () => {
+  async function selectedModes(
+    approvalPreset: ApprovalPreset,
+    availableModeIds: readonly string[],
+  ): Promise<unknown[]> {
+    const client = makeClient(approvalPreset);
+    const setModeCalls: unknown[] = [];
+    const request = async (method: string, params: unknown) => {
+      if (method === "session/set_mode") setModeCalls.push(params);
+      return method === "session/new"
+        ? {
+            sessionId: "session-1",
+            modes: {
+              currentModeId: availableModeIds[0],
+              availableModes: availableModeIds.map((id) => ({ id })),
+            },
+          }
+        : {};
+    };
+    (client as unknown as { request: typeof request }).request = request;
+    await client.createSession();
+    return setModeCalls;
+  }
+
+  it("prefers read-only, then default, for the verifier", async () => {
+    expect(
+      await selectedModes("verifier", ["agent", "read-only", "default"]),
+    ).toEqual([{ sessionId: "session-1", modeId: "read-only" }]);
+    expect(
+      await selectedModes("verifier", [
+        "bypassPermissions",
+        "default",
+        "dontAsk",
+      ]),
+    ).toEqual([{ sessionId: "session-1", modeId: "default" }]);
+  });
+
+  it("keeps the existing dontAsk fallback when neither mode is advertised", async () => {
+    expect(
+      await selectedModes("verifier", ["bypassPermissions", "dontAsk"]),
+    ).toEqual([{ sessionId: "session-1", modeId: "dontAsk" }]);
+    expect(await selectedModes("verifier", ["acceptEdits"])).toEqual([]);
+  });
+
+  it("leaves standard sessions on dontAsk", async () => {
+    expect(
+      await selectedModes("standard", ["read-only", "default", "dontAsk"]),
+    ).toEqual([{ sessionId: "session-1", modeId: "dontAsk" }]);
+  });
+});

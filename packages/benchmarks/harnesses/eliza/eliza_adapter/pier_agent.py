@@ -58,7 +58,23 @@ class ElizaAgent(BaseAgent):
     def network_allowlist(self) -> NetworkAllowlist:
         return NetworkAllowlist(domains=[self.domain])
 
+    async def _prepare_git_identity(self, environment: BaseEnvironment) -> None:
+        # DeepSWE collects BASE..HEAD, so the agent must be able to commit its
+        # own work. Configure only this disposable task checkout, never a host
+        # global identity. This creates no commit and changes no task source.
+        result = await environment.exec(
+            "git config --local user.name 'Eliza Benchmark' && "
+            "git config --local user.email 'benchmark@eliza.invalid' && "
+            "git var GIT_AUTHOR_IDENT && git var GIT_COMMITTER_IDENT",
+            cwd="/app", timeout_sec=10,
+        )
+        if result.return_code != 0:
+            raise RuntimeError(
+                f"Cannot configure task-local Git author and committer identity: {result.stderr}"
+            )
+
     async def setup(self, environment: BaseEnvironment) -> None:
+        await self._prepare_git_identity(environment)
         await environment.upload_file(self.bundle, "/tmp/eliza-runtime.tar")
         copied = await environment.exec("sha256sum /tmp/eliza-runtime.tar", user="root", timeout_sec=120)
         checksum = (copied.stdout or "").split()
@@ -73,6 +89,9 @@ class ElizaAgent(BaseAgent):
             raise RuntimeError(f"Native runtime setup failed: {result.stderr}")
         if (result.stdout or "").strip() != "1.4.2":
             raise RuntimeError("Native runtime requires pinned Bun 1.4.2")
+        search = await environment.exec("/opt/eliza/bin/rg --version", timeout_sec=10)
+        if search.return_code != 0:
+            raise RuntimeError("Native runtime requires its bundled ripgrep executable")
         home = await environment.exec('printf "%s" "$HOME"', timeout_sec=10)
         home_path = (home.stdout or "").strip()
         if home.return_code != 0 or not home_path.startswith("/") or home_path == "/":
@@ -98,7 +117,12 @@ class ElizaAgent(BaseAgent):
             if model.startswith(prefix):
                 model = model.removeprefix(prefix)
                 break
+        # This coding-only harness provisions text inference and file tools, not
+        # embeddings or wallets. Declare that surface before host startup so it
+        # does not download models or probe unrelated RPC endpoints in the task.
         env = {**self.extra_env,
+               "ELIZA_CANONICAL_EMBEDDINGS_ENABLED": "false",
+               "ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP": "1",
                "ELIZA_STATE_DIR": self.state_dir,
                "ELIZA_CONFIG_PATH": self.state_dir + "/eliza.json",
                "CODING_TOOLS_WORKSPACE_ROOTS": "/app",
@@ -110,6 +134,7 @@ class ElizaAgent(BaseAgent):
                         "CEREBRAS_MODEL": model, "CEREBRAS_SMALL_MODEL": model,
                         "CEREBRAS_LARGE_MODEL": model})
         setting_keys = (
+            "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
             "OPENAI_BASE_URL", "OPENAI_SMALL_MODEL", "OPENAI_LARGE_MODEL",
             "CEREBRAS_BASE_URL", "CEREBRAS_MODEL", "CEREBRAS_SMALL_MODEL",
             "CEREBRAS_LARGE_MODEL", "OPENAI_REASONING_EFFORT",
@@ -131,7 +156,7 @@ class ElizaAgent(BaseAgent):
         result = None
         try:
             result = await environment.exec(
-                "mkdir -p /logs/agent/eliza && " + command
+                'mkdir -p /logs/agent/eliza && PATH="/opt/eliza/bin:$PATH" ' + command
                 + " > /logs/agent/eliza/stdout.log 2> /logs/agent/eliza/stderr.log",
                 cwd="/app", env=environment.agent_process_env(env),
             )

@@ -379,7 +379,7 @@ if __name__ == "__main__":
     ####### The complete version of the list of examples #######
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     args = config()
-    
+
     # save args to json in result_dir/action_space/observation_type/model/args.json
     path_to_args = os.path.join(
         args.result_dir,

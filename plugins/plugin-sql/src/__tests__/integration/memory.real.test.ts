@@ -674,6 +674,34 @@ describe("Memory Integration Tests", () => {
       expect(epochOnly[0].createdAt).toBe(0);
     });
 
+    it("filters getMemories by metadata with the same containment as countMemories", async () => {
+      const withMetadata = (text: string, extra: Record<string, unknown>) => {
+        const memory = createTestMemory({ text });
+        return { ...memory, metadata: { ...memory.metadata, ...extra } };
+      };
+      await adapter.createMemory(withMetadata("slot", { kind: "slot" }), "memories");
+      await adapter.createMemory(
+        withMetadata("slot-extra", { kind: "slot", extra: 1 }),
+        "memories"
+      );
+      await adapter.createMemory(withMetadata("other", { kind: "other" }), "memories");
+
+      const filter = { kind: "slot" };
+      const memories = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        metadata: filter,
+      });
+      const count = await adapter.countMemories({
+        roomIds: [testRoomId],
+        tableName: "memories",
+        metadata: filter,
+      });
+
+      expect(memories.map((memory) => memory.content.text).sort()).toEqual(["slot", "slot-extra"]);
+      expect(count).toBe(memories.length);
+    });
+
     it("should count memories in a room", async () => {
       await adapter.createMemory(createTestMemory({ text: "mem1" }), "memories");
       await adapter.createMemory(createTestMemory({ text: "mem2" }), "memories");

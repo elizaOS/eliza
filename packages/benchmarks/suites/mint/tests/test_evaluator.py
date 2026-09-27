@@ -134,7 +134,7 @@ class TestMINTEvaluator:
             ground_truth="4",
             evaluation_metric="numeric",
         )
-        
+
         trajectory = MINTTrajectory(
             task_id="test-001",
             final_answer="4",
@@ -147,9 +147,9 @@ class TestMINTEvaluator:
             content="The answer is 4",
             turn_number=1,
         ))
-        
+
         result = evaluator.evaluate_trajectory(task, trajectory)
-        
+
         assert result.success is True
         assert result.score == 1.0
         assert result.task_id == "test-001"
@@ -165,7 +165,7 @@ class TestMINTEvaluator:
             ground_truth="4",
             evaluation_metric="numeric",
         )
-        
+
         trajectory = MINTTrajectory(
             task_id="test-002",
             final_answer="5",
@@ -173,9 +173,9 @@ class TestMINTEvaluator:
             start_time_ms=1000.0,
             end_time_ms=2000.0,
         )
-        
+
         result = evaluator.evaluate_trajectory(task, trajectory)
-        
+
         assert result.success is False
         assert result.score < 1.0
 
@@ -208,24 +208,24 @@ class TestBatchEvaluator:
             initial_prompt="Test",
             ground_truth="4",
         )
-        
+
         # Create successful trajectory
         traj1 = MINTTrajectory(task_id="test-001", final_answer="4")
         traj1.start_time_ms = 1000.0
         traj1.end_time_ms = 2000.0
-        
+
         # Create failed trajectory
         traj2 = MINTTrajectory(task_id="test-002", final_answer="5")
         traj2.start_time_ms = 1000.0
         traj2.end_time_ms = 3000.0
-        
+
         results = batch_evaluator.evaluate_batch(
             [task, task],
             [traj1, traj2],
         )
-        
+
         stats = batch_evaluator.aggregate_results(results)
-        
+
         assert stats["total"] == 2
         assert stats["passed"] == 1
         assert stats["failed"] == 1

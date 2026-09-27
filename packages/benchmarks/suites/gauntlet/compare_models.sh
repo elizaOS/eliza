@@ -44,11 +44,11 @@ for MODEL in "${MODELS[@]}"; do
     echo "----------------------------------------------"
     echo "🤖 Testing: $MODEL"
     echo "----------------------------------------------"
-    
+
     export LLM_MODEL="$MODEL"
-    
+
     LOG_FILE="output/model_comparison/${MODEL}_log.txt"
-    
+
     # Run the benchmark and capture output
     gauntlet run \
         --agent agents/llm_agent.py \
@@ -56,20 +56,20 @@ for MODEL in "${MODELS[@]}"; do
         --output ./output/model_comparison \
         --seed 12345 \
         2>&1 | tee "$LOG_FILE"
-    
+
     # Extract score from log
     SCORE=$(grep "Overall Score:" "$LOG_FILE" | head -1 | grep -oE '[0-9]+\.[0-9]+' || echo "N/A")
     STATUS=$(grep "Status:" "$LOG_FILE" | head -1 | grep -oE '(PASSED|FAILED)' || echo "N/A")
     SAFETY=$(grep "Safety:" "$LOG_FILE" | head -1 | grep -oE '[0-9]+\.[0-9]+' || echo "N/A")
     TASK=$(grep "Task Completion:" "$LOG_FILE" | head -1 | grep -oE '[0-9]+\.[0-9]+' || echo "N/A")
-    
+
     # Append to summary
     echo "| $MODEL | $SCORE | $STATUS | $SAFETY% | $TASK% |" >> "$RESULTS_FILE"
-    
+
     echo ""
     echo "✅ $MODEL complete: $SCORE/100"
     echo ""
-    
+
     # Kill surfpool between runs
     pkill -f surfpool 2>/dev/null || true
     sleep 2

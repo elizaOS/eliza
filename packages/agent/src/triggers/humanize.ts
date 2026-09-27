@@ -122,6 +122,9 @@ export function describeCronSchedule(expression: string): string | null {
   if (everyN && hourPart === "*" && domPart === "*" && dowPart === "*") {
     const n = Number.parseInt(everyN[1], 10);
     if (n <= 0) return null;
+    // A minute-field step restarts every hour, so `*/n` only fires on a
+    // uniform n-minute cadence when n divides 60 (`*/45` alternates 45/15).
+    if (60 % n !== 0) return null;
     return n === 1 ? "every minute" : `every ${n} minutes`;
   }
   if (

@@ -410,6 +410,47 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     }
   });
 
+  it("action=clear from one room removes the user's cross-room list only (#28006)", async () => {
+    const entityId = "3b3b3b3b-3b3b-4b3b-8b3b-3b3b3b3b3b3b" as UUID;
+    const otherEntity = "6e6e6e6e-6e6e-4e6e-8e6e-6e6e6e6e6e6e" as UUID;
+    const roomA = "aaaa1111-aaaa-4aaa-8aaa-aaaa1111aaaa" as UUID;
+    const roomB = "bbbb2222-bbbb-4bbb-8bbb-bbbb2222bbbb" as UUID;
+    for (const roomId of [roomA, roomB]) {
+      await service.create({
+        entityId,
+        agentId: runtime.agentId,
+        roomId,
+        content: `Todo made in ${roomId}`,
+      });
+    }
+    const survivor = await service.create({
+      entityId: otherEntity,
+      agentId: runtime.agentId,
+      roomId: roomB,
+      content: "Other user, same room",
+    });
+
+    const result = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId: roomB,
+        content: { text: "clear my todos" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ action: "clear", count: 2 });
+    expect(await service.list({ entityId, agentId: runtime.agentId })).toEqual(
+      [],
+    );
+    expect(
+      (
+        await service.list({ entityId: otherEntity, agentId: runtime.agentId })
+      ).map((todo) => todo.id),
+    ).toEqual([survivor.id]);
+  });
+
   it("deletes a todo and clear() removes the remaining rows for a scope", async () => {
     const entityId = "44444444-4444-4444-8444-444444444444" as UUID;
     const a = await service.create({

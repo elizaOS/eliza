@@ -2,10 +2,10 @@
 OS-Symphony Official Evaluation Script
 
 This script serves as the official evaluation entry point for OS-Symphony.
-It handles the setup of the desktop environment, agent initialization, and 
+It handles the setup of the desktop environment, agent initialization, and
 execution of evaluation tasks.
 
-For detailed evaluation metrics, configuration options, and usage instructions, 
+For detailed evaluation metrics, configuration options, and usage instructions,
 please refer to the official repository:
 https://github.com/OS-Copilot/OS-Symphony
 """
@@ -42,14 +42,14 @@ load_dotenv()
 def prepare_worker_vm_paths(base_golden_path: str, worker_idx: int):
     # remove the '/' at the end
     base_golden_path = base_golden_path.rstrip(os.sep)
-    
+
     # get parent directory (like /nvme/yangbowen/vm_stroage/waa)
     parent_dir = os.path.dirname(base_golden_path)
-    
+
     # define the path of this worker
     worker_storage_path = os.path.join(parent_dir, f"storage_{worker_idx}")
     worker_backup_path = os.path.join(parent_dir, f"storage_{worker_idx}_backup")
-    
+
     return worker_storage_path, worker_backup_path
 
 
@@ -70,7 +70,7 @@ def initialize_worker_files(golden_path: str, worker_backup_path: str, worker_st
                 subprocess.check_call(['cp', '-r', '--sparse=always', golden_path, worker_backup_path])
             else:
                 subprocess.check_call(['cp', '--sparse=always', golden_path, worker_backup_path])
-                
+
             logger.info(f"Backup initialization complete for {worker_backup_path}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to copy golden image to backup using cp: {e}")
@@ -158,7 +158,7 @@ def run_env_tasks(
         region = getattr(args, "region", "us-east-1")
         platform = 'linux'
         screen_size = (args.screen_width, args.screen_height)
-        
+
         if "osworld" in args.benchmark:
             if args.provider_name == "aws":
                 from desktop_env.providers.aws.manager import IMAGE_ID_MAP
@@ -225,15 +225,15 @@ def run_env_tasks(
             )
         else:
             raise Exception("Don't support other providers!")
-        
+
         engine_params_for_ocr = copy.deepcopy(engine_params_for_orchestrator)
         engine_params_for_ocr["agent_name"] = "ocr"
         os_aci = OSACI(
-            env=env, 
+            env=env,
             search_env=search_env,
             platform=platform,
             client_password=args.client_password,
-            engine_params_for_ocr=engine_params_for_ocr, 
+            engine_params_for_ocr=engine_params_for_ocr,
             engine_params_for_grounder=engine_params_for_grounder,
             engine_params_for_coder=engine_params_for_coder,
             engine_params_for_searcher=engine_params_for_searcher,
@@ -270,7 +270,7 @@ def run_env_tasks(
                     instruction = example["rewritten_instruction"]
                 else:
                     instruction = example["instruction"]
-                
+
                 example_result_dir = os.path.join(
                     args.result_dir,
                     domain,
@@ -425,8 +425,8 @@ def config() -> argparse.Namespace:
     parser.add_argument("--enable_reflection", action="store_true", default=False)
     parser.add_argument("--enable_rewrite_instruction", action="store_true", default=False)
     parser.add_argument(
-        "--tool_config", 
-        type=str, 
+        "--tool_config",
+        type=str,
         help="The path of tool config yaml"
     )
 
@@ -903,7 +903,7 @@ if __name__ == "__main__":
         total_file_json=test_all_meta
     )
     test(
-        args, 
+        args,
         test_file_list
     )
     logger.info(f"====================\nExperiment on {args.benchmark} is ended\n====================")

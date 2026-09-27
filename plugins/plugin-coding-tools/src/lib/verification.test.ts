@@ -6,6 +6,30 @@ const receipt = (command: string, exitCode = 0, output = "", signal?: string) =>
   shellVerificationReceipt({ command, exitCode, output, signal });
 
 describe("shell verification receipts", () => {
+  it("records the verifier family after a working-directory prefix", () => {
+    expect(
+      receipt("cd /app && npx eslint tests/handler.test.ts"),
+    ).toMatchObject({
+      kind: "lint",
+      family: "npx eslint",
+      status: "passed",
+    });
+  });
+
+  it.each([
+    ["npx eslint tests/handler.test.ts", "lint"],
+    ["npx tsc --project tests/tsconfig.json", "typecheck"],
+    ["cargo check --tests", "typecheck"],
+    ["go vet ./test/...", "lint"],
+    ["bun run build tests/test.ts", "build"],
+    ["python -m compileall tests/test.py", "compile"],
+  ])(
+    "classifies the verifier rather than path arguments: %s",
+    (command, kind) => {
+      expect(receipt(command)).toMatchObject({ kind, status: "passed" });
+    },
+  );
+
   it.each([
     "echo 'bun test'",
     "go test ./... || true",

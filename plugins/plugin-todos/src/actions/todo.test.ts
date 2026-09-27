@@ -655,6 +655,23 @@ describe("TODO action", () => {
       expect(delivered).toEqual([]);
     });
 
+    it("rejects an invalid status on create and update without writing", async () => {
+      const id = await seed("Buy trash bags");
+      for (const parameters of [
+        { action: "create", content: "Buy bin bags", status: "invalid_status" },
+        { action: "update", id, status: "done" },
+      ]) {
+        const { result } = await confirm(parameters);
+        expect(result.success).toBe(false);
+        expect(result.text).toContain(
+          "invalid_param: status must be one of: pending, in_progress, completed, cancelled",
+        );
+      }
+      expect(service.rows.map((row) => [row.content, row.status])).toEqual([
+        ["Buy trash bags", "pending"],
+      ]);
+    });
+
     it("complete and cancel name the state the store committed", async () => {
       const completeId = await seed("Buy trash bags");
       const completed = await confirm({ action: "complete", id: completeId });
@@ -1105,11 +1122,18 @@ describe("TODO action", () => {
   });
 
   describe("action=clear", () => {
-    it("removes all todos for the user in this room", async () => {
+    it("removes the user's whole list, including other rooms (#28006)", async () => {
+      await service.create({
+        entityId: ENTITY,
+        agentId: AGENT,
+        roomId: "11111111-2222-4333-8444-555555555555",
+        content: "made in another room",
+      });
       await invoke(runtime, { action: "create", content: "a" });
       await invoke(runtime, { action: "create", content: "b" });
       const result = await invoke(runtime, { action: "clear" });
       expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ count: 3 });
       expect(service.rows.length).toBe(0);
     });
   });
