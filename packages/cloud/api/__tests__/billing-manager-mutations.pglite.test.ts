@@ -59,7 +59,11 @@ mock.module("@/lib/services/auto-top-up", () => ({
     },
   },
 }));
+// The route's auth graph (repositories -> allowance-first funding) imports
+// other credits exports, so keep them real and replace only the pack lookup.
+const creditsActual = await import("@/lib/services/credits");
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: {
     getCreditPackById: async () => ({
       is_active: true,

@@ -36,7 +36,7 @@ export async function createBillingSnapshotFixture(
     "0379_subscription_account_authority.sql",
     "0382_subscription_notice_intents.sql",
     "0479_organization_payment_reversal_holds.sql",
-    "0486_payment_reversal_shortfall_holds.sql",
+    "0492_payment_reversal_shortfall_holds.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint")) {

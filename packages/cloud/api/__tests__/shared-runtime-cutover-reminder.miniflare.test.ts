@@ -100,7 +100,23 @@ const RUNTIME_STUBS = {
       async getHistory(agentId, roomId, store) {
         return await store.load(agentId, roomId);
       },
-      async bridge() {
+      async bridge(agent, rpc, options) {
+        if (rpc.id === "fallback-account-state") {
+          // Echo the server-owned options the coordinator admitted, plus the
+          // exact history the turn would load for its room.
+          const history = await options.historyStore.load(agent.id, rpc.params.roomId);
+          return {
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: {
+              text: JSON.stringify({
+                accountState: options.trustedAccountState ?? null,
+                funding: options.funding,
+                history,
+              }),
+            },
+          };
+        }
         await fetch("https://model-probe.test/v1/chat/completions", {
           method: "POST",
           body: "unexpected-shared-reminder-inference",
@@ -462,6 +478,64 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     const afterBody = await after.text();
     expect(after.status, afterBody).toBe(200);
     expect(JSON.parse(afterBody)).toEqual({ history });
+    expect(modelRequests).toEqual([]);
+
+    // Dedicated access withdrawn (#25146): the scoped fallback journal is a
+    // separate coordinator that admits the platform-funded turn with the
+    // server-owned account state while the canonical room stays sealed, and
+    // it loads none of the canonical (pre-upgrade/Dedicated) history.
+    const journalRoomId = "fallback:6d8f0a52-3c1e-4f8b-9a2d-1b7e5c4d3a21";
+    const accountState = {
+      access: "shared_fallback",
+      state: "shared_active",
+      reason: "subscription_payment_failed",
+      dedicatedMemory: "unavailable",
+      generation: 1,
+      dedicatedRetainedUntil: "2026-10-27T00:00:00.000Z",
+      recoveryAction: { kind: "restore_subscription", path: "/cloud/billing" },
+    };
+    const fallbackTurn = (state: unknown) =>
+      post(`${personalAgent.id}:${journalRoomId}`, "/personal-bridge", {
+        operation: "personal-bridge",
+        agent: personalAgent,
+        trustedAccountState: state,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "fallback-account-state",
+          method: "message.send",
+          params: {
+            text: "What did we work on last week?",
+            roomId: journalRoomId,
+          },
+        },
+      });
+    const admitted = await fallbackTurn(accountState);
+    const admittedBody = await admitted.text();
+    expect(admitted.status, admittedBody).toBe(200);
+    const echoed = JSON.parse(
+      (JSON.parse(admittedBody) as { result: { text: string } }).result.text,
+    );
+    expect(echoed).toEqual({ accountState, funding: "platform", history: [] });
+
+    // Anything but the exact minimal shape is rejected at the boundary.
+    for (const invalid of [
+      { ...accountState, cardLast4: "4242" },
+      { ...accountState, dedicatedMemory: "available" },
+      {
+        ...accountState,
+        recoveryAction: {
+          kind: "restore_subscription",
+          path: "https://x.test",
+        },
+      },
+    ]) {
+      const rejected = await fallbackTurn(invalid);
+      const rejectedBody = await rejected.text();
+      expect(rejected.status, rejectedBody).toBe(400);
+      expect(JSON.parse(rejectedBody)).toMatchObject({
+        code: "invalid_account_state",
+      });
+    }
     expect(modelRequests).toEqual([]);
   }, 120_000);
 

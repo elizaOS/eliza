@@ -2,7 +2,7 @@
  * Durable organization billing holds created by Stripe payment reversals
  * (#22930 Decision A). `reversal_shortfall` rows carry the unrecovered amount
  * a refund or dispute clawback could not take from the balance; `chargeback_lost`
- * rows are historical and were superseded by migration 0486.
+ * rows are historical and were superseded by migration 0492.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
