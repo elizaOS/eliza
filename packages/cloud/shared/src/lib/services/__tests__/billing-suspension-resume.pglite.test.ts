@@ -1143,6 +1143,17 @@ test(
         .set({ status: "running" })
         .where(eq(agentSandboxes.id, account.agentId));
 
+      // A gateway or cached Dedicated client can arrive before the owner
+      // reopens direct chat. Running compute alone must not admit that turn
+      // while the fallback journal still awaits its canonical import.
+      expect(await traffic()).toMatchObject({
+        access: "withdrawn",
+        status: 503,
+        code: "dedicated_reconciling",
+        retryable: true,
+      });
+      expect((await fallbackRows(account))[0]?.state).toBe("recovery_pending");
+
       // Without the conversation coordinator the handback waits.
       expect(
         await direct.resolvePersonalDirectChatRoute({

@@ -726,7 +726,10 @@ export type PersonalDedicatedTrafficAccess =
       access: "withdrawn";
       /** 409 while Shared owns the owner's direct conversation; 503 while switching. */
       status: 409 | 503;
-      code: "personal_dedicated_access_withdrawn" | "dedicated_fallback_pending";
+      code:
+        | "personal_dedicated_access_withdrawn"
+        | "dedicated_fallback_pending"
+        | "dedicated_reconciling";
       error: string;
       retryable: boolean;
       retryAfterSeconds?: number;
@@ -779,7 +782,22 @@ export async function resolvePersonalDedicatedTrafficAccess(input: {
     sourceAgentId: authority.sourceAgentId,
     ...(input.effects ? { effects: input.effects } : {}),
   });
-  if (route.route === "dedicated") return { access: "dedicated" };
+  if (route.route === "dedicated") {
+    if (route.reconcile) {
+      // These callers have no conversation coordinator. The owner-facing
+      // direct or connector path must finish the canonical journal import
+      // before a cached Dedicated destination can accept another turn.
+      return {
+        access: "withdrawn",
+        status: 503,
+        code: "dedicated_reconciling",
+        error: "Dedicated Eliza is restoring your recent conversation. Try again shortly.",
+        retryable: true,
+        retryAfterSeconds: 5,
+      };
+    }
+    return { access: "dedicated" };
+  }
   if (route.route === "unavailable") {
     return {
       access: "withdrawn",
