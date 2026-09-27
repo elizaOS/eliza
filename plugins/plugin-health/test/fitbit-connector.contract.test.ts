@@ -116,6 +116,37 @@ describe("Fitbit connector — recorded real API contract", () => {
     ).toBe(true);
   });
 
+  it("still syncs when the profile has no timezone", async () => {
+    const profile = structuredClone(recorded.profile);
+    const user = profile.user as Record<string, unknown>;
+    delete user.timezone;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/"))
+        return jsonResponse(recorded.activity);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const ep = payload.sleepEpisodes[0];
+    expect(ep?.timezone).toBeNull();
+    expect(ep?.startAt).toBe(
+      new Date(Date.parse("2026-04-30T22:48:00.000")).toISOString(),
+    );
+  });
+
   it("normalizes the real Fitbit per-date shapes into a contract-shaped payload", async () => {
     const payload = await syncHealthConnectorData({
       token,
@@ -186,6 +217,8 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(weight?.value).toBe(61.2);
     expect(weight?.unit).toBe("kg");
     expect(weight?.sourceExternalId).toBe("38291077001");
+    // date + time is a profile-zone wall time (07:15 BST).
+    expect(weight?.startAt).toBe("2026-05-01T06:15:00.000Z");
     // providerUnit is the per-log unit label; providerLocaleUnit is the account
     // locale that drives the conversion.
     expect(weight?.metadata.providerUnit).toBe("kg");
@@ -203,16 +236,11 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(ep.agentId).toBe("agent-fitbit");
     expect(ep.grantId).toBe("grant-fitbit");
     // startTime/endTime arrive ZONELESS on the Fitbit wire
-    // ("2026-04-30T22:48:00.000"); the normalizer's Date.parse interprets them
-    // in the RUNTIME-LOCAL zone, which the suite pins to America/Los_Angeles
-    // (UTC-7), so 22:48 local -> 05:48Z next day. Asserting the parsed value
-    // pins both the transform and this zoneless->local-time behavior.
-    expect(ep.startAt).toBe(
-      new Date(Date.parse("2026-04-30T22:48:00.000")).toISOString(),
-    );
-    expect(ep.endAt).toBe(
-      new Date(Date.parse("2026-05-01T06:54:00.000")).toISOString(),
-    );
+    // ("2026-04-30T22:48:00.000") as wall times in profile.user.timezone
+    // (Europe/London, BST = UTC+1), independent of the host zone.
+    expect(ep.startAt).toBe("2026-04-30T21:48:00.000Z");
+    expect(ep.endAt).toBe("2026-05-01T05:54:00.000Z");
+    expect(ep.timezone).toBe("Europe/London");
     // localDate is the iterated date.
     expect(ep.localDate).toBe("2026-05-01");
     // isMainSleep verbatim; type -> sleepType.
@@ -241,10 +269,8 @@ describe("Fitbit connector — recorded real API contract", () => {
     if (!first) throw new Error("missing stage sample");
     expect(first.stage).toBe("light");
     expect(first.providerCode).toBe("light");
-    // levels.data[].dateTime is likewise zoneless -> parsed in runtime-local.
-    const firstStageStart = new Date(
-      Date.parse("2026-04-30T22:48:00.000"),
-    ).toISOString();
+    // levels.data[].dateTime is likewise a profile-zone wall time.
+    const firstStageStart = "2026-04-30T21:48:00.000Z";
     expect(first.startAt).toBe(firstStageStart);
     // endAt = startAt + seconds (1800s).
     expect(first.endAt).toBe(
