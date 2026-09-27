@@ -80,7 +80,7 @@ beforeAll(async () => {
   const pg = (await import("../../client")).getPgliteClientForTests();
   await installOrganizationPolicyTestSchema((query) => pg.exec(query));
   const funding = readFileSync(
-    join(import.meta.dir, "../../migrations/0476_org_storage_subscription_funding.sql"),
+    join(import.meta.dir, "../../migrations/0482_org_storage_subscription_funding.sql"),
     "utf8",
   );
   // This fixture owns only the read receipt table, so the PUT half is not replayed.

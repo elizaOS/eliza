@@ -76,14 +76,14 @@ beforeAll(async () => {
   await installOrganizationPolicyTestSchema(exec);
   await exec(
     await readFile(
-      new URL("../../migrations/0477_container_billing_funding_reservations.sql", import.meta.url),
+      new URL("../../migrations/0483_container_billing_funding_reservations.sql", import.meta.url),
       "utf8",
     ),
   );
   // Replaying the migration must be a no-op.
   await exec(
     await readFile(
-      new URL("../../migrations/0477_container_billing_funding_reservations.sql", import.meta.url),
+      new URL("../../migrations/0483_container_billing_funding_reservations.sql", import.meta.url),
       "utf8",
     ),
   );

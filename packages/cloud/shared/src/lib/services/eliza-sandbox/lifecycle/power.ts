@@ -12,6 +12,7 @@ import { agentComputeFunding } from "../../../../db/schemas/agent-compute-fundin
 import { agentComputeStopIntents } from "../../../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBackupStateData,
+  type AgentRetainedRuntime,
   agentSandboxes,
   CONTAINER_BACKED_EXECUTION_TIERS,
   WARM_POOL_ORG_ID,
@@ -658,6 +659,7 @@ export class SandboxPower {
     }
     const boundLegacy =
       !fundedSource && expectedLifecycleRevision !== undefined && boundIntentId !== undefined;
+    let retainInPlace: { refusal: string } | undefined;
     let runtimeIdentity: SandboxRuntimeIdentity | undefined;
     let recoverAbsent = false;
     const observeRuntime = async (expected?: SandboxRuntimeIdentity) => {
@@ -717,7 +719,29 @@ export class SandboxPower {
       snapshotSource = revalidated;
       const gateResult = await this.prepareSuspendBackupGate(snapshotSource);
       if (gateResult.outcome === "refuse") {
-        return { success: false, containerStopped: false, error: gateResult.error };
+        // Unpaid compute must stop even when its current state cannot be
+        // captured (#30746). A bound billing stop with exact runtime identity
+        // stops the container IN PLACE instead of removing the only copy of
+        // unbacked writes; everything else keeps the fail-closed refusal.
+        const provider = await this.host.getProvider();
+        if (
+          !boundLegacy ||
+          !runtimeIdentity ||
+          retireUnfundedRuntime ||
+          authorization !== "billing_request" ||
+          !provider.retainObservedRuntimeStopped
+        ) {
+          return { success: false, containerStopped: false, error: gateResult.error };
+        }
+        logger.warn(
+          "[agent-sandbox] Current backup unavailable; retaining unpaid runtime in place",
+          {
+            agentId,
+            jobId,
+            error: gateResult.error,
+          },
+        );
+        retainInPlace = { refusal: gateResult.error };
       }
       if (gateResult.outcome === "proceed") {
         suspendBackupId = gateResult.backupId;
@@ -1041,6 +1065,98 @@ export class SandboxPower {
           }
         }
 
+        if (retainInPlace) {
+          // Only a bound unpaid billing stop against the exact observed
+          // runtime may retain in place. A user stop still requires a backup.
+          if (
+            effectiveAuthorization !== "billing_request" ||
+            !stopIntent ||
+            !runtimeIdentity ||
+            recoverAbsent ||
+            !rec.bridge_url ||
+            !rec.health_url
+          ) {
+            return {
+              success: false,
+              containerStopped: false,
+              error: retainInPlace.refusal,
+            } as const;
+          }
+          const retainAttempt = stopIntent.attempts + 1;
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "dispatching",
+              attempts: retainAttempt,
+              provider_started_at: new Date(),
+              last_error: null,
+              updated_at: new Date(),
+            })
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+          const provider = await this.host.getProvider();
+          try {
+            // Exact immutable ID, restart policy disabled, never removed. A
+            // lost response or crash rolls this transaction back; the retry
+            // re-observes the same retained container and repeats idempotently.
+            await provider.retainObservedRuntimeStopped!(runtimeIdentity);
+          } catch (error) {
+            // error-policy:J1 an unconfirmed in-place stop stays an explicit retryable intent.
+            const failedAt = new Date();
+            const message = error instanceof Error ? error.message : String(error);
+            await tx
+              .update(agentComputeStopIntents)
+              .set({
+                status: retainAttempt >= 3 ? "terminal_attention" : "retry",
+                last_error: message,
+                next_attempt_at: new Date(failedAt.getTime() + 5 * 60 * 1000),
+                updated_at: failedAt,
+              })
+              .where(eq(agentComputeStopIntents.id, stopIntent.id));
+            return { success: false, containerStopped: false, error: message } as const;
+          }
+          const retainedAt = new Date();
+          const retainedBackupBilling = rec.last_backup_at !== null;
+          const retainedRuntime: AgentRetainedRuntime = {
+            runtime: runtimeIdentity,
+            bridgeUrl: rec.bridge_url,
+            healthUrl: rec.health_url,
+            retainedAt: retainedAt.toISOString(),
+          };
+          await tx
+            .update(agentSandboxes)
+            .set({
+              status: "stopped",
+              retained_runtime: retainedRuntime,
+              billing_status: retainedBackupBilling ? "active" : "suspended",
+              scheduled_shutdown_at: null,
+              shutdown_warning_sent_at: null,
+              bridge_url: null,
+              health_url: null,
+              updated_at: retainedAt,
+            })
+            .where(
+              and(
+                eq(agentSandboxes.id, rec.id),
+                eq(agentSandboxes.organization_id, orgId),
+                inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+              ),
+            );
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "provider_confirmed",
+              provider_confirmed_at: retainedAt,
+              retained_backup_billing: retainedBackupBilling,
+              retained_backup_rate_per_hour: retainedBackupBilling
+                ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+                : null,
+              updated_at: retainedAt,
+            })
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+          if (rec.node_id) await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, rec.node_id);
+          return { success: true, containerStopped: true, retained: true } as const;
+        }
+
         // A removed formerly funded runtime cannot be published as retained:
         // resume would purchase a successor lease for its deleted container.
         // Only the committed, verified fresh snapshot authorizes cold retirement.
@@ -1219,6 +1335,9 @@ export class SandboxPower {
           ...(restored.error ? { error: restored.error } : {}),
         };
       }
+      if (rec.status === "stopped" && rec.retained_runtime) {
+        return await this.executeRetainedResume(rec);
+      }
       const retained = await this.executeFundedResume(agentId, orgId);
       if (retained) return retained;
     } catch (error) {
@@ -1269,6 +1388,151 @@ export class SandboxPower {
       };
     }
     return { success: true, containerStarted: true, reprovisioned: true };
+  }
+
+  /**
+   * Resumes an unpaid stop that retained its exact runtime in place (#30746).
+   * The same logical agent restarts on its original container, mounts and
+   * node-local state exactly once. A missing or replaced runtime is an explicit
+   * recovery failure: this never provisions a fresh container around it.
+   */
+  private async executeRetainedResume(expected: AgentSandbox): Promise<{
+    success: boolean;
+    containerStarted: boolean;
+    reprovisioned: boolean;
+    error?: string;
+  }> {
+    const agentId = expected.id;
+    const orgId = expected.organization_id;
+    const retained = expected.retained_runtime;
+    if (!retained) throw new Error("Retained resume requires a retained runtime");
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      };
+    }
+    const admitted = await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      const current = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (
+        !current ||
+        current.status !== "stopped" ||
+        current.deleted_at ||
+        current.deletion_attempt_id ||
+        current.lifecycle_revision !== expected.lifecycle_revision ||
+        current.environment_revision !== expected.environment_revision ||
+        this.host.getReplacementCleanupLocator(current) ||
+        JSON.stringify(current.retained_runtime) !== JSON.stringify(retained) ||
+        (await this.host.hasActiveProvisionJobTx(tx, agentId, orgId))
+      ) {
+        throw new ElizaError("Retained runtime resume authority changed", {
+          code: "AGENT_RETAINED_RUNTIME_AUTHORITY_CHANGED",
+        });
+      }
+      const [row] = await tx
+        .update(agentSandboxes)
+        .set({ status: "provisioning", updated_at: new Date() })
+        .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+        .returning();
+      if (!row)
+        throw new ElizaError("Retained runtime resume admission did not persist", {
+          code: "AGENT_RETAINED_RUNTIME_AUTHORITY_CHANGED",
+        });
+      return row;
+    });
+    const release = async (message: string) => {
+      // The retained runtime stays authoritative and protected; the failure
+      // is visible and retryable instead of a fresh boot.
+      await dbWrite.transaction(async (tx) => {
+        await this.host.lockLifecycle(tx, agentId, orgId);
+        await tx
+          .update(agentSandboxes)
+          .set({ status: "stopped", error_message: message, updated_at: new Date() })
+          .where(
+            and(
+              eq(agentSandboxes.id, agentId),
+              eq(agentSandboxes.organization_id, orgId),
+              eq(agentSandboxes.status, "provisioning"),
+              eq(agentSandboxes.lifecycle_revision, admitted.lifecycle_revision),
+            ),
+          );
+      });
+      return { success: false, containerStarted: false, reprovisioned: false, error: message };
+    };
+    const provider = await this.host.getProvider();
+    if (!provider.observeRuntime || !provider.startRetainedRuntime)
+      return release("Provider cannot resume a retained runtime in place");
+    const observed = await provider.observeRuntime({
+      organizationId: orgId,
+      agentId,
+      nodeId: retained.runtime.nodeId,
+      containerName: retained.runtime.containerName,
+      expected: retained.runtime,
+    });
+    if (observed.kind === "absent")
+      return release("Retained runtime is missing; recovery requires an explicit restore decision");
+    if (observed.kind === "unavailable")
+      return release(`Retained runtime observation is unavailable: ${observed.reason}`);
+    try {
+      await provider.startRetainedRuntime(retained.runtime);
+    } catch (error) {
+      // error-policy:J1 an unconfirmed exact start remains a retryable retained resume.
+      return release(error instanceof Error ? error.message : String(error));
+    }
+    const handle: SandboxHandle = {
+      sandboxId: admitted.sandbox_id ?? retained.runtime.containerName,
+      bridgeUrl: retained.bridgeUrl,
+      healthUrl: retained.healthUrl,
+      metadata: admitted.headscale_ip ? { headscaleIp: admitted.headscale_ip } : undefined,
+    };
+    const ready = provider.checkHealthDetailed
+      ? (await provider.checkHealthDetailed(handle, { kind: "canonical" })).ready
+      : await provider.checkHealth(handle, { kind: "canonical" });
+    if (!ready)
+      return {
+        success: false,
+        containerStarted: true,
+        reprovisioned: false,
+        error: "Retained runtime started but is not ready; resume can be retried",
+      };
+    await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      const [row] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "running",
+          retained_runtime: null,
+          bridge_url: retained.bridgeUrl,
+          health_url: retained.healthUrl,
+          error_message: null,
+          last_heartbeat_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.status, "provisioning"),
+            eq(agentSandboxes.lifecycle_revision, admitted.lifecycle_revision),
+          ),
+        )
+        .returning();
+      if (!row)
+        throw new ElizaError("Retained runtime lifecycle changed during resume readiness", {
+          code: "AGENT_RETAINED_RUNTIME_AUTHORITY_CHANGED",
+        });
+      if (row.node_id) await reconcileAllocatedWorkloadsOnNodeWithDatabase(tx, row.node_id);
+    });
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(agentId, new Date());
+    return { success: true, containerStarted: true, reprovisioned: false };
   }
 
   /** Admit a verified stopped placement only after wake validated its restore source. */
@@ -1573,6 +1837,15 @@ export class SandboxPower {
         success: false,
         containerRemoved: false,
         error: "Agent provisioning is in progress",
+      };
+    }
+    if (rec.retained_runtime) {
+      // The retained container holds writes no backup covers (#30746). Only an
+      // exact in-place resume or an authorized deletion may retire it.
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Agent retains an unbacked runtime in place; resume or delete it explicitly",
       };
     }
 

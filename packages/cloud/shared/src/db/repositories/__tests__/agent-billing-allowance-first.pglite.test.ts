@@ -76,10 +76,10 @@ beforeAll(async () => {
   for (const name of [
     "0388_agent_compute_funded_receipts.sql",
     "0394_agent_billing_activation_minimum.sql",
-    "0478_agent_billing_funding_reservations.sql",
+    "0484_agent_billing_funding_reservations.sql",
     // Recovery may replay the receipt migrations; the funding source check must survive.
     "0388_agent_compute_funded_receipts.sql",
-    "0478_agent_billing_funding_reservations.sql",
+    "0484_agent_billing_funding_reservations.sql",
     "0274_agent_billing_run_receipts.sql",
   ]) {
     await fixture.exec(await migration(name));

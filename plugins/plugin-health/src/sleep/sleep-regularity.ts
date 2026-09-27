@@ -5,10 +5,10 @@
  */
 
 import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
-import {
-  type LifeOpsPersonalBaseline,
-  type LifeOpsScheduleRegularity,
-  type LifeOpsSleepCycleType,
+import type {
+  LifeOpsPersonalBaseline,
+  LifeOpsScheduleRegularity,
+  LifeOpsSleepCycleType,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
 export interface SleepRegularityEpisodeLike {

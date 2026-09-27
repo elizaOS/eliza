@@ -78,7 +78,7 @@ beforeAll(async () => {
     "0257_org_storage_native_put_operations.sql",
     "0258_org_storage_generation_gc_outbox.sql",
     "0266_org_storage_read_operations.sql",
-    "0476_org_storage_subscription_funding.sql",
+    "0482_org_storage_subscription_funding.sql",
   ]) {
     await applyMigration(name);
   }

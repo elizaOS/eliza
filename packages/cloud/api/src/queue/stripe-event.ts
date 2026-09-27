@@ -307,6 +307,9 @@ export async function processStripeEvent(
       case "charge.dispute.funds_reinstated":
         await handleChargeDisputeFundsReinstated(event);
         break;
+      case "charge.dispute.closed":
+        await handleChargeDisputeClosed(event);
+        break;
       default:
         logger.debug(`[Stripe Queue] Unhandled event type: ${event.type}`);
     }
@@ -1406,6 +1409,50 @@ async function handleChargeDisputeFundsWithdrawn(
     source: "charge.dispute.funds_withdrawn",
     reference: `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`,
   });
+}
+
+/**
+ * A dispute that closes LOST is a final payment reversal. The credit clawback
+ * already ran on `funds_withdrawn`; this only places the durable organization
+ * hold that fails new paid admission closed (#22930). It never changes credit
+ * balances, never stops running resources and is released only explicitly.
+ * Won or otherwise closed disputes are no-ops.
+ */
+async function handleChargeDisputeClosed(event: Stripe.Event): Promise<void> {
+  const dispute = event.data.object as Stripe.Dispute;
+  if (dispute.status !== "lost") return;
+  const chargeId =
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  const paymentIntentId =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+  const reference = `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`;
+  // Attribute the reversal through the credit grant it funded; a charge that
+  // never granted organization credits has no Cloud entitlement to hold.
+  const grant = paymentIntentId
+    ? await creditsService.getTransactionByStripePaymentIntent(paymentIntentId)
+    : undefined;
+  if (!grant) {
+    logger.warn(
+      `[Stripe Queue] charge.dispute.closed ${reference}: lost dispute has no organization credit grant to hold`,
+      { paymentIntentId },
+    );
+    return;
+  }
+  const { recordLostChargebackHold } = await import(
+    "@/db/repositories/payment-reversal-holds"
+  );
+  const { created } = await recordLostChargebackHold({
+    organizationId: grant.organization_id,
+    stripeDisputeId: dispute.id,
+    stripeChargeId: chargeId ?? null,
+    stripePaymentIntentId: paymentIntentId ?? null,
+    amountCents: dispute.amount ?? null,
+  });
+  logger.warn(
+    `[Stripe Queue] ${created ? "Placed" : "Confirmed"} payment reversal hold on org ${grant.organization_id} for lost ${reference}`,
+  );
 }
 
 async function handleChargeDisputeFundsReinstated(

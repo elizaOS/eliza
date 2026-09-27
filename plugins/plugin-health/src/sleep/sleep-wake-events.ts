@@ -4,13 +4,13 @@
  * and bedtime-target timing — the sleep/wake `LifeOpsEventKind` events.
  */
 import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
-import {
-  type LifeOpsCircadianState,
-  type LifeOpsEventKind,
-  type LifeOpsRegularityClass,
-  type LifeOpsScheduleInsight,
-  type LifeOpsScheduleSleepStatus,
-  type LifeOpsUnclearReason,
+import type {
+  LifeOpsCircadianState,
+  LifeOpsEventKind,
+  LifeOpsRegularityClass,
+  LifeOpsScheduleInsight,
+  LifeOpsScheduleSleepStatus,
+  LifeOpsUnclearReason,
 } from "../contracts/health.js";
 /**
  * Structural shape of `LifeOpsScheduleMergedState` (declared in

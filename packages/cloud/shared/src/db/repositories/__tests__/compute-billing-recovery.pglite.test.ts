@@ -106,7 +106,7 @@ beforeAll(async () => {
     // Restores the container receipt's funding FK, check, and guard exactly as
     // production migrates an existing table.
     await getPgliteClientForTests().exec(
-      await migration("0477_container_billing_funding_reservations.sql"),
+      await migration("0483_container_billing_funding_reservations.sql"),
     );
     await getPgliteClientForTests().exec(await migration("0387_agent_compute_funding.sql"));
     await getPgliteClientForTests().exec(await migration("0389_agent_compute_stop_receipts.sql"));
@@ -124,7 +124,7 @@ beforeAll(async () => {
       await migration("0394_agent_billing_activation_minimum.sql"),
     );
     await getPgliteClientForTests().exec(
-      await migration("0478_agent_billing_funding_reservations.sql"),
+      await migration("0484_agent_billing_funding_reservations.sql"),
     );
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (
