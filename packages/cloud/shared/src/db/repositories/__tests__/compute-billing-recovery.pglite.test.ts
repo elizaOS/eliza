@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { pgTable, primaryKey, uuid } from "drizzle-orm/pg-core";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -61,6 +62,17 @@ const deletionBillingMigration = readFileSync(
 ).replaceAll("--> statement-breakpoint", "");
 let ready = true;
 
+/**
+ * Tenant-scoped identity of `billing_funding_reservations`, the only shape the
+ * receipt foreign keys reference. These suites exercise the purchased-credit
+ * lane; subscriber funding is covered by the subscription funding suites.
+ */
+const fundingReservationReceiptTarget = pgTable(
+  "billing_funding_reservations",
+  { id: uuid("id").notNull(), organization_id: uuid("organization_id").notNull() },
+  (table) => ({ pk: primaryKey({ columns: [table.id, table.organization_id] }) }),
+);
+
 beforeAll(async () => {
   try {
     const schema = {
@@ -75,6 +87,7 @@ beforeAll(async () => {
       computeBillingRateSegments,
       containers,
       containerBillingRecords,
+      fundingReservationReceiptTarget,
       earningsSourceEnum,
       ledgerEntryTypeEnum,
       redeemableEarnings,
@@ -82,11 +95,19 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    // The canonical funding tables come from the policy fixture's migrations;
+    // the pushed receipt target only lets the Drizzle push resolve its FK.
+    await getPgliteClientForTests().exec("DROP TABLE billing_funding_reservations CASCADE");
     await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     // Install the dependent tables from migrations after their referenced
     // unique indexes exist; pushSchema emits those indexes after foreign keys.
     const migration = (name: string) =>
       readFile(new URL(`../../migrations/${name}`, import.meta.url), "utf8");
+    // Restores the container receipt's funding FK, check, and guard exactly as
+    // production migrates an existing table.
+    await getPgliteClientForTests().exec(
+      await migration("0483_container_billing_funding_reservations.sql"),
+    );
     await getPgliteClientForTests().exec(await migration("0387_agent_compute_funding.sql"));
     await getPgliteClientForTests().exec(await migration("0389_agent_compute_stop_receipts.sql"));
     const receiptDDL = await migration("0265_compute_billing_recovery.sql");
@@ -101,6 +122,9 @@ beforeAll(async () => {
     await getPgliteClientForTests().exec(await migration("0388_agent_compute_funded_receipts.sql"));
     await getPgliteClientForTests().exec(
       await migration("0394_agent_billing_activation_minimum.sql"),
+    );
+    await getPgliteClientForTests().exec(
+      await migration("0484_agent_billing_funding_reservations.sql"),
     );
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (

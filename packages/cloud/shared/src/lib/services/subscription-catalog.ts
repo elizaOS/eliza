@@ -13,11 +13,37 @@ import type {
   SubscriptionPlanDto,
   SubscriptionPlanKey,
   SubscriptionPlansDto,
+  SubscriptionResourceCeilingsDto,
 } from "../types/cloud-api";
 import { logger } from "../utils/logger";
 
 const CATALOG_VERSION = "v1" as const;
 const VERIFIED_CACHE_TTL_MS = 5 * 60 * 1_000;
+/** Brief negative cache: public catalog reads cannot amplify a provider outage into a Stripe request storm. */
+const FAILED_CACHE_TTL_MS = 5 * 1_000;
+
+const resourceCeilingsSchema = z
+  .object({
+    cloudCharacters: z.number().int().nonnegative().safe(),
+    agentSandboxes: z.number().int().nonnegative().safe(),
+    containers: z.number().int().nonnegative().safe(),
+    storageGiB: z.number().int().nonnegative().safe(),
+    apps: z.number().int().nonnegative().safe(),
+  })
+  .strict();
+
+/**
+ * Free-tier resource ceilings. The Free entitlement projection, the database
+ * seed for new organizations (migration 0373) and the paid-plan floor all use
+ * these values.
+ */
+export const FREE_RESOURCE_CEILINGS = Object.freeze({
+  cloudCharacters: 5,
+  agentSandboxes: 5,
+  containers: 1,
+  storageGiB: 5,
+  apps: 25,
+} as const satisfies SubscriptionResourceCeilingsDto);
 
 const planDefinitionSchema = z
   .object({
@@ -46,8 +72,9 @@ const planDefinitionSchema = z
         strictRpm: z.number().int().positive().safe(),
       })
       .strict(),
-    // Candidate ceilings are recommendations, not ratified enforcement policy.
-    resourceCeilings: z.null(),
+    // Paid plans never get less than Free. Larger paid ceilings are a product
+    // decision; until one is ratified, paid ceilings equal the Free ceilings.
+    resourceCeilings: resourceCeilingsSchema,
   })
   .strict();
 
@@ -75,6 +102,18 @@ function buildCatalog(definitions: readonly unknown[]): readonly Readonly<PlanDe
       );
     }
     keys.add(plan.key);
+    for (const [resource, floor] of Object.entries(FREE_RESOURCE_CEILINGS) as [
+      keyof SubscriptionResourceCeilingsDto,
+      number,
+    ][]) {
+      if (plan.resourceCeilings[resource] < floor) {
+        throw new SubscriptionCatalogError(
+          "SUBSCRIPTION_CATALOG_CEILING_BELOW_FREE",
+          "A paid plan cannot grant less than the Free resource ceiling",
+          { planKey: plan.key, resource },
+        );
+      }
+    }
   }
   if (parsed.length !== 2 || !keys.has("plus_monthly") || !keys.has("pro_monthly")) {
     throw new SubscriptionCatalogError(
@@ -108,7 +147,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 60,
       strictRpm: 10,
     },
-    resourceCeilings: null,
+    resourceCeilings: { ...FREE_RESOURCE_CEILINGS },
   },
   {
     key: "pro_monthly",
@@ -132,7 +171,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 120,
       strictRpm: 30,
     },
-    resourceCeilings: null,
+    resourceCeilings: { ...FREE_RESOURCE_CEILINGS },
   },
 ]);
 
@@ -183,6 +222,8 @@ interface SubscriptionCatalogBindings {
 export interface SubscriptionCatalogProviderPrice {
   active: boolean;
   currency: string;
+  /** Every multi-currency option key on the Price (retrieved with `expand: ["currency_options"]`). */
+  currencyOptions: string[];
   unitAmount: number | null;
   type: string;
   billingScheme: string;
@@ -215,6 +256,7 @@ const providerPriceSchema = z
   .object({
     active: z.boolean(),
     currency: z.string().min(1),
+    currencyOptions: z.array(z.string().min(1)),
     unitAmount: z.number().int().safe().nullable(),
     type: z.string().min(1),
     billingScheme: z.string().min(1),
@@ -384,6 +426,9 @@ async function verifyPlan(
 
   if (!price.active) mismatch(plan.key, "price.active");
   if (price.currency !== plan.currency) mismatch(plan.key, "price.currency");
+  // A Price with additional currency options could be presented and charged in another currency.
+  if (price.currencyOptions.some((currency) => currency !== plan.currency))
+    mismatch(plan.key, "price.currency_options");
   if (price.unitAmount !== plan.amountCents) mismatch(plan.key, "price.unit_amount");
   if (price.type !== "recurring") mismatch(plan.key, "price.type");
   if (price.billingScheme !== "per_unit") mismatch(plan.key, "price.billing_scheme");
@@ -420,7 +465,7 @@ function publicPlans(): SubscriptionPlansDto {
       allowance: { ...plan.allowance },
       fundingClasses: [...plan.fundingClasses],
       rateLimits: { ...plan.rateLimits },
-      resourceCeilings: plan.resourceCeilings,
+      resourceCeilings: { ...plan.resourceCeilings },
     })) as SubscriptionPlanDto[],
   });
 }
@@ -456,7 +501,8 @@ export function validateSubscriptionCatalogConfiguration(env: NodeJS.ProcessEnv)
 /**
  * Read and validate both approved provider objects, then return only the public
  * catalog projection. Successful checks are briefly coalesced per isolate;
- * failures are never cached and stale success is never served after expiry.
+ * failures are negatively cached for a few seconds and replay the same typed
+ * error (never an empty catalog); stale success is never served after expiry.
  */
 export async function getVerifiedSubscriptionPlans(options: {
   env: NodeJS.ProcessEnv;
@@ -479,7 +525,6 @@ export async function getVerifiedSubscriptionPlans(options: {
     .catch((error) => {
       // error-policy:J2 Provider transport failures become one typed catalog
       // failure while preserving the SDK error as the native cause.
-      verificationCache.delete(cacheKey);
       const catalogError =
         error instanceof SubscriptionCatalogError
           ? error
@@ -493,6 +538,9 @@ export async function getVerifiedSubscriptionPlans(options: {
         code: catalogError.code,
         context: catalogError.context,
       });
+      const current = verificationCache.get(cacheKey);
+      if (current?.pending === pending)
+        verificationCache.set(cacheKey, { expiresAt: now() + FAILED_CACHE_TTL_MS, pending });
       throw catalogError;
     });
 
@@ -516,10 +564,11 @@ export function adaptStripeSubscriptionCatalogProvider(
 ): SubscriptionCatalogProvider {
   return {
     async retrievePrice(priceId) {
-      const price = await stripe.prices.retrieve(priceId);
+      const price = await stripe.prices.retrieve(priceId, { expand: ["currency_options"] });
       return {
         active: price.active,
         currency: price.currency,
+        currencyOptions: Object.keys(price.currency_options ?? {}),
         unitAmount: price.unit_amount,
         type: price.type,
         billingScheme: price.billing_scheme,

@@ -138,3 +138,45 @@ it("serves the explicit backend despite another stored credential, switches thro
   expect(getBaseURL(fixture.runtime)).toBe("https://api.cerebras.ai/v1");
   expect(getApiKey(fixture.runtime)).toBe(cerebrasKey);
 });
+
+it("retires a persisted ChatGPT/Codex subscription chat route while keeping the coding-agent credential", async () => {
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
+  saved.serviceRouting = {
+    llmText: { backend: "openai-subscription", transport: "direct" },
+  };
+  saved.agents = {
+    ...saved.agents,
+    defaults: {
+      ...saved.agents?.defaults,
+      subscriptionProvider: "openai-codex",
+      model: { primary: "codex-cli" },
+    },
+  };
+  await writeFile(configPath, JSON.stringify(saved));
+  expect((await request("/api/config/reload", "POST")).status).toBe(200);
+
+  const models = await request("/api/models/config");
+  expect(models.status).toBe(200);
+  // The dead Codex route no longer claims chat; the stored OpenAI API key
+  // signal is what can serve it now.
+  expect((await models.json()).activeChat?.provider).not.toBe("openai-codex");
+
+  const configResponse = await request("/api/config");
+  expect(configResponse.status).toBe(200);
+  const migrated = await configResponse.json();
+  // The retired route is gone; only a provider the user configured directly
+  // (here the stored OpenAI API key) may be derived in its place.
+  expect(migrated.serviceRouting?.llmText?.backend).not.toBe(
+    "openai-subscription",
+  );
+  expect(migrated.agents?.defaults?.model?.primary).toBeUndefined();
+  expect(migrated.agents?.defaults?.subscriptionProvider).toBe("openai-codex");
+
+  const rejected = await request("/api/provider/switch", "POST", {
+    provider: "openai-subscription",
+  });
+  expect(rejected.status).toBe(400);
+  expect(JSON.stringify(await rejected.json())).toContain(
+    "ChatGPT/Codex subscription cannot power chat",
+  );
+});

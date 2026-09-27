@@ -3,7 +3,10 @@ import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { readPrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
-import { deriveSubscriptionEntitlementValues } from "../../db/repositories/subscription-entitlements";
+import {
+  deriveSubscriptionEntitlementValues,
+  SUBSCRIPTION_FREE_ENTITLEMENT_VALUES,
+} from "../../db/repositories/subscription-entitlements";
 import {
   billingSubscriptionRevisions,
   billingSubscriptions,
@@ -23,6 +26,7 @@ import {
   type OrgTierData,
   resolveOrgTierFromSourceValues,
 } from "./org-rate-limits";
+import { withSubscriptionPaymentGrace } from "./subscription-payment-grace";
 
 export interface OrganizationPolicyStamp {
   generation: string;
@@ -294,20 +298,33 @@ export async function readOrganizationQuotaPolicyInTransaction(
     .where(eq(organizations.id, organizationId));
   if (!clock) return unavailable(organizationId, "missing_database_clock");
   const now = observedAt ?? new Date(clock.now);
-  if (
-    !entitlement.entitlement_effective ||
-    now < entitlement.effective_from ||
-    (entitlement.effective_until !== null && now >= entitlement.effective_until)
-  )
+  if (now < entitlement.effective_from)
     return unavailable(organizationId, "entitlement_not_effective");
+  // Stripe settles renewals shortly after the stored period end, so an active
+  // paid projection keeps access through the shared payment grace. Past that
+  // boundary, or in a non-effective dunning state, the organization is served
+  // as the free tier rather than failing every policy read.
+  const paidUntil =
+    entitlement.effective_until !== null && entitlement.state === "active"
+      ? withSubscriptionPaymentGrace(entitlement.effective_until)
+      : entitlement.effective_until;
+  const lapsed = !entitlement.entitlement_effective || (paidUntil !== null && now >= paidUntil);
+  const granted = lapsed
+    ? { ...entitlement, ...SUBSCRIPTION_FREE_ENTITLEMENT_VALUES }
+    : entitlement;
+  const grantedFrom =
+    lapsed && entitlement.entitlement_effective && paidUntil !== null
+      ? paidUntil
+      : entitlement.effective_from;
+  const grantedUntil = lapsed ? null : paidUntil;
   const characterOverride = observe(() => resolveMaxCloudCharactersForOrg(0, org.settings));
   const containerOverride = observe(() => resolveMaxContainersForOrg(0, config?.settings));
   const tier: OrgTierData = {
-    tierName: entitlement.plan_key,
-    completionsRpm: override?.completions_rpm ?? entitlement.completions_rpm,
-    embeddingsRpm: override?.embeddings_rpm ?? entitlement.embeddings_rpm,
-    standardRpm: override?.standard_rpm ?? entitlement.standard_rpm,
-    strictRpm: override?.strict_rpm ?? entitlement.strict_rpm,
+    tierName: granted.plan_key,
+    completionsRpm: override?.completions_rpm ?? granted.completions_rpm,
+    embeddingsRpm: override?.embeddings_rpm ?? granted.embeddings_rpm,
+    standardRpm: override?.standard_rpm ?? granted.standard_rpm,
+    strictRpm: override?.strict_rpm ?? granted.strict_rpm,
   };
   if (
     override &&
@@ -334,8 +351,8 @@ export async function readOrganizationQuotaPolicyInTransaction(
       sourceRevision: String(current.subscription.lifecycle_revision),
       projectionRevision: String(entitlement.projection_revision),
       catalogVersion: entitlement.catalog_version,
-      effectiveFrom: entitlement.effective_from.toISOString(),
-      effectiveUntil: entitlement.effective_until?.toISOString() ?? null,
+      effectiveFrom: grantedFrom.toISOString(),
+      effectiveUntil: grantedUntil?.toISOString() ?? null,
     },
     tier: observe(() => {
       if (
@@ -347,7 +364,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
       return tier;
     }),
     tierSourceCreditTotal: null,
-    subscriptionFunded: entitlement.plan_key !== "free",
+    subscriptionFunded: granted.plan_key !== "free",
     limits: {
       characters:
         characterOverride.status === "unavailable"
@@ -355,31 +372,31 @@ export async function readOrganizationQuotaPolicyInTransaction(
           : limit(
               characterOverride.value.source === "organization.settings.max_agents"
                 ? characterOverride.value.limit
-                : entitlement.cloud_characters_ceiling,
+                : granted.cloud_characters_ceiling,
               characterOverride.value.source === "organization.settings.max_agents"
                 ? characterOverride.value.source
                 : "subscription-entitlement",
             ),
-      nonEagerSandboxes: limit(entitlement.agent_sandboxes_ceiling, "subscription-entitlement"),
-      sandboxes: limit(entitlement.agent_sandboxes_ceiling, "subscription-entitlement"),
+      nonEagerSandboxes: limit(granted.agent_sandboxes_ceiling, "subscription-entitlement"),
+      sandboxes: limit(granted.agent_sandboxes_ceiling, "subscription-entitlement"),
       containers:
         containerOverride.status === "unavailable"
           ? containerOverride
           : limit(
               containerOverride.value.source === "organization_config.settings.max_containers"
                 ? containerOverride.value.limit
-                : entitlement.containers_ceiling,
+                : granted.containers_ceiling,
               containerOverride.value.source === "organization_config.settings.max_containers"
                 ? containerOverride.value.source
                 : "subscription-entitlement",
             ),
-      apps: limit(entitlement.apps_ceiling, "subscription-entitlement"),
+      apps: limit(granted.apps_ceiling, "subscription-entitlement"),
       storage: limit(
         storage?.limit_override_authorized
           ? storage.bytes_limit
-          : entitlement.storage_gib_ceiling === null
+          : granted.storage_gib_ceiling === null
             ? null
-            : BigInt(entitlement.storage_gib_ceiling) * 1024n * 1024n * 1024n,
+            : BigInt(granted.storage_gib_ceiling) * 1024n * 1024n * 1024n,
         storage?.limit_override_authorized
           ? "authorized-storage-override"
           : "subscription-entitlement",

@@ -26,7 +26,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { type SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
+import type { SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
 import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,
@@ -56,7 +56,6 @@ import {
   type OAuthCredentials,
   type StoredCredentials,
   SUBSCRIPTION_PROVIDER_IDS,
-  SUBSCRIPTION_PROVIDER_MAP,
   SUBSCRIPTION_PROVIDER_METADATA,
   type SubscriptionProvider,
 } from "./types.ts";
@@ -510,7 +509,7 @@ function readConfiguredAnthropicSetupToken(): string | null {
   }
 }
 
-export { type SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
+export type { SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
 /**
  * Per-account subscription status row used by the dashboard / API.
  *
@@ -775,17 +774,18 @@ function isSubscriptionCredentialApplicationDisabled(): boolean {
 /**
  * Local-only, synchronous part of subscription credential application.
  *
- * Reads stored accounts from disk and derives `model.primary` for runtime
- * subscription providers (currently only `openai-codex`). Performs no network
+ * Reads stored accounts from disk and reports which coding-agent surfaces
+ * they enable. `_config` is accepted for call-site compatibility; subscriptions
+ * never mutate it. Performs no network
  * I/O, so it is safe to await on the blocking boot path. Local Claude Code
  * credential discovery is handled by {@link applySubscriptionCredentialsDeferred}.
  *
  * None of the Anthropic / Codex / Gemini / coding-plan branches mutate `config`
- * or `process.env` — they are purely informational logging. The only config
- * mutation is the `openai-codex` `model.primary` derivation below.
+ * or `process.env` — they are purely informational logging. No subscription
+ * sets `model.primary`: none has a runtime text handler.
  */
 export function applySubscriptionCredentialsLocal(
-  config?: SubscriptionCredentialConfig,
+  _config?: SubscriptionCredentialConfig,
 ): void {
   if (isSubscriptionCredentialApplicationDisabled()) {
     logger.info(
@@ -815,8 +815,8 @@ export function applySubscriptionCredentialsLocal(
   }
   // ── OpenAI Codex subscription ────────────────────────────────────────
   //
-  // Codex subscriptions power the Codex CLI-backed provider and task-agent
-  // subprocesses. Do not inject their OAuth access tokens into OPENAI_API_KEY:
+  // Codex subscriptions power task-agent (Codex CLI) subprocesses only; there
+  // is no Codex-backed chat provider. Do not inject their OAuth access tokens into OPENAI_API_KEY:
   // the normal OpenAI API path expects scoped API keys.
   const codexAccounts = listProviderAccounts("openai-codex");
   if (codexAccounts.length > 0) {
@@ -824,13 +824,13 @@ export function applySubscriptionCredentialsLocal(
       .map((a) => `"${a.label}" (${a.id})`)
       .join(", ");
     logger.info(
-      `[auth] OpenAI Codex subscription accounts configured: ${labels} — available for Codex CLI-backed coding/model providers. ` +
+      `[auth] OpenAI Codex subscription accounts configured: ${labels} — available for Codex coding agents. ` +
         "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
     );
   } else {
     if (hasConfiguredExternalCredential("openai-codex")) {
       logger.info(
-        "[auth] OpenAI Codex CLI auth detected — available for Codex CLI-backed coding/model providers. " +
+        "[auth] OpenAI Codex CLI auth detected — available for Codex coding agents. " +
           "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
       );
     }
@@ -856,31 +856,8 @@ export function applySubscriptionCredentialsLocal(
         `Not applied to ${envName}.`,
     );
   }
-  // Auto-set model.primary only for subscription providers that have a runtime
-  // model-provider plugin. CLI-only subscriptions should not point the runtime
-  // at direct API-key plugins.
-  if (config?.agents?.defaults) {
-    const defaults = config.agents.defaults;
-    const provider =
-      defaults.subscriptionProvider as keyof typeof SUBSCRIPTION_PROVIDER_MAP;
-    if (provider) {
-      const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
-      const runtimeApplicable = provider === "openai-codex";
-      if (modelId && runtimeApplicable) {
-        if (!defaults.model) {
-          defaults.model = { primary: modelId };
-          logger.info(
-            `[auth] Auto-set model.primary to "${modelId}" from subscription provider`,
-          );
-        } else if (!defaults.model.primary) {
-          defaults.model.primary = modelId;
-          logger.info(
-            `[auth] Auto-set model.primary to "${modelId}" from subscription provider`,
-          );
-        }
-      }
-    }
-  }
+  // Subscriptions never set `model.primary`: none of them has a runtime text
+  // handler, so chat must be configured through a separate provider.
 }
 /**
  * Apply subscription credentials to the environment.
@@ -898,7 +875,7 @@ export function applySubscriptionCredentialsLocal(
  * subprocesses) but never injecting it into `process.env.ANTHROPIC_API_KEY`.
  *
  * Codex / ChatGPT subscription tokens are also CLI credentials. They are used
- * by the Codex CLI-backed provider, not injected into `OPENAI_API_KEY`.
+ * by Codex task agents only, never injected into `OPENAI_API_KEY`.
  */
 export async function applySubscriptionCredentials(
   config?: SubscriptionCredentialConfig,

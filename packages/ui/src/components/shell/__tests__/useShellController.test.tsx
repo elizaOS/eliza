@@ -1446,6 +1446,122 @@ describe("useShellController — voice capture routing", () => {
   });
 });
 // ── Transcription mode (#8789): record-only until an exit phrase ─────────────
+describe("useShellController — desktop microphone permission (#30676)", () => {
+  type BridgeWindow = Window & { __ELIZA_ELECTROBUN_RPC__?: unknown };
+  let bridgeListeners: Map<string, Set<(payload: unknown) => void>>;
+  let permissionsRequest: Mock<
+    (params?: unknown) => Promise<{ status: string; platform: string }>
+  >;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
+    voiceOutputMock.speaking = false;
+    bridgeListeners = new Map();
+    permissionsRequest = vi.fn(async () => ({
+      status: "granted",
+      platform: "darwin",
+    }));
+    // A real renderer bridge shape: the macOS shell's preload installs this.
+    (window as BridgeWindow).__ELIZA_ELECTROBUN_RPC__ = {
+      request: { permissionsRequest },
+      onMessage: (name: string, listener: (payload: unknown) => void) => {
+        const set = bridgeListeners.get(name) ?? new Set();
+        set.add(listener);
+        bridgeListeners.set(name, set);
+      },
+      offMessage: (name: string, listener: (payload: unknown) => void) => {
+        bridgeListeners.get(name)?.delete(listener);
+      },
+    };
+  });
+  afterEach(() => {
+    delete (window as BridgeWindow).__ELIZA_ELECTROBUN_RPC__;
+    vi.useRealTimers();
+  });
+  async function flushProbe(): Promise<void> {
+    await act(async () => {
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+  }
+  function emitPermissionsChanged(id: string): void {
+    for (const listener of bridgeListeners.get("permissionsChanged") ?? []) {
+      listener({ id });
+    }
+  }
+  it("first-use Talk requests native microphone access from the chat path, then opens the mic", async () => {
+    micPermissionMock.state = "prompt";
+    const { result } = renderHook(() => useShellController());
+    await flushProbe();
+    expect(result.current.micPermission).toBe("prompt");
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    await flushProbe();
+    expect(permissionsRequest).toHaveBeenCalledWith({ id: "microphone" });
+    expect(result.current.micPermission).toBe("granted");
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+  });
+  it("a native denial at first-use Talk leaves the control idle with the re-enable notice", async () => {
+    micPermissionMock.state = "prompt";
+    permissionsRequest.mockImplementation(async () => ({
+      status: "denied",
+      platform: "darwin",
+    }));
+    const { result } = renderHook(() => useShellController());
+    await flushProbe();
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    await flushProbe();
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.micPermission).toBe("denied");
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Microphone access is off"),
+      "error",
+      expect.any(Number),
+    );
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).not.toBe("always-on");
+  });
+  it("re-probes a stale denial when the host reports a microphone grant from Settings", async () => {
+    micPermissionMock.state = "denied";
+    const { result } = renderHook(() => useShellController());
+    await flushProbe();
+    expect(result.current.micPermission).toBe("denied");
+    micPermissionMock.state = "granted";
+    act(() => emitPermissionsChanged("microphone"));
+    await flushProbe();
+    expect(result.current.micPermission).toBe("granted");
+    // A non-microphone permission change does not trigger a probe.
+    const callsBefore = micPermissionMock.query.mock.calls.length;
+    act(() => emitPermissionsChanged("camera"));
+    expect(micPermissionMock.query.mock.calls.length).toBe(callsBefore);
+  });
+  it("re-probes a stale denial when the chat window regains focus", async () => {
+    micPermissionMock.state = "denied";
+    const { result } = renderHook(() => useShellController());
+    await flushProbe();
+    expect(result.current.micPermission).toBe("denied");
+    micPermissionMock.state = "granted";
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await flushProbe();
+    expect(result.current.micPermission).toBe("granted");
+    // The next Talk opens the mic on the fast path, no native request needed.
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(permissionsRequest).not.toHaveBeenCalled();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+  });
+});
 describe("useShellController — transcription mode", () => {
   beforeEach(() => {
     vi.useFakeTimers();

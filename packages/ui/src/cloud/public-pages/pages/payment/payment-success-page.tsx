@@ -1,8 +1,7 @@
 /**
  * Payment-success callback page (public). Handles redirects from external
  * payment providers (OxaPay/Stripe): checks the Steward session client-side and
- * redirects to billing settings (or the app-charge page) — or to login with a
- * returnTo when signed out.
+ * redirects to billing settings — or to login with a returnTo when signed out.
  */
 
 import { CheckCircle, Loader2 } from "lucide-react";
@@ -22,21 +21,6 @@ export default function PaymentSuccessPage() {
 
     const trackId = searchParams.get("trackId");
     const status = searchParams.get("status");
-    const appId = searchParams.get("app_id");
-    const chargeRequestId = searchParams.get("charge_request_id");
-
-    if (appId && chargeRequestId) {
-      const chargeParams = new URLSearchParams();
-      chargeParams.set("payment", "success");
-      if (trackId) chargeParams.set("trackId", trackId);
-      if (status) chargeParams.set("status", status);
-      navigate(
-        `/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(chargeRequestId)}?${chargeParams.toString()}`,
-        { replace: true },
-      );
-      return;
-    }
-
     const targetParams = new URLSearchParams();
     targetParams.set("payment", "success");
     if (trackId) targetParams.set("trackId", trackId);

@@ -103,6 +103,7 @@ export type {
   ReadMessageResult,
   ScoreContext,
   SearchMessagesFilters,
+  SendConsentOptions,
   SendPolicy,
   TriageOptions,
   TriageScore,
@@ -125,6 +126,7 @@ export {
   rankScored,
   registerDeferredMessageScheduler,
   registerSendPolicy,
+  requireSendConsent,
   resetMissingServiceWarning,
   resolveContactWeight,
   respondToMessageAction,
@@ -132,6 +134,7 @@ export {
   scoreMessage,
   scoreMessages,
   searchMessagesAction,
+  sendConsentDigest,
   sendDraftAction,
   triageMessagesAction,
 } from "./features/messaging/triage/index.ts";

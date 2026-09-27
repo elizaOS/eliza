@@ -72,12 +72,10 @@ export async function readEligibleSubscriptionAllowance(
       { organizationId: organizationId },
     );
   const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId, now);
-  if (policy.authority.source === "subscription" && !policy.subscriptionFunded)
-    fundingError(
-      "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
-      "Current subscription is unavailable for new funding",
-      { organizationId: organizationId },
-    );
+  // An unfunded (canceled or expired-to-free) subscription is cash-only: new
+  // allowance-eligible work is funded entirely from purchased credits, and any
+  // bucket its terminal source left open is never spendable.
+  if (!policy.subscriptionFunded) return undefined;
   const period = await findCurrentAllowance(tx, organizationId, now, lock);
   if (period) {
     const [source] = await tx

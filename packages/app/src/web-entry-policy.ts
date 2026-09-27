@@ -42,7 +42,6 @@ const PARAMETRIC_PUBLIC_PATHS = [
   /^\/ballot\/[^/]+$/,
   /^\/chat\/[^/]+$/,
   /^\/payment\/[^/]+$/,
-  /^\/payment\/app-charge\/[^/]+\/[^/]+$/,
   /^\/sensitive-requests\/[^/]+$/,
 ] as const;
 

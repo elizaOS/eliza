@@ -132,6 +132,12 @@ beforeAll(async () => {
   await fixture.exec(minimumReceiptMigration);
   await fixture.exec(minimumReceiptMigration);
   await fixture.exec(receiptMigration);
+  const reservedReceiptMigration = await readFile(
+    new URL("../../db/migrations/0484_agent_billing_funding_reservations.sql", import.meta.url),
+    "utf8",
+  );
+  await fixture.exec(reservedReceiptMigration);
+  await fixture.exec(reservedReceiptMigration);
   await fixture.exec(
     await readFile(
       new URL("../../db/migrations/0274_agent_billing_run_receipts.sql", import.meta.url),
@@ -682,7 +688,7 @@ test("a caught failed renewal rolls back its allowance settlement, cash refund, 
 });
 
 test.each(["canceled", "expired"] as const)(
-  "subscription %s state sends funded billing to the stop path without releasing its existing hold",
+  "subscription %s state keeps its existing hold and funds renewal only from authorized sources",
   async (state) => {
     const { subscriptionAuthorityRepository: authority } = await import(
       "../../db/repositories/subscription-authority"
@@ -699,8 +705,9 @@ test.each(["canceled", "expired"] as const)(
     const rollback = new Error("Roll back unavailable subscription fixture");
     await expect(
       helpers.writeTransaction(async (tx) => {
-        // Cash is sufficient: subscription authority, rather than an empty wallet,
-        // must cause this renewal denial. The whole scenario rolls back below.
+        // Cash is sufficient. A canceled subscription is cash-only, so renewal is
+        // funded from purchased credits; an entitlement past its period without a
+        // renewal is unavailable authority and must stop. Rolls back below.
         await tx.execute(sql`UPDATE organizations SET credit_balance='1.000000'
         WHERE id=${allowanceOrganizationId}`);
         await tx.execute(sql`UPDATE agent_sandboxes SET billing_status='active',total_billed=0,
@@ -747,10 +754,18 @@ test.each(["canceled", "expired"] as const)(
             new Date(),
             "billing_recovery",
           );
-        expect(result).toEqual({ status: "insufficient_credits" });
-        expect((await readHeldFunding()).rows).toEqual(held.rows);
-        const jobs = await tx.execute(sql`SELECT id FROM jobs WHERE agent_id=${agentId}`);
-        expect(jobs.rows).toEqual([]);
+        if (state === "expired") {
+          expect(result).toEqual({ status: "insufficient_credits" });
+          expect((await readHeldFunding()).rows).toEqual(held.rows);
+          const jobs = await tx.execute(sql`SELECT id FROM jobs WHERE agent_id=${agentId}`);
+          expect(jobs.rows).toEqual([]);
+        } else {
+          expect(result).toMatchObject({ status: "billed" });
+          const successor = await tx.execute(sql`SELECT a.source FROM billing_funding_allocations a
+            JOIN agent_compute_funding f ON f.funding_reservation_id = a.reservation_id
+            WHERE f.agent_id=${agentId} AND f.settled_at IS NULL`);
+          expect(successor.rows).toEqual([{ source: "purchased_credit" }]);
+        }
         throw rollback;
       }),
     ).rejects.toBe(rollback);

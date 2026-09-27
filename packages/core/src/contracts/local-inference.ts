@@ -402,7 +402,15 @@ export interface CatalogModel {
 	/** Optional human-facing parameter label when `params` is normalized. */
 	parameterLabel?: string;
 	quant: string;
+	/** Primary text GGUF size (GiB); feeds RAM-fit math, not download offers. */
 	sizeGb: number;
+	/**
+	 * Total bytes (GiB) the downloader fetches for this entry — for a bundle,
+	 * the manifest plus every installed component. Download offers, disk
+	 * preflight and progress totals use this; falls back to `sizeGb` when
+	 * absent (no published bundle).
+	 */
+	downloadSizeGb?: number;
 	/** Minimum system RAM (GB) we recommend before offering this model. */
 	minRamGb: number;
 	category: ModelCategory;
@@ -482,13 +490,25 @@ export interface CatalogModel {
 	 *     The recommender may route first-run users here.
 	 *   - `"pending"`: catalog points at a tier whose HF repo is not
 	 *     usable yet (404, empty manifest, or `releaseState=local-standin`).
-	 *     `recommendForFirstRun` falls through
-	 *     to the next ladder candidate. Used to keep the catalog reflecting
+	 *     Recommenders skip it. Used to keep the catalog reflecting
 	 *     the intended product shape while the publish pipeline catches up.
+	 *
+	 * Publication is necessary but not sufficient for a recommendation; see
+	 * `activationEligible`.
 	 *
 	 * See elizaOS/eliza#7629.
 	 */
 	publishStatus?: "published" | "pending";
+	/**
+	 * Whether the published bundle passes the activation gate — the same
+	 * `evals.textEval.passed` check the runtime applies to the installed
+	 * manifest before activating it. A published bundle whose manifest is a
+	 * candidate (`textEval.passed=false`) is downloadable bytes, not a usable
+	 * chat model: setup/recommendation surfaces must not offer it, and the
+	 * downloader refuses it before fetching weights. Defaults to the catalog's
+	 * manifest snapshot for the tier when omitted.
+	 */
+	activationEligible?: boolean;
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";

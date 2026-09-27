@@ -18,6 +18,7 @@ import {
   isElizaSettingsDebugEnabled,
   logger,
   migrateLegacyRuntimeConfig,
+  migrateRetiredSubscriptionChatRoute,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/core";
@@ -79,6 +80,11 @@ function migrateRetiredPluginConfig(config: ElizaConfig): void {
 }
 
 function migrateConfig(config: ElizaConfig): void {
+  if (migrateRetiredSubscriptionChatRoute(config as Record<string, unknown>)) {
+    logger.warn(
+      "[eliza] The ChatGPT/Codex subscription no longer powers chat; removed its chat route. It stays linked for coding agents. Choose a chat provider in Settings.",
+    );
+  }
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   migrateRetiredPluginConfig(config);
 }

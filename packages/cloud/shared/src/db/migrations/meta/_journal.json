@@ -3228,6 +3228,34 @@
       "when": 1796083200104,
       "tag": "0480_personal_dedicated_fallbacks",
       "breakpoints": true
+    },
+    {
+      "idx": 461,
+      "version": "7",
+      "when": 1796083200105,
+      "tag": "0481_paid_plan_resource_ceilings",
+      "breakpoints": true
+    },
+    {
+      "idx": 462,
+      "version": "7",
+      "when": 1796083200106,
+      "tag": "0482_org_storage_subscription_funding",
+      "breakpoints": true
+    },
+    {
+      "idx": 463,
+      "version": "7",
+      "when": 1796083200107,
+      "tag": "0483_container_billing_funding_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 464,
+      "version": "7",
+      "when": 1796083200108,
+      "tag": "0484_agent_billing_funding_reservations",
+      "breakpoints": true
     }
   ]
 }

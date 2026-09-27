@@ -90,24 +90,6 @@ mock.module("@/db/repositories/users", () => ({
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
 }));
-mock.module("@/lib/services/app-charge-callbacks", () => ({
-  appChargeCallbacksService: {},
-}));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {
-    markPaid: mock(async () => undefined),
-  },
-}));
-mock.module("@/lib/services/app-credits", () => ({
-  appCreditsService: {
-    processPurchase: mock(async () => ({
-      creditsAdded: 5,
-      platformOffset: 0,
-      creatorEarnings: 0,
-      newBalance: 5,
-    })),
-  },
-}));
 mock.module("@/lib/services/auto-top-up", () => ({
   autoTopUpService: {
     reconcileSucceededPaymentIntent: mock(async () => ({

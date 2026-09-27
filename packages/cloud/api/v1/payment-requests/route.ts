@@ -7,8 +7,7 @@
  * The read surface fronts payment_requests rows across providers.
  * Creation accepts the wired credit rails — Stripe and OxaPay (#10732),
  * settled by /api/v1/stripe/webhook and /api/v1/oxapay/webhook
- * respectively; use the app-charge and x402 routes for wallet-native
- * and x402 flows.
+ * respectively; use the x402 routes for x402 flows.
  */
 
 import { Hono } from "hono";

@@ -128,7 +128,6 @@ export type FirstRunProviderId =
 	| "nearai"
 	| "ollama"
 	| "openai"
-	| "openai-subscription"
 	| "openrouter"
 	| "together"
 	| "zai"
@@ -227,7 +226,6 @@ export interface InventoryProviderOption {
 
 export type SubscriptionProviderSelectionId =
 	| "anthropic-subscription"
-	| "openai-subscription"
 	| "gemini-subscription"
 	| "zai-coding-subscription"
 	| "kimi-coding-subscription"
@@ -723,11 +721,14 @@ export function getSubscriptionProviderFamily(
 	);
 }
 
+/**
+ * Every subscription selection is a coding-agent credential: none of them
+ * registers a runtime TEXT handler, so chat always needs a separate provider.
+ */
 export function requiresAdditionalRuntimeProvider(
 	providerId: unknown,
 ): boolean {
-	const selection = normalizeSubscriptionProviderSelectionId(providerId);
-	return Boolean(selection && selection !== "openai-subscription");
+	return normalizeSubscriptionProviderSelectionId(providerId) !== null;
 }
 
 export function normalizeFirstRunProviderId(
@@ -1183,6 +1184,55 @@ function pruneLegacyCloudRoutingFields(
 	}
 }
 
+/** Chat backends that were served by the removed Codex CLI text handler. */
+const RETIRED_SUBSCRIPTION_CHAT_BACKENDS = new Set([
+	"openai-subscription",
+	"openai-codex",
+]);
+/** `model.primary` values that pointed at the removed Codex CLI handler. */
+const RETIRED_SUBSCRIPTION_PRIMARY_MODELS = new Set(["codex-cli"]);
+
+/**
+ * The ChatGPT/Codex subscription used to be selectable as the chat backend via
+ * the `codex exec` text handler, which no longer exists. A persisted
+ * `llmText` route (or `model.primary: "codex-cli"`) for it can never serve
+ * chat, so drop it: the agent then reports "no provider" and the UI routes the
+ * user to choose one. The Codex credential itself (`subscriptionProvider`,
+ * linked accounts) is kept because task agents still use it.
+ *
+ * Returns true when the config was changed so hosts can report the migration.
+ */
+export function migrateRetiredSubscriptionChatRoute(
+	config: Record<string, unknown> | null | undefined,
+): boolean {
+	const root = asConfigRecord(config);
+	if (!root) return false;
+	let changed = false;
+
+	const serviceRouting = asConfigRecord(root.serviceRouting);
+	const llmText = asConfigRecord(serviceRouting?.llmText);
+	const backend = readConfigString(llmText, "backend")?.toLowerCase();
+	if (
+		serviceRouting &&
+		backend &&
+		RETIRED_SUBSCRIPTION_CHAT_BACKENDS.has(backend)
+	) {
+		delete serviceRouting.llmText;
+		changed = true;
+	}
+
+	const agents = asConfigRecord(root.agents);
+	const defaults = asConfigRecord(agents?.defaults);
+	const model = asConfigRecord(defaults?.model);
+	const primary = readConfigString(model, "primary")?.toLowerCase();
+	if (model && primary && RETIRED_SUBSCRIPTION_PRIMARY_MODELS.has(primary)) {
+		delete model.primary;
+		changed = true;
+	}
+
+	return changed;
+}
+
 export function migrateLegacyRuntimeConfig<T extends Record<string, unknown>>(
 	config: T,
 ): T {
@@ -1190,6 +1240,8 @@ export function migrateLegacyRuntimeConfig<T extends Record<string, unknown>>(
 	if (!root) {
 		return config;
 	}
+
+	migrateRetiredSubscriptionChatRoute(root);
 
 	const deploymentTarget =
 		normalizeDeploymentTargetConfig(root.deploymentTarget) ??
@@ -1363,19 +1415,8 @@ function deriveFirstRunConnectionFromRuntimeConfig(
 function resolveConfiguredLocalProviderFromSignals(
 	config: Record<string, unknown> | null | undefined,
 ): FirstRunLocalProviderId | null {
-	const agents = asConfigRecord(config?.agents);
-	const defaults = asConfigRecord(agents?.defaults);
-	const storedSubscriptionProvider = normalizeFirstRunProviderId(
-		readConfigString(defaults, "subscriptionProvider"),
-	);
-	if (
-		storedSubscriptionProvider &&
-		storedSubscriptionProvider !== "elizacloud" &&
-		!requiresAdditionalRuntimeProvider(storedSubscriptionProvider)
-	) {
-		return storedSubscriptionProvider;
-	}
-
+	// A stored `subscriptionProvider` is a coding-agent credential, never a
+	// chat backend, so only direct provider signals imply a text route.
 	for (const provider of FIRST_RUN_PROVIDER_CATALOG) {
 		if (provider.id === "elizacloud") {
 			continue;

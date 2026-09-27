@@ -100,7 +100,7 @@ async function readback(id: string) {
     )
   ).rows;
 }
-test("actual SDK recovery publishes terminal once and repeated observation creates only a no-change receipt", async () => {
+test("actual SDK recovery publishes terminal once and the published terminal source leaves the scan", async () => {
   const f = await fixture();
   const policyReader = await import("../../lib/services/organization-quota-policy");
   const admission = await import("../../lib/services/organization-policy-admission");
@@ -161,9 +161,8 @@ test("actual SDK recovery publishes terminal once and repeated observation creat
       [f.input.organizationId],
     );
   provider = { ...provider, unrelated_metadata: "changed" };
-  expect((await service.recoverMissedSubscriptionEvents()).attempts[0]?.disposition).toBe(
-    "no_change",
-  );
+  expect(await repo.listDueSubscriptionReconciliations(5)).toEqual([]);
+  expect((await service.recoverMissedSubscriptionEvents()).attempts).toEqual([]);
   expect(await readback(f.input.subscriptionId)).toEqual(after);
 });
 test("notice failure rolls source, journal, projection, generation and audit back while retaining retry failure", async () => {
@@ -228,7 +227,8 @@ test("fenced accounts do not occupy eligible candidate slots and every unsupport
       ]);
   }
   const f = await fixture();
-  provider = { ...f.provider, status: "past_due" };
+  // An unowned pending update is unsupported provider policy (past_due now has a dunning owner).
+  provider = { ...f.provider, pending_update: { expires_at: f.provider.current_period_end } };
   expect(await repo.listDueSubscriptionReconciliations(5)).toEqual([
     { organizationId: f.input.organizationId, subscriptionId: f.input.subscriptionId },
   ]);
@@ -313,13 +313,19 @@ test("late authentic terminal queue event applies only its receipt and replay pr
         )
     ).rows[0],
   ).toEqual({ status: "applied", applied_subscription_revision: 3 });
-  expect(await queue.processStripeEvent(message("evt_olderunseen", epoch - 1))).toBe("retry");
+  // An older unseen delivery is acknowledged; recovery already owns the current source.
+  expect(await queue.processStripeEvent(message("evt_olderunseen", epoch - 1))).toBe("ack");
   expect(await readback(f.input.subscriptionId)).toEqual(after);
 });
 
 test("provider failure and failed receipt bookkeeping preserve both causes", async () => {
   const f = await fixture();
-  provider = { ...f.provider, status: "past_due" };
+  // A future trial end is an unconfirmed schedule the cancellation validator rejects.
+  provider = {
+    ...f.provider,
+    trial_start: f.provider.current_period_start,
+    trial_end: f.provider.current_period_end,
+  };
   await client
     .getPgliteClientForTests()
     .exec(
@@ -502,9 +508,8 @@ for (const corruption of ["missing", "stale", "corrupt"] as const)
       "UPDATE subscription_reconciliation_scans SET next_due_at=clock_timestamp()-interval '1 second' WHERE organization_id=$1",
       [f.input.organizationId],
     );
-    const result = await service.recoverMissedSubscriptionEvents();
-    expect(result.status).toBe("degraded");
-    expect(result.attempts[0]?.disposition).toBe("unavailable");
+    // Published terminal sources no longer occupy scan slots; the late event must still refuse.
+    expect(await repo.listDueSubscriptionReconciliations(5)).toEqual([]);
     const event: import("stripe").default.CustomerSubscriptionDeletedEvent = JSON.parse(
       JSON.stringify({
         id: `evt_projection${corruption}`,
@@ -578,7 +583,8 @@ test("a full failed batch durably rotates so the next eligible subscription is n
   provider = { ...deferred.provider, status: "past_due" };
   const first = await service.recoverMissedSubscriptionEvents();
   expect(first.attempts).toHaveLength(5);
-  expect(first.attempts.every((attempt) => attempt.disposition === "unavailable")).toBe(true);
+  // Mismatched provider identity is unsupported policy: retained with an incident and backoff.
+  expect(first.attempts.every((attempt) => attempt.disposition === "unsupported")).toBe(true);
   expect(await repo.listDueSubscriptionReconciliations(5)).toEqual([
     {
       organizationId: deferred.input.organizationId,

@@ -173,12 +173,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   // billing/
   {
-    slug: "pricing",
-    path: "/pricing",
-    route: "pricing",
-    auth: false,
-  },
-  {
     slug: "cloud-app-subscription",
     path: "/cloud/billing/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff/workspace",
     route: "cloud/billing/apps/:appId/:productFamilyKey",
@@ -278,12 +272,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     // then skip aesthetic collection.
     auth: AUTH,
     expectedFinalPath: /^\/cloud\/billing$/,
-  },
-  {
-    slug: "payment-app-charge",
-    path: "/payment/app-charge/app-smoke-1/charge-smoke-1",
-    route: "payment/app-charge/:appId/:chargeId",
-    auth: PUBLIC,
   },
   {
     slug: "approve-approval",

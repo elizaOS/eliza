@@ -22,7 +22,8 @@ export type PairingFailureCode =
   | "PAIRING_NOT_READY"
   | "PAIRING_INSTANCE_MISMATCH"
   | "PAIRING_RATE_LIMITED"
-  | "PAIRING_SESSION_FAILED";
+  | "PAIRING_SESSION_FAILED"
+  | "PAIRING_SUPERSEDED";
 
 /** Converts the server's stable pairing verdict into an actionable UI state. */
 export function pairingFailureMessage(error: unknown): string {
@@ -44,6 +45,8 @@ export function pairingFailureMessage(error: unknown): string {
       return "Too many attempts. Try again later.";
     case "PAIRING_SESSION_FAILED":
       return "The code was accepted, but the server could not create a session. Generate a new code and try again.";
+    case "PAIRING_SUPERSEDED":
+      return "The server connection changed during pairing. Enter a pairing code from the current server.";
     default: {
       const status = (error as { status?: number }).status;
       if (status === 410)

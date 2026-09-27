@@ -173,6 +173,98 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function subscriptionSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    subscriptionId: "sub-1",
+    planKey: "pro_monthly",
+    catalogVersion: "v1",
+    lifecycleRevision: "7",
+    projectionRevision: "2",
+    state: "past_due",
+    currentPeriodStart: "2026-08-01T00:00:00.000Z",
+    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+    cancelAtPeriodEnd: false,
+    pendingPlanKey: null,
+    graceExpiresAt: "2026-08-25T00:00:00.000Z",
+    dunningStartedAt: "2026-08-20T00:00:00.000Z",
+    allowance: available({
+      granted: "90.000000",
+      effectiveRemaining: available("12.345678"),
+    }),
+    cancellationControl: {
+      action: "cancel",
+      method: "POST",
+      endpoint: "/api/v1/subscriptions/cancel",
+      subscriptionId: "sub-1",
+      expectedSubscriptionRevision: 7,
+      eligible: false,
+      blockers: ["subscription_state_unsupported"],
+    },
+    ...overrides,
+  };
+}
+
+describe("parseBillingSnapshotV2Envelope subscription", () => {
+  it("selects the organization subscription and its server-owned cancel control", () => {
+    const envelope = readyEnvelope();
+    v2Of(envelope).subscription = available(subscriptionSnapshot());
+    const parsed = parseBillingSnapshotV2Envelope(envelope).subscription;
+    expect(parsed).toMatchObject({
+      status: "available",
+      value: {
+        subscriptionId: "sub-1",
+        planKey: "pro_monthly",
+        state: "past_due",
+        graceExpiresAt: "2026-08-25T00:00:00.000Z",
+        allowance: {
+          status: "available",
+          value: {
+            granted: "90.000000",
+            effectiveRemaining: { status: "available", value: "12.345678" },
+          },
+        },
+        cancellationControl: {
+          action: "cancel",
+          expectedSubscriptionRevision: 7,
+          eligible: false,
+          blockers: ["subscription_state_unsupported"],
+        },
+      },
+    });
+  });
+
+  it("reports drifted subscription evidence as unavailable without hiding billing", () => {
+    const envelope = readyEnvelope();
+    v2Of(envelope).subscription = available(
+      subscriptionSnapshot({
+        cancellationControl: {
+          ...subscriptionSnapshot().cancellationControl,
+          subscriptionId: "another-subscription",
+        },
+      }),
+    );
+    const parsed = parseBillingSnapshotV2Envelope(envelope);
+    expect(parsed.subscription).toMatchObject({
+      status: "unavailable",
+      error: { code: "subscription_snapshot_invalid" },
+    });
+    expect(parsed.balance.status).toBe("available");
+  });
+
+  it("keeps an explicit no-subscription distinct from unavailable", () => {
+    const envelope = readyEnvelope();
+    v2Of(envelope).subscription = {
+      status: "not_applicable",
+      source: "primary-organization-subscription",
+      observedAt: COMPLETED_AT,
+      reason: "no_organization_subscription",
+    };
+    expect(parseBillingSnapshotV2Envelope(envelope).subscription).toMatchObject(
+      { status: "not_applicable" },
+    );
+  });
+});
+
 describe("parseBillingSnapshotV2Envelope", () => {
   it("preserves exact balance and compute decimals beyond Number precision", () => {
     const parsed = parseBillingSnapshotV2Envelope(readyEnvelope());

@@ -103,6 +103,27 @@ it("binds actual draft sending to a later user turn and consumes consent once du
         "cancelled",
       );
     }
+    const chip = { affirmations: ["inbox approve entry-1"] };
+    const chipDigest = randomUUID();
+    await requireSendConsent(runtime, turn("preview"), chipDigest, chip);
+    expect(
+      await requireSendConsent(
+        runtime,
+        turn("Inbox approve entry-1"),
+        chipDigest,
+        chip,
+      ),
+    ).toBe("confirmed");
+    const otherChipDigest = randomUUID();
+    await requireSendConsent(runtime, turn("preview"), otherChipDigest, chip);
+    expect(
+      await requireSendConsent(
+        runtime,
+        turn("inbox approve entry-2"),
+        otherChipDigest,
+        chip,
+      ),
+    ).toBe("cancelled");
     const digest = randomUUID();
     await requireSendConsent(runtime, turn("preview"), digest);
     expect(

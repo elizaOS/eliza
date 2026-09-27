@@ -1,4 +1,4 @@
-/** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership. */
+/** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership, and policy failures open the same incident as the webhook owner. */
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { findPurchasedSubscriptionContract } from "../../db/repositories/subscription-purchased-binding";
@@ -12,17 +12,24 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { validateStripeDunningObservation } from "./stripe-dunning-lifecycle";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "./stripe-period-end-cancellation";
+import {
+  hasInFlightScheduleCommand,
+  unownedObservationDrift,
+} from "./stripe-scheduled-cancellation-lifecycle";
 import { validateStripeTerminalObservation } from "./stripe-terminal-lifecycle";
 import { resolveSubscriptionProviderBinding } from "./subscription-catalog";
 import {
   assertCheckoutProviderAuthority,
   checkoutContractEnvironment,
 } from "./subscription-checkout-contract";
+import { openSubscriptionIncident } from "./subscription-event-incidents";
+import { subscriptionPolicyFailureReason, typedFailure } from "./subscription-lifecycle-failures";
 
 export async function recoverMissedSubscriptionEvents() {
   const deadline = Date.now() + 20_000;
@@ -64,67 +71,106 @@ export async function recoverMissedSubscriptionEvents() {
         environment,
       });
       const raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
+      if (!["canceled", "incomplete_expired", "past_due", "unpaid", "active"].includes(raw.status))
+        throw new ElizaError("Recovery observed a subscription status no owner supports", {
+          code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE",
+          context: { reason: "unsupported_live_status", status: raw.status },
+        });
       const receipt =
         raw.status === "canceled" || raw.status === "incomplete_expired"
           ? await finalizeSubscriptionReconciliation(claim, {
               kind: "terminal",
               value: validateStripeTerminalObservation(raw, claim.source, environment),
             })
-          : await (async () => {
-              const period = z
-                .object({ current_period_end: z.number().int().nonnegative().safe() })
-                .safeParse(raw);
-              if (
-                raw.status === "active" &&
-                period.success &&
-                period.data.current_period_end * 1000 !== claim.source.current_period_end?.getTime()
-              ) {
+          : raw.status === "past_due" || raw.status === "unpaid"
+            ? await finalizeSubscriptionReconciliation(claim, {
+                kind: "dunning",
+                observation: validateStripeDunningObservation(raw, claim.source, environment),
+              })
+            : await (async () => {
+                const period = z
+                  .object({ current_period_end: z.number().int().nonnegative().safe() })
+                  .safeParse(raw);
                 if (
-                  typeof raw.latest_invoice !== "string" ||
-                  !/^in_[A-Za-z0-9]+$/.test(raw.latest_invoice)
-                )
-                  throw new ElizaError(
-                    "Paid renewal recovery requires the current invoice identity",
-                    { code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE" },
+                  raw.status === "active" &&
+                  period.success &&
+                  period.data.current_period_end * 1000 !==
+                    claim.source.current_period_end?.getTime()
+                ) {
+                  if (
+                    typeof raw.latest_invoice !== "string" ||
+                    !/^in_[A-Za-z0-9]+$/.test(raw.latest_invoice)
+                  )
+                    throw new ElizaError(
+                      "Paid renewal recovery requires the current invoice identity",
+                      { code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE" },
+                    );
+                  const objects = await retrievePaidRenewalObjects(
+                    claim.source,
+                    raw.latest_invoice,
+                    stripe,
                   );
-                const objects = await retrievePaidRenewalObjects(
-                  claim.source,
-                  raw.latest_invoice,
-                  stripe,
-                );
-                return finalizeSubscriptionReconciliation(claim, {
-                  kind: "paid_renewal",
-                  invoiceId: raw.latest_invoice,
-                  objects,
+                  return finalizeSubscriptionReconciliation(claim, {
+                    kind: "paid_renewal",
+                    invoiceId: raw.latest_invoice,
+                    objects,
+                  });
+                }
+                // Out-of-band plan or schedule changes are not ours to adopt.
+                const drift = unownedObservationDrift(raw, claim.source, environment);
+                if (
+                  drift &&
+                  (drift !== "cancellation_not_owned" ||
+                    !(await hasInFlightScheduleCommand(claim.source)))
+                )
+                  throw new ElizaError("Recovery observed an out-of-band provider change", {
+                    code: "SUBSCRIPTION_LIFECYCLE_UNSUPPORTED",
+                    context: { reason: drift },
+                  });
+                const value = validatePeriodEndCancellationObservation({
+                  raw,
+                  source: claim.source,
+                  organizationCustomerId: claim.organizationCustomerId,
+                  environment,
+                  observedAt: new Date(),
+                  requireScheduled: claim.source.cancel_at_period_end,
+                  allowRetainedCanceledAt: claim.source.canceled_at,
                 });
-              }
-              const value = validatePeriodEndCancellationObservation({
-                raw,
-                source: claim.source,
-                organizationCustomerId: claim.organizationCustomerId,
-                environment,
-                observedAt: new Date(),
-                requireScheduled: claim.source.cancel_at_period_end,
-                allowRetainedCanceledAt: claim.source.canceled_at,
-              });
-              return finalizeSubscriptionReconciliation(claim, {
-                kind: "owned_schedule",
-                scheduled: value.scheduled,
-                canceledAt: value.canceledAt,
-              });
-            })();
+                return finalizeSubscriptionReconciliation(claim, {
+                  kind: "owned_schedule",
+                  scheduled: value.scheduled,
+                  canceledAt: value.canceledAt,
+                });
+              })();
       results.push({ attemptId: receipt.id, disposition: receipt.disposition });
     } catch (error) {
       // error-policy:J1 The cron boundary retains this failed attempt and exposes its typed disposition, never a successful observation.
       const code =
         error instanceof ElizaError ? error.code : "SUBSCRIPTION_RECOVERY_OBSERVATION_FAILED";
+      const policyReason = subscriptionPolicyFailureReason(error);
       logger.warn("[Subscription Recovery] Observation could not be finalized", {
         attemptId: claim.attemptId,
+        subscriptionId: claim.subscriptionId,
         code,
+        reason: typedFailure(error)?.reason ?? null,
+        policyReason,
         error,
       });
       try {
-        const receipt = await failSubscriptionReconciliation(claim, "unavailable", code);
+        // Policy failures get the same operator incident the webhook owner opens.
+        if (policyReason)
+          await openSubscriptionIncident({
+            source: claim,
+            kind: "reconciliation",
+            severity: "error",
+            reason: policyReason,
+            observedBy: "reconciliation",
+          });
+        const receipt = await failSubscriptionReconciliation(
+          claim,
+          policyReason ? "unsupported" : "unavailable",
+          code,
+        );
         results.push({ attemptId: receipt.id, disposition: receipt.disposition });
       } catch (bookkeepingError) {
         // error-policy:J2 Both the observation failure and its failed durable disposition remain visible to the cron owner.
@@ -136,10 +182,18 @@ export async function recoverMissedSubscriptionEvents() {
       }
     }
   }
+  // Per-subscription degradation is reported, not raised: each failed attempt
+  // is durably retained with backoff and, for policy failures, an incident.
+  const degraded = results.filter(
+    (result) => !["applied", "no_change"].includes(result.disposition),
+  );
+  if (degraded.length > 0)
+    logger.warn("[Subscription Recovery] Some subscriptions could not be reconciled", {
+      code: "subscription_recovery_degraded",
+      attempts: degraded,
+    });
   return {
-    status: results.some((result) => !["applied", "no_change"].includes(result.disposition))
-      ? ("degraded" as const)
-      : ("ok" as const),
+    status: degraded.length > 0 ? ("degraded" as const) : ("ok" as const),
     attempts: results,
   };
 }
