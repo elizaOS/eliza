@@ -1,2 +1,2 @@
 /** Shared host implementation; this path preserves existing consumers. */
-export * from "@elizaos/remote-control-host/crypto";
+export * from "@elizaos/plugin-browser/remote-control/crypto";

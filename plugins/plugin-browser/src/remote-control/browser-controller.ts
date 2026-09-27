@@ -15,10 +15,8 @@ import {
   isRemoteControllerPublicIdentity,
   isRemoteTargetPublicIdentity,
 } from "@elizaos/core/contracts/remote-control";
-import {
-  type BrowserService,
-  createRemoteBrowserDeviceTarget,
-} from "@elizaos/plugin-browser";
+import type { BrowserService } from "../browser-service";
+import { createRemoteBrowserDeviceTarget } from "../targets/remote-device-target";
 import {
   RemoteControlCloudClient,
   type RemoteSessionSummary,

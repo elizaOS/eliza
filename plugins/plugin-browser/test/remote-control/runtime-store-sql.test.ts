@@ -1,3 +1,4 @@
+/** Exercises remote browser authority and encrypted runtime persistence through the existing host contract. */
 import { expect, it } from "bun:test";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -10,8 +11,8 @@ import {
   desktopAcknowledgeRemoteCommandEnqueue,
   desktopCreateRemoteCommand,
   desktopGetOrCreateControllerIdentity,
-} from "../src/controller";
-import { createRuntimePlatformSecureStore } from "../src/runtime-store";
+} from "../../src/remote-control/controller";
+import { createRuntimePlatformSecureStore } from "../../src/remote-control/runtime-store";
 
 it("provisions only the missing self world on fresh SQL storage and persists encrypted credentials", async () => {
   const directory = await mkdtemp(join(tmpdir(), "remote-secret-sql-"));
