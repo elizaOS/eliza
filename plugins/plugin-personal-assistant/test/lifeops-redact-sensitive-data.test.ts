@@ -108,4 +108,28 @@ describe("redactSensitiveData", () => {
     expect(redactSensitiveData(42)).toBe(42);
     expect(redactSensitiveData("plain text")).toBe("plain text");
   });
+
+  it("preserves a shared non-cyclic reference (DAG) instead of marking it [Circular]", () => {
+    const shared = { password: "hunter2", label: "x" };
+    expect(redactSensitiveData({ a: shared, b: shared })).toEqual({
+      a: { password: "[REDACTED]", label: "x" },
+      b: { password: "[REDACTED]", label: "x" },
+    });
+  });
+
+  it("preserves a shared array (redacted in every branch) while still collapsing a true cycle", () => {
+    const sharedList = ["a@b.com", "c@d.com"];
+    expect(redactSensitiveData({ toList: sharedList, cc: sharedList })).toEqual(
+      {
+        toList: ["[REDACTED]", "[REDACTED]"],
+        cc: ["[REDACTED]", "[REDACTED]"],
+      },
+    );
+
+    const cyclic: Record<string, unknown> = { name: "x" };
+    cyclic.self = cyclic;
+    const out = redactSensitiveData(cyclic) as Record<string, unknown>;
+    expect(out.name).toBe("x");
+    expect(out.self).toBe("[Circular]");
+  });
 });
