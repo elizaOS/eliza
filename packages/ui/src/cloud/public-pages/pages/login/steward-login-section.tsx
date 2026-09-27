@@ -1739,10 +1739,11 @@ export default function StewardLoginSection() {
       // blocked, or completes without notifying its opener (#20334).
       setLoading(provider);
       setError(null);
-      const host = window.location.hostname.toLowerCase();
-      const oauthOrigin = host.endsWith(".pages.dev")
-        ? "https://staging.eliza.app"
-        : window.location.origin;
+      // PKCE verifier, state and session authority are origin-local, so the
+      // callback must land on this origin; a preview host bounced to another
+      // origin could never consume this launch. Tenant redirect allowlisting
+      // remains enforced by Steward.
+      const oauthOrigin = window.location.origin;
       let codeChallenge: string;
       let state: string;
       try {

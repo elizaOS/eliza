@@ -24,6 +24,7 @@ const oauthState = vi.hoisted(() => ({
   storeVerifier: true,
   storedVerifierArgs: [] as Array<{ verifier: string; state?: string }>,
   authorizeUrlOptions: [] as Array<Record<string, unknown>>,
+  authorizeRedirectUris: [] as string[],
   telegramSignIns: [] as Array<{
     payload: Record<string, unknown>;
     config: Record<string, unknown>;
@@ -61,9 +62,10 @@ vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
     generateStewardOAuthState: () => "state-1",
     buildStewardOAuthAuthorizeUrl: (
       provider: string,
-      _redirectUri: string,
+      redirectUri: string,
       options: Record<string, unknown>,
     ) => {
+      oauthState.authorizeRedirectUris.push(redirectUri);
       oauthState.authorizeUrlOptions.push(options);
       return `https://api.example.test/steward/auth/oauth/${provider}/authorize`;
     },
@@ -244,6 +246,7 @@ describe("StewardLoginSection OAuth launch", () => {
     oauthState.storeVerifier = true;
     oauthState.storedVerifierArgs = [];
     oauthState.authorizeUrlOptions = [];
+    oauthState.authorizeRedirectUris = [];
     oauthState.telegramSignIns = [];
     oauthState.syncedSessions = [];
     oauthState.storedToken = null;
@@ -387,6 +390,27 @@ describe("StewardLoginSection OAuth launch", () => {
       state: "state-1",
     });
   });
+
+  it.each([
+    "https://staging.eliza-app.pages.dev/login",
+    "https://feature.eliza-app.pages.dev/login",
+    "https://cloud.eliza.app/login",
+  ])(
+    "returns the OAuth callback to the launching origin %s that holds the PKCE verifier",
+    async (href) => {
+      stubHostedLoginLocation(href);
+      renderSection();
+
+      fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+
+      await waitFor(() =>
+        expect(oauthState.authorizeRedirectUris).toHaveLength(1),
+      );
+      expect(new URL(oauthState.authorizeRedirectUris[0] ?? "").origin).toBe(
+        new URL(href).origin,
+      );
+    },
+  );
 
   it("exchanges a signed Telegram widget payload and syncs the Cloud session", async () => {
     renderSection();

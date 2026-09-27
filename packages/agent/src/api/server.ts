@@ -166,7 +166,10 @@ import {
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
 } from "./event-hub.ts";
-import { computeCanRespond } from "./health-routes.ts";
+import {
+  cloudModelReadinessField,
+  computeCanRespond,
+} from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
@@ -4293,6 +4296,7 @@ export async function startApiServer(opts?: {
             // (re)connect delivers canRespond: undefined and re-gates the chat
             // composer back to "waking up" until the next 5s broadcast.
             canRespond: computeCanRespond(state.runtime, state.agentState),
+            ...cloudModelReadinessField(state.runtime),
             startedAt: state.startedAt,
             startup: state.startup,
             pendingRestart: state.pendingRestartReasons.length > 0,
@@ -4655,6 +4659,7 @@ export async function startApiServer(opts?: {
       // `agentStatus.canRespond` to undefined, re-gating the chat composer back
       // to "waking up" even though the agent is fully ready and replying.
       canRespond: computeCanRespond(state.runtime, state.agentState),
+      ...cloudModelReadinessField(state.runtime),
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,
