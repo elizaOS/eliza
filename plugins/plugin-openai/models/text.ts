@@ -5,6 +5,7 @@
  */
 
 import type {
+  GenerateTextContentPart,
   GenerateTextParams,
   IAgentRuntime,
   JsonValue,
@@ -54,6 +55,11 @@ import {
 } from "ai";
 import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
+import {
+  cerebrasReasoningContent,
+  cerebrasReasoningReplay,
+  isCerebrasReasoningPart,
+} from "../utils/cerebras-reasoning";
 import {
   getActionPlannerModel,
   getApiKey,
@@ -166,6 +172,7 @@ type LanguageModelUsageWithCache = Omit<LanguageModelUsage, "inputTokenDetails">
 
 interface NativeGenerateTextResult {
   text: string;
+  content?: GenerateTextContentPart[];
   toolCalls?: ToolCall[];
   finishReason?: string;
   usage?: TokenUsage;
@@ -1029,12 +1036,17 @@ function normalizeNativeTools(
   return normalizeNativeToolsForCall(tools, options).tools;
 }
 
-function normalizeNativeMessages(messages: unknown): ModelMessage[] | undefined {
+function normalizeNativeMessages(
+  messages: unknown,
+  reasoningModel?: string
+): ModelMessage[] | undefined {
   if (!Array.isArray(messages)) {
     return undefined;
   }
 
-  return repairToolMessagePairing(messages.map((message) => normalizeNativeMessage(message)));
+  return repairToolMessagePairing(
+    messages.map((message) => normalizeNativeMessage(message, reasoningModel))
+  );
 }
 
 /**
@@ -1120,7 +1132,7 @@ function repairToolMessagePairing(messages: ModelMessage[]): ModelMessage[] {
   );
 }
 
-function normalizeNativeMessage(message: unknown): ModelMessage {
+function normalizeNativeMessage(message: unknown, reasoningModel?: string): ModelMessage {
   const raw = asRecord(message);
   const providerOptions = asOptionalRecord(raw.providerOptions);
 
@@ -1135,7 +1147,7 @@ function normalizeNativeMessage(message: unknown): ModelMessage {
   if (raw.role === "assistant") {
     return {
       role: "assistant",
-      content: normalizeAssistantContent(raw),
+      content: normalizeAssistantContent(raw, reasoningModel),
       ...(providerOptions ? { providerOptions } : {}),
     } as ModelMessage;
   }
@@ -1156,37 +1168,31 @@ function normalizeNativeMessage(message: unknown): ModelMessage {
 }
 
 /**
- * Strip reasoning-only parts from outbound assistant content.
- *
- * OpenAI-spec reasoning models (Cerebras gpt-oss-120b, OpenAI o1/o3,
- * DeepSeek R1, and similar families) return reasoning in the assistant
- * response — either as a separate `reasoning` / `reasoning_content`
- * field, or as content parts with `type: "reasoning"`. Echoing those
- * back to the next turn is wrong on both ends:
- *   - Cerebras returns HTTP 400 (`messages.X.assistant.reasoning_content:
- *     property is unsupported`).
- *   - OpenAI silently drops them, which wastes prompt tokens.
- *
- * The AI SDK upstream of this normalizer surfaces those reasoning blocks
- * as `{ type: "reasoning", ... }` content parts. We drop them here so
- * the wire stays spec-clean for the next turn. The reasoning itself
- * remains usable as a single-turn signal (still on the response object);
- * we only refuse to round-trip it.
+ * Retain only provider-bound reasoning accepted by this exact model. The
+ * OpenAI Chat serializer otherwise cannot replay reasoning parts. Cerebras
+ * Qwen uses `reasoning` (not the unsupported `reasoning_content` field); its
+ * bound parts are restored at the wire boundary without becoming visible text.
  */
-function stripReasoningParts(content: unknown[]): unknown[] {
+function stripReasoningParts(content: unknown[], reasoningModel?: string): unknown[] {
   return content.filter((part) => {
     if (!part || typeof part !== "object") return true;
     const type = (part as { type?: unknown }).type;
-    return type !== "reasoning" && type !== "thinking";
+    return (
+      (type !== "reasoning" && type !== "thinking") ||
+      (reasoningModel !== undefined && isCerebrasReasoningPart(part, reasoningModel))
+    );
   });
 }
 
-function normalizeAssistantContent(message: Record<string, unknown>): unknown {
+function normalizeAssistantContent(
+  message: Record<string, unknown>,
+  reasoningModel?: string
+): unknown {
   const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : [];
 
   if (toolCalls.length === 0) {
     if (Array.isArray(message.content)) {
-      return stripReasoningParts(message.content);
+      return stripReasoningParts(message.content, reasoningModel);
     }
     if (typeof message.content === "string") {
       return message.content;
@@ -1198,7 +1204,7 @@ function normalizeAssistantContent(message: Record<string, unknown>): unknown {
   if (typeof message.content === "string" && message.content.length > 0) {
     parts.push({ type: "text", text: message.content });
   } else if (Array.isArray(message.content)) {
-    parts.push(...stripReasoningParts(message.content));
+    parts.push(...stripReasoningParts(message.content, reasoningModel));
   }
 
   for (const toolCall of toolCalls) {
@@ -1888,6 +1894,7 @@ function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): bool
 function buildNativeTextResult(
   result: {
     text: string;
+    content?: GenerateTextContentPart[];
     toolCalls?: ToolCall[];
     finishReason?: string;
     usage?: LanguageModelUsage;
@@ -1903,6 +1910,7 @@ function buildNativeTextResult(
   >;
   return {
     text: result.text,
+    ...(result.content ? { content: result.content } : {}),
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
     usage: convertUsage(result.usage),
@@ -3066,7 +3074,6 @@ async function generateTextAtEndpoint(
   yieldRateLimit?: (error: unknown) => boolean
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
-  const openai = createOpenAIClient(runtime, endpoint);
   // Keep retries and their failures bound to this call's endpoint/credential,
   // even if runtime settings change while the HTTP request is in flight.
   const modelCooldowns = runtimeRateLimitCooldowns(runtime, endpoint?.baseURL, endpoint?.apiKey);
@@ -3110,7 +3117,6 @@ async function generateTextAtEndpoint(
   // against every OpenAI-compatible endpoint (Cerebras, local servers, proxies).
   // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
   //
-  const model = openai.chat(modelName);
   // The explicitly configured equivalent model accepts the same strict schema
   // semantics. OpenRouter require_parameters prevents silent capability loss.
   const cerebrasMode = isCerebrasMode(runtime);
@@ -3139,10 +3145,20 @@ async function generateTextAtEndpoint(
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
     toolNameMap: normalizedToolResult.toolNameMap,
   });
-  const normalizedMessages = normalizeNativeMessages(paramsWithAttachments.messages);
+  const reasoningModel =
+    usageProvider === "cerebras" && modelName === "qwen-3.8-27b" ? modelName : undefined;
+  const normalizedMessages = normalizeNativeMessages(
+    paramsWithAttachments.messages,
+    reasoningModel
+  );
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
   const effectiveMessages =
     wireMessages && wireMessages.length > 0 ? wireMessages : normalizedMessages;
+  const replay = reasoningModel
+    ? cerebrasReasoningReplay(effectiveMessages, reasoningModel)
+    : undefined;
+  const openai = createOpenAIClient(runtime, endpoint, replay);
+  const model = openai.chat(modelName);
   const promptText =
     typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : "";
   const promptOrMessages: NativePrompt =
@@ -3822,17 +3838,25 @@ async function generateTextAtEndpoint(
       });
     });
     const restoredText = restoreResponseText(result.text);
+    const reasoningContent = reasoningModel
+      ? cerebrasReasoningContent(result.response?.body, reasoningModel)
+      : [];
     const restoredToolCalls = restoreRecordArgToolCalls(
       result.toolCalls,
       normalizedToolResult.recordArgTransformsByTool
     );
     details.response = restoredText;
+    if (reasoningContent.length)
+      details.reasoning = reasoningContent.map((part) => part.text).join("");
     details.toolCalls = restoredToolCalls;
     details.finishReason = result.finishReason as string | undefined;
     details.providerMetadata = result.providerMetadata;
     applyUsageToDetails(details, result.usage);
     return {
       text: restoredText,
+      ...(reasoningContent.length
+        ? { content: [...reasoningContent, { type: "text", text: restoredText }] }
+        : {}),
       toolCalls: restoredToolCalls,
       finishReason: result.finishReason,
       usage: result.usage,
