@@ -6,6 +6,13 @@
  */
 import type { JSONSchema } from "@elizaos/core";
 
+/** Wire-only decisions; the runtime restores context before returning a canonical route. */
+export const EVALUATOR_CONTEXT_ROUTES = {
+  RESTORE_HISTORY: "history",
+  RESTORE_PROVIDERS: "providers",
+  RESTORE_FULL: "full",
+} as const;
+
 export function evaluatorTemplateForQueue(
   _hasQueuedCalls: boolean,
   _clipboardAvailable = true,
@@ -17,6 +24,9 @@ routes:
 - FINISH: the task is complete or should stop
 - NEXT_RECOMMENDED: one valid queued tool should run next before replanning
 - CONTINUE: call the planner again because the queued plan is missing or stale
+- RESTORE_HISTORY: read missing original dialogue before deciding
+- RESTORE_PROVIDERS: read needed deferred provider content before deciding
+- RESTORE_FULL: read both missing dialogue and provider content before deciding
 
 rules:
 - Judge accumulated results against every explicit requested outcome; no clause is optional because another seems central. Retrieval proves information, not visible navigation. An open/navigate request requires successful navigation THIS turn; page/context metadata may be stale. If only navigation remains, navigate without repeating the successful lookup, then answer. Continue while any requested outcome has an available tool.
@@ -25,7 +35,7 @@ rules:
 - A failed search requesting pagination or different filters supplies no matching records; counts and retry instructions do not reveal contents. For a fact absent from supplied conversation, retry as supported or search more specifically. Never invent it or borrow details from another person, story or note. If retrieval cannot continue, report the missing evidence.
 - Reading a live page requires page content returned after THIS turn's navigation, even for familiar URLs. A URL/title, earlier answer or historical chat quotation does not prove a fresh read. If only navigation succeeded, read before reporting contents.
 - Describe only controls marked visible in the renderer snapshot; registered hidden controls and capabilities do not prove visibility.
-- Opening a view does not select a requested day, record, document, tab or item. Require a successful UI selection/open interaction for that target or fresh rendered state proving it selected and visible. A database read/search and parent-view open are insufficient; continue with the view's scoped action or VIEWS interact, not another read or FINISH.
+- Opening a view does not select a requested day, record, document, tab or item. Require a successful UI selection/open interaction for that target or fresh rendered state proving it selected and visible. A database read/search and parent-view open are insufficient; continue with an available registered scoped interaction action, or discover one if missing. VIEWS only lists or opens views; do not invent an interaction operation. If no supported interaction is available, report that limitation rather than claim target selection.
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - Compare each returned artifact field directly with the explicit requested value, including titles, names, identifiers and quoted text. Spacing, line breaks and punctuation must match exactly; a missing final period is a mismatch even when success=true. Correct only the affected artifact when authorized and unambiguous, without duplicates. Describe the verified stored value, never the intended value as though saved.
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
@@ -34,9 +44,9 @@ rules:
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome. Select recommendedToolCallId from the current decision state's queued IDs; preserve planned order and prerequisites. An empty queue forbids NEXT_RECOMMENDED. CONTINUE when the plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
-- Choose contextRequest by the missing evidence, not by the presence of omitted categories: history for a specific missing original dialogue constraint, correction, referent or historical fact; providers for needed content advertised by a deferred provider reference; full only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. For contextRequest use decision=CONTINUE, success=false, no messageToUser/copyToClipboard; the runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
+- Choose one restoration decision only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
 - if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
-- For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise omit it only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/contextRequest must not publish a progress draft. Never add process-status bubbles after tools finish.
+- For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise omit it only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/restoration decisions must not publish a progress draft. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
 - messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Use supplied local date/time labels and their timezone; keep AM/PM consistent and omit redundant daypart summaries. A past scheduled time proves neither attendance nor completion; describe it as scheduled or past, not done. Translate other machine dates and timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request. Copy requested checksums, opaque identifiers and other exact tool-returned values verbatim from the current receipt; never reconstruct, abbreviate or normalize them. Compare the answer value with the receipt before finishing.
 - Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.
@@ -47,14 +57,14 @@ rules:
 - For every completed change claimed in messageToUser or an approved terminal reply, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].
 - Classify the reply's claimed outcome in replyEffectStatus: applied for a claimed committed mutation or send, even indirect or non-English wording; non_applied for a stopped, failed or clarification-only outcome; none for reads, receipt-grounded view navigation or other prose without a mutation claim. An applied claim needs committed receipt proof; the classification itself proves no execution.
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Rejecting or cancelling queued approvals, stored events, jobs, notes or other persisted state requires its own committed receipt; a promise not to execute the original action does not settle a pending request. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
-- FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
+- FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result. Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
 - copyToClipboard requires title + content and current decision state clipboardAvailable=true.
 - thought is internal: identify confirmed outcomes and requested outcomes still missing before choosing the decision.
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.
-Fields in order: thought string; success boolean; decision "FINISH"|"NEXT_RECOMMENDED"|"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means CONTINUE or a valid NEXT_RECOMMENDED, not FINISH.
+Fields in order: thought string; success boolean; decision "FINISH"|"NEXT_RECOMMENDED"|"CONTINUE"|"RESTORE_HISTORY"|"RESTORE_PROVIDERS"|"RESTORE_FULL". Use decision, not route or contextRequest. Any requested outcome still pending with an available tool means CONTINUE or a valid NEXT_RECOMMENDED, not FINISH.
 
 context_object:
 {{contextObject}}
@@ -81,7 +91,12 @@ export const evaluatorSchema: JSONSchema = {
     },
     decision: {
       type: "string",
-      enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+      enum: [
+        "FINISH",
+        "NEXT_RECOMMENDED",
+        "CONTINUE",
+        ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
+      ],
     },
     requestFullyCovered: {
       type: "boolean",
@@ -113,12 +128,6 @@ export const evaluatorSchema: JSONSchema = {
       enum: ["none", "applied", "non_applied"],
       description:
         "Classify the final reply by meaning in any language: applied for committed mutations/sends (requires matching committed effectReceiptIds), non_applied for a blocked/clarification outcome, none for reads or view-navigation-only confirmation. Navigation still requires its own delivered receipt.",
-    },
-    contextRequest: {
-      type: "string",
-      enum: ["history", "providers", "full"],
-      description:
-        "Omit this field when the supplied evidence suffices, especially for FINISH. Read only a needed missing source reported by completion_context: history for original dialogue, providers for advertised deferred content, full only when both have independent deficits. Missing live-record fields not promised by a provider require a tool read, not history restoration. Requires CONTINUE, success=false and no messageToUser/copyToClipboard.",
     },
     effectReceiptIds: {
       type: "array",

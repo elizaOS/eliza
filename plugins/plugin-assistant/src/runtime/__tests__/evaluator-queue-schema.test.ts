@@ -10,6 +10,7 @@ import type {
 import { computePrefixHashes, normalizePromptSegments } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  EVALUATOR_CONTEXT_ROUTES,
   evaluatorSchema,
   evaluatorTemplate,
   evaluatorTemplateForQueue,
@@ -103,6 +104,19 @@ describe("stable evaluator schema with authoritative decision state", () => {
     ]);
     expect(JSON.stringify(empty.schema)).toBe(JSON.stringify(queued.schema));
     expect(empty.schema).toEqual(evaluatorSchema);
+    expect(empty.schema?.properties?.decision.enum).toEqual([
+      "FINISH",
+      "NEXT_RECOMMENDED",
+      "CONTINUE",
+      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
+    ]);
+    expect(empty.schema?.properties).not.toHaveProperty("contextRequest");
+    expect(empty.schema?.additionalProperties).toBe(false);
+    expect(empty.schema).not.toHaveProperty("anyOf");
+    expect(empty.schema).not.toHaveProperty("oneOf");
+    expect(empty.text).toContain(
+      "Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning",
+    );
     expect(empty.prefixHash).toBe(queued.prefixHash);
     expect(empty.prefixHash).toBe(
       computePrefixHashes(

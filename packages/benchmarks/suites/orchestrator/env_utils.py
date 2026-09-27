@@ -66,4 +66,3 @@ def safe_version_from_package_json(path: Path) -> str | None:
     if isinstance(version, str):
         return version
     return None
-

@@ -604,7 +604,16 @@ describe("READ", () => {
       },
     });
     expect(stale.success).toBe(false);
+    expect(stale.data?.readOnlyOperation).toBe(true);
     expect(stale.text).toContain("stale_read");
+    expect(stale.text).toContain("offset 0");
+    expect(stale.text).toContain("omit expectedRevision and reference");
+    const fresh = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, unit: "byte", offset: 0, limit: 32 },
+    });
+    expect(fresh.success).toBe(true);
+    expect(fresh.data?.readOnlyOperation).toBe(true);
+    expect(fresh.text).toBe("changed");
   });
 
   it("handles a huge single line without whole-file I/O", async () => {

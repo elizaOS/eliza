@@ -83,6 +83,7 @@ function gmailMessage(args: {
   listUnsubscribe?: string;
   listUnsubscribePost?: string;
   listId?: string;
+  receivedAt?: string;
 }) {
   const headers: Record<string, string> = {};
   if (args.listUnsubscribe) headers["List-Unsubscribe"] = args.listUnsubscribe;
@@ -103,7 +104,7 @@ function gmailMessage(args: {
     to: [],
     cc: [],
     snippet: "",
-    receivedAt: "2026-06-17T08:00:00.000Z",
+    receivedAt: args.receivedAt ?? "2026-06-17T08:00:00.000Z",
     isUnread: true,
     isImportant: false,
     likelyReplyNeeded: false,
@@ -395,6 +396,39 @@ describe("InboxUnsubscribeService", () => {
       expect(result.senders[0]?.unsubscribeMethod).toBe("manual_only");
       expect(result.summary.manualOnlyCount).toBe(1);
     });
+
+    it.each([
+      ["newest-first", ["2026-06-17", "2026-06-16", "2026-06-15"]],
+      ["newest in the middle", ["2026-06-16", "2026-06-17", "2026-06-15"]],
+    ])(
+      "derives first/latest sender chronology by timestamp (%s)",
+      async (_order, days) => {
+        const gateway = makeGateway({
+          messages: days.map((day) =>
+            gmailMessage({
+              id: day,
+              fromEmail: "news@brand.com",
+              listUnsubscribe: "<https://brand.com/unsub>",
+              receivedAt: `${day}T09:00:00.000Z`,
+            }),
+          ),
+        });
+        const { service } = makeService(gateway);
+
+        const result = await service.scanEmailSubscriptions();
+        const brand = result.senders.find(
+          (sender) => sender.senderEmail === "news@brand.com",
+        );
+
+        expect(brand).toMatchObject({
+          messageCount: 3,
+          firstSeenAt: "2026-06-15T09:00:00.000Z",
+          latestSeenAt: "2026-06-17T09:00:00.000Z",
+          latestMessageId: `${AGENT_ID}:google:owner:gmail:2026-06-17`,
+          latestThreadId: "thread-2026-06-17",
+        });
+      },
+    );
 
     it("keeps every Gmail message and sender when maxMessages is omitted", async () => {
       const messages = Array.from({ length: 501 }, (_, index) =>

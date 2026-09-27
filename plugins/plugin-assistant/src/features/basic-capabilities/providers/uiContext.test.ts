@@ -40,7 +40,7 @@ describe("UI_CONTEXT", () => {
     expect(result.text).toContain(
       "not displayed content or current record values",
     );
-    expect(result.text).toContain("opening is not a record operation");
+    expect(result.text).toContain("Opening is not a record operation");
     expect(result.data).toEqual({
       uiView: "notes",
       uiTab: "views",
@@ -58,6 +58,52 @@ describe("UI_CONTEXT", () => {
       uiViewCapabilities: "view-actions, inspect-view",
       uiViewActionNames: "NOTES",
       uiContexts: "apps, general",
+    });
+  });
+
+  it("keeps view capabilities separate from callable operations", async () => {
+    const result = await uiContextProvider.get(
+      {} as IAgentRuntime,
+      {
+        content: {
+          metadata: {
+            uiView: "calendar",
+            uiViewCapabilities: [
+              "get-text",
+              "list-elements",
+              "get-agent-state",
+            ],
+            uiViewActionNames: ["CALENDAR", "VIEW_CALENDAR_SELECT_VISIBLE_DAY"],
+          },
+        },
+      } as Memory,
+      { values: {}, data: {}, text: "" } as State,
+    );
+    expect(result.text).toContain(
+      "view_capabilities: get-text, list-elements, get-agent-state",
+    );
+    expect(result.text).toContain(
+      "view_actions: CALENDAR, VIEW_CALENDAR_SELECT_VISIBLE_DAY",
+    );
+    expect(result.text).toContain(
+      "Discover views with VIEWS_LIST or VIEWS list",
+    );
+    expect(result.text).toContain(
+      "open with VIEWS_SHOW or VIEWS show when registered",
+    );
+    expect(result.text).toContain("registered scoped action");
+    expect(result.text).toContain("relevant domain read action");
+    expect(result.text).toContain(
+      "not displayed content or current record values",
+    );
+    expect(result.text).toContain(
+      "Capability names and element IDs are not standalone tools",
+    );
+    expect(result.text).not.toContain("VIEWS get-text/list-elements");
+    expect(result.text).not.toContain("Use VIEWS for layout");
+    expect(result.data).toMatchObject({
+      uiViewCapabilities: ["get-text", "list-elements", "get-agent-state"],
+      uiViewActionNames: ["CALENDAR", "VIEW_CALENDAR_SELECT_VISIBLE_DAY"],
     });
   });
 

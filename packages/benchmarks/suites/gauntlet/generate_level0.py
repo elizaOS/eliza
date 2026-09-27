@@ -62,7 +62,7 @@ for cat in categories:
     for scenario in cat["scenarios"]:
         filename = f"{scenario['id']}.yaml"
         filepath = os.path.join(base_dir, filename)
-        
+
         data = {
             "id": scenario["id"],
             "level": 0,
@@ -88,7 +88,7 @@ for cat in categories:
                 "silent_failure": "-1"
             }
         }
-        
+
         with open(filepath, "w") as f:
             yaml.dump(data, f, sort_keys=False, default_flow_style=False)
         generated += 1

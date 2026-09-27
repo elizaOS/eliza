@@ -11,9 +11,11 @@ import path from "node:path";
 import {
   type ActionResult,
   actionToJsonSchema,
+  buildPlannerToolsFromActions,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
+  promoteSubactionsToActions,
   satisfiesRoleGate,
   type UUID,
 } from "@elizaos/core";
@@ -23,10 +25,12 @@ import {
   validateSchema,
 } from "../../../packages/core/src/actions/validate-tool-args.ts";
 import {
+  __renderRoutingHintsBlockForTests,
   type PlannerToolCall,
   runPlannerLoop,
 } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
+import { createPlannerToolDiscoveryAction } from "../../plugin-assistant/src/services/message/tool-discovery.ts";
 import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
@@ -131,6 +135,90 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it.each([
+    ["NOTES_LIST", "NOTES_GET"],
+    ["NOTES_LIST", "NOTES_PATCH", "NOTES_UPDATE"],
+  ])("renders one family hint for exposed children %j", (...names) => {
+    const actions = (notesPlugin.actions ?? []).filter((action) =>
+      names.includes(action.name),
+    );
+    const block = __renderRoutingHintsBlockForTests({
+      id: "notes-hint-test",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, description: action.description, action },
+      })),
+    });
+    const hint = notesAction.routingHint;
+    if (!hint) throw new Error("Missing Notes routing hint");
+    expect(block?.split(hint).length).toBe(2);
+    expect(JSON.stringify(buildPlannerToolsFromActions(actions))).not.toContain(
+      notesAction.routingHint,
+    );
+  });
+  it("discovers missing UPDATE from a read-only Notes surface", async () => {
+    const runtime = await executorHarness();
+    const loaded: string[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      (notesPlugin.actions ?? []).filter((action) =>
+        ["NOTES_LIST", "NOTES_GET"].includes(action.name),
+      ),
+      (actions) => loaded.push(...actions.map((action) => action.name)),
+      async () => notesPlugin.actions ?? [],
+    );
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["NOTES_UPDATE"] },
+    });
+    expect(result).toMatchObject({ success: true });
+    expect(loaded).toContain("NOTES_UPDATE");
+  });
+  it("keeps family routing hints out of native child schemas and preserves operation contracts", () => {
+    const withOtherHint = promoteSubactionsToActions({
+      ...notesAction,
+      routingHint: "DIFFERENT_FAMILY_HINT_SENTINEL",
+    });
+    const withCurrentHint = promoteSubactionsToActions(notesAction);
+    expect(
+      buildPlannerToolsFromActions(
+        withOtherHint.filter((action) => action.name !== "NOTES"),
+      ),
+    ).toEqual(
+      buildPlannerToolsFromActions(
+        withCurrentHint.filter((action) => action.name !== "NOTES"),
+      ),
+    );
+    const tools = buildPlannerToolsFromActions(
+      (notesPlugin.actions ?? []).filter((action) => action.name !== "NOTES"),
+    );
+    expect(JSON.stringify(tools)).not.toContain(notesAction.routingHint);
+    const operation = (name: string) => {
+      const action = notesPlugin.actions?.find((entry) => entry.name === name);
+      if (!action) throw new Error(`Missing ${name}`);
+      return action;
+    };
+    const list = operation("NOTES_LIST");
+    expect(list.description).toMatch(/timestamps/);
+    expect(
+      list.parameters?.find((p) => p.name === "dateRange")?.description,
+    ).toMatch(/previous Monday-to-Monday/);
+    expect(
+      operation("NOTES_GET").parameters?.find((p) => p.name === "noteId")
+        ?.required,
+    ).toBe(true);
+    expect(operation("NOTES_CREATE").description).toMatch(
+      /punctuation, whitespace and line breaks exactly/,
+    );
+    const patch = operation("NOTES_PATCH");
+    expect(
+      patch.parameters?.find((p) => p.name === "expectedRevision")?.required,
+    ).toBe(true);
+    expect(patch.description).toMatch(/NOTES_UPDATE with textEdit/);
+    expect(
+      operation("NOTES_UPDATE").parameters?.find((p) => p.name === "textEdit")
+        ?.description,
+    ).toMatch(/unique literal match atomically/);
+  });
   it("requires an update selector on the provider wire and preserves unrelated text through real admission", async () => {
     const runtime = await executorHarness();
     const action = notesPlugin.actions?.find(
@@ -1484,6 +1572,32 @@ describe("identical-duplicate notes", () => {
 });
 
 describe("literal Notes edits", () => {
+  it("requires a snapshot revision for PATCH textEdit while UPDATE supports revision-free literal substitution", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      content: "Revision check\nGreen folder",
+    });
+    const before = service.snapshot();
+    const textEdit = { field: "body", oldText: "Green", newText: "Blue" };
+    const rejected = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: { target: { kind: "id", value: note.id }, changes: [], textEdit },
+    });
+    expect(rejected.success).toBe(false);
+    expect(service.snapshot()).toEqual(before);
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: { noteId: note.id, textEdit },
+    });
+    expect(updated.success).toBe(true);
+    expect(service.getNote(note.id).body).toBe("\nBlue folder");
+    const description = notesAction.parameters?.find(
+      (p) => p.name === "expectedRevision",
+    )?.description;
+    expect(description).toMatch(/every PATCH, including textEdit/);
+    expect(description).toMatch(/Only UPDATE literal textEdit may omit/);
+  });
   it("updates through the promoted tool without a read and persists only the requested substring", async () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);

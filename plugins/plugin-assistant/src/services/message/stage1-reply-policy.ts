@@ -259,6 +259,21 @@ export function hasAckOnlyActionableIntent(
   );
 }
 
+/** Explicit domain routing owns interpretation; legacy coding rescue fills unresolved routes. */
+function permitsInferredCodingDelegation(
+  contexts: readonly string[] | undefined,
+  messageText: string,
+): boolean {
+  if (looksLikeExplicitDelegationRequest(messageText)) return true;
+  const domains = (contexts ?? [])
+    .map((context) => context.trim().toLowerCase())
+    .filter(
+      (context) =>
+        context && context !== "general" && context !== SIMPLE_CONTEXT_ID,
+    );
+  return domains.length === 0 || domains.includes("code");
+}
+
 export function inferAckIntentCandidateActions(
   result: ResponseHandlerResult,
   actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
@@ -280,6 +295,8 @@ export function inferAckIntentCandidateActions(
   // to coding delegation, not a web lookup. Mirrors the coding-first guard in
   // shouldPreferDirectCurrentCandidateActions.
   if (looksLikeCodingWorkRequest(actionText)) {
+    if (!permitsInferredCodingDelegation(result.contexts, fallbackText))
+      return [];
     const codingAction = findCodingDelegationActionName(actions);
     if (codingAction) return [codingAction];
   }
@@ -310,8 +327,9 @@ export function inferDirectCurrentRequestCandidateActions(
 export function inferDirectCurrentRequestCandidateInference(
   actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
   messageText: string,
+  contexts?: readonly string[],
 ): DirectCurrentRequestCandidateInference {
-  return inferDirectCurrentRequestCandidateInferenceFromHeuristics(
+  const inference = inferDirectCurrentRequestCandidateInferenceFromHeuristics(
     actions,
     messageText,
     {
@@ -319,6 +337,10 @@ export function inferDirectCurrentRequestCandidateInference(
       findCodingDelegationActionName,
     },
   );
+  return inference.kind === "coding" &&
+    !permitsInferredCodingDelegation(contexts, messageText)
+    ? { names: [], kind: null }
+    : inference;
 }
 
 /**

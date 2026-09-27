@@ -49,7 +49,7 @@ export interface DesktopViewWindow {
 export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
   {
     id: "chat",
-    label: "Messages",
+    label: "Home",
     labelKey: "desktop.views.chat",
     path: "/chat",
   },

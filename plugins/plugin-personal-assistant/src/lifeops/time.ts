@@ -242,6 +242,29 @@ export function getLocalDateKey(
     .toString()
     .padStart(2, "0")}-${dateOnly.day.toString().padStart(2, "0")}`;
 }
+/**
+ * Parse a `YYYY-MM-DD` key into calendar parts, or `null` when it is not a real
+ * calendar day. `Date.parse`/`Date.UTC` roll `2026-02-30` into March, so a
+ * shape check alone lets impossible dates reach SQL date literals.
+ */
+export function parseLocalDateKey(
+  value: string,
+): Pick<ZonedDateParts, "year" | "month" | "day"> | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const roundTrip = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (
+    roundTrip.getUTCFullYear() !== year ||
+    roundTrip.getUTCMonth() !== month - 1 ||
+    roundTrip.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
+}
 export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60000);
 }

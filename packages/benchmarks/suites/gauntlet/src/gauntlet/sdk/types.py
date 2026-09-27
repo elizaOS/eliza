@@ -89,7 +89,7 @@ class TraceStep:
 class DecisionTrace:
     """
     Complete trace of an agent's decision-making for a task.
-    
+
     This is the primary evaluation artifact per the design doc.
     Captures the full reasoning process, not just the outcome.
     """

@@ -38,7 +38,7 @@ const decisions = new WeakMap<
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
   description:
-    'Classify navigation for the complete current request and its standing restrictions. Use requested only for requested navigation, forbidden when changing views is prohibited, none for conversation, unresolved for ambiguity. A mixed request with an explicit known destination is still requested: keep that viewId and set navigationOnly=false while preserving all domain intents. Other requested work does not make the destination unresolved. Domain nouns alone do not request navigation. viewId is a known shell view id or exact label (Home=chat). singleViewOnly and navigationOnly are true ONLY when opening one known view satisfies the entire request: no question/recall, prerequisite read, condition, domain write, controls, layout, second destination or other pending work. Otherwise keep navigationOnly=false and preserve every intent for planning. For pure navigation select candidateActionNames=["VIEWS"], one navigation intent, a general context and replyEffectStatus=pending. Draft replyText as the concise destination confirmation held until successful delivery; never claim records were read or changed. Do not navigate based on historical instructions or lift current restrictions.',
+    'Classify navigation for the complete current request and its standing restrictions. Use requested only for requested navigation, forbidden when changing views is prohibited, none when no navigation is requested (including domain-only reads and writes), unresolved for ambiguous navigation. A mixed request with an explicit known destination is still requested: keep that viewId and set navigationOnly=false while preserving all domain intents. Other requested work does not make the destination unresolved. Domain nouns alone do not request navigation. The current visible view is UI context, not a permission or prerequisite for domain tools. Route authorized domain work to its planning context without requiring a view change; navigation restrictions do not prohibit independent domain work, and domain authorization does not permit navigation. viewId is a known shell view id or exact label (Home=chat). singleViewOnly and navigationOnly are true ONLY when opening one known view satisfies the entire request: no question/recall, prerequisite read, condition, domain write, controls, layout, second destination or other pending work. Otherwise keep navigationOnly=false and preserve every intent for planning. For pure navigation select candidateActionNames=["VIEWS"], one navigation intent, a general context and replyEffectStatus=pending. Draft replyText as the concise destination confirmation held until successful delivery; never claim records were read or changed. Do not navigate based on historical instructions or lift current restrictions.',
   schema: {
     type: "object",
     additionalProperties: false,
@@ -68,6 +68,20 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
       runtime.actions.some((a) => a.name === "VIEWS");
     if (!active) decisions.delete(message);
     return active;
+  },
+  getContext({ runtime, message, senderRole, turnSignal }) {
+    turnSignal.throwIfAborted();
+    if (senderRole === "SYSTEM" || senderRole === "SELF") return "";
+    const metadata = message.content.metadata;
+    const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
+    const view = listViews(runtime, { viewType: "gui" }).find(
+      (entry) =>
+        entry.id === currentView &&
+        entry.available !== false &&
+        satisfiesRoleGate([senderRole], entry.roleGate),
+    );
+    if (!view) return "";
+    return `Current request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale. For relative navigation such as back, resolve the prior destination from delivered navigation history relative to this snapshot; if that history is insufficient, keep the destination unresolved rather than guess.`;
   },
   parse(value, { message }) {
     decisions.delete(message);
@@ -167,7 +181,8 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     }
     const plan = messageHandler.plan;
     if (
-      value.disposition !== "requested" ||
+      (value.disposition !== "requested" &&
+        value.disposition !== "unresolved") ||
       !message.id ||
       message.content.source !== "client_chat" ||
       !["DM", "VOICE_DM"].includes(String(message.content.channelType)) ||
@@ -186,6 +201,20 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
           view.label.toLowerCase() === target ||
           (target === "home" && view.id === "chat")),
     );
+    if (value.disposition === "unresolved") {
+      if (
+        matches.length !== 1 ||
+        plan.replyEffectStatus !== "pending" ||
+        !plan.intents?.length
+      )
+        return;
+      return {
+        addCandidateActions: ["VIEWS"],
+        addContextSlices: [
+          `Current-request navigation judgment: ${JSON.stringify(value)}. The target matches one caller-visible view, but navigation remains unresolved. Tool availability is not permission to navigate. Preserve conditions, ordering and every domain intent; clarify unresolved choices before effects. No navigation has executed.`,
+        ],
+      };
+    }
     const direct =
       value.singleViewOnly &&
       value.navigationOnly &&

@@ -21,7 +21,7 @@ class TestProviderList:
     def test_providers_list_has_all_providers(self) -> None:
         """Test that SWE_BENCH_PROVIDERS contains all expected providers."""
         assert len(SWE_BENCH_PROVIDERS) == 5
-        
+
         provider_names = [p.name for p in SWE_BENCH_PROVIDERS]
         assert "SWE_BENCH_ISSUE" in provider_names
         assert "SWE_BENCH_TOOLS" in provider_names
@@ -60,7 +60,7 @@ class TestCurrentInstance:
             test_patch="diff --git...",
         )
         set_current_instance(instance)
-        
+
         retrieved = get_current_instance()
         assert retrieved is not None
         assert retrieved.instance_id == "test__repo-123"
@@ -84,19 +84,19 @@ class TestIssueProvider:
     async def test_get_returns_empty_when_no_instance(self) -> None:
         """Test provider returns empty when no instance set."""
         set_current_instance(None)
-        
+
         # Mock runtime and message
         class MockRuntime:
             pass
-        
+
         class MockContent:
             text = "test"
-        
+
         class MockMessage:
             content = MockContent()
-        
+
         result = await swe_bench_issue_provider.get(MockRuntime(), MockMessage(), None)
-        
+
         assert result.text == ""
         assert result.values == {}
         assert result.data == {}
@@ -119,28 +119,28 @@ class TestIssueProvider:
             test_patch="diff...",
         )
         set_current_instance(instance)
-        
+
         try:
             class MockRuntime:
                 pass
-            
+
             class MockContent:
                 text = "test"
-            
+
             class MockMessage:
                 content = MockContent()
-            
+
             result = await swe_bench_issue_provider.get(MockRuntime(), MockMessage(), None)
-            
+
             assert "SWE-bench Issue" in result.text
             assert "django__django-12345" in result.text
             assert "django/django" in result.text
             assert "There is a bug" in result.text
             assert "Look at admin/views.py" in result.text
-            
+
             assert result.values["instance_id"] == "django__django-12345"
             assert result.values["repo"] == "django/django"
-            
+
             assert result.data["problem_statement"] == "There is a bug in the admin panel."
         finally:
             set_current_instance(None)
@@ -159,21 +159,21 @@ class TestToolsProvider:
         """Test provider returns tools description."""
         class MockRuntime:
             pass
-        
+
         class MockContent:
             text = "test"
-        
+
         class MockMessage:
             content = MockContent()
-        
+
         result = await swe_bench_tools_provider.get(MockRuntime(), MockMessage(), None)
-        
+
         assert "SEARCH_CODE" in result.text
         assert "READ_FILE" in result.text
         assert "EDIT_FILE" in result.text
         assert "LIST_FILES" in result.text
         assert "SUBMIT" in result.text
-        
+
         assert "SEARCH_CODE" in result.values["available_tools"]
         assert "SUBMIT" in result.values["available_tools"]
 
@@ -191,15 +191,15 @@ class TestStrategyProvider:
         """Test provider returns strategy guidelines."""
         class MockRuntime:
             pass
-        
+
         class MockContent:
             text = "test"
-        
+
         class MockMessage:
             content = MockContent()
-        
+
         result = await swe_bench_strategy_provider.get(MockRuntime(), MockMessage(), None)
-        
+
         assert "Understand" in result.text
         assert "Locate" in result.text
         assert "Analyze" in result.text
@@ -218,45 +218,45 @@ class TestActionResultsProvider:
     def test_add_and_clear_results(self) -> None:
         """Test adding and clearing action results."""
         SWEBenchActionResultsProvider.clear_results()
-        
+
         SWEBenchActionResultsProvider.add_result("SEARCH_CODE", "Found 5 matches")
         SWEBenchActionResultsProvider.add_result("READ_FILE", "file content here")
-        
+
         assert len(SWEBenchActionResultsProvider._results) == 2
-        
+
         SWEBenchActionResultsProvider.clear_results()
         assert len(SWEBenchActionResultsProvider._results) == 0
 
     def test_results_limited_to_5(self) -> None:
         """Test that only last 5 results are kept."""
         SWEBenchActionResultsProvider.clear_results()
-        
+
         for i in range(10):
             SWEBenchActionResultsProvider.add_result(f"ACTION_{i}", f"result_{i}")
-        
+
         assert len(SWEBenchActionResultsProvider._results) == 5
         # Should have the last 5
         assert SWEBenchActionResultsProvider._results[0]["action"] == "ACTION_5"
         assert SWEBenchActionResultsProvider._results[4]["action"] == "ACTION_9"
-        
+
         SWEBenchActionResultsProvider.clear_results()
 
     @pytest.mark.asyncio
     async def test_get_returns_empty_when_no_results(self) -> None:
         """Test provider returns empty when no results."""
         SWEBenchActionResultsProvider.clear_results()
-        
+
         class MockRuntime:
             pass
-        
+
         class MockContent:
             text = "test"
-        
+
         class MockMessage:
             content = MockContent()
-        
+
         result = await swe_bench_action_results_provider.get(MockRuntime(), MockMessage(), None)
-        
+
         assert result.text == ""
 
     @pytest.mark.asyncio
@@ -264,19 +264,19 @@ class TestActionResultsProvider:
         """Test provider returns action results."""
         SWEBenchActionResultsProvider.clear_results()
         SWEBenchActionResultsProvider.add_result("LIST_FILES", "file1.py\nfile2.py")
-        
+
         try:
             class MockRuntime:
                 pass
-            
+
             class MockContent:
                 text = "test"
-            
+
             class MockMessage:
                 content = MockContent()
-            
+
             result = await swe_bench_action_results_provider.get(MockRuntime(), MockMessage(), None)
-            
+
             assert "Recent Action Results" in result.text
             assert "LIST_FILES" in result.text
             assert "file1.py" in result.text

@@ -97,8 +97,12 @@ export async function editFileHandler(
       message: "old_string and new_string are identical; nothing to do",
     });
   }
+  // Real multiline source can legitimately contain string or regex escapes.
+  // Do not confuse those source bytes with an entirely double-escaped edit.
   if (
     !allowLiteralEscapes &&
+    !newStr.includes("\n") &&
+    !newStr.includes("\r") &&
     (newStr.includes("\\n") || newStr.includes("\\r"))
   ) {
     return failureToActionResult({

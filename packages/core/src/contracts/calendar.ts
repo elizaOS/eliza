@@ -594,6 +594,8 @@ export type CreateLifeOpsCalendarEventResponse =
 	  };
 export interface LifeOpsNextCalendarEventContext {
 	event: LifeOpsCalendarEvent | null;
+	/** Exact service snapshot and requested display zone; older results may omit it. */
+	timeReference?: { asOf: string; timeZone: string };
 	/** A fresh source is not an exhaustive agenda: this result selects one event. */
 	readScope: {
 		selection: "next_event";

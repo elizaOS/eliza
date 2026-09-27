@@ -375,4 +375,3 @@ What's your next action?"""
                 return f"ask[{qm.group(0).strip()}]"
 
         return response.strip().split("\n")[0]
-

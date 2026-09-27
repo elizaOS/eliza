@@ -2,8 +2,10 @@
 
 import type { Action } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { retrieveContextualPlannerActions } from "./message/action-surface.ts";
 import { inferDirectCurrentRequestCandidateInference } from "./message/direct-action-heuristics.ts";
 import { parseMessageHandlerModelOutput } from "./message/stage1-generation.ts";
+import { inferDirectCurrentRequestCandidateInference as inferRoutedCandidates } from "./message/stage1-reply-policy.ts";
 import {
   collectBudgetedStageOneCandidateActions,
   messageHandlerFromFieldResult,
@@ -21,6 +23,131 @@ const actions: Action[] = [
 ];
 
 describe("budgeted model-selected action surface", () => {
+  it.each([
+    "Create /tmp/index.html with supplied HTML. Read the file back.",
+    "Create the directory and index.html with the exact provided HTML. Read the saved file back and report its exact contents.",
+  ])(
+    "keeps resolved files work out of legacy coding rescue: %s",
+    (messageText) => {
+      const available: Action[] = [
+        {
+          name: "FILE",
+          description: "Read and write local files",
+          contexts: ["files"],
+          tags: ["resource:files"],
+          parameters: [],
+        },
+        {
+          name: "TASKS",
+          description: "Delegate coding work",
+          contexts: ["code"],
+          tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+          subActions: ["TASKS_CREATE", "TASKS_LIST_AGENTS"],
+        },
+        {
+          name: "TASKS_CREATE",
+          description: "Create a delegated task",
+          contexts: ["code"],
+        },
+        {
+          name: "TASKS_LIST_AGENTS",
+          description: "List coding agents",
+          contexts: ["code"],
+        },
+      ];
+      const envelope = {
+        shouldRespond: "RESPOND",
+        contexts: ["files"],
+        intents: [
+          "Create the directory and index.html with the exact provided HTML",
+          "Read the file back and report its exact contents",
+        ],
+        replyText: "On it.",
+        replyEffectStatus: "pending",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      for (const parsed of [
+        messageHandlerFromFieldResult(envelope, undefined, {
+          actions: available,
+          messageText,
+        }),
+        parseMessageHandlerModelOutput(JSON.stringify(envelope), {
+          actions: available,
+          messageText,
+        }),
+      ]) {
+        expect(parsed?.plan.contexts).toEqual(["files"]);
+        expect(parsed?.plan.intents).toEqual(envelope.intents);
+        expect(parsed?.plan.candidateActions ?? []).toEqual([]);
+        expect(
+          inferRoutedCandidates(available, messageText, parsed?.plan.contexts)
+            .names,
+        ).toEqual([]);
+        const selected = retrieveContextualPlannerActions({
+          actions: available,
+          query: messageText,
+          contexts: parsed?.plan.contexts,
+          intents: parsed?.plan.intents,
+        });
+        expect(selected.actions.map((action) => action.name)).toEqual(["FILE"]);
+      }
+    },
+  );
+  it.each(["general", "simple", "code"])(
+    "retains legacy coding rescue for %s routing",
+    (context) => {
+      const available = [
+        {
+          name: "TASKS",
+          tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+        },
+      ];
+      const result = messageHandlerFromFieldResult(
+        {
+          shouldRespond: "RESPOND",
+          contexts: [context],
+          intents: ["Create the file"],
+          replyText: "On it.",
+          replyEffectStatus: "pending",
+        },
+        undefined,
+        { actions: available, messageText: "Create the file." },
+      );
+      expect(result.plan.candidateActions).toContain("TASKS");
+    },
+  );
+  it("preserves explicit delegation and exact hints despite a files context", () => {
+    const available = [
+      {
+        name: "TASKS",
+        tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+      },
+    ];
+    const envelope = {
+      shouldRespond: "RESPOND",
+      contexts: ["files"],
+      intents: ["Create the file"],
+      replyText: "On it.",
+      replyEffectStatus: "pending",
+    };
+    expect(
+      messageHandlerFromFieldResult(
+        { ...envelope, candidateActionNames: ["TASKS"] },
+        undefined,
+        { actions: available, messageText: "Create the file." },
+      ).plan.candidateActions,
+    ).toContain("TASKS");
+    expect(
+      inferRoutedCandidates(
+        available,
+        "Spawn a coding agent to create the file.",
+        ["files"],
+      ).names,
+    ).toEqual(["TASKS"]);
+  });
+
   it.each(["none", "non_applied"] as const)(
     "keeps an explicit %s acknowledgement out of inferred app work",
     (replyEffectStatus) => {

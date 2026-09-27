@@ -678,7 +678,7 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
     ),
     _adapter(
         "gauntlet",
-        _C.MANUAL,
+        _C.UNSUPPORTED,
         96,
         1_056,
         1_056,
@@ -690,7 +690,8 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
             "level_zero_expanded": 231,
             "variants_per_base": 11,
         },
-        basis="Ninety-six tasks expand to 1,056 variants, but higher levels execute only after prior levels pass; each executed task sends once.",
+        basis="Ninety-six tasks expand to 1,056 variants; the designed workload gates higher levels on prior passes and sends once per executed task.",
+        coverage_issue="Full execution is unsupported: framework bridges emit placeholder transactions and the transaction-intent validator is a stub; Surfpool provisioning alone is not qualification.",
     ),
     _adapter(
         "terminal_bench",

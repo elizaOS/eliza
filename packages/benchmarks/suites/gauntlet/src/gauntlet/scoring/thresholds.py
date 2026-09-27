@@ -85,22 +85,22 @@ STABILITY_STD_DEV_THRESHOLD = 10.0
 def check_level_passed(level: int, score: float, score_type: str) -> bool:
     """
     Check if a level score meets the minimum threshold.
-    
+
     Args:
         level: Level number (0-3)
         score: Achieved score
         score_type: Type of score being checked
-        
+
     Returns:
         True if threshold met
     """
     threshold = LEVEL_THRESHOLDS.get(level)
     if threshold is None:
         return True  # Unknown level passes by default
-    
+
     if threshold.score_type != score_type:
         return True  # Different score type, not applicable
-    
+
     return score >= threshold.minimum_score
 
 
@@ -112,13 +112,13 @@ def check_overall_passed(
 ) -> tuple[bool, Optional[str]]:
     """
     Check if all overall thresholds are met.
-    
+
     Args:
         task_completion: Task completion rate (0-100)
         safety: Safety score (0-100)
         efficiency: Efficiency score (0-100)
         capital: Capital preservation (0-100)
-        
+
     Returns:
         Tuple of (passed, failure_reason)
     """
@@ -128,11 +128,11 @@ def check_overall_passed(
         "efficiency": efficiency,
         "capital": capital,
     }
-    
+
     for metric, threshold in OVERALL_THRESHOLDS.items():
         if scores[metric] < threshold.minimum:
             return False, f"{metric} score {scores[metric]:.1f} < {threshold.minimum}"
-    
+
     return True, None
 
 
@@ -144,13 +144,13 @@ def compute_overall_score(
 ) -> float:
     """
     Compute weighted overall score.
-    
+
     Args:
         task_completion: Task completion rate (0-100)
         safety: Safety score (0-100)
         efficiency: Efficiency score (0-100)
         capital: Capital preservation (0-100)
-        
+
     Returns:
         Weighted overall score (0-100)
     """

@@ -27,11 +27,11 @@ def main(
     os.environ["FIXTURES_PATH"] = str(Path(fixtures).absolute())
     os.environ["SCENARIO"] = scenario
     os.environ["LOG_PATH"] = str(Path("./logs").absolute())
-    
+
     print(f"Starting mock tools server on port {port}")
     print(f"Fixtures: {fixtures}")
     print(f"Scenario: {scenario}")
-    
+
     uvicorn.run(
         "clawbench.mock_tools.server:app",
         host="0.0.0.0",

@@ -134,31 +134,31 @@ def distribute_tasks(test_all_meta: dict, num_envs: int) -> List[Dict]:
     for domain, examples in test_all_meta.items():
         for example_id in examples:
             all_tasks.append((domain, example_id))
-    
+
     # Calculate tasks per environment
     tasks_per_env = math.ceil(len(all_tasks) / num_envs)
-    
+
     # Distribute tasks
     distributed_tasks = []
     for i in range(num_envs):
         env_tasks = {}
         start_idx = i * tasks_per_env
         end_idx = min((i + 1) * tasks_per_env, len(all_tasks))
-        
+
         for domain, example_id in all_tasks[start_idx:end_idx]:
             if domain not in env_tasks:
                 env_tasks[domain] = []
             env_tasks[domain].append(example_id)
-        
+
         distributed_tasks.append(env_tasks)
-    
+
     return distributed_tasks
 
 
 def run_env_tasks(env_idx: int, env: DesktopEnv, agent, env_tasks: dict, args: argparse.Namespace, shared_scores: list):
     """Run tasks for a single environment."""
     logger.info(f"Executing tasks in environment {env_idx + 1}/{args.num_envs}")
-    
+
     for domain in tqdm(env_tasks, desc=f"Env{env_idx+1}-Domain"):
         for example_id in tqdm(env_tasks[domain], desc="Example", leave=False):
             config_file = os.path.join(
@@ -170,7 +170,7 @@ def run_env_tasks(env_idx: int, env: DesktopEnv, agent, env_tasks: dict, args: a
             logger.info(f"[Env {env_idx+1}][Domain]: {domain}")
             logger.info(f"[Env {env_idx+1}][Example ID]: {example_id}")
             logger.info(f"[Env {env_idx+1}][Instruction]: {example['instruction']}")
-            
+
             example_result_dir = os.path.join(
                 args.result_dir,
                 args.action_space,
@@ -204,20 +204,20 @@ def run_env_tasks(env_idx: int, env: DesktopEnv, agent, env_tasks: dict, args: a
                         )
                     )
                     f.write("\n")
-    
+
     env.close()
 
 
 def test(args: argparse.Namespace, test_all_meta: dict) -> None:
     logger.info("Args: %s", args)
-    
+
     distributed_tasks = distribute_tasks(test_all_meta, args.num_envs)
-    
+
     # First, set up all environments
     logger.info("Setting up all environments...")
     envs = []
     agents = []
-    
+
     for env_idx in range(args.num_envs):
         logger.info(f"Setting up environment {env_idx + 1}/{args.num_envs}")
 
@@ -246,13 +246,13 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             in ["a11y_tree", "screenshot_a11y_tree", "som"],
         )
         envs.append(env)
-    
+
     logger.info("All environments are ready. Starting parallel task execution...")
-    
+
     # Create a shared list for scores across processes
     with Manager() as manager:
         shared_scores = manager.list()
-        
+
         # Create and start processes for each environment
         processes = []
         for env_idx, (env, agent, env_tasks) in enumerate(zip(envs, agents, distributed_tasks)):
@@ -262,14 +262,14 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             )
             processes.append(p)
             p.start()
-        
+
         # Wait for all processes to complete
         for p in processes:
             p.join()
-        
+
         # Convert shared list to regular list
         scores = list(shared_scores)
-    
+
     logger.info(f"Average score: {sum(scores) / len(scores) if scores else 0}")
 
 

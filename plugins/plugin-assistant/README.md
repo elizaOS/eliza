@@ -59,9 +59,11 @@ or its restoration.
 
 The default `mode=load` enables the selected complete schemas in the next planner
 round. `mode=describe` reads descriptions and schemas without enabling them.
-Exact `names` load known operations or whole named families; `names=[]` reads the
-complete authorized catalog. These explicit paths are not limited to ten, and
-no selected definition is truncated. Search and exact loads refresh permissions, and
+Exact `names` load known operations or whole named families. `mode=describe`
+with `names=[]` reads the complete authorized catalog; an empty load searches
+for operations relevant to the current task. Exact-name and full-catalog requests
+are not limited to ten; no selected definition is truncated. Search and exact
+loads refresh permissions, and
 execution checks them again. Discovery does not execute domain work. There is
 one canonical planner discovery action. `SEARCH_ACTIONS` remains a cloud MCP
 simile for connector discovery, not a separate planner registry;
