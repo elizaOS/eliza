@@ -1009,7 +1009,18 @@ describe("model-selected host navigation", () => {
 
   it("ignores missing, malformed and client-metadata decisions", async () => {
     const f = await fixture();
-    for (const disposition of ["invalid", null]) {
+    for (const disposition of [
+      "invalid",
+      null,
+      undefined,
+      42,
+      true,
+      ["direct"],
+      ["planning"],
+      ["none"],
+      ["forbidden"],
+      { toString: () => "direct" },
+    ]) {
       const input = clientMessage();
       input.content.metadata = {
         viewClientId: "origin-client",
@@ -1018,6 +1029,18 @@ describe("model-selected host navigation", () => {
           viewId: "chat",
         },
       };
+      expect(
+        viewNavigationField.parse?.(
+          { disposition, viewId: "chat", reason: "Malformed field" },
+          {
+            runtime: f.runtime,
+            message: input,
+            state: { values: {}, data: {}, text: "" },
+            senderRole: "OWNER",
+            turnSignal: new AbortController().signal,
+          },
+        ),
+      ).toBeNull();
       const selected = await selectNavigation(f, input, {
         disposition,
         viewId: "chat",
