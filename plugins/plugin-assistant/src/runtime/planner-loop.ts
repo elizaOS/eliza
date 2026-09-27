@@ -1598,6 +1598,44 @@ async function runPlannerLoopIterations(
         };
       }
 
+      // A progress-only REPLY or empty native response cannot close work the
+      // coding planner explicitly left pending. Keep this separate from the
+      // verification-repair budget, which applies only to attempted completion.
+      if (
+        codingDrainQueue &&
+        lastPlannerExplicitCompleted === false &&
+        plannerOutput.toolCalls.every(
+          (call) => call.name.toUpperCase() === "REPLY",
+        ) &&
+        (plannerOutput.completed === false ||
+          (plannerOutput.toolCalls.length === 0 &&
+            !plannerOutput.messageToUser?.trim()))
+      ) {
+        const latest = [...trajectory.archivedSteps, ...trajectory.steps]
+          .reverse()
+          .find((step) => step.toolCall && step.result)?.result;
+        if (
+          !latest ||
+          (!hasAwaitingUserInputMarker(latest) &&
+            !hasRequiresConfirmationMarker(latest))
+        ) {
+          assertTrajectoryLimit({
+            kind: "terminal_only_continuations",
+            max: config.maxTerminalOnlyContinuations,
+            observed: ++terminalOnlyContinuations,
+          });
+          appendPlannerModelFeedbackEvent(trajectory, {
+            id: `coding-pending-terminal:${iteration}`,
+            type: "instruction",
+            source: "planner-loop",
+            createdAt: Date.now(),
+            content:
+              "The coding work is still explicitly pending. A progress reply or empty response does not complete it. Continue with the next necessary native tool call. When the task is complete or a genuine blocker prevents further work, provide a grounded final reply with final scope. Do not repeat settled mutations or claim unrecorded changes.",
+          });
+          continue;
+        }
+      }
+
       const proposedTerminalText =
         terminalMessageFromToolCalls(
           plannerOutput.toolCalls,
@@ -4136,12 +4174,11 @@ async function dispatchPlannerModelCall(params: {
     const redactText = composeToolDiagnosticRedactor(params.runtime);
     // Model history owns generated continuation content. Do not add a tool step:
     // terminal settlement must still inspect the latest actual tool result.
-    const history = (params.trajectory.modelHistory ??=
-      trajectoryStepsToMessages(
-        [...params.trajectory.archivedSteps, ...params.trajectory.steps],
-        { redactText },
-      ));
-    history.push(
+    params.trajectory.modelHistory ??= trajectoryStepsToMessages(
+      [...params.trajectory.archivedSteps, ...params.trajectory.steps],
+      { redactText },
+    );
+    params.trajectory.modelHistory.push(
       projectToolDiagnosticValue(modelMessage, redactText) as ChatMessage,
     );
   }
@@ -5722,7 +5759,7 @@ function deferCodingCompletionUntilMutationVerified(args: {
         decision: "CONTINUE",
         thought: latestSuccessfulNoTestVerification(args.trajectory)
           ? "The last test command selected no tests."
-          : "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+          : "A recorded or indeterminate workspace change has not been followed by successful command verification.",
         messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
           ? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
           : "Run the narrowest relevant test, typecheck, lint, or build with SHELL as a standalone foreground command, without pipes (including head, tail, or tee), semicolons, background execution, or failure-masking operators. Use the cwd parameter or a cd directory && verifier chain. Inspection and git diff --check do not satisfy this verification requirement. A successful command must leave the workspace unchanged.",
@@ -7452,7 +7489,7 @@ async function finishWithForcedSynthesis(params: {
     const verificationFailure = latestCodingVerificationFailure(trajectory);
     const message = verificationFailure
       ? `The ${verificationFailure.kind.replace("_", " ")} verification command still failed after the bounded repair attempt. The coding task is incomplete.`
-      : "I changed files but could not complete the required command verification. The coding task is incomplete.";
+      : "Required workspace verification did not complete. The coding task is incomplete.";
     const evaluator: EvaluatorOutput = {
       success: false,
       decision: "FINISH",
