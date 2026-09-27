@@ -683,4 +683,46 @@ describe("AuthTokenSync", () => {
 
     expect(transitions.map(({ state }) => state)).toEqual(["present"]);
   });
+
+  it("does not resurrect a session when a refresh response lands after sign-out", async () => {
+    const currentToken = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    const rotatedToken = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    storage.setItem(STEWARD_TOKEN_KEY, currentToken);
+    let releaseRefresh!: () => void;
+    const refreshHeld = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        calls.push({ url, method });
+        if (url.includes("steward-refresh")) {
+          await refreshHeld;
+          return new Response(JSON.stringify({ token: rotatedToken }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify({}), { status: 401 });
+      }),
+    );
+
+    mount();
+    await waitFor(() =>
+      expect(postsTo("steward-refresh").length).toBeGreaterThan(0),
+    );
+    // Explicit sign-out ends the session while the refresh is in flight.
+    await clearStoredStewardToken();
+    releaseRefresh();
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+  });
 });

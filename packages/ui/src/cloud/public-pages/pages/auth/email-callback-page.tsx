@@ -25,6 +25,7 @@ import {
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
+import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
 import {
   consumePendingOAuthReturnTo,
   defaultLoginReturnTo,
@@ -246,6 +247,9 @@ function EmailCallbackContent() {
           callbackEmail,
         );
         await syncStewardSessionCookie(result.token, result.refreshToken);
+        // A completed magic link is an explicit sign-in on this origin; it
+        // ends any earlier explicit sign-out's passive-recovery suppression.
+        clearSsoLoggedOut();
         finishSuccess();
       } catch (err) {
         // error-policy:J4 expected rejected/expired one-time links render a
