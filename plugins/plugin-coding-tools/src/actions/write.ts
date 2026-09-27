@@ -58,7 +58,12 @@ async function writeWithCapabilityRouter(params: {
       createDirectories: true,
       overwrite: true,
     });
-    if (result.path !== params.resolved) {
+    // A path-translating provider acknowledges its own mapped path and echoes
+    // the requested one; either must identify the file this call asked for.
+    if (
+      result.path !== params.resolved &&
+      result.requestedPath !== params.resolved
+    ) {
       return {
         ok: false,
         reason: "unverified",

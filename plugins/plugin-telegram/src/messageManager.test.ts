@@ -424,8 +424,8 @@ describe("MessageManager malformed payload handling", () => {
     });
 
     // Unknown/absent content types degrade to a document upload rather than
-    // throwing synchronously (a sync throw inside Promise.all would abort the
-    // whole reply); the underlying send failure is still awaited and propagated.
+    // throwing synchronously. A later Telegram send failure is isolated so the
+    // reply path can still deliver accompanying text.
     await expect(
       manager.sendMessageInChunks(
         {
@@ -437,13 +437,13 @@ describe("MessageManager malformed payload handling", () => {
           attachments: [
             {
               id: "a1",
-              url: "https://files.test/file.bin",
+              url: "data:application/octet-stream;base64,ZGF0YQ==",
               contentType: "application/octet-stream",
             },
           ],
         } as never,
       ),
-    ).rejects.toThrow("telegram unavailable");
+    ).resolves.toEqual([]);
     expect(sendDocument).toHaveBeenCalled();
   });
 
@@ -468,7 +468,7 @@ describe("MessageManager malformed payload handling", () => {
         attachments: [
           {
             id: "p1",
-            url: "https://files.test/p.png",
+            url: "data:image/png;base64,aGVsbG8=",
             contentType: "image/png",
           },
         ],
@@ -499,7 +499,7 @@ describe("MessageManager malformed payload handling", () => {
         attachments: [
           {
             id: "p1",
-            url: "https://files.test/p.png",
+            url: "data:image/png;base64,aGVsbG8=",
             contentType: "image/png",
           },
         ],

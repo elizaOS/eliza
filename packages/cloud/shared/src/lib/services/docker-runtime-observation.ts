@@ -1,4 +1,4 @@
-/** Observes and retires an immutable Docker runtime on verified node authority. Read-only observation is separate from exact-ID removal; neither changes compute leases or releases capacity. */
+/** Observes, retires, retains or restarts an immutable Docker runtime on verified node authority. Read-only observation is separate from exact-ID effects; none changes compute leases or releases capacity. */
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -52,6 +52,44 @@ docker('rm', '-f', expected)
 if docker('ps', '-aq', '--no-trunc', '--filter', 'id=' + expected).split(): raise RuntimeError('original_removal_unresolved')
 print(json.dumps({'kind':'absent'}))
 `;
+const DOCKER_RUNTIME_OWNERSHIP_CHECK = `
+labels = state['Config']['Labels'] or {}
+if labels.get('ai.elizaos.managed-by') != 'eliza-cloud' or labels.get('ai.elizaos.agent-id') != request['agentId'] or labels.get('ai.elizaos.org-id') != request['organizationId'] or labels.get('ai.elizaos.container-class') not in ('user','test'):
+    raise RuntimeError('container_ownership_changed')
+if not expected or state['Id'] != expected: raise RuntimeError('immutable_stop_identity_required')
+`;
+/**
+ * Stops the exact immutable container WITHOUT removing it (#30746). The
+ * restart policy is disabled first so Docker cannot revive unpaid compute; the
+ * container, its mounts and its secrets stay on the node for exact resume.
+ */
+export const DOCKER_RUNTIME_RETAIN_STOP_PROGRAM =
+  DOCKER_RUNTIME_INSPECTION_PROGRAM +
+  DOCKER_RUNTIME_OWNERSHIP_CHECK +
+  `
+docker('update', '--restart=no', expected)
+if state['State']['Running']:
+    try:
+        docker('stop', '--time', '10', expected, timeout=15)
+    except (RuntimeError, subprocess.TimeoutExpired):
+        docker('kill', expected, timeout=5)
+after = json.loads(docker('inspect', '--format', '{{json .}}', expected))
+policy = ((after.get('HostConfig') or {}).get('RestartPolicy') or {}).get('Name') or 'no'
+if after['Id'] != expected or after['State']['Running'] or policy != 'no': raise RuntimeError('retained_stop_unresolved')
+print(json.dumps({'kind':'present', 'containerId':after['Id'], 'labels':after['Config']['Labels'] or {}, 'running':False}))
+`;
+/** Starts the exact retained container in place and restores its restart policy. */
+export const DOCKER_RUNTIME_RETAINED_START_PROGRAM =
+  DOCKER_RUNTIME_INSPECTION_PROGRAM +
+  DOCKER_RUNTIME_OWNERSHIP_CHECK +
+  `
+if not state['State']['Running']:
+    docker('start', expected, timeout=30)
+docker('update', '--restart=unless-stopped', expected)
+after = json.loads(docker('inspect', '--format', '{{json .}}', expected))
+if after['Id'] != expected or not after['State']['Running']: raise RuntimeError('retained_start_unresolved')
+print(json.dumps({'kind':'present', 'containerId':after['Id'], 'labels':after['Config']['Labels'] or {}, 'running':True}))
+`;
 const wireSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("absent") }).strict(),
   z
@@ -64,10 +102,20 @@ const wireSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+type DockerRuntimeEffect = "observe" | "remove" | "retain-stop" | "retained-start";
+
+const DOCKER_RUNTIME_PROGRAMS: Record<DockerRuntimeEffect, string> = {
+  observe: DOCKER_RUNTIME_OBSERVATION_PROGRAM,
+  remove: DOCKER_RUNTIME_STOP_PROGRAM,
+  "retain-stop": DOCKER_RUNTIME_RETAIN_STOP_PROGRAM,
+  "retained-start": DOCKER_RUNTIME_RETAINED_START_PROGRAM,
+};
+
 async function runDockerRuntimeObservation(
   input: SandboxRuntimeObservationRequest,
-  stop = false,
+  effect: DockerRuntimeEffect = "observe",
 ): Promise<SandboxRuntimeObservation> {
+  const stop = effect !== "observe";
   const expected = input.expected ? runtimeIdentitySchema.parse(input.expected) : undefined;
   if (
     expected &&
@@ -120,7 +168,7 @@ async function runDockerRuntimeObservation(
   );
   try {
     const output = await ssh.execStdin(
-      `python3 -c ${shellQuote(stop ? DOCKER_RUNTIME_STOP_PROGRAM : DOCKER_RUNTIME_OBSERVATION_PROGRAM)}`,
+      `python3 -c ${shellQuote(DOCKER_RUNTIME_PROGRAMS[effect])}`,
       JSON.stringify({ ...authority, containerId: expected?.containerId }),
       60_000,
     );
@@ -185,10 +233,44 @@ export async function stopDockerRuntime(
       containerName: identity.containerName,
       expected: identity,
     },
-    true,
+    "remove",
   );
   if (result.kind !== "absent")
     throw new ElizaError("Exact runtime removal is unresolved", {
       code: "SANDBOX_EXACT_STOP_UNRESOLVED",
+    });
+}
+
+function exactRuntimeRequest(
+  identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+): SandboxRuntimeObservationRequest {
+  return {
+    agentId: identity.agentId,
+    organizationId: identity.organizationId,
+    nodeId: identity.nodeId,
+    containerName: identity.containerName,
+    expected: identity,
+  };
+}
+
+/** Stops the exact runtime in place, retaining its container, mounts and node. */
+export async function retainDockerRuntimeStopped(
+  identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+): Promise<void> {
+  const result = await runDockerRuntimeObservation(exactRuntimeRequest(identity), "retain-stop");
+  if (result.kind !== "present" || result.running)
+    throw new ElizaError("Exact retained stop is unresolved", {
+      code: "SANDBOX_EXACT_STOP_UNRESOLVED",
+    });
+}
+
+/** Starts the exact retained runtime; absence or replacement is never success. */
+export async function startRetainedDockerRuntime(
+  identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+): Promise<void> {
+  const result = await runDockerRuntimeObservation(exactRuntimeRequest(identity), "retained-start");
+  if (result.kind !== "present" || !result.running)
+    throw new ElizaError("Exact retained start is unresolved", {
+      code: "SANDBOX_RETAINED_START_UNRESOLVED",
     });
 }

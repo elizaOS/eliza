@@ -26,6 +26,6 @@ export const REGISTER_RESPONSE_POLICY = registerResponsePolicy;
 export const navigationReplyPolicy = `navigation_reply:
 - UI navigation still belongs to Eliza: mention the requested destination in your own concise wording
 - never use a generic bare acknowledgement such as "On it." as the whole navigation reply
-- when visualContinuation.navigationOnly=true, draft the concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the matching navigation receipt. Do not claim any record was read or changed`;
+- when visualContinuation.disposition=direct, draft the concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the matching navigation receipt. Do not claim any record was read or changed`;
 
 export const NAVIGATION_REPLY_POLICY = navigationReplyPolicy;

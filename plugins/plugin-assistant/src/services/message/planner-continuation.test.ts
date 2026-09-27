@@ -472,6 +472,43 @@ it("retains ambiguous execution evidence when the actual task scheduler handles 
   });
   await scheduler.executeTaskById(taskId);
   expect(execute).toHaveBeenCalledTimes(1);
+  const parked = await task();
+  expect(parked.tags).toContain("AWAITING_CHOICE");
+  expect(parked.metadata?.options).toEqual([
+    expect.objectContaining({ name: CANCEL_PLANNER_OPTION }),
+  ]);
+  await worker.execute(runtime, { option: CANCEL_PLANNER_OPTION }, parked);
+  expect((await task()).metadata?.plannerContinuation).toMatchObject({
+    phase: "cancelled",
+    state: { trajectory: result.trajectory },
+  });
+});
+
+it("parks an executing checkpoint orphaned by a restart with a cancel choice, never replaying it", async () => {
+  const runtime = fixture.runtime;
+  const saved = await task();
+  const checkpoint = saved.metadata?.plannerContinuation as Record<
+    string,
+    unknown
+  >;
+  await runtime.updateTask(required(saved.id), {
+    metadata: {
+      ...saved.metadata,
+      plannerContinuation: { ...checkpoint, phase: "executing" },
+    },
+  });
+  const execute = vi.spyOn(required(runtime.messageService), "handleMessage");
+  runtime.unregisterTaskWorker(PLANNER_CONTINUATION_TASK);
+  await registerPlannerContinuationWorker(runtime);
+  const parked = await task();
+  expect(parked.metadata?.plannerContinuation).toMatchObject({
+    phase: "executing",
+    failure: { code: "PLANNER_CONTINUATION_INTERRUPTED" },
+  });
+  expect(parked.tags).toContain("AWAITING_CHOICE");
+  const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+  await worker.execute(runtime, {}, parked);
+  expect(execute).not.toHaveBeenCalled();
 });
 
 it("refuses stale queued admission after another invocation settles and releases its lock", async () => {

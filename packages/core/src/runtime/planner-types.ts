@@ -67,6 +67,7 @@ export interface EvaluatorRuntime {
 		modelType: TextGenerationModelType,
 		params: {
 			messages: ChatMessage[];
+			model?: string;
 			maxTokens?: number;
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
@@ -121,6 +122,9 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Model metadata forwarded to completion evaluation by host facades. */
+	getModelRegistrations?(): ModelRegistrationInfo[];
+	supportsModelAttemptPreparation?: boolean;
 	/** Reauthorize deferred provider reads before restoring model context. */
 	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
@@ -486,6 +490,8 @@ export interface RunEvaluatorParams {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	modelType?: TextGenerationModelType;
+	/** Opt-in provider model for evaluation only; adapters may ignore per-call selection. */
+	model?: string;
 	effects?: EvaluatorEffects;
 	provider?: string;
 	recorder?: TrajectoryRecorder;

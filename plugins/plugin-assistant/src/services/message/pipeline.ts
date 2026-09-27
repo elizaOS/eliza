@@ -129,7 +129,6 @@ import {
   checkpointActivePlanner,
   getActivePlannerContinuation,
   persistPlannerContinuation,
-  registerPlannerContinuationWorker,
 } from "./planner-continuation.ts";
 import { finalizePlannerReply } from "./planner-reply.ts";
 import {
@@ -223,7 +222,6 @@ export function actionOwnsResponseHandlerEarlyReply(
 export async function runV5MessageRuntimeStage1(
   args: V5MessageRuntimeInput,
 ): Promise<V5MessageRuntimeStage1Result> {
-  await registerPlannerContinuationWorker(args.runtime);
   const resumedPlanner = getActivePlannerContinuation(
     args.runtime,
     args.message,
@@ -1541,8 +1539,13 @@ export async function runV5MessageRuntimeStage1(
     );
     const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
       getService?: (service: string) => unknown;
+      supportsModelAttemptPreparation?: boolean;
     };
     const plannerRuntime: PlannerRuntime = {
+      getSetting: (key) => args.runtime.getSetting?.(key) ?? null,
+      getModelRegistrations: () => args.runtime.getModelRegistrations?.() ?? [],
+      supportsModelAttemptPreparation:
+        runtimeWithOptionalServices.supportsModelAttemptPreparation,
       restoreProviderContext: async (original) => {
         getStreamingContext()?.abortSignal?.throwIfAborted();
         const freshState = await args.runtime.composeState(

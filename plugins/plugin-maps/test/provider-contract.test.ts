@@ -542,7 +542,7 @@ describe("JsonMapsHttpAdapter provider contract", () => {
       });
       await expectCode(
         redirects.searchPlaces({ query: "park" }),
-        "MAPS_PROVIDER_NETWORK",
+        "MAPS_ENDPOINT_BLOCKED",
       );
       expect(requests).toHaveLength(1);
       expect(requests[0]?.url).toContain("maps-redirect.example.test");

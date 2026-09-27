@@ -46,7 +46,7 @@ export interface AgentTransferRouteContext extends RouteRequestContext {
   exportAgent: (
     runtime: AgentRuntime,
     password: string,
-    options: { includeLogs: boolean },
+    options: { includeLogs: boolean; excludeSecrets: boolean },
   ) => Promise<Buffer>;
   estimateExportSize: (runtime: AgentRuntime) => Promise<unknown>;
   importAgent: (
@@ -98,6 +98,7 @@ export async function handleAgentTransferRoutes(
     try {
       const fileBuffer = await exportAgent(state.runtime, body.password, {
         includeLogs: body.includeLogs === true,
+        excludeSecrets: body.excludeSecrets === true,
       });
 
       const agentName = (state.runtime.character.name ?? "agent")

@@ -108,6 +108,30 @@ describe("WRITE", () => {
     expect(meta).toBeDefined();
   });
 
+  it("accepts a path-translating provider that echoes the requested path", async () => {
+    const file = path.join(env.tmpDir, "fresh.txt");
+    // The sandbox workdir mirrors the host workspace; the provider reports
+    // its mapped path plus the host path it was asked to write.
+    const writeText = vi.fn(async (params: FileWriteTextParams) => {
+      await fs.writeFile(params.path, params.text, "utf8");
+      return {
+        path: "/workspace/fresh.txt",
+        requestedPath: params.path,
+        bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      };
+    });
+    const result = await writeFileHandler(
+      runtimeWithRouter(env.runtime, makeWriteRouter(writeText)),
+      env.message,
+      undefined,
+      { parameters: { file_path: file, content: "hello" } },
+      vi.fn(async () => []),
+    );
+    expect(result.success).toBe(true);
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a provider acknowledgment for another path without falling back or claiming no effect", async () => {
     const file = path.join(env.tmpDir, "requested.txt");
     const other = path.join(env.tmpDir, "different.txt");

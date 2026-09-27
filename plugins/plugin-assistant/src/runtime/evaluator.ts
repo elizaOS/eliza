@@ -205,6 +205,7 @@ function resolveEvaluatorBudget(
   runtime: EvaluatorRuntime,
   modelType: string,
   provider: string | undefined,
+  requestedModel: string | undefined,
 ): EvaluatorBudgetResolution {
   const registrations = runtime.getModelRegistrations?.() ?? [];
   if (registrations.length === 0) {
@@ -229,9 +230,16 @@ function resolveEvaluatorBudget(
   const windows: number[] = [];
   let unknownReachableModel = false;
   for (const registration of candidates) {
-    const modelName = modelNameFromMetadata(runtime, registration.metadata);
+    const registeredModel = modelNameFromMetadata(
+      runtime,
+      registration.metadata,
+    );
+    const modelName = requestedModel ?? registeredModel;
     if (modelName) modelNames.push(modelName);
-    const contextWindowTokens = registration.metadata?.contextWindowTokens;
+    const contextWindowTokens =
+      !requestedModel || requestedModel === registeredModel
+        ? registration.metadata?.contextWindowTokens
+        : undefined;
     if (
       !Number.isFinite(contextWindowTokens) ||
       !contextWindowTokens ||
@@ -361,22 +369,25 @@ function enforceEvaluatorDecisionState(
   output: EvaluatorOutput,
   state: EvaluatorDecisionState,
 ): EvaluatorOutput {
-  let invalid: string | undefined;
+  // Collect every violated contract so the retry sees each diagnosis.
+  const invalid: string[] = [];
   if (
     output.decision === "NEXT_RECOMMENDED" &&
     (state.queuedCallIds.length === 0 ||
       (output.recommendedToolCallId !== undefined &&
         !state.queuedCallIds.includes(output.recommendedToolCallId)))
   )
-    invalid =
-      "The recommended call is not in the current executable queue. Plan remaining work from the recorded results.";
+    invalid.push(
+      "The recommended call is not in the current executable queue. Plan remaining work from the recorded results.",
+    );
   if (
     output.effectReceiptIds?.some(
       (id) => !state.availableReceiptIds.includes(id),
     )
   )
-    invalid =
-      "The selected receipt is not a current committed effect receipt. Ground the outcome in recorded evidence.";
+    invalid.push(
+      "The selected receipt is not a current committed effect receipt. Ground the outcome in recorded evidence.",
+    );
   if (
     output.decision === "FINISH" &&
     state.requiresReplyField &&
@@ -384,20 +395,23 @@ function enforceEvaluatorDecisionState(
       (typeof output.raw?.messageToUser === "string" &&
         !output.raw.messageToUser.trim()))
   )
-    invalid =
-      "The internal result still requires a grounded user-facing answer. Produce that answer from recorded results without repeating completed effects.";
-  if (invalid)
+    invalid.push(
+      "The internal result still requires a grounded user-facing answer. Produce that answer from recorded results without repeating completed effects.",
+    );
+  if (invalid.length > 0)
     return {
       ...output,
       success: false,
       decision: "CONTINUE",
-      thought: invalid,
+      thought: invalid.join(" "),
       messageToUser: undefined,
       copyToClipboard: undefined,
       effectReceiptIds: undefined,
       plannerReply: undefined,
       recommendedToolCallId: undefined,
     };
+  // The evaluator contract ends an unrecovered failure with FINISH
+  // success=false and the failure cause in the reply; only the verdict flips.
   if (state.hasUnresolvedToolFailure && output.success)
     return { ...output, success: false };
   return output;
@@ -419,6 +433,35 @@ function evaluatorQueuedCallIds(
 export async function runEvaluator(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
+  const configuredModel = resolveSetting(
+    params.runtime.getSetting
+      ? {
+          getSetting: (key) => {
+            const value = params.runtime.getSetting?.(key);
+            // Model IDs are strings. Preserve explicit blank/nonstring values
+            // as no override, rather than coercing false or falling through to env.
+            return typeof value === "string" || value == null
+              ? (value ?? null)
+              : "";
+          },
+        }
+      : undefined,
+    "ELIZA_EVALUATOR_MODEL",
+  );
+  const model =
+    params.model?.trim() ||
+    (typeof configuredModel === "string"
+      ? configuredModel.trim()
+      : undefined) ||
+    undefined;
+  return runEvaluatorWithSelectedModel(params, model);
+}
+
+/** Keep the initial selection, including no override, across restoration awaits. */
+async function runEvaluatorWithSelectedModel(
+  params: RunEvaluatorParams,
+  model: string | undefined,
+): Promise<EvaluatorOutput> {
   const streamingContext = getStreamingContext();
   const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
   const startedAt = Date.now();
@@ -426,6 +469,7 @@ export async function runEvaluator(
     params.runtime,
     String(modelType),
     params.provider,
+    model,
   );
   const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
   const availableReceiptIds = activeCommittedEffectReceipts(
@@ -581,10 +625,17 @@ export async function runEvaluator(
       providerOptions?: Record<string, unknown>;
     },
   ): Promise<void> => {
-    const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
+    const registeredModel = modelNameFromMetadata(
+      params.runtime,
+      attempt.metadata,
+    );
+    const modelName = model ?? registeredModel;
     const resolvedBudget = buildModelInputBudget({
       modelName,
-      contextWindowTokens: attempt.metadata?.contextWindowTokens,
+      contextWindowTokens:
+        !model || model === registeredModel
+          ? attempt.metadata?.contextWindowTokens
+          : undefined,
     });
     const attemptWindow = resolvedBudget.contextWindowTokens;
     const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
@@ -634,6 +685,7 @@ export async function runEvaluator(
           : undefined,
         () => {
           const modelRequest = {
+            ...(model ? { model } : {}),
             messages: callInput.messages,
             responseSchema,
             promptSegments: callInput.promptSegments,
@@ -818,7 +870,7 @@ export async function runEvaluator(
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
       };
-      return runEvaluator(params);
+      return runEvaluatorWithSelectedModel(params, model);
     }
     output = {
       ...output,

@@ -758,6 +758,7 @@ export class RemoteCodingCapabilityRouterService
     return {
       path: target,
       bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      requestedPath: params.path,
     };
   }
 

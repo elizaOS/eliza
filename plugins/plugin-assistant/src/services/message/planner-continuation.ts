@@ -40,7 +40,11 @@ export interface PlannerContinuation {
     | "delivered"
     | "cancelled"
     | "blocked";
-  failure?: { code: "PLANNER_CONTINUATION_EXECUTION_FAILED" };
+  failure?: {
+    code:
+      | "PLANNER_CONTINUATION_EXECUTION_FAILED"
+      | "PLANNER_CONTINUATION_INTERRUPTED";
+  };
   delivery?: { id: UUID; content: Content; acknowledged: boolean };
   deliveries?: Array<{ id: UUID; content: Content; acknowledged: boolean }>;
 }
@@ -48,6 +52,7 @@ const bindings = new WeakMap<IAgentRuntime, Map<string, PlannerContinuation>>();
 const running = new WeakMap<IAgentRuntime, Set<string>>();
 const mutations = new WeakMap<IAgentRuntime, Map<string, Promise<void>>>();
 const controllers = new WeakMap<IAgentRuntime, Map<string, AbortController>>();
+const recovered = new WeakMap<IAgentRuntime, Promise<void>>();
 function invalid(message: string): never {
   throw new ElizaError(message, { code: "PLANNER_CONTINUATION_INVALID" });
 }
@@ -135,6 +140,16 @@ async function persistUnlocked(
     invalid("Continuation was cancelled");
   if (checkpoint.phase === "queued" && previous.phase !== "paused")
     invalid("Continuation is no longer paused");
+  // An ambiguous execution/delivery checkpoint that failed or was orphaned by
+  // a restart is never replayed; the owner can still cancel what remains.
+  const parkedAmbiguous =
+    (checkpoint.phase === "executing" ||
+      checkpoint.phase === "delivery_pending") &&
+    checkpoint.failure !== undefined;
+  const cancelOption = {
+    name: CANCEL_PLANNER_OPTION,
+    description: "Cancel remaining work; preserve completed effects.",
+  };
   await runtime.updateTask(checkpoint.taskId, {
     metadata: {
       ...task.metadata,
@@ -148,18 +163,16 @@ async function persistUnlocked(
                 name: RESUME_PLANNER_OPTION,
                 description: `Resume unfinished work with ${checkpoint.additionalPromptBudget} additional prompt tokens; prior usage is retained.`,
               },
-              {
-                name: CANCEL_PLANNER_OPTION,
-                description:
-                  "Cancel remaining work; preserve completed effects.",
-              },
+              cancelOption,
             ]
-          : undefined,
+          : parkedAmbiguous
+            ? [cancelOption]
+            : undefined,
     },
     tags:
       checkpoint.phase === "queued"
         ? ["queue", "planner-continuation"]
-        : checkpoint.phase === "paused"
+        : checkpoint.phase === "paused" || parkedAmbiguous
           ? ["AWAITING_CHOICE", "planner-continuation"]
           : ["planner-continuation"],
     dueAt: checkpoint.phase === "queued" ? Date.now() : null,
@@ -276,7 +289,8 @@ export async function checkpointActivePlanner(
 export async function registerPlannerContinuationWorker(
   runtime: IAgentRuntime,
 ): Promise<void> {
-  if (runtime.getTaskWorker(PLANNER_CONTINUATION_TASK)) return;
+  if (runtime.getTaskWorker(PLANNER_CONTINUATION_TASK))
+    return recoverPlannerContinuations(runtime);
   runtime.registerTaskWorker({
     name: PLANNER_CONTINUATION_TASK,
     canExecute: async (current, message) =>
@@ -465,19 +479,50 @@ export async function registerPlannerContinuationWorker(
       return { preserveTask: true };
     },
   });
-  // Only settled snapshots are recoverable after a process/runtime restart.
-  // Executing and unacknowledged delivery checkpoints require reconciliation.
-  for (const task of await runtime.getTasks({
-    agentIds: [runtime.agentId],
-    tags: ["planner-continuation"],
-  })) {
-    const checkpoint = readCheckpoint(runtime, task);
-    if (
-      checkpoint.phase === "running" &&
-      !running.get(runtime)?.has(checkpoint.taskId)
-    ) {
-      checkpoint.phase = "paused";
-      await persist(runtime, checkpoint);
-    }
+  // A fresh registration marks a new worker lifetime; scan again.
+  recovered.delete(runtime);
+  await recoverPlannerContinuations(runtime);
+}
+
+/**
+ * Once per live runtime, park checkpoints left by a previous process. Only
+ * settled snapshots are resumable; executing and unacknowledged delivery
+ * checkpoints stay parked (never replayed) with a cancel choice. A failed scan
+ * is reported and retried on the next worker registration.
+ */
+async function recoverPlannerContinuations(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  let pending = recovered.get(runtime);
+  if (!pending) {
+    pending = (async () => {
+      for (const task of await runtime.getTasks({
+        agentIds: [runtime.agentId],
+        tags: ["planner-continuation"],
+      })) {
+        const checkpoint = readCheckpoint(runtime, task);
+        if (running.get(runtime)?.has(checkpoint.taskId)) continue;
+        if (checkpoint.phase === "running") {
+          checkpoint.phase = "paused";
+          await persist(runtime, checkpoint);
+        } else if (
+          (checkpoint.phase === "executing" ||
+            checkpoint.phase === "delivery_pending") &&
+          checkpoint.failure === undefined
+        ) {
+          checkpoint.failure = { code: "PLANNER_CONTINUATION_INTERRUPTED" };
+          await persist(runtime, checkpoint);
+        }
+      }
+    })();
+    recovered.set(runtime, pending);
+  }
+  try {
+    await pending;
+  } catch (error) {
+    if (recovered.get(runtime) === pending) recovered.delete(runtime);
+    runtime.reportError("PlannerContinuation.recoveryFailure", error, {
+      agentId: runtime.agentId,
+    });
   }
 }

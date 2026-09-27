@@ -7,6 +7,15 @@ import {
 } from "./keyless-web-search";
 import { searchAuthorizedBrowser } from "./services/browserSearch";
 
+export {
+    isKeylessWebSearchUnavailableError,
+    type KeylessWebSearchUnavailableError,
+} from "./keyless-web-search";
+
+/**
+ * Resolves `null` for a successful zero-hit search. A keyless provider failure
+ * throws `KeylessWebSearchUnavailableError` instead of looking empty.
+ */
 export async function searchBrowserFirstWeb(
     runtime: IAgentRuntime,
     query: string,

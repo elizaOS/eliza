@@ -5,6 +5,7 @@
  */
 
 import type {
+  AgentModelReadiness,
   AgentStartupDiagnostics,
   AgentStatus,
   ConversationMessage,
@@ -18,6 +19,62 @@ import {
 import { AGENT_STATES, type ApiLikeError } from "./types";
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+/**
+ * Validates the server's Cloud model readiness projection. Unrecognized or
+ * malformed shapes are dropped rather than coerced.
+ */
+export function parseAgentModelReadiness(
+  value: unknown,
+): AgentModelReadiness | undefined {
+  if (!isRecord(value)) return undefined;
+  const checkedAt = value.checkedAt;
+  if (value.status === "available" && typeof checkedAt === "number") {
+    return { status: "available", checkedAt };
+  }
+  if (
+    value.status === "unknown" &&
+    typeof value.reason === "string" &&
+    (checkedAt === null || typeof checkedAt === "number")
+  ) {
+    return { status: "unknown", reason: value.reason, checkedAt };
+  }
+  if (
+    value.status === "model_not_available" &&
+    value.code === "MODEL_NOT_AVAILABLE" &&
+    typeof value.message === "string" &&
+    typeof checkedAt === "number" &&
+    Array.isArray(value.missing)
+  ) {
+    const missing: Extract<
+      AgentModelReadiness,
+      { status: "model_not_available" }
+    >["missing"] = [];
+    for (const entry of value.missing) {
+      if (
+        !isRecord(entry) ||
+        (entry.modelType !== "TEXT_SMALL" &&
+          entry.modelType !== "TEXT_LARGE") ||
+        typeof entry.modelId !== "string" ||
+        (entry.configKey !== null && typeof entry.configKey !== "string")
+      ) {
+        return undefined;
+      }
+      missing.push({
+        modelType: entry.modelType,
+        configKey: entry.configKey,
+        modelId: entry.modelId,
+      });
+    }
+    return {
+      status: "model_not_available",
+      code: "MODEL_NOT_AVAILABLE",
+      missing,
+      message: value.message,
+      checkedAt,
+    };
+  }
+  return undefined;
 }
 export function parseAgentStatusEvent(
   data: Record<string, unknown>,
@@ -43,11 +100,13 @@ export function parseAgentStatusEvent(
   // composer back to "waking up".
   const canRespond =
     typeof data.canRespond === "boolean" ? data.canRespond : undefined;
+  const modelReadiness = parseAgentModelReadiness(data.modelReadiness);
   return {
     state: state as AgentStatus["state"],
     agentName,
     model,
     ...(canRespond !== undefined ? { canRespond } : {}),
+    ...(modelReadiness ? { modelReadiness } : {}),
     startedAt,
     uptime,
     startup,

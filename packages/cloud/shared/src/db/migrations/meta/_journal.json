@@ -3207,6 +3207,27 @@
       "when": 1796083200101,
       "tag": "0474_normalize_legacy_null_phone_verified",
       "breakpoints": true
+    },
+    {
+      "idx": 458,
+      "version": "7",
+      "when": 1796083200102,
+      "tag": "0478_agent_sandbox_retained_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 459,
+      "version": "7",
+      "when": 1796083200103,
+      "tag": "0479_organization_payment_reversal_holds",
+      "breakpoints": true
+    },
+    {
+      "idx": 460,
+      "version": "7",
+      "when": 1796083200104,
+      "tag": "0480_personal_dedicated_fallbacks",
+      "breakpoints": true
     }
   ]
 }

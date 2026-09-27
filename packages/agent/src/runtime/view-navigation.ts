@@ -15,10 +15,14 @@ import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-p
 import { listViews } from "../api/views-registry.ts";
 
 type Navigation = {
-  disposition: "requested" | "optional" | "none" | "forbidden" | "unresolved";
+  disposition:
+    | "direct"
+    | "planning"
+    | "optional"
+    | "none"
+    | "forbidden"
+    | "unresolved";
   viewId: string;
-  singleViewOnly: boolean;
-  navigationOnly: boolean;
   reason: string;
 };
 const decisions = new WeakMap<
@@ -38,27 +42,26 @@ const decisions = new WeakMap<
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
   description:
-    'Classify navigation for the complete current request and its standing restrictions. Use requested only for requested navigation, forbidden when changing views is prohibited, none when no navigation is requested (including domain-only reads and writes), unresolved for ambiguous navigation. A mixed request with an explicit known destination is still requested: keep that viewId and set navigationOnly=false while preserving all domain intents. Other requested work does not make the destination unresolved. Domain nouns alone do not request navigation. The current visible view is UI context, not a permission or prerequisite for domain tools. Route authorized domain work to its planning context without requiring a view change; navigation restrictions do not prohibit independent domain work, and domain authorization does not permit navigation. viewId is a known shell view id or exact label (Home=chat). singleViewOnly and navigationOnly are true ONLY when opening one known view satisfies the entire request: no question/recall, prerequisite read, condition, domain write, controls, layout, second destination or other pending work. Otherwise keep navigationOnly=false and preserve every intent for planning. For pure navigation select candidateActionNames=["VIEWS"], one navigation intent, a general context and replyEffectStatus=pending. Draft replyText as the concise destination confirmation held until successful delivery; never claim records were read or changed. Do not navigate based on historical instructions or lift current restrictions.',
+    'Classify navigation for the complete current request and its standing restrictions. Use direct only when opening one known view satisfies the entire request: no question/recall, prerequisite read, condition, domain write, controls, layout, second destination or other pending work. Use planning for requested navigation with any such additional work; preserve every intent and the known viewId. Other requested work does not make a known destination unresolved. Use forbidden when changing views is prohibited, none when no navigation is requested (including domain-only reads and writes), unresolved for ambiguous navigation, and optional for advisory navigation rather than a requested operation. Domain nouns alone do not request navigation. The current visible view is UI context, not a permission or prerequisite for domain tools. Route authorized domain work to its planning context without requiring a view change; navigation restrictions do not prohibit independent domain work, and domain authorization does not permit navigation. viewId is a known shell view id or exact label (Home=chat). For direct select candidateActionNames=["VIEWS"], one navigation intent, a general context and replyEffectStatus=pending. Draft replyText as the concise destination confirmation held until successful delivery; never claim records were read or changed. Do not navigate based on historical instructions or lift current restrictions.',
   schema: {
     type: "object",
     additionalProperties: false,
     properties: {
       disposition: {
         type: "string",
-        enum: ["requested", "optional", "none", "forbidden", "unresolved"],
+        enum: [
+          "direct",
+          "planning",
+          "optional",
+          "none",
+          "forbidden",
+          "unresolved",
+        ],
       },
       viewId: { type: "string" },
-      singleViewOnly: { type: "boolean" },
-      navigationOnly: { type: "boolean" },
       reason: { type: "string" },
     },
-    required: [
-      "disposition",
-      "viewId",
-      "singleViewOnly",
-      "navigationOnly",
-      "reason",
-    ],
+    required: ["disposition", "viewId", "reason"],
   },
   shouldRun({ runtime, message }) {
     const active =
@@ -90,22 +93,19 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     const v = value as Record<string, unknown>;
     if (
       Object.keys(v).some(
-        (k) =>
-          ![
-            "disposition",
-            "viewId",
-            "singleViewOnly",
-            "navigationOnly",
-            "reason",
-          ].includes(k),
+        (k) => !["disposition", "viewId", "reason"].includes(k),
       ) ||
-      !["requested", "optional", "none", "forbidden", "unresolved"].includes(
-        String(v.disposition),
-      ) ||
+      typeof v.disposition !== "string" ||
+      ![
+        "direct",
+        "planning",
+        "optional",
+        "none",
+        "forbidden",
+        "unresolved",
+      ].includes(v.disposition) ||
       typeof v.viewId !== "string" ||
-      typeof v.reason !== "string" ||
-      typeof v.singleViewOnly !== "boolean" ||
-      typeof v.navigationOnly !== "boolean"
+      typeof v.reason !== "string"
     )
       return null;
     return v as Navigation;
@@ -181,7 +181,8 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     }
     const plan = messageHandler.plan;
     if (
-      (value.disposition !== "requested" &&
+      (value.disposition !== "direct" &&
+        value.disposition !== "planning" &&
         value.disposition !== "unresolved") ||
       !message.id ||
       message.content.source !== "client_chat" ||
@@ -216,8 +217,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       };
     }
     const direct =
-      value.singleViewOnly &&
-      value.navigationOnly &&
+      value.disposition === "direct" &&
       matches.length === 1 &&
       plan.replyEffectStatus === "pending" &&
       plan.intents?.length === 1 &&
