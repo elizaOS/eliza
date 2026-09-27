@@ -821,19 +821,22 @@ it.each(["valid", "unknown"])(
       plan("COMPLETE_RECORD"),
       plan("COMPLETE_RECORD", "final"),
     ];
-    if (receiptSelection === "unknown")
-      responses.push(
-        JSON.stringify({
-          response: finalText,
-          effectReceiptIds: [receipt.receiptId],
-        }),
-        JSON.stringify({
-          grounded: true,
-          completedChangeClaim: true,
-          reason:
-            "The selected durable receipt supports completion of the requested record.",
-        }),
-      );
+    if (receiptSelection === "unknown") {
+      responses.push({
+        text: "",
+        toolCalls: [
+          {
+            id: "grounded-final-reply",
+            name: "REPLY",
+            arguments: {
+              text: finalText,
+              effectReceiptIds: [receipt.receiptId],
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      });
+    }
     const evaluationInputs: unknown[] = [];
     const evaluationOutputs = [
       JSON.stringify({
@@ -853,6 +856,18 @@ it.each(["valid", "unknown"])(
         ],
       }),
     ];
+    if (receiptSelection === "unknown") {
+      evaluationOutputs.push(
+        JSON.stringify({
+          thought:
+            "The final native reply selects the actual committed receipt.",
+          success: true,
+          decision: "FINISH",
+          messageToUser: finalText,
+          effectReceiptIds: [receipt.receiptId],
+        }),
+      );
+    }
     const modelInputs: unknown[] = [];
     runtime.useModel = vi.fn(async (type, params) => {
       if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
@@ -895,7 +910,12 @@ it.each(["valid", "unknown"])(
     expect(writes).toBe(1);
     expect(responses).toEqual([]);
     expect(evaluationOutputs).toEqual([]);
-    expect(evaluationInputs).toHaveLength(2);
+    expect(evaluationInputs).toHaveLength(
+      receiptSelection === "unknown" ? 3 : 2,
+    );
+    expect(
+      deliveries.flatMap((content) => content.effectReceiptIds ?? []),
+    ).not.toContain("unknown-mutated-receipt");
     expect(
       modelInputs.some((input) =>
         JSON.stringify(input).includes("PLANNER_SCOPE_DECLARATION_REQUIRED"),
