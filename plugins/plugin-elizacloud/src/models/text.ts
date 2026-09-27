@@ -1171,14 +1171,19 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
   const promptTokenDetails = recordAt(root, "prompt_tokens_details");
   const inputTokenDetailsSnake = recordAt(root, "input_tokens_details");
   const promptTokens =
-    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens) ?? 0;
+    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens);
   const completionTokens =
     firstNumber(
       root.outputTokens,
       root.output_tokens,
       root.completionTokens,
       root.completion_tokens
-    ) ?? 0;
+    );
+  // Incomplete gateway usage cannot support a token-based cost estimate.
+  // Preserve the same unavailable state as an entirely missing usage object.
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return undefined;
+  }
   const cacheReadInputTokens = firstNumber(
     root.cacheReadInputTokens,
     root.cache_read_input_tokens,
@@ -1215,16 +1220,7 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
   };
 }
 
-/**
- * Map a {@link NativeTokenUsage} (promptTokens/completionTokens naming produced
- * by the native `/chat/completions` parser) onto the inputTokens/outputTokens
- * contract {@link emitModelUsageEvent} reads. Without this adapter the raw
- * native object's keys never matched, so `inputTokens || 0` / `outputTokens ||
- * 0` collapsed to 0 and every native MODEL_USED payload reported
- * `tokens.prompt = tokens.completion = 0` — corrupting waifu burn telemetry and
- * usage attribution (#27732). The `/responses` path already maps explicitly, so
- * only the three native call sites route through here.
- */
+/** Map complete normalized gateway counts onto the shared usage-event contract. */
 function toUsageEventTokens(usage: NativeTokenUsage): {
   inputTokens: number;
   outputTokens: number;
@@ -1452,16 +1448,13 @@ async function generateTextWithModel(
 		);
 	}
 
-  if (data.usage) {
+  const usage = convertNativeUsage(data.usage);
+  if (usage) {
     emitModelUsageEvent(
       runtime,
       modelType,
       prompt,
-      {
-        inputTokens: data.usage.input_tokens ?? 0,
-        outputTokens: data.usage.output_tokens ?? 0,
-        totalTokens: data.usage.total_tokens ?? 0,
-      },
+      toUsageEventTokens(usage),
       {
         modelName: getModelNameForType(runtime, modelType),
         ...(() => {
