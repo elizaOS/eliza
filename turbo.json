@@ -617,6 +617,32 @@
         "XDG_RUNTIME_DIR",
         "XDG_CONFIG_HOME"
       ]
+    },
+    "@elizaos/os#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL", "ELIZA_BROWSER_ANDROID_CERTIFICATE"],
+      "outputs": [
+        "dist/**",
+        "browser/dist/**",
+        "setup/dist/**",
+        "usb-installer/dist/**"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/plugin-browser/src/native-wire.ts"
+      ]
+    },
+    "@elizaos/os#test": {
+      "cache": false,
+      "env": [
+        "ELIZA_BROWSER_EXECUTABLE",
+        "ELIZA_BROWSER_NATIVE_SOCKET",
+        "CXX",
+        "CPATH",
+        "LIBRARY_PATH",
+        "XDG_RUNTIME_DIR",
+        "XDG_CONFIG_HOME"
+      ]
     }
   }
 }
