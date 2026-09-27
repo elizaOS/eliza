@@ -154,7 +154,7 @@ export async function coordinateSharedConversationPrewarm(
   agentId: string,
   roomId: string,
   options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
+): Promise<SharedConversationPrewarmResult> {
   const namespace = requireHistoryCoordinator(options);
   const response = await coordinatorStub(namespace, agentId, roomId).fetch(
     "https://shared-runtime.internal/prewarm",
@@ -172,7 +172,20 @@ export async function coordinateSharedConversationPrewarm(
   await requireCoordinatorResponse(response, "conversation prewarm");
   // The Durable Object releases its per-room queue when the response body is
   // consumed. Drain this tiny acknowledgement before the first real turn.
-  await response.arrayBuffer();
+  const body: unknown = await response.json();
+  const organizationId =
+    typeof body === "object" && body !== null && "organizationId" in body
+      ? body.organizationId
+      : undefined;
+  if (organizationId !== undefined && (typeof organizationId !== "string" || !organizationId)) {
+    throw new Error("[shared-runtime] conversation prewarm returned an invalid owner");
+  }
+  return organizationId ? { organizationId } : {};
+}
+
+/** Prewarm acknowledgement; personal rooms report their verified owning organization. */
+export interface SharedConversationPrewarmResult {
+  organizationId?: string;
 }
 
 /** Persist one idempotent lifecycle marker without dispatching or billing a model turn. */
