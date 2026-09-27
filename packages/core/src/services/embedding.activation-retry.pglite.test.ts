@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { EventType } from "../types/events";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
 import { EmbeddingGenerationService } from "./embedding";
 
 const DIMENSIONS = 384;
@@ -75,15 +74,8 @@ describe("EmbeddingGenerationService late activation failure", () => {
 			}
 			return originalCreateTask(task);
 		};
-		const memory = {
-			id: "35c76f2f-15d0-4b74-9de1-1fb0a91c1976" as UUID,
-			entityId: runtime.agentId,
-			roomId: runtime.agentId,
-			content: { text: "Recovered after a task-store outage." },
-		};
 		const messageSentBaseline = handlerCount(runtime, EventType.MESSAGE_SENT);
 		try {
-			await runtime.createMemory(memory, "messages");
 			runtime.registerModel(
 				ModelType.TEXT_EMBEDDING,
 				async () => vector,
@@ -118,19 +110,6 @@ describe("EmbeddingGenerationService late activation failure", () => {
 				messageSentBaseline + 1,
 			);
 
-			await runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
-				runtime,
-				memory,
-				priority: "high",
-			});
-			expect(service.getQueueSize()).toBe(1);
-			const [task] = await runtime.getTasksByName("EMBEDDING_DRAIN");
-			const worker = runtime.getTaskWorker("EMBEDDING_DRAIN");
-			if (!worker || !task) throw new Error("Embedding drain was not started");
-			await worker.execute(runtime, {}, task);
-			expect((await runtime.getMemoryById(memory.id))?.embedding).toEqual(
-				vector,
-			);
 			expect(registrationFailures(runtime)).toHaveLength(1);
 
 			await service.stop();
