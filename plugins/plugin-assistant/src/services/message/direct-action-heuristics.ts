@@ -459,6 +459,7 @@ export function isShellDirectActionName(
  */
 export type DirectCurrentRequestCandidateKind =
   | "shell"
+  | "filesystem"
   | "coding"
   | "settings-write"
   | "owner-goals"
@@ -1284,11 +1285,40 @@ function findCalculateActionName(
   return findAvailableActionName(actions, ["CALCULATE"]);
 }
 
+/** A concrete filesystem imperative requires planning, never argument extraction here. */
+function looksLikeExplicitFilesystemRequest(text: string): boolean {
+  const imperative =
+    /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:save|write|create|edit|append|read)\b/iu;
+  if (!imperative.test(text.trim()) || looksLikeActionExplanationRequest(text))
+    return false;
+  if (
+    /\b(?:if|hypothetically|suppose|pretend|imagine)\b/iu.test(text) ||
+    /\b(?:do\s+not|don['’]?t|never|without|no)\b[^\n;]{0,100}\b(?:tools?|actions?|files?|filesystem|read(?:ing)?|writ(?:e|ing)|sav(?:e|ing)|creat(?:e|ing)|edit(?:ing)?|append(?:ing)?|execut(?:e|ing))\b/iu.test(
+      text,
+    )
+  )
+    return false;
+  return intentClauses(text).some((clause) => {
+    // Only an addressed imperative, not quoted instructions or supplied file contents.
+    const instruction = clause.split("\n", 1)[0];
+    return (
+      imperative.test(instruction) &&
+      /(?:^|[\s"'`])(?:\/|~\/|\.\.?\/|[a-z]:[\\/])[^\s"'`<>]+/iu.test(
+        instruction,
+      )
+    );
+  });
+}
+
 export function inferDirectCurrentRequestCandidateInference(
   actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
   messageText: string,
   hooks: DirectActionInferenceHooks = {},
 ): DirectCurrentRequestCandidateInference {
+  if (looksLikeExplicitFilesystemRequest(messageText)) {
+    const fileAction = findAvailableActionName(actions, ["FILE"]);
+    if (fileAction) return { names: [fileAction], kind: "filesystem" };
+  }
   if (looksLikeLocalShellRequest(messageText)) {
     const shellAction = findShellDirectActionName(actions);
     if (shellAction) return { names: [shellAction], kind: "shell" };

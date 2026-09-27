@@ -337,6 +337,16 @@ export function inferDirectCurrentRequestCandidateInference(
       findCodingDelegationActionName,
     },
   );
+  // Explicit model domain routing already hands work to contextual discovery.
+  // Concrete file inference repairs only an omitted route.
+  if (
+    inference.kind === "filesystem" &&
+    contexts?.some((context) => {
+      const name = context.trim().toLowerCase();
+      return name && name !== "general" && name !== SIMPLE_CONTEXT_ID;
+    })
+  )
+    return { names: [], kind: null };
   return inference.kind === "coding" &&
     !permitsInferredCodingDelegation(contexts, messageText)
     ? { names: [], kind: null }

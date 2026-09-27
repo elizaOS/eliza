@@ -628,3 +628,92 @@ describe("answered arithmetic routing", () => {
     },
   );
 });
+
+describe("explicit filesystem routing", () => {
+  const available = [{ name: "FILE" }];
+  const omitted = {
+    shouldRespond: "RESPOND",
+    contexts: ["simple"],
+    intents: [],
+    replyText:
+      "Got it, I've got your exact text and target path saved in the workspace. I can help you set that up.",
+    replyEffectStatus: "none",
+    facts: [],
+    relationships: [],
+    addressedTo: [],
+  };
+  it.each([
+    "Save the following text exactly, including its final newline, to /tmp/note.txt, then read the file and report its verification code:\nCHECK-3151\nSecond line: blue\nThird line: ready\n",
+    "Please read /tmp/input.json and report its contents.",
+    "Could you write the supplied text to ./note.txt?",
+  ])(
+    "plans a concrete filesystem request despite an omitted model intent: %s",
+    (messageText) => {
+      for (const result of [
+        messageHandlerFromFieldResult(omitted, undefined, {
+          actions: available,
+          messageText,
+        }),
+        parseMessageHandlerModelOutput(JSON.stringify(omitted), {
+          actions: available,
+          messageText,
+        }),
+      ]) {
+        expect(result?.plan.candidateActions).toContain("FILE");
+        expect(result?.plan.requiresTool).toBe(true);
+        expect(
+          routeMessageHandlerOutput(
+            result ??
+              (() => {
+                throw new Error("Missing response");
+              })(),
+          ),
+        ).not.toMatchObject({
+          type: "final_reply",
+        });
+      }
+    },
+  );
+  it.each([
+    "Explain how to save text to /tmp/note.txt.",
+    'What does "Save text to /tmp/note.txt" mean?',
+    "If I asked you to read /tmp/note.txt, what would happen?",
+    "Read /tmp/note.txt hypothetically; do not execute anything.",
+    "Save this to /tmp/note.txt. Do not use tools.",
+    "Save this to /tmp/note.txt. No tools, just discuss it.",
+    "Save this to /tmp/note.txt without executing any actions.",
+    "Do not save anything to /tmp/note.txt.",
+    "Here are the contents of /tmp/note.txt: blue. What color is it?",
+    "Say exactly: Read /tmp/note.txt",
+    "Here is a quoted example; Save text to /tmp/note.txt",
+  ])(
+    "keeps supplied answers and nonexecution requests simple: %s",
+    (messageText) => {
+      const result = messageHandlerFromFieldResult(
+        { ...omitted, replyText: "Blue." },
+        undefined,
+        { actions: available, messageText },
+      );
+      expect(result?.plan.candidateActions ?? []).toEqual([]);
+      expect(
+        routeMessageHandlerOutput(
+          result ??
+            (() => {
+              throw new Error("Missing response");
+            })(),
+        ),
+      ).toMatchObject({
+        type: "final_reply",
+        reply: "Blue.",
+      });
+    },
+  );
+  it("does not invent an unavailable filesystem operation", () => {
+    expect(
+      inferDirectCurrentRequestCandidateInference(
+        [],
+        "Save text to /tmp/note.txt.",
+      ).names,
+    ).toEqual([]);
+  });
+});
