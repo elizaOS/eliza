@@ -8312,6 +8312,7 @@
   "cloud.autoTopUp.thresholdMin": "Threshold must be ≥ $",
   "cloud.autoTopUp.title": "Auto top-up (card)",
   "cloud.billing.noAccount": "No account found for billing",
+  "cloud.billing.subscriptionCheckoutCanceled": "Subscription checkout canceled. No subscription was started and no charge was made.",
   "cloud.billingSuccess.metaTitle": "Purchase Successful",
   "cloud.billingSuccess.metaDescription": "Your credit purchase was successful",
   "cloud.billingSuccess.loading": "Loading",
