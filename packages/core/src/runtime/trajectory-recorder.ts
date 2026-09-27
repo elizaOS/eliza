@@ -6,7 +6,11 @@ import {
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import type { EvaluationResult } from "../types/components";
-import type { ChatMessage, ToolChoice } from "../types/model";
+import type {
+	ChatMessage,
+	GenerateTextResult,
+	ToolChoice,
+} from "../types/model";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import { resolveTrajectoryGate } from "./trajectory-gate";
 import {
@@ -50,6 +54,8 @@ export interface RecordedModelCall {
 	toolChoice?: ToolChoice | unknown;
 	providerOptions?: unknown;
 	response: string;
+	/** Complete private/visible provider content parts, separate from user-facing text. */
+	responseContent?: GenerateTextResult["content"];
 	toolCalls?: RecordedToolCall[];
 	usage?: RecordedUsage;
 	finishReason?: string;

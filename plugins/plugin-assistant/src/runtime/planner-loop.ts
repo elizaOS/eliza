@@ -410,7 +410,9 @@ export async function runPlannerLoop(
       (error.kind === "tool_calls" ||
         error.kind === "trajectory_token_budget" ||
         error.kind === "repeated_observations" ||
-        (params.codingMode === true && error.kind === "repeated_failures") ||
+        (params.codingMode === true &&
+          (error.kind === "repeated_failures" ||
+            error.kind === "terminal_only_continuations")) ||
         error.kind === "memory_search_rounds");
     if (liveTrajectory && (timeout || budget)) {
       const message = timeout
@@ -524,6 +526,7 @@ async function runPlannerLoopIterations(
   });
   const failures: FailureLike[] = [];
   let terminalOnlyContinuations = 0;
+  let consecutiveCodingTerminalContinuations = 0;
   let codingVerificationDeferrals = 0;
   let lastCodingVerificationProgressCount = -1;
   let requiredToolMisses = 0;
@@ -1105,13 +1108,15 @@ async function runPlannerLoopIterations(
               // pending chat work also needs a native continuation or scope release:
               // REPLY/IGNORE/STOP can close the turn without repeating an action.
               // Bare prose has no native scope field and can trigger redundant
-              // evaluation/synthesis. Other settled turns retain the explicit auto
-              // choice; omitting it would default back to required in callPlanner.
+              // evaluation/synthesis. Coding keeps native calls required because
+              // REPLY supplies its explicit final scope without another mutation.
+              // Other settled turns retain the explicit auto choice.
               toolChoice: synthesizingRequiredModelReply
                 ? undefined
                 : requireNonTerminalToolCall
-                  ? hasExecutedNonTerminalTool(trajectory) &&
-                    (codingMode || lastPlannerExplicitCompleted !== false)
+                  ? !codingMode &&
+                    hasExecutedNonTerminalTool(trajectory) &&
+                    lastPlannerExplicitCompleted !== false
                     ? "auto"
                     : "required"
                   : params.toolChoice,
@@ -1600,6 +1605,44 @@ async function runPlannerLoopIterations(
           evaluator: gated,
           finalMessage,
         };
+      }
+
+      // Pending progress replies and empty native responses are not completion,
+      // even when an earlier inspection call declared final scope. Keep their
+      // consecutive retries separate from attempted-final verification repairs.
+      if (
+        codingDrainQueue &&
+        plannerOutput.toolCalls.every(
+          (call) => call.name.toUpperCase() === "REPLY",
+        ) &&
+        ((lastPlannerExplicitCompleted === false &&
+          plannerOutput.completed === false) ||
+          (plannerOutput.toolCalls.length === 0 &&
+            !plannerOutput.messageToUser?.trim()))
+      ) {
+        const latest = [...trajectory.archivedSteps, ...trajectory.steps]
+          .reverse()
+          .find((step) => step.toolCall && step.result)?.result;
+        if (
+          !latest ||
+          (!hasAwaitingUserInputMarker(latest) &&
+            !hasRequiresConfirmationMarker(latest))
+        ) {
+          assertTrajectoryLimit({
+            kind: "terminal_only_continuations",
+            max: config.maxTerminalOnlyContinuations,
+            observed: ++consecutiveCodingTerminalContinuations,
+          });
+          appendPlannerModelFeedbackEvent(trajectory, {
+            id: `coding-pending-terminal:${iteration}`,
+            type: "instruction",
+            source: "planner-loop",
+            createdAt: Date.now(),
+            content:
+              "A progress reply or empty response does not complete the coding task. Continue with the next necessary native tool call. When the task is complete or a genuine blocker prevents further work, provide a grounded final reply with final scope. Do not repeat settled mutations or claim unrecorded changes.",
+          });
+          continue;
+        }
       }
 
       const proposedTerminalText =
@@ -2404,6 +2447,9 @@ async function runPlannerLoopIterations(
     }
 
     const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+    if (codingDrainQueue && latestResult?.success === true) {
+      consecutiveCodingTerminalContinuations = 0;
+    }
     if (
       isDiscoveryActionName(toolCall.name) &&
       latestResult?.success === true &&
@@ -4116,6 +4162,38 @@ async function dispatchPlannerModelCall(params: {
   const endedAt = Date.now();
 
   const parsed = parsePlannerOutput(raw);
+  const privateContent =
+    typeof raw !== "string" && Array.isArray(raw.content)
+      ? raw.content.flatMap((part) =>
+          part.type === "reasoning" &&
+          typeof part.text === "string" &&
+          part.providerOptions
+            ? [
+                {
+                  type: "reasoning",
+                  text: part.text,
+                  providerOptions: part.providerOptions,
+                },
+              ]
+            : [],
+        )
+      : [];
+  if (privateContent.length > 0) {
+    const modelMessage: ChatMessage = {
+      role: "assistant",
+      content: privateContent,
+    };
+    const redactText = composeToolDiagnosticRedactor(params.runtime);
+    // Model history owns generated continuation content. Do not add a tool step:
+    // terminal settlement must still inspect the latest actual tool result.
+    params.trajectory.modelHistory ??= trajectoryStepsToMessages(
+      [...params.trajectory.archivedSteps, ...params.trajectory.steps],
+      { redactText },
+    );
+    params.trajectory.modelHistory.push(
+      projectToolDiagnosticValue(modelMessage, redactText) as ChatMessage,
+    );
+  }
 
   // A per-tool subset cannot narrow later planning. Only unanimous, complete,
   // request-bound whole-turn review may select originals for subsequent stages.
@@ -4497,6 +4575,9 @@ async function recordPlannerStage(args: {
         toolChoice: args.modelParams.toolChoice,
         providerOptions: args.modelParams.providerOptions,
         response: responseText,
+        ...(typeof args.raw !== "string" && args.raw.content
+          ? { responseContent: args.raw.content }
+          : {}),
         toolCalls: recordedCalls.map<RecordedToolCall>((tc) => ({
           id: tc.id,
           name: tc.name,
@@ -5690,7 +5771,7 @@ function deferCodingCompletionUntilMutationVerified(args: {
         decision: "CONTINUE",
         thought: latestSuccessfulNoTestVerification(args.trajectory)
           ? "The last test command selected no tests."
-          : "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+          : "A recorded or indeterminate workspace change has not been followed by successful command verification.",
         messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
           ? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
           : "Run the narrowest relevant test, typecheck, lint, or build with SHELL as a standalone foreground command, without pipes (including head, tail, or tee), semicolons, background execution, or failure-masking operators. Use the cwd parameter or a cd directory && verifier chain. Inspection and git diff --check do not satisfy this verification requirement. A successful command must leave the workspace unchanged.",
@@ -7420,7 +7501,7 @@ async function finishWithForcedSynthesis(params: {
     const verificationFailure = latestCodingVerificationFailure(trajectory);
     const message = verificationFailure
       ? `The ${verificationFailure.kind.replace("_", " ")} verification command still failed after the bounded repair attempt. The coding task is incomplete.`
-      : "I changed files but could not complete the required command verification. The coding task is incomplete.";
+      : "Required workspace verification did not complete. The coding task is incomplete.";
     const evaluator: EvaluatorOutput = {
       success: false,
       decision: "FINISH",
