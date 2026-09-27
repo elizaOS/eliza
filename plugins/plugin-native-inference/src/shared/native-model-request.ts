@@ -14,7 +14,7 @@ export interface NativeModelRequestGuardArgs {
   provider: string;
   model: string;
   contextWindowTokens: number;
-  outputReserveTokens: number;
+  outputReserveTokens?: number;
   projectRequest: () => unknown;
   countInputTokens?: (serializedRequest: string) => number;
   countInputTokensIsExact?: true;
