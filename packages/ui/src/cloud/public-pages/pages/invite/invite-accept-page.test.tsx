@@ -1,9 +1,9 @@
 /** Session-readiness regression coverage for the public invite acceptance page. */
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const apiMock = vi.hoisted(() => vi.fn());
@@ -25,10 +25,12 @@ vi.mock("../../../lib/api-client", () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-vi.mock("../../../shell/CloudI18nProvider", () => ({
-  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
-}));
+vi.mock("../../../shell/CloudI18nProvider", () => {
+  // Match the provider: translation identity is stable until language changes.
+  const t = (key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? key;
+  return { useCloudT: () => t };
+});
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
@@ -79,9 +81,11 @@ beforeEach(() => {
   });
 });
 
+afterEach(cleanup);
+
 describe("InviteAcceptPage", () => {
   it("does not offer a sign-in action until session identity is ready", async () => {
-    render(<InviteAcceptPage />);
+    const { rerender } = render(<InviteAcceptPage />);
 
     const action = await screen.findByRole("button", {
       name: /checking sign-in/i,
@@ -94,5 +98,14 @@ describe("InviteAcceptPage", () => {
       "/api/invites/accept",
       expect.anything(),
     );
+
+    sessionRef.current = { ready: true, authenticated: false };
+    rerender(<InviteAcceptPage />);
+    const signIn = await screen.findByRole("button", { name: /sign in/i });
+    expect((signIn as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(signIn);
+    expect(navigateMock).toHaveBeenCalledTimes(1);
+    // Resolving session identity must not restart invitation validation.
+    expect(apiMock).toHaveBeenCalledTimes(1);
   });
 });
