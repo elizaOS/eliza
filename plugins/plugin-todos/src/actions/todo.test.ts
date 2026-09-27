@@ -655,6 +655,23 @@ describe("TODO action", () => {
       expect(delivered).toEqual([]);
     });
 
+    it("rejects an invalid status on create and update without writing", async () => {
+      const id = await seed("Buy trash bags");
+      for (const parameters of [
+        { action: "create", content: "Buy bin bags", status: "invalid_status" },
+        { action: "update", id, status: "done" },
+      ]) {
+        const { result } = await confirm(parameters);
+        expect(result.success).toBe(false);
+        expect(result.text).toContain(
+          "invalid_param: status must be one of: pending, in_progress, completed, cancelled",
+        );
+      }
+      expect(service.rows.map((row) => [row.content, row.status])).toEqual([
+        ["Buy trash bags", "pending"],
+      ]);
+    });
+
     it("complete and cancel name the state the store committed", async () => {
       const completeId = await seed("Buy trash bags");
       const completed = await confirm({ action: "complete", id: completeId });
