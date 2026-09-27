@@ -20,7 +20,7 @@ export const inputSchemas = {
   simulate: z.object({
     token: address('token'),
     side: z.enum(['buy', 'sell']),
-    amount: z.string().regex(/^\d+(\.\d+)?$/, 'amount must be a positive decimal string').describe('ETH for buy, token units for sell'),
+    amount: z.string().regex(/^(?!0+(\.0+)?$)\d+(\.\d+)?$/, 'amount must be a positive decimal string').describe('ETH for buy, token units for sell'),
     wallet: address('wallet').describe('Address simulated as the trader (no transaction is sent)')
   }).strict(),
   'liquidity-risk': z.object({

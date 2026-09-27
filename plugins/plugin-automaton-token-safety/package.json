@@ -1,6 +1,6 @@
 {
-  "name": "plugin-automaton-token-safety",
-  "version": "0.1.0",
+  "name": "@elizaos/plugin-automaton-token-safety",
+  "version": "2.0.3-beta.7",
   "description": "Token-safety intelligence for ElizaOS agents on Base: bytecode honeypot scan, ERC-20 approval drain-risk audit, buy/sell honeypot simulation, liquidity depth and LP-burn evidence, and newest-pool risk feed. Paid per call with x402 in USDC; gas is sponsored by the CDP facilitator, so agents need no ETH.",
   "keywords": ["plugin", "elizaos", "x402", "base", "token-safety", "honeypot", "usdc"],
   "license": "MIT",
@@ -10,22 +10,21 @@
   "files": ["dist", "images", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "ethers": "^6.13.0",
+    "zod": "^3.23.0"
   },
   "peerDependencies": {
-    "@elizaos/core": ">=1.0.0",
-    "zod": ">=3.22.0",
-    "ethers": ">=6.0.0"
-  },
-  "peerDependenciesMeta": {
-    "ethers": { "optional": true }
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@elizaos/core": "^1.0.0",
     "@types/node": "^20.0.0",
-    "ethers": "^6.13.0",
     "typescript": "^5.4.0",
-    "zod": "^3.23.0"
+    "vitest": "^2.1.0"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
