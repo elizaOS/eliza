@@ -11,7 +11,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { searchKeylessWeb } from "@elizaos/plugin-web-search";
+import {
+  isKeylessWebSearchUnavailableError,
+  searchKeylessWeb,
+} from "@elizaos/plugin-web-search";
 import {
   failureToActionResult,
   readStringParam,
@@ -114,6 +117,24 @@ export const webSearchAction: Action = {
     } catch (error) {
       // error-policy:J1 Action failures are returned to the planner for recovery.
       const message = error instanceof Error ? error.message : String(error);
+      if (isKeylessWebSearchUnavailableError(error)) {
+        // A provider outage is never reported as no_match.
+        return failureToActionResult(
+          {
+            reason: error.reason === "timeout" ? "timeout" : "io_error",
+            message,
+          },
+          {
+            action: "WEB_SEARCH",
+            provider: error.provider,
+            unavailable: true,
+            unavailable_reason: error.reason,
+            ...(error.retryAfterMs !== undefined
+              ? { retry_after_ms: error.retryAfterMs }
+              : {}),
+          },
+        );
+      }
       const result = failureToActionResult(
         { reason: "io_error", message },
         { action: "WEB_SEARCH" },

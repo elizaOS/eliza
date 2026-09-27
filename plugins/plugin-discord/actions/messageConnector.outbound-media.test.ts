@@ -118,7 +118,13 @@ describe("Discord connector outbound media", () => {
 		const { runtime, service, send } = setup();
 		const content: Content = {
 			text: "Here you go",
-			attachments: [media({ contentType: "image", title: "cat.png" })],
+			attachments: [
+				media({
+					url: "data:image/png;base64,aGVsbG8=",
+					contentType: "image",
+					title: "cat.png",
+				}),
+			],
 		};
 		await service.handleSendMessage(runtime, TARGET as never, content);
 
@@ -131,7 +137,7 @@ describe("Discord connector outbound media", () => {
 		expect(opts.files).toHaveLength(1);
 		expect(opts.files?.[0]).toBeInstanceOf(AttachmentBuilder);
 		const file = opts.files?.[0] as AttachmentBuilder;
-		expect(file.attachment).toBe("https://cdn.example.com/cat.png");
+		expect(Buffer.isBuffer(file.attachment)).toBe(true);
 		expect(file.name).toMatch(/\.png$/);
 	});
 
@@ -142,7 +148,7 @@ describe("Discord connector outbound media", () => {
 			attachments: [
 				media({
 					id: "vid",
-					url: "https://cdn.example.com/clip.mp4",
+					url: "data:video/mp4;base64,aGVsbG8=",
 					contentType: "video",
 				}),
 			],
@@ -164,8 +170,8 @@ describe("Discord connector outbound media", () => {
 		const content: Content = {
 			text: "two files",
 			attachments: [
-				media({ id: "a", url: "https://cdn.example.com/a.png" }),
-				media({ id: "b", url: "https://cdn.example.com/b.pdf" }),
+				media({ id: "a", url: "data:image/png;base64,YQ==" }),
+				media({ id: "b", url: "data:application/pdf;base64,Yg==" }),
 			],
 		};
 		await service.handleSendMessage(runtime, TARGET as never, content);
@@ -228,30 +234,30 @@ describe("Discord connector outbound media", () => {
 		expect(file.name).toBe("clip.mp4");
 	});
 
-	it("does not fetch private non-generated media URLs server-side", async () => {
+	it("fails closed for private non-generated media URLs instead of passing them through", async () => {
 		const runtime = createRuntime();
 		const fetchMock = vi.fn(async () => {
 			throw new Error("must not fetch");
 		});
 
 		const privateUrl = "http://192.168.255.164:8080/private/clip.mp4";
-		const file = await buildOutboundDiscordAttachment(
-			media({
-				id: "user-video",
-				url: privateUrl,
-				contentType: ContentType.VIDEO,
-				title: "clip.mp4",
-			}),
-			runtime,
-			{
-				lookupFn: async () => [{ address: "192.168.255.164", family: 4 }],
-				pinnedFetchImpl: async ({ url, init }) =>
-					fetchMock(url.toString(), init),
-				fetchImpl: async (input, init) => fetchMock(String(input), init),
-			},
-		);
-
+		await expect(
+			buildOutboundDiscordAttachment(
+				media({
+					id: "user-video",
+					url: privateUrl,
+					contentType: ContentType.VIDEO,
+					title: "clip.mp4",
+				}),
+				runtime,
+				{
+					lookupFn: async () => [{ address: "192.168.255.164", family: 4 }],
+					pinnedFetchImpl: async ({ url, init }) =>
+						fetchMock(url.toString(), init),
+					fetchImpl: async (input, init) => fetchMock(String(input), init),
+				},
+			),
+		).rejects.toThrow(/private|internal|Blocked/i);
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(file.attachment).toBe(privateUrl);
 	});
 });
