@@ -4,6 +4,9 @@ import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { isProductionDeployment } from "../config/deployment-environment";
 
+/** The first path is historical; new checkouts return with an explicit subscription-cancel marker. */
+export const SUBSCRIPTION_CHECKOUT_CANCEL_PATH = "/cloud/billing?subscription_checkout=canceled";
+const CHECKOUT_CANCEL_PATHS = ["/cloud/billing", SUBSCRIPTION_CHECKOUT_CANCEL_PATH] as const;
 const identity = z
   .object({
     app: z.literal("eliza-cloud"),
@@ -23,6 +26,8 @@ export const checkoutContractSchema = z
     params: z
       .object({
         mode: z.literal("subscription"),
+        // Absent only on contracts persisted before the currency pin; new contracts always set USD.
+        currency: z.literal("usd").optional(),
         customer: z.string().regex(/^cus_[A-Za-z0-9]+$/),
         client_reference_id: z.string().uuid(),
         line_items: z.tuple([z.object({ price: z.string(), quantity: z.literal(1) }).strict()]),
@@ -54,7 +59,7 @@ export const checkoutContractSchema = z
       cancel.username ||
       cancel.password ||
       success.origin !== cancel.origin ||
-      p.cancel_url !== `${cancel.origin}/cloud/billing` ||
+      !CHECKOUT_CANCEL_PATHS.some((path) => p.cancel_url === `${cancel.origin}${path}`) ||
       p.success_url !==
         `${cancel.origin}/cloud/billing?subscription_session_id={CHECKOUT_SESSION_ID}`
     )

@@ -265,6 +265,9 @@ async function driveDiscordTurn(options: {
 			// treats anything other than exactly `null` as a closed ingress, so
 			// the harness must open it explicitly.
 			ingressClosedReason: null,
+			// Per-account turn registries and ingress cordons are class fields too.
+			accountTurnRegistries: new Map(),
+			cordonedAccounts: new Set<string>(),
 		},
 	);
 

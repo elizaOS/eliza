@@ -92,6 +92,7 @@ import {
 import { ensureProtectedProfileAdmission } from "../security/protected-profile.ts";
 import {
   type AgentBackupStateData,
+  AgentSnapshotBudgetExceededError,
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
@@ -160,8 +161,15 @@ import {
   flushEarlyLogs,
   listenForUiLogs,
 } from "./early-logs.ts";
-import { createApiEventHub } from "./event-hub.ts";
-import { computeCanRespond } from "./health-routes.ts";
+import {
+  createApiEventHub,
+  createEventSocketBackpressureGuard,
+  createEventSocketLivenessSweep,
+} from "./event-hub.ts";
+import {
+  cloudModelReadinessField,
+  computeCanRespond,
+} from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
@@ -884,6 +892,9 @@ const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65536;
 const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60000;
 let lastTerminalRunIdSweepAt = 0;
+function formatBackupMegabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
 }
@@ -1738,6 +1749,33 @@ async function handleRequestForViewClient(
       const backup = await createLocalAgentBackup(state.runtime, state.config);
       json(res, { backup });
     } catch (err) {
+      if (err instanceof AgentSnapshotBudgetExceededError) {
+        // error-policy:J1 a deterministic size refusal is actionable: retrying
+        // the same state cannot succeed, so answer 413 with the typed budget
+        // figures (no paths or database diagnostics) instead of a generic 500.
+        logger.warn(
+          { err },
+          "[agent-backup] Local backup refused: agent state exceeds the backup size limit",
+        );
+        const unit = err.stage === "file count" ? "files" : "bytes";
+        json(
+          res,
+          {
+            error:
+              unit === "files"
+                ? `Agent state has too many files for a local backup (${err.observedBytes} files; the limit is ${err.limitBytes}). Retrying will not help until files are removed from the agent's state.`
+                : `Agent state is too large for a local backup (${formatBackupMegabytes(err.observedBytes)} MB; the limit is ${formatBackupMegabytes(err.limitBytes)} MB). Retrying will not help until the agent's state is smaller.`,
+            code: err.code,
+            stage: err.stage,
+            unit,
+            observed: err.observedBytes,
+            limit: err.limitBytes,
+            retryable: false,
+          },
+          413,
+        );
+        return;
+      }
       // error-policy:J1 backup adapters can include filesystem and database
       // diagnostics in exceptions; keep the original in the redacting logger.
       logger.error({ err }, "[agent-backup] Local backup failed");
@@ -3708,6 +3746,19 @@ export async function startApiServer(opts?: {
   const wsActiveConversations = new WeakMap<WebSocket, string>();
   const wsRequests = new WeakMap<WebSocket, http.IncomingMessage>();
   const wsSendQueues = new WeakMap<WebSocket, Promise<void>>();
+  const wsQueuedSendBytes = new WeakMap<WebSocket, number>();
+  const reportWebSocketSendError = (err: unknown): void => {
+    logger.error(
+      `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+    );
+  };
+  const wsBackpressure = createEventSocketBackpressureGuard({
+    clients: wsClients,
+    clientIds: wsClientIds,
+    reportSendError: reportWebSocketSendError,
+    getBufferedAmount: (ws) =>
+      ws.bufferedAmount + (wsQueuedSendBytes.get(ws) ?? 0),
+  });
   const admitWebSocket = async (
     ws: WebSocket,
     request: http.IncomingMessage,
@@ -3721,23 +3772,37 @@ export async function startApiServer(opts?: {
     }
     return ws.readyState === WebSocket.OPEN;
   };
-  const sendWebSocket = (ws: WebSocket, message: string): void => {
+  const sendWebSocket = (ws: WebSocket, message: string): boolean => {
+    if (ws.readyState !== WebSocket.OPEN || !wsBackpressure.admit(ws)) {
+      return false;
+    }
     if (!hostAdmission) {
       ws.send(message);
-      return;
+      return true;
     }
     const request = wsRequests.get(ws);
     if (!request) {
       ws.close(1008, "Host admission rejected");
-      return;
+      return false;
     }
     // Reappraise at delivery, preserving ordering across status, replay, targeted
-    // events and PTY output. Queued frames cannot inherit an earlier approval.
+    // events and PTY output. Queued frames cannot inherit an earlier approval;
+    // their bytes remain visible to the same backpressure guard as ws's native
+    // transport buffer until the admission decision completes.
+    const messageBytes = Buffer.byteLength(message);
+    wsQueuedSendBytes.set(ws, (wsQueuedSendBytes.get(ws) ?? 0) + messageBytes);
     const previous = wsSendQueues.get(ws) ?? Promise.resolve();
     const pending = previous
       .then(async () => {
-        if (await admitWebSocket(ws, request, "websocket-send"))
-          ws.send(message);
+        try {
+          if (await admitWebSocket(ws, request, "websocket-send")) {
+            ws.send(message);
+          }
+        } finally {
+          const remaining = (wsQueuedSendBytes.get(ws) ?? 0) - messageBytes;
+          if (remaining > 0) wsQueuedSendBytes.set(ws, remaining);
+          else wsQueuedSendBytes.delete(ws);
+        }
       })
       .catch(() => {
         // error-policy:J1 Close this transport without exposing frame or policy data.
@@ -3745,6 +3810,7 @@ export async function startApiServer(opts?: {
         ws.close(1011, "Host admission unavailable");
       });
     wsSendQueues.set(ws, pending);
+    return true;
   };
   const eventHub = createApiEventHub({
     state,
@@ -3752,11 +3818,7 @@ export async function startApiServer(opts?: {
     clientIds: wsClientIds,
     activeConversations: wsActiveConversations,
     sendMessage: sendWebSocket,
-    reportSendError: (err) => {
-      logger.error(
-        `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
-      );
-    },
+    reportSendError: reportWebSocketSendError,
   });
   const broadcastWs = eventHub.broadcast;
   const pushEvent = eventHub.publish;
@@ -3871,6 +3933,13 @@ export async function startApiServer(opts?: {
     logger.warn(
       `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
     );
+  });
+  // Server-side ping/pong: a peer whose TCP window froze (backgrounded app,
+  // suspended laptop) never sends a close frame, so without this sweep its
+  // socket and everything the hub queues for it would live until the OS
+  // gives up on the connection.
+  const wsLiveness = createEventSocketLivenessSweep<WebSocket>({
+    clientIds: wsClientIds,
   });
   /**
    * Per-connection active conversation. Each browser window/client owns its own
@@ -4130,6 +4199,7 @@ export async function startApiServer(opts?: {
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
     wsRequests.set(ws, request);
+    wsLiveness.track(ws);
     let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
@@ -4221,6 +4291,7 @@ export async function startApiServer(opts?: {
             // (re)connect delivers canRespond: undefined and re-gates the chat
             // composer back to "waking up" until the next 5s broadcast.
             canRespond: computeCanRespond(state.runtime, state.agentState),
+            ...cloudModelReadinessField(state.runtime),
             startedAt: state.startedAt,
             startup: state.startup,
             pendingRestart: state.pendingRestartReasons.length > 0,
@@ -4583,6 +4654,7 @@ export async function startApiServer(opts?: {
       // `agentStatus.canRespond` to undefined, re-gating the chat composer back
       // to "waking up" even though the agent is fully ready and replying.
       canRespond: computeCanRespond(state.runtime, state.agentState),
+      ...cloudModelReadinessField(state.runtime),
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,
@@ -4910,6 +4982,7 @@ export async function startApiServer(opts?: {
     {
       name: "WebSocket clients",
       dispose: () => {
+        wsLiveness.stop();
         for (const ws of wsClients) {
           if (ws.readyState !== 1 && ws.readyState !== 0) continue;
           if ("terminate" in ws && typeof ws.terminate === "function") {

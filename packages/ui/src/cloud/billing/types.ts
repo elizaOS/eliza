@@ -128,6 +128,8 @@ export interface BillingUser {
   id: string;
   organization_id: string;
   wallet_address?: string | null;
+  /** Advisory only: the server re-checks billing-manager authority on every mutation. */
+  role?: string | null;
 }
 
 /** Envelope returned by GET /api/v1/user. */
@@ -137,6 +139,7 @@ export interface CurrentUserResponse {
     id: string;
     organization_id: string | null;
     wallet_address: string | null;
+    role?: string | null;
     organization: {
       credit_balance: string;
     } | null;

@@ -4,12 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	autoAssignAtBoot,
 	buildRecommendedAssignments,
 	ensureDefaultAssignment,
 	readAssignments,
 	setAssignment,
 	writeAssignments,
 } from "./assignments";
+import type { Eliza1Manifest } from "./manifest";
 import type { InstalledModel } from "./types";
 
 const originalEnv = { ...process.env };
@@ -61,6 +63,38 @@ describe("local inference assignments", () => {
 		]);
 
 		expect(assignments).toEqual({});
+	});
+
+	it("never makes a verified candidate-only bundle a default (#30656)", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+		const verified = installed("eliza-1-2b", 1_000, {
+			bundleVerifiedAt: "2026-05-11T01:00:00.000Z",
+		});
+		const candidateLoader = () =>
+			({
+				version: "0.0.1-local.1-gemma4",
+				evals: { textEval: { score: 0, passed: false } },
+			}) as unknown as Eliza1Manifest;
+		const passingLoader = () =>
+			({
+				version: "1.0.0",
+				evals: { textEval: { score: 1, passed: true } },
+			}) as unknown as Eliza1Manifest;
+
+		expect(buildRecommendedAssignments([verified], candidateLoader)).toEqual(
+			{},
+		);
+		expect(await autoAssignAtBoot([verified], candidateLoader)).toBeNull();
+		expect(await readAssignments()).toEqual({});
+
+		expect(
+			buildRecommendedAssignments([verified], passingLoader).TEXT_LARGE,
+		).toBe("eliza-1-2b");
+		expect(
+			(await autoAssignAtBoot([verified], passingLoader))?.TEXT_LARGE,
+		).toBe("eliza-1-2b");
 	});
 
 	it("does not auto-recommend unverified Eliza-1 downloads", () => {

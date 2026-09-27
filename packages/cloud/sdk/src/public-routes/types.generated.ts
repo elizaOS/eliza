@@ -154,7 +154,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/app-auth/mobile/credentials": Record<never, never>;
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
-  "GET /api/v1/app-credits/verify": Record<never, never>;
   "GET /api/v1/approval-requests": Record<never, never>;
   "GET /api/v1/approval-requests/{id}": { id: string | number };
   "GET /api/v1/apps": Record<never, never>;
@@ -168,11 +167,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/apps/{id}/billing/admin/notifications": { id: string | number };
   "GET /api/v1/apps/{id}/billing/admin/paid-periods": { id: string | number };
   "GET /api/v1/apps/{id}/characters": { id: string | number };
-  "GET /api/v1/apps/{id}/charges": { id: string | number };
-  "GET /api/v1/apps/{id}/charges/{chargeId}": {
-    id: string | number;
-    chargeId: string | number;
-  };
   "GET /api/v1/apps/{id}/database": { id: string | number };
   "GET /api/v1/apps/{id}/delegation-clients": { id: string | number };
   "GET /api/v1/apps/{id}/deploy/status": { id: string | number };
@@ -549,7 +543,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/app-auth/delegations/token": Record<never, never>;
   "POST /api/v1/app-auth/mobile/ack": Record<never, never>;
   "POST /api/v1/app-auth/mobile/token": Record<never, never>;
-  "POST /api/v1/app-credits/checkout": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
   "POST /api/v1/approval-requests": Record<never, never>;
   "POST /api/v1/approval-requests/{id}/approve": { id: string | number };
@@ -587,11 +580,6 @@ export interface PublicRoutePathParams {
     id: string | number;
   };
   "POST /api/v1/apps/{id}/billing/registration": { id: string | number };
-  "POST /api/v1/apps/{id}/charges": { id: string | number };
-  "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": {
-    id: string | number;
-    chargeId: string | number;
-  };
   "POST /api/v1/apps/{id}/chat": { id: string | number };
   "POST /api/v1/apps/{id}/delegation-clients": { id: string | number };
   "POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate": {
@@ -845,6 +833,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/subscriptions/cancel/undo": Record<never, never>;
   "POST /api/v1/subscriptions/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/checkout/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/portal": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
   "POST /api/v1/topup/10": Record<never, never>;
@@ -1017,7 +1006,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/app-auth/mobile/credentials": never;
   "GET /api/v1/app-auth/session": never;
   "GET /api/v1/app-credits/balance": never;
-  "GET /api/v1/app-credits/verify": never;
   "GET /api/v1/approval-requests": never;
   "GET /api/v1/approval-requests/{id}": never;
   "GET /api/v1/apps": never;
@@ -1031,8 +1019,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/apps/{id}/billing/admin/notifications": never;
   "GET /api/v1/apps/{id}/billing/admin/paid-periods": never;
   "GET /api/v1/apps/{id}/characters": never;
-  "GET /api/v1/apps/{id}/charges": never;
-  "GET /api/v1/apps/{id}/charges/{chargeId}": never;
   "GET /api/v1/apps/{id}/database": never;
   "GET /api/v1/apps/{id}/delegation-clients": never;
   "GET /api/v1/apps/{id}/deploy/status": never;
@@ -1294,7 +1280,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/app-auth/delegations/token": never;
   "POST /api/v1/app-auth/mobile/ack": never;
   "POST /api/v1/app-auth/mobile/token": never;
-  "POST /api/v1/app-credits/checkout": never;
   "POST /api/v1/app/agents": never;
   "POST /api/v1/approval-requests": never;
   "POST /api/v1/approval-requests/{id}/approve": never;
@@ -1317,8 +1302,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/apps/{id}/billing/admin/refunds": never;
   "POST /api/v1/apps/{id}/billing/admin/refunds/preview": never;
   "POST /api/v1/apps/{id}/billing/registration": never;
-  "POST /api/v1/apps/{id}/charges": never;
-  "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": never;
   "POST /api/v1/apps/{id}/chat": never;
   "POST /api/v1/apps/{id}/delegation-clients": never;
   "POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate": never;
@@ -1498,6 +1481,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/subscriptions/cancel/undo": never;
   "POST /api/v1/subscriptions/checkout": never;
   "POST /api/v1/subscriptions/checkout/confirm": never;
+  "POST /api/v1/subscriptions/portal": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
   "POST /api/v1/topup/10": never;

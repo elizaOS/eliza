@@ -1488,6 +1488,7 @@ export async function buildAccountBillingSnapshot(
         primary.subscription,
         observedAt,
         primary.allowanceFunding,
+        sources.cancellationAuthority,
       ),
       snapshotStartedAt,
       snapshotCompletedAt,

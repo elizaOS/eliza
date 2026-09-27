@@ -410,7 +410,7 @@ class ASTEvaluator:
     def _normalize_math_notation(self, value: str) -> str:
         """
         Normalize mathematical notation for comparison.
-        
+
         Handles common notation differences:
         - ^ vs ** for exponentiation
         - Whitespace normalization

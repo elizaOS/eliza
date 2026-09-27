@@ -280,7 +280,9 @@ async function switchToLocal(
     model: modelId,
     displayName,
     status: "downloading",
-    ...(catalog ? { downloadSizeGb: catalog.sizeGb } : {}),
+    ...(catalog
+      ? { downloadSizeGb: catalog.downloadSizeGb ?? catalog.sizeGb }
+      : {}),
   };
 }
 async function switchToCloud(

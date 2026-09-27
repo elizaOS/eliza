@@ -17,6 +17,16 @@ import type {
 	IStreamExtractor,
 	StructuredFieldEventCallbacks,
 } from "../types/streaming";
+import { toWellFormedUnicode } from "./unicode";
+
+/**
+ * True when `code` is a UTF-16 high (lead) surrogate. A chunk ending on one is
+ * the first half of a non-BMP code point (e.g. an emoji); emitting it alone
+ * produces a lone surrogate that corrupts UTF-8/JSON serialization downstream.
+ */
+function isHighSurrogate(code: number): boolean {
+	return code >= 0xd800 && code <= 0xdbff;
+}
 
 // ============================================================================
 // StreamError - Standardized error handling for streaming
@@ -663,7 +673,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			this.decideFormat();
 		}
 		if (this.passthrough) {
-			this.drainPassthrough();
+			this.drainPassthrough(false);
 			return "";
 		}
 		this.config.unordered ? this.drainUnordered(false) : this.drain(false);
@@ -678,7 +688,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			this.decideFormat();
 		}
 		if (this.passthrough) {
-			this.drainPassthrough();
+			this.drainPassthrough(true);
 			this.buffer = "";
 			this.state = "complete";
 			this.emitEvent({ eventType: "complete", timestamp: Date.now() });
@@ -690,6 +700,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (flushed) {
 				this.appendVisibleAndEmit(field, flushed);
 			}
+			this.flushPendingSurrogate(field);
 		}
 		this.activeStringField = null;
 		this.pendingEscape = "";
@@ -736,13 +747,21 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.passthrough = !looksStructured;
 	}
 
-	/** Stream buffered prose straight through as reply text (passthrough mode). */
-	private drainPassthrough(): void {
-		if (this.buffer.length === 0) {
+	/**
+	 * Stream buffered prose straight through as reply text (passthrough mode).
+	 * Until end-of-stream, a trailing high surrogate stays buffered so it can
+	 * rejoin its low half from the next push; emitted text is well-formed.
+	 */
+	private drainPassthrough(final: boolean): void {
+		let end = this.buffer.length;
+		if (!final && isHighSurrogate(this.buffer.charCodeAt(end - 1))) {
+			end -= 1;
+		}
+		if (end === 0) {
 			return;
 		}
-		const chunk = this.buffer;
-		this.buffer = "";
+		const chunk = toWellFormedUnicode(this.buffer.slice(0, end));
+		this.buffer = this.buffer.slice(end);
 		this.passthroughEmitted += chunk;
 		this.config.onChunk(
 			chunk,
@@ -1068,19 +1087,67 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	}
 
 	private appendVisibleAndEmit(field: string, value: string): void {
-		const next = `${this.fieldContents.get(field) ?? ""}${value}`;
-		this.fieldContents.set(field, next);
 		const previous = this.emittedContent.get(field) ?? "";
-		const chunk = next.slice(previous.length);
+		// `fieldContents` is the well-formed emitted prefix plus at most one raw
+		// high surrogate held back from the previous emission.
+		const raw = `${this.fieldContents.get(field) ?? ""}${value}`;
+		let chunk = raw.slice(previous.length);
 		if (!chunk) {
+			this.fieldContents.set(field, raw);
 			return;
 		}
-		this.emittedContent.set(field, next);
-		this.config.onChunk(chunk, field, next, this.streamRevision);
+		// Never split a surrogate pair across chunks: hold back a trailing high
+		// surrogate (from an escape pair decoded one escape at a time, or literal
+		// units split across pushes) until its low half arrives or the stream ends.
+		let pending = "";
+		if (isHighSurrogate(chunk.charCodeAt(chunk.length - 1))) {
+			pending = chunk.slice(-1);
+			chunk = chunk.slice(0, -1);
+		}
+		// Interior unpaired surrogates become U+FFFD. The replacement is 1:1 by
+		// code unit, so the length-based emission cursor stays valid.
+		chunk = toWellFormedUnicode(chunk);
+		if (!chunk) {
+			this.fieldContents.set(field, previous + pending);
+			return;
+		}
+		const emitted = previous + chunk;
+		this.emittedContent.set(field, emitted);
+		this.fieldContents.set(field, emitted + pending);
+		this.config.onChunk(chunk, field, emitted, this.streamRevision);
 		this.emitEvent({
 			eventType: "chunk",
 			field,
 			chunk,
+			timestamp: Date.now(),
+		});
+	}
+
+	/**
+	 * At end-of-stream, emit a high surrogate `appendVisibleAndEmit` held back
+	 * whose low half never arrived, as U+FFFD.
+	 */
+	private flushPendingSurrogate(field: string): void {
+		const content = this.fieldContents.get(field);
+		if (content === undefined) {
+			return;
+		}
+		const emitted = this.emittedContent.get(field) ?? "";
+		if (content.length <= emitted.length) {
+			return;
+		}
+		const remainder = toWellFormedUnicode(content.slice(emitted.length));
+		if (!remainder) {
+			return;
+		}
+		const finalContent = emitted + remainder;
+		this.fieldContents.set(field, finalContent);
+		this.emittedContent.set(field, finalContent);
+		this.config.onChunk(remainder, field, finalContent, this.streamRevision);
+		this.emitEvent({
+			eventType: "chunk",
+			field,
+			chunk: remainder,
 			timestamp: Date.now(),
 		});
 	}

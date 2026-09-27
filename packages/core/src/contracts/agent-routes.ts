@@ -33,6 +33,7 @@ export const PostAgentExportRequestSchema = z
 				`A password of at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required.`,
 			),
 		includeLogs: z.boolean().optional(),
+		excludeSecrets: z.boolean().optional(),
 	})
 	.strict();
 

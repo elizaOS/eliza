@@ -29,6 +29,7 @@ import {
   reserveFlatUsageCredits,
 } from "./ai-billing";
 import { AiPricingCacheUnavailableError, AiPricingCacheWarmingError } from "./ai-pricing/cache";
+import { isSubscriptionFundedReservation } from "./allowance-first-credits";
 import {
   COST_BUFFER,
   type CreditReconciliationResult,
@@ -47,6 +48,7 @@ import {
   markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 } from "./inference-admission-gate";
+import { refreshStaleInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import {
   InferenceAffiliateCacheUnavailableError as AffiliateCacheUnavailableError,
   InferenceAffiliateCacheWarmingError as AffiliateCacheWarmingError,
@@ -227,6 +229,9 @@ async function reserveSynchronously(
       reservationTransactionId: reservation.reservationTransactionId,
       affiliateAttribution: reservation.affiliateAttribution ?? null,
       affiliatePayoutSourceId: reservation.affiliatePayoutSourceId ?? null,
+      // Deferred settlers (pending video) must settle a funded hold through
+      // subscription funding, never the purchased-credit reservation ledger.
+      ...(isSubscriptionFundedReservation(reservation) ? { funding: reservation.funding } : {}),
       reconcile: async (actualCostUsd) => (await settle(actualCostUsd)) ?? undefined,
     },
   };
@@ -372,6 +377,20 @@ export async function admitOrganizationInference(
       params.admissionSnapshot.rateLimits.strictRpm !==
         requireOrganizationRateTier(authoritativePolicy).strictRpm)
   ) {
+    // Fail this request closed, but repair the shared projection now so the
+    // stale window does not outlive the cache TTL after a policy bump.
+    const refresh = refreshStaleInferenceAdmissionSnapshot(params.context.organizationId).catch(
+      (error) => {
+        // error-policy:J7 the refresh is best-effort repair; the request below
+        // already fails closed and the next request retries the republish.
+        logger.warn("[inference-admission] stale snapshot refresh failed", {
+          organizationId: params.context.organizationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+    if (workerHotPath) params.executionCtx?.waitUntil(refresh);
+    else await refresh;
     throw new InferenceAdmissionUnavailableError({
       context: { organizationId: params.context.organizationId, reason: "stale_policy_snapshot" },
     });

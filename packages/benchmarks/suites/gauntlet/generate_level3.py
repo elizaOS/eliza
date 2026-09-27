@@ -220,10 +220,10 @@ for cat in categories:
     for scenario in cat["scenarios"]:
         filename = f"{scenario['id']}.yaml"
         filepath = os.path.join(base_dir, filename)
-        
+
         token_config = scenario["token"]
         liquidity = scenario.get("liquidity", 10000)
-        
+
         data = {
             "id": scenario["id"],
             "level": 3,
@@ -277,7 +277,7 @@ for cat in categories:
             },
             "risk_factors": [scenario["risk"]],
         }
-        
+
         with open(filepath, "w") as f:
             yaml.dump(data, f, sort_keys=False, default_flow_style=False)
         generated += 1

@@ -44,6 +44,8 @@ interface BillingResult {
   newBalance?: number;
   /** Portion of `amount` paid from owner's redeemable_earnings (pay-as-you-go). */
   paidFromEarnings?: number;
+  /** Subscription allowance left after this charge (allowance-first subscribers). */
+  allowanceRemaining?: number;
   error?: string;
 }
 
@@ -117,7 +119,13 @@ async function processContainerBilling(
     payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
   });
   const earningsAvailable = plan.earningsEligible;
-  const totalAvailable = plan.totalAvailable;
+  // Allowance-first subscribers also fund compute from their subscription
+  // allowance; the repository re-derives the exact split under row locks.
+  const allowanceAvailable = Number(org.subscription_allowance_available);
+  if (!Number.isFinite(allowanceAvailable)) {
+    throw new Error("Container billing allowance is not a finite amount");
+  }
+  const totalAvailable = plan.totalAvailable + allowanceAvailable;
   logger.info(`[Container Billing] Processing ${containerName}`, {
     containerId,
     dailyCost,
@@ -235,7 +243,7 @@ async function processContainerBilling(
         amount: dailyCost,
         billingPeriodStart: periodStart,
         billingPeriodEnd: periodEnd,
-        errorMessage: `Insufficient funds: required $${dailyCost.toFixed(2)}, available $${totalAvailable.toFixed(4)} (credits $${currentBalance.toFixed(4)} + earnings $${earningsAvailable.toFixed(4)})`,
+        errorMessage: `Insufficient funds: required $${dailyCost.toFixed(2)}, available $${totalAvailable.toFixed(4)} (credits $${currentBalance.toFixed(4)} + earnings $${earningsAvailable.toFixed(4)} + allowance $${allowanceAvailable.toFixed(4)})`,
       });
 
       return {
@@ -342,6 +350,9 @@ async function processContainerBilling(
     amount: billedAmount,
     paidFromEarnings: billedFromEarnings,
     newBalance: billingResult.newBalance,
+    ...(billingResult.allowanceRemaining !== undefined
+      ? { allowanceRemaining: billingResult.allowanceRemaining }
+      : {}),
   };
 }
 
@@ -552,6 +563,10 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
             0,
             org.earnings_available - (result.paidFromEarnings ?? 0),
           );
+          if (result.allowanceRemaining !== undefined) {
+            org.subscription_allowance_available =
+              result.allowanceRemaining.toFixed(6);
+          }
         } else if (result.action === "warning_sent") {
           warningsSent++;
         } else if (result.action === "shutdown") {

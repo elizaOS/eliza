@@ -7838,6 +7838,22 @@ export class CalendarService extends Service {
       ) ?? null;
     return {
       ...buildNextCalendarEventContext(nextEvent, now),
+      timeReference: {
+        asOf: now.toISOString(),
+        timeZone,
+        display: new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+          timeZoneName: "short",
+        }).format(now),
+      },
       readScope: {
         selection: "next_event",
         timeMin: feed.timeMin,

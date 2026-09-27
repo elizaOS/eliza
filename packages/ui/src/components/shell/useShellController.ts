@@ -25,6 +25,7 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
+import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   APP_PAUSE_EVENT,
@@ -65,6 +66,7 @@ import { TurnAggregator } from "../../voice/end-of-turn";
 import {
   type MicrophonePermissionState,
   queryMicrophonePermission,
+  requestDesktopMicrophoneAccess,
 } from "../../voice/local-asr-capture";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
@@ -1721,6 +1723,27 @@ export function useShellController(): ShellController {
   // path) only when the mic should open.
   const gateEngageOnMicPermission = React.useCallback(
     (onProceed: () => void): void => {
+      if (micPermissionRef.current === "prompt" && isElectrobunRuntime()) {
+        // DESKTOP FIRST USE: the macOS app process has not been asked for the
+        // microphone yet. Ask through the native host from this tap (the same
+        // request Settings → Permissions makes) so the system prompt appears
+        // from the chat capture path instead of the WKWebView capture being
+        // refused before any prompt. `null` means no macOS bridge answered;
+        // getUserMedia then owns the prompt.
+        void requestDesktopMicrophoneAccess().then((requested) => {
+          if (requested) {
+            setMicPermission(requested);
+            micPermissionRef.current = requested;
+          }
+          if (requested === "denied") {
+            surfaceMicDeniedAtEngage();
+            return;
+          }
+          if (authGateRef.current.gated || captureRef.current) return;
+          onProceed();
+        });
+        return;
+      }
       if (micPermissionRef.current !== "denied") {
         // Fast path: proceed now, refresh the ref for next time in the
         // background.
@@ -1844,6 +1867,47 @@ export function useShellController(): ShellController {
       setMicPermission(state);
       micPermissionRef.current = state;
     });
+  }, []);
+  // Keep the last-known grant live instead of latching a stale "denied": a
+  // grant made in the detached Settings window, System Settings, or another
+  // app surface is picked up when this window regains focus/visibility or the
+  // desktop host reports a microphone permission change. This passive refresh
+  // never toasts; engage paths own the actionable notice.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    let disposed = false;
+    const refresh = () => {
+      void queryMicrophonePermission().then((state) => {
+        if (disposed || micPermissionRef.current === state) return;
+        setMicPermission(state);
+        micPermissionRef.current = state;
+        // A recovered grant starts a new notice epoch so a later denial is
+        // surfaced again.
+        if (state !== "denied") captureFailureNoticedRef.current = false;
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    const unsubscribe = subscribeDesktopBridgeEvent({
+      rpcMessage: "permissionsChanged",
+      ipcChannel: "permissions:changed",
+      listener: (payload) => {
+        const id =
+          typeof payload === "object" && payload !== null && "id" in payload
+            ? (payload as { id: unknown }).id
+            : undefined;
+        if (id === "microphone") refresh();
+      },
+    });
+    return () => {
+      disposed = true;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribe();
+    };
   }, []);
   const open = React.useCallback(() => {
     if (authGate.phase === "needs-auth") {
@@ -2268,8 +2332,12 @@ export function useShellController(): ShellController {
     // fresh probe clears the denial and we actually engage. On the fast
     // (non-denied) path onProceed runs synchronously and re-persists
     // immediately, so the rollback+re-save is a no-op net change.
-    const wasDeniedBeforeGate = micPermissionRef.current === "denied";
-    if (wasDeniedBeforeGate) {
+    // The gate is async (and may block) on the denied recovery path and on the
+    // desktop first-use native request path.
+    const gateMayBlock =
+      micPermissionRef.current === "denied" ||
+      (micPermissionRef.current === "prompt" && isElectrobunRuntime());
+    if (gateMayBlock) {
       saveContinuousChatMode(priorContinuousModeRef.current);
     }
     gateEngageOnMicPermission(() => {

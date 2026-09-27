@@ -303,7 +303,8 @@ export function CloudServicesSection() {
         if (cancelled) return;
         setActionNotice(
           t("configpageview.CloudServicesLoadFailed", {
-            defaultValue: `Could not load cloud service routing: ${err instanceof Error ? err.message : String(err)}`,
+            defaultValue: "Could not load cloud service routing: {{error}}",
+            error: err instanceof Error ? err.message : String(err),
           }),
           "error",
           4000,
@@ -344,7 +345,8 @@ export function CloudServicesSection() {
         setServices(services);
         setActionNotice(
           t("configpageview.CloudServicesSaveFailed", {
-            defaultValue: `Could not update cloud service routing: ${err instanceof Error ? err.message : String(err)}`,
+            defaultValue: "Could not update cloud service routing: {{error}}",
+            error: err instanceof Error ? err.message : String(err),
           }),
           "error",
           4000,

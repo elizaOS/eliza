@@ -57,6 +57,7 @@ import {
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
 import { LifeOpsServiceError } from "../service-types.js";
+import { parseLocalDateKey } from "../time.js";
 import {
   getHealthDataConnectorStatus,
   getHealthDataConnectorStatuses,
@@ -140,13 +141,12 @@ function normalizeDateOnly(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") {
     return null;
   }
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+  if (typeof value !== "string") {
     fail(400, `${field} must be a YYYY-MM-DD date`);
   }
   const normalized = value.trim();
-  const parsed = Date.parse(`${normalized}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed)) {
-    fail(400, `${field} must be a valid date`);
+  if (parseLocalDateKey(normalized) === null) {
+    fail(400, `${field} must be a valid YYYY-MM-DD calendar date`);
   }
   return normalized;
 }
@@ -738,9 +738,15 @@ export class HealthDomain {
     }
   }
 
-  async getHealthTrend(days: number): Promise<HealthDailySummary[]> {
+  async getHealthTrend(
+    days: number,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary[]> {
     try {
-      return await getRecentSummaries(days, resolveHealthConfig());
+      return await getRecentSummaries(days, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

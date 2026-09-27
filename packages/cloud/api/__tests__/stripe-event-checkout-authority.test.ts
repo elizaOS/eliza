@@ -62,13 +62,6 @@ mock.module("@/db/schemas/agent-sandboxes", () => ({ agentSandboxes: {} }));
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: mock(async () => Response.json({})),
 }));
-mock.module("@/lib/services/app-charge-callbacks", () => ({
-  appChargeCallbacksService: {},
-}));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {},
-}));
-mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
 mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
 mock.module("@/lib/services/credits", () => ({
   creditsService: {

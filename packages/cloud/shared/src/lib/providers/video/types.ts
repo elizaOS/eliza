@@ -117,6 +117,15 @@ export interface VideoPendingSettlement {
   reserved_amount: number;
   billed_cost: number;
   billing_source: string;
+  /**
+   * Present when a subscriber's hold lives in subscription funding rather than
+   * the purchased-credit ledger; the sweep must settle it through funding.
+   */
+  funding?: {
+    logical_operation_id: string;
+    operation: "ai_inference" | "media_generation";
+    occurred_at: string;
+  };
 }
 
 /** Marks a generation row whose provider submission outcome is unverifiable. */

@@ -2,7 +2,7 @@
  * Redis queue consumer for Stripe events.
  *
  * Runs the heavy fan-out that used to live inline in /api/stripe/webhook
- * before the queue refactor — app credits, org credits, revenue splits,
+ * before the queue refactor — org credits, revenue splits,
  * redeemable earnings, cache invalidation, Discord notifications, and
  * invoice rows. The webhook route now just verifies the signature,
  * dedupes by event ID via webhook_events, enqueues, and returns 200.
@@ -19,18 +19,32 @@
  *   - These guards make a queue retry safe to apply even if a previous
  *     attempt got partway through.
  *
+ * Organization subscription deliveries route on the live Stripe status to
+ * their owners (checkout, terminal, dunning, scheduled cancellation, paid
+ * renewal). Recurring event types without an owner are acknowledged with
+ * `unhandled_subscription_event`, opening an incident where operator policy
+ * may be needed (trials, pauses, pending updates, refunds, disputes).
+ *
  * Failure handling:
  *   - Permanent failures (bad metadata, missing required fields) ack the
  *     message — there is no recovery path and we do not want them eating
  *     retry budget.
+ *   - Subscription failures branch on the typed error code and reason:
+ *     unknown or out-of-order subscriptions, unsupported event shapes and
+ *     parse failures ack (subscription recovery reconciles the source);
+ *     unsupported provider policy acks with an incident; everything else
+ *     retries.
  *   - Transient failures (DB error, downstream timeout, etc.) return
- *     `retry`. After the retry budget is exhausted, the Redis queue helper
- *     promotes the message to stripe-events:dlq for manual reconciliation.
+ *     `retry` with backoff across cron ticks. After the retry budget is
+ *     exhausted, the Redis queue helper promotes the message to
+ *     stripe-events:dlq and the cron releases its webhook_events dedupe
+ *     marker so a Stripe resend can re-enter.
  */
 
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
+import { ZodError } from "zod";
 import { dbRead } from "@/db/helpers";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
@@ -38,9 +52,6 @@ import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import type { DrainResult } from "@/lib/queue/redis-queue";
 import { safeFetch } from "@/lib/security/safe-fetch";
-import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
-import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
-import { appCreditsService } from "@/lib/services/app-credits";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
 import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
@@ -56,7 +67,12 @@ import { referralsService } from "@/lib/services/referrals";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
 import { reconcileStripeScheduledCancellationLifecycle } from "@/lib/services/stripe-scheduled-cancellation-lifecycle";
 import { reconcileStripeTerminalLifecycle } from "@/lib/services/stripe-terminal-lifecycle";
+import {
+  subscriptionPolicyFailureReason,
+  typedFailure,
+} from "@/lib/services/subscription-lifecycle-failures";
 import { requireStripe } from "@/lib/stripe";
+import { STRIPE_API_VERSION } from "@/lib/stripe-api-version";
 import { logger } from "@/lib/utils/logger";
 
 import type { StripeEventMessage } from "./types";
@@ -119,14 +135,32 @@ function roundedDivide(numerator: bigint, denominator: bigint): bigint {
  * Recurring objects cannot enter purchased-credit fulfillment. The Acacia
  * webhook shape links invoices directly; newer signed webhook versions use
  * parent.subscription_details. Metadata never establishes this distinction.
+ * `ambiguous` means the linkage cannot be established (Basil payment and
+ * charge objects omit `invoice`) and the delivery stays retryable.
  */
-async function requiresSubscriptionReconciliation(
+type SubscriptionLinkage =
+  | { kind: "none" }
+  | { kind: "ambiguous" }
+  | { kind: "recurring"; stripeSubscriptionId: string | null };
+
+async function classifySubscriptionLinkage(
   event: Stripe.Event,
-): Promise<boolean> {
-  if (event.type.startsWith("customer.subscription.")) return true;
+): Promise<SubscriptionLinkage> {
   const object = event.data.object;
+  if (event.type.startsWith("customer.subscription.")) {
+    return {
+      kind: "recurring",
+      stripeSubscriptionId: "id" in object ? String(object.id) : null,
+    };
+  }
   if (event.type.startsWith("checkout.session.")) {
-    return "mode" in object && object.mode === "subscription";
+    if (!("mode" in object) || object.mode !== "subscription")
+      return { kind: "none" };
+    return {
+      kind: "recurring",
+      stripeSubscriptionId:
+        "subscription" in object ? referenceId(object.subscription) : null,
+    };
   }
   if (event.type.startsWith("charge.dispute.")) {
     const dispute = event.data.object as Stripe.Dispute;
@@ -134,15 +168,49 @@ async function requiresSubscriptionReconciliation(
       typeof dispute.charge === "string"
         ? await requireStripe().charges.retrieve(dispute.charge)
         : dispute.charge;
-    return hasLinkedInvoice(charge);
+    return linkedInvoiceLinkage(charge);
   }
   if (
     event.type.startsWith("payment_intent.") ||
     event.type === "charge.refunded"
   ) {
-    return hasLinkedInvoice(object);
+    return linkedInvoiceLinkage(object);
   }
-  return event.type.startsWith("invoice.") && isRecurringInvoice(object);
+  if (event.type.startsWith("invoice.") && isRecurringInvoice(object))
+    return {
+      kind: "recurring",
+      stripeSubscriptionId: invoiceSubscriptionId(object),
+    };
+  return { kind: "none" };
+}
+
+function referenceId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  return typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string"
+    ? value.id
+    : null;
+}
+
+/** Acacia `invoice.subscription` (string or expanded) or Basil `parent.subscription_details.subscription`. */
+function invoiceSubscriptionId(object: object): string | null {
+  if ("subscription" in object) {
+    const id = referenceId(object.subscription);
+    if (id) return id;
+  }
+  if (
+    "parent" in object &&
+    typeof object.parent === "object" &&
+    object.parent !== null &&
+    "subscription_details" in object.parent &&
+    typeof object.parent.subscription_details === "object" &&
+    object.parent.subscription_details !== null &&
+    "subscription" in object.parent.subscription_details
+  )
+    return referenceId(object.parent.subscription_details.subscription);
+  return null;
 }
 
 function isRecurringInvoice(object: object): boolean {
@@ -170,24 +238,378 @@ function isRecurringInvoice(object: object): boolean {
 }
 
 /** Retrieve invoice authority before allowing a linked payment into legacy fulfillment. */
-async function hasLinkedInvoice(object: object): Promise<boolean> {
+async function linkedInvoiceLinkage(
+  object: object,
+): Promise<SubscriptionLinkage> {
   // Basil removed invoice from PaymentIntent and Charge. Absence is ambiguous,
   // not proof of a one-time purchase; retain it until versioned reconciliation
   // can establish the provider linkage. Acacia explicitly uses null for none.
-  if (!("invoice" in object) || object.invoice === undefined) return true;
-  if (object.invoice === null) return false;
-  const invoice = object.invoice;
-  const id =
-    typeof invoice === "string"
-      ? invoice
-      : typeof invoice === "object" &&
-          "id" in invoice &&
-          typeof invoice.id === "string"
-        ? invoice.id
-        : null;
+  if (!("invoice" in object) || object.invoice === undefined)
+    return { kind: "ambiguous" };
+  if (object.invoice === null) return { kind: "none" };
+  const id = referenceId(object.invoice);
   // An invalid reference cannot establish one-time payment authority.
-  if (!id) return true;
-  return isRecurringInvoice(await requireStripe().invoices.retrieve(id));
+  if (!id) return { kind: "ambiguous" };
+  const invoice = await requireStripe().invoices.retrieve(id);
+  return isRecurringInvoice(invoice)
+    ? {
+        kind: "recurring",
+        stripeSubscriptionId: invoiceSubscriptionId(invoice),
+      }
+    : { kind: "none" };
+}
+
+/**
+ * Recurring event types without a lifecycle owner. They are acknowledged with
+ * `unhandled_subscription_event`; those that may need operator policy open an
+ * incident on the known subscription instead of retrying into the DLQ.
+ */
+const UNOWNED_SUBSCRIPTION_INCIDENTS: Record<
+  string,
+  {
+    kind: "provider_drift" | "event_processing";
+    severity: "warning" | "error";
+    reason: string;
+  }
+> = {
+  "customer.subscription.trial_will_end": {
+    kind: "provider_drift",
+    severity: "warning",
+    reason: "trial_not_supported",
+  },
+  "customer.subscription.paused": {
+    kind: "provider_drift",
+    severity: "error",
+    reason: "pause_not_supported",
+  },
+  "customer.subscription.resumed": {
+    kind: "provider_drift",
+    severity: "error",
+    reason: "pause_not_supported",
+  },
+  "customer.subscription.pending_update_applied": {
+    kind: "provider_drift",
+    severity: "warning",
+    reason: "pending_update_not_owned",
+  },
+  "customer.subscription.pending_update_expired": {
+    kind: "provider_drift",
+    severity: "warning",
+    reason: "pending_update_not_owned",
+  },
+  "charge.refunded": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "subscription_invoice_refunded",
+  },
+  "charge.dispute.created": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "subscription_invoice_disputed",
+  },
+  "charge.dispute.funds_withdrawn": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "subscription_invoice_disputed",
+  },
+  "charge.dispute.funds_reinstated": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "subscription_invoice_disputed",
+  },
+  "charge.dispute.closed": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "subscription_invoice_disputed",
+  },
+};
+
+async function acknowledgeUnownedSubscriptionEvent(
+  event: Stripe.Event,
+  stripeSubscriptionId: string | null,
+  reason: string,
+): Promise<DrainResult> {
+  const incident = UNOWNED_SUBSCRIPTION_INCIDENTS[event.type];
+  const opened =
+    incident && stripeSubscriptionId
+      ? await (
+          await import("@/lib/services/subscription-event-incidents")
+        ).openSubscriptionEventIncident({
+          stripeSubscriptionId,
+          livemode: event.livemode,
+          eventId: event.id,
+          eventType: event.type,
+          kind: incident.kind,
+          severity: incident.severity,
+          reason: incident.reason,
+        })
+      : false;
+  logger.info("[Stripe Queue] Subscription event has no lifecycle owner", {
+    code: "unhandled_subscription_event",
+    eventId: event.id,
+    eventType: event.type,
+    stripeSubscriptionId,
+    reason,
+    incident: opened ? incident?.reason : null,
+  });
+  return "ack";
+}
+
+/** Recognised permanent lifecycle failures; anything else is retryable. */
+const PERMANENT_SUBSCRIPTION_FAILURES: Record<string, readonly string[]> = {
+  SUBSCRIPTION_LIFECYCLE_REOBSERVE: [
+    "unknown_subscription",
+    "out_of_order_event_requires_reconciliation",
+    "unsupported_event_authority",
+    "queue_identity_mismatch",
+    "deployment_environment_mismatch",
+  ],
+  SUBSCRIPTION_RENEWAL_UNAVAILABLE: [
+    "unsupported_event_shape",
+    "event_identity_mismatch",
+    "unknown_subscription",
+    "invoice_subscription_unavailable",
+    "initial_checkout_ambiguous",
+    "initial_checkout_invoice_mismatch",
+    "initial_invoice_reason_mismatch",
+    "new_stale_invoice_requires_reconciliation",
+  ],
+  SUBSCRIPTION_DUNNING_UNAVAILABLE: [
+    "out_of_order_event_requires_reconciliation",
+  ],
+  // An active update for a source in dunning is settled by invoice.paid or recovery.
+  SUBSCRIPTION_CANCELLATION_REOBSERVE: ["unsupported_current_authority"],
+};
+
+/**
+ * Branches on typed lifecycle errors: permanent failures and parse failures
+ * are acknowledged (recovery reconciles the source), policy failures also open
+ * an incident (paid renewal opens its own), everything else retries.
+ */
+async function classifySubscriptionFailure(
+  delivery: StripeEventDelivery,
+  stripeSubscriptionId: string | null,
+  error: unknown,
+): Promise<DrainResult> {
+  const { event } = delivery.body;
+  const failure = typedFailure(error);
+  const context = {
+    eventId: event.id,
+    eventType: event.type,
+    attempts: delivery.attempts,
+    stripeSubscriptionId,
+    code: failure?.code ?? (error instanceof ZodError ? "ZOD_ERROR" : null),
+    reason: failure?.reason ?? null,
+  };
+  if (error instanceof ZodError) {
+    logger.warn(
+      "[Stripe Queue] Subscription event payload is unparseable; acknowledging",
+      { ...context, issues: error.issues.map((issue) => issue.path.join(".")) },
+    );
+    return "ack";
+  }
+  const policyReason = subscriptionPolicyFailureReason(error);
+  if (policyReason) {
+    try {
+      if (
+        stripeSubscriptionId &&
+        failure?.code !== "SUBSCRIPTION_RENEWAL_UNAVAILABLE"
+      )
+        await (
+          await import("@/lib/services/subscription-event-incidents")
+        ).openSubscriptionEventIncident({
+          stripeSubscriptionId,
+          livemode: event.livemode,
+          eventId: event.id,
+          eventType: event.type,
+          kind: "provider_drift",
+          severity: "error",
+          reason: policyReason,
+        });
+    } catch (incidentError) {
+      // error-policy:J1 Without a durable incident the delivery must stay retryable.
+      logger.error(
+        "[Stripe Queue] Subscription policy incident could not be recorded; retaining delivery",
+        {
+          ...context,
+          error:
+            incidentError instanceof Error
+              ? incidentError.message
+              : String(incidentError),
+        },
+      );
+      return "retry";
+    }
+    logger.warn(
+      "[Stripe Queue] Subscription observation requires unsupported policy; acknowledged with incident",
+      { ...context, policyReason },
+    );
+    return "ack";
+  }
+  if (
+    failure?.reason &&
+    PERMANENT_SUBSCRIPTION_FAILURES[failure.code]?.includes(failure.reason)
+  ) {
+    logger.warn(
+      "[Stripe Queue] Subscription event cannot be applied by this delivery; acknowledging for recovery",
+      context,
+    );
+    return "ack";
+  }
+  // error-policy:J1 Unrecognised lifecycle failures remain retryable regardless of error wording.
+  logger.error(
+    "[Stripe Queue] Subscription lifecycle failed; retaining delivery",
+    {
+      ...context,
+      error: error instanceof Error ? error.message : String(error),
+    },
+  );
+  return "retry";
+}
+
+/** Signed payloads outside the pinned version may drop fields the owners read from provider retrievals. */
+function warnOnUnexpectedApiVersion(event: Stripe.Event): void {
+  if (event.api_version && event.api_version !== STRIPE_API_VERSION)
+    logger.warn(
+      "[Stripe Queue] Subscription event signed with an unexpected API version",
+      {
+        code: "unexpected_stripe_api_version",
+        eventId: event.id,
+        eventType: event.type,
+        apiVersion: event.api_version,
+        pinnedApiVersion: STRIPE_API_VERSION,
+      },
+    );
+}
+
+/**
+ * Owns organization subscription deliveries. Routes on the live Stripe status
+ * (fetched once here; each owner re-retrieves after capturing its revisions),
+ * never on the possibly stale payload status. Returns null for non-recurring
+ * deliveries, which continue to purchased-credit fulfillment.
+ */
+async function processSubscriptionEvent(
+  delivery: StripeEventDelivery,
+): Promise<DrainResult | null> {
+  const { event } = delivery.body;
+  let stripeSubscriptionId: string | null = null;
+  try {
+    if (
+      event.type === "checkout.session.completed" &&
+      event.data.object.mode === "subscription"
+    ) {
+      const { reconcileSubscriptionCheckout } = await import(
+        "@/lib/services/subscription-checkout"
+      );
+      await reconcileSubscriptionCheckout(event.data.object.id);
+      return "ack";
+    }
+    if (event.type === "customer.subscription.deleted") {
+      warnOnUnexpectedApiVersion(event);
+      stripeSubscriptionId = event.data.object.id;
+      await reconcileStripeTerminalLifecycle(delivery.body);
+      return "ack";
+    }
+    if (event.type === "customer.subscription.updated") {
+      warnOnUnexpectedApiVersion(event);
+      stripeSubscriptionId = event.data.object.id;
+      const live =
+        await requireStripe().subscriptions.retrieve(stripeSubscriptionId);
+      switch (live.status) {
+        case "canceled":
+        case "incomplete_expired":
+          await reconcileStripeTerminalLifecycle(delivery.body);
+          return "ack";
+        case "past_due":
+        case "unpaid":
+          await (
+            await import("@/lib/services/stripe-dunning-lifecycle")
+          ).reconcileStripeDunningLifecycle(
+            delivery.body,
+            stripeSubscriptionId,
+          );
+          return "ack";
+        case "active":
+          await reconcileStripeScheduledCancellationLifecycle(delivery.body);
+          return "ack";
+        default:
+          return await acknowledgeUnownedSubscriptionEvent(
+            event,
+            stripeSubscriptionId,
+            `live_status_${live.status}`,
+          );
+      }
+    }
+    if (
+      event.type === "invoice.paid" &&
+      isRecurringInvoice(event.data.object)
+    ) {
+      warnOnUnexpectedApiVersion(event);
+      stripeSubscriptionId = invoiceSubscriptionId(event.data.object);
+      const { reconcileStripePaidRenewal } = await import(
+        "@/lib/services/stripe-paid-renewal"
+      );
+      await reconcileStripePaidRenewal(delivery.body);
+      return "ack";
+    }
+    if (
+      event.type === "invoice.payment_failed" &&
+      isRecurringInvoice(event.data.object)
+    ) {
+      warnOnUnexpectedApiVersion(event);
+      // Basil payloads omit invoice.subscription; the pinned client's invoice carries it.
+      const invoice = await requireStripe().invoices.retrieve(
+        event.data.object.id,
+      );
+      stripeSubscriptionId = invoiceSubscriptionId(invoice);
+      if (!stripeSubscriptionId)
+        return await acknowledgeUnownedSubscriptionEvent(
+          event,
+          null,
+          "invoice_subscription_unavailable",
+        );
+      const live =
+        await requireStripe().subscriptions.retrieve(stripeSubscriptionId);
+      if (live.status === "past_due" || live.status === "unpaid") {
+        await (
+          await import("@/lib/services/stripe-dunning-lifecycle")
+        ).reconcileStripeDunningLifecycle(delivery.body, stripeSubscriptionId);
+        return "ack";
+      }
+      // Active: Stripe has not entered dunning; incomplete: the initial
+      // payment belongs to checkout; canceled: the terminal event owns it.
+      return await acknowledgeUnownedSubscriptionEvent(
+        event,
+        stripeSubscriptionId,
+        `no_owned_change_live_status_${live.status}`,
+      );
+    }
+    const linkage = await classifySubscriptionLinkage(event);
+    if (linkage.kind === "ambiguous") {
+      logger.error(
+        "[Stripe Queue] Subscription linkage unavailable; retaining delivery",
+        {
+          eventId: event.id,
+          eventType: event.type,
+          attempts: delivery.attempts,
+          code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE",
+        },
+      );
+      return "retry";
+    }
+    if (linkage.kind === "recurring") {
+      warnOnUnexpectedApiVersion(event);
+      stripeSubscriptionId = linkage.stripeSubscriptionId;
+      return await acknowledgeUnownedSubscriptionEvent(
+        event,
+        stripeSubscriptionId,
+        "no_lifecycle_owner",
+      );
+    }
+    return null;
+  } catch (error) {
+    return classifySubscriptionFailure(delivery, stripeSubscriptionId, error);
+  }
 }
 
 /**
@@ -225,67 +647,8 @@ export async function processStripeEvent(
     `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
   );
 
-  // Terminal lifecycle and known applied cancellation scheduling have dedicated owners.
-  // Other recurring deliveries remain intact until their policy can be reconciled.
-  try {
-    if (
-      event.type === "checkout.session.completed" &&
-      event.data.object.mode === "subscription"
-    ) {
-      const { reconcileSubscriptionCheckout } = await import(
-        "@/lib/services/subscription-checkout"
-      );
-      await reconcileSubscriptionCheckout(event.data.object.id);
-      return "ack";
-    }
-    if (
-      event.type === "customer.subscription.updated" ||
-      event.type === "customer.subscription.deleted"
-    ) {
-      if (
-        event.type === "customer.subscription.updated" &&
-        event.data.object.status === "active"
-      ) {
-        await reconcileStripeScheduledCancellationLifecycle(delivery.body);
-      } else {
-        await reconcileStripeTerminalLifecycle(delivery.body);
-      }
-      return "ack";
-    }
-    if (
-      event.type === "invoice.paid" &&
-      isRecurringInvoice(event.data.object)
-    ) {
-      const { reconcileStripePaidRenewal } = await import(
-        "@/lib/services/stripe-paid-renewal"
-      );
-      await reconcileStripePaidRenewal(delivery.body);
-      return "ack";
-    }
-    if (await requiresSubscriptionReconciliation(event)) {
-      logger.error(
-        "[Stripe Queue] Subscription reconciliation unavailable; retaining delivery",
-        {
-          eventId: event.id,
-          eventType: event.type,
-          attempts: delivery.attempts,
-          code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE",
-        },
-      );
-      return "retry";
-    }
-  } catch (error) {
-    // error-policy:J1 Provider classification failures remain retryable regardless of error wording.
-    logger.error(
-      "[Stripe Queue] Invoice classification unavailable; retaining delivery",
-      {
-        eventId: event.id,
-        eventType: event.type,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
-    return "retry";
-  }
+  const subscriptionResult = await processSubscriptionEvent(delivery);
+  if (subscriptionResult !== null) return subscriptionResult;
 
   try {
     switch (event.type) {
@@ -306,6 +669,9 @@ export async function processStripeEvent(
         break;
       case "charge.dispute.funds_reinstated":
         await handleChargeDisputeFundsReinstated(event);
+        break;
+      case "charge.dispute.closed":
+        await handleChargeDisputeClosed(event);
         break;
       default:
         logger.debug(`[Stripe Queue] Unhandled event type: ${event.type}`);
@@ -352,6 +718,12 @@ async function handleCheckoutSessionCompleted(
   const session = event.data.object as Stripe.Checkout.Session;
   if (session.mode !== "payment" || session.payment_status !== "paid") return;
 
+  const retiredMiniapp = retiredMiniappPayment(session.metadata);
+  if (retiredMiniapp) {
+    await acknowledgeRetiredMiniappPayment(event, session.id, retiredMiniapp);
+    return;
+  }
+
   let organizationId = session.metadata?.organization_id;
   let userId = session.metadata?.user_id;
   const creditsStr = session.metadata?.credits || "0";
@@ -362,13 +734,9 @@ async function handleCheckoutSessionCompleted(
       ? session.payment_intent
       : (session.payment_intent?.id ?? null);
   let purchaseType = session.metadata?.type || "checkout";
-  const purchaseSource = session.metadata?.source;
   const appId = session.metadata?.app_id;
-  const chargeRequestId = session.metadata?.charge_request_id;
   const agentId = session.metadata?.agent_id;
   const checkoutOrderId = session.metadata?.checkout_order_id;
-
-  const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
 
   if (!paymentIntentId) {
     logger.warn(
@@ -403,8 +771,8 @@ async function handleCheckoutSessionCompleted(
     purchaseType = settlement.order.purchase_type;
     durableAlreadyApplied = settlement.alreadyApplied;
   } else if (
-    !isAppPurchase &&
-    (purchaseType === "custom_amount" || purchaseType === "credit_pack")
+    purchaseType === "custom_amount" ||
+    purchaseType === "credit_pack"
   ) {
     const customerId =
       typeof session.customer === "string"
@@ -462,47 +830,7 @@ async function handleCheckoutSessionCompleted(
     );
   }
 
-  // App purchases ALWAYS go through processPurchase — NOT gated on the org-credit
-  // `isDuplicate`. processPurchase is internally idempotent (its own app-earnings
-  // dedup via appEarningsRepository.findTransactionByPaymentIntent + addCredits'
-  // ON CONFLICT(stripe_payment_intent_id)), so this is safe on true duplicates
-  // AND lets a retry after a PARTIAL failure — org credit committed but creator
-  // earnings not yet written — re-enter and record the missing earnings. Gating
-  // on the org-credit dedup skipped that re-entry, permanently losing the
-  // creator's purchase-share earnings (org-credit and creator-earnings are
-  // written non-atomically; the org credit alone flips isDuplicate to true).
-  if (isAppPurchase) {
-    logger.info(
-      `[Stripe Queue] Processing app-specific credit purchase for app ${appId}`,
-    );
-
-    const result = await appCreditsService.processPurchase({
-      appId,
-      userId: userId!,
-      organizationId,
-      purchaseAmount: credits,
-      stripePaymentIntentId: paymentIntentId,
-    });
-
-    // processPurchase credits the org ledger directly (with this
-    // paymentIntentId on the credit transaction), so no separate
-    // marker transaction is needed here (#8253).
-    logger.info(
-      `[Stripe Queue] App credits added: ${result.creditsAdded} to org ${organizationId} for app ${appId} / user ${userId}`,
-      {
-        creditsAdded: result.creditsAdded,
-        platformOffset: result.platformOffset,
-        creatorEarnings: result.creatorEarnings,
-        newBalance: result.newBalance,
-      },
-    );
-
-    invalidateOrgTierCache(organizationId).catch((err) =>
-      logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
-        error: err instanceof Error ? err.message : String(err),
-      }),
-    );
-  } else if (!checkoutOrderId && !legacyCutoverApplied && !isDuplicate) {
+  if (!checkoutOrderId && !legacyCutoverApplied && !isDuplicate) {
     await creditsService.addCredits({
       organizationId,
       amount: credits,
@@ -565,7 +893,7 @@ async function handleCheckoutSessionCompleted(
     });
   }
 
-  if (!isAppPurchase && agentId) {
+  if (agentId) {
     await enqueueAgentRestartAfterTopUp({
       agentId,
       organizationId,
@@ -575,25 +903,10 @@ async function handleCheckoutSessionCompleted(
     });
   }
 
-  if (isAppPurchase && appId && userId && chargeRequestId) {
-    await appChargeSettlementService.markPaid({
-      appId,
-      chargeRequestId,
-      provider: "stripe",
-      providerPaymentId: paymentIntentId,
-      amountUsd: credits,
-      payerUserId: userId,
-      payerOrganizationId: organizationId,
-      metadata: {
-        stripe_checkout_session_id: session.id,
-      },
-    });
-  }
-
   // Revenue splits run on every delivery (including duplicate event_id
   // hits at the per-row level) so a retry that previously failed mid-way
   // can complete. dedupeBySourceId guarantees we never insert twice.
-  if (!isAppPurchase && userId) {
+  if (userId) {
     const { splits } = await referralsService.calculateRevenueSplits(
       userId,
       purchaseAmountUsd,
@@ -921,6 +1234,93 @@ function numberField(
 }
 
 // ---------------------------------------------------------------------------
+// Retired mini-app payments
+// ---------------------------------------------------------------------------
+
+interface RetiredMiniappPayment {
+  appId: string | null;
+  chargeRequestId: string | null;
+  source: string | null;
+  type: string | null;
+}
+
+/**
+ * Mini-app charges and app credit purchases were removed from the product
+ * (#32021). Their Checkout sessions and PaymentIntents carried
+ * `charge_request_id`, `source`/`purchase_source` = "miniapp_app", or
+ * `type` = "app_credit_purchase" alongside `organization_id` + `credits`.
+ * A late or replayed delivery must not fall through to generic org credit
+ * fulfillment: the retired lane may already have credited the payer.
+ * `app_id` alone is not a marker — live payment requests carry it too.
+ */
+function retiredMiniappPayment(
+  metadata: Stripe.Metadata | null | undefined,
+): RetiredMiniappPayment | null {
+  const data = recordFromUnknown(metadata);
+  const chargeRequestId = stringField(data, "charge_request_id");
+  const source =
+    stringField(data, "source") ?? stringField(data, "purchase_source");
+  const type = stringField(data, "type");
+  if (
+    !chargeRequestId &&
+    source !== "miniapp_app" &&
+    stringField(data, "purchase_source") !== "miniapp_app" &&
+    type !== "app_credit_purchase"
+  ) {
+    return null;
+  }
+  return {
+    appId: stringField(data, "app_id"),
+    chargeRequestId,
+    source,
+    type,
+  };
+}
+
+/**
+ * Acknowledge a retired mini-app payment without any financial side effect.
+ * The structured error log and ops warning are the operator signal; the
+ * payment needs manual reconciliation (refund or support credit) if it was
+ * never fulfilled by the retired lane.
+ */
+async function acknowledgeRetiredMiniappPayment(
+  event: Stripe.Event,
+  objectId: string,
+  retired: RetiredMiniappPayment,
+): Promise<void> {
+  const context = {
+    code: "retired_miniapp_payment",
+    eventId: event.id,
+    eventType: event.type,
+    objectId,
+    livemode: event.livemode,
+    appId: retired.appId,
+    chargeRequestId: retired.chargeRequestId,
+    source: retired.source,
+    type: retired.type,
+  };
+  logger.error(
+    "[Stripe Queue] Retired mini-app payment acknowledged without fulfillment",
+    context,
+  );
+  try {
+    await discordService.logWarning({
+      title: "Retired mini-app payment received",
+      message:
+        "A Stripe payment carrying retired mini-app metadata was acknowledged without crediting. Reconcile it manually.",
+      context,
+    });
+  } catch (error) {
+    // error-policy:J6 The structured error log above is the durable signal;
+    // an ops-channel outage must not turn the acknowledgement into a retry.
+    logger.warn("[Stripe Queue] Retired mini-app payment warning not sent", {
+      eventId: event.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // payment_intent.succeeded
 // ---------------------------------------------------------------------------
 
@@ -929,6 +1329,16 @@ async function handlePaymentIntentSucceeded(
 ): Promise<void> {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
   logger.debug(`[Stripe Queue] Payment intent succeeded: ${paymentIntent.id}`);
+
+  const retiredMiniapp = retiredMiniappPayment(paymentIntent.metadata);
+  if (retiredMiniapp) {
+    await acknowledgeRetiredMiniappPayment(
+      event,
+      paymentIntent.id,
+      retiredMiniapp,
+    );
+    return;
+  }
 
   // One-time and auto-top-up use PaymentIntent directly (no checkout
   // session). Referral splits run only for checkout.session.completed —
@@ -1228,16 +1638,6 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
   const orgId = paymentIntent.metadata?.organization_id;
   const userId = paymentIntent.metadata?.user_id;
-  const appId = paymentIntent.metadata?.app_id;
-  const chargeRequestId = paymentIntent.metadata?.charge_request_id;
-  const purchaseSource = paymentIntent.metadata?.source;
-  const amountUsd =
-    parseAndValidateCredits(
-      paymentIntent.metadata?.credits || paymentIntent.metadata?.amount || "",
-    ) ??
-    (paymentIntent.amount
-      ? Math.round((paymentIntent.amount / 100) * 100) / 100
-      : undefined);
   const lastPaymentError = paymentIntent.last_payment_error;
   const errorReason =
     lastPaymentError?.message || lastPaymentError?.code || "Payment failed";
@@ -1247,24 +1647,10 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
     userId,
     organizationId: orgId,
     errorReason,
+    ...(retiredMiniappPayment(paymentIntent.metadata)
+      ? { code: "retired_miniapp_payment" }
+      : {}),
   });
-
-  if (purchaseSource === "miniapp_app" && appId && chargeRequestId) {
-    await appChargeCallbacksService.failChargeAndEnqueue({
-      appId,
-      chargeRequestId,
-      status: "failed",
-      provider: "stripe",
-      providerPaymentId: paymentIntent.id,
-      amountUsd,
-      payerUserId: userId,
-      payerOrganizationId: orgId,
-      reason: errorReason,
-      metadata: {
-        stripe_payment_intent_status: paymentIntent.status,
-      },
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1408,6 +1794,50 @@ async function handleChargeDisputeFundsWithdrawn(
   });
 }
 
+/**
+ * A dispute that closes LOST is a final payment reversal. The credit clawback
+ * already ran on `funds_withdrawn`; this only places the durable organization
+ * hold that fails new paid admission closed (#22930). It never changes credit
+ * balances, never stops running resources and is released only explicitly.
+ * Won or otherwise closed disputes are no-ops.
+ */
+async function handleChargeDisputeClosed(event: Stripe.Event): Promise<void> {
+  const dispute = event.data.object as Stripe.Dispute;
+  if (dispute.status !== "lost") return;
+  const chargeId =
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  const paymentIntentId =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+  const reference = `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`;
+  // Attribute the reversal through the credit grant it funded; a charge that
+  // never granted organization credits has no Cloud entitlement to hold.
+  const grant = paymentIntentId
+    ? await creditsService.getTransactionByStripePaymentIntent(paymentIntentId)
+    : undefined;
+  if (!grant) {
+    logger.warn(
+      `[Stripe Queue] charge.dispute.closed ${reference}: lost dispute has no organization credit grant to hold`,
+      { paymentIntentId },
+    );
+    return;
+  }
+  const { recordLostChargebackHold } = await import(
+    "@/db/repositories/payment-reversal-holds"
+  );
+  const { created } = await recordLostChargebackHold({
+    organizationId: grant.organization_id,
+    stripeDisputeId: dispute.id,
+    stripeChargeId: chargeId ?? null,
+    stripePaymentIntentId: paymentIntentId ?? null,
+    amountCents: dispute.amount ?? null,
+  });
+  logger.warn(
+    `[Stripe Queue] ${created ? "Placed" : "Confirmed"} payment reversal hold on org ${grant.organization_id} for lost ${reference}`,
+  );
+}
+
 async function handleChargeDisputeFundsReinstated(
   event: Stripe.Event,
 ): Promise<void> {
@@ -1433,11 +1863,12 @@ async function handleChargeDisputeFundsReinstated(
     );
   }
 
-  const appliedClawbackUsd = Math.abs(Number(clawback.amount));
-  const reinstatedUsd = Math.min(
-    (dispute.amount ?? 0) / 100,
-    appliedClawbackUsd,
-  );
+  // `clawback.amount` is the credit amount actually removed by the matching
+  // funds-withdrawn event (already scaled from the disputed provider amount to
+  // the pack's credit units and capped at the balance then available). Winning
+  // the dispute restores exactly that — never provider dollars, which differ
+  // from credit units for packs, and never the unrecovered shortfall. (#31449)
+  const reinstatedUsd = Math.abs(Number(clawback.amount));
   if (!Number.isFinite(reinstatedUsd) || reinstatedUsd <= 0) {
     logger.info(
       `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
@@ -1453,7 +1884,7 @@ async function handleChargeDisputeFundsReinstated(
     stripePaymentIntentId: `${clawbackKey}:reinstated`,
     metadata: {
       payment_intent_id: paymentIntentId,
-      reinstated_usd: (dispute.amount ?? 0) / 100,
+      disputed_usd: (dispute.amount ?? 0) / 100,
       applied_reinstatement_usd: reinstatedUsd,
       clawback_key: clawbackKey,
       source,

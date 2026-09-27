@@ -77,7 +77,7 @@ class EnvironmentState:
 class StateInitializer:
     """
     Initializes deterministic Surfpool environments for benchmark scenarios.
-    
+
     Each trial gets a fresh instance with no state carryover.
     All randomness is derived from a fixed seed for reproducibility.
     """
@@ -85,7 +85,7 @@ class StateInitializer:
     def __init__(self, surfpool_binary_path: Optional[Path] = None, mock_mode: bool = False):
         """
         Initialize the state initializer.
-        
+
         Args:
             surfpool_binary_path: Path to Surfpool binary. If None, uses system PATH.
             mock_mode: If True, skip actual RPC calls and return mock data.
@@ -98,11 +98,11 @@ class StateInitializer:
     def derive_keypair(self, seed: int, index: int) -> Keypair:
         """
         Derive a deterministic keypair from seed and index.
-        
+
         Args:
             seed: Base seed for the run
             index: Account index for derivation
-            
+
         Returns:
             Deterministic Keypair
         """
@@ -113,11 +113,11 @@ class StateInitializer:
     def derive_program_address(self, seed: int, program_name: str) -> Pubkey:
         """
         Derive a deterministic program address.
-        
+
         Args:
             seed: Base seed for the run
             program_name: Name of the program
-            
+
         Returns:
             Deterministic program address
         """
@@ -133,18 +133,18 @@ class StateInitializer:
     ) -> EnvironmentState:
         """
         Initialize a complete Surfpool environment for a scenario.
-        
+
         This is the main entry point for scenario setup.
-        
+
         Args:
             seed: Deterministic seed for reproducibility
             programs: Programs to deploy
             accounts: Accounts to create and fund
             pools: Liquidity pools to initialize
-            
+
         Returns:
             EnvironmentState with all addresses and RPC endpoint
-            
+
         Raises:
             EnvironmentInitError: If initialization fails
         """
@@ -185,25 +185,25 @@ class StateInitializer:
     async def validate_state(self, state: EnvironmentState) -> bool:
         """
         Validate that the environment state is correctly initialized.
-        
+
         Checks:
         - All programs are deployed and executable
         - All accounts exist with correct balances
         - All pools are initialized with correct reserves
-        
+
         Args:
             state: The environment state to validate
-            
+
         Returns:
             True if all validations pass
-            
+
         Raises:
             StateValidationError: If any validation fails
         """
         # Skip validation in mock mode
         if self.mock_mode:
             return True
-        
+
         # Validate programs
         for name, address in state.programs.items():
             if not await self._verify_program_deployed(address):
@@ -224,7 +224,7 @@ class StateInitializer:
     async def teardown(self) -> None:
         """
         Tear down the current Surfpool instance.
-        
+
         Ensures no state carryover between trials.
         """
         if self._rpc_endpoint:
@@ -236,7 +236,7 @@ class StateInitializer:
 
     async def _start_surfpool(self, seed: int) -> str:
         """Start a Surfpool instance and return RPC endpoint.
-        
+
         Note: In the integrated flow, Surfpool is started by the CLI/Orchestrator
         using SurfpoolManager. This method is kept for standalone usage.
         """
@@ -246,7 +246,7 @@ class StateInitializer:
 
     async def _deploy_program(self, binary_path: Path, address: Pubkey) -> None:
         """Deploy a program binary to the given address.
-        
+
         Note: For Phase 1, we rely on Surfpool's built-in program cloning
         or pre-deployed programs. Direct deployment requires the solana CLI.
         """
@@ -261,11 +261,11 @@ class StateInitializer:
         """Fund an account with SOL and tokens using airdrop."""
         if not self._rpc_endpoint:
             return
-        
+
         from gauntlet.harness.surfpool import SolanaRpcClient
-        
+
         rpc = SolanaRpcClient(self._rpc_endpoint)
-        
+
         # Request SOL airdrop (convert SOL to lamports)
         lamports = int(sol_amount * 1_000_000_000)
         try:
@@ -273,7 +273,7 @@ class StateInitializer:
         except Exception:
             # Airdrop may fail if account already funded or limit reached
             pass
-        
+
         # Token distribution would require token program calls
         # For Phase 1, we focus on SOL-based scenarios
 
@@ -281,7 +281,7 @@ class StateInitializer:
         self, config: PoolConfig, programs: dict[str, Pubkey]
     ) -> Pubkey:
         """Initialize a liquidity pool and return its address.
-        
+
         For Phase 1, pools are simulated. Real pool initialization
         requires program-specific instructions.
         """
@@ -297,9 +297,9 @@ class StateInitializer:
         """Verify a program is deployed and executable."""
         if not self._rpc_endpoint:
             return True
-        
+
         from gauntlet.harness.surfpool import SolanaRpcClient
-        
+
         rpc = SolanaRpcClient(self._rpc_endpoint)
         try:
             info = await rpc.get_account_info(str(address))
@@ -311,9 +311,9 @@ class StateInitializer:
         """Verify an account exists with a balance."""
         if not self._rpc_endpoint:
             return True
-        
+
         from gauntlet.harness.surfpool import SolanaRpcClient
-        
+
         rpc = SolanaRpcClient(self._rpc_endpoint)
         try:
             balance = await rpc.get_balance(str(pubkey))
@@ -323,14 +323,14 @@ class StateInitializer:
 
     async def _verify_pool_initialized(self, address: Pubkey) -> bool:
         """Verify a pool is initialized.
-        
+
         For Phase 1, pools are simulated so we return True.
         """
         return True
 
     async def _stop_surfpool(self) -> None:
         """Stop the current Surfpool instance.
-        
+
         Note: In the integrated flow, Surfpool is managed by SurfpoolManager.
         """
         pass

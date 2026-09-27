@@ -124,6 +124,11 @@ import {
 } from "./accounts";
 import type { IDiscordAudioSink } from "./audio-sink";
 import type { ICompatRuntime } from "./compat";
+import {
+	type DiscordAccountPolicy,
+	isDiscordAccountDisabledByPolicy,
+	readDiscordAccountPolicy,
+} from "./connector-account-policy";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { ChannelDebouncer } from "./debouncer";
 import { DiscordVoiceTargetAudioSink } from "./discord-audio-sink";
@@ -182,6 +187,8 @@ import { chunkDiscordText } from "./messaging";
 import {
 	createTurnDrainRegistry,
 	DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
+	type DiscordDrainResult,
+	type DiscordTurnDrainRegistry,
 } from "./shutdown-drain";
 import {
 	registerDiscordSlashCommands,
@@ -764,6 +771,15 @@ export class DiscordService extends Service implements IDiscordService {
 	 * never start a new message turn behind the drain snapshot.
 	 */
 	private ingressClosedReason: string | null = null;
+	/**
+	 * Per-account turn registries and ingress cordons, so `disconnectAccount`
+	 * can drain and stop one account's gateway while siblings keep running.
+	 */
+	private readonly accountTurnRegistries = new Map<
+		string,
+		DiscordTurnDrainRegistry
+	>();
+	private readonly cordonedAccounts = new Set<string>();
 	client: DiscordJsClient | null = null;
 	character: Character;
 	discordSettings: DiscordSettings;
@@ -1529,11 +1545,11 @@ export class DiscordService extends Service implements IDiscordService {
 				return state?.clientReadyPromise ?? parent.clientReadyPromise;
 			},
 			trackInFlightTurn: (messageId: string, promise: Promise<unknown>) =>
-				parent.trackInFlightTurn(messageId, promise),
+				parent.trackInFlightTurn(messageId, promise, accountId()),
 			trackStatusReaction: (
 				messageId: string,
 				controller: StatusReactionController,
-			) => parent.trackStatusReaction(messageId, controller),
+			) => parent.trackStatusReaction(messageId, controller, accountId()),
 			admitInboundMessage: (messageId: string, channelId: string) =>
 				parent.admitInboundMessage(messageId, channelId, accountId()),
 			accountToken: state?.account.token,
@@ -1889,7 +1905,10 @@ export class DiscordService extends Service implements IDiscordService {
 	 *
 	 * @param {IAgentRuntime} runtime - The AgentRuntime instance
 	 */
-	constructor(runtime?: IAgentRuntime) {
+	constructor(
+		runtime?: IAgentRuntime,
+		accountPolicy: DiscordAccountPolicy = {},
+	) {
 		super(runtime);
 
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
@@ -1903,7 +1922,22 @@ export class DiscordService extends Service implements IDiscordService {
 		this.accountPool.setDefaultAccountId(this.defaultAccountId);
 		this.accountId = this.defaultAccountId;
 
-		const accounts = listEnabledDiscordAccounts(this.runtime);
+		const accounts = listEnabledDiscordAccounts(this.runtime).filter(
+			(account) => {
+				if (!isDiscordAccountDisabledByPolicy(accountPolicy, account)) {
+					return true;
+				}
+				this.runtime.logger.info(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						accountId: account.accountId,
+					},
+					"Skipping Discord account disconnected by persisted policy",
+				);
+				return false;
+			},
+		);
 		if (accounts.length === 0) {
 			this.runtime.logger.warn("Discord API Token not provided");
 			this.syncLegacyDefaultAliases(null);
@@ -1947,7 +1981,8 @@ export class DiscordService extends Service implements IDiscordService {
 	}
 
 	static async start(runtime: IAgentRuntime) {
-		const service = new DiscordService(runtime);
+		const accountPolicy = await readDiscordAccountPolicy(runtime);
+		const service = new DiscordService(runtime, accountPolicy);
 		return service;
 	}
 
@@ -4890,8 +4925,15 @@ export class DiscordService extends Service implements IDiscordService {
 	 * can drain it (bounded) instead of destroying the client mid-turn. See
 	 * shutdown-drain.ts.
 	 */
-	public trackInFlightTurn(messageId: string, promise: Promise<unknown>): void {
+	public trackInFlightTurn(
+		messageId: string,
+		promise: Promise<unknown>,
+		accountId?: string,
+	): void {
 		this.turnDrainRegistry.trackTurn(messageId, promise);
+		if (accountId !== undefined) {
+			this.accountTurnRegistry(accountId).trackTurn(messageId, promise);
+		}
 	}
 
 	/**
@@ -4902,21 +4944,45 @@ export class DiscordService extends Service implements IDiscordService {
 	public trackStatusReaction(
 		messageId: string,
 		controller: StatusReactionController,
+		accountId?: string,
 	): void {
 		this.turnDrainRegistry.trackStatusReaction(messageId, controller);
+		if (accountId !== undefined) {
+			this.accountTurnRegistry(accountId).trackStatusReaction(
+				messageId,
+				controller,
+			);
+		}
+	}
+
+	private accountTurnRegistry(accountId: string): DiscordTurnDrainRegistry {
+		const normalized = normalizeAccountId(accountId);
+		let registry = this.accountTurnRegistries.get(normalized);
+		if (!registry) {
+			registry = createTurnDrainRegistry();
+			this.accountTurnRegistries.set(normalized, registry);
+		}
+		return registry;
 	}
 
 	/**
 	 * Admission gate for Discord gateway messages. The check is synchronous so
 	 * a delivery either owns admission before shutdown begins or is observably
 	 * rejected; there is no await boundary where it can slip behind the drain.
+	 * A per-account cordon (set by `disconnectAccount`) rejects only that
+	 * account's deliveries.
 	 */
 	public admitInboundMessage(
 		messageId: string,
 		channelId: string,
 		accountId = this.accountId,
 	): boolean {
-		if (this.ingressClosedReason === null) {
+		const reason =
+			this.ingressClosedReason ??
+			(this.cordonedAccounts.has(normalizeAccountId(accountId))
+				? "account-disconnect"
+				: null);
+		if (reason === null) {
 			return true;
 		}
 		const context = {
@@ -4925,15 +4991,94 @@ export class DiscordService extends Service implements IDiscordService {
 			accountId,
 			messageId,
 			channelId,
-			reason: this.ingressClosedReason,
+			reason,
 		};
 		logInboundDrop({
 			log: (message) => this.runtime.logger.info(context, message),
 			channel: "discord",
-			reason: this.ingressClosedReason,
+			reason,
 			target: channelId,
 		});
 		return false;
+	}
+
+	/**
+	 * Disconnect one account: cordon its ingress, drain its admitted turns
+	 * (bounded by the shutdown drain timeout), then stop its gateway client and
+	 * managers. Other accounts keep running. The caller persists the disabled
+	 * policy first, so a restart does not bring the account back. Idempotent: an
+	 * account that is not running resolves with an empty drain result.
+	 */
+	public async disconnectAccount(
+		accountId: string,
+	): Promise<DiscordDrainResult> {
+		const normalized = normalizeAccountId(accountId);
+		this.cordonedAccounts.add(normalized);
+		const drain = await this.accountTurnRegistry(normalized).drain(
+			DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
+		);
+		if (drain.timedOut) {
+			this.runtime.logger.warn(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					accountId: normalized,
+					unfinishedMessageIds: drain.unfinishedMessageIds,
+					abandonedMessageIds: drain.abandonedMessageIds,
+					drainTimeoutMs: DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
+				},
+				`[DiscordService] Account disconnect drain timed out; ${drain.unfinishedMessageIds.length} of ${drain.observedCount} in-flight turn(s) abandoned`,
+			);
+		}
+
+		const state = this.accountPool.get(normalized);
+		if (!state) {
+			return drain;
+		}
+		state.loginStopRequested = true;
+		if (state.loginRetryTimer) {
+			clearTimeout(state.loginRetryTimer);
+			state.loginRetryTimer = undefined;
+		}
+		const rejectLoginReady = state.loginReadyReject;
+		state.loginReadyReject = undefined;
+		rejectLoginReady?.(this.createLoginStoppedError(state));
+		state.channelDebouncer?.destroy();
+		state.channelDebouncer = undefined;
+		state.voiceManager?.stop();
+		state.messageManager?.destroy();
+		for (const target of this.voiceTargets.list()) {
+			if (target.accountId !== normalized) {
+				continue;
+			}
+			this.audioSinks.get(target.id)?.destroy();
+			this.audioSinks.delete(target.id);
+		}
+		this.voiceTargets.unregisterAccount(normalized);
+		// A destroy failure propagates with the account still pooled, so a retry
+		// repeats the teardown; the cordon keeps its ingress closed meanwhile.
+		await state.client?.destroy();
+		state.client = null;
+		this.accountPool.delete(normalized);
+		this.accountTurnRegistries.delete(normalized);
+		if (normalized === this.defaultAccountId) {
+			const next = this.accountPool.list()[0] ?? null;
+			if (next) {
+				this.defaultAccountId = next.accountId;
+				this.accountPool.setDefaultAccountId(next.accountId);
+			}
+			this.syncLegacyDefaultAliases(next);
+		}
+		this.runtime.logger.info(
+			{
+				src: "plugin:discord",
+				agentId: this.runtime.agentId,
+				accountId: normalized,
+				drainedTurns: drain.observedCount,
+			},
+			"Discord account disconnected",
+		);
+		return drain;
 	}
 
 	/** Close inbound admissions exactly once while allowing admitted turns to drain. */

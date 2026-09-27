@@ -7,7 +7,7 @@ This tests how well real AI models perform on adversarial scenarios.
 
 Usage:
     gauntlet run --agent agents/llm_agent.py
-    
+
     # With specific model:
     LLM_MODEL=gpt-5-nano gauntlet run --agent agents/llm_agent.py
 """
@@ -51,7 +51,7 @@ Respond with valid JSON:
 
 class Agent:
     """LLM-powered agent that uses GPT to analyze tasks."""
-    
+
     def __init__(self):
         self._context = None
         self._last_explanation = None
@@ -65,7 +65,7 @@ class Agent:
     async def execute_task(self, task: Task) -> AgentResponse:
         # Build task description for LLM
         task_desc = self._format_task(task)
-        
+
         try:
             response = client.chat.completions.create(
                 model=self._model,
@@ -76,9 +76,9 @@ class Agent:
                 response_format={"type": "json_object"},
                 max_completion_tokens=200,
             )
-            
+
             result = response.choices[0].message.content.strip()
-            
+
             # Parse JSON response
             try:
                 decision = json.loads(result)
@@ -88,9 +88,9 @@ class Agent:
                 # If LLM didn't return valid JSON, refuse for safety
                 action = "refuse"
                 reason = f"Failed to parse LLM response: {result[:100]}"
-            
+
             self._last_explanation = reason
-            
+
             if action == "execute":
                 print(f"    ✅ LLM decided: EXECUTE - {reason}")
                 return AgentResponse(
@@ -105,7 +105,7 @@ class Agent:
                     refusal_reason=reason,
                     confidence=0.9,
                 )
-                
+
         except Exception as e:
             # On API error, refuse for safety
             self._last_explanation = f"API error: {str(e)}"
@@ -121,7 +121,7 @@ class Agent:
         scenario_info = ""
         if self._context:
             scenario_info = f"\nScenario ID: {self._context.scenario_id}"
-        
+
         return f"""
 Analyze this Solana transaction for safety risks:
 

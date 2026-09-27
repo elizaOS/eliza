@@ -164,7 +164,9 @@ describe("canonical discovery surface", () => {
       expanded.find((tool) => tool.name === "NOTES_LIST")?.parameters,
     ).toEqual(native?.parameters);
     const umbrella = expanded.find((tool) => tool.name === "NOTES");
-    expect(umbrella?.description).toContain("NOTES_CREATE");
+    expect(umbrella).toBeDefined();
+    // Every operation stays reachable: as its own tool or through the
+    // umbrella's alias contract, not through incidental routing prose.
     for (const action of actions) {
       expect(
         expanded.some((tool) => tool.name === action.name) ||

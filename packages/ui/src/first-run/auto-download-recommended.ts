@@ -19,6 +19,7 @@
  *     The next boot can retry.
  *   - hub fetch fails → silent skip, no marker. Same retry semantics.
  *   - download POST fails → silent skip, no marker.
+ *   - no published, activation-eligible tier fits → skip, no marker.
  */
 
 import type {
@@ -123,10 +124,11 @@ export async function autoDownloadRecommendedLocalModelInBackground(
     return;
   }
   const recommended = pickRecommendedModel(snapshot);
-  if (!recommended) {
-    writeMarker();
-    return;
-  }
+  // No published, activation-eligible tier fits this device (for example every
+  // published manifest is still a candidate). Leave the marker unset so a later
+  // boot offers the download once an eligible tier is published; chat stays on
+  // the configured cloud/provider route meanwhile.
+  if (!recommended) return;
   try {
     await client.startLocalInferenceDownload(recommended.id);
     writeMarker();

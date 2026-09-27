@@ -224,6 +224,21 @@ describe("useAppLifecycleEvents", () => {
     expect(loadConversationMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("replays only the conversation that is active when the resume runs", () => {
+    // A resume observed for conv-before must not replay its tail after the
+    // user switched to conv-after inside the debounce window.
+    const { activeConversationIdRef, loadConversationMessages } = setup({
+      activeId: "conv-before",
+    });
+
+    dispatchResume();
+    activeConversationIdRef.current = "conv-after";
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(loadConversationMessages).toHaveBeenCalledTimes(1);
+    expect(loadConversationMessages).toHaveBeenCalledWith("conv-after");
+  });
+
   it("treats a persisted pageshow (bfcache restore) as a resume (D3)", () => {
     const { loadConversationMessages } = setup({ activeId: "conv-bfcache" });
 

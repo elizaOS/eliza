@@ -58,6 +58,11 @@ import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import {
+  IosCloudAuthError,
+  isIosNativeCloudAuthAvailable,
+  signInWithIosCloud,
+} from "../ios-cloud/ios-cloud-auth";
 import { logger } from "../logger.ts";
 import {
   isAndroidCloudBuild,
@@ -1045,6 +1050,56 @@ export function useCloudState({
         // completed login with no token.
         if (androidLoginError && options.requireClientAuth) {
           throw androidLoginError;
+        }
+        return loginCompletion;
+      }
+      // iOS 17.4+ builds present the same hosted mobile PKCE flow in an
+      // ASWebAuthenticationSession with a claimed HTTPS callback (#16420). The
+      // credential lands in the Keychain-backed Steward store and is ACKed
+      // before this state machine treats the session as connected. Older iOS
+      // or a build without the native plugin keeps the device-code fallback.
+      if (
+        Capacitor.getPlatform() === "ios" &&
+        !hasUsableStoredStewardToken() &&
+        (await isIosNativeCloudAuthAvailable().catch((error: unknown) => {
+          logger.warn(
+            { error },
+            "[useCloudState] iOS native Cloud sign-in availability probe failed",
+          );
+          return false;
+        }))
+      ) {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+        let iosLoginError: unknown = null;
+        try {
+          closePrePoppedWindow();
+          const completion = await signInWithIosCloud(cloudApiBase);
+          const connected = await reconcileAndroidCloudSession(
+            completion.apiBase,
+          );
+          if (!connected) {
+            throw new Error(
+              "Could not verify your Eliza Cloud session. Please sign in again.",
+            );
+          }
+          setElizaCloudLoginError(null);
+        } catch (error) {
+          iosLoginError = error;
+          setElizaCloudLoginError(
+            error instanceof IosCloudAuthError && error.code === "cancelled"
+              ? "Eliza Cloud sign-in was cancelled."
+              : error instanceof Error
+                ? error.message
+                : "Eliza Cloud login failed",
+          );
+        } finally {
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          completeLogin();
+        }
+        if (iosLoginError && options.requireClientAuth) {
+          throw iosLoginError;
         }
         return loginCompletion;
       }

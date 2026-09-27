@@ -35,6 +35,11 @@ import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
+import {
+  type PersonalSharedFallbackDelivery,
+  preparePersonalSharedFallback,
+  recoverPersonalSharedFallback,
+} from "@/lib/services/personal-dedicated-fallback";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
   GROUP_OWNER_FALLBACK_LABEL,
@@ -1548,6 +1553,24 @@ app.post("/", async (c) => {
         agent.id,
       );
     }
+    // One authority decision for both personal consumers (#25146): a direct
+    // turn whose Dedicated target is stopped by a confirmed, unfunded billing
+    // suspension is answered by Shared in a separately scoped fallback journal.
+    // Groups keep their owner-bound Dedicated contract.
+    let sharedFallback: PersonalSharedFallbackDelivery | null = null;
+    if (
+      dedicated &&
+      !isGroupMessage(parsed.data) &&
+      (dedicated.status === "stopped" || dedicated.status === "sleeping")
+    ) {
+      sharedFallback = await preparePersonalSharedFallback({
+        dedicated,
+        organizationId: account.organizationId,
+        userId: account.userId,
+        sourceAgentId: agent.id,
+      });
+      if (sharedFallback) dedicated = null;
+    }
     const accountMs = performance.now() - accountStartedAt;
     const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
     c.header("Server-Timing", accountTiming);
@@ -1560,10 +1583,14 @@ app.post("/", async (c) => {
             worker.namespace,
             {
               warmConversation:
-                isNewPersonalAccount || Boolean(groupConversationId),
+                isNewPersonalAccount ||
+                Boolean(groupConversationId) ||
+                Boolean(sharedFallback),
               ...(groupConversationId
                 ? { conversationId: groupConversationId }
-                : {}),
+                : sharedFallback
+                  ? { conversationId: sharedFallback.journalRoomId }
+                  : {}),
             },
           ).then(() => performance.now() - startedAt);
           worker.executionCtx.waitUntil(timing);
@@ -1712,6 +1739,14 @@ app.post("/", async (c) => {
             : undefined,
         );
       }
+      // Dedicated is running again: close any open fallback interval before
+      // routing returns, so both runtimes never own the same conversation.
+      await recoverPersonalSharedFallback({
+        organizationId: account.organizationId,
+        userId: account.userId,
+        sourceAgentId: agent.id,
+        dedicatedAgentId: dedicated.id,
+      });
       const bridgeRequest = {
         jsonrpc: "2.0" as const,
         id: parsed.data.messageId,
@@ -1889,7 +1924,9 @@ app.post("/", async (c) => {
         )
       : await sharedRestMessageSend(
           agent,
-          agent.id,
+          // A withdrawn Dedicated turn uses its scoped fallback journal, never
+          // the canonical Dedicated/pre-upgrade conversation.
+          sharedFallback?.journalRoomId ?? agent.id,
           deliveryMessage,
           agent.agent_name ?? "Eliza",
           worker.executionCtx,
@@ -1924,6 +1961,9 @@ app.post("/", async (c) => {
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
         ...(result.mediaUrls ? { mediaUrls: result.mediaUrls } : {}),
+        ...(sharedFallback
+          ? { accountState: sharedFallback.accountState }
+          : {}),
         ...(groupDeliveryAuthority
           ? {
               groupDelivery: {

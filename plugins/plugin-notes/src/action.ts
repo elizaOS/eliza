@@ -19,6 +19,8 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  isObjectRecord,
+  isValidTimeZone,
   type Memory,
   normalizeEffectReceipt,
   type State,
@@ -291,7 +293,7 @@ export const notesAction: Action = {
   descriptionCompressed:
     "notes: create, list/search, patch title/body or exact text, legacy whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
-    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic); date/period queries -> NOTES_LIST(dateRange={field:createdAt/updatedAt,startAt,endAt}, content=optional topic). Omit dateRange only when no date window is requested, and omit content when no topic is requested. Resolve relative windows from the current date and user timezone; last week is the previous Monday-to-Monday calendar week. Read timestamps from the action result, not provider restoration. Delete -> NOTES_DELETE(content=identifying text); edit -> NOTES_PATCH(target={kind:id/text,value}, changes=[{field:title/body,value:exact replacement}], or changes=[] with textEdit for literal substitution); omitted fields remain unchanged. NOTES_UPDATE supports exact textEdit substitutions and legacy complete-note replacement. Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
+    "Use the Notes store for saved-note work; MEMORY, documents, files and DATABASE do not search it. Do not use raw SQL. Prefer available NOTES child operations; discover the required operation when missing. Never substitute a read for a requested edit or deletion. A title index is not body or timestamp evidence; use supplied current complete records or the appropriate read. Keep exact wording, punctuation and line breaks. Dates inside note text are content unless scheduling or a reminder is explicitly requested. Opening Notes is separate navigation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -330,6 +332,38 @@ export const notesAction: Action = {
         "NOTES_INVALID_DATE_FILTER",
       );
     }
+    const latestBy = params.latestBy;
+    if (
+      latestBy !== undefined &&
+      (op !== "list" || (latestBy !== "createdAt" && latestBy !== "updatedAt"))
+    ) {
+      return failure(
+        "latestBy is only supported for list reads and must be createdAt or updatedAt.",
+        "NOTES_INVALID_RECENCY_SELECTION",
+      );
+    }
+    const explicitDisplayZone = params.displayTimeZone;
+    if (
+      explicitDisplayZone !== undefined &&
+      ((op !== "get" && (op !== "list" || !latestBy)) ||
+        typeof explicitDisplayZone !== "string" ||
+        !isValidTimeZone(explicitDisplayZone))
+    ) {
+      return failure(
+        "displayTimeZone requires an exact get or list latestBy selection and a valid IANA timezone.",
+        "NOTES_INVALID_DISPLAY_TIME_ZONE",
+      );
+    }
+    const metadata = message.content?.metadata;
+    const uiZone = isObjectRecord(metadata) ? metadata.uiTimeZone : undefined;
+    const displayZone =
+      typeof explicitDisplayZone === "string"
+        ? explicitDisplayZone
+        : (op === "get" || latestBy) &&
+            typeof uiZone === "string" &&
+            isValidTimeZone(uiZone)
+          ? uiZone
+          : undefined;
     if (op === "patch") {
       if (
         Object.keys(params).some(
@@ -403,7 +437,19 @@ export const notesAction: Action = {
                 .includes(normalizedTopic),
             )
           : notes;
-      const matches = dateRange
+      if (
+        latestBy &&
+        dateRange &&
+        candidates.some(
+          (note) => !Number.isFinite(Date.parse(note[dateRange.field])),
+        )
+      ) {
+        return failure(
+          "A note has an invalid filter timestamp; the latest matching note cannot be determined.",
+          "NOTES_INVALID_RECENCY_TIMESTAMP",
+        );
+      }
+      const eligibleMatches = dateRange
         ? candidates.filter((note) => {
             const instant = Date.parse(note[dateRange.field]);
             return (
@@ -412,6 +458,35 @@ export const notesAction: Action = {
             );
           })
         : candidates;
+      let matches = eligibleMatches;
+      let latestInstant: number | null = null;
+      if (latestBy) {
+        for (const note of eligibleMatches) {
+          const instant = Date.parse(note[latestBy]);
+          if (!Number.isFinite(instant)) {
+            return failure(
+              "A matching note has an invalid selection timestamp; the latest note cannot be determined.",
+              "NOTES_INVALID_RECENCY_TIMESTAMP",
+            );
+          }
+          if (latestInstant === null || instant > latestInstant)
+            latestInstant = instant;
+        }
+        matches = eligibleMatches.filter(
+          (note) => Date.parse(note[latestBy]) === latestInstant,
+        );
+      }
+      const displayFormatter = displayZone
+        ? new Intl.DateTimeFormat("en-US", {
+            timeZone: displayZone,
+            dateStyle: "medium",
+            timeStyle: "long",
+          })
+        : undefined;
+      const exactNote =
+        op === "get" && matches.length === 1 ? matches[0] : undefined;
+      const exactCreated = exactNote ? Date.parse(exactNote.createdAt) : NaN;
+      const exactUpdated = exactNote ? Date.parse(exactNote.updatedAt) : NaN;
       const emptyInventory =
         op === "list" &&
         notes.length === 0 &&
@@ -423,6 +498,45 @@ export const notesAction: Action = {
         readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
+        ...(exactNote &&
+        displayFormatter &&
+        Number.isFinite(exactCreated) &&
+        Number.isFinite(exactUpdated)
+          ? {
+              noteTimestampDisplay: {
+                noteId: exactNote.id,
+                timeZone: displayZone,
+                source: explicitDisplayZone !== undefined ? "explicit" : "ui",
+                createdAt: displayFormatter.format(new Date(exactCreated)),
+                updatedAt: displayFormatter.format(new Date(exactUpdated)),
+              },
+            }
+          : {}),
+        ...(latestBy
+          ? {
+              eligibleMatchCount: eligibleMatches.length,
+              selection: {
+                kind: "latest",
+                field: latestBy,
+                at:
+                  latestInstant === null
+                    ? null
+                    : new Date(latestInstant).toISOString(),
+                ...(latestInstant !== null && displayFormatter
+                  ? {
+                      display: {
+                        label: displayFormatter?.format(
+                          new Date(latestInstant),
+                        ),
+                        timeZone: displayZone,
+                        source:
+                          explicitDisplayZone !== undefined ? "explicit" : "ui",
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
         filterApplied:
           noteId !== undefined ||
           topic !== undefined ||
@@ -574,11 +688,27 @@ export const notesAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Required for replacementContent and nonempty PATCH changes: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Literal textEdit may omit it.",
+        "Required for every PATCH, including textEdit, and for UPDATE replacementContent: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
       subactions: ["update", "patch"],
       required: false,
       requiredForSubactions: ["patch"],
       schema: { type: "integer", minimum: 0 },
+    },
+    {
+      name: "latestBy",
+      description:
+        "For a latest-note request, select the greatest createdAt (newest written) or updatedAt (most recently edited) instant after any text/date filters. Returns every tie with complete content. Resolve the basis from the user's wording/context; bare latest has no automatic default. State the selected basis in the answer. Omit to return every matching note.",
+      required: false,
+      subactions: ["list"],
+      schema: { type: "string", enum: ["createdAt", "updatedAt"] },
+    },
+    {
+      name: "displayTimeZone",
+      description:
+        "Optional IANA display timezone for exact get timestamps or the list latestBy selected timestamp. Use an explicitly requested zone. Otherwise a valid current UI timezone may supply display labels. Canonical timestamps remain unchanged.",
+      required: false,
+      subactions: ["list", "get"],
+      schema: { type: "string" },
     },
     {
       name: "dateRange",
@@ -649,7 +779,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["create", "update", "delete"],

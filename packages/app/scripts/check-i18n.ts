@@ -11,6 +11,12 @@
  * contract made this checker unwireable, it ended up wired into no lane, and
  * the source catalog silently drifted 705 keys behind source (#17605).
  *
+ * Two value-level rules are also errors (#30636): no locale value may contain
+ * a raw JavaScript `${expr}` placeholder (only `{{var}}` interpolates), and no
+ * source-locale value may be its key's own humanized name ("Unsaved Changes
+ * Title") while the call site's defaultValue supplies the real text — the
+ * catalog overrides defaultValue, so the key name would ship.
+ *
  * Dynamic call sites (t(variable), t(`prefix.${x}`)) are declared in
  * packages/app/scripts/i18n-dynamic-keys.json (`keys` / `prefixes`). The same file
  * carries `uncatalogued`: keys whose call sites pass a RUNTIME-CONDITIONAL
@@ -69,6 +75,106 @@ const SINGLE_QUOTE_STR_RE = /'((?:\\.|[^'\\\n])*)'/g;
 const DOUBLE_QUOTE_STR_RE = /"((?:\\.|[^"\\\n])*)"/g;
 const BACKTICK_STR_RE = /`((?:\\.|[^`\\])*)`/g;
 
+// `t("key", { ... })` — the options object starts at the match's final `{`.
+const CALL_WITH_OPTIONS_RE =
+  /\bt(?:Ref\.current)?\(\s*["']([^"'\n]+)["']\s*,\s*\{/g;
+const DEFAULT_VALUE_RE =
+  /\bdefaultValue:\s*("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)/;
+
+// A JavaScript template placeholder copied into a catalog value (`${expr}`)
+// renders literally: the translator only interpolates `{{var}}`. A dollar sign
+// directly before an interpolation (`${{amount}}`) is a currency amount and is
+// legitimate, so only `${` NOT followed by a second `{` is rejected.
+const JS_PLACEHOLDER_RE = /\$\{(?!\{)/;
+
+// Key-name suffixes that describe a string's ROLE rather than its text: a
+// catalog value that is just the key name with one of these ("Unsaved Changes
+// Title", "Mode Line", "Approved Notice") is never real copy.
+const STRUCTURAL_KEY_SUFFIX_RE =
+  /(Title|Body|Prompt|Placeholder|Warning|Description|Desc|Line|Count|Notice|Failed|Hint|Message|Tooltip)$/;
+
+// Returns the balanced `{ ... }` starting at `start`, skipping string and
+// template-literal contents, or null when unbalanced.
+function balancedObjectAt(text, start) {
+  let depth = 0;
+  let quote = null;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === "\\") {
+        i++;
+      } else if (c === quote) {
+        quote = null;
+      } else if (quote === "`" && c === "$" && text[i + 1] === "{") {
+        let inner = 0;
+        for (let j = i + 1; j < text.length; j++) {
+          if (text[j] === "{") inner++;
+          else if (text[j] === "}" && --inner === 0) {
+            i = j;
+            break;
+          }
+        }
+      }
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
+function decodeStringLiteral(literal) {
+  const body = literal.slice(1, -1);
+  if (literal[0] === '"') {
+    try {
+      return JSON.parse(literal);
+    } catch {
+      return body;
+    }
+  }
+  return body.replace(/\\(.)/g, "$1");
+}
+
+// "UnsavedChangesTitle" / "testConnection" -> "unsaved changes title" /
+// "test connection": the Title-Cased stub the catalog backfill produced.
+export function humanizeKeyName(key) {
+  const segment = key.split(".").pop() ?? key;
+  return segment
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+const lettersOnly = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// True when a catalog value is its key's own name standing in for the text the
+// call site actually supplies. Short labels whose key IS the text ("Secrets",
+// "Running", "Save Settings") are deliberately not flagged even when a call
+// site passes a different default — that is a product wording choice, not a
+// backfill stub. Flagged only when the key name degraded the call-site text
+// (case/punctuation lost from a multi-word label: "Dont Save" vs "Don't
+// save"), or stands in for a sentence, an interpolated string, or a string
+// whose key names its role (…Title, …Body, …Count).
+export function isKeyNamedStub(key, catalogValue, callSiteDefault) {
+  if (catalogValue === callSiteDefault) return false;
+  const keyName = humanizeKeyName(key);
+  if (catalogValue.trim().toLowerCase() !== keyName) return false;
+  if (
+    keyName.includes(" ") &&
+    lettersOnly(catalogValue) === lettersOnly(callSiteDefault)
+  ) {
+    return true;
+  }
+  return (
+    /\{\{\w+\}\}|\$\{/.test(callSiteDefault) ||
+    /[.?!…]$/.test(callSiteDefault.trim()) ||
+    STRUCTURAL_KEY_SUFFIX_RE.test(key.split(".").pop() ?? key)
+  );
+}
+
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -100,6 +206,7 @@ function scanSources(scanDirs) {
   const prefixWildcards = new Map(); // prefix -> [{file, line}]
   const dynamicSites = []; // {file, line, snippet}
   const anyLiteralOccurrences = new Map(); // key -> [{file, line}]  (any string literal, any position)
+  const callDefaults = new Map(); // key -> [{file, line, value}]  (static defaultValue at a t() call site)
 
   for (const dir of scanDirs) {
     for (const file of walk(dir)) {
@@ -135,6 +242,23 @@ function scanSources(scanDirs) {
           literalKeys.set(m[1], arr);
           m = re.exec(text);
         }
+      }
+
+      CALL_WITH_OPTIONS_RE.lastIndex = 0;
+      let cm = CALL_WITH_OPTIONS_RE.exec(text);
+      while (cm) {
+        const options = balancedObjectAt(text, cm.index + cm[0].length - 1);
+        const dm = options ? DEFAULT_VALUE_RE.exec(options) : null;
+        if (dm) {
+          const arr = callDefaults.get(cm[1]) ?? [];
+          arr.push({
+            file,
+            line: lineOf(text, cm.index),
+            value: decodeStringLiteral(dm[1]),
+          });
+          callDefaults.set(cm[1], arr);
+        }
+        cm = CALL_WITH_OPTIONS_RE.exec(text);
       }
 
       TEMPLATE_RE.lastIndex = 0;
@@ -174,7 +298,13 @@ function scanSources(scanDirs) {
     }
   }
 
-  return { literalKeys, prefixWildcards, dynamicSites, anyLiteralOccurrences };
+  return {
+    literalKeys,
+    prefixWildcards,
+    dynamicSites,
+    anyLiteralOccurrences,
+    callDefaults,
+  };
 }
 
 function loadLocales(localeDir) {
@@ -246,8 +376,13 @@ export function runI18nCheck(options = {}) {
     return `${shown.join(", ")}${more}`;
   };
 
-  const { literalKeys, prefixWildcards, dynamicSites, anyLiteralOccurrences } =
-    scanSources(scanDirs);
+  const {
+    literalKeys,
+    prefixWildcards,
+    dynamicSites,
+    anyLiteralOccurrences,
+    callDefaults,
+  } = scanSources(scanDirs);
   const locales = loadLocales(localeDir);
   const allowlist = loadAllowlist(allowlistPath);
   const uncatalogued = new Set(allowlist.uncatalogued);
@@ -387,7 +522,51 @@ export function runI18nCheck(options = {}) {
     }
   }
 
-  // 4. Surface unresolved dynamic call sites (informational). Unconditional:
+  // 4. No locale value may carry a JavaScript template placeholder. `${expr}`
+  //    is copied source, not a message: the translator interpolates only
+  //    `{{var}}`, so the placeholder renders literally in the UI.
+  for (const lang of langs) {
+    const leaked = Object.entries(locales[lang]).filter(
+      ([, value]) => typeof value === "string" && JS_PLACEHOLDER_RE.test(value),
+    );
+    if (leaked.length === 0) continue;
+    errors.push(
+      `[i18n] ${lang}.json has ${leaked.length} value(s) with a raw JavaScript \${...} placeholder (renders literally — use {{var}} and pass var at the call site):`,
+    );
+    for (const [key, value] of leaked.slice(0, 50)) {
+      errors.push(`  - ${key}: ${JSON.stringify(value)}`);
+    }
+    if (leaked.length > 50) errors.push(`  ... ${leaked.length - 50} more`);
+  }
+
+  // 5. A source-locale value must not be its key's own name while the call
+  //    site supplies the real text. The catalog wins over `defaultValue`, so
+  //    a backfilled stub ("Unsaved Changes Title" for UnsavedChangesTitle)
+  //    ships verbatim. Keys whose call sites disagree on the default are
+  //    skipped: no single catalog value can match all of them.
+  const stubs = [];
+  for (const [key, sites] of callDefaults) {
+    const catalogValue = locales[sourceLocale][key];
+    if (typeof catalogValue !== "string") continue;
+    const defaults = new Set(sites.map((s) => s.value));
+    if (defaults.size !== 1) continue;
+    const [callSiteDefault] = defaults;
+    if (isKeyNamedStub(key, catalogValue, callSiteDefault)) {
+      stubs.push({ key, catalogValue, callSiteDefault, sites });
+    }
+  }
+  if (stubs.length > 0) {
+    errors.push(
+      `[i18n] ${sourceLocale}.json has ${stubs.length} value(s) that are the key's own name while the call site supplies the text (the catalog overrides defaultValue, so the key name ships):`,
+    );
+    for (const s of stubs) {
+      errors.push(
+        `  - ${s.key}: catalog ${JSON.stringify(s.catalogValue)} vs call site ${JSON.stringify(s.callSiteDefault)}   (${fmtSites(s.sites, 1)})`,
+      );
+    }
+  }
+
+  // 6. Surface unresolved dynamic call sites (informational). Unconditional:
   //    a non-empty allowlist is evidence that dynamic sites exist and are
   //    being hand-tracked, not evidence that every site is accounted for.
   //    Gating this on an empty allowlist silenced the report precisely when

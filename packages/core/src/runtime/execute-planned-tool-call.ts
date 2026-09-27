@@ -17,6 +17,7 @@ import {
 import {
 	authorizeOwnerExclusiveDisclosure,
 	PRIVACY_DENIED_TEXT,
+	renewExpiredTrustedDeliveryAudience,
 	revalidateOwnerExclusiveDisclosure,
 } from "../security/trusted-delivery-audience";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
@@ -612,6 +613,11 @@ export async function executePlannedToolCall(
 			}
 		: resolvedCtx;
 	perfMark("roles");
+	if (action.disclosureGate?.require === "owner_exclusive") {
+		// The synchronous gate below rejects expired evidence outright; an
+		// active long turn first renews it from current trusted authority.
+		await renewExpiredTrustedDeliveryAudience(runtime, executorCtx.message);
+	}
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
 		return emitToolResult(

@@ -701,6 +701,69 @@ function activeServerToTarget(
       return "remote-backend";
   }
 }
+/**
+ * True when `clientBaseUrl` is the embedded agent the desktop shell itself
+ * hosts: a loopback origin equal to the shell-injected live API base. A
+ * persisted `remote` record reconciled onto that base (for example a record
+ * saved while the embedded API listened on 31337, restored after it moved to
+ * 31338) is the embedded agent, not an externally running backend.
+ */
+export function isDesktopEmbeddedApiBase(
+  clientBaseUrl: string | null | undefined,
+  liveApiBase: string | null | undefined,
+): boolean {
+  if (!clientBaseUrl || !liveApiBase) return false;
+  try {
+    const client = new URL(clientBaseUrl);
+    const live = new URL(liveApiBase);
+    return (
+      isLoopbackHostname(client.hostname) &&
+      isLoopbackHostname(live.hostname) &&
+      client.origin === live.origin
+    );
+  } catch {
+    // error-policy:J3 an unparsable base is not the shell's embedded agent.
+    return false;
+  }
+}
+/**
+ * Classify the restored runtime target against the desktop shell's actual
+ * hosting mode rather than the persisted record's kind alone.
+ *
+ * - A loopback backend the shell does NOT host (non-"local" shell mode, e.g.
+ *   "external") is already running elsewhere: treat it as `remote-backend` so
+ *   the coordinator skips the local agent-readiness poll.
+ * - A persisted `remote` record that resolves to the shell's own embedded API
+ *   while the shell hosts the embedded agent ("local" mode) is the embedded
+ *   agent: classify it `embedded-local` so startup requests the local runtime,
+ *   and first-run/runtime readiness is verified instead of assumed. Without
+ *   this the renderer skipped local startup and reached ready against an
+ *   unconfigured first-run backend (#30744).
+ */
+export function resolveDesktopRestoredTarget(args: {
+  target: "embedded-local" | "cloud-managed" | "remote-backend";
+  serverKind: PersistedActiveServer["kind"];
+  clientBaseUrl: string | null | undefined;
+  liveApiBase: string | null | undefined;
+  shellRuntimeMode: string | undefined;
+}): "embedded-local" | "cloud-managed" | "remote-backend" {
+  if (
+    args.target === "embedded-local" &&
+    args.shellRuntimeMode &&
+    args.shellRuntimeMode !== "local"
+  ) {
+    return "remote-backend";
+  }
+  if (
+    args.target === "remote-backend" &&
+    args.serverKind === "remote" &&
+    args.shellRuntimeMode === "local" &&
+    isDesktopEmbeddedApiBase(args.clientBaseUrl, args.liveApiBase)
+  ) {
+    return "embedded-local";
+  }
+  return args.target;
+}
 export function canRestoreActiveServer(args: {
   server: PersistedActiveServer;
   clientApiAvailable: boolean;
@@ -998,20 +1061,41 @@ export async function runRestoringSession(
     shouldPreserveCompletedFirstRun: preserveCompleted,
     hadPriorFirstRun: hadPrior,
   };
-  // When the desktop shell runs in a non-"local" runtime mode (e.g. "external",
-  // pointed at a backend it does NOT host) it has SKIPPED its embedded agent.
-  // A loopback backend is otherwise classified "local" → embedded-local, which
-  // makes the coordinator run the local agent-readiness poll for an agent that
-  // was never started — startup then stalls at starting-runtime forever. Treat
-  // it as a remote backend (already running) so the coordinator skips the local
-  // poll. Only triggers on desktop when the resolved target is embedded-local
-  // AND the shell reports a non-local mode, so local/cloud boots are unchanged.
+  // Desktop: classify against the shell's actual hosting mode (see
+  // resolveDesktopRestoredTarget). A non-"local" shell has skipped its
+  // embedded agent, so a loopback "local" record is an already-running remote;
+  // a loopback "remote" record that resolves to the shell's own embedded API
+  // in "local" mode is the embedded agent and must go through local startup.
   let resolvedTarget = activeServerToTarget(restoredActiveServer);
-  if (resolvedTarget === "embedded-local" && isElectrobunRuntime()) {
+  if (
+    isDesktop &&
+    (resolvedTarget === "embedded-local" ||
+      (resolvedTarget === "remote-backend" &&
+        isDesktopEmbeddedApiBase(client.getBaseUrl(), getElizaApiBase())))
+  ) {
     const runtimeMode = await desktopRuntimeMode();
-    if (runtimeMode?.mode && runtimeMode.mode !== "local") {
-      resolvedTarget = "remote-backend";
+    if (cancelled.current) return;
+    const classified = resolveDesktopRestoredTarget({
+      target: resolvedTarget,
+      serverKind: restoredActiveServer.kind,
+      clientBaseUrl: client.getBaseUrl(),
+      liveApiBase: getElizaApiBase(),
+      shellRuntimeMode: runtimeMode?.mode,
+    });
+    if (classified === "embedded-local" && resolvedTarget !== classified) {
+      logger.info(
+        `[startup-phase-restore] persisted remote record resolves to the desktop shell's embedded agent (${client.getBaseUrl()}); starting the local runtime`,
+      );
+      try {
+        await requestDesktopAgentStartForStartup();
+      } catch (err) {
+        logger.warn(
+          `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      if (cancelled.current) return;
     }
+    resolvedTarget = classified;
   }
   dispatch({
     type: "SESSION_RESTORED",

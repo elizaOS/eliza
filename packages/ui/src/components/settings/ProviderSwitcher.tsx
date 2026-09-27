@@ -511,11 +511,9 @@ export function reconcileProviderEntriesWithServingAxes(
   }
   const providerId = axes.activeChatProvider?.trim().toLowerCase() ?? "";
   return entries.map((entry) => {
-    // Coding-only subscriptions are independent of the chat serving source.
-    if (
-      entry.category === "subscription" &&
-      entry.id !== "openai-subscription"
-    ) {
+    // Subscriptions are coding-agent credentials, independent of the chat
+    // serving source.
+    if (entry.category === "subscription") {
       return entry;
     }
     const current =
@@ -563,15 +561,14 @@ export function resolveActiveChatCatalogProvider(
  * anchored row above the chip cloud so "what's powering me right now" is answered
  * without scanning every chip for the filled/active state.
  *
- * Honesty note: most coding-plan subscriptions (Claude Subscription, Gemini/
- * z.ai/Kimi/DeepSeek coding plans) can be the "current" selection WITHOUT
- * routing the main chat inference — `applySubscriptionProviderConfig`
+ * Honesty note: coding-plan subscriptions (Claude Subscription, Kimi/DeepSeek
+ * coding plans) can be the "current" selection WITHOUT routing the main chat
+ * inference — `applySubscriptionProviderConfig`
  * (packages/agent/src/api/provider-switch-config.ts) records them for the
- * task-agent orchestrator and only sets a runtime `model.primary` for the
- * Codex plan (`openai-codex`). A bare "Active" here therefore read as "this
- * now powers chat", which is false for Claude. Those entries get a qualified
- * label + note so the summary states what the selection actually does; the
- * Codex plan (which really can power the runtime) keeps the plain label.
+ * task-agent orchestrator and never sets a runtime `model.primary`. A bare
+ * "Active" here would read as "this now powers chat", which is false. Those
+ * entries get a qualified label + note so the summary states what the
+ * selection actually does.
  *
  * @internal Exported for testing only.
  */
@@ -583,10 +580,9 @@ export function ActiveProviderSummary({
   t: (key: string, vars?: Record<string, unknown>) => string;
 }) {
   const Icon = entry.icon;
-  // Mirrors the `runtimeApplicable` rule in provider-switch-config.ts: of the
-  // subscription selections only openai-codex may drive runtime inference.
-  const codingAgentsOnly =
-    entry.category === "subscription" && entry.id !== "openai-subscription";
+  // Mirrors provider-switch-config.ts: no subscription selection drives
+  // runtime chat inference.
+  const codingAgentsOnly = entry.category === "subscription";
   return (
     <SettingsRow
       label={

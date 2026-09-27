@@ -1506,6 +1506,8 @@ interface BionicGenerateResponse {
   tokens?: number;
   ms?: number;
   tokS?: number;
+  incomplete?: boolean;
+  finishReason?: string;
   embedding?: number[];
   embeddingSpace?: string;
   tokenIds?: number[];
@@ -1827,12 +1829,24 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
         buildGemmaBionicPrompt(params),
         params.maxTokens,
       );
-      const baseRequest = {
+      const baseRequest: {
+        bundleDir: string;
+        drafterPath: string;
+        prompt: string;
+        maxTokens?: number;
+        stopSequences: string[];
+      } = {
         bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
         drafterPath: installed?.draftModelPath ?? "",
         prompt: lane.prompt,
-        maxTokens: lane.maxTokens ?? 256,
         stopSequences: resolveBionicStopSequences(params.stopSequences),
+        // Omit an absent limit from the wire request: the native host owns its
+        // model capacity (mirrors the canonical BionicHostLoader contract in
+        // plugins/plugin-local-inference/src/services/bionic-host-loader.ts).
+        // A bridge-only `?? 256` default used to cap every uncapped full chat
+        // turn, so a host-completed long reply was rejected with
+        // MODEL_OUTPUT_INCOMPLETE once tokens >= 256 (#32412).
+        ...(lane.maxTokens !== undefined ? { maxTokens: lane.maxTokens } : {}),
       };
       const onChunk = params.onStreamChunk;
       const streamStep = resolveBionicStreamStep();
@@ -1862,7 +1876,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
       const res = await getInferencePriorityGate().runExclusive(
         {
           priority,
-          label: `${slot} bionic-host (${lane.prompt.length} chars, maxTokens=${baseRequest.maxTokens})`,
+          label: `${slot} bionic-host (${lane.prompt.length} chars, maxTokens=${baseRequest.maxTokens ?? "uncapped"})`,
           ...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
           ...(params.signal ? { signal: params.signal } : {}),
         },
@@ -1890,16 +1904,19 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
         );
       }
       if (
-        typeof res.tokens === "number" &&
-        res.tokens >= baseRequest.maxTokens
+        res.incomplete === true ||
+        (typeof res.tokens === "number" &&
+          typeof baseRequest.maxTokens === "number" &&
+          res.tokens >= baseRequest.maxTokens)
       ) {
         throw new ElizaError(
           "Bionic local model output reached the decode boundary before a stop condition",
           {
             code: "MODEL_OUTPUT_INCOMPLETE",
             context: {
-              maxTokens: baseRequest.maxTokens,
+              maxTokens: baseRequest.maxTokens ?? null,
               outputTokens: res.tokens,
+              finishReason: res.finishReason ?? null,
             },
           },
         );

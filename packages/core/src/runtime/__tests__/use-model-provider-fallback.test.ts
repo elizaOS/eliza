@@ -31,6 +31,69 @@ function statusError(statusCode: number, message: string): Error {
 }
 
 describe("AgentRuntime.useModel provider fallback", () => {
+	it("retains a per-call model across providers without borrowing their slot limits", async () => {
+		const runtime = makeRuntime();
+		const primary = vi.fn(
+			async (_runtime: unknown, params: Record<string, unknown>) => {
+				expect(params.model).toBe("requested-model");
+				expect(params.providerOptions).toHaveProperty(
+					"eliza.modelInputBudget.contextWindowTokens",
+					128_000,
+				);
+				expect(params.providerOptions).toHaveProperty(
+					"eliza.modelInputBudget.reserveTokens",
+					10_000,
+				);
+				throw statusError(503, "temporary primary failure");
+			},
+		);
+		const backup = vi.fn(
+			async (_runtime: unknown, params: Record<string, unknown>) => {
+				expect(params.model).toBe("requested-model");
+				expect(params.providerOptions).toHaveProperty(
+					"eliza.modelInputBudget.contextWindowTokens",
+					128_000,
+				);
+				expect(JSON.stringify(params.messages)).toContain(
+					"Complete caller evidence",
+				);
+				return "backup result";
+			},
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			primary,
+			"override-primary",
+			100,
+			{
+				displayModel: "primary-slot-model",
+				contextWindowTokens: 64_000,
+				maxOutputTokens: 24_000,
+			},
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			backup,
+			"override-backup",
+			10,
+			{
+				displayModel: "backup-slot-model",
+				contextWindowTokens: 32_000,
+				maxOutputTokens: 16_000,
+			},
+		);
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, {
+				model: "requested-model",
+				messages: [{ role: "user", content: "Complete caller evidence" }],
+			}),
+		).resolves.toBe("backup result");
+		expect(primary).toHaveBeenCalledTimes(1);
+		expect(backup).toHaveBeenCalledTimes(1);
+		expect(
+			runtime.getLastResolvedModelProvider(ModelType.RESPONSE_HANDLER),
+		).toBe("override-backup");
+	});
 	it("never changes payer after a funded operation fails, even through nested provider retry wrappers", async () => {
 		const runtime = makeRuntime();
 		const fundingError = new ElizaError(

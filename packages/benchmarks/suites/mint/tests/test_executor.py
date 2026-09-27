@@ -118,7 +118,7 @@ class TestMockExecutor:
         mock = MockExecutor()
         await mock.execute("print(1)")
         await mock.execute("print(2)")
-        
+
         assert len(mock.executions) == 2
         assert "print(1)" in mock.executions[0]
 

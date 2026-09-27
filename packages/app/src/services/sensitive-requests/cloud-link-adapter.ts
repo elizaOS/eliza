@@ -4,16 +4,15 @@
  * the default resolver gated on ELIZAOS_CLOUD_API_KEY) and builds the
  * authenticated cloud link the owner opens to satisfy the request —
  * `/sensitive-requests/<id>` for secret/oauth/private_info, and
- * `/payment/app-charge/<appId>/<id>` for payment (appId from the target or the
- * request callback). Returns a structured DeliveryResult: delivered with url +
- * expiresAt, or delivered:false with a reason when cloud is not paired or a
- * payment request is missing its appId.
+ * `/payment/<id>` (the hosted payment-request page) for payment. Returns a
+ * structured DeliveryResult: delivered with url + expiresAt, or
+ * delivered:false with a reason when cloud is not paired.
  */
 
-import {
-  type DeliveryResult,
-  type DispatchSensitiveRequest as SensitiveRequest,
-  type SensitiveRequestDeliveryAdapter,
+import type {
+  DeliveryResult,
+  DispatchSensitiveRequest as SensitiveRequest,
+  SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
@@ -65,41 +64,11 @@ function defaultResolveCloudBase(runtime: unknown): string | null {
   const normalized = normalizeCloudSiteUrl(rawBase);
   return normalized || null;
 }
-function readPaymentAppId(request: SensitiveRequest): string | undefined {
-  const target = request.target as Record<string, unknown>;
-  const targetAppId = target.appId;
-  if (typeof targetAppId === "string" && targetAppId.trim()) {
-    return targetAppId.trim();
-  }
-  const callbackAppId = (
-    request.callback as Record<string, unknown> | undefined
-  )?.appId;
-  if (typeof callbackAppId === "string" && callbackAppId.trim()) {
-    return callbackAppId.trim();
-  }
-  return undefined;
-}
-function buildUrl(
-  cloudBase: string,
-  request: SensitiveRequest,
-):
-  | {
-      url: string;
-    }
-  | {
-      error: string;
-    } {
+function buildUrl(cloudBase: string, request: SensitiveRequest): string {
   const id = encodeURIComponent(request.id);
-  if (request.kind === "payment") {
-    const appId = readPaymentAppId(request);
-    if (!appId) {
-      return { error: "payment request missing appId" };
-    }
-    return {
-      url: `${cloudBase}/payment/app-charge/${encodeURIComponent(appId)}/${id}`,
-    };
-  }
-  return { url: `${cloudBase}/sensitive-requests/${id}` };
+  return request.kind === "payment"
+    ? `${cloudBase}/payment/${id}`
+    : `${cloudBase}/sensitive-requests/${id}`;
 }
 export function createCloudLinkSensitiveRequestAdapter(
   deps: CloudLinkAdapterDeps = {},
@@ -116,18 +85,10 @@ export function createCloudLinkSensitiveRequestAdapter(
           error: "cloud not paired",
         };
       }
-      const built = buildUrl(cloudBase, request);
-      if ("error" in built) {
-        return {
-          delivered: false,
-          target: "cloud_authenticated_link",
-          error: built.error,
-        };
-      }
       return {
         delivered: true,
         target: "cloud_authenticated_link",
-        url: built.url,
+        url: buildUrl(cloudBase, request),
         expiresAt: request.expiresAt,
       };
     },

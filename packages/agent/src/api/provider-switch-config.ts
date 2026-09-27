@@ -646,9 +646,9 @@ function toFirstRunConnectionFromSelection(
  * Sets `agents.defaults.subscriptionProvider` so the task-agent orchestrator
  * knows which subscription is active.
  *
- * For providers with a runtime model-provider plugin, also sets
- * `agents.defaults.model.primary`. Anthropic subscriptions are restricted to
- * Claude Code CLI (TOS), so `model.primary` is NOT set for that provider.
+ * Subscriptions are coding-agent credentials only: none has a runtime
+ * text handler (Anthropic tokens are restricted to Claude Code CLI by TOS and
+ * the Codex CLI chat handler was removed), so `model.primary` is never set.
  *
  * Mutates `config` in place.
  */
@@ -671,14 +671,6 @@ export function applySubscriptionProviderConfig(
 
   if (modelProvider) {
     defaults.subscriptionProvider = subscriptionKey;
-
-    // Only set model.primary for providers with a runtime model-provider
-    // plugin. Anthropic subscription tokens are restricted to Claude Code
-    // CLI (TOS), so the runtime cannot use them for LLM inference.
-    const runtimeApplicable = subscriptionKey === "openai-codex";
-    if (runtimeApplicable) {
-      defaults.model = { ...defaults.model, primary: modelProvider };
-    }
   }
 }
 
@@ -764,7 +756,6 @@ export function clearPersistedFirstRunConfig(
         "nearai",
         "ollama",
         "openai",
-        "openai-subscription",
         "openrouter",
         "together",
         "zai",
@@ -983,8 +974,7 @@ export async function applyFirstRunConnectionConfig(
       : {}),
   });
   const linkedAccounts: LinkedAccountFlagsConfig | undefined =
-    normalizedConnection.provider === "anthropic-subscription" ||
-    normalizedConnection.provider === "openai-subscription"
+    normalizedConnection.provider === "anthropic-subscription"
       ? {
           [normalizedConnection.provider]: {
             status: "linked",

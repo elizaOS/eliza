@@ -40,7 +40,11 @@ import type {
 } from "@elizaos/core";
 import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
 import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
-import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import {
+  getDefaultTriageService,
+  requireSendConsent,
+  sendConsentDigest,
+} from "@elizaos/plugin-assistant";
 import { InboxRepository } from "../inbox/repository.ts";
 import { InboxService } from "../inbox/service.ts";
 import type {
@@ -122,7 +126,6 @@ export interface InboxActionParameters {
   draft?: string;
   until?: string;
   snoozedUntil?: string;
-  confirmed?: boolean;
   classification?: string;
   includeSnoozed?: boolean;
 }
@@ -162,6 +165,15 @@ export interface InboxQueueOperationResult {
   readonly text: string;
   readonly data: ProviderDataRecord;
 }
+
+/**
+ * Who authorizes a reply/approve send. The owner HTTP route carries an explicit
+ * UI decision (`send`); a planner-invoked action never does — its send is gated
+ * on the turn-bound consent the owner gives in a later message (#25284).
+ */
+export type InboxSendAuthorization =
+  | { readonly kind: "route"; readonly send: boolean }
+  | { readonly kind: "turn"; readonly message: Memory };
 
 /**
  * Per-platform fetcher hook. Defaults read through the shared MESSAGE triage
@@ -531,15 +543,6 @@ function parseReplyBody(params: InboxActionParameters): string | null {
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
-function parseConfirmation(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    return ["true", "1", "yes", "y", "confirmed"].includes(normalized);
-  }
-  return false;
-}
-
 /** Default snooze window when a tap sends no explicit timestamp: ~1 day out. */
 const DEFAULT_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
@@ -652,22 +655,57 @@ async function replyToEntry(args: {
   repo: InboxRepository;
   entry: TriageEntry;
   body: string;
-  confirmed: boolean;
+  authorization: InboxSendAuthorization;
 }): Promise<InboxQueueOperationResult> {
+  const sourceMessageId = ensureSourceMessageId(args.entry);
+  let send: boolean;
+  if (args.authorization.kind === "route") {
+    send = args.authorization.send;
+  } else {
+    // The digest binds consent to this entry, recipient message and exact
+    // body, so it survives re-drafting (fresh draft ids) across turns but not
+    // an edited body. The one-tap "Send" chip posts `inbox approve <id>`.
+    const consent = await requireSendConsent(
+      args.runtime,
+      args.authorization.message,
+      sendConsentDigest({
+        kind: "inbox-reply",
+        entryId: args.entry.id,
+        source: args.entry.source,
+        sourceMessageId,
+        sourceRoomId: args.entry.sourceRoomId ?? null,
+        body: args.body,
+      }),
+      { affirmations: [`inbox approve ${args.entry.id}`] },
+    );
+    if (consent === "cancelled") {
+      return {
+        success: false,
+        text: "Nothing was sent. Preview the reply again before confirming.",
+        data: {
+          subaction: "reply",
+          entryId: args.entry.id,
+          cancelled: true,
+        },
+      };
+    }
+    send = consent === "confirmed";
+  }
+
   seedMessageRefForEntry(args.runtime, args.entry);
   const service = getDefaultTriageService();
   const draft = await service.draftReply(
     args.runtime,
-    ensureSourceMessageId(args.entry),
+    sourceMessageId,
     args.body,
   );
   await args.repo.updateDraftResponse(args.entry.id, args.body);
 
-  if (!args.confirmed) {
+  if (!send) {
     return {
       success: true,
       text: appendInboxDraftChoiceMarker(
-        `Drafted reply for ${args.entry.senderName ?? args.entry.channelName}. Confirm before sending.`,
+        `Drafted reply for ${args.entry.senderName ?? args.entry.channelName}: "${args.body}". Confirm before sending.`,
         args.entry.id,
       ),
       data: {
@@ -741,6 +779,7 @@ export async function executeInboxQueueOperation(args: {
     "triage" | "reply" | "snooze" | "archive" | "approve"
   >;
   params: InboxActionParameters;
+  authorization: InboxSendAuthorization;
 }): Promise<InboxQueueOperationResult> {
   const repo = new InboxRepository(args.runtime);
   switch (args.subaction) {
@@ -867,7 +906,7 @@ export async function executeInboxQueueOperation(args: {
         repo,
         entry,
         body,
-        confirmed: parseConfirmation(args.params.confirmed),
+        authorization: args.authorization,
       });
     }
     case "approve": {
@@ -884,7 +923,7 @@ export async function executeInboxQueueOperation(args: {
         repo,
         entry,
         body,
-        confirmed: true,
+        authorization: args.authorization,
       });
     }
   }
@@ -1017,11 +1056,6 @@ export const inboxAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "confirmed",
-      description: "Explicit owner confirmation for sending reply/approve.",
-      schema: { type: "boolean" as const },
-    },
-    {
       name: "classification",
       description:
         "Optional triage queue filter for returned persisted items: ignore | info | notify | needs_reply | urgent. Fresh messages are still classified first.",
@@ -1073,6 +1107,7 @@ export const inboxAction: Action & {
           runtime,
           subaction,
           params,
+          authorization: { kind: "turn", message },
         });
         await callback?.({
           text: result.text,

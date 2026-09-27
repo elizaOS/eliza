@@ -946,14 +946,15 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
 
     it("appends send/discard chips to a drafted-reply confirmation and keeps the values the approve turn accepts", async () => {
       registerFakeGmailAdapter();
-      const { runtime } = makeDbRuntime((sql) =>
+      const { runtime: dbRuntime } = makeDbRuntime((sql) =>
         sql.includes("WHERE id =") ? [makeTriageRow({ id: "entry-42" })] : [],
       );
+      const { runtime, turn } = withOwnerConsent(dbRuntime);
       const { texts, callback } = collectCallback();
 
       const result = await inboxAction.handler(
         runtime,
-        makeMessage("reply to alice that friday works"),
+        turn("reply to alice that friday works"),
         undefined,
         {
           parameters: {
@@ -995,29 +996,130 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(block.options.map((o) => o.label)).toEqual(["Send", "Discard"]);
     });
 
-    it("a confirmed approve dispatches the stored draft and emits NO chips", async () => {
-      const { sent } = registerFakeGmailAdapter();
-      const { runtime } = makeDbRuntime((sql) =>
-        sql.includes("WHERE id =")
-          ? [makeTriageRow({ id: "entry-42", draft_response: "Yes, Friday." })]
-          : [],
-      );
-      const { texts, callback } = collectCallback();
+    /**
+     * Owner-turn harness for the send-consent gate: a distinct owner entity
+     * (configured canonical owner), monotonically timestamped turns in one
+     * room, and an in-memory compare-and-set cache.
+     */
+    function withOwnerConsent(runtime: IAgentRuntime): {
+      runtime: IAgentRuntime;
+      turn: (text: string) => Memory;
+    } {
+      const ownerId = "22222222-2222-2222-2222-222222222222" as UUID;
+      const cache = new Map<string, unknown>();
+      let seq = 0;
+      const consentRuntime = Object.assign(runtime, {
+        getSetting: (key: string) =>
+          key === "ELIZA_ADMIN_ENTITY_ID" ? ownerId : undefined,
+        getCache: async (key: string) => cache.get(key),
+        compareAndSetCache: async (
+          key: string,
+          expected: unknown,
+          replacement: unknown,
+        ) => {
+          if (cache.get(key) !== expected) return false;
+          cache.set(key, replacement);
+          return true;
+        },
+      }) as IAgentRuntime;
+      const base = Date.now() - 60_000;
+      return {
+        runtime: consentRuntime,
+        turn: (text: string) => {
+          seq += 1;
+          return {
+            id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}` as UUID,
+            entityId: ownerId,
+            roomId: "room-inbox-1" as UUID,
+            createdAt: base + seq,
+            content: { text, source: "test" },
+          } as Memory;
+        },
+      };
+    }
 
+    async function runTurn(
+      runtime: IAgentRuntime,
+      message: Memory,
+      parameters: Record<string, unknown>,
+    ) {
+      const { texts, callback } = collectCallback();
       const result = await inboxAction.handler(
         runtime,
-        makeMessage("send"),
+        message,
         undefined,
-        {
-          parameters: { subaction: "approve", entryId: "entry-42" },
-        } as unknown as HandlerOptions,
+        { parameters } as unknown as HandlerOptions,
         callback as unknown as Parameters<typeof inboxAction.handler>[4],
       );
+      return { result, texts };
+    }
 
-      expect(result.success).toBe(true);
+    it("a planner-set confirmed flag cannot send; only the owner's later Send turn does (#25284)", async () => {
+      const { sent } = registerFakeGmailAdapter();
+      const { runtime: dbRuntime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =")
+          ? [
+              makeTriageRow({
+                id: "entry-42",
+                draft_response: "Yes, Friday works.",
+              }),
+            ]
+          : [],
+      );
+      const { runtime, turn } = withOwnerConsent(dbRuntime);
+      const ask = turn("reply to alice that friday works");
+
+      // The planner fabricates confirmation on the same turn: nothing sends.
+      const drafted = await runTurn(runtime, ask, {
+        subaction: "reply",
+        entryId: "entry-42",
+        body: "Yes, Friday works.",
+        confirmed: true,
+      });
+      expect(drafted.result.success).toBe(true);
+      expect(drafted.result.data).toMatchObject({ requiresConfirmation: true });
+      expect(drafted.texts[0]).toContain("Yes, Friday works.");
+      const approveSameTurn = await runTurn(runtime, ask, {
+        subaction: "approve",
+        entryId: "entry-42",
+      });
+      expect(approveSameTurn.result.data).toMatchObject({
+        requiresConfirmation: true,
+      });
+      expect(sent).toEqual([]);
+
+      // The owner taps Send: the chip value is the later user turn.
+      const approved = await runTurn(runtime, turn("inbox approve entry-42"), {
+        subaction: "approve",
+        entryId: "entry-42",
+      });
+      expect(approved.result.success).toBe(true);
       expect(sent).toHaveLength(1);
-      expect(texts[0]).toContain("Sent reply");
-      expect(parseInteractionBlocks(texts[0] ?? "").blocks).toHaveLength(0);
+      expect(approved.texts[0]).toContain("Sent reply");
+      expect(
+        parseInteractionBlocks(approved.texts[0] ?? "").blocks,
+      ).toHaveLength(0);
+    });
+
+    it("a non-affirmative owner answer consumes the pending reply without sending", async () => {
+      const { sent } = registerFakeGmailAdapter();
+      const { runtime: dbRuntime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =")
+          ? [makeTriageRow({ id: "entry-42", draft_response: "Sure." })]
+          : [],
+      );
+      const { runtime, turn } = withOwnerConsent(dbRuntime);
+      await runTurn(runtime, turn("approve the suggested reply"), {
+        subaction: "approve",
+        entryId: "entry-42",
+      });
+      const refused = await runTurn(runtime, turn("wait, not yet"), {
+        subaction: "approve",
+        entryId: "entry-42",
+      });
+      expect(refused.result.success).toBe(false);
+      expect(refused.result.data).toMatchObject({ cancelled: true });
+      expect(sent).toEqual([]);
     });
 
     it("appends attributable reply/snooze/archive chips for every returned triage thread without capping the queue", async () => {

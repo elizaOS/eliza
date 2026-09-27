@@ -43,7 +43,7 @@ def create_docker_client(host_info: DockerHostInfo) -> DockerClient:
         is_tls = hostname.startswith("https://") or (":2376" in hostname and not hostname.startswith("unix://"))
 
         if is_tls:
-            
+
             # Handle TLS remote connection - remove https:// prefix, use tcp://
             if hostname.startswith("https://"):
                 docker_host = "tcp://" + hostname[8:]  # Remove "https://" prefix
@@ -105,7 +105,7 @@ def create_docker_client(host_info: DockerHostInfo) -> DockerClient:
                     os.environ.pop('DOCKER_HOST', None)
 
                 if original_docker_tls_verify is not None:
-                    os.environ['DOCKER_TLS_VERIFY'] = original_docker_tls_verify  
+                    os.environ['DOCKER_TLS_VERIFY'] = original_docker_tls_verify
                 else:
                     os.environ.pop('DOCKER_TLS_VERIFY', None)
 
@@ -120,7 +120,7 @@ def create_docker_client(host_info: DockerHostInfo) -> DockerClient:
             if "/var/run/docker.sock" in hostname or "/docker-cli.sock" in hostname:
                 host_url = "unix:///var/run/docker.sock"
             else:
-                
+
                 # Add default port if not specified
                 if ":" not in hostname:
                     host_url = f"tcp://{hostname}:2375"
@@ -129,7 +129,7 @@ def create_docker_client(host_info: DockerHostInfo) -> DockerClient:
 
             client = DockerClient(host=host_url)
             logger.info(f"Successfully created non-TLS Docker client connection: {host_url}")
-            
+
         return client
     except Exception as e:
         logger.error(f"Create Docker client failed: {e}")
@@ -380,7 +380,7 @@ def create_container(host_info: DockerHostInfo, image_name: str, container_name:
         logger.info(f"Create container: {container_name or 'auto-named'} based on image: {image_name}")
 
         container = client.container.create(
-            image_name, 
+            image_name,
             name=container_name,
             **kwargs
         )
@@ -391,7 +391,7 @@ def create_container(host_info: DockerHostInfo, image_name: str, container_name:
         raise RuntimeError(f"Failed to create container: {e}")
 
 
-def run_container(host_info: DockerHostInfo, image_name: str, container_name: str = None, 
+def run_container(host_info: DockerHostInfo, image_name: str, container_name: str = None,
                  command: Optional[Union[str, List[str]]] = None,
                  environment: Optional[Dict[str, str]] = None,
                  ports: Optional[Dict[str, int]] = None,
@@ -421,7 +421,7 @@ def run_container(host_info: DockerHostInfo, image_name: str, container_name: st
         publish = []
         if ports:
             for container_port, host_port in ports.items():
-  
+
                 # Remove protocol suffix (e.g., /tcp) if present
                 clean_container_port = container_port.split('/')[0] if '/' in str(container_port) else container_port
                 publish.append((host_port, clean_container_port))
@@ -546,7 +546,7 @@ def get_container_info(host_info: DockerHostInfo, container_id: str) -> Dict[str
         raise RuntimeError(f"Failed to get container info: {e}")
 
 
-def get_container_logs(host_info: DockerHostInfo, container_id: str, tail: str = "all", 
+def get_container_logs(host_info: DockerHostInfo, container_id: str, tail: str = "all",
                       timestamps: bool = False, follow: bool = False) -> str:
     """Get Docker container logs
 
@@ -567,9 +567,9 @@ def get_container_logs(host_info: DockerHostInfo, container_id: str, tail: str =
         tail_num = None if tail == "all" else int(tail)
 
         logs = client.container.logs(
-            container_id, 
-            tail=tail_num, 
-            timestamps=timestamps, 
+            container_id,
+            tail=tail_num,
+            timestamps=timestamps,
             follow=follow
         )
         return logs
@@ -636,11 +636,11 @@ def create_advanced_container(host_info: DockerHostInfo, image_name: str, contai
             volumes = processed_volumes
 
 
-        # Convert port mappings 
+        # Convert port mappings
         publish = []
         if ports:
             for container_port, host_port in ports.items():
-       
+
                 # Remove protocol suffix if exists
                 clean_container_port = container_port.split('/')[0] if '/' in str(container_port) else container_port
                 publish.append((host_port, clean_container_port))
@@ -764,7 +764,7 @@ def copy_file_from_container(host_info: DockerHostInfo, container_id: str, conta
         raise RuntimeError(f"Copy file from container failed: {e}")
 
 
-def execute_command_in_container(host_info: DockerHostInfo, container_id: str, command: Union[str, List[str]], 
+def execute_command_in_container(host_info: DockerHostInfo, container_id: str, command: Union[str, List[str]],
                                user: Optional[str] = None, workdir: Optional[str] = None) -> Tuple[int, str]:
     """Execute command in container
 
@@ -792,7 +792,7 @@ def execute_command_in_container(host_info: DockerHostInfo, container_id: str, c
         logger.info(f"Execute command in container {container_id}: {command_list}")
 
         result = client.container.execute(
-            container_id, 
+            container_id,
             command_list,
             user=user,
             workdir=workdir

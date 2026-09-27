@@ -218,7 +218,7 @@ class FunctionCallParser:
             norm_val = self._flatten_single_element_arrays(norm_val)
             normalized[str(key)] = norm_val
         return normalized
-    
+
     def _coerce_types(self, value: ArgumentValue) -> ArgumentValue:
         """Coerce string values to proper types where possible."""
         if isinstance(value, str):
@@ -239,11 +239,11 @@ class FunctionCallParser:
         elif isinstance(value, dict):
             return {k: self._coerce_types(v) for k, v in value.items()}
         return value
-    
+
     def _flatten_single_element_arrays(self, value: ArgumentValue) -> ArgumentValue:
         """
         Flatten unnecessarily nested single-element arrays.
-        
+
         E.g., [["value"]] -> ["value"]
         """
         if isinstance(value, list):

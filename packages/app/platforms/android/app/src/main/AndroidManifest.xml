@@ -188,7 +188,7 @@
             android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
-    
+
         <service
             android:name="ai.elizaos.app.ElizaAgentService"
             android:exported="false"
@@ -197,7 +197,7 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="local-agent-runtime" />
         </service>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaDialActivity"
             android:exported="true"
@@ -212,7 +212,7 @@
                 <data android:scheme="tel" />
             </intent-filter>
         </activity>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaAssistActivity"
             android:exported="true"
@@ -226,7 +226,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaShareActivity"
             android:exported="true"
@@ -243,7 +243,7 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-    
+
         <service
             android:name="ai.elizaos.app.ElizaVoiceTileService"
             android:exported="true"
@@ -257,7 +257,7 @@
                 android:name="android.service.quicksettings.TOGGLEABLE_TILE"
                 android:value="false" />
         </service>
-    
+
         <receiver
             android:name="ai.elizaos.app.ElizaQuickActionsWidgetProvider"
             android:exported="true">
@@ -268,7 +268,7 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/eliza_quick_actions_widget" />
         </receiver>
-    
+
         <service
             android:name="ai.elizaos.app.ElizaAccessibilityService"
             android:exported="true"
@@ -280,7 +280,7 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/eliza_accessibility_service" />
         </service>
-    
+
         <service
             android:name="ai.elizaos.app.ElizaNotificationListenerService"
             android:exported="true"
@@ -289,7 +289,7 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-    
+
         <activity android:name="ai.elizaos.app.ElizaInCallActivity"
             android:exported="false" android:launchMode="singleTop"
             android:theme="@style/AppTheme.NoActionBar" />
@@ -308,7 +308,7 @@
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>
         </service>
-    
+
         <receiver
             android:name="ai.elizaos.app.ElizaSmsReceiver"
             android:exported="true"
@@ -317,7 +317,7 @@
                 <action android:name="android.provider.Telephony.SMS_DELIVER" />
             </intent-filter>
         </receiver>
-    
+
         <receiver
             android:name="ai.elizaos.app.ElizaMmsReceiver"
             android:exported="true"
@@ -327,11 +327,11 @@
                 <data android:mimeType="application/vnd.wap.mms-message" />
             </intent-filter>
         </receiver>
-    
+
         <service
             android:name="ai.elizaos.app.ElizaSmsGatewayService"
             android:exported="false" />
-    
+
         <service
             android:name="ai.elizaos.app.ElizaRespondViaMessageService"
             android:exported="true"
@@ -344,7 +344,7 @@
                 <data android:scheme="mmsto" />
             </intent-filter>
         </service>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaSmsComposeActivity"
             android:exported="true"
@@ -358,7 +358,7 @@
                 <data android:scheme="mmsto" />
             </intent-filter>
         </activity>
-    
+
         <receiver
             android:name="ai.elizaos.app.ElizaBootReceiver"
             android:directBootAware="true"
@@ -369,7 +369,7 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaBrowserActivity"
             android:exported="true"
@@ -386,7 +386,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaContactsActivity"
             android:exported="true"
@@ -410,7 +410,7 @@
                 <data android:mimeType="vnd.android.cursor.item/person" />
             </intent-filter>
         </activity>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaCameraActivity"
             android:exported="true"
@@ -433,7 +433,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaClockActivity"
             android:exported="true"
@@ -464,7 +464,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-    
+
         <activity
             android:name="ai.elizaos.app.ElizaCalendarActivity"
             android:exported="true"

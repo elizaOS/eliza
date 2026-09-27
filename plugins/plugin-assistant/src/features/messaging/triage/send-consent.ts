@@ -57,10 +57,27 @@ function pendingSend(value: unknown): value is PendingSend {
   );
 }
 
+export interface SendConsentOptions {
+  /**
+   * Exact whole-turn replies that also confirm this send, e.g. the value a
+   * one-tap choice chip posts. Compared case-insensitively after trimming.
+   */
+  readonly affirmations?: readonly string[];
+}
+
+function isAffirmative(text: string, options: SendConsentOptions): boolean {
+  if (affirmative.test(text)) return true;
+  const normalized = text.toLowerCase();
+  return (options.affirmations ?? []).some(
+    (value) => value.trim().toLowerCase() === normalized,
+  );
+}
+
 export async function requireSendConsent(
   runtime: IAgentRuntime,
   message: Memory,
   digest: string,
+  options: SendConsentOptions = {},
 ): Promise<"pending" | "confirmed" | "cancelled"> {
   if (
     !message.id ||
@@ -95,7 +112,7 @@ export async function requireSendConsent(
         consumedBy: message.id,
       });
       if (!consumed) return "cancelled";
-      return affirmative.test(unwrapUserMessageText(message).trim())
+      return isAffirmative(unwrapUserMessageText(message).trim(), options)
         ? "confirmed"
         : "cancelled";
     }

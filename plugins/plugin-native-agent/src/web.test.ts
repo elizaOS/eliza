@@ -5,7 +5,7 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AgentWeb } from "./web";
+import { AgentHttpError, AgentWeb } from "./web";
 
 function setWindow(overrides: Partial<Window> = {}): void {
   vi.stubGlobal("window", {
@@ -156,13 +156,17 @@ describe("AgentWeb fallback", () => {
         };
       }
       if (url.endsWith("/api/agent/start")) {
-        return { json: async () => ({ status: { state: "running" } }) };
+        return {
+          ok: true,
+          json: async () => ({ status: { state: "running" } }),
+        };
       }
       if (url.endsWith("/api/agent/stop")) {
-        return { json: async () => ({ ok: true }) };
+        return { ok: true, json: async () => ({ ok: true }) };
       }
       if (url.endsWith("/api/status")) {
         return {
+          ok: true,
           status: 200,
           statusText: "OK",
           headers: new Headers(),
@@ -277,6 +281,29 @@ describe("AgentWeb fallback", () => {
       }
     },
   );
+
+  it("throws AgentHttpError with the server message when lifecycle calls fail", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        json: async () => ({ error: "cannot boot runtime" }),
+      })),
+    );
+
+    const agent = new AgentWeb();
+    for (const call of [agent.start(), agent.stop(), agent.getStatus()]) {
+      const err = await call.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AgentHttpError);
+      expect((err as AgentHttpError).status).toBe(503);
+      expect((err as AgentHttpError).message).toContain("cannot boot runtime");
+    }
+  });
 
   it("fails closed for local-agent IPC base in the web fallback", async () => {
     setWindow({

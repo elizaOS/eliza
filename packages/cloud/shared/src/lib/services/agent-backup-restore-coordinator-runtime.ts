@@ -25,6 +25,21 @@ export type AgentBackupRestoreCoordinatorConfig =
       automaticFailoverEnabled: false;
     };
 
+/**
+ * `"1"` is on; unset, empty, or `"0"` is off; any other value is a
+ * configuration error. A bare `=== "1"` check would read `true` as off and
+ * silently leave the coordinator (or the unimplemented failover refusal)
+ * inactive while the deployment believes otherwise.
+ */
+function readStrictFlag(env: NodeJS.ProcessEnv, name: string): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw !== "1") {
+    throw new Error(`${name} must be "1" or "0" when set, or left unset`);
+  }
+  return true;
+}
+
 function readBoundedInteger(params: {
   env: NodeJS.ProcessEnv;
   name: string;
@@ -47,8 +62,8 @@ function readBoundedInteger(params: {
 export function readAgentBackupRestoreCoordinatorConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): AgentBackupRestoreCoordinatorConfig {
-  const failoverEnabled = env.AGENT_BACKUP_RESTORE_FAILOVER_ENABLED === "1";
-  if (env.AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED !== "1") {
+  const failoverEnabled = readStrictFlag(env, "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED");
+  if (!readStrictFlag(env, "AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED")) {
     if (failoverEnabled) {
       throw new Error(
         "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED requires AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED=1",
