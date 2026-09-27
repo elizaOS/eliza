@@ -167,6 +167,15 @@ on:
           the canonical branch advanced past this run's SHA (the run SHA is an
           ancestor of the new head). Callers must not certify such a run.
         value: ${{ jobs.migrate-db.outputs.superseded }}
+      api_deployed:
+        description: >-
+          "true" only when this run deployed the API Worker. A freshness-guard
+          skip leaves the served Worker unchanged, so callers must not certify it.
+        value: ${{ jobs.deploy-api.outputs.api_deployed }}
+      pages_deployed:
+        description: >-
+          "true" only when this run deployed the canonical Pages frontend.
+        value: ${{ jobs.deploy-app.outputs.pages_deployed }}
 
 permissions:
   contents: read
@@ -864,6 +873,11 @@ jobs:
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
+    outputs:
+      # Every Worker mutation and exact-commit verification step is gated on
+      # this freshness decision, so a successful job with should_deploy=true is
+      # the only state in which this run actually released the Worker.
+      api_deployed: ${{ steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' }}
     steps:
       - name: Reject stale Telegram configuration authority
         env:
@@ -1130,9 +1144,12 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
         run: |
-          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health)
+          # A newer served Worker suppresses this deploy only when its commit is
+          # on the canonical branch; unattested uploads are redeployed (#27229).
+          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
@@ -2946,9 +2963,12 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           SERVED_URL: ${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          CANONICAL_REF: ${{ (inputs.target_environment == 'production') && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
         run: |
-          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL")
+          # A newer served Pages build suppresses this deploy only when its
+          # commit is on the canonical branch; unattested uploads are redeployed.
+          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
