@@ -781,8 +781,17 @@ export async function recordUsageAnalytics(
       });
     }
 
-    // Log LLM call trajectory for training data collection
+    // Log LLM call trajectory for training data collection, only when the
+    // user's server-recorded consent allows it. A consent lookup failure
+    // lands in the catch below and skips capture (fail closed).
     try {
+      const { isTrajectoryCaptureAllowed } = await import("./user-consents");
+      if (!(await isTrajectoryCaptureAllowed(context.userId, context.organizationId))) {
+        logger.debug("[AI Billing] Trajectory capture skipped by user consent", {
+          organizationId: context.organizationId,
+        });
+        return usageRecord;
+      }
       const { llmTrajectoryService } = await import("./llm-trajectory");
       await llmTrajectoryService.logCall({
         organizationId: context.organizationId,
@@ -804,7 +813,7 @@ export async function recordUsageAnalytics(
       });
     } catch (trajError) {
       // Trajectory logging is non-critical — never block the request
-      logger.warn("[AI Billing] Failed to log trajectory", {
+      logger.warn("[AI Billing] Trajectory not captured", {
         error: trajError instanceof Error ? trajError.message : String(trajError),
       });
     }

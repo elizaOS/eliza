@@ -2087,6 +2087,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1MeConsents<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/me/consents"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/me/consents", TResponse>(
+      "GET /api/v1/me/consents",
+      options,
+    );
+  }
+
   getApiV1MeMfa<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
   ): Promise<TResponse> {
@@ -4729,6 +4738,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1MeConsents<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/me/consents"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/me/consents", TResponse>(
+      "POST /api/v1/me/consents",
+      options,
+    );
+  }
+
+  postApiV1MeDataExport<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/me/data-export"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/me/data-export", TResponse>(
+      "POST /api/v1/me/data-export",
+      options,
+    );
+  }
+
   postApiV1Messages<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/messages"> = {},
   ): Promise<TResponse> {
@@ -7132,6 +7159,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/me/account-deletion", options);
   }
 
+  getApiV1MeConsentsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/me/consents"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/me/consents", options);
+  }
+
   getApiV1MeMfaRaw(
     options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
   ): Promise<Response> {
@@ -9083,6 +9116,18 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/me/account-deletion"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/me/account-deletion", options);
+  }
+
+  postApiV1MeConsentsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/me/consents"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/me/consents", options);
+  }
+
+  postApiV1MeDataExportRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/me/data-export"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/me/data-export", options);
   }
 
   postApiV1MessagesRaw(

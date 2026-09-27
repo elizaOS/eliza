@@ -221,12 +221,13 @@ export class ApiKeysRepository {
   }
 
   /** Atomically replaces one immutable credential row with a freshly identified row. */
-  async replace(id: string, replacement: NewApiKey): Promise<ApiKey> {
-    return await dbWrite.transaction(async (tx) => {
-      await tx.delete(apiKeys).where(eq(apiKeys.id, id));
-      const [created] = await tx.insert(apiKeys).values(replacement).returning();
+  async replace(id: string, replacement: NewApiKey, tx?: DbTransaction): Promise<ApiKey> {
+    const run = async (inner: DbTransaction): Promise<ApiKey> => {
+      await inner.delete(apiKeys).where(eq(apiKeys.id, id));
+      const [created] = await inner.insert(apiKeys).values(replacement).returning();
       return created;
-    });
+    };
+    return tx ? await run(tx) : await dbWrite.transaction(run);
   }
 
   /**
@@ -263,8 +264,10 @@ export class ApiKeysRepository {
   /**
    * Deletes an API key by ID.
    */
-  async delete(id: string): Promise<void> {
-    await dbWrite.delete(apiKeys).where(and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)));
+  async delete(id: string, tx?: DbTransaction): Promise<void> {
+    await (tx ?? dbWrite)
+      .delete(apiKeys)
+      .where(and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)));
   }
 
   async findExactActiveMobileConsistent(id: string, keyHash: string): Promise<ApiKey | undefined> {
@@ -314,8 +317,9 @@ export class ApiKeysRepository {
     userId: string,
     organizationId: string,
     revokedAt: Date,
+    tx?: DbTransaction,
   ): Promise<ApiKey | undefined> {
-    const [tombstone] = await dbWrite
+    const [tombstone] = await (tx ?? dbWrite)
       .update(apiKeys)
       .set({
         is_active: false,
@@ -345,8 +349,9 @@ export class ApiKeysRepository {
     id: string,
     keyHash: string,
     revokedAt: Date,
+    tx?: DbTransaction,
   ): Promise<ApiKey | undefined> {
-    const [tombstone] = await dbWrite
+    const [tombstone] = await (tx ?? dbWrite)
       .update(apiKeys)
       .set({
         is_active: false,

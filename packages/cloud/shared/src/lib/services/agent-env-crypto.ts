@@ -31,8 +31,10 @@
  * the platform — they are not user BYO secrets.
  */
 
+import { ElizaError } from "@elizaos/core";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { fieldEncryption } from "./field-encryption";
+import { fieldEncryption, isFieldEncryptionRequired } from "./field-encryption";
 import { RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 /**
@@ -95,12 +97,25 @@ export async function encryptAgentEnvVarsForStorage(
   );
   if (pending.length === 0) return { ...environmentVars };
 
-  // Same source FieldEncryptionService reads (the Worker populates process.env
-  // from bindings under nodejs_compat). No key leaves compatibility plaintext and warns loudly.
-  if (!process.env.SECRETS_MASTER_KEY) {
+  // Same source FieldEncryptionService reads. Without a key, deployed
+  // environments fail closed; local/dev worlds keep compatibility plaintext and
+  // warn loudly.
+  const env = getCloudAwareEnv();
+  if (!env.SECRETS_MASTER_KEY) {
+    const keys = pending.map(([key]) => key);
+    if (isFieldEncryptionRequired(env)) {
+      throw new ElizaError(
+        "SECRETS_MASTER_KEY is required to store agent environment secrets in this environment",
+        {
+          code: "AGENT_ENV_ENCRYPTION_REQUIRED",
+          severity: "fatal",
+          context: { organizationId, keys },
+        },
+      );
+    }
     logger.warn(
       "[agent-env-crypto] SECRETS_MASTER_KEY not configured — storing agent environment secrets as PLAINTEXT (legacy behavior). Configure the key on the cloud API and provisioning daemon to encrypt at rest.",
-      { organizationId, keys: pending.map(([key]) => key) },
+      { organizationId, keys },
     );
     return { ...environmentVars };
   }

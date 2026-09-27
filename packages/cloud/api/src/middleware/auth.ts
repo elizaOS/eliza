@@ -433,7 +433,7 @@ function isLocalDevAdminRequest(
         metadata: { reason: "local_dev_admin_bypass" },
       })
       .catch((err) => {
-        logger.warn("[Auth] dev-admin audit emit failed", {
+        logger.error("[Auth] dev-admin audit emit failed", {
           error: err instanceof Error ? err.message : String(err),
         });
       });

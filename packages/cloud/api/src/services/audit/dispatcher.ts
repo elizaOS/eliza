@@ -6,6 +6,8 @@ import { logger } from "@/lib/utils/logger";
 import { type AuditAction, isAuditAction } from "./actions.js";
 import type { AuditSink } from "./sink.js";
 import {
+  AUDIT_IP_MAX_LENGTH,
+  AUDIT_USER_AGENT_MAX_LENGTH,
   type AuditActor,
   type AuditEvent,
   AuditEventSchema,
@@ -64,7 +66,8 @@ const METADATA_ALLOWLIST: Record<string, ReadonlySet<string>> = {
     "reason",
   ]),
   "admin.": new Set(["target_user_id", "policy_id", "reason"]),
-  "data.": new Set(["request_id", "subject_id", "scope", "reason"]),
+  "data.": new Set(["request_id", "subject_id", "scope", "reason", "bytes"]),
+  "consent.": new Set(["purpose", "policy_version", "source", "granted"]),
 };
 
 function allowlistFor(action: AuditAction): ReadonlySet<string> | undefined {
@@ -136,6 +139,16 @@ export class AuditDispatcher {
    * fan-out; optional sink failures remain observable through `onSinkError`.
    */
   async emit(input: EmitInput): Promise<AuditEvent> {
+    const event = this.buildEvent(input);
+    await this.deliver(event);
+    return event;
+  }
+
+  /**
+   * Build, validate and redact an event without delivering it. Used when the
+   * durable record is written inside a caller's database transaction.
+   */
+  buildEvent(input: EmitInput): AuditEvent {
     if (!isAuditAction(input.action)) {
       throw new Error(`unknown audit action: ${input.action}`);
     }
@@ -147,9 +160,14 @@ export class AuditDispatcher {
       action,
       result: input.result,
       resource: input.resource ?? null,
-      ...(input.ip !== undefined ? { ip: input.ip } : {}),
+      // Client-supplied headers must not make a mandatory audit record
+      // unwritable: an oversized IP cannot be an address and is dropped; the
+      // user agent keeps its schema-sized prefix.
+      ...(input.ip !== undefined && input.ip.length <= AUDIT_IP_MAX_LENGTH
+        ? { ip: input.ip }
+        : {}),
       ...(input.user_agent !== undefined
-        ? { user_agent: input.user_agent }
+        ? { user_agent: input.user_agent.slice(0, AUDIT_USER_AGENT_MAX_LENGTH) }
         : {}),
       ...(input.request_id !== undefined
         ? { request_id: input.request_id }
@@ -161,31 +179,36 @@ export class AuditDispatcher {
 
     // Schema-validate as a final guard against drift.
     AuditEventSchema.parse(event);
+    return event;
+  }
 
+  /**
+   * Fan a built event out to every sink except `exclude` (a sink that already
+   * persisted it, e.g. inside a transaction). Rejects when a required sink
+   * fails, after every sink has had a delivery attempt.
+   */
+  async deliver(
+    event: AuditEvent,
+    options: { exclude?: string } = {},
+  ): Promise<void> {
     const requiredFailures: SinkError[] = [];
     await Promise.all(
-      this.sinks.map(async (sink) => {
-        try {
-          await sink.emit(event);
-        } catch (err) {
-          // error-policy:J1 boundary translation — finish fan-out so every
-          // sink gets a delivery attempt, then reject if any required sink
-          // failed. Optional failures remain explicit through onSinkError.
-          this.onSinkError(
-            {
-              sink: sink.name,
-              error: err instanceof Error ? err : new Error(String(err)),
-            },
-            event,
-          );
-          if (sink.required !== false) {
-            requiredFailures.push({
-              sink: sink.name,
-              error: err instanceof Error ? err : new Error(String(err)),
-            });
+      this.sinks
+        .filter((sink) => sink.name !== options.exclude)
+        .map(async (sink) => {
+          try {
+            await sink.emit(event);
+          } catch (err) {
+            // error-policy:J1 boundary translation — finish fan-out so every
+            // sink gets a delivery attempt, then reject if any required sink
+            // failed. Optional failures remain explicit through onSinkError.
+            const error = err instanceof Error ? err : new Error(String(err));
+            this.onSinkError({ sink: sink.name, error }, event);
+            if (sink.required !== false) {
+              requiredFailures.push({ sink: sink.name, error });
+            }
           }
-        }
-      }),
+        }),
     );
     if (requiredFailures.length > 0) {
       throw new AggregateError(
@@ -193,6 +216,5 @@ export class AuditDispatcher {
         `Required audit sink delivery failed: ${requiredFailures.map((failure) => failure.sink).join(", ")}`,
       );
     }
-    return event;
   }
 }

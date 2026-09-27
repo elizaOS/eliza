@@ -108,6 +108,27 @@ export interface MobileApiKeySelfRevocationResult extends MobileApiKeyAccountRev
   organizationId: string;
 }
 
+/**
+ * Writes the durable audit record for an API-key mutation inside the SAME
+ * database transaction as the mutation. A throw rolls the mutation back, so a
+ * required audit sink failure can never leave an unaudited key change behind.
+ */
+export type ApiKeyMutationAudit<T> = (tx: DbTransaction, outcome: T) => Promise<void>;
+
+async function withMutationAudit<T>(
+  mutate: (tx: DbTransaction | undefined) => Promise<T>,
+  audit: ApiKeyMutationAudit<T> | undefined,
+  outerTx?: DbTransaction,
+): Promise<T> {
+  if (!audit) return await mutate(outerTx);
+  const run = async (tx: DbTransaction): Promise<T> => {
+    const outcome = await mutate(tx);
+    await audit(tx, outcome);
+    return outcome;
+  };
+  return outerTx ? await run(outerTx) : await dbWrite.transaction(run);
+}
+
 export interface MobileCredentialSummary {
   id: string;
   name: string;
@@ -373,12 +394,17 @@ export class ApiKeysService {
       | "source_app_id"
     >,
     tx?: DbTransaction,
+    audit?: ApiKeyMutationAudit<ApiKey>,
   ): Promise<{
     apiKey: ApiKey;
     plainKey: string;
   }> {
     const { apiKey, plainKey } = await this.buildApiKeyInsert(data);
-    const created = await apiKeysRepository.create(apiKey, tx);
+    const created = await withMutationAudit(
+      (inner) => apiKeysRepository.create(apiKey, inner),
+      audit,
+      tx,
+    );
 
     return {
       apiKey: created,
@@ -575,18 +601,20 @@ export class ApiKeysService {
     await apiKeysRepository.incrementUsage(id);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, audit?: ApiKeyMutationAudit<void>): Promise<void> {
     const existing = await apiKeysRepository.findByIdConsistent(id);
     if (existing?.source_app_id) {
       throw ForbiddenError(
         "Mobile-issued credentials can only be revoked through the mobile authorization lifecycle",
       );
     }
+    // Inference revocation precedes the row delete: if the audited delete then
+    // rolls back, the key is fenced (fail-closed) and a retry converges.
     if (existing) {
       await revokeInferenceApiKey(existing.organization_id, existing.id);
     }
 
-    await apiKeysRepository.delete(id);
+    await withMutationAudit((tx) => apiKeysRepository.delete(id, tx), audit);
     if (existing) {
       await this.invalidateCache(existing.key_hash);
     }
@@ -600,7 +628,10 @@ export class ApiKeysService {
    * replacement. The old identity is therefore permanently fenced before an
    * atomic database replacement creates the new row identity.
    */
-  async regenerate(id: string): Promise<{ apiKey: ApiKey; plainKey: string }> {
+  async regenerate(
+    id: string,
+    audit?: ApiKeyMutationAudit<ApiKey>,
+  ): Promise<{ apiKey: ApiKey; plainKey: string }> {
     const existing = await apiKeysRepository.findByIdConsistent(id);
     if (!existing) {
       throw new ElizaError("API key not found", {
@@ -625,7 +656,10 @@ export class ApiKeysService {
       is_active: true,
       expires_at: existing.expires_at,
     });
-    const apiKey = await apiKeysRepository.replace(existing.id, replacement);
+    const apiKey = await withMutationAudit(
+      (tx) => apiKeysRepository.replace(existing.id, replacement, tx),
+      audit,
+    );
     await this.invalidateCache(existing.key_hash);
     return { apiKey, plainKey };
   }
@@ -651,6 +685,7 @@ export class ApiKeysService {
     credentialId: string,
     userId: string,
     organizationId: string,
+    audit?: ApiKeyMutationAudit<MobileApiKeyAccountRevocationResult>,
   ): Promise<MobileApiKeyAccountRevocationResult | null> {
     if (!isUuid(credentialId) || !isUuid(userId) || !isUuid(organizationId)) return null;
 
@@ -663,13 +698,23 @@ export class ApiKeysService {
     if (existingReceipt) return { receipt: existingReceipt, revokedNow: false };
     if (!existing) return null;
 
-    const tombstone = await apiKeysRepository.tombstoneMobileByOwner(
-      credentialId,
-      userId,
-      organizationId,
-      new Date(),
+    const receipt = await withMutationAudit(
+      async (tx) =>
+        mobileRevocationReceipt(
+          await apiKeysRepository.tombstoneMobileByOwner(
+            credentialId,
+            userId,
+            organizationId,
+            new Date(),
+            tx,
+          ),
+        ),
+      audit
+        ? async (tx, revoked) => {
+            if (revoked) await audit(tx, { receipt: revoked, revokedNow: true });
+          }
+        : undefined,
     );
-    const receipt = mobileRevocationReceipt(tombstone);
     if (receipt) return { receipt, revokedNow: true };
 
     const concurrent = mobileRevocationReceipt(
@@ -690,6 +735,7 @@ export class ApiKeysService {
    */
   async revokePresentedMobileCredential(
     secret: string,
+    audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
   ): Promise<MobileApiKeySelfRevocationResult | null> {
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
@@ -698,10 +744,15 @@ export class ApiKeysService {
     if (existingResult) return existingResult;
     if (!existing || !isUuid(existing.source_app_id)) return null;
 
-    const tombstone = await apiKeysRepository.tombstoneExactMobileCredential(
-      existing.id,
-      keyHash,
-      new Date(),
+    const tombstone = await withMutationAudit(
+      (tx) =>
+        apiKeysRepository.tombstoneExactMobileCredential(existing.id, keyHash, new Date(), tx),
+      audit
+        ? async (tx, revoked) => {
+            const result = mobileSelfRevocationResult(revoked, true);
+            if (result) await audit(tx, result);
+          }
+        : undefined,
     );
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
@@ -729,6 +780,7 @@ export class ApiKeysService {
   /** Revokes only the exact active mobile row proven at the request boundary. */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,
+    audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
   ): Promise<MobileApiKeySelfRevocationResult> {
     if (
       !isUuid(credential.id) ||
@@ -757,10 +809,20 @@ export class ApiKeysService {
       });
     }
 
-    const tombstone = await apiKeysRepository.tombstoneExactMobileCredential(
-      credential.id,
-      credential.key_hash,
-      new Date(),
+    const tombstone = await withMutationAudit(
+      (tx) =>
+        apiKeysRepository.tombstoneExactMobileCredential(
+          credential.id,
+          credential.key_hash,
+          new Date(),
+          tx,
+        ),
+      audit
+        ? async (tx, revoked) => {
+            const result = mobileSelfRevocationResult(revoked, true);
+            if (result) await audit(tx, result);
+          }
+        : undefined,
     );
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(

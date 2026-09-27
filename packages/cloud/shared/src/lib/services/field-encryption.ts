@@ -15,11 +15,13 @@
  * @module lib/services/field-encryption
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/helpers";
 import type { OrganizationEncryptionKey } from "../../db/schemas";
 import { organizationEncryptionKeys } from "../../db/schemas";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
 // Encryption constants
@@ -53,6 +55,27 @@ export interface FieldCoords {
   column: string;
 }
 
+/**
+ * Whether field encryption at rest is mandatory in this environment: an
+ * explicit `FIELD_ENCRYPTION_REQUIRED=true`, or a deployed-environment marker
+ * (`ENVIRONMENT` of `production`/`staging`, the same authority `kms-client.ts`
+ * uses). Local/dev/test worlds without the marker keep the legacy plaintext
+ * compatibility path.
+ */
+export function isFieldEncryptionRequired(env: NodeJS.ProcessEnv = getCloudAwareEnv()): boolean {
+  if (env.FIELD_ENCRYPTION_REQUIRED === "true") return true;
+  return env.ENVIRONMENT === "production" || env.ENVIRONMENT === "staging";
+}
+
+/**
+ * Whether new writes must bind table/row/column coordinates into the AES-GCM
+ * AAD (`FIELD_ENCRYPTION_REQUIRE_AAD=true`). Reads are unaffected so rows
+ * written before AAD binding stay decryptable.
+ */
+export function isFieldEncryptionAadRequired(env: NodeJS.ProcessEnv = getCloudAwareEnv()): boolean {
+  return env.FIELD_ENCRYPTION_REQUIRE_AAD === "true";
+}
+
 function aadForCoords(coords: FieldCoords): Buffer {
   return Buffer.from(`${coords.table}|${coords.rowId}|${coords.column}`, "utf8");
 }
@@ -74,7 +97,7 @@ export class FieldEncryptionService {
   private ensureInitialized(): void {
     if (this.initialized) return;
 
-    const masterKeyHex = process.env.SECRETS_MASTER_KEY;
+    const masterKeyHex = getCloudAwareEnv().SECRETS_MASTER_KEY;
     if (!masterKeyHex) {
       throw new Error(
         "SECRETS_MASTER_KEY must be set for field encryption. " +
@@ -114,6 +137,12 @@ export class FieldEncryptionService {
    * @returns Encrypted string in encoded format
    */
   async encrypt(organizationId: string, plaintext: string, coords?: FieldCoords): Promise<string> {
+    if (!coords && isFieldEncryptionAadRequired()) {
+      throw new ElizaError(
+        "Field encryption requires table/row/column coordinates (FIELD_ENCRYPTION_REQUIRE_AAD=true)",
+        { code: "FIELD_ENCRYPTION_AAD_REQUIRED", severity: "fatal", context: { organizationId } },
+      );
+    }
     this.ensureInitialized();
 
     // Get or create the organization's DEK

@@ -120,7 +120,7 @@ export function assertCreditRefundWithinReservation(params: {
  * + 1), each try holding a fresh per-attempt timeout of up to
  * getRouteTimeoutMs(800) — 800s being the largest metered route budget
  * (`v1/apps/[id]/chat` ROUTE_MAX_DURATION) — with capped backoff between
- * tries, and `withProviderFallback` can run that whole ladder once per
+ * tries, and `withRetryableFallback` can run that whole ladder once per
  * provider (primary + fallback). The prior fixed 20-minute grace sat INSIDE
  * that window, so the sweep refunded holds whose settle was still coming and
  * the settle lane then refunded again under its own idempotency key. A truly

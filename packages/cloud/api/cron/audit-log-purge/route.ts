@@ -1,6 +1,6 @@
 /**
  * GET /api/cron/audit-log-purge
- * Reaps expired rows from secret_audit_log (D-4 retention purge).
+ * Reaps expired rows from secret_audit_log and auth_events (D-4 retention purge).
  * Protected by CRON_SECRET.
  */
 

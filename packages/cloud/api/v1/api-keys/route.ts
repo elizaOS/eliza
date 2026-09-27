@@ -8,7 +8,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -98,35 +98,31 @@ app.post("/", async (c) => {
       );
     }
 
-    const { apiKey, plainKey } = await apiKeysService.create({
-      name,
-      description,
-      organization_id: user.organization_id,
-      user_id: user.id,
-      rate_limit,
-      expires_at: expires_at ?? null,
-      is_active: true,
-    });
-
-    await getAuditDispatcher()
-      .emit({
-        actor: { type: "user", id: user.id },
-        action: "api_key.create",
-        result: "success",
-        resource: { type: "api_key", id: apiKey.id },
-        org_id: user.organization_id,
-        request_id: c.get("requestId"),
-        metadata: {
-          key_id: apiKey.id,
-          name: apiKey.name,
-        },
-      })
-      .catch((err: unknown) => {
-        // error-policy:J7 audit-log emit is best-effort telemetry; a failed emit must not fail an already-created key. Observed via this warn.
-        logger.warn("[API Keys] create audit emit failed", {
-          error: err instanceof Error ? err.message : String(err),
+    const audit = createTransactionalAudit();
+    const { apiKey, plainKey } = await apiKeysService.create(
+      {
+        name,
+        description,
+        organization_id: user.organization_id,
+        user_id: user.id,
+        rate_limit,
+        expires_at: expires_at ?? null,
+        is_active: true,
+      },
+      undefined,
+      async (tx, created) => {
+        await audit.write(tx, {
+          actor: { type: "user", id: user.id },
+          action: "api_key.create",
+          result: "success",
+          resource: { type: "api_key", id: created.id },
+          org_id: user.organization_id,
+          request_id: c.get("requestId"),
+          metadata: { key_id: created.id, name: created.name },
         });
-      });
+      },
+    );
+    await audit.publish();
 
     return c.json(
       {
