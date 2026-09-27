@@ -8,6 +8,7 @@
 
 import pluginSql from "@elizaos/plugin-sql";
 import { describe, expect, it } from "vitest";
+import { identifyEmbeddingVector } from "../embedding-vector-space";
 import { AgentRuntime } from "../runtime";
 import { EventType } from "../types/events";
 import { ModelType } from "../types/model";
@@ -52,6 +53,72 @@ function registrationFailures(runtime: AgentRuntime) {
 function handlerCount(runtime: AgentRuntime, event: string): number {
 	return runtime.getEvent(event)?.length ?? 0;
 }
+
+describe("EmbeddingGenerationService late activation", () => {
+	it("persists and retrieves a named vector after the model registers post-boot", async () => {
+		const { runtime, cleanup } = await createRuntime("EmbeddingLateSuccess");
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		const memory = {
+			id: "976d2f6c-603c-4e2f-b04c-c358f08e483e" as const,
+			entityId: runtime.agentId,
+			roomId: runtime.agentId,
+			content: { text: "The launch verification phrase is COPPER-FINCH-684." },
+		};
+		let textCalls = 0;
+		try {
+			await runtime.createMemory(memory, "messages");
+			runtime.registerModel(ModelType.TEXT_SMALL, async () => "x", "other");
+			expect(
+				handlerCount(runtime, EventType.EMBEDDING_GENERATION_REQUESTED),
+			).toBe(0);
+			// A provisioned Dedicated runtime installs its local embedder from a
+			// plugin boot hook, after both runtime and service startup.
+			runtime.registerModel(
+				ModelType.TEXT_EMBEDDING,
+				async (_runtime, params) => {
+					if (params !== null) textCalls++;
+					return identifyEmbeddingVector(
+						params === null ? new Array(DIMENSIONS).fill(0) : [...vector],
+						"test:late-local-384",
+					);
+				},
+				"late-local",
+			);
+			await expect
+				.poll(
+					async () => (await runtime.getTasksByName("EMBEDDING_DRAIN")).length,
+				)
+				.toBe(1);
+			await runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+				runtime,
+				memory: (await runtime.getMemoryById(memory.id)) ?? memory,
+				priority: "high",
+			});
+			const [task] = await runtime.getTasksByName("EMBEDDING_DRAIN");
+			const worker = runtime.getTaskWorker("EMBEDDING_DRAIN");
+			if (!worker || !task) throw new Error("Embedding drain not registered");
+			await worker.execute(runtime, {}, task);
+			await expect
+				.poll(
+					async () =>
+						(await runtime.getMemoryById(memory.id))?.embedding?.length,
+				)
+				.toBe(DIMENSIONS);
+			expect(textCalls).toBe(1);
+			const [recalled] = await runtime.searchMemories({
+				embedding: vector,
+				tableName: "messages",
+				count: 1,
+			});
+			expect(recalled?.id).toBe(memory.id);
+		} finally {
+			await service.stop();
+			await cleanup();
+		}
+	});
+});
 
 describe("EmbeddingGenerationService late activation failure", () => {
 	it("withdraws a failed activation so the next registration retries it", async () => {
