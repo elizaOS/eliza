@@ -3045,7 +3045,7 @@ function renderPlannerModelInput(params: {
     template === plannerTemplate &&
     !params.codingMode &&
     !params.replyOnly &&
-    params.tools?.length
+    params.tools !== undefined
       ? buildPlannerTemplate({
           includeOwnerGoalsExample: params.tools.some(
             (tool) => tool.name === "OWNER_GOALS",

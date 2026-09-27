@@ -352,7 +352,7 @@ it.each([
         name === CalendarService.serviceType ? service : undefined,
       getSetting: () => undefined,
       reportError: () => {},
-      logger: { debug: () => {}, warn: () => {}, error: () => {} },
+      logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
       useModel: async () => {
         throw new Error("No provider calls allowed");
       },

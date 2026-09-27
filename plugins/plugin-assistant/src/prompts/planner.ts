@@ -36,8 +36,8 @@ export const plannerRequiredPolicy = {
 
 const isShellTool = (name: string) =>
   name === "SHELL" || name.startsWith("SHELL_");
-const isTasksTool = (name: string) =>
-  name === "TASKS" || name.startsWith("TASKS_");
+const isCodingDelegationTool = (name: string) =>
+  name === "TASKS" || name === "TASKS_SPAWN_AGENT";
 
 /**
  * Mandatory rules that constrain one tool family. They ride with that family
@@ -50,15 +50,10 @@ export const plannerToolScopedPolicy = {
     rule: "- SHELL is for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_ACTIONS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
   },
   codingDelegation: {
-    appliesTo: isTasksTool,
-    rule: "- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
+    appliesTo: isCodingDelegationTool,
+    rule: "- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Do not delegate a single live/current/public lookup to a coding agent. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
   },
 } as const;
-
-const webLookupRule =
-  "- For a single live/current/public lookup (price, weather, score, news, status or known URL), call WEB_FETCH with a grounded URL or WEB_SEARCH directly and answer from its result. Do not delegate a lookup to a coding agent; reserve delegation for build/code/repo/multi-step work.";
-const isWebLookupTool = (name: string) =>
-  name === "WEB_FETCH" || name === "WEB_SEARCH" || isTasksTool(name);
 
 /**
  * Tool-scoped mandatory rules for an exposed surface. `undefined` means the
@@ -67,11 +62,25 @@ const isWebLookupTool = (name: string) =>
 export function plannerToolScopedRules(
   toolNames?: readonly string[],
 ): string[] {
-  return Object.values(plannerToolScopedPolicy)
+  const rules: string[] = Object.values(plannerToolScopedPolicy)
     .filter(
       ({ appliesTo }) => toolNames === undefined || toolNames.some(appliesTo),
     )
     .map(({ rule }) => rule);
+  const lookupTools = [
+    ...(toolNames === undefined || toolNames.includes("WEB_FETCH")
+      ? ["WEB_FETCH with a grounded URL"]
+      : []),
+    ...(toolNames === undefined || toolNames.includes("WEB_SEARCH")
+      ? ["WEB_SEARCH"]
+      : []),
+  ];
+  if (lookupTools.length) {
+    rules.push(
+      `- For a single live/current/public lookup (price, weather, score, news, status or known URL), call ${lookupTools.join(" or ")} directly and answer from its result.`,
+    );
+  }
+  return rules;
 }
 
 /** The settled-result round has no effect tools and must never plan more work. */
@@ -106,12 +115,7 @@ export function buildPlannerTemplate({
   /** Exposed native tool names; omit to render every tool-scoped rule. */
   toolNames?: readonly string[];
 } = {}): string {
-  const toolRules = [
-    ...plannerToolScopedRules(toolNames),
-    ...(toolNames === undefined || toolNames.some(isWebLookupTool)
-      ? [webLookupRule]
-      : []),
-  ]
+  const toolRules = plannerToolScopedRules(toolNames)
     .map((rule) => `${rule}\n`)
     .join("");
   return `task: Plan next native tool calls.
