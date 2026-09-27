@@ -2356,9 +2356,18 @@ function BrowserWorkspaceForAuthority({
   useEffect(() => {
     void loadBrowserWalletState();
   }, [loadBrowserWalletState]);
-  useIntervalWhenDocumentVisible(() => {
-    void refreshWorkspaceInBackground();
-  }, POLL_INTERVAL_MS);
+  // A deterministic unavailability (missing route or a runtime without the
+  // browser capability) will not change on the next tick: stop polling it
+  // instead of re-requesting a known 404 every interval. Transient failures
+  // stay retryable and keep polling so the workspace recovers on its own.
+  const browserWorkspacePollEnabled = loadError === null || loadError.retryable;
+  useIntervalWhenDocumentVisible(
+    () => {
+      void refreshWorkspaceInBackground();
+    },
+    POLL_INTERVAL_MS,
+    browserWorkspacePollEnabled,
+  );
   useEffect(() => {
     if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
       setSnapshotError(null);
