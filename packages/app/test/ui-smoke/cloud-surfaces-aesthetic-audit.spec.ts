@@ -173,12 +173,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   // billing/
   {
-    slug: "pricing",
-    path: "/pricing",
-    route: "pricing",
-    auth: false,
-  },
-  {
     slug: "cloud-app-subscription",
     path: "/cloud/billing/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff/workspace",
     route: "cloud/billing/apps/:appId/:productFamilyKey",
