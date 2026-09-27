@@ -61,29 +61,29 @@ def _scoring_config_hash() -> str:
 def load_agent_from_file(agent_path: Path) -> GauntletAgent:
     """
     Dynamically load an agent from a Python file.
-    
+
     The file must define a class that implements GauntletAgent
     and be accessible as `Agent` or the first GauntletAgent subclass found.
-    
+
     Args:
         agent_path: Path to the agent Python file
-        
+
     Returns:
         Instantiated agent
     """
     spec = importlib.util.spec_from_file_location("agent_module", agent_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    
+
     # Look for Agent class or first GauntletAgent implementation
     if hasattr(module, "Agent"):
         return module.Agent()
-    
+
     for name in dir(module):
         obj = getattr(module, name)
         if isinstance(obj, type) and hasattr(obj, "execute_task"):
             return obj()
-    
+
     raise ValueError(f"No GauntletAgent implementation found in {agent_path}")
 
 
@@ -110,16 +110,16 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     scenarios_dir = Path(args.scenarios).resolve()
     programs_dir = Path(args.programs).resolve()
     output_dir = Path(args.output).resolve()
-    
+
     # Validate paths
     if not agent_path.exists():
         print(f"❌ Agent file not found: {agent_path}")
         return 1
-    
+
     if not scenarios_dir.exists():
         print(f"❌ Scenarios directory not found: {scenarios_dir}")
         return 1
-    
+
     # Load agent
     print("📦 Loading agent...")
     try:
@@ -128,7 +128,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(f"❌ Failed to load agent: {e}")
         return 1
     print(f"   ✅ Agent loaded: {type(agent).__name__}")
-    
+
     # Initialize components
     orchestrator = TestOrchestrator(
         scenarios_dir=scenarios_dir,
@@ -136,11 +136,11 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         benchmark_version=args.version,
         mock_mode=args.mock,
     )
-    
+
     storage = SQLiteStorage(output_dir / "results.db")
     exporter = Exporter(output_dir, args.version)
     scoring = ScoringEngine()
-    
+
     # Load scenarios
     print("📋 Loading scenarios...")
     orchestrator.load_scenarios()
@@ -153,10 +153,10 @@ async def run_benchmark(args: argparse.Namespace) -> int:
                 continue
             orchestrator._scenarios[level] = scenarios[:remaining]
             remaining -= len(orchestrator._scenarios[level])
-    
+
      # Start Surfpool
     print("🚀 Starting Surfpool...")
-    
+
     # Configure Surfpool based on flags
     if args.clone_mainnet:
         print("   📡 Cloning from mainnet...")
@@ -171,36 +171,36 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         surfpool_config = SurfpoolConfig(mock_mode=args.mock)
         # In offline mode (default), skip validation since no real programs exist
         skip_validation = args.mock or surfpool_config.offline_mode
-    
+
     # Update orchestrator to skip validation and use mock execution if needed
     orchestrator.state_initializer.mock_mode = skip_validation
     orchestrator.mock_mode = skip_validation
-    
+
     async with SurfpoolManager(surfpool_config) as surfpool:
         print(f"   ✅ Surfpool ready at {surfpool.rpc_url}")
-        
+
         # Initialize storage
         storage.initialize()
-        
+
         # Run benchmark
         print()
         print("=" * 60)
         print("🏃 Running benchmark...")
         print("=" * 60)
-        
+
         metrics = await orchestrator.run_benchmark(
             agent=agent,
             agent_id=agent_path.stem,
             seed=args.seed,
         )
-        
+
         # Compute scores
         overall_score = scoring.score_overall(metrics.run_metrics)
-        
+
         # Save results
         storage.save_run(metrics.run_metrics, {"agent_path": str(agent_path)})
         storage.save_scores(metrics.run_metrics.run_id, overall_score)
-        
+
         # Export results
         json_path = exporter.export_json(
             metrics.run_metrics,
@@ -219,16 +219,16 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             overall_score,
             agent_name=type(agent).__name__,
         )
-        
+
         # Export decision traces (primary evaluation artifact per design doc)
         traces_path = exporter.export_traces(metrics.run_metrics)
-        
+
         # Export failure analysis
         failures_path = exporter.export_failure_analysis(
             metrics.run_metrics,
             overall_score,
         )
-        
+
         # Print summary
         print()
         print("=" * 60)
@@ -245,18 +245,18 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(f"  Efficiency:      {overall_score.avg_efficiency:.1f}% (min: 60%)")
         print(f"  Capital:         {overall_score.avg_capital:.1f}% (min: 90%)")
         print()
-        
+
         if overall_score.failure_reason:
             print(f"⚠️ Failure Reason: {overall_score.failure_reason}")
             print()
-        
+
         print(f"📄 Report: {md_path}")
         print(f"📊 Data: {json_path}")
         print(f"🔍 Traces: {traces_path}")
         print(f"⚠️ Failures: {failures_path}")
-    
+
     storage.close()
-    
+
     # Completed benchmark runs should exit cleanly even when the agent fails
     # scoring thresholds. The score JSON carries pass/fail; nonzero process
     # exits are reserved for harness/setup failures.
@@ -266,21 +266,21 @@ async def run_benchmark(args: argparse.Namespace) -> int:
 def list_scenarios(args: argparse.Namespace) -> int:
     """List available scenarios."""
     scenarios_dir = Path(args.scenarios).resolve()
-    
+
     if not scenarios_dir.exists():
         print(f"❌ Scenarios directory not found: {scenarios_dir}")
         return 1
-    
+
     print(f"📋 Scenarios in {scenarios_dir}")
     print()
-    
+
     scenarios_by_level = load_scenarios(scenarios_dir)
     for level in sorted(scenarios_by_level):
         scenarios = scenarios_by_level[level]
         print(f"level{level}: {len(scenarios)} scenarios")
         for scenario in scenarios:
             print(f"  - {scenario.id}")
-    
+
     return 0
 
 
@@ -313,9 +313,9 @@ def create_parser() -> argparse.ArgumentParser:
         default="v1.0",
         help="Benchmark version string",
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", required=True)
-    
+
     # Run command
     run_parser = subparsers.add_parser("run", help="Run benchmark against an agent")
     run_parser.add_argument(
@@ -376,7 +376,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Validate expanded scenario structure and exit",
     )
     run_parser.set_defaults(func=lambda args: asyncio.run(run_benchmark(args)))
-    
+
     # List command
     list_parser = subparsers.add_parser("list", help="List available scenarios")
     list_parser.add_argument(
@@ -424,7 +424,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Print expanded scenario counts after validation",
     )
     validate_parser.set_defaults(func=validate_scenario_command)
-    
+
     return parser
 
 
@@ -432,7 +432,7 @@ def main() -> int:
     """Main entry point."""
     parser = create_parser()
     args = parser.parse_args()
-    
+
     try:
         return args.func(args)
     except KeyboardInterrupt:

@@ -322,4 +322,3 @@ describe("GENERATE_MEDIA — ambiguous / empty input", () => {
 		expect(useModel).not.toHaveBeenCalled();
 	});
 });
-

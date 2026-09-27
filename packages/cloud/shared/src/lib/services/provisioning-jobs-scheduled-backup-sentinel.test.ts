@@ -151,7 +151,7 @@ beforeAll(async () => {
     for (const name of [
       "0388_agent_compute_funded_receipts.sql",
       "0394_agent_billing_activation_minimum.sql",
-      "0477_agent_billing_funding_reservations.sql",
+      "0478_agent_billing_funding_reservations.sql",
       "0399_prepared_stop_backup.sql",
     ]) {
       const migration = await readFile(

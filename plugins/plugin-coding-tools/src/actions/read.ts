@@ -252,6 +252,18 @@ export async function readFileHandler(
   options: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  const result = await readFileContent(runtime, message, options, callback);
+  // READ cannot mutate the workspace. Preserve failed reads in the trajectory
+  // without giving an exploratory miss authority over later completed work.
+  return { ...result, data: { ...result.data, readOnlyOperation: true } };
+}
+
+async function readFileContent(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
   const conversationId =
     message.roomId == null ? undefined : String(message.roomId);
   if (!conversationId)
@@ -371,7 +383,7 @@ export async function readFileHandler(
       return failureToActionResult(
         {
           reason: "stale_read",
-          message: `expected revision ${expected} but found ${currentRevision}`,
+          message: `expected revision ${expected} but found ${currentRevision}. Start a fresh READ of this file_path at offset 0; omit expectedRevision and reference. Resume pagination with the revision and nextOffset returned by that fresh READ.`,
         },
         { revision: currentRevision },
       );

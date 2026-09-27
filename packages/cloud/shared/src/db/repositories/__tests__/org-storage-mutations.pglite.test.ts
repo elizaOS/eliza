@@ -94,7 +94,7 @@ beforeAll(async () => {
   const pg = (await import("../../client")).getPgliteClientForTests();
   await installOrganizationPolicyTestSchema((query) => pg.exec(query));
   // Subscription funding binds storage charges to billing_funding_reservations.
-  await executeSqlFile("0475_org_storage_subscription_funding.sql");
+  await executeSqlFile("0476_org_storage_subscription_funding.sql");
   ({ orgStorageMutationsRepository: repository } = await import("../org-storage-mutations"));
 }, TIMEOUT);
 

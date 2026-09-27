@@ -146,6 +146,7 @@ export function renderMessageHandlerModelInput(
     groupTriage?: boolean;
     progressiveContext?: boolean;
     responseHandlerFields?: string;
+    responseHandlerContext?: string;
     contextCatalog?: ContextCatalogReference;
     history?: HistoryDiscovery;
     historyReadEvidence?: HistoryDiscovery;
@@ -261,6 +262,15 @@ export function renderMessageHandlerModelInput(
       stable: false,
     },
     ...currentMessages,
+    ...(options?.responseHandlerContext?.trim()
+      ? [
+          {
+            id: "response-handler-field-context",
+            content: options.responseHandlerContext,
+            stable: false,
+          },
+        ]
+      : []),
   ];
   const stableWireSegments = [
     ...stableSegments,

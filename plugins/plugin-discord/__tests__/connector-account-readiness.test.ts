@@ -17,9 +17,15 @@ function inventory() {
 	};
 	const clients = new Map<string, { token: string; isReady(): boolean }>();
 	let serviceAvailable = true;
+	const cache = new Map<string, unknown>();
 	const runtime = {
 		character: { settings: { discord: { accounts } } },
 		getSetting: () => undefined,
+		getCache: async (key: string) => cache.get(key),
+		setCache: async (key: string, value: unknown) => {
+			cache.set(key, value);
+			return true;
+		},
 		getService: () =>
 			serviceAvailable
 				? { getClient: (id: string) => clients.get(id) ?? null }

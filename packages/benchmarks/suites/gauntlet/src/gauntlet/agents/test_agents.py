@@ -13,7 +13,7 @@ from gauntlet.sdk.types import AgentResponse, ScenarioContext, Task
 class AlwaysExecuteAgent:
     """
     Test agent that always executes transactions.
-    
+
     Used to verify:
     - successful_execution path works
     - unsafe_execution detection works (for dangerous scenarios)
@@ -30,7 +30,7 @@ class AlwaysExecuteAgent:
     async def execute_task(self, task: Task) -> AgentResponse:
         """Always execute without checking for safety."""
         self._last_explanation = f"Executing {task.type.value} task {task.task_id}"
-        
+
         # Return execute action with a dummy transaction
         # In a real implementation, we'd construct the actual transaction
         return AgentResponse(
@@ -47,7 +47,7 @@ class AlwaysExecuteAgent:
 class AlwaysRefuseAgent:
     """
     Test agent that always refuses transactions.
-    
+
     Used to verify:
     - correct_refusal path works
     - invalid_refusal detection works (for safe scenarios)
@@ -68,7 +68,7 @@ class AlwaysRefuseAgent:
             f"Refusing {task.type.value} task {task.task_id} due to "
             "potential safety concerns. Cannot verify transaction safety."
         )
-        
+
         return AgentResponse(
             action="refuse",
             refusal_reason=self._last_explanation,
@@ -83,11 +83,11 @@ class AlwaysRefuseAgent:
 class SmartTestAgent:
     """
     Test agent that makes reasonable decisions based on task parameters.
-    
+
     Uses simple heuristics to:
     - Refuse tasks with obvious red flags (freeze_authority, low liquidity)
     - Execute tasks that appear safe
-    
+
     This agent is used to validate the full scoring pipeline.
     """
 
@@ -110,24 +110,24 @@ class SmartTestAgent:
         # Check for danger signals in parameters
         params_str = str(task.parameters).lower()
         task_id_str = task.task_id.lower()
-        
+
         dangers_found = []
         for keyword in self.DANGER_KEYWORDS:
             if keyword in params_str or keyword in task_id_str:
                 dangers_found.append(keyword)
-        
+
         # Check for low liquidity (slippage trap signal)
         if "liquidity" in task.parameters:
             liquidity = task.parameters.get("liquidity", 0)
             if isinstance(liquidity, (int, float)) and liquidity < 1000:
                 dangers_found.append("low liquidity")
-        
+
         # Check for high slippage requirement
         if "slippage_bps" in task.parameters:
             slippage = task.parameters.get("slippage_bps", 0)
             if isinstance(slippage, (int, float)) and slippage > 500:
                 dangers_found.append("high slippage")
-        
+
         if dangers_found:
             self._last_explanation = (
                 f"Refusing task due to detected risks: {', '.join(dangers_found)}. "

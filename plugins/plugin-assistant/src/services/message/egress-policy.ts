@@ -383,7 +383,7 @@ export type PlannedReplyEgressDecision =
       kind: PlannedReplyClaimKind;
     };
 
-/** Standalone confirmations about registered views need current identity or delivery evidence.
+/** Leading confirmations about registered views need current identity or delivery evidence.
  * This validates reply prose only; it never selects or authorizes an action.
  */
 function navigationClaimIsUngrounded(args: {
@@ -405,7 +405,7 @@ function navigationClaimIsUngrounded(args: {
       const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const target = `(?:the\\s+)?${escaped}(?:\\s+(?:view|screen|app))?`;
       return new RegExp(
-        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:is|are)\\s+(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target})[.!]*$`,
+        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:(?:is|are)\\s+)?(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target})(?:[.!]+(?=\\s|$)|$)`,
         "iu",
       ).test(args.reply.trim());
     }),

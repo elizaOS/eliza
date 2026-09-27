@@ -269,7 +269,13 @@ async function handleSearchActions(
     return { success: false, error: "A search query is required" };
   }
   const tier2Index = svc.getTier2Index();
-  const results = tier2Index.search(query, platform, limit, offset);
+  const { entries: results, total: totalMatches } = tier2Index.search(
+    query,
+    platform,
+    limit,
+    offset,
+  );
+  const hasMore = offset + results.length < totalMatches;
   if (results.length === 0) {
     return {
       success: true,
@@ -283,6 +289,8 @@ async function handleSearchActions(
         platform,
         offset,
         resultCount: 0,
+        totalMatches,
+        hasMore,
         totalAvailable: tier2Index.getToolCount(),
       },
     };
@@ -321,6 +329,8 @@ async function handleSearchActions(
       platform,
       offset,
       resultCount: results.length,
+      totalMatches,
+      hasMore,
       totalAvailable: tier2Index.getToolCount(),
       newlyRegistered,
       alreadyRegistered,

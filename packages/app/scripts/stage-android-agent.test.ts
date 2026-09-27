@@ -353,6 +353,68 @@ test("stock Android staging fails when the required SIGSYS shim is missing", () 
   }
 });
 
+// Minimal ELF64 image with the given `e_type` and total byte size; enough for
+// the identity check in stageSeccompShimForAbi (it only reads the ELF header).
+function elfImage(eType, size) {
+  const buf = Buffer.alloc(size);
+  buf[0] = 0x7f;
+  buf[1] = 0x45; // E
+  buf[2] = 0x4c; // L
+  buf[3] = 0x46; // F
+  buf[4] = 2; // ELFCLASS64
+  buf[5] = 1; // ELFDATA2LSB
+  buf[6] = 1; // EV_CURRENT
+  buf.writeUInt16LE(eType, 16);
+  return buf;
+}
+
+test("SIGSYS shim restaging preserves the real loader when the wrapper exceeds 200 KiB (#32511)", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seccomp-restage-"));
+  try {
+    const ldName = "ld-musl-aarch64.so.1";
+    const cacheDir = path.join(tmp, "cache");
+    const abiCacheDir = path.join(cacheDir, "arm64-v8a");
+    const abiAssetsDir = path.join(tmp, "assets", "arm64-v8a");
+    fs.mkdirSync(abiCacheDir, { recursive: true });
+    fs.mkdirSync(abiAssetsDir, { recursive: true });
+
+    // The compiled arm64 loader-wrap is ~1 MiB — larger than the old 200 KiB
+    // size threshold — so a byte-size discriminator mistook it for the Alpine
+    // loader on a second staging pass and overwrote `<ldName>.real` with it.
+    const wrapper = elfImage(2 /* ET_EXEC */, 1_064_168);
+    const loader = elfImage(3 /* ET_DYN */, 600 * 1024);
+    fs.writeFileSync(path.join(abiCacheDir, ldName), wrapper);
+    fs.writeFileSync(
+      path.join(abiCacheDir, "libsigsys-handler.so"),
+      Buffer.from("shim"),
+    );
+    // Fresh assets dir holds the extracted Alpine loader.
+    fs.writeFileSync(path.join(abiAssetsDir, ldName), loader);
+
+    const stage = () =>
+      stageSeccompShimForAbi({
+        androidAbi: "arm64-v8a",
+        ldName,
+        abiAssetsDir,
+        cacheDir,
+        log: () => {},
+      });
+
+    const realLoader = path.join(abiAssetsDir, `${ldName}.real`);
+    stage();
+    assert.ok(fs.readFileSync(realLoader).equals(loader));
+
+    stage();
+    assert.ok(
+      fs.readFileSync(realLoader).equals(loader),
+      "second pass must not overwrite the real loader with the wrapper",
+    );
+    assert.ok(fs.readFileSync(path.join(abiAssetsDir, ldName)).equals(wrapper));
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
 test("riscv64 Bun defaults to the external OS toolchain checkout", () => {
   const osRepositoryRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-os-riscv64-bun-"),

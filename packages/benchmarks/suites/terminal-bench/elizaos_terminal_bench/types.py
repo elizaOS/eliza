@@ -185,32 +185,32 @@ class TerminalBenchReport:
     passed_tasks: int
     failed_tasks: int
     accuracy: float
-    
+
     # Detailed results
     results: list[TerminalBenchResult]
-    
+
     # Command statistics
     total_commands: int
     avg_commands_per_task: float
-    
+
     # Token statistics
     total_tokens: int
     avg_tokens_per_task: float
-    
+
     # Time statistics
     evaluation_time_seconds: float
     avg_time_per_task_seconds: float
-    
+
     # Breakdown metrics
     by_category: dict[TaskCategory, CategoryMetrics] = field(default_factory=dict)
     by_difficulty: dict[TaskDifficulty, DifficultyMetrics] = field(default_factory=dict)
-    
+
     # Error analysis
     error_categories: dict[str, int] = field(default_factory=dict)
-    
+
     # Leaderboard comparison
     leaderboard_comparison: Optional[LeaderboardComparison] = None
-    
+
     # Metadata
     metadata: dict[str, str | int | float | bool] = field(default_factory=dict)
 
@@ -222,7 +222,7 @@ class TerminalBenchConfig:
     data_path: str = "./terminal-bench-data"
     output_dir: str = "./benchmark_results/terminal-bench"
     cache_dir: str = ".cache/terminal-bench"
-    
+
     # Dataset settings
     version: str = "2.0"
     categories: Optional[list[TaskCategory]] = None
@@ -230,31 +230,31 @@ class TerminalBenchConfig:
     task_ids: Optional[list[str]] = None
     max_tasks: Optional[int] = None
     include_edge_scenarios: bool = False
-    
+
     # Execution settings
     max_iterations: int = 20
     timeout_per_task_seconds: int = 300
     parallel_tasks: int = 1
-    
+
     # Environment settings
     docker_image: str = "ubuntu:22.04"
     memory_limit: str = "2g"
     cpu_limit: float = 1.0
     network_mode: str = "bridge"
-    
+
     # Model settings
     # Use an accessible, inexpensive default for quick validation.
     model_name: str = "gpt-5-mini"
     model_provider: Optional[str] = None
     temperature: float = 0.0
     max_tokens: int = 4096
-    
+
     # Reporting
     save_detailed_logs: bool = True
     save_sessions: bool = True
     generate_markdown: bool = True
     compare_leaderboard: bool = True
-    
+
     # Debug
     verbose: bool = False
     dry_run: bool = False

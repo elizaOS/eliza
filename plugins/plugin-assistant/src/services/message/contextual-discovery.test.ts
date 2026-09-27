@@ -163,34 +163,37 @@ describe("contextual native discovery", () => {
     });
     expect(loaded).toEqual([deferred]);
   });
-  it("preserves mixed-domain coverage inside the initial ten-operation budget", () => {
-    const notes: Action[] = Array.from({ length: 24 }, (_, index) => ({
-      name: `NOTES_READ_${index}`,
-      description: "Read notes",
-      contexts: ["notes"],
-    }));
-    const calendar: Action = {
-      name: "CALENDAR_READ",
-      description: "Read calendar",
-      contexts: ["calendar"],
-    };
-    const selection = retrieveContextualPlannerActions({
-      actions: [...notes, calendar],
-      query: "read notes and calendar",
-      intents: ["Read notes", "Read calendar"],
-      contexts: ["notes", "calendar"],
-    });
-    expect(selection.actions).toHaveLength(10);
-    expect(selection.actions).toContain(calendar);
-    expect(selection.actions.some((action) => notes.includes(action))).toBe(
-      true,
-    );
-    expect(selection).toMatchObject({
-      matchCount: 25,
-      selectedCount: 10,
-      deferredCount: 15,
-    });
-  });
+  it.each([{ contexts: ["notes", "calendar"] }, { contexts: ["general"] }])(
+    "preserves mixed-domain coverage inside the initial ten-operation budget for $contexts",
+    ({ contexts }) => {
+      const notes: Action[] = Array.from({ length: 24 }, (_, index) => ({
+        name: `NOTES_READ_${index}`,
+        description: "Read notes",
+        contexts: ["notes"],
+      }));
+      const calendar: Action = {
+        name: "CALENDAR_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+      };
+      const selection = retrieveContextualPlannerActions({
+        actions: [...notes, calendar],
+        query: "read notes and calendar",
+        intents: ["Read notes", "Read calendar"],
+        contexts,
+      });
+      expect(selection.actions).toHaveLength(10);
+      expect(selection.actions).toContain(calendar);
+      expect(selection.actions.some((action) => notes.includes(action))).toBe(
+        true,
+      );
+      expect(selection).toMatchObject({
+        matchCount: 25,
+        selectedCount: 10,
+        deferredCount: 15,
+      });
+    },
+  );
   it("keeps every exact hint even when required operations exceed the automatic budget", () => {
     const required: Action[] = Array.from({ length: 12 }, (_, index) => ({
       name: `REQUIRED_${index}`,
@@ -215,140 +218,147 @@ describe("contextual native discovery", () => {
       deferredCount: 15,
     });
   });
-  it("completes hinted navigation with read operations for uncovered declared domains", async () => {
-    const views: Action = {
-      name: "VIEWS_SHOW",
-      description: "Open a view",
-      contexts: ["general", "notes", "calendar"],
-    };
-    const calendarRead: Action = {
-      name: "CALENDAR_NEXT_EVENT",
-      description: "Read the next saved calendar event",
-      contexts: ["calendar"],
-      tags: ["domain:calendar", "capability:read"],
-    };
-    const calendarWrite: Action = {
-      name: "CALENDAR_DELETE_EVENT",
-      description: "Delete a calendar event",
-      contexts: ["calendar"],
-      tags: ["domain:calendar", "capability:delete"],
-    };
-    const found = retrieveContextualPlannerActions({
-      actions: [
-        views,
-        ...(notesPlugin.actions ?? []),
-        calendarRead,
-        calendarWrite,
-        ...sharedCalendarActions,
-      ],
-      query:
-        "Open Notes and read my latest existing note and my next saved Calendar event. Do not create, edit, or delete anything.",
-      intents: [
-        "Open Notes view",
-        "Read latest existing note",
-        "Read next saved calendar event",
-      ],
-      contexts: ["general", "notes", "calendar"],
-      selectedActions: [views],
-    }).actions;
-    expect(found.map((action) => action.name).sort()).toEqual([
-      "CALENDAR_NEXT_EVENT",
-      "NOTES_GET",
-      "NOTES_LIST",
-      "VIEWS_SHOW",
-    ]);
-    const sequence: string[] = [];
-    let planners = 0;
-    const evaluations: string[] = [];
-    const result = await runPlannerLoop({
-      context: { id: "compound-read", events: [] },
-      tools: buildPlannerToolsFromActions(found),
-      runtime: {
-        useModel: async () => {
-          planners++;
-          if (planners > 1)
-            throw new Error("Unexpected schema-discovery replan");
-          return {
-            text: "",
-            toolCalls: [
-              {
-                id: "navigation",
-                name: "VIEWS_SHOW",
-                arguments: {
-                  view: "notes",
-                  eliza_turn_scope: "final",
+  it.each([
+    { contexts: ["general", "notes", "calendar"] },
+    { contexts: ["general"] },
+  ])(
+    "completes hinted navigation with read operations for $contexts",
+    async ({ contexts }) => {
+      const views: Action = {
+        name: "VIEWS_SHOW",
+        description: "Open a view",
+        contexts: ["general", "notes", "calendar"],
+      };
+      const calendarRead: Action = {
+        name: "CALENDAR_NEXT_EVENT",
+        description: "Read the next saved calendar event",
+        contexts: ["calendar"],
+        tags: ["domain:calendar", "capability:read"],
+      };
+      const calendarWrite: Action = {
+        name: "CALENDAR_DELETE_EVENT",
+        description: "Delete a calendar event",
+        contexts: ["calendar"],
+        tags: ["domain:calendar", "capability:delete"],
+      };
+      const found = retrieveContextualPlannerActions({
+        actions: [
+          views,
+          ...(notesPlugin.actions ?? []),
+          calendarRead,
+          calendarWrite,
+          ...sharedCalendarActions,
+        ],
+        query:
+          "Open Notes and read my latest existing note and my next saved Calendar event. Do not create, edit, or delete anything.",
+        intents: [
+          "Open Notes view",
+          "Read latest existing note",
+          "Read next saved calendar event",
+        ],
+        contexts,
+        contextAliases: (context) => (context === "notes" ? ["note"] : []),
+        selectedActions: [views],
+      }).actions;
+      expect(found.map((action) => action.name).sort()).toEqual([
+        "CALENDAR_NEXT_EVENT",
+        "NOTES_GET",
+        "NOTES_LIST",
+        "VIEWS_SHOW",
+      ]);
+      const sequence: string[] = [];
+      let planners = 0;
+      const evaluations: string[] = [];
+      const result = await runPlannerLoop({
+        context: { id: "compound-read", events: [] },
+        tools: buildPlannerToolsFromActions(found),
+        runtime: {
+          useModel: async () => {
+            planners++;
+            if (planners > 1)
+              throw new Error("Unexpected schema-discovery replan");
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "navigation",
+                  name: "VIEWS_SHOW",
+                  arguments: {
+                    view: "notes",
+                    eliza_turn_scope: "final",
+                  },
+                },
+                {
+                  id: "notes",
+                  name: "NOTES_LIST",
+                  arguments: { eliza_turn_scope: "final" },
+                },
+                {
+                  id: "calendar",
+                  name: "CALENDAR_NEXT_EVENT",
+                  arguments: { eliza_turn_scope: "final" },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          sequence.push(call.name);
+          if (call.name === "VIEWS_SHOW")
+            return {
+              success: true,
+              transcriptVisibility: "internal",
+              modelReplyRequired: true,
+              data: {
+                navigation: {
+                  effect: "view_navigation",
+                  status: "delivered",
+                  viewId: "notes",
+                  label: "Notes",
+                  path: "/notes",
+                  handoffId: "offline",
+                  stepId: call.params?.navigationStepId,
                 },
               },
-              {
-                id: "notes",
-                name: "NOTES_LIST",
-                arguments: { eliza_turn_scope: "final" },
-              },
-              {
-                id: "calendar",
-                name: "CALENDAR_NEXT_EVENT",
-                arguments: { eliza_turn_scope: "final" },
-              },
-            ],
-          };
-        },
-      },
-      executeToolCall: async (call) => {
-        sequence.push(call.name);
-        if (call.name === "VIEWS_SHOW")
+            };
           return {
             success: true,
+            text: `${call.name} read complete.`,
             transcriptVisibility: "internal",
             modelReplyRequired: true,
-            data: {
-              navigation: {
-                effect: "view_navigation",
-                status: "delivered",
-                viewId: "notes",
-                label: "Notes",
-                path: "/notes",
-                handoffId: "offline",
-                stepId: call.params?.navigationStepId,
-              },
-            },
+            data: { readOnlyOperation: true },
           };
-        return {
-          success: true,
-          text: `${call.name} read complete.`,
-          transcriptVisibility: "internal",
-          modelReplyRequired: true,
-          data: { readOnlyOperation: true },
-        };
-      },
-      evaluate: async () => {
-        evaluations.push(sequence.at(-1) ?? "");
-        return sequence.at(-1) === "NOTES_LIST"
-          ? {
-              success: true,
-              decision: "NEXT_RECOMMENDED",
-              thought: "Calendar read is still queued.",
-              recommendedToolCallId: "calendar",
-              raw: {},
-            }
-          : {
-              success: true,
-              decision: "FINISH",
-              thought: "Both records were read.",
-              messageToUser:
-                "Notes is open. The saved note and next calendar event were read.",
-              raw: {},
-            };
-      },
-    });
-    expect(result.status).toBe("finished");
-    expect(sequence).toEqual([
-      "VIEWS_SHOW",
-      "NOTES_LIST",
-      "CALENDAR_NEXT_EVENT",
-    ]);
-    expect(planners).toBe(1);
-    expect(evaluations).toEqual(["NOTES_LIST", "CALENDAR_NEXT_EVENT"]);
-  });
+        },
+        evaluate: async () => {
+          evaluations.push(sequence.at(-1) ?? "");
+          return sequence.at(-1) === "NOTES_LIST"
+            ? {
+                success: true,
+                decision: "NEXT_RECOMMENDED",
+                thought: "Calendar read is still queued.",
+                recommendedToolCallId: "calendar",
+                raw: {},
+              }
+            : {
+                success: true,
+                decision: "FINISH",
+                thought: "Both records were read.",
+                messageToUser:
+                  "Notes is open. The saved note and next calendar event were read.",
+                raw: {},
+              };
+        },
+      });
+      expect(result.status).toBe("finished");
+      expect(sequence).toEqual([
+        "VIEWS_SHOW",
+        "NOTES_LIST",
+        "CALENDAR_NEXT_EVENT",
+      ]);
+      expect(planners).toBe(1);
+      expect(evaluations).toEqual(["NOTES_LIST", "CALENDAR_NEXT_EVENT"]);
+    },
+  );
   it("retains exact domain hints and does not fill their unselected sibling operations", () => {
     const actions = notesPlugin.actions ?? [];
     const exact = actions.find((action) => action.name === "NOTES_GET");
@@ -403,6 +413,187 @@ describe("contextual native discovery", () => {
         selectedActions: [view],
       }).actions,
     ).toEqual([view]);
+  });
+
+  it.each([
+    ["Navigate to Notes", []],
+    ["Open Notes", []],
+    ["Do not read calendar", []],
+    ["Don't read calendar", []],
+    ["Don’t read calendar", []],
+    ["Don't read a note titled 'Calendar rules'", []],
+    ["Read a note titled 'not Calendar'", ["NOTES_GET", "NOTES_LIST"]],
+    ['Read a note titled "don\'t read Calendar"', ["NOTES_GET", "NOTES_LIST"]],
+    ["Read a note titled 'Calendar rules'", ["NOTES_GET", "NOTES_LIST"]],
+    ['Read a note titled "Calendar rules"', ["NOTES_GET", "NOTES_LIST"]],
+    ["Read unknown-domain records", []],
+    ["Say hello", []],
+  ])(
+    "keeps bootstrap domain inference conservative for %s",
+    (intent, expected) => {
+      const view: Action = {
+        name: "VIEWS_SHOW",
+        contexts: ["general"],
+        description: "Open a view",
+      };
+      const actions: Action[] = [
+        view,
+        ...(notesPlugin.actions ?? []),
+        {
+          name: "CALENDAR_NEXT_EVENT",
+          contexts: ["calendar"],
+          description: "Read next calendar event",
+        },
+      ];
+      const found = retrieveContextualPlannerActions({
+        actions,
+        query: String(intent),
+        intents: [String(intent)],
+        contexts: ["general"],
+        selectedActions: [view],
+        contextAliases: (context) => (context === "notes" ? ["note"] : []),
+      });
+      expect(found.actions.map((action) => action.name).sort()).toEqual(
+        ["VIEWS_SHOW", ...expected].sort(),
+      );
+    },
+  );
+
+  it("does not use negated operations to widen a positive read intent", () => {
+    const view: Action = {
+      name: "VIEWS_SHOW",
+      contexts: ["general"],
+      description: "Open a view",
+    };
+    const found = retrieveContextualPlannerActions({
+      actions: [view, ...(notesPlugin.actions ?? [])],
+      query: "Read notes; do not delete notes",
+      intents: ["Read notes", "Do not delete notes"],
+      contexts: ["general"],
+      selectedActions: [view],
+    });
+    expect(found.actions.map((action) => action.name).sort()).toEqual([
+      "NOTES_GET",
+      "NOTES_LIST",
+      "VIEWS_SHOW",
+    ]);
+  });
+
+  it("preserves retrieval for an explicitly selected domain with a constrained read intent", () => {
+    const result = retrieveContextualPlannerActions({
+      actions: notesPlugin.actions ?? [],
+      query: "Read notes without changing anything",
+      intents: ["Read notes without changing anything"],
+      contexts: ["notes"],
+    });
+    expect(result.actions.map((action) => action.name)).toContain("NOTES_LIST");
+    expect(result.actions.map((action) => action.name)).toContain("NOTES_GET");
+  });
+
+  it("uses discovery admission for pending domains without weakening role, private, context or availability gates", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "Bootstrap gates", bio: "Test" },
+      logLevel: "fatal",
+    });
+    const actions: Action[] = [
+      {
+        name: "ALLOWED_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+      },
+      {
+        name: "RESTRICTED_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+        roleGate: { minRole: "OWNER" },
+      },
+      {
+        name: "HIDDEN_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+        private: true,
+      },
+      {
+        name: "UNAVAILABLE_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+        validate: async () => false,
+      },
+      {
+        name: "FORBIDDEN_READ",
+        description: "Read calendar",
+        contextGate: { anyOf: ["calendar"], noneOf: ["blocked"] },
+      },
+      {
+        name: "UNDISCLOSED_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+        disclosureGate: { require: "owner_exclusive" },
+      },
+      {
+        name: "NO_ACCOUNT_READ",
+        description: "Read calendar",
+        contexts: ["calendar"],
+        connectorAccountPolicy: {
+          provider: "bootstrap-fixture",
+          required: true,
+        },
+      },
+    ];
+    currentRuntime.actions.push(...actions);
+    const currentMessage: Memory = {
+      entityId: "00000000-0000-0000-0000-000000000001",
+      content: { text: "Read calendar", channelType: "DM" },
+    };
+    const args = {
+      runtime: currentRuntime,
+      message: currentMessage,
+      state: { text: "", values: {}, data: {} },
+      selectedContexts: ["general", "blocked"],
+      userRoles: ["USER" as const],
+    };
+    const before = await collectV5PlannerCandidateActions(args);
+    expect(before).toEqual([]);
+    const after = await collectV5PlannerCandidateActions({
+      ...args,
+      intents: ["Read calendar"],
+    });
+    expect(after.map((action) => action.name)).toEqual(["ALLOWED_READ"]);
+  });
+
+  it("bounds new supplemental admission checks before action validation", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "Bounded admission", bio: "Test" },
+      logLevel: "fatal",
+    });
+    let validations = 0;
+    currentRuntime.actions.push(
+      ...Array.from(
+        { length: 25 },
+        (_, index): Action => ({
+          name: `RECORDS_READ_${index}`,
+          description: "Read records",
+          contexts: ["records"],
+          validate: async () => {
+            validations++;
+            return true;
+          },
+        }),
+      ),
+    );
+    const admitted = await collectV5PlannerCandidateActions({
+      runtime: currentRuntime,
+      message: {
+        entityId: currentRuntime.agentId,
+        content: { text: "Read records", channelType: "DM" },
+      },
+      state: { text: "", values: {}, data: {} },
+      selectedContexts: ["general"],
+      intents: ["Read records"],
+      userRoles: ["USER"],
+    });
+    expect(admitted).toHaveLength(10);
+    expect(validations).toBe(10);
   });
   it("discovers gate-only domains while preserving required, forbidden and role terms", async () => {
     const runtime = new AgentRuntime({

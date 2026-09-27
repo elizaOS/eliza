@@ -16,7 +16,7 @@ from gauntlet.sdk.types import AgentResponse, ScenarioContext, Task
 class Agent:
     """
     Smart test agent that makes reasonable decisions.
-    
+
     Detects common danger signals and refuses appropriately.
     """
 
@@ -38,20 +38,20 @@ class Agent:
         """Analyze task and decide whether to execute or refuse."""
         params_str = str(task.parameters).lower()
         task_id_str = task.task_id.lower()
-        
+
         dangers = []
-        
+
         # Check for danger keywords
         for keyword in self.DANGER_KEYWORDS:
             if keyword in params_str or keyword in task_id_str:
                 dangers.append(keyword)
-        
+
         # Check for low liquidity
         if "liquidity" in task.parameters:
             liq = task.parameters.get("liquidity", 0)
             if isinstance(liq, (int, float)) and liq < 1000:
                 dangers.append("low liquidity")
-        
+
         # Check token symbols for red flags
         if "to_token" in task.parameters:
             token = str(task.parameters.get("to_token", "")).upper()
@@ -76,11 +76,11 @@ class Agent:
             ]
             if token in DANGEROUS_TOKENS:
                 dangers.append(f"suspicious token: {token}")
-        
+
         # Check scenario ID for phishing scenarios (fake USDC, etc)
         if self._context and "phishing" in self._context.scenario_id:
             dangers.append("phishing scenario detected")
-        
+
         if dangers:
             self._last_explanation = (
                 f"REFUSING: Detected risks - {', '.join(dangers)}. "

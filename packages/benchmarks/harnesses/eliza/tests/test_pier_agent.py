@@ -4,6 +4,8 @@ import json
 from types import SimpleNamespace
 import hashlib
 import importlib.util
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +25,76 @@ class PierAdapterBoundaryTests(unittest.TestCase):
                               runtime_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(),
                               runtime_revision='test-revision', logs_dir=root,
                               model_name='cerebras/test-model', extra_env={'CEREBRAS_API_KEY': 'fixture'})
+
+    def test_task_local_git_identity_allows_real_agent_commit_without_global_config(self):
+        root = Path(self.directory.name)
+        checkout = root / "task"
+        checkout.mkdir()
+        home = root / "home"
+        home.mkdir()
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / "config"), GIT_CONFIG_NOSYSTEM="1",
+                   GIT_CONFIG_GLOBAL=str(home / "empty-gitconfig"))
+        subprocess.run(["git", "init", str(checkout)], env=env, capture_output=True, check=True)
+        before = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=checkout,
+                                env=env, capture_output=True)
+        self.assertNotEqual(before.returncode, 0)
+        subprocess.run(["git", "config", "--local", "user.useConfigOnly", "true"],
+                       cwd=checkout, env=env, check=True)
+        missing = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"], cwd=checkout,
+                                 env=env, capture_output=True)
+        self.assertNotEqual(missing.returncode, 0)
+
+        async def execute(command, **kwargs):
+            self.assertEqual(kwargs["cwd"], "/app")
+            result = subprocess.run(command, shell=True, cwd=checkout, env=env,
+                                    capture_output=True, text=True, timeout=kwargs["timeout_sec"])
+            return SimpleNamespace(return_code=result.returncode, stdout=result.stdout, stderr=result.stderr)
+
+        agent = self.agent_class(**self.arguments)
+        asyncio.run(agent._prepare_git_identity(SimpleNamespace(exec=execute)))
+        self.assertFalse((home / "empty-gitconfig").exists())
+        self.assertNotEqual(subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=checkout,
+                                          env=env, capture_output=True).returncode, 0)
+        (checkout / "agent-created.txt").write_text("agent implementation\n")
+        subprocess.run(["git", "add", "agent-created.txt"], cwd=checkout, env=env, check=True)
+        subprocess.run(["git", "commit", "-m", "Agent completes task"], cwd=checkout,
+                       env=env, check=True, capture_output=True)
+        author = subprocess.check_output(["git", "show", "-s", "--format=%an <%ae>"],
+                                         cwd=checkout, env=env, text=True).strip()
+        self.assertEqual(author, "Eliza Benchmark <benchmark@eliza.invalid>")
+
+    def test_git_identity_setup_failure_is_not_hidden(self):
+        async def execute(*args, **kwargs):
+            return SimpleNamespace(return_code=128, stdout="", stderr="identity setup failed")
+        with self.assertRaisesRegex(RuntimeError, "task-local Git"):
+            asyncio.run(self.agent_class(**self.arguments)._prepare_git_identity(SimpleNamespace(exec=execute)))
+
+    def test_setup_requires_working_bundled_search_before_agent_start(self):
+        for available in (False, True):
+            with self.subTest(available=available):
+                agent = self.agent_class(**self.arguments)
+
+                async def upload(*args):
+                    pass
+
+                async def execute(command, **kwargs):
+                    if command == "/opt/eliza/bin/rg --version":
+                        return SimpleNamespace(return_code=0 if available else 127)
+                    if command.startswith("sha256sum"):
+                        return SimpleNamespace(return_code=0, stdout=agent.bundle_digest)
+                    if "tar -xf" in command:
+                        return SimpleNamespace(return_code=0, stdout="1.4.2")
+                    return SimpleNamespace(return_code=0, stdout="/root")
+
+                environment = SimpleNamespace(exec=execute, upload_file=upload)
+                if available:
+                    asyncio.run(agent.setup(environment))
+                    self.assertEqual(agent.state_dir, "/root/.eliza-benchmark-state")
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "bundled ripgrep"):
+                        asyncio.run(agent.setup(environment))
+                    self.assertIsNone(agent.state_dir)
 
     def test_changed_bundle_rejected(self):
         with self.assertRaisesRegex(ValueError, 'digest mismatch'):
@@ -56,6 +128,8 @@ class PierAdapterBoundaryTests(unittest.TestCase):
             uploads[destination] = Path(source).read_text()
 
         async def execute(*args, **kwargs):
+            self.assertIn('PATH="/opt/eliza/bin:$PATH"', args[0])
+            self.assertEqual(kwargs["env"]["ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP"], "1")
             return SimpleNamespace(return_code=1)
 
         async def download_file(source, destination):
@@ -77,6 +151,7 @@ class PierAdapterBoundaryTests(unittest.TestCase):
             asyncio.run(agent.run("Solve the task", environment, SimpleNamespace(metadata={})))
         settings = json.loads(uploads["/private-state/eliza.json"])["env"]["vars"]
         self.assertEqual(settings["OPENAI_REASONING_EFFORT"], "none")
+        self.assertEqual(settings["ELIZA_CANONICAL_EMBEDDINGS_ENABLED"], "false")
         self.assertEqual(settings["CEREBRAS_MODEL"], "test-model")
         self.assertEqual(settings["OPENAI_LARGE_MODEL"], "test-model")
         self.assertEqual(settings["OPENAI_BASE_URL"], "https://api.cerebras.ai/v1")

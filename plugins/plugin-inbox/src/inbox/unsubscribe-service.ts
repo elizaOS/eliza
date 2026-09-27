@@ -25,7 +25,7 @@
 
 import crypto from "node:crypto";
 import { fetchWithSsrfGuard, type IAgentRuntime, logger } from "@elizaos/core";
-import { type LifeOpsGmailMessageSummary } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsGmailMessageSummary } from "@elizaos/core/contracts/personal-assistant";
 import {
   fail,
   normalizeOptionalString,
@@ -350,11 +350,23 @@ export class InboxUnsubscribeService {
         continue;
       }
       existing.messageCount += 1;
-      existing.latestSeenAt = message.receivedAt;
-      existing.latestMessageId = message.id;
-      existing.latestThreadId = message.threadId;
       existing.allMessageIds.push(message.id);
       existing.allThreadIds.push(message.threadId);
+      // Gmail lists newest-first, so derive the extremes by timestamp rather
+      // than iteration order. Unparseable timestamps never become an extreme.
+      const receivedAtMs = Date.parse(message.receivedAt);
+      if (Number.isFinite(receivedAtMs)) {
+        const firstSeenMs = Date.parse(existing.firstSeenAt);
+        if (!Number.isFinite(firstSeenMs) || receivedAtMs < firstSeenMs) {
+          existing.firstSeenAt = message.receivedAt;
+        }
+        const latestSeenMs = Date.parse(existing.latestSeenAt);
+        if (!Number.isFinite(latestSeenMs) || receivedAtMs >= latestSeenMs) {
+          existing.latestSeenAt = message.receivedAt;
+          existing.latestMessageId = message.id;
+          existing.latestThreadId = message.threadId;
+        }
+      }
       if (existing.sampleSubjects.length < 5) {
         existing.sampleSubjects.push(message.subject);
       }

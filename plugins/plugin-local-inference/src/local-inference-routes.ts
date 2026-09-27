@@ -806,7 +806,12 @@ async function downloadModel(
 		}
 		record.updatedAt = new Date().toISOString();
 	} finally {
-		if (record.state !== "downloading") {
+		// Only clear our own entry: a cancel followed by a restart replaces it with
+		// a new job that this settling download must not evict.
+		if (
+			record.state !== "downloading" &&
+			activeDownloads.get(model.id)?.job === record
+		) {
 			activeDownloads.delete(model.id);
 		}
 	}

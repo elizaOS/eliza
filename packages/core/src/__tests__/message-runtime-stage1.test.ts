@@ -720,8 +720,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					visualContinuation: {
 						disposition: "none",
 						viewId: "",
-						singleViewOnly: false,
-						navigationOnly: false,
 					},
 				},
 			}),
@@ -730,10 +728,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				extra: {
 					...common.extra,
 					visualContinuation: {
-						disposition: "requested",
+						disposition: "planning",
 						viewId: "notes",
-						singleViewOnly: true,
-						navigationOnly: false,
 					},
 				},
 			}),
@@ -751,7 +747,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).toHaveBeenCalledTimes(1);
 		expect(
 			dispatch.mock.calls[0][0].rawParsed.visualContinuation,
-		).toMatchObject({ disposition: "requested" });
+		).toMatchObject({ disposition: "planning" });
 		expect(JSON.stringify(useModelCalls(runtime)[1][1])).toContain(
 			"structured navigation declarations conflict",
 		);
@@ -1538,10 +1534,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				extra: {
 					replyEffectStatus: "applied",
 					visualContinuation: {
-						disposition: "requested",
+						disposition: "direct",
 						viewId: "chat",
-						singleViewOnly: true,
-						navigationOnly: true,
 					},
 				},
 			});

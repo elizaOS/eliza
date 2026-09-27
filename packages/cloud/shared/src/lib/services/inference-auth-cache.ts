@@ -627,6 +627,9 @@ export async function writeOrgBalanceHint(
     hint,
     CacheTTL.inference.orgBalanceStale,
   );
+  // With no cache backend configured there is no projection to seed, matching
+  // `delConfirmed`; a configured backend that did not confirm still fails closed.
+  if (outcome.kind === "unavailable" && !cache.isBackendConfigured()) return;
   if (outcome.kind !== "written") {
     throw new Error(`Organization balance hint write was not confirmed: ${outcome.kind}`);
   }

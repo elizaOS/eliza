@@ -11,9 +11,11 @@ import path from "node:path";
 import {
   type ActionResult,
   actionToJsonSchema,
+  buildPlannerToolsFromActions,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
+  promoteSubactionsToActions,
   satisfiesRoleGate,
   type UUID,
 } from "@elizaos/core";
@@ -23,10 +25,12 @@ import {
   validateSchema,
 } from "../../../packages/core/src/actions/validate-tool-args.ts";
 import {
+  __renderRoutingHintsBlockForTests,
   type PlannerToolCall,
   runPlannerLoop,
 } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
+import { createPlannerToolDiscoveryAction } from "../../plugin-assistant/src/services/message/tool-discovery.ts";
 import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
@@ -131,6 +135,97 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it.each([
+    ["NOTES_LIST", "NOTES_GET"],
+    ["NOTES_LIST", "NOTES_PATCH", "NOTES_UPDATE"],
+  ])("renders one family hint for exposed children %j", (...names) => {
+    const actions = (notesPlugin.actions ?? []).filter((action) =>
+      names.includes(action.name),
+    );
+    const block = __renderRoutingHintsBlockForTests({
+      id: "notes-hint-test",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, description: action.description, action },
+      })),
+    });
+    const hint = notesAction.routingHint;
+    if (!hint) throw new Error("Missing Notes routing hint");
+    expect(block?.split(hint).length).toBe(2);
+    expect(JSON.stringify(buildPlannerToolsFromActions(actions))).not.toContain(
+      notesAction.routingHint,
+    );
+  });
+  it("discovers missing UPDATE from a read-only Notes surface", async () => {
+    const runtime = await executorHarness();
+    const loaded: string[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      (notesPlugin.actions ?? []).filter((action) =>
+        ["NOTES_LIST", "NOTES_GET"].includes(action.name),
+      ),
+      (actions) => loaded.push(...actions.map((action) => action.name)),
+      async () => notesPlugin.actions ?? [],
+    );
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["NOTES_UPDATE"] },
+    });
+    expect(result).toMatchObject({ success: true });
+    expect(loaded).toContain("NOTES_UPDATE");
+  });
+  it("keeps family routing hints out of native child schemas and preserves operation contracts", () => {
+    const withOtherHint = promoteSubactionsToActions({
+      ...notesAction,
+      routingHint: "DIFFERENT_FAMILY_HINT_SENTINEL",
+    });
+    const withCurrentHint = promoteSubactionsToActions(notesAction);
+    expect(
+      buildPlannerToolsFromActions(
+        withOtherHint.filter((action) => action.name !== "NOTES"),
+      ),
+    ).toEqual(
+      buildPlannerToolsFromActions(
+        withCurrentHint.filter((action) => action.name !== "NOTES"),
+      ),
+    );
+    const tools = buildPlannerToolsFromActions(
+      (notesPlugin.actions ?? []).filter((action) => action.name !== "NOTES"),
+    );
+    expect(JSON.stringify(tools)).not.toContain(notesAction.routingHint);
+    const operation = (name: string) => {
+      const action = notesPlugin.actions?.find((entry) => entry.name === name);
+      if (!action) throw new Error(`Missing ${name}`);
+      return action;
+    };
+    const list = operation("NOTES_LIST");
+    expect(list.description).toMatch(/timestamps/);
+    expect(actionToJsonSchema(list).properties?.latestBy).toMatchObject({
+      type: "string",
+      enum: ["createdAt", "updatedAt"],
+    });
+    expect(actionToJsonSchema(notesAction).properties).toHaveProperty(
+      "latestBy",
+    );
+    expect(
+      list.parameters?.find((p) => p.name === "dateRange")?.description,
+    ).toMatch(/previous Monday-to-Monday/);
+    expect(
+      operation("NOTES_GET").parameters?.find((p) => p.name === "noteId")
+        ?.required,
+    ).toBe(true);
+    expect(operation("NOTES_CREATE").description).toMatch(
+      /punctuation, whitespace and line breaks exactly/,
+    );
+    const patch = operation("NOTES_PATCH");
+    expect(
+      patch.parameters?.find((p) => p.name === "expectedRevision")?.required,
+    ).toBe(true);
+    expect(patch.description).toMatch(/NOTES_UPDATE with textEdit/);
+    expect(
+      operation("NOTES_UPDATE").parameters?.find((p) => p.name === "textEdit")
+        ?.description,
+    ).toMatch(/unique literal match atomically/);
+  });
   it("requires an update selector on the provider wire and preserves unrelated text through real admission", async () => {
     const runtime = await executorHarness();
     const action = notesPlugin.actions?.find(
@@ -380,6 +475,233 @@ describe("promoted Notes execution", () => {
       data: { invalidParameterNames: ["query"] },
     });
   });
+
+  it("selects creation or update recency from one snapshot without relying on display order", async () => {
+    let instant = "2026-09-20T10:00:00Z";
+    const runtime = await executorHarness(() => new Date(instant));
+    const service = getNotesService(runtime);
+    const older = await service.createNote({
+      title: "Older",
+      body: "original",
+    });
+    instant = "2026-09-21T10:00:00Z";
+    const newer = await service.createNote({
+      title: "Newer",
+      body: "keep  exact",
+    });
+    instant = "2026-09-22T10:00:00Z";
+    await service.updateNote(
+      older.id,
+      { body: '\nEdited "today".' },
+      service.snapshot().revision,
+    );
+    const snapshot = service.snapshot();
+    expect(snapshot.notes.map((n) => n.id)).toEqual([newer.id, older.id]);
+    const before = await fs.readFile(service.store.filePath, "utf8");
+    for (const [latestBy, id] of [
+      ["createdAt", newer.id],
+      ["updatedAt", older.id],
+    ]) {
+      const result = await execute(runtime, {
+        name: "NOTES_LIST",
+        params: { latestBy },
+      });
+      const selected = snapshot.notes.find((n) => n.id === id);
+      if (!selected) throw new Error("Missing selected fixture");
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          count: 1,
+          total: 2,
+          eligibleMatchCount: 2,
+          notesRevision: snapshot.revision,
+          selection: {
+            kind: "latest",
+            field: latestBy,
+            at: selected[latestBy as "createdAt" | "updatedAt"],
+          },
+          notes: [
+            { ...selected, sourceNote: service.sourceReference(selected) },
+          ],
+        },
+      });
+    }
+    const all = await execute(runtime, { name: "NOTES_LIST", params: {} });
+    expect(all.data).not.toHaveProperty("selection");
+    expect(all.data).not.toHaveProperty("eligibleMatchCount");
+    expect(all.data).toMatchObject({
+      count: 2,
+      total: 2,
+      lookupMode: "all",
+      filterApplied: false,
+      notes: snapshot.notes.map((note) => ({
+        ...note,
+        sourceNote: service.sourceReference(note),
+      })),
+    });
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(before);
+  });
+
+  it("retains all greatest-instant ties after topic and half-open date filters", async () => {
+    let instant = "2026-03-08T09:00:00Z";
+    const runtime = await executorHarness(() => new Date(instant));
+    const service = getNotesService(runtime);
+    await service.createNote({ title: "Fern older", body: "old" });
+    instant = "2026-03-08T10:30:00Z";
+    const first = await service.createNote({
+      title: "Fern first",
+      body: "first",
+    });
+    const second = await service.createNote({
+      title: "Fern second",
+      body: "second",
+    });
+    instant = "2026-03-09T07:00:00Z";
+    await service.createNote({ title: "Fern excluded end", body: "outside" });
+    instant = "2026-03-08T11:00:00Z";
+    await service.createNote({ title: "Other topic", body: "unrelated" });
+    const snapshot = service.snapshot();
+    const offsetNote = snapshot.notes.find((n) => n.id === first.id);
+    if (!offsetNote) throw new Error("Missing offset fixture");
+    offsetNote.createdAt = "2026-03-08T03:30:00-07:00";
+    const spy = vi.spyOn(service, "snapshot").mockReturnValue(snapshot);
+    const dateRange = {
+      field: "createdAt",
+      startAt: "2026-03-08T00:00:00-08:00",
+      endAt: "2026-03-09T00:00:00-07:00",
+    };
+    try {
+      const result = await execute(runtime, {
+        name: "NOTES_LIST",
+        params: { query: "Fern", dateRange, latestBy: "createdAt" },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          count: 2,
+          total: 5,
+          eligibleMatchCount: 3,
+          dateRange,
+          selection: {
+            kind: "latest",
+            field: "createdAt",
+            at: "2026-03-08T10:30:00.000Z",
+          },
+        },
+      });
+      expect(
+        ((result.data?.notes ?? []) as Array<{ id: string }>)
+          .map((n) => n.id)
+          .sort(),
+      ).toEqual([first.id, second.id].sort());
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("reports empty selection scope without hiding a nonempty inventory", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    await service.createNote({ title: "Keep", body: "unchanged" });
+    const result = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "absent", latestBy: "updatedAt" },
+    });
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        count: 0,
+        total: 1,
+        eligibleMatchCount: 0,
+        notes: [],
+        selection: { kind: "latest", field: "updatedAt", at: null },
+      },
+    });
+    expect(result).not.toHaveProperty("emptyTrackedState");
+  });
+
+  it.each(["selection", "filter"])(
+    "fails rather than skipping an invalid %s timestamp",
+    async (mode) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      await service.createNote({ title: "Keep", body: "unchanged" });
+      const snapshot = service.snapshot();
+      snapshot.notes[0][mode === "filter" ? "createdAt" : "updatedAt"] =
+        "not-an-instant";
+      const spy = vi.spyOn(service, "snapshot").mockReturnValue(snapshot);
+      try {
+        const result = await execute(runtime, {
+          name: "NOTES_LIST",
+          params: {
+            latestBy: "updatedAt",
+            ...(mode === "filter"
+              ? {
+                  dateRange: {
+                    field: "createdAt",
+                    startAt: "2026-01-01T00:00:00Z",
+                    endAt: "2027-01-01T00:00:00Z",
+                  },
+                }
+              : {}),
+          },
+        });
+        expect(result).toMatchObject({
+          success: false,
+          data: { error: "NOTES_INVALID_RECENCY_TIMESTAMP" },
+        });
+        expect(result.data).not.toHaveProperty("notes");
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it.each(["get", "create", "update", "patch", "delete"])(
+    "rejects latestBy on %s before any record mutation",
+    async (action) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      await service.createNote({ title: "Keep", body: "unchanged" });
+      const before = service.snapshot();
+      const result = await notesAction.handler(
+        runtime,
+        {} as Memory,
+        undefined,
+        { parameters: { action, latestBy: "createdAt", content: "Keep" } },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: { error: "NOTES_INVALID_RECENCY_SELECTION" },
+      });
+      expect(service.snapshot()).toEqual(before);
+      const promoted = runtime.actions.find(
+        (candidate) => candidate.name === `NOTES_${action.toUpperCase()}`,
+      );
+      if (!promoted) throw new Error("Missing promoted action fixture");
+      expect(actionToJsonSchema(promoted).properties).not.toHaveProperty(
+        "latestBy",
+      );
+    },
+  );
+
+  it.each([null, "latest", false, ["createdAt"]])(
+    "rejects invalid latestBy %j",
+    async (latestBy) => {
+      const runtime = await executorHarness();
+      const result = await notesAction.handler(
+        runtime,
+        {} as Memory,
+        undefined,
+        { parameters: { action: "list", latestBy } },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: { error: "NOTES_INVALID_RECENCY_SELECTION" },
+      });
+    },
+  );
 
   it("filters creation/update dates at exact boundaries across a DST week without changing notes", async () => {
     let instant = "2026-03-02T07:59:59.999Z";
@@ -1484,6 +1806,32 @@ describe("identical-duplicate notes", () => {
 });
 
 describe("literal Notes edits", () => {
+  it("requires a snapshot revision for PATCH textEdit while UPDATE supports revision-free literal substitution", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      content: "Revision check\nGreen folder",
+    });
+    const before = service.snapshot();
+    const textEdit = { field: "body", oldText: "Green", newText: "Blue" };
+    const rejected = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: { target: { kind: "id", value: note.id }, changes: [], textEdit },
+    });
+    expect(rejected.success).toBe(false);
+    expect(service.snapshot()).toEqual(before);
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: { noteId: note.id, textEdit },
+    });
+    expect(updated.success).toBe(true);
+    expect(service.getNote(note.id).body).toBe("\nBlue folder");
+    const description = notesAction.parameters?.find(
+      (p) => p.name === "expectedRevision",
+    )?.description;
+    expect(description).toMatch(/every PATCH, including textEdit/);
+    expect(description).toMatch(/Only UPDATE literal textEdit may omit/);
+  });
   it("updates through the promoted tool without a read and persists only the requested substring", async () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);
@@ -2078,5 +2426,232 @@ describe("field patch literal alternative", () => {
       (await execute(runtime, { name: "NOTES_PATCH", params })).success,
     ).toBe(false);
     expect(service.getNote(note.id)).toEqual(before);
+  });
+});
+
+describe("selected timestamp display", () => {
+  it.each([
+    [
+      "2026-09-26T00:06:15.137Z",
+      "America/Los_Angeles",
+      /^Sep 25, 2026(?:, | at )5:06:15 PM PDT$/,
+    ],
+    [
+      "2026-09-26T20:00:00Z",
+      "Asia/Tokyo",
+      /^Sep 27, 2026(?:, | at )5:00:00 AM GMT\+9$/,
+    ],
+    [
+      "2026-11-01T08:30:00Z",
+      "America/Los_Angeles",
+      /^Nov 1, 2026(?:, | at )1:30:00 AM PDT$/,
+    ],
+    [
+      "2026-11-01T09:30:00Z",
+      "America/Los_Angeles",
+      /^Nov 1, 2026(?:, | at )1:30:00 AM PST$/,
+    ],
+    [
+      "2027-01-01T00:30:00Z",
+      "America/Los_Angeles",
+      /^Dec 31, 2026(?:, | at )4:30:00 PM PST$/,
+    ],
+  ])(
+    "formats selected instant %s in %s without changing source",
+    async (instant, zone, label) => {
+      const runtime = await executorHarness(() => new Date(instant));
+      const service = getNotesService(runtime);
+      const note = await service.createNote({
+        title: '"today" AM',
+        body: "Keep  UTC and tomorrow exactly.",
+      });
+      const before = service.snapshot();
+      const result = await notesAction.handler(
+        runtime,
+        { content: { metadata: { uiTimeZone: "UTC" } } } as unknown as Memory,
+        undefined,
+        {
+          parameters: {
+            action: "list",
+            latestBy: "updatedAt",
+            displayTimeZone: zone,
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          selection: {
+            field: "updatedAt",
+            at: note.updatedAt,
+            display: {
+              label: expect.stringMatching(label),
+              timeZone: zone,
+              source: "explicit",
+            },
+          },
+          notes: [{ ...note, sourceNote: service.sourceReference(note) }],
+          notesRevision: before.revision,
+        },
+      });
+      expect(service.snapshot()).toEqual(before);
+    },
+  );
+  it.each([undefined, "invalid/zone", 42])(
+    "omits display for absent/invalid UI zone %j",
+    async (uiTimeZone) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      await service.createNote({ title: "Keep", body: "body" });
+      const result = await notesAction.handler(
+        runtime,
+        { content: { metadata: { uiTimeZone } } } as unknown as Memory,
+        undefined,
+        { parameters: { action: "list", latestBy: "updatedAt" } },
+      );
+      expect(result.success).toBe(true);
+      expect(
+        result.data?.selection as Record<string, unknown>,
+      ).not.toHaveProperty("display");
+    },
+  );
+  it("uses UI zone only when explicit zone absent and leaves unselected shape unchanged", async () => {
+    const runtime = await executorHarness(
+      () => new Date("2026-09-26T00:06:15.137Z"),
+    );
+    await getNotesService(runtime).createNote({ title: "Keep", body: "body" });
+    const message = {
+      content: { metadata: { uiTimeZone: "America/Los_Angeles" } },
+    } as unknown as Memory;
+    const selected = await notesAction.handler(runtime, message, undefined, {
+      parameters: { action: "list", latestBy: "updatedAt" },
+    });
+    expect(selected.data?.selection).toMatchObject({
+      display: { source: "ui", timeZone: "America/Los_Angeles" },
+    });
+    const all = await notesAction.handler(runtime, message, undefined, {
+      parameters: { action: "list" },
+    });
+    expect(all.data).not.toHaveProperty("selection");
+  });
+  it.each([
+    { action: "list", displayTimeZone: "UTC" },
+    { action: "get", latestBy: "updatedAt", displayTimeZone: "UTC" },
+    { action: "list", latestBy: "updatedAt", displayTimeZone: "bad" },
+    { action: "list", latestBy: "updatedAt", displayTimeZone: null },
+  ])("rejects invalid explicit display contract %j", async (parameters) => {
+    const runtime = await executorHarness();
+    const result = await notesAction.handler(
+      runtime,
+      { content: {} } as unknown as Memory,
+      undefined,
+      { parameters: JSON.parse(JSON.stringify(parameters)) },
+    );
+    expect(result.success).toBe(false);
+  });
+  it("exposes displayTimeZone on LIST and GET only", () => {
+    for (const action of notesPlugin.actions ?? []) {
+      const properties = actionToJsonSchema(action).properties;
+      expect(Object.hasOwn(properties ?? {}, "displayTimeZone")).toBe(
+        ["NOTES_LIST", "NOTES_GET", "NOTES"].includes(action.name),
+      );
+    }
+  });
+});
+
+describe("exact GET timestamp display", () => {
+  it("renders both instants in explicit zone before UI without altering the read", async () => {
+    let now = "2026-11-01T08:30:00Z";
+    const runtime = await executorHarness(() => new Date(now));
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: '"today"',
+      body: "Keep  exact",
+    });
+    now = "2026-11-01T09:30:00Z";
+    await service.updateNote(
+      note.id,
+      { body: "Keep  exact updated" },
+      service.snapshot().revision,
+    );
+    const before = service.snapshot();
+    const result = await notesAction.handler(
+      runtime,
+      {
+        content: { metadata: { uiTimeZone: "Asia/Tokyo" } },
+      } as unknown as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "get",
+          noteId: note.id,
+          displayTimeZone: "America/Los_Angeles",
+        },
+      },
+    );
+    expect(result.data?.noteTimestampDisplay).toEqual({
+      noteId: note.id,
+      timeZone: "America/Los_Angeles",
+      source: "explicit",
+      createdAt: expect.stringMatching(
+        /^Nov 1, 2026(?:, | at )1:30:00 AM PDT$/,
+      ),
+      updatedAt: expect.stringMatching(
+        /^Nov 1, 2026(?:, | at )1:30:00 AM PST$/,
+      ),
+    });
+    expect(result.data?.notes).toEqual(
+      before.notes.map((n) => ({
+        ...n,
+        sourceNote: service.sourceReference(n),
+      })),
+    );
+    expect(result.data?.notesRevision).toBe(before.revision);
+    expect(service.snapshot()).toEqual(before);
+  });
+  it.each([undefined, "bad"])(
+    "omits exactGET display for unavailable UIzone %j",
+    async (uiTimeZone) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const note = await service.createNote({ title: "Keep", body: "body" });
+      const result = await notesAction.handler(
+        runtime,
+        { content: { metadata: { uiTimeZone } } } as unknown as Memory,
+        undefined,
+        { parameters: { action: "get", noteId: note.id } },
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).not.toHaveProperty("noteTimestampDisplay");
+    },
+  );
+  it("omits display for missing note or invalid stored timestamps without failing raw read", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({ title: "Keep", body: "body" });
+    const message = {
+      content: { metadata: { uiTimeZone: "UTC" } },
+    } as unknown as Memory;
+    const missing = await notesAction.handler(runtime, message, undefined, {
+      parameters: { action: "get", noteId: "missing" },
+    });
+    expect(missing.data).not.toHaveProperty("noteTimestampDisplay");
+    const original = service.snapshot();
+    const spy = vi.spyOn(service, "snapshot").mockReturnValue({
+      ...original,
+      notes: original.notes.map((n) => ({ ...n, updatedAt: "invalid" })),
+    });
+    try {
+      const result = await notesAction.handler(runtime, message, undefined, {
+        parameters: { action: "get", noteId: note.id },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data).not.toHaveProperty("noteTimestampDisplay");
+      expect(result.data?.notes).toMatchObject([
+        { updatedAt: "invalid", body: note.body },
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

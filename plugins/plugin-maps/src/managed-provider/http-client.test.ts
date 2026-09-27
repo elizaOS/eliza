@@ -889,11 +889,16 @@ describe("transport failure mapping", () => {
       .requestJson(client.url("/v1/geocode"), {}, payloadSchema)
       .catch((caught: unknown) => caught);
 
+    // Core classifies an exhausted redirect budget as a policy block (#30933),
+    // so a redirect is refused as ENDPOINT_BLOCKED rather than a retryable
+    // network failure.
     expect(error).toMatchObject({
       name: "ManagedProviderError",
-      code: "PROVIDER_NETWORK",
+      code: "ENDPOINT_BLOCKED",
     });
-    expect((error as ManagedProviderError).cause).toBeInstanceOf(Error);
+    expect((error as ManagedProviderError).cause).toBeInstanceOf(
+      SsrfBlockedError,
+    );
     expect(String((error as ManagedProviderError).cause)).toContain("redirect");
   });
 
