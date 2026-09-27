@@ -95,6 +95,7 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
       Object.keys(v).some(
         (k) => !["disposition", "viewId", "reason"].includes(k),
       ) ||
+      typeof v.disposition !== "string" ||
       ![
         "direct",
         "planning",
@@ -102,7 +103,7 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
         "none",
         "forbidden",
         "unresolved",
-      ].includes(String(v.disposition)) ||
+      ].includes(v.disposition) ||
       typeof v.viewId !== "string" ||
       typeof v.reason !== "string"
     )
