@@ -400,28 +400,16 @@ test("SIGSYS shim restaging preserves the real loader when the wrapper exceeds 2
         log: () => {},
       });
 
+    const realLoader = path.join(abiAssetsDir, `${ldName}.real`);
     stage();
-    assert.ok(
-      fs
-        .readFileSync(path.join(`${abiAssetsDir}/${ldName}.real`))
-        .equals(loader),
-      "first pass must relocate the Alpine loader to .real",
-    );
+    assert.ok(fs.readFileSync(realLoader).equals(loader));
 
     stage();
-    const real = fs.readFileSync(path.join(`${abiAssetsDir}/${ldName}.real`));
     assert.ok(
-      real.equals(loader),
-      "second pass must preserve the real loader bytes",
+      fs.readFileSync(realLoader).equals(loader),
+      "second pass must not overwrite the real loader with the wrapper",
     );
-    assert.ok(
-      !real.equals(wrapper),
-      "the real loader must not be overwritten by the wrapper",
-    );
-    assert.ok(
-      fs.readFileSync(path.join(abiAssetsDir, ldName)).equals(wrapper),
-      "the wrapper must be staged as <ldName>",
-    );
+    assert.ok(fs.readFileSync(path.join(abiAssetsDir, ldName)).equals(wrapper));
   } finally {
     removePathRecursive(tmp);
   }
