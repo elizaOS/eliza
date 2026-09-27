@@ -116,17 +116,22 @@ export async function handlePermissionsExtraRoutes(
       );
       return true;
     }
-    if (!state.config.features) {
-      state.config.features = {};
-    }
-    (state.config.features as Record<string, unknown>).tradePermissionMode =
-      newMode;
+    const previousFeatures = state.config.features;
+    const features: Record<string, unknown> = {
+      ...previousFeatures,
+      tradePermissionMode: newMode,
+    };
+    state.config.features = features as ElizaConfig["features"];
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
-      logger.warn(
-        `[api] Trade-mode config save failed: ${err instanceof Error ? err.message : err}`,
-      );
+      // Roll back so the process does not trade under a mode that was never
+      // persisted, and report the failure instead of `ok: true`.
+      state.config.features = previousFeatures;
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[api] Trade-mode config save failed: ${message}`);
+      error(res, `Failed to save trade permission mode: ${message}`, 500);
+      return true;
     }
     json(res, {
       ok: true,
