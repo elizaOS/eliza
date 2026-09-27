@@ -16,7 +16,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "ethers": "^6.13.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^2.1.0"
+    "vitest": "^5.0.1"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

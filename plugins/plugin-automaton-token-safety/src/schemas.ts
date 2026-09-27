@@ -10,7 +10,7 @@ export const inputSchemas = {
     maxRisk: z.number().min(0).max(100).optional(),
     minRisk: z.number().min(0).max(100).optional(),
     dex: z.enum(['uniswap-v4', 'uniswap-v3', 'aerodrome', 'aerodrome-slipstream']).optional(),
-    since: z.string().datetime().optional().describe('ISO timestamp; only pools detected after it')
+    since: z.iso.datetime().optional().describe('ISO timestamp; only pools detected after it')
   }).strict(),
   'approval-risk': z.object({
     token: address('token'),

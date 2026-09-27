@@ -125,6 +125,20 @@ describe('Plugin Automaton Token Safety - Input Schema Validation', () => {
       });
       expect(res.success).toBe(false);
     });
+
+    it('accepts valid ISO datetime string for since', () => {
+      const res = inputSchemas['sentinel-latest'].safeParse({
+        since: '2026-09-27T12:00:00.000Z'
+      });
+      expect(res.success).toBe(true);
+    });
+
+    it('rejects invalid datetime string for since', () => {
+      const res = inputSchemas['sentinel-latest'].safeParse({
+        since: 'not-a-valid-datetime'
+      });
+      expect(res.success).toBe(false);
+    });
   });
 
   describe('AUTOMATON_LIQUIDITY_RISK schema', () => {

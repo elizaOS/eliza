@@ -4,7 +4,7 @@
  * Settings: AUTOMATON_SIGNER_KEY (optional), AUTOMATON_MAX_UNITS, AUTOMATON_API_BASE, AUTOMATON_DRY_RUN.
  * Input: options.params or message.content.params.
  */
-import type { Action, ActionResult, HandlerCallback, IAgentRuntime, Memory, Plugin, State, HandlerOptions } from '@elizaos/core';
+import type { Action, ActionResult, HandlerCallback, IAgentRuntime, Memory, Plugin, State, HandlerOptions, ProviderDataRecord, ProviderValue, JsonValue } from '@elizaos/core';
 import { ROUTES, type RouteId } from './routes.js';
 import { inputSchemas } from './schemas.js';
 import { createX402Client, signerFromKey, GuardError, type CallResult, type TypedDataSigner } from './client.js';
@@ -21,7 +21,7 @@ const ACTIONS: Array<[RouteId, string, string[]]> = [
 ];
 
 const EXAMPLE_TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-const EXAMPLE_PARAMS: Record<RouteId, Record<string, unknown>> = {
+const EXAMPLE_PARAMS: Record<RouteId, Record<string, JsonValue>> = {
   scan: { address: EXAMPLE_TOKEN },
   'sentinel-latest': { limit: 10, maxRisk: 30 },
   'approval-risk': { token: EXAMPLE_TOKEN, owner: '0x000000000000000000000000000000000000dEaD' },
@@ -75,7 +75,7 @@ export function createAutomatonPlugin(opts: PluginOptions = {}): Plugin {
         });
         const r = await client.call(route, parsed.data as Record<string, unknown>, { dryRun: setting(runtime, 'AUTOMATON_DRY_RUN') === '1' });
         const text = summarize(route, r);
-        const data = { route: ROUTES[route].path, status: r.status, paid: r.paid, dryRun: !!r.dryRun, amountUnits: r.amountUnits ?? null, result: r.data as unknown };
+        const data: ProviderDataRecord = { route: ROUTES[route].path, status: r.status, paid: r.paid, dryRun: !!r.dryRun, amountUnits: r.amountUnits ?? null, result: (r.data ?? null) as ProviderValue };
         if (callback) await callback({ text, actions: [name] });
         return { success: r.status === 200, text, data };
       } catch (e) {
