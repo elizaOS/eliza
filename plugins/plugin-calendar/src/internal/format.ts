@@ -83,7 +83,16 @@ function formatEventTime(
     timeZone,
   );
   const eventYear = getCalendarYearForDisplay(start, timeZone);
-  const includeYear = eventYear !== currentYear;
+  const endYear = getCalendarYearForDisplay(end, timeZone);
+  const includeYear = eventYear !== currentYear || endYear !== eventYear;
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  };
+  const spansDates =
+    formatCalendarDatePart(start, timeZone, dateOptions) !==
+    formatCalendarDatePart(end, timeZone, dateOptions);
   const datePart = formatCalendarDatePart(start, timeZone, {
     month: "short",
     day: "numeric",
@@ -92,18 +101,26 @@ function formatEventTime(
   const startTime = formatCalendarDatePart(start, timeZone, {
     hour: "numeric",
     minute: "2-digit",
-    ...(reference &&
-    getTimeZoneOffsetMinutes(start, reference.timeZone) !==
-      getTimeZoneOffsetMinutes(end, reference.timeZone)
+    ...(timeZone &&
+    (reference || spansDates) &&
+    getTimeZoneOffsetMinutes(start, timeZone) !==
+      getTimeZoneOffsetMinutes(end, timeZone)
       ? { timeZoneName: "short" }
       : {}),
   });
   const endTime = formatCalendarDatePart(end, timeZone, {
     hour: "numeric",
     minute: "2-digit",
-    ...(reference ? { timeZoneName: "short" } : {}),
+    ...(reference || (spansDates && timeZone) ? { timeZoneName: "short" } : {}),
   });
-  return `${datePart}, ${startTime} – ${endTime}`;
+  const endDatePart = spansDates
+    ? `${formatCalendarDatePart(end, timeZone, {
+        month: "short",
+        day: "numeric",
+        ...(includeYear ? { year: "numeric" } : {}),
+      })}, `
+    : "";
+  return `${datePart}, ${startTime} – ${endDatePart}${endTime}`;
 }
 
 function formatRelativeMinutes(minutes: number): string {
