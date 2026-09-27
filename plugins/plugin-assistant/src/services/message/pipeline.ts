@@ -925,12 +925,28 @@ export async function runV5MessageRuntimeStage1(
       };
     }
 
-    const selectedContexts =
-      route.type === "planning_needed"
-        ? route.contexts
-        : resumedPlanner
-          ? ["general"]
-          : [];
+    const currentContexts =
+      route.type === "planning_needed" ? route.contexts : [];
+    // Checkpoint domains are retrieval hints, never saved authorization or tools.
+    // Refresh against this turn's catalog before loading providers or actions.
+    const resumedContexts = resumedPlanner
+      ? (
+          resumedPlanner.state.trajectory.context.trajectoryPrefix
+            ?.selectedContexts ?? []
+        ).filter((context) =>
+          availableContexts.some((definition) => definition.id === context),
+        )
+      : [];
+    const selectedContexts = [
+      ...new Set([...currentContexts, ...resumedContexts]),
+    ];
+    if (resumedPlanner && selectedContexts.length === 0)
+      selectedContexts.push("general");
+    if (resumedPlanner && !messageHandler.plan.intents?.length) {
+      messageHandler.plan.intents = [
+        ...(resumedPlanner.state.trajectory.outcomeIntents ?? []),
+      ];
+    }
     // Merge direct-request candidate inference before the early-ack gate so
     // the async-handoff check below sees the turn's full candidate set. An
     // evaluator that cleared Stage-1 candidates has already established an

@@ -30,6 +30,15 @@ recorded served-model metadata is
 authoritative. Limits from a different slot model are not reused: unknown
 capacity stays diagnostic and complete input reaches the provider unchanged.
 
+## Resuming paused work
+
+Resumption reloads the original selected domains through the current authorized
+catalog, together with any newly selected domains. Saved tool schemas and prior
+permissions are never reused. Missing or revoked domains stay unavailable;
+`DISCOVER_ACTIONS` can retrieve other currently authorized operations. Original
+outcome intents guide retrieval when the new routing decision supplies none,
+while the complete checkpoint preserves receipts and prevents effect replay.
+
 ## Planner action discovery
 
 `DISCOVER_ACTIONS` is a real per-turn `Action`, exposed to the planner as a native

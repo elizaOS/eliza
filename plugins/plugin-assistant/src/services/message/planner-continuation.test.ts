@@ -3,18 +3,21 @@ import { randomUUID } from "node:crypto";
 import {
   ChannelType,
   type Memory,
+  ModelType,
   type PlannerLoopResult,
   TaskService,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators.ts";
 import { DefaultMessageService } from "../message.ts";
 import {
   CANCEL_PLANNER_OPTION,
   checkpointActivePlanner,
   getActivePlannerContinuation,
   PLANNER_CONTINUATION_TASK,
+  type PlannerContinuation,
   persistPlannerContinuation,
   RESUME_PLANNER_OPTION,
   registerPlannerContinuationWorker,
@@ -556,3 +559,166 @@ it("refuses stale queued admission after another invocation settles and releases
     attempt: 1,
   });
 });
+
+it.each([true, false])(
+  "reloads checkpoint domains through current authorization (available=%s)",
+  async (available) => {
+    const runtime = fixture.runtime;
+    for (const field of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+      runtime.registerResponseHandlerFieldEvaluator(field);
+    }
+    runtime.actions.length = 0;
+    runtime.providers.length = 0;
+    runtime.evaluators.length = 0;
+    runtime.contexts.registerMany([
+      { id: "simple" },
+      { id: "general" },
+      { id: "files" },
+    ]);
+    const effect = vi.fn(async () => ({ success: true }));
+    runtime.registerAction({
+      name: "RESUME_READ",
+      description: "Read the pending artifact",
+      contexts: ["files"],
+      contextGate: { contexts: ["files"] },
+      validate: async () => available,
+      handler: effect,
+    });
+    const saved = await task();
+    const checkpoint = saved.metadata
+      ?.plannerContinuation as PlannerContinuation;
+    const userId = randomUUID() as UUID;
+    const room = required(await runtime.getRoom(original.roomId));
+    const world = required(await runtime.getWorld(required(room.worldId)));
+    await runtime.updateWorld({
+      ...world,
+      metadata: {
+        ...world.metadata,
+        roles: { [userId]: "OWNER" },
+        roleSources: { [userId]: "manual" },
+      },
+    });
+    await runtime.ensureConnection({
+      entityId: userId,
+      roomId: original.roomId,
+      worldId: world.id,
+      name: "Resume owner",
+      source: "test",
+      type: ChannelType.DM,
+    });
+    checkpoint.original.entityId = userId;
+    for (const step of checkpoint.state.trajectory.steps) {
+      for (const receipt of step.result?.effectReceipts ?? []) {
+        Object.assign(receipt, {
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+        });
+      }
+    }
+    const preservedSteps = structuredClone(checkpoint.state.trajectory.steps);
+    checkpoint.state.trajectory.context.trajectoryPrefix = {
+      selectedContexts: ["files"],
+    };
+    checkpoint.state.trajectory.outcomeIntents = ["Read the pending artifact"];
+    // An old serialized tool must not become an executable capability on resume.
+    checkpoint.state.trajectory.context.trajectoryPrefix.expandedTools = [
+      { name: "STALE_WRITE", description: "Previously available mutation" },
+    ];
+    await runtime.updateTask(required(saved.id), {
+      entityId: userId,
+      metadata: { ...saved.metadata, plannerContinuation: checkpoint },
+    });
+    const plannerSurfaces: string[][] = [];
+    const errors = vi.spyOn(runtime, "reportError");
+    for (const type of [
+      ModelType.RESPONSE_HANDLER,
+      ModelType.ACTION_PLANNER,
+      ModelType.TEXT_SMALL,
+      ModelType.TEXT_LARGE,
+    ]) {
+      runtime.registerModel(
+        type,
+        async () => {
+          throw new Error("Unexpected unstubbed model");
+        },
+        "continuation-test",
+        100,
+      );
+    }
+    const execution = vi.spyOn(
+      required(runtime.messageService),
+      "handleMessage",
+    );
+    const model = vi
+      .spyOn(runtime, "useModel")
+      .mockImplementation(async (type, params) => {
+        if (type === ModelType.RESPONSE_HANDLER)
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "route",
+                name: "HANDLE_RESPONSE",
+                arguments: {
+                  shouldRespond: "RESPOND",
+                  contexts: ["simple"],
+                  intents: [],
+                  replyText: "Ready.",
+                  replyEffectStatus: "none",
+                  facts: [],
+                  relationships: [],
+                  addressedTo: [],
+                  emotion: "none",
+                },
+              },
+            ],
+            finishReason: "tool-calls",
+          };
+        if (type === ModelType.ACTION_PLANNER) {
+          const request = params as { tools?: Array<{ name: string }> };
+          plannerSurfaces.push((request.tools ?? []).map((tool) => tool.name));
+          return {
+            text: "",
+            toolCalls: [{ id: "stop", name: "STOP", arguments: {} }],
+            finishReason: "tool-calls",
+          };
+        }
+        throw new Error(`Unexpected model request: ${String(type)}`);
+      });
+    const worker = required(runtime.getTaskWorker(PLANNER_CONTINUATION_TASK));
+    await worker.execute(
+      runtime,
+      { option: RESUME_PLANNER_OPTION },
+      await task(),
+    );
+    await worker.execute(runtime, {}, await task());
+    expect(
+      model,
+      JSON.stringify(await execution.mock.results[0]?.value),
+    ).toHaveBeenCalled();
+    expect(
+      plannerSurfaces,
+      JSON.stringify({
+        outcome: await execution.mock.results[0]?.value,
+        calls: model.mock.calls.map(([type]) => type),
+        errors: errors.mock.calls.map(([scope, error]) => [
+          scope,
+          String(error),
+        ]),
+      }),
+    ).toHaveLength(1);
+    expect(plannerSurfaces[0].includes("RESUME_READ")).toBe(available);
+    expect(plannerSurfaces[0]).not.toContain("STALE_WRITE");
+    expect(effect).not.toHaveBeenCalled();
+    const output = await execution.mock.results[0]?.value;
+    expect(output?.outcome?.status).not.toBe("failed");
+    expect(output?.outcome?.error).toBeUndefined();
+    expect((await task()).metadata?.plannerContinuation).toMatchObject({
+      state: {
+        trajectory: {
+          steps: expect.arrayContaining(preservedSteps),
+        },
+      },
+    });
+  },
+);
