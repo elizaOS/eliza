@@ -187,13 +187,16 @@ export function validatePaidRenewal(
   );
   const start = new Date(line.period.start * 1000),
     end = new Date(line.period.end * 1000);
+  // A renewal paid after failed attempts settles dunning: the stored period is
+  // still the one that came due, so adjacency below is unchanged.
+  const dunning = source.status !== "active";
   if (
-    source.status !== "active" ||
+    !["active", "grace", "past_due", "unpaid"].includes(source.status) ||
+    (dunning && (source.dunning_started_at === null || input.initialPayment)) ||
+    (!dunning && (source.dunning_started_at !== null || source.grace_expires_at !== null)) ||
     source.cancel_at_period_end ||
     source.ended_at !== null ||
     source.pending_plan_key !== null ||
-    source.dunning_started_at !== null ||
-    source.grace_expires_at !== null ||
     source.catalog_version !== "v1" ||
     !Number.isFinite(start.getTime()) ||
     !Number.isFinite(end.getTime()) ||
@@ -216,7 +219,14 @@ export function validatePaidRenewal(
   });
   // This is structural validation of the new period; the old→new adjacency above remains authoritative.
   const observed = validatePeriodEndCancellationObservation({
-    source: { ...source, current_period_start: start, current_period_end: end },
+    source: {
+      ...source,
+      status: "active",
+      dunning_started_at: null,
+      grace_expires_at: null,
+      current_period_start: start,
+      current_period_end: end,
+    },
     organizationCustomerId: input.organizationCustomerId,
     environment: input.environment,
     raw: input.subscription,

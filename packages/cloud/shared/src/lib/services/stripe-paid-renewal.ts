@@ -29,10 +29,23 @@ const eventSchema = z.object({
       id: z.string().regex(/^in_[A-Za-z0-9]+$/),
       object: z.literal("invoice"),
       billing_reason: z.string().optional(),
-      subscription: z.string().regex(/^sub_[A-Za-z0-9]+$/),
     }),
   }),
 });
+const subscriptionId = z.string().regex(/^sub_[A-Za-z0-9]+$/);
+/**
+ * Basil and later signed payloads omit `invoice.subscription`; the client is
+ * pinned to Acacia, so the retrieved invoice always carries it (string or
+ * expanded object). The payload only supplies the invoice identity.
+ */
+function invoiceSubscriptionId(invoice: object): string {
+  const value = "subscription" in invoice ? invoice.subscription : undefined;
+  const id =
+    typeof value === "object" && value !== null && "id" in value ? value.id : (value ?? null);
+  const parsed = subscriptionId.safeParse(id);
+  if (!parsed.success) renewalUnavailable("invoice_subscription_unavailable");
+  return parsed.data;
+}
 export async function reconcileStripePaidRenewal(message: StripeEventMessage): Promise<void> {
   const parsed = eventSchema.safeParse(message.event);
   if (!parsed.success) renewalUnavailable("unsupported_event_shape");
@@ -44,6 +57,8 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     message.eventType !== event.type
   )
     renewalUnavailable("event_identity_mismatch");
+  const fetchedInvoice = await requireStripe().invoices.retrieve(event.data.object.id);
+  const stripeSubscriptionId = invoiceSubscriptionId(fetchedInvoice);
   const [source] = await dbWrite
     .select()
     .from(billingSubscriptions)
@@ -52,16 +67,16 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
         isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.provider_environment, event.livemode ? "live" : "test"),
-        eq(billingSubscriptions.stripe_subscription_id, event.data.object.subscription),
+        eq(billingSubscriptions.stripe_subscription_id, stripeSubscriptionId),
       ),
     );
   if (!source) {
     const stripe = requireStripe();
-    const invoice = await stripe.invoices.retrieve(event.data.object.id);
+    const invoice = fetchedInvoice;
     if (invoice.billing_reason !== "subscription_create")
       renewalUnavailable("unknown_subscription");
     const sessions = await stripe.checkout.sessions.list({
-      subscription: event.data.object.subscription,
+      subscription: stripeSubscriptionId,
       limit: 2,
     });
     if (sessions.has_more || sessions.data.length !== 1)
@@ -75,8 +90,11 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
   }
   assertOrganizationSubscription(source);
   // The first invoice can arrive after Checkout already published its allowance.
-  if (event.data.object.billing_reason === "subscription_create") {
-    const canonicalInvoice = await requireStripe().invoices.retrieve(event.data.object.id);
+  if (
+    event.data.object.billing_reason === "subscription_create" ||
+    fetchedInvoice.billing_reason === "subscription_create"
+  ) {
+    const canonicalInvoice = fetchedInvoice;
     if (canonicalInvoice.billing_reason !== "subscription_create")
       renewalUnavailable("initial_invoice_reason_mismatch");
     const sessions = await requireStripe().checkout.sessions.list({
