@@ -26,7 +26,8 @@ beforeAll(async () => {
       node_id text,
       status text NOT NULL,
       pool_status text,
-      replacement_cleanup_node_id text
+      replacement_cleanup_node_id text,
+      retained_runtime jsonb
     );
     CREATE TABLE agent_sandbox_replacement_attempts (
       id uuid PRIMARY KEY,
@@ -63,7 +64,8 @@ describe("countRetainedWorkloadsOnNodeWithDatabase", () => {
           node_id text,
           status text NOT NULL,
           pool_status text,
-          replacement_cleanup_node_id text
+          replacement_cleanup_node_id text,
+          retained_runtime jsonb
         );
         INSERT INTO containers (id, node_id, status)
         VALUES ('40000000-0000-4000-8000-000000000001', '${NODE_ID}', 'stopped');
@@ -114,6 +116,18 @@ describe("countRetainedWorkloadsOnNodeWithDatabase", () => {
         (id, locator_node_id, locator_allocation_counted, restore_attempt_id, state)
       VALUES ('10000000-0000-4000-8000-000000000001', '${NODE_ID}', true,
         '20000000-0000-4000-8000-000000000001', 'lifecycle_committed');
+    `);
+
+    expect(await countRetainedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
+  });
+
+  test("a stopped runtime retained in place still blocks deprovisioning", async () => {
+    await client.exec(`
+      INSERT INTO agent_sandboxes (id, node_id, status, pool_status, retained_runtime)
+      VALUES
+        ('30000000-0000-4000-8000-000000000001', '${NODE_ID}', 'stopped', NULL,
+          '{"runtime":{"nodeId":"${NODE_ID}"}}'::jsonb),
+        ('30000000-0000-4000-8000-000000000002', '${NODE_ID}', 'stopped', NULL, NULL);
     `);
 
     expect(await countRetainedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);

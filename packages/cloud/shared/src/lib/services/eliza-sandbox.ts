@@ -1,6 +1,9 @@
 /** Exposes cloud sandbox operations and composes lifecycle, bridge, backup, and transport owners. All owners share the service’s provider instance and lifecycle authority; the facade preserves existing callers and orchestration boundaries. */
 
-import { SandboxProvision } from "./eliza-sandbox/lifecycle/provision.js";
+import {
+  RETAINED_RUNTIME_PROVISION_REFUSAL,
+  SandboxProvision,
+} from "./eliza-sandbox/lifecycle/provision.js";
 import { ElizaSandboxServiceTestHooks } from "./eliza-sandbox/lifecycle/provision-hooks.js";
 
 export { SandboxReachabilityUnresolvedError } from "./eliza-sandbox/lifecycle/provision-errors.js";
@@ -250,6 +253,7 @@ export class ElizaSandboxService {
       this.persistUnresolvedReplacementCleanupFence(...args),
     ensureRuntimeAgentStarted: (...args) => this.ensureRuntimeAgentStarted(...args),
     transferReplacementToPrimary: (...args) => this.transferReplacementToPrimary(...args),
+    fenceAdoptedProvisionForCleanup: (...args) => this.fenceAdoptedProvisionForCleanup(...args),
     pushState: (...args) => this.pushState(...args),
   });
   readonly #warmClaim = new SandboxWarmClaim({
@@ -2261,6 +2265,10 @@ export class ElizaSandboxService {
     }
 
     const restoringRunningGeneration = rec.status === "running";
+    if (!restoringRunningGeneration && rec.retained_runtime) {
+      // Replacing a retained runtime would discard writes no backup covers.
+      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL };
+    }
     if (restoringRunningGeneration && !rec.bridge_url) {
       return { success: false, error: "Running agent is missing its restore endpoint" };
     }
@@ -3120,6 +3128,18 @@ export class ElizaSandboxService {
     // Paid provisioning may be midway through restoring application state.
     // Health alone must not publish it; the owning provision job completes it.
     if (provider.computeFundingCapability === "host-lease-v1") return "unresolved";
+    // A container that is healthy but was never proven to have applied the
+    // agent's known backup must not become routable (#30697). Health says
+    // nothing about restored state; only the provision job's restore tail may
+    // commit readiness. First creation without any backup keeps the #15310
+    // transport-blip recovery.
+    if (await agentSandboxesRepository.getLatestBackup(agentId)) {
+      logger.warn(
+        "[agent-sandbox] Stuck provisioning row retains an unapplied backup; leaving it for the provision job",
+        { agentId },
+      );
+      return "unresolved";
+    }
 
     const handle: SandboxHandle = {
       sandboxId: probeSource.sandbox_id,
@@ -3385,6 +3405,11 @@ export class ElizaSandboxService {
   ): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]> {
     return this.#replacementCleanup.transferReplacementToPrimary(...args);
   }
+  private fenceAdoptedProvisionForCleanup(
+    ...args: Parameters<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>
+  ): ReturnType<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]> {
+    return this.#replacementCleanup.fenceAdoptedProvisionForCleanup(...args);
+  }
   private assertAdminCanaryCleanupExpectation(
     ...args: Parameters<SandboxReplacementCleanup["assertAdminCanaryCleanupExpectation"]>
   ): ReturnType<SandboxReplacementCleanup["assertAdminCanaryCleanupExpectation"]> {
@@ -3454,11 +3479,6 @@ export class ElizaSandboxService {
     ...args: Parameters<SandboxBackup["persistSnapshotWithinTransaction"]>
   ): ReturnType<SandboxBackup["persistSnapshotWithinTransaction"]> {
     return this.#backup.persistSnapshotWithinTransaction(...args);
-  }
-  private degradeUnrecoverableSnapshot(
-    ...args: Parameters<SandboxProvision["degradeUnrecoverableSnapshot"]>
-  ): ReturnType<SandboxProvision["degradeUnrecoverableSnapshot"]> {
-    return this.#provision.degradeUnrecoverableSnapshot(...args);
   }
   private markError(
     ...args: Parameters<SandboxProvision["markError"]>

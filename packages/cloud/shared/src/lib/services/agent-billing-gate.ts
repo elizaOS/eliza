@@ -5,6 +5,7 @@
  * allowing agent creation, provisioning, or resume.
  */
 
+import { listActivePaymentReversalHolds } from "../../db/repositories/payment-reversal-holds";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { readAgentFundingAccount } from "./agent-funding-account";
@@ -17,6 +18,8 @@ export interface CreditGateResult {
   allowed: boolean;
   balance: number;
   error?: string;
+  /** Set when a final payment reversal (lost chargeback) holds paid admission (#22930). */
+  paymentReversalHold?: true;
   /**
    * Set only for organizations carrying historical welcome-credit withholding
    * metadata. New accounts start at zero and never write this legacy state.
@@ -104,6 +107,20 @@ async function runCreditGate(
       parseGateCreditBalance(org.credit_balance) +
       parseGateCreditBalance(org.eligible_subscription_allowance);
     if (!Number.isFinite(balance)) throw new CorruptCreditBalanceError(balance);
+
+    // A lost chargeback is a final payment reversal. Balance alone cannot
+    // re-establish trust in the account, so paid admission fails closed until
+    // an explicit, audited release (#22930).
+    const reversalHolds = await listActivePaymentReversalHolds(organizationId);
+    if (reversalHolds.length > 0) {
+      return {
+        allowed: false,
+        balance,
+        paymentReversalHold: true,
+        error:
+          "This account has an unresolved reversed payment (a lost chargeback). Contact support to restore paid agent operations.",
+      };
+    }
 
     if (balance < minimumBalance) {
       // A successful credit transaction removes this marker atomically with

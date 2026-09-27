@@ -1,6 +1,8 @@
 /**
  * Routes a normalized personal connector turn to the user's active Dedicated
  * runtime when present, otherwise to their rowless personal Shared runtime.
+ * A Dedicated target withdrawn by a confirmed, unfunded billing suspension is
+ * answered by Shared in a separately scoped fallback journal (#25146).
  */
 
 import { ChannelType } from "@elizaos/core";
@@ -10,6 +12,12 @@ import type { AppEnv, RuntimeDurableObjectNamespace } from "../../types/cloud-wo
 import { findActivePersonalDedicatedTarget } from "./agent-tier-upgrade-target";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "./personal-dedicated-delivery";
+import {
+  type PersonalSharedFallbackAccountState,
+  type PersonalSharedFallbackDelivery,
+  preparePersonalSharedFallback,
+  recoverPersonalSharedFallback,
+} from "./personal-dedicated-fallback";
 import { coordinateSharedHistory } from "./shared-runtime/conversation-coordinator";
 import { personalSharedAgent } from "./shared-runtime/personal-shared-agent";
 import { sharedRestMessageSend } from "./shared-runtime/shared-rest-adapter";
@@ -25,6 +33,8 @@ export type PersonalMessageDeliveryResult =
       identity: { id: string; runtime: "shared" | "dedicated"; activeAgentId?: string };
       account: { userId: string; organizationId: string };
       reply: string;
+      /** Present only while Dedicated access is withdrawn (#25146). */
+      accountState?: PersonalSharedFallbackAccountState;
     }
   | {
       success: false;
@@ -57,18 +67,40 @@ export async function deliverPersonalTextMessage(params: {
     account.user.id,
     agent.id,
   );
+  let sharedFallback: PersonalSharedFallbackDelivery | null = null;
   if (dedicated) {
     const preparation = await preparePersonalDedicatedDelivery(dedicated);
     if (preparation.state === "unavailable") {
-      return {
-        success: false,
-        status: preparation.status,
-        code: preparation.code,
-        error: preparation.error,
-        retryable: preparation.retryable,
-        retryAfterSeconds: preparation.retryAfterSeconds,
-      };
+      sharedFallback =
+        preparation.code === "DEDICATED_PRICE_CONFIRMATION_REQUIRED"
+          ? await preparePersonalSharedFallback({
+              dedicated,
+              organizationId: account.organization.id,
+              userId: account.user.id,
+              sourceAgentId: agent.id,
+            })
+          : null;
+      if (!sharedFallback) {
+        return {
+          success: false,
+          status: preparation.status,
+          code: preparation.code,
+          error: preparation.error,
+          retryable: preparation.retryable,
+          retryAfterSeconds: preparation.retryAfterSeconds,
+        };
+      }
     }
+  }
+  if (dedicated && !sharedFallback) {
+    // Dedicated is running again: close any active fallback interval before
+    // routing returns, so the two runtimes never both own the conversation.
+    await recoverPersonalSharedFallback({
+      organizationId: account.organization.id,
+      userId: account.user.id,
+      sourceAgentId: agent.id,
+      dedicatedAgentId: dedicated.id,
+    });
     const bridgeRequest = {
       jsonrpc: "2.0" as const,
       id: params.messageId,
@@ -155,7 +187,9 @@ export async function deliverPersonalTextMessage(params: {
 
   const result = await sharedRestMessageSend(
     agent,
-    agent.id,
+    // The fallback journal is a new scoped room: Shared never reads the
+    // canonical Dedicated or pre-upgrade conversation while access is withdrawn.
+    sharedFallback?.journalRoomId ?? agent.id,
     params.message,
     agent.agent_name ?? "Eliza",
     params.executionCtx,
@@ -171,5 +205,6 @@ export async function deliverPersonalTextMessage(params: {
     identity: { id: agent.id, runtime: "shared" },
     account: { userId: account.user.id, organizationId: account.organization.id },
     reply: result.text,
+    ...(sharedFallback ? { accountState: sharedFallback.accountState } : {}),
   };
 }

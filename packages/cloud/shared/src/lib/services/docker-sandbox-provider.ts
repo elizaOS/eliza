@@ -5085,6 +5085,18 @@ export class DockerSandboxProvider implements SandboxProvider {
   ) {
     await this.stopWithPolicy(sandboxId, false, false, undefined, identity);
   }
+  async retainObservedRuntimeStopped(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ) {
+    const { retainDockerRuntimeStopped } = await import("./docker-runtime-observation");
+    await retainDockerRuntimeStopped(identity);
+  }
+  async startRetainedRuntime(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ) {
+    const { startRetainedDockerRuntime } = await import("./docker-runtime-observation");
+    await startRetainedDockerRuntime(identity);
+  }
   async observeRuntime(
     input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
   ) {

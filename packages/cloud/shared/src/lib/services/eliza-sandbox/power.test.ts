@@ -56,7 +56,7 @@ afterAll(() => {
 });
 describe("ElizaSandboxService wake", () => {
   test.skipIf(process.platform === "win32")(
-    "resume of a sleeping custom image uses the verified wake restore path",
+    "resume of a sleeping custom image without a restore endpoint fails closed instead of booting empty",
     async () => {
       const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
       const now = new Date("2026-06-04T12:05:00.000Z");
@@ -210,13 +210,17 @@ describe("ElizaSandboxService wake", () => {
           sleepingSandbox.organization_id,
         );
 
-        expect(result).toEqual({
-          success: true,
-          containerStarted: true,
+        // The verified backup exists but the image cannot apply it. The wake
+        // reports a visible recovery failure that only explicit forceFreshBoot
+        // consent can bypass, and the row never becomes routable (#30697).
+        expect(result).toMatchObject({
+          success: false,
+          containerStarted: false,
           reprovisioned: true,
         });
+        expect(result.error).toContain("forceFreshBoot");
         expect(requests).toContain("https://93.184.216.34/api/restore");
-        expect(updateSpy).toHaveBeenCalledWith(
+        expect(updateSpy).not.toHaveBeenCalledWith(
           sleepingSandbox.id,
           expect.objectContaining({ status: "running" }),
         );

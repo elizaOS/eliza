@@ -261,6 +261,18 @@ export interface SandboxProvider {
     sandboxId: string,
     identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
   ): Promise<void>;
+  /**
+   * Stops the verified immutable runtime in place with its restart policy
+   * disabled, retaining the container, mounts and node-local state. Absence,
+   * replacement or an unconfirmed stop rejects; it never removes anything.
+   */
+  retainObservedRuntimeStopped?(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /** Starts the exact retained runtime in place; absence or replacement rejects. */
+  startRetainedRuntime?(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
   /** Exact read-only identity observation; unsupported or unknown never means absent. */
   observeRuntime?(
     input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
