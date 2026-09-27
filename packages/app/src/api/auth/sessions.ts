@@ -22,12 +22,20 @@ import {
   resolveApiBindHost,
 } from "@elizaos/core/runtime-env";
 import {
-  type AppendAuditEventInput,
-  type AuthRepository,
-  type AuthSessionRow,
+  CSRF_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+} from "@elizaos/ui/api/auth/sessions";
+import type {
+  AppendAuditEventInput,
+  AuthRepository,
+  AuthSessionRow,
 } from "../../services/auth-store";
 import { appendAuditEvent } from "./audit.js";
-import { tokenMatches } from "./tokens.js";
+import {
+  closeIdentitySockets,
+  closeSessionSockets,
+} from "./session-sockets.js";
+import { extractHeaderValue, tokenMatches } from "./tokens.js";
 // ── TTLs (plan §1.3, §4.4) ───────────────────────────────────────────────────
 /** Browser session sliding window: 12h. */
 export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -36,9 +44,12 @@ export const BROWSER_SESSION_REMEMBER_CAP_MS = 30 * 24 * 60 * 60 * 1000;
 /** Machine session absolute TTL: 90 days. */
 export const MACHINE_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 // ── Cookie constants ─────────────────────────────────────────────────────────
-export const SESSION_COOKIE_NAME = "eliza_session";
-export const CSRF_COOKIE_NAME = "eliza_csrf";
-export const CSRF_HEADER_NAME = "x-eliza-csrf";
+// Single source shared with the browser client so the names cannot drift.
+export {
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  SESSION_COOKIE_NAME,
+} from "@elizaos/ui/api/auth/sessions";
 // ── Types ────────────────────────────────────────────────────────────────────
 export interface CreateBrowserSessionOptions {
   identityId: string;
@@ -68,6 +79,11 @@ export interface SerializeSessionCookieOptions {
   env?: RuntimeEnvRecord;
   /** Override absolute Max-Age (ms). Defaults to `expiresAt - now`. */
   maxAgeMs?: number;
+  /**
+   * Expiry cookies only: target a `Domain=` variant. The desktop bridge
+   * installs domain cookies, which a host-only expiry cannot clear.
+   */
+  domain?: string;
 }
 // ── ID + secret generation ───────────────────────────────────────────────────
 /** 256-bit hex session id. Cookie value. */
@@ -228,6 +244,8 @@ export async function revokeSession(
 ): Promise<boolean> {
   const now = options.now ?? Date.now();
   const ok = await options.store.revokeSession(sessionId, now);
+  // Open WebSockets admitted by this session end now, not at next handshake.
+  closeSessionSockets(sessionId);
   const audit: AppendAuditEventInput = {
     id: crypto.randomUUID(),
     ts: now,
@@ -259,6 +277,7 @@ export async function revokeAllSessionsForIdentity(
     now,
     options.exceptSessionId,
   );
+  closeIdentitySockets(options.identityId, options.exceptSessionId);
   await appendAuditEvent(
     {
       actorIdentityId: options.identityId,
@@ -384,6 +403,7 @@ export function serializeSessionExpiryCookie(
     "SameSite=Lax",
     "Max-Age=0",
   ];
+  if (options.domain) parts.push(`Domain=${options.domain}`);
   if (shouldEmitSecureFlag(env)) parts.push("Secure");
   return parts.join("; ");
 }
@@ -393,44 +413,72 @@ export function serializeCsrfExpiryCookie(
 ): string {
   const env = options.env ?? process.env;
   const parts = [`${CSRF_COOKIE_NAME}=`, "Path=/", "SameSite=Lax", "Max-Age=0"];
+  if (options.domain) parts.push(`Domain=${options.domain}`);
   if (shouldEmitSecureFlag(env)) parts.push("Secure");
   return parts.join("; ");
 }
 /**
- * Parse a raw `Cookie:` header into a typed map. Returns `Map<string,string>`
- * — keys are cookie names, values are URL-decoded raw values. Invalid or
- * empty cookies are dropped silently (per RFC 6265 §5.2 step 1).
+ * Parse a raw `Cookie:` header into a typed map. Keys are cookie names, values
+ * are URL-decoded values. Fails closed on ambiguity: a name that appears more
+ * than once with differing values (e.g. a sibling-subdomain cookie shadowing
+ * ours) and a value with a malformed percent-escape are both omitted, so callers see no cookie rather
+ * than an attacker-chosen one. Empty values are dropped (RFC 6265 §5.2).
  */
 export function parseCookieHeader(
   headerValue: string | null,
 ): Map<string, string> {
   const out = new Map<string, string>();
+  const rejected = new Set<string>();
   if (!headerValue) return out;
   for (const part of headerValue.split(";")) {
     const eq = part.indexOf("=");
     if (eq < 0) continue;
     const k = part.slice(0, eq).trim();
-    if (!k) continue;
+    if (!k || rejected.has(k)) continue;
     const v = part.slice(eq + 1).trim();
-    if (v.length === 0) continue;
+    let decoded: string;
     try {
-      out.set(k, decodeURIComponent(v));
+      decoded = decodeURIComponent(v);
     } catch {
-      out.set(k, v);
+      // error-policy:J3 untrusted cookie values — a malformed percent-escape
+      // is an absent cookie, never a raw pass-through.
+      out.delete(k);
+      rejected.add(k);
+      continue;
     }
+    const existing = out.get(k);
+    // Identical copies (host-only and domain variants of one session) are
+    // unambiguous; differing copies are not.
+    if (
+      decoded.length === 0 ||
+      (existing !== undefined && existing !== decoded)
+    ) {
+      out.delete(k);
+      rejected.add(k);
+      continue;
+    }
+    out.set(k, decoded);
   }
   return out;
 }
 /**
+ * Read one cookie from a request. Returns null when the cookie is absent,
+ * empty, malformed, or present more than once.
+ */
+export function readCookie(
+  req: Pick<http.IncomingMessage, "headers">,
+  name: string,
+): string | null {
+  return (
+    parseCookieHeader(extractHeaderValue(req.headers.cookie)).get(name) ?? null
+  );
+}
+/**
  * Read the eliza session id from the request cookie header. Returns null
- * when the cookie is absent or empty.
+ * when the cookie is absent, empty, malformed, or duplicated.
  */
 export function parseSessionCookie(
   req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
-  const raw = req.headers.cookie;
-  const headerValue = Array.isArray(raw) ? raw[0] : raw;
-  const cookies = parseCookieHeader(headerValue ?? null);
-  const value = cookies.get(SESSION_COOKIE_NAME);
-  return value && value.length > 0 ? value : null;
+  return readCookie(req, SESSION_COOKIE_NAME);
 }

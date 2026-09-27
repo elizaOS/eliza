@@ -24,6 +24,8 @@ import {
   CSRF_HEADER_NAME,
   denyOnAuthStoreError,
   findActiveSession,
+  readCookie,
+  SESSION_COOKIE_NAME,
   verifyCsrfToken,
 } from "./auth/sessions.js";
 import {
@@ -42,6 +44,8 @@ export {
   ensureSessionForRequest,
   type ResolvedAuthContext,
 } from "./auth/auth-context.js";
+/** Fail-closed cookie reader; the implementation lives with the session model. */
+export { readCookie } from "./auth/sessions.js";
 export {
   extractHeaderValue,
   getProvidedApiToken,
@@ -218,40 +222,9 @@ export function isDevEnvironment(): boolean {
   return env === "development" || env === "dev";
 }
 // ── Cookie / session helpers ──────────────────────────────────────────────────
-const SESSION_COOKIE_NAME = "eliza_session";
 /** Cookie name used by the session model. Exported for tests + UI client. */
 export function getSessionCookieName(): string {
   return SESSION_COOKIE_NAME;
-}
-/**
- * Read the named cookie from the `cookie` header. Returns `null` when the
- * header is missing or the cookie is not set.
- *
- * Pulled out here so route handlers don't reimplement parsing — the existing
- * `compat-route-shared.ts` predates the cookie-based session model.
- */
-export function readCookie(
-  req: Pick<http.IncomingMessage, "headers">,
-  name: string,
-): string | null {
-  const raw = extractHeaderValue(req.headers.cookie);
-  if (!raw) return null;
-  for (const part of raw.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    const k = part.slice(0, eq).trim();
-    if (k !== name) continue;
-    const v = part.slice(eq + 1).trim();
-    if (v.length === 0) return null;
-    try {
-      return decodeURIComponent(v);
-    } catch {
-      // error-policy:J3 untrusted cookie values — a malformed percent-escape
-      // is an absent session cookie, not a server fault.
-      return null;
-    }
-  }
-  return null;
 }
 /**
  * Resolved auth context for a sensitive request.

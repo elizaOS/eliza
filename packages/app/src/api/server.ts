@@ -24,6 +24,7 @@ import {
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
+  ensureProtectedProfileAdmission,
   extractAuthToken,
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
@@ -66,6 +67,7 @@ import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import { readCookie, resolveSessionTokenRole } from "./auth";
+import { bindSessionSocket } from "./auth/session-sockets";
 import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -1044,6 +1046,8 @@ async function runCompatRequestPipeline(
 export async function startApiServer(
   ...args: Parameters<typeof upstreamStartApiServer>
 ): Promise<Awaited<ReturnType<typeof upstreamStartApiServer>>> {
+  // Protected hosts are admitted before config or credential aliasing.
+  await ensureProtectedProfileAdmission();
   // Ensure cloud-backed ElevenLabs key is available as ELEVENLABS_API_KEY so
   // the upstream Eliza TTS handler can use it (the `/api/tts/elevenlabs` route
   // passes through to upstream which checks this env var).
@@ -1091,7 +1095,15 @@ export async function startApiServer(
           state: compatState,
           scope: "appCore.webSocketCookieAuth",
         });
-        if (session?.role === "OWNER") return true;
+        if (session?.role === "OWNER") {
+          if (session.identityId) {
+            bindSessionSocket(
+              { sessionId: cookie, identityId: session.identityId },
+              request.socket,
+            );
+          }
+          return true;
+        }
       }
       const sessionToken =
         url.searchParams.get("token")?.trim() ||
@@ -1103,7 +1115,14 @@ export async function startApiServer(
         if (compatState.current?.adapter) {
           try {
             const store = authStoreForRuntime(compatState.current);
-            if (store && (await findActiveSession(store, sessionToken))) {
+            const session = store
+              ? await findActiveSession(store, sessionToken)
+              : null;
+            if (session) {
+              bindSessionSocket(
+                { sessionId: session.id, identityId: session.identityId },
+                request.socket,
+              );
               return true;
             }
           } catch (error) {

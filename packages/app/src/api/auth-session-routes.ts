@@ -109,11 +109,39 @@ function setSessionCookies(
   ]);
 }
 
-function clearSessionCookies(res: http.ServerResponse): void {
-  res.setHeader("set-cookie", [
-    serializeSessionExpiryCookie(),
-    serializeCsrfExpiryCookie(),
-  ]);
+function requestCookieDomain(req: http.IncomingMessage): string | undefined {
+  const host = req.headers.host;
+  if (!host) return undefined;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname;
+  } catch {
+    // error-policy:J3 a malformed Host header has no domain variant to clear.
+    return undefined;
+  }
+  // IP literals cannot carry Domain cookies; only named hosts need the variant.
+  if (/^[\d.]+$/.test(hostname) || hostname.startsWith("[")) return undefined;
+  return hostname;
+}
+
+/**
+ * Expire both the host-only cookies this server sets and the `Domain=`
+ * variants the desktop bridge installs, so a user left with differing
+ * duplicates (which the parser rejects) can recover by signing out.
+ */
+function clearSessionCookies(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
+  const cookies = [serializeSessionExpiryCookie(), serializeCsrfExpiryCookie()];
+  const domain = requestCookieDomain(req);
+  if (domain) {
+    cookies.push(
+      serializeSessionExpiryCookie({ domain }),
+      serializeCsrfExpiryCookie({ domain }),
+    );
+  }
+  res.setHeader("set-cookie", cookies);
 }
 
 // ── Route handler ───────────────────────────────────────────────────────────
@@ -435,7 +463,7 @@ async function handleLogout(
 ): Promise<boolean> {
   const sessionId = parseSessionCookie(req) ?? getProvidedApiToken(req) ?? null;
   if (!sessionId) {
-    clearSessionCookies(res);
+    clearSessionCookies(req, res);
     sendJsonResponse(res, 200, { ok: true });
     return true;
   }
@@ -449,7 +477,7 @@ async function handleLogout(
       userAgent: meta.userAgent,
     });
   }
-  clearSessionCookies(res);
+  clearSessionCookies(req, res);
   sendJsonResponse(res, 200, { ok: true });
   return true;
 }
@@ -731,7 +759,7 @@ async function handleRevoke(
     userAgent: meta.userAgent,
   });
   if (ctx.session && ctx.session.id === targetSessionId) {
-    clearSessionCookies(res);
+    clearSessionCookies(req, res);
   }
   sendJsonResponse(res, 200, { ok: true });
   return true;

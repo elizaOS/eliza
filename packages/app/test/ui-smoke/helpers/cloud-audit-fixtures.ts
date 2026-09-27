@@ -472,6 +472,9 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/sessions"), body: { sessions: [] } },
   { match: path_("/api/v1/me/mfa"), body: { enrolled: false } },
   { match: path_("/api/v1/me/plugin-grants"), body: { grants: [] } },
+  // No recorded choices: vision renders off, training renders the stated
+  // Cloud default.
+  { match: path_("/api/v1/me/consents"), body: { consents: [] } },
   {
     match: path_("/api/v1/me/account-deletion"),
     body: {

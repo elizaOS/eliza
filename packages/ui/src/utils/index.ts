@@ -63,7 +63,6 @@ export {
 export { modelLooksLikeElizaCloudHosted } from "./eliza-cloud-model-route.js";
 export * from "./env";
 export * from "./format";
-export * from "./globals";
 export * from "./image-attachment";
 export { autoLabel, ENV_KEY_ACRONYMS } from "./labels.js";
 export * from "./name-tokens";

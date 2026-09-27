@@ -2772,13 +2772,6 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(uiSource, "$1"),
           },
           {
-            find: /^@elizaos\/app\/first-run\/first-run-config$/,
-            replacement: path.join(
-              appCoreSrcRoot,
-              "first-run/first-run-config.ts",
-            ),
-          },
-          {
             find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
             replacement: path.join(
               appCoreSrcRoot,
