@@ -96,7 +96,7 @@ it.each([ChannelType.DM, ChannelType.VOICE_DM])(
   "preserves authored whitespace through host ingress, SQLite and model context for %s",
   async (channelType) => {
     const runtime = createSQLiteTestRuntime({
-      character: { name: "Exact ingress", bio: "Test" },
+      character: { name: "Exact ingress", bio: ["Test"] },
       logLevel: "fatal",
     });
     try {
