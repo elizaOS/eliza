@@ -68,6 +68,7 @@ describe("next-event read coverage", () => {
       expect(result.timeReference).toEqual({
         asOf: now.toISOString(),
         timeZone: "UTC",
+        display: "Thursday, September 24, 2026 at 10:00:00 AM UTC",
       });
       expect(result.calendarFeedState).toBe(state);
       expect(result.readScope).toEqual({
