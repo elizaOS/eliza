@@ -330,6 +330,16 @@ export const notesAction: Action = {
         "NOTES_INVALID_DATE_FILTER",
       );
     }
+    const latestBy = params.latestBy;
+    if (
+      latestBy !== undefined &&
+      (op !== "list" || (latestBy !== "createdAt" && latestBy !== "updatedAt"))
+    ) {
+      return failure(
+        "latestBy is only supported for list reads and must be createdAt or updatedAt.",
+        "NOTES_INVALID_RECENCY_SELECTION",
+      );
+    }
     if (op === "patch") {
       if (
         Object.keys(params).some(
@@ -403,7 +413,19 @@ export const notesAction: Action = {
                 .includes(normalizedTopic),
             )
           : notes;
-      const matches = dateRange
+      if (
+        latestBy &&
+        dateRange &&
+        candidates.some(
+          (note) => !Number.isFinite(Date.parse(note[dateRange.field])),
+        )
+      ) {
+        return failure(
+          "A note has an invalid filter timestamp; the latest matching note cannot be determined.",
+          "NOTES_INVALID_RECENCY_TIMESTAMP",
+        );
+      }
+      const eligibleMatches = dateRange
         ? candidates.filter((note) => {
             const instant = Date.parse(note[dateRange.field]);
             return (
@@ -412,6 +434,24 @@ export const notesAction: Action = {
             );
           })
         : candidates;
+      let matches = eligibleMatches;
+      let latestInstant: number | null = null;
+      if (latestBy) {
+        for (const note of eligibleMatches) {
+          const instant = Date.parse(note[latestBy]);
+          if (!Number.isFinite(instant)) {
+            return failure(
+              "A matching note has an invalid selection timestamp; the latest note cannot be determined.",
+              "NOTES_INVALID_RECENCY_TIMESTAMP",
+            );
+          }
+          if (latestInstant === null || instant > latestInstant)
+            latestInstant = instant;
+        }
+        matches = eligibleMatches.filter(
+          (note) => Date.parse(note[latestBy]) === latestInstant,
+        );
+      }
       const emptyInventory =
         op === "list" &&
         notes.length === 0 &&
@@ -423,6 +463,19 @@ export const notesAction: Action = {
         readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
+        ...(latestBy
+          ? {
+              eligibleMatchCount: eligibleMatches.length,
+              selection: {
+                kind: "latest",
+                field: latestBy,
+                at:
+                  latestInstant === null
+                    ? null
+                    : new Date(latestInstant).toISOString(),
+              },
+            }
+          : {}),
         filterApplied:
           noteId !== undefined ||
           topic !== undefined ||
@@ -581,6 +634,14 @@ export const notesAction: Action = {
       schema: { type: "integer", minimum: 0 },
     },
     {
+      name: "latestBy",
+      description:
+        "For a latest-note request, select the greatest createdAt (newest written) or updatedAt (most recently edited) instant after any text/date filters. Returns every tie with complete content. Resolve the basis from the user's wording/context; bare latest has no automatic default. State the selected basis in the answer. Omit to return every matching note.",
+      required: false,
+      subactions: ["list"],
+      schema: { type: "string", enum: ["createdAt", "updatedAt"] },
+    },
+    {
       name: "dateRange",
       description:
         "Optional timestamp filter, combined with content/noteId. For notes written in a period use createdAt; for edits use updatedAt. Start is inclusive, end exclusive. Use ISO timestamps with the user's timezone offsets, including any DST change. Unless the user specifies otherwise, 'last week' means the previous Monday-to-Monday calendar week, not the trailing seven days. State the actual date window in the answer.",
@@ -649,7 +710,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["create", "update", "delete"],
