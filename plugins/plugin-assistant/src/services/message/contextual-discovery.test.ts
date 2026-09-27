@@ -587,7 +587,7 @@ describe("contextual native discovery", () => {
     const view: Action = {
       name: "VIEWS_SHOW",
       description: "Open a view",
-      contexts: ["general", "notes"],
+      contexts: ["general", "notes", "calendar"],
     };
     const selected = retrieveContextualPlannerActions({
       actions: [view, ...(notesPlugin.actions ?? [])],

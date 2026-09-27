@@ -119,6 +119,9 @@ const activeRuntimes: AgentRuntime[] = [];
 async function createHarness(options: {
   actionResult: Record<string, unknown>;
   actionGate?: (roomId: UUID) => Promise<void>;
+  evaluatorFailure?: Error;
+  onEvaluator?: () => void;
+  plannerCall?: () => ReturnType<typeof plannerCalendarCall>;
 }): Promise<Harness> {
   const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
@@ -187,21 +190,22 @@ async function createHarness(options: {
         stageOneServed = true;
         return stageOneToolTurn();
       }
-      throw EVALUATOR_FAILURE;
+      options.onEvaluator?.();
+      throw options.evaluatorFailure ?? EVALUATOR_FAILURE;
     },
     "preserved-tool-result-test",
     100,
   );
   runtime.registerModel(
     ModelType.ACTION_PLANNER,
-    async () => plannerCalendarCall(),
+    async () => options.plannerCall?.() ?? plannerCalendarCall(),
     "preserved-tool-result-test",
     100,
   );
   runtime.registerModel(
     ModelType.TEXT_SMALL,
     async () => {
-      throw EVALUATOR_FAILURE;
+      throw options.evaluatorFailure ?? EVALUATOR_FAILURE;
     },
     "preserved-tool-result-test",
     100,
@@ -242,6 +246,91 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+  it("delivers an honest partial outcome after evaluator throttling without replaying the completed action", async () => {
+    let actionCalls = 0;
+    let evaluatorCalls = 0;
+    const planner = vi.fn(() => ({
+      ...plannerCalendarCall(),
+      toolCalls: [
+        {
+          id: "calendar-create-1",
+          name: "LOOKUP",
+          arguments: {
+            action: "create",
+            eliza_turn_scope: "more_work_pending",
+          },
+        },
+      ],
+    }));
+    const h = await createHarness({
+      evaluatorFailure: Object.assign(new Error("token quota exceeded"), {
+        status: 429,
+      }),
+      onEvaluator: () => {
+        evaluatorCalls++;
+      },
+      plannerCall: planner,
+      actionResult: {
+        success: true,
+        userFacingText: USER_FACING,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        effectReceipts: [
+          {
+            receiptId: "calendar-saved",
+            operation: "calendar.event.create",
+            outcome: "applied",
+            resource: { kind: "calendar.event", id: "event-1" },
+            artifacts: [],
+            idempotency: { key: null, replayed: false },
+            observedAt: "2026-09-26T00:00:00.000Z",
+            commit: {
+              kind: "durable",
+              id: "event-1",
+              committedAt: "2026-09-26T00:00:00.000Z",
+            },
+          },
+        ],
+      },
+      actionGate: async () => {
+        actionCalls++;
+      },
+    });
+    const result = await new DefaultMessageService().handleMessage(
+      h.runtime,
+      makeMessage(
+        h.runtime,
+        "Save the entry, then verify it and report the final details.",
+      ),
+      h.callback,
+    );
+    expect(actionCalls).toBe(1);
+    expect(planner).toHaveBeenCalledTimes(1);
+    expect(evaluatorCalls).toBe(1);
+    expect(result.outcome).toMatchObject({
+      status: "failed",
+      error: { code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE", transient: false },
+      effects: [
+        expect.objectContaining({
+          receiptId: "calendar-saved",
+          outcome: "applied",
+        }),
+      ],
+    });
+    expect(result.requestFulfilled).toBe(false);
+    expect(result.responseContent?.text).toContain(USER_FACING);
+    expect(result.responseContent?.text).toContain(
+      "request remains incomplete",
+    );
+    expect(visibleTexts(h.callbacks)).toContain(result.responseContent?.text);
+    expect(
+      result.actionResults?.some((entry) =>
+        entry.effectReceipts?.some(
+          (receipt) => receipt.receiptId === "calendar-saved",
+        ),
+      ),
+    ).toBe(true);
+  });
   it.each([true, false])(
     "preserves an unexpected post-effect error as reply-only recovery without apology inference (result success=%s)",
     async (success) => {

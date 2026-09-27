@@ -6,6 +6,8 @@ import path from "node:path";
 import { expect, test } from "vitest";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
+  createPlannerTokenPacer,
+  plannerRateLimitEvidence,
   plannerWorkloadFixture,
   summarizePlannerObservation,
   summarizePlannerTrajectories,
@@ -272,6 +274,15 @@ test("paired planner fixtures validate actual file bytes and do not fabricate ab
     });
     expect(summary.providerWireTTFT).toBeNull();
     expect(summary.successfulReadReceipts).toBe(0);
+    const pacer = createPlannerTokenPacer({ fresh: 90_000, total: 400_000 }, 0);
+    const reservation = { fresh: 60_000, total: 100_000 };
+    expect(pacer.delay(reservation, 0)).toBe(0);
+    pacer.reserve(reservation, 0);
+    expect(pacer.delay(reservation, 0)).toBe(20_000);
+    expect(pacer.delay(reservation, 20_000)).toBe(0);
+    pacer.settle(reservation, { fresh: 90_000, total: 100_000 }, 20_000);
+    expect(pacer.delay(reservation, 20_000)).toBe(20_000);
+
     const foreground = {
       trajectory: { id: "foreground", status: "completed" },
       llmCalls: [
@@ -281,6 +292,27 @@ test("paired planner fixtures validate actual file bytes and do not fabricate ab
     const initial = summarizePlannerObservation([foreground]);
     expect(initial.foreground?.modelCalls).toBe(1);
     expect(initial.observedBackground).toBeNull();
+    expect(plannerRateLimitEvidence({ failureKind: "rate_limited" }, [])).toBe(
+      true,
+    );
+    expect(
+      plannerRateLimitEvidence({}, [
+        {
+          llmCalls: [
+            {
+              providerMetadata: {
+                error: "Too Many Requests: Tokens per minute limit exceeded",
+              },
+            },
+          ],
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      plannerRateLimitEvidence({ text: "File saved" }, [
+        { llmCalls: [{ providerMetadata: { error: "Invalid schema" } }] },
+      ]),
+    ).toBe(false);
     expect(initial.backgroundObservation).toBe("not-observed");
     const refreshed = summarizePlannerObservation([
       foreground,

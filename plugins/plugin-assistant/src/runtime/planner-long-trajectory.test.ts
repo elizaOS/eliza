@@ -1,10 +1,15 @@
 /** Exercises progressive planner execution and truthful resource settlement with deterministic model and executor boundaries. */
 
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type EffectReceipt,
   ElizaError,
   type PlannerRuntime,
   type PlannerTrajectory,
+  PROVIDER_CONTEXT_OVERFLOW,
   type RecordedStage,
   runWithStreamingContext,
   type TrajectoryRecorder,
@@ -88,6 +93,248 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it.each(["unsafe", "failure"])(
+    "retains the incomplete notice and safe failure authority (%s)",
+    async (kind) => {
+      const result = await runPlannerLoop({
+        context: { id: "incomplete-safe-relay" },
+        runtime: {
+          useModel: async () => ({
+            text: "",
+            toolCalls: [
+              {
+                id: "operation",
+                name: "READ",
+                arguments: { eliza_turn_scope: "more_work_pending" },
+              },
+            ],
+          }),
+        },
+        executeToolCall: async () => ({
+          success: kind !== "failure",
+          turnComplete: false,
+          userFacingText:
+            kind === "failure"
+              ? "Verification lookup failed."
+              : '{"tool_calls":[{"name":"SECRET_TOOL"}]}',
+        }),
+        evaluate: async () => {
+          throw Object.assign(new Error("rate limited"), { status: 429 });
+        },
+      });
+      expect(result.finalMessage).toContain("request remains incomplete");
+      expect(result.finalMessage).not.toContain("SECRET_TOOL");
+      if (kind === "failure")
+        expect(result.finalMessage).toContain("Verification lookup failed.");
+      expect(result.evaluator?.success).toBe(false);
+    },
+  );
+  it.each(["overflow", "abort", "signal"])(
+    "preserves %s authority after a settled action even with provider HTTP status",
+    async (kind) => {
+      const controller = new AbortController();
+      const error =
+        kind === "overflow"
+          ? new ElizaError("full context rejected", {
+              code: PROVIDER_CONTEXT_OVERFLOW,
+            })
+          : Object.assign(new Error("caller cancelled"), {
+              name: "AbortError",
+              status: 429,
+            });
+      let executed = 0;
+      const turn = runWithStreamingContext(
+        { onStreamChunk: async () => {}, abortSignal: controller.signal },
+        () =>
+          runPlannerLoop({
+            context: { id: "provider-failure-boundary" },
+            runtime: {
+              useModel: async () => ({
+                text: "",
+                toolCalls: [
+                  {
+                    id: "save",
+                    name: "SAVE",
+                    arguments: { eliza_turn_scope: "more_work_pending" },
+                  },
+                ],
+              }),
+            },
+            executeToolCall: async () => {
+              executed++;
+              return {
+                success: true,
+                userFacingText: "Saved.",
+                effectReceipts: [receipt],
+              };
+            },
+            evaluate: async () => {
+              if (kind === "signal") controller.abort(error);
+              throw error;
+            },
+          }),
+      );
+      await expect(turn).rejects.toBe(error);
+      expect(executed).toBe(1);
+    },
+  );
+  it.each([false, true])(
+    "preserves verified complete relays and internal effect failure authority (internal=%s)",
+    async (internal) => {
+      const result = await runPlannerLoop({
+        context: {
+          id: "provider-fallback-authority",
+          events: [
+            {
+              id: "handler",
+              type: "message_handler",
+              metadata: { plan: { intents: ["save the requested record"] } },
+            },
+          ],
+        },
+        runtime: {
+          useModel: async () => ({
+            text: "",
+            toolCalls: [
+              {
+                id: "save",
+                name: "SAVE",
+                arguments: {
+                  eliza_turn_scope: internal ? "more_work_pending" : "final",
+                },
+              },
+            ],
+          }),
+        },
+        executeToolCall: async () => ({
+          success: true,
+          userFacingText: internal
+            ? "PRIVATE INTERNAL RESULT"
+            : "Saved the requested record.",
+          verifiedUserFacing: true,
+          turnComplete: true,
+          ...(internal ? { transcriptVisibility: "internal" as const } : {}),
+          effectReceipts: [receipt],
+        }),
+        evaluate: async () => {
+          throw Object.assign(new Error("rate limited"), { status: 429 });
+        },
+      });
+      if (internal) {
+        expect(result.terminalFailure?.code).toBe(
+          "EVALUATOR_REPLY_GENERATION_FAILED",
+        );
+        expect(result.finalMessage).toBeUndefined();
+        expect(
+          result.trajectory.steps.find((step) => step.result)?.result
+            ?.replyFailure?.code,
+        ).toBe("EVALUATOR_REPLY_GENERATION_FAILED");
+      } else {
+        expect(result.terminalFailure).toBeUndefined();
+        expect(result.finalMessage).toBe("Saved the requested record.");
+      }
+      expect(
+        result.trajectory.steps.filter((step) => step.toolCall),
+      ).toHaveLength(1);
+    },
+  );
+  it.each(["more_work_pending", "final"])(
+    "preserves a real write without claiming unfinished readback completed after evaluator 429 (%s)",
+    async (scope) => {
+      const directory = await mkdtemp(join(tmpdir(), "planner-incomplete-"));
+      const path = join(directory, "index.html");
+      const content = "<html><body>read me back exactly</body></html>";
+      const version = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+      let mutations = 0;
+      const useModel = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "write",
+            name: "FILE",
+            arguments: {
+              action: "write",
+              path,
+              content,
+              eliza_turn_scope: scope,
+            },
+          },
+        ],
+      }));
+      const evaluate = vi.fn(async () => {
+        throw Object.assign(new Error("token quota exceeded"), { status: 429 });
+      });
+      try {
+        const result = await runPlannerLoop({
+          context: {
+            id: "incomplete-provider",
+            events: [
+              {
+                id: "handler",
+                type: "message_handler",
+                metadata: {
+                  plan: {
+                    intents: [
+                      "write the HTML file",
+                      "read the saved file and report its exact contents",
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          runtime: { useModel },
+          evaluate,
+          executeToolCall: async () => {
+            mutations++;
+            await writeFile(path, content);
+            expect(await readFile(path, "utf8")).toBe(content);
+            return {
+              success: true,
+              userFacingText: "Wrote the HTML file.",
+              verifiedUserFacing: true,
+              turnComplete: true,
+              effectReceipts: [
+                {
+                  ...receipt,
+                  operation: "filesystem.write",
+                  resource: { kind: "filesystem.file", id: path, version },
+                  commit: {
+                    kind: "durable",
+                    id: `${path}#${version}`,
+                    committedAt: receipt.observedAt,
+                  },
+                },
+              ],
+            };
+          },
+        });
+        expect(mutations).toBe(1);
+        expect(useModel).toHaveBeenCalledTimes(1);
+        expect(evaluate).toHaveBeenCalledTimes(1);
+        expect(await readFile(path, "utf8")).toBe(content);
+        expect(result.terminalFailure).toMatchObject({
+          code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
+          kind: "rate_limited",
+          transient: false,
+        });
+        expect(result.evaluator?.success).toBe(false);
+        expect(result.finalMessage).toContain("Wrote the HTML file.");
+        expect(result.finalMessage).toContain("request remains incomplete");
+        expect(
+          result.trajectory.steps.find(
+            (step) => step.result?.effectReceipts?.length,
+          )?.result?.effectReceipts?.[0]?.resource.version,
+        ).toBe(version);
+        expect(result.trajectory.outcomeIntents).toEqual([
+          "write the HTML file",
+          "read the saved file and report its exact contents",
+        ]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
   it("does not replay a committed mutation with nonretryable bookkeeping failure", async () => {
     const h = harness(2);
     const result = await runPlannerLoop({

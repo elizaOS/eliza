@@ -335,6 +335,94 @@ export function summarizePlannerObservation(details: unknown[]) {
   };
 }
 
+export type PlannerTokenEstimate = { fresh: number; total: number };
+/** Local conservative budget across both hosts; never changes provider limits. */
+export function createPlannerTokenPacer(
+  capacity: PlannerTokenEstimate,
+  now = Date.now(),
+) {
+  const credit = { ...capacity };
+  let updatedAt = now;
+  const refill = (at: number) => {
+    const elapsed = Math.max(0, at - updatedAt);
+    for (const key of ["fresh", "total"] as const)
+      credit[key] = Math.min(
+        capacity[key],
+        credit[key] + (elapsed * capacity[key]) / 60_000,
+      );
+    updatedAt = at;
+  };
+  return {
+    delay(estimate: PlannerTokenEstimate, at = Date.now()) {
+      refill(at);
+      return Math.ceil(
+        Math.max(
+          0,
+          ...(["fresh", "total"] as const).map(
+            (key) =>
+              ((Math.min(estimate[key], capacity[key]) - credit[key]) *
+                60_000) /
+              capacity[key],
+          ),
+        ),
+      );
+    },
+    reserve(estimate: PlannerTokenEstimate, at = Date.now()) {
+      refill(at);
+      for (const key of ["fresh", "total"] as const)
+        credit[key] -= estimate[key];
+    },
+    settle(
+      reserved: PlannerTokenEstimate,
+      actual: PlannerTokenEstimate,
+      at = Date.now(),
+    ) {
+      refill(at);
+      for (const key of ["fresh", "total"] as const)
+        credit[key] = Math.min(
+          capacity[key],
+          credit[key] + reserved[key] - actual[key],
+        );
+    },
+  };
+}
+
+/** Provider rejection stops the study; completed effects are never retried. */
+export function plannerRateLimitEvidence(
+  response: unknown,
+  details: unknown[],
+): boolean {
+  const reply = record(response);
+  if (
+    reply.failureKind === "rate_limited" ||
+    record(reply.terminalFailure).kind === "rate_limited" ||
+    record(reply.replyFailure).kind === "rate_limited"
+  )
+    return true;
+  return details.some((detail) =>
+    array(record(detail).llmCalls).some((value) => {
+      const call = record(value),
+        metadata = record(call.providerMetadata);
+      if (
+        [
+          call.status,
+          call.statusCode,
+          metadata.status,
+          metadata.statusCode,
+        ].includes(429)
+      )
+        return true;
+      return [call.error, metadata.error].some(
+        (error) =>
+          typeof error === "string" &&
+          /too many requests|token_quota_exceeded|tokens per minute limit|rate[ _-]?limit/i.test(
+            error,
+          ),
+      );
+    }),
+  );
+}
+
 async function main() {
   const count = Number(process.env.BENCHMARK_PAIRS ?? 30);
   const offset = Number(process.env.BENCHMARK_OFFSET ?? 0);
@@ -346,6 +434,30 @@ async function main() {
     count + offset > 30
   )
     throw new Error("Choose 1..30 fixtures within indices 0..29");
+  const minimumTurnIntervalMs = Number(
+    process.env.BENCHMARK_MIN_TURN_INTERVAL_MS ?? 1000,
+  );
+  if (!Number.isFinite(minimumTurnIntervalMs) || minimumTurnIntervalMs < 0)
+    throw new Error(
+      "BENCHMARK_MIN_TURN_INTERVAL_MS must be a nonnegative duration",
+    );
+  const tokenCapacity = {
+    fresh: Number(process.env.BENCHMARK_FRESH_TOKENS_PER_MINUTE ?? 90_000),
+    total: Number(process.env.BENCHMARK_TOTAL_TOKENS_PER_MINUTE ?? 400_000),
+  };
+  if (
+    Object.values(tokenCapacity).some(
+      (value) => !Number.isFinite(value) || value <= 0,
+    )
+  )
+    throw new Error("Benchmark token pacing budgets must be positive");
+  const tokenPacer = createPlannerTokenPacer(tokenCapacity);
+  const estimates: Record<Variant, PlannerTokenEstimate> = {
+    baseline: { fresh: 60_000, total: 150_000 },
+    candidate: { fresh: 30_000, total: 70_000 },
+  };
+  let previousTurnStartedAt = 0;
+  let rateLimited = false;
   const runId = randomUUID();
   const output = process.env.BENCHMARK_OUTPUT_DIR
     ? resolve(process.env.BENCHMARK_OUTPUT_DIR)
@@ -387,6 +499,16 @@ async function main() {
             "Paired synthetic fixtures, fresh empty conversation per attempt, alternating order; no cache isolation; complete room-scoped trajectories and filesystem readbacks",
           limitations:
             "Multiline fixtures test ordinary requested text: recovery is demonstrated only when failedActions > 0 and final validation succeeds. No wire TTFT. Foreground metrics are primary. Background is an end-of-study observation, not proof of future quiescence; absent background is null. Existing host background work may affect latency.",
+          pacing: {
+            minimumTurnIntervalMs,
+            tokenCapacityPerMinute: tokenCapacity,
+            method:
+              "Conservative shared continuous token bucket; reserve worst observed per variant plus 15K fresh/25K total background headroom; post-turn reconcile. One unexpectedly large turn can still exceed upstream reservation limits and must stop the run.",
+            scope:
+              "Shared across baseline and candidate; outside HTTP wall timer",
+            rateLimitPolicy:
+              "Stop on provider rejection; preserve effects and attempts; no automatic retry",
+          },
           requestedPairs: count,
           offset,
           rows,
@@ -451,7 +573,7 @@ async function main() {
     );
   };
   await persist("running");
-  for (let index = offset; index < offset + count; index++) {
+  study: for (let index = offset; index < offset + count; index++) {
     const variants: Variant[] =
       index % 2 === 0 ? ["baseline", "candidate"] : ["candidate", "baseline"];
     for (const variant of variants) {
@@ -468,6 +590,7 @@ async function main() {
         status: "running",
       };
       rows.push(row);
+      let reserved: PlannerTokenEstimate | null = null;
       await persist("running");
       try {
         const conversation = record(
@@ -484,6 +607,20 @@ async function main() {
         )
           throw new Error("Conversation missing id or roomId");
         row.conversation = conversation;
+        const delayMs = Math.max(
+          0,
+          minimumTurnIntervalMs - (Date.now() - previousTurnStartedAt),
+          tokenPacer.delay(estimates[variant]),
+        );
+        row.pacingDelayMs = delayMs;
+        if (delayMs > 0) {
+          await persist("pacing");
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+        reserved = { ...estimates[variant] };
+        row.tokenReservation = reserved;
+        tokenPacer.reserve(reserved);
+        previousTurnStartedAt = Date.now();
         const started = performance.now();
         const response = await request(
           variant,
@@ -538,6 +675,8 @@ async function main() {
         const observation = summarizePlannerObservation(details);
         const summary = observation.foreground;
         row.initialObservation = observation;
+        row.rateLimitObserved = plannerRateLimitEvidence(response, details);
+        if (row.rateLimitObserved) rateLimited = true;
         row.summaryScope = "foreground-only";
         row.summary = summary;
         row.readbackCoverage = Object.keys(fixture.filesAfter).map((name) => ({
@@ -557,6 +696,10 @@ async function main() {
             : "failed";
       } catch (error) {
         row.status = "error";
+        if (/HTTP 429/.test(String(error))) {
+          row.rateLimitObserved = true;
+          rateLimited = true;
+        }
         row.error = error instanceof Error ? error.message : String(error);
         if (typeof record(row.conversation).roomId === "string") {
           try {
@@ -564,6 +707,15 @@ async function main() {
               variant,
               String(record(row.conversation).roomId),
             );
+            if (
+              plannerRateLimitEvidence(
+                row.response,
+                array(row.partialTrajectories),
+              )
+            ) {
+              row.rateLimitObserved = true;
+              rateLimited = true;
+            }
           } catch (captureError) {
             row.captureError =
               captureError instanceof Error
@@ -572,10 +724,40 @@ async function main() {
           }
         }
       }
+      if (reserved) {
+        const observed = record(
+          record(record(row.initialObservation).allObserved).metrics,
+        );
+        const readMetric = (name: string) => {
+          const value = record(observed[name]);
+          return value.missingCalls === 0 &&
+            typeof value.totalReported === "number"
+            ? value.totalReported
+            : null;
+        };
+        const input = readMetric("promptTokens"),
+          outputTokens = readMetric("completionTokens");
+        if (input !== null && outputTokens !== null) {
+          const actual = {
+            fresh:
+              (readMetric("freshPromptTokens") ?? input) +
+              outputTokens +
+              15_000,
+            total: input + outputTokens + 25_000,
+          };
+          tokenPacer.settle(reserved, actual);
+          estimates[variant] = {
+            fresh: Math.max(estimates[variant].fresh, actual.fresh),
+            total: Math.max(estimates[variant].total, actual.total),
+          };
+          row.pacingChargedTokens = actual;
+        }
+      }
       await persist("running");
       process.stderr.write(
         `[planner-workload] ${index + 1}/30 ${variant}: ${row.status}\n`,
       );
+      if (rateLimited) break study;
     }
   }
   // Refresh every synthetic room after the study: background workers may not
@@ -607,6 +789,10 @@ async function main() {
           "End-of-study room re-export with up to 30 seconds of additional observation for missing background work; future quiescence is not established";
         row.finalObservationCapturedAt = new Date().toISOString();
         row.finalObservation = observation;
+        if (plannerRateLimitEvidence(row.response, details)) {
+          row.rateLimitObserved = true;
+          rateLimited = true;
+        }
         row.summary = observation.foreground;
         row.observedBackgroundSummary = observation.observedBackground;
         if (observation.backgroundObservation !== "observed-completed")
@@ -619,17 +805,21 @@ async function main() {
       }
     }
     await persist("observing-background");
-    if (!retry.length || performance.now() >= backgroundDeadline) break;
+    if (rateLimited || !retry.length || performance.now() >= backgroundDeadline)
+      break;
     pending = retry;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   await persist(
-    rows.every((row) => row.status === "passed")
-      ? "complete"
-      : "completed-with-failures",
+    rateLimited
+      ? "interrupted-provider-rate-limit"
+      : rows.every((row) => row.status === "passed")
+        ? "complete"
+        : "completed-with-failures",
   );
   process.stdout.write(`${join(output, "report.json")}\n`);
-  if (rows.some((row) => row.status !== "passed")) process.exitCode = 1;
+  if (rateLimited || rows.some((row) => row.status !== "passed"))
+    process.exitCode = 1;
 }
 if (import.meta.main)
   main().catch((error) => {

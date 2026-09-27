@@ -890,6 +890,97 @@ async function runPlannerLoopIterations(
         "The planner explicitly left work pending; successful completion requires a later final declaration.",
     };
   };
+  const incompleteProviderFailure = (
+    error: unknown,
+  ): PlannerLoopResult | undefined => {
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (
+      isObjectRecord(error) &&
+      (error.code === "TURN_ABORTED" ||
+        error.name === "TurnAbortedError" ||
+        error.name === "AbortError")
+    )
+      throw error;
+    // Capacity failures retain their own integrity boundary and must not be
+    // converted into an ordinary provider-outage reply.
+    if (isProviderContextOverflowFailure(error)) throw error;
+    if (!isModelProviderError(error)) return undefined;
+    const internalEffectFailure = evaluatorFailureAfterInternalEffect(
+      trajectory,
+      error,
+    );
+    if (internalEffectFailure) return internalEffectFailure;
+    const complete =
+      declaredIntentCount <= 1 &&
+      (trySubPlannerVerdictGate({
+        trajectory,
+        failures,
+        lastPlannerExplicitCompleted,
+        declaredIntentCount,
+      }) ??
+        tryGateEvaluator({
+          trajectory,
+          failures,
+          lastPlannerExplicitCompleted,
+          lastPlannerExplicitMessageToUser,
+        }));
+    if (complete && complete.output.success === true) return undefined;
+    // A successful operation is not proof that the whole request finished.
+    // Retain its exact evidence, but stop without replaying effects or claiming
+    // that a provider outage verified pending work.
+    const relay = sanitizePlannerMessage(
+      terminalMessageWithFailureAuthority(
+        trajectory,
+        deterministicSuccessfulToolRelay(trajectory, true),
+      ),
+    );
+    const safeRelay =
+      relay &&
+      !isUnsafeUserVisibleText(relay) &&
+      !isEchoOfPlannerFacingToolText(relay, trajectory)
+        ? relay
+        : undefined;
+    const message = [
+      safeRelay,
+      "The request remains incomplete because the model provider is unavailable. Recorded tool outcomes are preserved; remaining work has not been completed.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const effectReceiptIds = allTrajectorySteps(trajectory).flatMap((step) =>
+      step.result ? (committedReceiptIdsForGate(step.result) ?? []) : [],
+    );
+    params.runtime.logger?.warn?.(
+      {
+        err: error instanceof Error ? error.message : String(error),
+        providerErrorDetail: modelProviderErrorDetail(error),
+      },
+      "[planner-loop] provider failure stopped an incomplete request; preserving settled outcomes without replay",
+    );
+    return {
+      status: "finished",
+      trajectory,
+      evaluator: {
+        success: false,
+        decision: "FINISH",
+        thought: message,
+        messageToUser: message,
+        effectReceiptIds,
+      },
+      terminalFailure: {
+        kind:
+          modelProviderErrorDetail(error)?.status === 429
+            ? "rate_limited"
+            : "provider_issue",
+        code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
+        transient: false,
+        message,
+      },
+      // Each dynamic snippet was checked before appending the mandatory
+      // incomplete notice. A generic final-message fallback must not replace
+      // that notice with an earlier successful operation's text.
+      finalMessage: message,
+    };
+  };
   // Preserve a failed evaluator's safe diagnosis instead of replacing it with
   // a generic fallback. Ordinary and post-tool evaluation share this precedence.
   const finishWithEvaluator = (
@@ -1180,6 +1271,8 @@ async function runPlannerLoopIterations(
         if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
           throw err;
         }
+        const incomplete = incompleteProviderFailure(err);
+        if (incomplete) return incomplete;
         const relay = deterministicSuccessfulToolRelay(trajectory);
         if (!relay) throw err;
         params.runtime.logger?.warn?.(
@@ -1505,6 +1598,8 @@ async function runPlannerLoopIterations(
             // already succeeded, so an expected provider failure must use the
             // same truthful post-tool fallback as the normal evaluator path.
             if (!isModelProviderError(err)) throw err;
+            const incomplete = incompleteProviderFailure(err);
+            if (incomplete) return incomplete;
             const relay = deterministicSuccessfulToolRelay(trajectory);
             if (!relay) throw err;
             params.runtime.logger?.warn?.(
@@ -2706,6 +2801,8 @@ async function runPlannerLoopIterations(
     try {
       evaluator = await evaluateTrajectory(params, trajectory, iteration);
     } catch (err) {
+      const incomplete = incompleteProviderFailure(err);
+      if (incomplete) return incomplete;
       const unavailable = evaluatorFailureAfterInternalEffect(trajectory, err);
       if (unavailable) return unavailable;
       // error-policy:J4 explicit user-facing degrade - only an EXPECTED
@@ -8173,6 +8270,7 @@ function userSafeRescueReply(
  */
 function deterministicSuccessfulToolRelay(
   trajectory: PlannerTrajectory,
+  visibleOnly = false,
 ): string | undefined {
   for (const step of [...trajectory.steps].reverse()) {
     if (!step.toolCall || !step.result || isTerminalToolCall(step.toolCall))
@@ -8180,6 +8278,8 @@ function deterministicSuccessfulToolRelay(
     // A failed later read or write prevents an earlier success from owning
     // the final reply when the provider cannot finish the workflow.
     if (step.result.success !== true) return undefined;
+    if (visibleOnly && step.result.transcriptVisibility === "internal")
+      return undefined;
     const candidate =
       getNonEmptyString(step.result.userFacingText) ??
       (step.result.modelReplyRequired === true
