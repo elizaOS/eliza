@@ -628,7 +628,17 @@ export class RuntimeModelDispatch {
 		const record = isPlainObject(params)
 			? (params as Record<string, unknown>)
 			: {};
+		const requestedModelName =
+			typeof record.model === "string" && record.model.trim()
+				? record.model.trim()
+				: undefined;
+		// Slot limits describe its registered model, not an unrelated per-call
+		// override. Unknown capacity stays diagnostic; complete input is retained.
+		const limitsMatchModel =
+			requestedModelName === undefined ||
+			requestedModelName === this.resolveRegistrationModelName(metadata);
 		const contextWindowTokens =
+			limitsMatchModel &&
 			typeof metadata?.contextWindowTokens === "number" &&
 			Number.isFinite(metadata.contextWindowTokens)
 				? Math.max(1, Math.floor(metadata.contextWindowTokens))
@@ -638,15 +648,12 @@ export class RuntimeModelDispatch {
 			Number.isFinite(record.maxTokens) &&
 			record.maxTokens > 0
 				? Math.floor(record.maxTokens)
-				: typeof metadata?.maxOutputTokens === "number" &&
+				: limitsMatchModel &&
+						typeof metadata?.maxOutputTokens === "number" &&
 						Number.isFinite(metadata.maxOutputTokens) &&
 						metadata.maxOutputTokens > 0
 					? Math.floor(metadata.maxOutputTokens)
 					: 0;
-		const requestedModelName =
-			typeof record.model === "string" && record.model.trim()
-				? record.model.trim()
-				: undefined;
 		return buildModelInputBudget({
 			completeRequest: params,
 			messages: Array.isArray(record.messages)
