@@ -243,6 +243,67 @@ android {
   assert.doesNotMatch(repatched, /skipped for cloud build/);
 });
 
+test("Android JNI staging never discovers musl assets and requires every JNI slice", () => {
+  const generated =
+    injectCopyForkLlamaLibTask(`plugins { id 'com.android.application' }
+
+android {
+    namespace "ai.elizaos.app"
+}
+`);
+  const template = fs.readFileSync(
+    path.join(
+      repoRoot,
+      "packages",
+      "app",
+      "platforms",
+      "android",
+      "app",
+      "build.gradle",
+    ),
+    "utf8",
+  );
+  for (const [label, gradle] of [
+    ["generator", generated],
+    ["checked-in template", template],
+  ]) {
+    const resolver = gradle.slice(
+      gradle.indexOf("def resolveForkLlamaLibDir"),
+      gradle.indexOf("def resolveAndroidLibompForAbi"),
+    );
+    assert.ok(resolver.length > 0, `${label}: resolver present`);
+    // Bun/AOSP musl assets and the musl mtp cache are not bionic JNI inputs.
+    assert.doesNotMatch(resolver, /src\/main\/assets\/agent/, label);
+    assert.doesNotMatch(resolver, /isDirectory/, label);
+    assert.doesNotMatch(resolver, /local-inference\/bin\/mtp/, label);
+    // Explicit property/env compatibility is preserved.
+    assert.match(resolver, /eliza\.mtp\.android\.libdir/, label);
+    assert.match(resolver, /ELIZA_MTP_ANDROID_LIBDIR/, label);
+    // Both JNI slices fail early, with the NDK staging command.
+    assert.match(
+      gradle,
+      /ext\.elizaRequiredJniAbis = \['arm64-v8a', 'x86_64'\]/,
+      label,
+    );
+    assert.match(
+      gradle,
+      /node packages\/app\/scripts\/stage-elizavoice-lib\.ts --abi/,
+      label,
+    );
+    assert.doesNotMatch(gradle, /compile-libllama\.ts --target/, label);
+    assert.doesNotMatch(gradle, /abi == 'arm64-v8a'\) stagedArm64/, label);
+    // Cloud builds still skip the task.
+    assert.match(gradle, /skipped for cloud\/smoke build/, label);
+  }
+  assert.doesNotMatch(
+    template.slice(
+      template.indexOf("def resolveElizaVoiceArm64SourceDir"),
+      template.indexOf("def resolveElizaVoiceProbePrebuilt"),
+    ),
+    /local-inference\/bin\/mtp/,
+  );
+});
+
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {
   const shortcuts = `<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <capability android:name="actions.intent.OPEN_APP_FEATURE">
