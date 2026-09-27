@@ -11,8 +11,8 @@ import { createAssistantPlugin } from "../index.ts";
  * transport stubbed. Reproduces the live 2026-08-07/08 incident class — a tool
  * completes, then the post-tool evaluator model call fails — and asserts the
  * completed tool's `userFacingText` reaches the user instead of the canned
- * transient-failure reply, while a turn with genuinely nothing user-facing
- * still gets the canned line. Also unit-covers `preservedSettledToolResult`
+ * transient-failure reply, alongside an explicit incomplete outcome.
+ * Internal diagnostics remain private. Also unit-covers `preservedSettledToolResult`
  * candidate selection.
  */
 
@@ -29,6 +29,7 @@ import {
   ChannelType,
   createCharacter,
   ElizaError,
+  EventType,
   ModelType,
   PROVIDER_CONTEXT_OVERFLOW,
 } from "@elizaos/core";
@@ -941,6 +942,132 @@ describe("planner-loop death after a completed tool", () => {
     },
   );
 
+  it.each(["evaluation", "settlement", "internal settlement"])(
+    "preserves settled evidence when %s throws an arbitrary error",
+    async (boundary) => {
+      const directory = await mkdtemp(join(tmpdir(), "planner-handler-error-"));
+      const path = join(directory, "record.txt");
+      const content = "Full original contents\nwith another line.\n";
+      try {
+        const h = await createHarness({
+          actionResult: { success: true },
+          evaluatorFailure: new Error("private programmer diagnostic"),
+          plannerCall: () => ({
+            ...plannerCalendarCall(),
+            toolCalls: [
+              {
+                id: "write-once",
+                name: "LOOKUP",
+                arguments: { action: "create", eliza_turn_scope: "final" },
+              },
+              {
+                id: "read-once",
+                name: "LOOKUP",
+                arguments: { action: "verify", eliza_turn_scope: "final" },
+              },
+            ],
+          }),
+        });
+        if (boundary !== "evaluation") {
+          const emitEvent = h.runtime.emitEvent.bind(h.runtime);
+          h.runtime.emitEvent = ((event, payload) => {
+            if (event === EventType.ACTION_COMPLETED)
+              throw new Error("private event-dispatch programmer diagnostic");
+            return emitEvent(event, payload);
+          }) as AgentRuntime["emitEvent"];
+        }
+        const action = h.runtime.actions.find(
+          (entry) => entry.name === "LOOKUP",
+        );
+        if (!action) throw new Error("Missing test action");
+        const executed: string[] = [];
+        action.handler = async (_runtime, _message, _state, options) => {
+          const operation = String(options?.parameters?.action);
+          executed.push(operation);
+          if (operation === "verify") {
+            return {
+              success: true,
+              text: "private read diagnostic",
+              data: { contents: await readFile(path, "utf8") },
+            };
+          }
+          await writeFile(path, content);
+          return {
+            success: true,
+            userFacingText:
+              boundary === "internal settlement"
+                ? "private internal result"
+                : "Saved the requested file.",
+            ...(boundary === "internal settlement"
+              ? { transcriptVisibility: "internal" as const }
+              : {}),
+            verifiedUserFacing: true,
+            turnComplete: true,
+            effectReceipts: [
+              {
+                receiptId: "generic-error-file-saved",
+                operation: "file.write",
+                outcome: "applied",
+                resource: { kind: "file", id: path },
+                artifacts: [],
+                idempotency: { key: null, replayed: false },
+                observedAt: "2026-09-26T00:00:00.000Z",
+                commit: {
+                  kind: "durable",
+                  id: path,
+                  committedAt: "2026-09-26T00:00:00.000Z",
+                },
+              },
+            ],
+          };
+        };
+        const result = await new DefaultMessageService().handleMessage(
+          h.runtime,
+          makeMessage(
+            h.runtime,
+            "Write the file, then read it and report its contents.",
+          ),
+          h.callback,
+        );
+        expect(executed).toEqual(
+          boundary === "evaluation" ? ["create", "verify"] : ["create"],
+        );
+        expect(await readFile(path, "utf8")).toBe(content);
+        expect(result.requestFulfilled).toBe(false);
+        expect(result.outcome).toMatchObject({
+          status: "failed",
+          error: {
+            kind: "handler_error",
+            code: "PLANNER_INTERRUPTED_AFTER_ACTION",
+          },
+          effects: [
+            expect.objectContaining({ receiptId: "generic-error-file-saved" }),
+          ],
+        });
+        expect(result.actionResults).toHaveLength(
+          boundary === "evaluation" ? 2 : 1,
+        );
+        if (boundary === "evaluation") {
+          expect(result.actionResults?.[1]?.data).toMatchObject({
+            contents: content,
+          });
+          expect(result.responseContent?.text).toContain(
+            "Saved the requested file.",
+          );
+        }
+        expect(result.responseContent?.text).toContain(
+          "request remains incomplete",
+        );
+        expect(result.responseContent?.text).not.toContain("private");
+        expect(visibleTexts(h.callbacks)).toEqual([
+          result.responseContent?.text,
+        ]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("delivers the completed tool's user-facing result instead of the canned failure", async () => {
     const harness = await createHarness({
       actionResult: {
@@ -957,9 +1084,17 @@ describe("planner-loop death after a completed tool", () => {
       harness.callback,
     );
 
-    expect(result.responseContent?.text).toBe(USER_FACING);
+    expect(result.responseContent?.text).toContain(USER_FACING);
+    expect(result.responseContent?.text).toContain(
+      "request remains incomplete",
+    );
+    expect(result.requestFulfilled).toBe(false);
+    expect(result.outcome).toMatchObject({
+      status: "failed",
+      error: { kind: "handler_error" },
+    });
     const delivered = visibleTexts(harness.callbacks);
-    expect(delivered).toContain(USER_FACING);
+    expect(delivered).toContain(result.responseContent?.text);
     // The canned transient/rate-limit apology must not replace a result the
     // turn already produced.
     for (const text of delivered) {
@@ -1064,7 +1199,7 @@ describe("planner-loop death after a completed tool", () => {
     },
   );
 
-  it("keeps the canned failure line when no tool produced user-facing text", async () => {
+  it("reports incomplete work without exposing diagnostic-only results", async () => {
     const harness = await createHarness({
       actionResult: {
         success: true,
@@ -1080,10 +1215,12 @@ describe("planner-loop death after a completed tool", () => {
 
     const delivered = visibleTexts(harness.callbacks);
     expect(delivered.length).toBeGreaterThan(0);
-    // Diagnostic tool text must never render as assistant prose, so the
-    // canned failure template (rate-limited here, since every model call in
-    // this turn is rate-limited) is the correct degrade.
-    expect(delivered.join("\n").toLowerCase()).toContain("rate-limit");
+    // Diagnostic tool text remains evidence, never assistant prose.
+    expect(delivered.join("\n")).toContain("request remains incomplete");
+    expect(result.outcome).toMatchObject({
+      status: "failed",
+      error: { kind: "handler_error" },
+    });
     expect(delivered.join("\n")).not.toContain(DIAGNOSTIC);
     expect(result.responseContent?.text ?? "").not.toContain(DIAGNOSTIC);
   });

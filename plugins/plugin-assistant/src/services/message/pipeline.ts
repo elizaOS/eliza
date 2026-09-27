@@ -8,6 +8,7 @@ import type {
   JsonValue,
   MessageHandlerResult,
   MessageReplyRecoveryContext,
+  PlannerTrajectory,
 } from "@elizaos/core";
 import {
   appendContextEvent,
@@ -1776,15 +1777,19 @@ export async function runV5MessageRuntimeStage1(
       result: PlannerToolResult;
     }> = [];
 
+    let observedPlannerTrajectory: PlannerTrajectory | undefined;
     const callbackActionResults: ActionResult[] = [];
+    const callbackToolCallIds = new Map<number, string>();
     const callbackSettlementObservers = (
       beforeCallbacks?: (result: ActionResult) => void,
+      toolCallId?: string,
     ) => {
       let resultIndex: number | undefined;
       const retain = (result: ActionResult) => {
         if (resultIndex === undefined) {
           resultIndex = callbackActionResults.length;
           callbackActionResults.push(result);
+          if (toolCallId) callbackToolCallIds.set(resultIndex, toolCallId);
         } else callbackActionResults[resultIndex] = result;
       };
       return {
@@ -2153,11 +2158,13 @@ export async function runV5MessageRuntimeStage1(
           ]),
           providerAttributionState: plannerProviderAttributionState,
           executeToolCall: (toolCall, ctx) => {
+            observedPlannerTrajectory = ctx.trajectory;
             let settledCallbackResult: ActionResult | undefined;
             const settlementObservers = callbackSettlementObservers(
               (result) => {
                 settledCallbackResult = result;
               },
+              toolCall.id,
             );
             const intermediateCallback: HandlerCallback | undefined =
               recordingCallback
@@ -2301,6 +2308,81 @@ export async function runV5MessageRuntimeStage1(
           terminalFailure: replyFailure,
         };
       } else {
+        if (
+          settledPlannerToolResults.length > 0 ||
+          callbackActionResults.length > 0
+        ) {
+          // error-policy:J4 Preserve partial evidence, not successful completion.
+          // A later diagnostic-only read must not make an older write's visible
+          // confirmation the whole answer after an arbitrary planner exception.
+          const actionResults = observedPlannerTrajectory
+            ? collectPreviousActionResults(
+                observedPlannerTrajectory,
+                exposedPlannerActions,
+              )
+            : [];
+          const projectedCallIds = new Set(
+            observedPlannerTrajectory
+              ? [
+                  ...observedPlannerTrajectory.archivedSteps,
+                  ...observedPlannerTrajectory.steps,
+                ]
+                  .filter((step) => step.result && step.toolCall)
+                  .map((step) => step.toolCall?.id)
+              : [],
+          );
+          for (const [index, result] of callbackActionResults.entries()) {
+            const callId = callbackToolCallIds.get(index);
+            if (!callId || !projectedCallIds.has(callId))
+              actionResults.push(result);
+          }
+          const preserved = preservedSettledToolResult(
+            settledPlannerToolResults,
+            deliveredVisibleTexts,
+          );
+          const partial =
+            preserved?.transcriptVisibility !== "internal"
+              ? (preserved?.userFacingText ??
+                subAgentCompletionRelayBody(args.message.content.text))
+              : undefined;
+          const sanitizedPartial = partial
+            ? sanitizeUserVisibleModelOutput(partial)
+            : undefined;
+          const safePartial =
+            sanitizedPartial?.kind === "text"
+              ? sanitizedPartial.text
+              : undefined;
+          const notice =
+            "The request remains incomplete because processing stopped unexpectedly. Recorded tool outcomes are preserved; remaining work has not been completed.";
+          const text = [safePartial, notice].filter(Boolean).join("\n\n");
+          endStatus = "errored";
+          args.runtime.reportError("MessageService.plannerLoop", error, {
+            roomId: args.message.roomId,
+          });
+          return {
+            kind: "direct_reply",
+            messageHandler,
+            result: {
+              ...createV5ReplyStrategyResult({
+                ...args,
+                state: plannerState,
+                text,
+                thought: messageHandler.thought,
+                terminalFailure: {
+                  kind: "handler_error",
+                  code: "PLANNER_INTERRUPTED_AFTER_ACTION",
+                  transient: false,
+                  message: notice,
+                },
+                ...(safePartial && preserved?.userFacingEffectReceiptIds?.length
+                  ? { effectReceiptIds: preserved.userFacingEffectReceiptIds }
+                  : {}),
+              }),
+              actionResults,
+              requestFulfilled: false,
+            },
+          };
+        }
         const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
           ? undefined
           : prePatchStageOneReply?.trim();
@@ -2308,48 +2390,12 @@ export async function runV5MessageRuntimeStage1(
           !preservedAnswer ||
           PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
         ) {
-          // No answer-shaped Stage-1 text to rescue with — but a tool that
-          // already completed this turn may still own the user-facing result
-          // (observed live: the post-tool evaluator died on an intermittent
-          // provider 400 and the canned transient-failure reply replaced a
-          // result the turn had already produced). Deliver the preserved tool
-          // result; the canned line remains only when there is genuinely
-          // nothing user-facing to deliver.
-          const preservedToolResult = preservedSettledToolResult(
-            settledPlannerToolResults,
-            deliveredVisibleTexts,
+          const relayBody = subAgentCompletionRelayBody(
+            args.message?.content?.text,
           );
-          if (!preservedToolResult) {
-            // #18208: a task_complete relay turn carries the sub-agent's
-            // finished result in its own body — the last preserved source
-            // before conceding to the canned failure reply.
-            const relayBody = subAgentCompletionRelayBody(
-              args.message?.content?.text,
-            );
-            if (!relayBody) {
-              throw error;
-            }
-            // error-policy:J4 a completed sub-agent result is a designed
-            // degrade when the relay turn's planning fails; report the loop
-            // failure and deliver the result the sub-agent already produced.
-            endStatus = "errored";
-            args.runtime.reportError("MessageService.plannerLoop", error, {
-              roomId: args.message.roomId,
-            });
-            return {
-              kind: "direct_reply",
-              messageHandler,
-              result: createV5ReplyStrategyResult({
-                ...args,
-                state: plannerState,
-                text: relayBody,
-                thought: messageHandler.thought,
-              }),
-            };
-          }
-          // error-policy:J4 a completed tool's user-facing result is a designed
-          // degrade when later planning/evaluation fails; report the loop
-          // failure and deliver the tool's known-good text.
+          if (!relayBody) throw error;
+          // error-policy:J4 Preserve an existing delegated result when its
+          // relay fails before executing any local action.
           endStatus = "errored";
           args.runtime.reportError("MessageService.plannerLoop", error, {
             roomId: args.message.roomId,
@@ -2360,19 +2406,8 @@ export async function runV5MessageRuntimeStage1(
             result: createV5ReplyStrategyResult({
               ...args,
               state: plannerState,
-              text: preservedToolResult.userFacingText,
+              text: relayBody,
               thought: messageHandler.thought,
-              // Only byte-exact canonical action text may skip the voice
-              // gate; ordinary tool output stays eligible for re-voicing.
-              ...(preservedToolResult.verifiedUserFacing === true
-                ? { agentVoiced: true }
-                : {}),
-              ...(preservedToolResult.userFacingEffectReceiptIds?.length
-                ? {
-                    effectReceiptIds:
-                      preservedToolResult.userFacingEffectReceiptIds,
-                  }
-                : {}),
             }),
           };
         }

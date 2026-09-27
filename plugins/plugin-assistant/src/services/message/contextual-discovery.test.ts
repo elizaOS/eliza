@@ -15,6 +15,7 @@ import { notesPlugin } from "../../../../plugin-notes/src/plugin";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
   collectV5PlannerCandidateActions,
@@ -38,6 +39,125 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("recovers the authorized FILE owner from empty routing contexts and singular file intents", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "File bootstrap", bio: "Test" },
+      logLevel: "fatal",
+    });
+    currentRuntime.contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+    currentRuntime.actions.push(
+      fileAction,
+      {
+        name: "PLUGIN_READ_CONFIG",
+        contexts: ["files", "settings"],
+        description: "Read plugin configuration files",
+      },
+      {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create delegated coding tasks",
+      },
+    );
+    const currentMessage = {
+      content: {
+        text: "Write /tmp/index.html, then read the file and report its contents.",
+        channelType: "DM",
+      },
+    } as Memory;
+    const args = {
+      runtime: currentRuntime,
+      message: currentMessage,
+      state: { text: "", values: {}, data: {} },
+      selectedContexts: [],
+      intents: [
+        "write file at /tmp/index.html",
+        "read the saved file and report its contents",
+      ],
+      userRoles: ["OWNER" as const],
+    };
+    const admitted = await collectV5PlannerCandidateActions(args);
+    expect(admitted.map((action) => action.name)).toEqual(["FILE"]);
+    const denied = await collectV5PlannerCandidateActions({
+      ...args,
+      userRoles: ["USER"],
+    });
+    expect(denied.map((action) => action.name)).not.toContain("FILE");
+    const prohibited = await collectV5PlannerCandidateActions({
+      ...args,
+      intents: ["Do not write a file"],
+    });
+    expect(prohibited.map((action) => action.name)).not.toContain("FILE");
+  });
+
+  it.each(["file", "filesystem", "directory", "directories"])(
+    "discovers the FILE owner through its registered %s domain alias",
+    async (noun) => {
+      const contexts = new ContextRegistry();
+      contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const currentRuntime = { ...runtime, contexts } as IAgentRuntime;
+      const contact: Action = {
+        name: "CONTACT_READ",
+        contexts: ["contacts"],
+        description: "Read a contact directory",
+      };
+      const delegated: Action = {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create delegated coding tasks",
+      };
+      const actions = [
+        fileAction,
+        contact,
+        delegated,
+        {
+          name: "PLUGIN_READ_CONFIG",
+          contexts: ["files", "settings"],
+          description: "Read plugin configuration files",
+        },
+      ];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        () => {},
+        async () => actions,
+      );
+      const result = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        { parameters: { query: `write ${noun} and read it` } },
+      );
+      expect(result?.data?.inferredContexts).toEqual(["files"]);
+      expect(result?.data?.loadedTools).toEqual(["FILE"]);
+      const mixed = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        { parameters: { query: `read contacts and ${noun}` } },
+      );
+      expect(mixed?.data?.loadedTools).toEqual(
+        expect.arrayContaining(["FILE", "CONTACT_READ"]),
+      );
+      const explicit = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        {
+          parameters: {
+            query: "read contact directory",
+            contexts: ["contacts"],
+          },
+        },
+      );
+      expect(explicit?.data?.loadedTools).toEqual(["CONTACT_READ"]);
+      const exact = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        { parameters: { names: ["TASKS_CREATE"] } },
+      );
+      expect(exact?.data?.loadedTools).toEqual(["TASKS_CREATE"]);
+    },
+  );
   it("admits the real FILE owner for files-only work without promoting plugin configuration", async () => {
     const request = {
       content: {
