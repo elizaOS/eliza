@@ -259,10 +259,20 @@ describe("auditable evaluator outcome coverage", () => {
     expect(system).toContain(
       "including leading/trailing whitespace and final newlines",
     );
-    expect(system).toContain("content questions require the returned content");
-    expect(system).toContain(
-      "Integrity hashes and effect receipts do not substitute for values inside a document",
+    const contentRule = system.indexOf(
+      "For document extraction, verification codes",
     );
+    expect(contentRule).toBeGreaterThanOrEqual(0);
+    expect(contentRule).toBeLessThan(
+      system.indexOf("Judge accumulated results"),
+    );
+    expect(system).toContain(
+      "other identifiers are values in the document text, not file hashes",
+    );
+    expect(system).toContain(
+      "only if the user explicitly asks for a hash, checksum or revision",
+    );
+    expect(system.match(/For document extraction/g)).toHaveLength(1);
     expect(value.trajectory.steps[0].result?.text).toBe(executed);
   });
 
