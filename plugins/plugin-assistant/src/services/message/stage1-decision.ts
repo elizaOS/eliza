@@ -37,6 +37,7 @@ import {
 } from "@elizaos/core";
 import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
 import {
+  candidateActionNamesFieldEvaluator,
   completionContextFieldEvaluator,
   contextRequestsFieldEvaluator,
   replyTextFieldEvaluator,
@@ -199,13 +200,15 @@ export async function generateStage1Decision(
     responseHandlerFieldContext,
   );
   const selectedResponseHandlerFields =
-    args.runtime.responseHandlerFieldRegistry
-      .list()
-      .filter(
-        (field) =>
-          field !== completionContextFieldEvaluator &&
-          (field !== topicsFieldEvaluator || topicsActive),
-      );
+    args.runtime.responseHandlerFieldRegistry.list().filter(
+      (field) =>
+        field !== completionContextFieldEvaluator &&
+        // Basic response handling selects contexts and outcomes. The planner
+        // discovers operations; legacy parsing and trusted runtime hints stay
+        // registered independently of this model-facing projection.
+        field !== candidateActionNamesFieldEvaluator &&
+        (field !== topicsFieldEvaluator || topicsActive),
+    );
   const fieldSelection = {
     includeFieldNames: selectedResponseHandlerFields.map((field) => field.name),
   };
@@ -869,7 +872,7 @@ export async function generateStage1Decision(
       invalidReadRepair = [
         "context_read_repair: The previous context read was invalid. Nothing from it was read, delivered or executed.",
         `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.`,
-        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations, use HANDLE_RESPONSE to select the appropriate available context and action candidates for the planner. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
+        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations, use HANDLE_RESPONSE to select the appropriate available contexts and requested outcomes for the planner. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
       ].join("\n");
     }
     const historyRequested = invalidReadRepair

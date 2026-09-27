@@ -22,6 +22,34 @@ function decision(overrides: Record<string, unknown>): Record<string, unknown> {
 }
 
 describe("getStage1RoutingRepair", () => {
+  it("repairs pending intents when the native schema omits optional action hints", () => {
+    const raw = decision({});
+    delete raw.candidateActionNames;
+    const repair = getStage1RoutingRepair(raw);
+    expect(repair).toContain(
+      "Nonempty intents instead declare pending runtime work",
+    );
+    expect(repair).not.toContain("candidateActionNames=[]");
+    expect(
+      getStage1RoutingRepair({ ...raw, candidateActionNames: null }),
+    ).toBeUndefined();
+  });
+  it("keeps navigation and record work during repair without model action hints", () => {
+    const raw = decision({
+      contexts: ["notes"],
+      replyEffectStatus: "non_applied",
+      intents: ["open Notes", "read the grocery note"],
+      visualContinuation: {
+        disposition: "requested",
+        navigationOnly: false,
+        singleViewOnly: true,
+      },
+    });
+    delete raw.candidateActionNames;
+    const repair = getStage1RoutingRepair(raw);
+    expect(repair).toContain("retain every pending outcome");
+    expect(repair).toContain("read the grocery note");
+  });
   it.each([
     { disposition: "none", singleViewOnly: false, navigationOnly: false },
     { disposition: "requested", singleViewOnly: false, navigationOnly: true },

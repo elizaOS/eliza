@@ -230,7 +230,7 @@ export const uiGenerativeProvider: Provider = {
 
     const text = `## Generative UI — inline JSONL patches (custom dashboards, tables, visualisations)
 Use this ONLY for a custom table, metrics view, dashboard, or visualisation.
-Rendering or revising an in-chat visual is a direct reply: contexts=["simple"], candidateActionNames=[], replyEffectStatus="none". It needs no APP/VIEWS action and does not navigate or save records.
+Rendering or revising an in-chat visual is a direct reply: contexts=["simple"], replyEffectStatus="none". It needs no APP/VIEWS action and does not navigate or save records.
 For plugin setup use [CONFIG:pluginId]; for a quick fixed-field form use
 [FORM]; both are described in the in-chat widgets guide — never hand-build
 those here.

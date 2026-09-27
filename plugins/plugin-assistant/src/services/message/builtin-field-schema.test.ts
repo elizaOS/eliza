@@ -66,8 +66,8 @@ function response(contextRequests: string[] = []) {
         arguments: {
           shouldRespond: "RESPOND",
           contexts: ["simple"],
-          intents: [],
-          candidateActionNames: [],
+          intents: [] as string[],
+          candidateActionNames: [] as string[],
           contextRequests,
           replyText: contextRequests.length ? "" : "Hello.",
           replyEffectStatus: "none",
@@ -114,6 +114,9 @@ function fixture(
     providers: read
       ? [{ name: "userPersonalityPreferences", get: vi.fn() }]
       : [],
+    getTaskWorker: vi.fn(() => undefined),
+    registerTaskWorker: vi.fn(),
+    getTasks: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getRoom: vi.fn(async () => null),
     getModelRegistrations: vi.fn(() => []),
@@ -311,7 +314,10 @@ describe("direct-text builtin schema descriptions", () => {
       expect(schema).toBeDefined();
       const expected = canonical;
       for (const name of [...removed, ...Object.keys(shortened)]) {
-        if (
+        if (name === "candidateActionNames") {
+          expect(properties(schema).candidateActionNames).toBeUndefined();
+          expect(schema.required).not.toContain("candidateActionNames");
+        } else if (
           name === "topics" &&
           channelType !== ChannelType.GROUP &&
           channelType !== ChannelType.VOICE_GROUP
@@ -354,6 +360,71 @@ describe("direct-text builtin schema descriptions", () => {
       expect(result.kind).toBe("decision");
     },
   );
+
+  it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+    "omits model action hints without deleting legacy parsing for %s",
+    async (channelType) => {
+      const args = fixture(channelType);
+      const legacy = response();
+      legacy.toolCalls[0].arguments.contexts = ["files"];
+      legacy.toolCalls[0].arguments.intents = ["read the exact requested file"];
+      legacy.toolCalls[0].arguments.candidateActionNames = ["FILE"];
+      vi.mocked(args.runtime.useModel).mockResolvedValueOnce(legacy);
+      const result = await runV5MessageRuntimeStage1(args);
+      expect(
+        properties(requestSchemas(args.runtime)[0]).candidateActionNames,
+      ).toBeUndefined();
+      expect(result.kind).toBe("decision");
+      if (result.kind !== "decision")
+        throw new Error("Expected Stage-1 decision");
+      expect(result.messageHandler.plan.candidateActions).toContain("FILE");
+      expect(result.messageHandler.plan.intents).toContain(
+        "read the exact requested file",
+      );
+      expect(
+        properties(args.runtime.responseHandlerFieldRegistry.composeSchema())
+          .candidateActionNames,
+      ).toEqual(builtins.candidateActionNamesFieldEvaluator.schema);
+    },
+  );
+  it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+    "normalizes a context-only %s native decision without action hints",
+    async (channelType) => {
+      const args = fixture(channelType);
+      const native = response();
+      const fields: Record<string, unknown> = native.toolCalls[0].arguments;
+      delete fields.candidateActionNames;
+      fields.contexts = ["files"];
+      fields.intents = ["read the exact requested file"];
+      fields.replyEffectStatus = "pending";
+      vi.mocked(args.runtime.useModel).mockResolvedValueOnce(native);
+      const result = await runV5MessageRuntimeStage1(args);
+      expect(result.kind).toBe("decision");
+      if (result.kind !== "decision") throw new Error("Expected decision");
+      expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+      expect(result.messageHandler.plan.intents).toEqual([
+        "read the exact requested file",
+      ]);
+      expect(
+        properties(requestSchemas(args.runtime)[0]).candidateActionNames,
+      ).toBeUndefined();
+    },
+  );
+  it("preserves a plugin-owned action hint contract by field identity", async () => {
+    const custom = {
+      ...builtins.candidateActionNamesFieldEvaluator,
+      description: "Host-owned custom retrieval hints.",
+      schema: {
+        ...builtins.candidateActionNamesFieldEvaluator.schema,
+        description: "Custom native hint contract.",
+      },
+    };
+    const args = fixture(ChannelType.DM, false, custom);
+    await runV5MessageRuntimeStage1(args);
+    expect(
+      properties(requestSchemas(args.runtime)[0]).candidateActionNames,
+    ).toEqual(custom.schema);
+  });
 
   it("uses identical native tools and source-read decisions for text and voice", async () => {
     const text = fixture(ChannelType.DM, true);
