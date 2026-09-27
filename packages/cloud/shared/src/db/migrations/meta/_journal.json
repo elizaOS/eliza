@@ -3200,6 +3200,13 @@
       "when": 1796083200100,
       "tag": "0473_ai_billing_records_nullable_usage_record",
       "breakpoints": true
+    },
+    {
+      "idx": 457,
+      "version": "7",
+      "when": 1796083200101,
+      "tag": "0474_paid_plan_resource_ceilings",
+      "breakpoints": true
     }
   ]
 }

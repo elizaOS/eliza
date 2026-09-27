@@ -470,8 +470,8 @@ export interface SubscriptionPlanDto {
   allowance: SubscriptionAllowanceDto;
   fundingClasses: readonly SubscriptionFundingClass[];
   rateLimits: SubscriptionRateEnvelopeDto;
-  /** Unavailable until the resource-enforcement policy is ratified. */
-  resourceCeilings: null;
+  /** Enforced resource ceilings; paid plans are never below the Free ceilings. */
+  resourceCeilings: SubscriptionResourceCeilingsDto;
 }
 
 export interface SubscriptionPlansDto {

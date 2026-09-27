@@ -13,11 +13,35 @@ import type {
   SubscriptionPlanDto,
   SubscriptionPlanKey,
   SubscriptionPlansDto,
+  SubscriptionResourceCeilingsDto,
 } from "../types/cloud-api";
 import { logger } from "../utils/logger";
 
 const CATALOG_VERSION = "v1" as const;
 const VERIFIED_CACHE_TTL_MS = 5 * 60 * 1_000;
+
+const resourceCeilingsSchema = z
+  .object({
+    cloudCharacters: z.number().int().nonnegative().safe(),
+    agentSandboxes: z.number().int().nonnegative().safe(),
+    containers: z.number().int().nonnegative().safe(),
+    storageGiB: z.number().int().nonnegative().safe(),
+    apps: z.number().int().nonnegative().safe(),
+  })
+  .strict();
+
+/**
+ * Free-tier resource ceilings. The Free entitlement projection, the database
+ * seed for new organizations (migration 0373) and the paid-plan floor all use
+ * these values.
+ */
+export const FREE_RESOURCE_CEILINGS = Object.freeze({
+  cloudCharacters: 5,
+  agentSandboxes: 5,
+  containers: 1,
+  storageGiB: 5,
+  apps: 25,
+} as const satisfies SubscriptionResourceCeilingsDto);
 
 const planDefinitionSchema = z
   .object({
@@ -46,8 +70,9 @@ const planDefinitionSchema = z
         strictRpm: z.number().int().positive().safe(),
       })
       .strict(),
-    // Candidate ceilings are recommendations, not ratified enforcement policy.
-    resourceCeilings: z.null(),
+    // Paid plans never get less than Free. Larger paid ceilings are a product
+    // decision; until one is ratified, paid ceilings equal the Free ceilings.
+    resourceCeilings: resourceCeilingsSchema,
   })
   .strict();
 
@@ -75,6 +100,18 @@ function buildCatalog(definitions: readonly unknown[]): readonly Readonly<PlanDe
       );
     }
     keys.add(plan.key);
+    for (const [resource, floor] of Object.entries(FREE_RESOURCE_CEILINGS) as [
+      keyof SubscriptionResourceCeilingsDto,
+      number,
+    ][]) {
+      if (plan.resourceCeilings[resource] < floor) {
+        throw new SubscriptionCatalogError(
+          "SUBSCRIPTION_CATALOG_CEILING_BELOW_FREE",
+          "A paid plan cannot grant less than the Free resource ceiling",
+          { planKey: plan.key, resource },
+        );
+      }
+    }
   }
   if (parsed.length !== 2 || !keys.has("plus_monthly") || !keys.has("pro_monthly")) {
     throw new SubscriptionCatalogError(
@@ -108,7 +145,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 60,
       strictRpm: 10,
     },
-    resourceCeilings: null,
+    resourceCeilings: { ...FREE_RESOURCE_CEILINGS },
   },
   {
     key: "pro_monthly",
@@ -132,7 +169,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 120,
       strictRpm: 30,
     },
-    resourceCeilings: null,
+    resourceCeilings: { ...FREE_RESOURCE_CEILINGS },
   },
 ]);
 
@@ -420,7 +457,7 @@ function publicPlans(): SubscriptionPlansDto {
       allowance: { ...plan.allowance },
       fundingClasses: [...plan.fundingClasses],
       rateLimits: { ...plan.rateLimits },
-      resourceCeilings: plan.resourceCeilings,
+      resourceCeilings: { ...plan.resourceCeilings },
     })) as SubscriptionPlanDto[],
   });
 }
