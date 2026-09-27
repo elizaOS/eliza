@@ -22,6 +22,7 @@ vi.mock("../first-run/adopt-remote-first-run", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getBaseUrl.mockReturnValue("http://10.0.2.2:31338");
   mocks.pair.mockResolvedValue({ token: "test-session" });
   mocks.persist.mockResolvedValue(undefined);
   mocks.resume.mockRejectedValue(new Error("Host setup unavailable"));
@@ -103,4 +104,152 @@ it("retries credential persistence without consuming the one-time code again", a
   expect(mocks.pair).toHaveBeenCalledOnce();
   expect(mocks.persist).toHaveBeenCalledTimes(2);
   expect(onPaired).toHaveBeenCalledOnce();
+});
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+it.each([
+  [
+    { code: "PAIRING_EXPIRED", status: 410 },
+    "Pairing code expired. Generate a new code and try again.",
+  ],
+  [{ status: 410 }, "Pairing code expired. Generate a new code and try again."],
+  [
+    { code: "PAIRING_INVALID", status: 401 },
+    "The pairing code is invalid. Check the code and try again.",
+  ],
+  [
+    { code: "PAIRING_INSTANCE_MISMATCH", status: 409 },
+    "The server instance changed. Refresh the code from the server and try again.",
+  ],
+  [{ status: 429 }, "Too many attempts. Try again later."],
+  [{ status: 500 }, "Pairing failed. Check the code and try again."],
+])(
+  "rejects a bad or expired code %o without installing a credential",
+  async (failure, message) => {
+    mocks.pair.mockRejectedValueOnce(failure);
+    const retry = deferred<{ token: string }>();
+    mocks.pair.mockImplementationOnce(() => retry.promise);
+    const { result } = renderHook(() => usePairingState(vi.fn()));
+    act(() => result.current.setPairingCodeInput("PAIR-1234"));
+    await act(() => result.current.handlePairingSubmit());
+    expect(result.current.state.pairingError).toBe(message);
+    expect(mocks.persist).not.toHaveBeenCalled();
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(mocks.resume).not.toHaveBeenCalled();
+
+    // The next attempt consumes a fresh code and clears the stale error while
+    // it is in flight.
+    let next!: Promise<void>;
+    act(() => {
+      next = result.current.handlePairingSubmit();
+    });
+    expect(result.current.state.pairingError).toBeNull();
+    expect(result.current.state.pairingBusy).toBe(true);
+    expect(mocks.pair).toHaveBeenCalledTimes(2);
+    retry.reject({ status: 500 });
+    await act(() => next);
+    expect(result.current.state.pairingBusy).toBe(false);
+  },
+);
+
+it("rejects blank input before calling the pairing API", async () => {
+  const { result } = renderHook(() => usePairingState(vi.fn()));
+  act(() => result.current.setPairingCodeInput("   \t "));
+  await act(() => result.current.handlePairingSubmit());
+  expect(result.current.state.pairingError).toBe(
+    "Enter the pairing code from your server.",
+  );
+  expect(mocks.pair).not.toHaveBeenCalled();
+});
+
+it("suppresses a second submit while the first pairing request is in flight", async () => {
+  const request = deferred<{ token: string }>();
+  mocks.pair.mockImplementation(() => request.promise);
+  const { result } = renderHook(() => usePairingState(vi.fn()));
+  act(() => result.current.setPairingCodeInput("PAIR-1234"));
+  let first!: Promise<void>;
+  let second!: Promise<void>;
+  act(() => {
+    first = result.current.handlePairingSubmit();
+    second = result.current.handlePairingSubmit();
+  });
+  expect(mocks.pair).toHaveBeenCalledTimes(1);
+  request.reject({ status: 500 });
+  await act(() => Promise.all([first, second]));
+  expect(result.current.state.pairingBusy).toBe(false);
+});
+
+it("drops a pairing reply that arrives after the server connection changed", async () => {
+  const request = deferred<{ token: string }>();
+  mocks.pair.mockImplementationOnce(() => request.promise);
+  const onPaired = vi.fn();
+  const { result } = renderHook(() => usePairingState(onPaired));
+  act(() => result.current.setPairingCodeInput("OLD-SERVER-CODE"));
+  let submission!: Promise<void>;
+  act(() => {
+    submission = result.current.handlePairingSubmit();
+  });
+  // The user switches servers while the old server's reply is in flight.
+  mocks.getBaseUrl.mockReturnValue("https://other-agent.example.test");
+  request.resolve({ token: "stale-session" });
+  await act(() => submission);
+
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(mocks.setToken).not.toHaveBeenCalled();
+  expect(onPaired).not.toHaveBeenCalled();
+  expect(result.current.state.pairingError).toBe(
+    "The server connection changed during pairing. Enter a pairing code from the current server.",
+  );
+
+  // The stale credential is not replayed against the new server: a fresh code
+  // is required and only the new server's token is installed.
+  mocks.resume.mockResolvedValue(undefined);
+  mocks.pair.mockResolvedValueOnce({ token: "current-session" });
+  act(() => result.current.setPairingCodeInput("NEW-SERVER-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.pair).toHaveBeenLastCalledWith("NEW-SERVER-CODE");
+  expect(mocks.persist).toHaveBeenCalledWith(
+    "current-session",
+    "https://other-agent.example.test",
+  );
+  expect(mocks.setToken).toHaveBeenCalledTimes(1);
+  expect(mocks.setToken).toHaveBeenCalledWith("current-session");
+  expect(onPaired).toHaveBeenCalledOnce();
+});
+
+it("does not install a token when the server changes while the credential is saved", async () => {
+  const persistence = deferred<void>();
+  mocks.persist.mockImplementationOnce(() => persistence.promise);
+  const onPaired = vi.fn();
+  const { result } = renderHook(() => usePairingState(onPaired));
+  act(() => result.current.setPairingCodeInput("PAIR-1234"));
+  let submission!: Promise<void>;
+  act(() => {
+    submission = result.current.handlePairingSubmit();
+  });
+  await vi.waitFor(() => expect(mocks.persist).toHaveBeenCalledOnce());
+  mocks.getBaseUrl.mockReturnValue("https://other-agent.example.test");
+  persistence.resolve();
+  await act(() => submission);
+  expect(mocks.setToken).not.toHaveBeenCalled();
+  expect(mocks.resume).not.toHaveBeenCalled();
+  expect(onPaired).not.toHaveBeenCalled();
+  expect(result.current.state.pairingError).toContain(
+    "server connection changed",
+  );
 });
