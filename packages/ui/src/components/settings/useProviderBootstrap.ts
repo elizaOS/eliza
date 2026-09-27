@@ -27,8 +27,6 @@ export interface ProviderBootstrapState {
   anthropicConnected: boolean;
   setAnthropicConnected: Dispatch<SetStateAction<boolean>>;
   anthropicCliDetected: boolean;
-  openaiConnected: boolean;
-  setOpenaiConnected: Dispatch<SetStateAction<boolean>>;
   loadSubscriptionStatus: () => Promise<void>;
 }
 export function useProviderBootstrap(
@@ -41,7 +39,6 @@ export function useProviderBootstrap(
   >([]);
   const [anthropicConnected, setAnthropicConnected] = useState(false);
   const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
-  const [openaiConnected, setOpenaiConnected] = useState(false);
   const [routingConfigResolved, setRoutingConfigResolved] = useState(false);
   const loadSubscriptionStatus = useCallback(async () => {
     try {
@@ -92,10 +89,6 @@ export function useProviderBootstrap(
     const anthStatuses = subscriptionStatus.filter(
       (s) => s.provider === "anthropic-subscription",
     );
-    const oaiStatuses = subscriptionStatus.filter(
-      (s) =>
-        s.provider === "openai-subscription" || s.provider === "openai-codex",
-    );
     // Only treat as "connected" when credentials were linked via the in-app
     // OAuth flow (source === "app"). Claude Code CLI credentials detected on
     // the machine are surfaced separately — the app can't disconnect them.
@@ -111,9 +104,6 @@ export function useProviderBootstrap(
           status.source === "claude-code-cli",
       ),
     );
-    setOpenaiConnected(
-      oaiStatuses.some((status) => status.configured && status.valid),
-    );
   }, [subscriptionStatus]);
   return {
     routingConfigResolved,
@@ -121,8 +111,6 @@ export function useProviderBootstrap(
     anthropicConnected,
     setAnthropicConnected,
     anthropicCliDetected,
-    openaiConnected,
-    setOpenaiConnected,
     loadSubscriptionStatus,
   };
 }

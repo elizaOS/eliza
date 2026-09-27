@@ -5,7 +5,7 @@
 // subscription (e.g. "Claude Subscription") does NOT move the main chat
 // inference — `applySubscriptionProviderConfig` (packages/agent/src/api/
 // provider-switch-config.ts) records it for the task-agent orchestrator and
-// only sets a runtime `model.primary` for the Codex plan. A bare "Active"
+// never sets a runtime `model.primary`. A bare "Active"
 // summary next to "Claude Subscription" therefore misled users into thinking
 // chat had switched to Claude. These tests lock the qualified copy.
 
@@ -59,21 +59,21 @@ describe("ActiveProviderSummary — honest active-state copy", () => {
     expect(screen.queryByText("Active")).toBeNull();
   });
 
-  it("keeps the plain 'Active' for the Codex plan (it may drive runtime inference)", () => {
+  it("qualifies every subscription (Kimi coding plan) as coding-agent only", () => {
     render(
       <ActiveProviderSummary
         entry={makeEntry({
-          id: "openai-subscription",
+          id: "kimi-coding-subscription",
           icon: KeyRound,
-          label: "ChatGPT Subscription",
+          label: "Kimi Code",
           category: "subscription",
         })}
         t={t}
       />,
     );
 
-    expect(screen.getByText("Active")).toBeTruthy();
-    expect(screen.queryByText("Active for coding agents")).toBeNull();
+    expect(screen.getByText("Active for coding agents")).toBeTruthy();
+    expect(screen.queryByText("Active")).toBeNull();
   });
 
   it("keeps the plain 'Active' for intelligence providers (Cloud/local)", () => {

@@ -27,6 +27,7 @@ const DOWNLOAD_MODEL = {
   contextLength: 131_072,
   tokenizerFamily: "eliza1",
   publishStatus: "published",
+  activationEligible: true,
   blurb: "Smoke-test downloadable local tier.",
 };
 

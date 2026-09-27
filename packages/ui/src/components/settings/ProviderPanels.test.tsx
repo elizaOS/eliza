@@ -240,21 +240,21 @@ describe("ProviderPanels", () => {
       <SubscriptionPanel
         selection={
           {
-            id: "openai-subscription",
-            storedProvider: "openai-codex",
-            labelKey: "Codex",
+            id: "kimi-coding-subscription",
+            storedProvider: "kimi-coding",
+            labelKey: "Kimi Code",
           } as never
         }
-        visibleProviderPanelId="openai-subscription"
-        resolvedSelectedId="openai-subscription"
+        visibleProviderPanelId="kimi-coding-subscription"
+        resolvedSelectedId="kimi-coding-subscription"
         cloudCallsDisabled
         onSelectSubscription={select}
       />,
     );
     expect(screen.getByText(/remote routing is paused/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Use subscription" }));
-    expect(select).toHaveBeenCalledWith("openai-subscription");
-    expect(screen.getByText("accounts:openai-codex")).toBeTruthy();
+    expect(select).toHaveBeenCalledWith("kimi-coding-subscription");
+    expect(screen.getByText("accounts:kimi-coding")).toBeTruthy();
   });
 
   it("shows and activates a paused API-key provider", () => {

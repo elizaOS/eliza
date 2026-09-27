@@ -302,6 +302,13 @@ class WakeWordGate {
   }
 }
 
+function stoppedBeforeStart(): SwabbleStartResult {
+  return {
+    started: false,
+    error: "Speech recognition was stopped before it started",
+  };
+}
+
 export class SwabbleWeb extends WebPlugin {
   private recognition: SpeechRecognitionInstance | null = null;
   private config: SwabbleConfig | null = null;
@@ -324,6 +331,11 @@ export class SwabbleWeb extends WebPlugin {
   private captureProcessor: ScriptProcessorNode | null = null;
   private bridgeSubscriptions: Array<() => void> = [];
   private usingNativeIpc = false;
+  // Incremented by every stop(). A start() captures the value before its first
+  // await and re-checks it after each await: the native bridge start and the
+  // capture getUserMedia (which can sit on a permission prompt) both yield, and
+  // a stop() landing in between must win over the resuming start().
+  private startGeneration = 0;
 
   private getRendererRpc() {
     return getElectrobunRendererRpc() ?? null;
@@ -391,12 +403,22 @@ export class SwabbleWeb extends WebPlugin {
     this.bridgeSubscriptions = [];
   }
 
-  private async startNativeAudioCapture(sampleRate = 16000): Promise<void> {
+  /**
+   * Opens the microphone feeding native (Whisper) transcription. Returns false
+   * when a stop() retired `generation` while getUserMedia was pending (for
+   * example while the OS permission prompt was open); any stream acquired for
+   * the retired start is released instead of being installed.
+   */
+  private async startNativeAudioCapture(
+    generation: number,
+    sampleRate = 16000,
+  ): Promise<boolean> {
     const rpcRequest = this.getRendererRpc()?.request?.swabbleAudioChunk;
     let stream: MediaStream | null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
+      if (generation !== this.startGeneration) return false;
       // error-policy:J1 microphone is the sole audio source feeding native
       // (Whisper) transcription; a denied/failed capture must surface to the
       // app's error listener, not silently leave the bridge with no audio.
@@ -405,9 +427,15 @@ export class SwabbleWeb extends WebPlugin {
         message: `Microphone capture failed: ${err instanceof Error ? err.message : String(err)}`,
         recoverable: false,
       });
-      return;
+      return true;
     }
-    if (!stream) return;
+    if (generation !== this.startGeneration) {
+      stream?.getTracks().forEach((t) => {
+        t.stop();
+      });
+      return false;
+    }
+    if (!stream) return true;
     this.captureStream = stream;
     this.captureContext = new AudioContext();
     const source = this.captureContext.createMediaStreamSource(stream);
@@ -451,6 +479,7 @@ export class SwabbleWeb extends WebPlugin {
     sink.gain.value = 0;
     processor.connect(sink);
     sink.connect(this.captureContext.destination);
+    return true;
   }
 
   private computeRms(samples: Float32Array): number {
@@ -485,27 +514,41 @@ export class SwabbleWeb extends WebPlugin {
   async start(options: SwabbleStartOptions): Promise<SwabbleStartResult> {
     if (this.isActive) return { started: true };
     const config = normalizeConfig(options.config);
+    const generation = this.startGeneration;
 
     // Delegate to the native desktop bridge when available.
     const rpc = this.getRendererRpc();
     if (rpc) {
+      let result: SwabbleStartResult | null = null;
       try {
-        const result = await this.invokeDesktopRequest<SwabbleStartResult>({
+        result = await this.invokeDesktopRequest<SwabbleStartResult>({
           rpcMethod: "swabbleStart",
           ipcChannel: "swabble:start",
           params: { ...options, config },
         });
-        if (result?.started) {
-          this.isActive = true;
-          this.usingNativeIpc = true;
-          this.config = config;
-          this.setupNativeListeners();
-          await this.startNativeAudioCapture(config.sampleRate ?? 16000);
-          return result;
-        }
       } catch {
         // error-policy:J4 native desktop bridge failed; degrade to the Web Speech API path below
         // Fall through to Web Speech API
+      }
+      if (generation !== this.startGeneration) {
+        // stop() ran while the native bridge was starting. It found no native
+        // session to release, so stop the one the bridge just started.
+        if (result?.started) this.requestNativeStop();
+        return stoppedBeforeStart();
+      }
+      if (result?.started) {
+        this.isActive = true;
+        this.usingNativeIpc = true;
+        this.config = config;
+        this.setupNativeListeners();
+        const owned = await this.startNativeAudioCapture(
+          generation,
+          config.sampleRate ?? 16000,
+        );
+        // A stop() during the microphone request already tore the native
+        // session down; the acquired stream was released above.
+        if (!owned) return stoppedBeforeStart();
+        return result;
       }
     }
 
@@ -582,10 +625,7 @@ export class SwabbleWeb extends WebPlugin {
       // stop() or a replacement start() ran while the microphone was being
       // acquired. The recognizer was never started and the level meter this
       // call opened has been released, so the plugin stays idle.
-      return {
-        started: false,
-        error: "Speech recognition was stopped before it started",
-      };
+      return stoppedBeforeStart();
     }
     recognition.start();
     return { started: true };
@@ -718,7 +758,24 @@ export class SwabbleWeb extends WebPlugin {
     this.analyser = null;
   }
 
+  private requestNativeStop(): void {
+    // The renderer has already released its capture and reported idle; a
+    // failed native stop is surfaced to the error listener instead of becoming
+    // an unhandled rejection.
+    void this.invokeDesktopRequest({
+      rpcMethod: "swabbleStop",
+      ipcChannel: "swabble:stop",
+    }).catch((err: unknown) => {
+      this.notifyListeners("error", {
+        code: "native-stop",
+        message: `Native speech stop failed: ${err instanceof Error ? err.message : String(err)}`,
+        recoverable: true,
+      });
+    });
+  }
+
   async stop(): Promise<void> {
+    this.startGeneration += 1;
     this.isActive = false;
     this.wakeBuffer = "";
 
@@ -727,10 +784,7 @@ export class SwabbleWeb extends WebPlugin {
       this.usingNativeIpc = false;
       this.removeNativeListeners();
       this.stopNativeAudioCapture();
-      void this.invokeDesktopRequest({
-        rpcMethod: "swabbleStop",
-        ipcChannel: "swabble:stop",
-      });
+      this.requestNativeStop();
       this.notifyListeners("stateChange", { state: "idle" });
       return;
     }

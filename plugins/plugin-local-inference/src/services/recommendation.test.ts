@@ -13,6 +13,7 @@ import {
 	chooseSmallerFallbackModel,
 	classifyRecommendationPlatform,
 	deviceCapsFromProbe,
+	recommendForFirstRun,
 	selectBestQuantizationVariant,
 	selectRecommendedModelForSlot,
 } from "./recommendation.js";
@@ -188,8 +189,64 @@ describe("canBundleBeDefaultOnDevice gate (#8848)", () => {
 	});
 });
 
+/**
+ * The shipped catalog marks every published tier activation-ineligible while
+ * the published manifests are candidates (#30656). Ladder mechanics are
+ * exercised against the same catalog with the published tiers' manifests
+ * treated as passing, exactly as a refreshed snapshot would serve them.
+ */
+const PASSING_CATALOG: CatalogModel[] = MODEL_CATALOG.map((model) =>
+	model.publishStatus === "published"
+		? { ...model, activationEligible: true }
+		: model,
+);
+
+describe("activation-eligibility gate on recommendations (#30656)", () => {
+	const mac = probe({
+		totalRamGb: 24,
+		freeRamGb: 16,
+		platform: "darwin",
+		arch: "arm64",
+		appleSilicon: true,
+		gpu: metalGpu,
+	});
+
+	it("never recommends a published tier whose manifest fails the activation gate", () => {
+		for (const model of MODEL_CATALOG) {
+			if (model.publishStatus === "published") {
+				expect(model.activationEligible).toBe(false);
+			}
+		}
+		expect(selectRecommendedModelForSlot("TEXT_SMALL", mac).model).toBeNull();
+		expect(selectRecommendedModelForSlot("TEXT_LARGE", mac).model).toBeNull();
+		expect(recommendForFirstRun()).toBeNull();
+	});
+
+	it("never falls back to a pending tier even when it fits", () => {
+		const huge = probe({ totalRamGb: 128, freeRamGb: 100, gpu: metalGpu });
+		const sel = selectRecommendedModelForSlot(
+			"TEXT_LARGE",
+			huge,
+			PASSING_CATALOG,
+		);
+		expect(sel.model?.publishStatus).toBe("published");
+		for (const alternative of sel.alternatives) {
+			expect(alternative.publishStatus).toBe("published");
+			expect(alternative.activationEligible).toBe(true);
+		}
+	});
+
+	it("recommends the first-run default once its manifest passes", () => {
+		expect(recommendForFirstRun(PASSING_CATALOG)?.id).toBe("eliza-1-2b");
+		expect(
+			selectRecommendedModelForSlot("TEXT_SMALL", mac, PASSING_CATALOG).model
+				?.id,
+		).toBe("eliza-1-2b");
+	});
+});
+
 describe("model-fit + smaller-fallback ladder (#8848)", () => {
-	const bySize = [...MODEL_CATALOG].sort(
+	const bySize = [...PASSING_CATALOG].sort(
 		(a, b) => catalogDownloadSizeGb(a) - catalogDownloadSizeGb(b),
 	);
 	const smallest = bySize[0];
@@ -203,8 +260,20 @@ describe("model-fit + smaller-fallback ladder (#8848)", () => {
 	});
 
 	it("has no smaller fallback on a 1 GB device, and a strictly-smaller one on a big device", () => {
-		expect(chooseSmallerFallbackModel(largest.id, tiny)).toBeNull();
-		const fallback = chooseSmallerFallbackModel(largest.id, huge);
+		expect(
+			chooseSmallerFallbackModel(
+				largest.id,
+				tiny,
+				"TEXT_LARGE",
+				PASSING_CATALOG,
+			),
+		).toBeNull();
+		const fallback = chooseSmallerFallbackModel(
+			largest.id,
+			huge,
+			"TEXT_LARGE",
+			PASSING_CATALOG,
+		);
 		expect(fallback).not.toBeNull();
 		expect(fallback?.id).not.toBe(largest.id);
 		expect(catalogDownloadSizeGb(fallback as CatalogModel)).toBeLessThan(
@@ -213,23 +282,36 @@ describe("model-fit + smaller-fallback ladder (#8848)", () => {
 	});
 
 	it("selectRecommendedModelForSlot picks a real, fitting catalog model on a capable host", () => {
-		const sel = selectRecommendedModelForSlot("TEXT_LARGE", huge);
+		const sel = selectRecommendedModelForSlot(
+			"TEXT_LARGE",
+			huge,
+			PASSING_CATALOG,
+		);
 		expect(sel.model).not.toBeNull();
 		expect(MODEL_CATALOG.some((m) => m.id === sel.model?.id)).toBe(true);
 	});
 
 	it("preserves the runtime mobile ladder while requiring explicit ARM backend support", () => {
+		// 12 GB clears the 4B floor (7.5 GiB text GGUF + KV + overhead).
 		const supportedMobile = probe({
-			totalRamGb: 8,
+			totalRamGb: 12,
 			arch: "arm64",
 			cpuFeatures: { neon: true },
 			mobile: { platform: "android" },
 		});
 		expect(
-			selectRecommendedModelForSlot("TEXT_SMALL", supportedMobile).model?.id,
+			selectRecommendedModelForSlot(
+				"TEXT_SMALL",
+				supportedMobile,
+				PASSING_CATALOG,
+			).model?.id,
 		).toBe("eliza-1-2b");
 		expect(
-			selectRecommendedModelForSlot("TEXT_LARGE", supportedMobile).model?.id,
+			selectRecommendedModelForSlot(
+				"TEXT_LARGE",
+				supportedMobile,
+				PASSING_CATALOG,
+			).model?.id,
 		).toBe("eliza-1-4b");
 
 		const unknownBackend = { ...supportedMobile, cpuFeatures: undefined };
@@ -239,7 +321,11 @@ describe("model-fit + smaller-fallback ladder (#8848)", () => {
 		// separately requires a positively identified NEON CPU backend.
 		expect(assessCatalogModelFit(unknownBackend, model)).not.toBe("wontfit");
 		expect(
-			selectRecommendedModelForSlot("TEXT_SMALL", unknownBackend).model,
+			selectRecommendedModelForSlot(
+				"TEXT_SMALL",
+				unknownBackend,
+				PASSING_CATALOG,
+			).model,
 		).toBeNull();
 	});
 });

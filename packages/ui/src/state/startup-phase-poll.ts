@@ -908,13 +908,13 @@ export async function runPollingBackend(
         complete || deps.firstRunCompletionCommittedRef.current;
       // A saved renderer session can outlive the embedded backend's data.
       // Reconcile that cache with runtime state without resetting a running
-      // legacy installation or completion committed during this poll.
-      if (
-        !complete &&
-        sessionComplete &&
-        completionAtPollStart &&
-        ctx?.hadPriorFirstRun
-      ) {
+      // legacy installation or completion committed during this poll. The
+      // backend's own first-run/runtime state is authoritative whenever the
+      // completion came from the renderer cache, whether or not the restore
+      // recorded a prior first-run: a cached completion paired with a restored
+      // target must never present the ready UI over a backend that deferred
+      // its runtime until onboarding commits (#30744).
+      if (!complete && sessionComplete && completionAtPollStart) {
         const status = await traceIfStalled(
           boundedProbe(client.getStatus()),
           "first-run-runtime-status",

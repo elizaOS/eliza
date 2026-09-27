@@ -30,9 +30,11 @@ import {
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
 import {
+	collectFailedEvalNames,
 	type Eliza1Kernel,
 	type Eliza1Manifest,
 	type Eliza1Tier,
+	manifestPassesActivationGate,
 	missingRequiredKernels,
 	OPTIONAL_KERNELS_BY_TIER,
 	REQUIRED_KERNELS_BY_TIER,
@@ -1049,35 +1051,12 @@ export function assertManifestEvalsPassed(
 ): void {
 	const manifest = manifestLoader(installed.id, installed);
 	if (!manifest) return;
-	if (manifest.evals.textEval.passed === true) return;
+	if (manifestPassesActivationGate(manifest)) return;
 	throw new CandidateModelActivationError({
 		modelId: installed.id,
 		manifestVersion: manifest.version,
 		failedEvals: collectFailedEvalNames(manifest),
 	});
-}
-
-function collectFailedEvalNames(manifest: Eliza1Manifest): string[] {
-	const failed: string[] = [];
-	const evals = manifest.evals;
-	if (evals.textEval.passed !== true) failed.push("textEval");
-	if (evals.voiceRtf.passed !== true) failed.push("voiceRtf");
-	if (evals.e2eLoopOk !== true) failed.push("e2eLoopOk");
-	if (evals.thirtyTurnOk !== true) failed.push("thirtyTurnOk");
-	if (evals.asrWer && evals.asrWer.passed !== true) failed.push("asrWer");
-	if (evals.embedMteb && evals.embedMteb.passed !== true) {
-		failed.push("embedMteb");
-	}
-	if (evals.vadLatencyMs && evals.vadLatencyMs.passed !== true) {
-		failed.push("vadLatencyMs");
-	}
-	if (evals.expressive && evals.expressive.passed !== true) {
-		failed.push("expressive");
-	}
-	if (evals.turnDetector && evals.turnDetector.passed !== true) {
-		failed.push("turnDetector");
-	}
-	return failed;
 }
 
 /**

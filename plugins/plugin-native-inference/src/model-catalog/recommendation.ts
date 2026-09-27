@@ -11,10 +11,9 @@ import type {
   TextGenerationSlot,
 } from "@elizaos/core/contracts/local-inference";
 import {
-  DEFAULT_ELIGIBLE_MODEL_IDS,
   type Eliza1TierId,
-  eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
+  isCatalogModelOfferable,
   MODEL_CATALOG,
 } from "./catalog.js";
 
@@ -124,18 +123,23 @@ export function classifyRecommendationPlatform(
   return "desktop-cpu";
 }
 
+/**
+ * What the user actually downloads: the whole bundle (`downloadSizeGb`) when
+ * the catalog knows it, else the text weights. Never use `sizeGb` alone for a
+ * download offer — it is the text GGUF, not the bundle.
+ */
 export function catalogDownloadSizeGb(
   model: CatalogModel,
   _catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): number {
-  return model.sizeGb;
+  return model.downloadSizeGb ?? model.sizeGb;
 }
 
 export function catalogDownloadSizeBytes(
   model: CatalogModel,
-  _catalog: readonly CatalogModel[] = MODEL_CATALOG,
+  catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): number {
-  return Math.round(model.sizeGb * BYTES_PER_GB);
+  return Math.round(catalogDownloadSizeGb(model, catalog) * BYTES_PER_GB);
 }
 
 function effectiveMemoryGb(probe: HardwareProbe): number {
@@ -216,9 +220,11 @@ function rankedCandidates(
     platformClass === "mobile"
       ? policy.mobileSlotLadders
       : SLOT_LADDERS[platformClass];
+  // Only published, activation-eligible tiers are ever recommended: a pending
+  // tier cannot download, and a candidate manifest is refused at activation.
   const ladder = slotLadders[slot].flatMap((id) => {
     const model = byId.get(id);
-    return model ? [model] : [];
+    return model && isCatalogModelOfferable(model) ? [model] : [];
   });
   const eligible = ladder.filter(
     (model) =>
@@ -246,8 +252,7 @@ function rankedCandidates(
 
   const fallback = catalog.filter(
     (model) =>
-      !model.hiddenFromCatalog &&
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
+      isCatalogModelOfferable(model) &&
       assessCatalogModelFit(hardware, model, catalog, options) !== "wontfit" &&
       kernelRequirementsSatisfied(model, options.binaryKernels ?? null),
   );
@@ -305,25 +310,20 @@ export function selectRecommendedModels(
   };
 }
 
+/**
+ * First-run default: the preferred tier when it is offerable, else the first
+ * offerable catalog entry, else `null`. Never falls back to an unpublished or
+ * activation-ineligible tier — callers render an explicit unavailable state
+ * and point at a supported provider instead.
+ */
 export function recommendForFirstRun(
   catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): CatalogModel | null {
-  const eligible = (model: CatalogModel): boolean =>
-    !model.hiddenFromCatalog && DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
-  const published = (model: CatalogModel): boolean =>
-    eligible(model) &&
-    (model.publishStatus ??
-      eliza1TierPublishStatus(model.id as Eliza1TierId)) === "published";
   const preferred = catalog.find(
     (model) => model.id === FIRST_RUN_DEFAULT_MODEL_ID,
   );
-  return (
-    (preferred && published(preferred) ? preferred : null) ??
-    catalog.find(published) ??
-    (preferred && eligible(preferred) ? preferred : null) ??
-    catalog.find(eligible) ??
-    null
-  );
+  if (preferred && isCatalogModelOfferable(preferred)) return preferred;
+  return catalog.find(isCatalogModelOfferable) ?? null;
 }
 
 export function chooseSmallerFallbackModel(

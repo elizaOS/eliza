@@ -64,6 +64,12 @@ export interface ProviderSwitchRouteContext {
 // Route handler
 // ---------------------------------------------------------------------------
 
+/** Provider ids that used to select the removed Codex CLI chat handler. */
+function isRetiredSubscriptionChatProvider(provider: string): boolean {
+  const normalized = provider.trim().toLowerCase();
+  return normalized === "openai-subscription" || normalized === "openai-codex";
+}
+
 function readIdempotencyKey(
   headers: http.IncomingHttpHeaders,
 ): string | undefined {
@@ -95,7 +101,13 @@ export async function handleProviderSwitchRoutes(
 
     const normalizedProvider = normalizeFirstRunProviderId(body.provider);
     if (!normalizedProvider) {
-      error(res, "Invalid provider", 400);
+      error(
+        res,
+        isRetiredSubscriptionChatProvider(body.provider)
+          ? "The ChatGPT/Codex subscription cannot power chat. Link it under Accounts for coding agents and choose a different chat provider."
+          : "Invalid provider",
+        400,
+      );
       return true;
     }
 

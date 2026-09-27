@@ -148,7 +148,9 @@ async function scanCodexCredentials(
 			? data.auth_mode.trim()
 			: "api-key";
 	return {
-		id: authMode === "api-key" ? "openai" : "openai-subscription",
+		// ChatGPT-mode Codex auth is a coding-agent credential (`openai-codex`),
+		// not a chat provider selection.
+		id: authMode === "api-key" ? "openai" : "openai-codex",
 		source: "codex-auth",
 		apiKey: data.OPENAI_API_KEY,
 		authMode,
@@ -194,7 +196,7 @@ async function scanCopilotCredentials(
 	for (const [, entry] of Object.entries(data)) {
 		if (entry.oauth_token?.trim()) {
 			return {
-				id: "openai-subscription",
+				id: "github-copilot",
 				source: "copilot-hosts",
 				apiKey: entry.oauth_token.trim(),
 				authMode: "oauth",

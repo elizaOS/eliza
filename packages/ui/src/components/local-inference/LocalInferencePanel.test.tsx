@@ -506,7 +506,9 @@ describe("download snapshots without a usable stream", () => {
     const hub = {
       ...initialHub,
       active: { modelId: null, loadedAt: null, status: "idle" as const },
-      catalog: [MODEL_CATALOG[0]],
+      // A published tier whose manifest passes the activation gate, as the
+      // hub serves it once the candidate snapshot is refreshed.
+      catalog: [{ ...MODEL_CATALOG[0], activationEligible: true }],
     };
     clientMock.getLocalInferenceHub.mockResolvedValue(hub);
     render(<LocalInferencePanel />);
