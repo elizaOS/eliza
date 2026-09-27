@@ -81,14 +81,17 @@ beforeAll(async () => {
     usageRecords,
     jobs,
     jobExecutionLeases,
+    creditTransactions,
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
-  // The reversal-hold migration is replayed to prove it is idempotent.
+  // The reversal-hold migrations are replayed to prove they are idempotent.
   for (const name of [
     "0189_agent_sandbox_lifecycle_revision_scope.sql",
     "0479_organization_payment_reversal_holds.sql",
     "0479_organization_payment_reversal_holds.sql",
+    "0486_payment_reversal_shortfall_holds.sql",
+    "0486_payment_reversal_shortfall_holds.sql",
     "0480_personal_dedicated_fallbacks.sql",
     "0480_personal_dedicated_fallbacks.sql",
   ]) {
@@ -108,7 +111,6 @@ beforeAll(async () => {
     ["billing_subscription_revisions", billingSubscriptionRevisions],
     ["organization_subscription_authorities", organizationSubscriptionAuthorities],
     ["subscription_allowance_periods", subscriptionAllowancePeriods],
-    ["credit_transactions", creditTransactions],
     ["org_rate_limit_overrides", orgRateLimitOverrides],
     ["organization_config", organizationConfig],
     ["org_storage_quota", orgStorageQuota],
@@ -357,52 +359,37 @@ test(
 );
 
 test(
-  "a lost chargeback hold fails paid admission and automatic resume closed until explicit release",
+  "an underfunding reversal hold fails paid admission and automatic resume closed until repaid",
   async () => {
     const held = await seedBillingSuspendedAgent(FUNDED);
-    const holds = await import("../../../db/repositories/payment-reversal-holds");
+    const { creditsService } = await import("../credits");
+    const { billingHoldService } = await import("../billing-hold");
     const { checkAgentCreditGate } = await import("../agent-billing-gate");
-    const disputeId = unique("dp_lost");
-    const first = await holds.recordLostChargebackHold({
+    const clawback = await creditsService.clawbackCredits({
       organizationId: held.orgId,
-      stripeDisputeId: disputeId,
-      stripeChargeId: "ch_lost",
-      stripePaymentIntentId: "pi_lost",
-      amountCents: 2_500,
+      amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
+      description: "refund clawback",
+      stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
     });
-    const replay = await holds.recordLostChargebackHold({
-      organizationId: held.orgId,
-      stripeDisputeId: disputeId,
-    });
-    expect(first.created).toBe(true);
-    expect(replay).toMatchObject({ created: false, hold: { id: first.hold.id } });
-    await expect(
-      holds.recordLostChargebackHold({
-        organizationId: (await seedBillingSuspendedAgent(FUNDED)).orgId,
-        stripeDisputeId: disputeId,
-      }),
-    ).rejects.toMatchObject({ code: "PAYMENT_REVERSAL_HOLD_CONFLICT" });
+    expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
 
-    // A funded balance does not override the hold.
+    // Funds that land without settling the shortfall do not lift the hold.
+    await creditsService.addCredits({
+      organizationId: held.orgId,
+      amount: (AGENT_PRICING.MINIMUM_DEPOSIT + 5).toFixed(6),
+      description: "grant",
+    });
     const gate = await checkAgentCreditGate(held.orgId);
-    expect(gate).toMatchObject({ allowed: false, paymentReversalHold: true });
+    expect(gate).toMatchObject({
+      allowed: false,
+      paymentReversalHold: true,
+      paymentReversalOutstandingUsd: "5.000000",
+    });
     await reconcileAll();
     expect(await resumeJobs(held.agentId)).toHaveLength(0);
 
-    await expect(
-      holds.releasePaymentReversalHold({
-        organizationId: held.orgId,
-        stripeDisputeId: disputeId,
-        releasedBy: "",
-        reason: "",
-      }),
-    ).rejects.toMatchObject({ code: "PAYMENT_REVERSAL_HOLD_RELEASE_INVALID" });
-    await holds.releasePaymentReversalHold({
-      organizationId: held.orgId,
-      stripeDisputeId: disputeId,
-      releasedBy: "operator:test",
-      reason: "repayment verified",
-    });
+    const settled = await billingHoldService.settleOutstandingShortfalls(held.orgId);
+    expect(settled).toMatchObject({ appliedUsd: "5.000000", outstandingUsd: "0.000000" });
     expect(await checkAgentCreditGate(held.orgId)).toMatchObject({ allowed: true });
     await reconcileAll();
     expect(await resumeJobs(held.agentId)).toHaveLength(1);

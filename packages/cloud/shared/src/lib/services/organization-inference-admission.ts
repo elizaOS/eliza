@@ -30,6 +30,7 @@ import {
 } from "./ai-billing";
 import { AiPricingCacheUnavailableError, AiPricingCacheWarmingError } from "./ai-pricing/cache";
 import { isSubscriptionFundedReservation } from "./allowance-first-credits";
+import { billingHoldService } from "./billing-hold";
 import {
   COST_BUFFER,
   type CreditReconciliationResult,
@@ -356,9 +357,13 @@ export async function admitOrganizationInference(
         await observeInferenceDependency("policy_lock", "funding_policy", () =>
           lockPolicy(tx, params.context.organizationId),
         );
-        return observeInferenceDependency("policy_read", "funding_policy", () =>
+        const policy = await observeInferenceDependency("policy_read", "funding_policy", () =>
           readOrganizationQuotaPolicyInTransaction(tx, params.context.organizationId),
         );
+        // An underfunding payment reversal holds all new paid inference,
+        // including subscription-allowance funding, until it clears (#22930).
+        await billingHoldService.assertNoHold(params.context.organizationId, tx);
+        return policy;
       }),
   );
   if (

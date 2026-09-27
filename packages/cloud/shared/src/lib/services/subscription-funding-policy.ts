@@ -146,6 +146,14 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { debit_ledger_literal: 1, raw_credit_transaction_insert: 1 },
   },
   {
+    // Repays an unrecovered payment-reversal shortfall from purchased credit
+    // only; it never spends subscription allowance (#22930).
+    relativePath: "shared/src/db/repositories/payment-reversal-holds.ts",
+    operation: "unclassified",
+    fundingClass: "cash_only",
+    expectedSignals: { raw_credit_balance_decrement: 1, raw_credit_transaction_sql_insert: 1 },
+  },
+  {
     relativePath: "shared/src/lib/mcp/helpers.ts",
     operation: "app_or_marketplace",
     fundingClass: "cash_only",
