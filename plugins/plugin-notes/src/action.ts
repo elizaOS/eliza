@@ -19,6 +19,8 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  isObjectRecord,
+  isValidTimeZone,
   type Memory,
   normalizeEffectReceipt,
   type State,
@@ -340,6 +342,28 @@ export const notesAction: Action = {
         "NOTES_INVALID_RECENCY_SELECTION",
       );
     }
+    const explicitDisplayZone = params.displayTimeZone;
+    if (
+      explicitDisplayZone !== undefined &&
+      ((op !== "get" && (op !== "list" || !latestBy)) ||
+        typeof explicitDisplayZone !== "string" ||
+        !isValidTimeZone(explicitDisplayZone))
+    ) {
+      return failure(
+        "displayTimeZone requires an exact get or list latestBy selection and a valid IANA timezone.",
+        "NOTES_INVALID_DISPLAY_TIME_ZONE",
+      );
+    }
+    const metadata = message.content?.metadata;
+    const uiZone = isObjectRecord(metadata) ? metadata.uiTimeZone : undefined;
+    const displayZone =
+      typeof explicitDisplayZone === "string"
+        ? explicitDisplayZone
+        : (op === "get" || latestBy) &&
+            typeof uiZone === "string" &&
+            isValidTimeZone(uiZone)
+          ? uiZone
+          : undefined;
     if (op === "patch") {
       if (
         Object.keys(params).some(
@@ -452,6 +476,17 @@ export const notesAction: Action = {
           (note) => Date.parse(note[latestBy]) === latestInstant,
         );
       }
+      const displayFormatter = displayZone
+        ? new Intl.DateTimeFormat("en-US", {
+            timeZone: displayZone,
+            dateStyle: "medium",
+            timeStyle: "long",
+          })
+        : undefined;
+      const exactNote =
+        op === "get" && matches.length === 1 ? matches[0] : undefined;
+      const exactCreated = exactNote ? Date.parse(exactNote.createdAt) : NaN;
+      const exactUpdated = exactNote ? Date.parse(exactNote.updatedAt) : NaN;
       const emptyInventory =
         op === "list" &&
         notes.length === 0 &&
@@ -463,6 +498,20 @@ export const notesAction: Action = {
         readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
+        ...(exactNote &&
+        displayFormatter &&
+        Number.isFinite(exactCreated) &&
+        Number.isFinite(exactUpdated)
+          ? {
+              noteTimestampDisplay: {
+                noteId: exactNote.id,
+                timeZone: displayZone,
+                source: explicitDisplayZone !== undefined ? "explicit" : "ui",
+                createdAt: displayFormatter.format(new Date(exactCreated)),
+                updatedAt: displayFormatter.format(new Date(exactUpdated)),
+              },
+            }
+          : {}),
         ...(latestBy
           ? {
               eligibleMatchCount: eligibleMatches.length,
@@ -473,6 +522,18 @@ export const notesAction: Action = {
                   latestInstant === null
                     ? null
                     : new Date(latestInstant).toISOString(),
+                ...(latestInstant !== null && displayFormatter
+                  ? {
+                      display: {
+                        label: displayFormatter?.format(
+                          new Date(latestInstant),
+                        ),
+                        timeZone: displayZone,
+                        source:
+                          explicitDisplayZone !== undefined ? "explicit" : "ui",
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),
@@ -640,6 +701,14 @@ export const notesAction: Action = {
       required: false,
       subactions: ["list"],
       schema: { type: "string", enum: ["createdAt", "updatedAt"] },
+    },
+    {
+      name: "displayTimeZone",
+      description:
+        "Optional IANA display timezone for exact get timestamps or the list latestBy selected timestamp. Use an explicitly requested zone. Otherwise a valid current UI timezone may supply display labels. Canonical timestamps remain unchanged.",
+      required: false,
+      subactions: ["list", "get"],
+      schema: { type: "string" },
     },
     {
       name: "dateRange",

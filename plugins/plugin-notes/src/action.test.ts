@@ -2428,3 +2428,218 @@ describe("field patch literal alternative", () => {
     expect(service.getNote(note.id)).toEqual(before);
   });
 });
+
+describe("selected timestamp display", () => {
+  it.each([
+    [
+      "2026-09-26T00:06:15.137Z",
+      "America/Los_Angeles",
+      "Sep 25, 2026, 5:06:15 PM PDT",
+    ],
+    ["2026-09-26T20:00:00Z", "Asia/Tokyo", "Sep 27, 2026, 5:00:00 AM GMT+9"],
+    [
+      "2026-11-01T08:30:00Z",
+      "America/Los_Angeles",
+      "Nov 1, 2026, 1:30:00 AM PDT",
+    ],
+    [
+      "2026-11-01T09:30:00Z",
+      "America/Los_Angeles",
+      "Nov 1, 2026, 1:30:00 AM PST",
+    ],
+    [
+      "2027-01-01T00:30:00Z",
+      "America/Los_Angeles",
+      "Dec 31, 2026, 4:30:00 PM PST",
+    ],
+  ])(
+    "formats selected instant %s in %s without changing source",
+    async (instant, zone, label) => {
+      const runtime = await executorHarness(() => new Date(instant));
+      const service = getNotesService(runtime);
+      const note = await service.createNote({
+        title: '"today" AM',
+        body: "Keep  UTC and tomorrow exactly.",
+      });
+      const before = service.snapshot();
+      const result = await notesAction.handler(
+        runtime,
+        { content: { metadata: { uiTimeZone: "UTC" } } } as unknown as Memory,
+        undefined,
+        {
+          parameters: {
+            action: "list",
+            latestBy: "updatedAt",
+            displayTimeZone: zone,
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          selection: {
+            field: "updatedAt",
+            at: note.updatedAt,
+            display: { label, timeZone: zone, source: "explicit" },
+          },
+          notes: [{ ...note, sourceNote: service.sourceReference(note) }],
+          notesRevision: before.revision,
+        },
+      });
+      expect(service.snapshot()).toEqual(before);
+    },
+  );
+  it.each([undefined, "invalid/zone", 42])(
+    "omits display for absent/invalid UI zone %j",
+    async (uiTimeZone) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      await service.createNote({ title: "Keep", body: "body" });
+      const result = await notesAction.handler(
+        runtime,
+        { content: { metadata: { uiTimeZone } } } as unknown as Memory,
+        undefined,
+        { parameters: { action: "list", latestBy: "updatedAt" } },
+      );
+      expect(result.success).toBe(true);
+      expect(
+        result.data?.selection as Record<string, unknown>,
+      ).not.toHaveProperty("display");
+    },
+  );
+  it("uses UI zone only when explicit zone absent and leaves unselected shape unchanged", async () => {
+    const runtime = await executorHarness(
+      () => new Date("2026-09-26T00:06:15.137Z"),
+    );
+    await getNotesService(runtime).createNote({ title: "Keep", body: "body" });
+    const message = {
+      content: { metadata: { uiTimeZone: "America/Los_Angeles" } },
+    } as unknown as Memory;
+    const selected = await notesAction.handler(runtime, message, undefined, {
+      parameters: { action: "list", latestBy: "updatedAt" },
+    });
+    expect(selected.data?.selection).toMatchObject({
+      display: { source: "ui", timeZone: "America/Los_Angeles" },
+    });
+    const all = await notesAction.handler(runtime, message, undefined, {
+      parameters: { action: "list" },
+    });
+    expect(all.data).not.toHaveProperty("selection");
+  });
+  it.each([
+    { action: "list", displayTimeZone: "UTC" },
+    { action: "get", latestBy: "updatedAt", displayTimeZone: "UTC" },
+    { action: "list", latestBy: "updatedAt", displayTimeZone: "bad" },
+    { action: "list", latestBy: "updatedAt", displayTimeZone: null },
+  ])("rejects invalid explicit display contract %j", async (parameters) => {
+    const runtime = await executorHarness();
+    const result = await notesAction.handler(
+      runtime,
+      { content: {} } as unknown as Memory,
+      undefined,
+      { parameters: JSON.parse(JSON.stringify(parameters)) },
+    );
+    expect(result.success).toBe(false);
+  });
+  it("exposes displayTimeZone on LIST and GET only", () => {
+    for (const action of notesPlugin.actions ?? []) {
+      const properties = actionToJsonSchema(action).properties;
+      expect(Object.hasOwn(properties ?? {}, "displayTimeZone")).toBe(
+        ["NOTES_LIST", "NOTES_GET", "NOTES"].includes(action.name),
+      );
+    }
+  });
+});
+
+describe("exact GET timestamp display", () => {
+  it("renders both instants in explicit zone before UI without altering the read", async () => {
+    let now = "2026-11-01T08:30:00Z";
+    const runtime = await executorHarness(() => new Date(now));
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: '"today"',
+      body: "Keep  exact",
+    });
+    now = "2026-11-01T09:30:00Z";
+    await service.updateNote(
+      note.id,
+      { body: "Keep  exact updated" },
+      service.snapshot().revision,
+    );
+    const before = service.snapshot();
+    const result = await notesAction.handler(
+      runtime,
+      {
+        content: { metadata: { uiTimeZone: "Asia/Tokyo" } },
+      } as unknown as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "get",
+          noteId: note.id,
+          displayTimeZone: "America/Los_Angeles",
+        },
+      },
+    );
+    expect(result.data?.noteTimestampDisplay).toEqual({
+      noteId: note.id,
+      timeZone: "America/Los_Angeles",
+      source: "explicit",
+      createdAt: "Nov 1, 2026, 1:30:00 AM PDT",
+      updatedAt: "Nov 1, 2026, 1:30:00 AM PST",
+    });
+    expect(result.data?.notes).toEqual(
+      before.notes.map((n) => ({
+        ...n,
+        sourceNote: service.sourceReference(n),
+      })),
+    );
+    expect(result.data?.notesRevision).toBe(before.revision);
+    expect(service.snapshot()).toEqual(before);
+  });
+  it.each([undefined, "bad"])(
+    "omits exactGET display for unavailable UIzone %j",
+    async (uiTimeZone) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const note = await service.createNote({ title: "Keep", body: "body" });
+      const result = await notesAction.handler(
+        runtime,
+        { content: { metadata: { uiTimeZone } } } as unknown as Memory,
+        undefined,
+        { parameters: { action: "get", noteId: note.id } },
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).not.toHaveProperty("noteTimestampDisplay");
+    },
+  );
+  it("omits display for missing note or invalid stored timestamps without failing raw read", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({ title: "Keep", body: "body" });
+    const message = {
+      content: { metadata: { uiTimeZone: "UTC" } },
+    } as unknown as Memory;
+    const missing = await notesAction.handler(runtime, message, undefined, {
+      parameters: { action: "get", noteId: "missing" },
+    });
+    expect(missing.data).not.toHaveProperty("noteTimestampDisplay");
+    const original = service.snapshot();
+    const spy = vi.spyOn(service, "snapshot").mockReturnValue({
+      ...original,
+      notes: original.notes.map((n) => ({ ...n, updatedAt: "invalid" })),
+    });
+    try {
+      const result = await notesAction.handler(runtime, message, undefined, {
+        parameters: { action: "get", noteId: note.id },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data).not.toHaveProperty("noteTimestampDisplay");
+      expect(result.data?.notes).toMatchObject([
+        { updatedAt: "invalid", body: note.body },
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
