@@ -55,7 +55,6 @@ import {
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -102,6 +101,7 @@ import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
 import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
+import type { AgentBackupRestoreV3RuntimeGeneration } from "../services/agent-backup-restore-v3-runtime-generation";
 import { EscalationService } from "../services/escalation.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
@@ -3544,6 +3544,8 @@ export function resolveDeferredPluginRegistrationTimeoutMs(
 // ---------------------------------------------------------------------------
 /** Options accepted by {@link startEliza}. */
 export interface StartElizaOptions {
+  /** Explicit, already-committed restore authority; never inferred from normal boot env. */
+  restoredGeneration?: AgentBackupRestoreV3RuntimeGeneration;
   /** Host-owned cancellation for boot and deferred startup work. */
   abortSignal?: AbortSignal;
   /** Receives the runtime as soon as it exists so a cancelled boot can stop it. */
@@ -3606,6 +3608,8 @@ export interface BootElizaRuntimeOptions {
 }
 export interface BuildInitializedRuntimeOptions {
   config: ElizaConfig;
+  /** Keep replacements on the same controller-owned committed generation. */
+  restoredGeneration?: AgentBackupRestoreV3RuntimeGeneration;
   abortSignal?: AbortSignal;
   localAgentMode?: boolean;
   onBootPhase?: (phase: BootPhaseName) => void;
@@ -3655,6 +3659,7 @@ export async function buildInitializedRuntime(
     const result = await bootEliza({
       headless: true,
       configOverride: options.config,
+      restoredGeneration: options.restoredGeneration,
       abortSignal: options.abortSignal,
       localAgentMode: options.localAgentMode,
       onBootPhase: options.onBootPhase,
@@ -3823,12 +3828,37 @@ function ensureChatLogListenerAttached(): void {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  const restoredGeneration = opts?.restoredGeneration;
+  opts?.abortSignal?.throwIfAborted();
+  if (restoredGeneration !== undefined) {
+    const { isAgentBackupRestoreV3RuntimeGeneration } = await import(
+      "../services/agent-backup-restore-v3-runtime-generation"
+    );
+    if (
+      !isAgentBackupRestoreV3RuntimeGeneration(restoredGeneration) ||
+      !opts?.configOverride ||
+      (!opts.headless && !opts.serverOnly)
+    ) {
+      throw new ElizaError(
+        "Restore boot requires a committed generation and explicit non-interactive config",
+        { code: "AGENT_BACKUP_RESTORE_V3_BOOT_INPUT_INVALID" },
+      );
+    }
+    restoredGeneration.assertEnvironment();
+    await restoredGeneration.assertFiles();
+  }
   // Programmatic hosts bypass bin.ts, so establish the same one-shot authority
   // before config loading and static plugin registration here as well.
   captureHostExecutionBaseline();
   opts?.abortSignal?.throwIfAborted();
   const bootContext =
     opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
+  if (restoredGeneration && bootContext.policy.allowDestructiveMigrations) {
+    throw new ElizaError(
+      "Restore boot cannot authorize destructive migrations",
+      { code: "AGENT_BACKUP_RESTORE_V3_BOOT_DESTRUCTIVE_MIGRATION_FORBIDDEN" },
+    );
+  }
   const bootTimer = new BootTimer("[eliza-boot]");
   // Record the (re)start at the START of boot so a restart storm — where boots
   // never complete — is still countable via /api/dev/boot-history. void: never
@@ -3870,12 +3900,13 @@ export async function startEliza(
   // 1a. Local / sandbox character override — must run before first-run setup
   //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
   //     and skips the interactive name/style wizard.
-  applySandboxCharacterFromEnv(config);
+  if (restoredGeneration) restoredGeneration.configure(config);
+  else applySandboxCharacterFromEnv(config);
   // 1b. First-run setup — ask for agent name if not configured.
   //     In headless mode (GUI) the first-run setup is handled by the web UI,
   //     so we skip the interactive CLI prompt and let the runtime start
   //     with defaults.  The GUI will restart the agent after first-run setup.
-  if (!opts?.headless) {
+  if (!opts?.headless && !restoredGeneration) {
     config = await runFirstTimeSetup(config);
   }
   // The launcher-selected dev Cloud target is an ephemeral runtime view. Build
@@ -3997,6 +4028,8 @@ export async function startEliza(
   // stale key in config.env refills process.env after disconnect cleared it.
   // Also hydrates config.env.vars (the nested form written by setEnvValue).
   hydrateConfigEnvForBoot(config);
+  // Config hydration must not redirect the explicit restore to another store.
+  restoredGeneration?.assertEnvironment();
   // Persisted plugin settings are hydrated into process.env above. Resolve the
   // watchdog only after that merge so first boot validates and uses the same
   // effective value that downstream runtime consumers observe.
@@ -4168,6 +4201,11 @@ export async function startEliza(
       `platform=${process.platform}`,
   );
   if (isStoreBuild()) {
+    if (restoredGeneration)
+      throw new ElizaError(
+        "Restore boot cannot select a store-build cloud proxy",
+        { code: "AGENT_BACKUP_RESTORE_V3_BOOT_CLOUD_PROXY_FORBIDDEN" },
+      );
     if (deploymentTarget.runtime === "local") {
       throw new Error(
         "[eliza] Store-variant builds cannot run a local agent. " +
@@ -4183,6 +4221,10 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
   if (bootPlan.runtimeMode === "cloud" && thinClientCloudAgentId) {
+    if (restoredGeneration)
+      throw new ElizaError("Restore boot cannot select a cloud proxy", {
+        code: "AGENT_BACKUP_RESTORE_V3_BOOT_CLOUD_PROXY_FORBIDDEN",
+      });
     return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
   // 3. Build elizaOS Character from Eliza config (override applied at 1a).
@@ -4195,13 +4237,15 @@ export async function startEliza(
   // contents onto the primary agent's system prompt. This replaces a stale
   // JSON shadow copy as the identity source of truth. Fails loudly if a file
   // marked required is missing. Inert when the env vars are absent.
-  {
+  if (!restoredGeneration) {
     const { applyCanonicalFileBootToConfig } = await import(
       "./canonical-file-boot.ts"
     );
     applyCanonicalFileBootToConfig(config);
   }
-  const character = buildCharacterFromConfig(config);
+  const character = restoredGeneration
+    ? restoredGeneration.character()
+    : buildCharacterFromConfig(config);
   // Pin the runtime agent id to the platform character_id so the gateways can
   // resolve `agent:<id>:server` and address `/agents/<id>/message` against
   // this container. Without this the runtime would derive an id from the
@@ -4642,6 +4686,23 @@ export async function startEliza(
     // 7c. Eagerly initialize the database adapter so it's fully ready
     //     BEFORE other plugins run their init(). When legacy/corrupt PGLite
     //     state causes startup aborts, reset the local DB dir and retry once.
+    restoredGeneration?.assertEnvironment();
+    if (restoredGeneration) {
+      if (
+        isSQLiteSelected() ||
+        runtime.getSetting("POSTGRES_URL") ||
+        runtime.getSetting("DATABASE_URL") ||
+        (runtime.getSetting("PGLITE_DATA_DIR") &&
+          runtime.getSetting("PGLITE_DATA_DIR") !==
+            restoredGeneration.receipt.paths.database)
+      ) {
+        throw new ElizaError(
+          "Restored runtime settings select a conflicting database",
+          { code: "AGENT_BACKUP_RESTORE_V3_BOOT_DATABASE_CONFLICT" },
+        );
+      }
+      await restoredGeneration.assertFiles();
+    }
     if (isSQLiteSelected()) {
       await runtime.registerPlugin(sqlPlugin.plugin);
       await initializeDatabaseAdapter(runtime, config);
@@ -5686,6 +5747,8 @@ export async function startEliza(
     // below are each fast/no-op, yet svc:pre-init was ~15s of a 16s cold boot.
     bootTimer.lap("svc:boot-prep");
     bootContext.enterPhase("initialize-runtime");
+    restoredGeneration?.assertEnvironment();
+    if (restoredGeneration) await restoredGeneration.assertFiles();
     await initializeRuntimeServices();
   } catch (err) {
     const pgliteDataDir = resolveActivePgliteDataDir(config);
@@ -5879,22 +5942,25 @@ export async function startEliza(
       port: apiPort,
       runtime,
       skipListen: skipApiListen,
+      restartRequiresRuntimeDisposal: restoredGeneration !== undefined,
       onRestart: async (restartOptions) => {
         logger.info("[eliza] Hot-reload: building replacement runtime...");
         try {
-          if (restartOptions?.disposeCurrentBeforeBuild) {
+          if (restartOptions?.disposeCurrentBeforeBuild || restoredGeneration) {
             await shutdownRuntime(runtime, "pre-restore runtime disposal", {
               fast: true,
             });
             disposedRuntimeBeforeReplacement = true;
           }
           const replacement = await buildInitializedRuntime({
-            config: loadEffectiveElizaConfig(),
+            config: restoredGeneration ? config : loadEffectiveElizaConfig(),
+            restoredGeneration,
             localAgentMode: opts?.localAgentMode,
           });
           logger.info("[eliza] Hot-reload: replacement runtime is ready");
           return replacement;
         } catch (err) {
+          // error-policy:J1 the API host receives an explicit failed replacement.
           runtime.reportError("eliza.hotReload.buildReplacement", err);
           logger.error(`[eliza] Hot-reload failed: ${formatError(err)}`);
           return null;
@@ -5981,7 +6047,10 @@ export async function startEliza(
     const { buildSandboxRegistryFromEnv } = await import(
       "../sandbox-registry.js"
     );
-    const sandboxRegistry = buildSandboxRegistryFromEnv();
+    // Restore routing belongs exclusively to the coordinator's probe/funding CAS.
+    const sandboxRegistry = restoredGeneration
+      ? null
+      : buildSandboxRegistryFromEnv();
     if (sandboxRegistry) {
       try {
         await sandboxRegistry.register();
