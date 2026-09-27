@@ -61,9 +61,9 @@ import {
   isCerebrasReasoningPart,
 } from "../utils/cerebras-reasoning";
 import {
-  prepareCerebrasToolStringCodec,
-  usesCerebrasToolStringCodec,
-} from "../utils/cerebras-tool-string-codec";
+  prepareCerebrasToolArgumentEnvelope,
+  usesCerebrasToolArgumentEnvelope,
+} from "../utils/cerebras-tool-argument-envelope";
 import {
   getActionPlannerModel,
   getApiKey,
@@ -2830,7 +2830,7 @@ function createStreamTiming(
     | "live-structured"
     | "buffered-transform"
     | "buffered-full-surface"
-    | "buffered-string-codec"
+    | "buffered-argument-envelope"
 ) {
   let beginAttempt: ((attempt: number) => StreamAttemptTiming) | undefined;
   observeStreamTiming(runtime, () => {
@@ -3150,7 +3150,7 @@ async function generateTextAtEndpoint(
       maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
     });
   }
-  const toolStringCodec = await prepareCerebrasToolStringCodec(
+  const toolArgumentEnvelope = await prepareCerebrasToolArgumentEnvelope(
     normalizedToolResult.tools,
     (
       paramsWithAttachments.providerOptions as
@@ -3158,19 +3158,19 @@ async function generateTextAtEndpoint(
         | undefined
     )?.eliza?.preferLosslessToolArguments === true &&
       cerebrasMode &&
-      usesCerebrasToolStringCodec(
+      usesCerebrasToolArgumentEnvelope(
         typeof endpoint === "object" ? endpoint.baseURL : (endpoint ?? getBaseURL(runtime)),
         modelName
       ),
     params.signal
   );
-  const normalizedTools = toolStringCodec.tools;
+  const normalizedTools = toolArgumentEnvelope.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
     toolNameMap: normalizedToolResult.toolNameMap,
   });
   const reasoningModel =
     usageProvider === "cerebras" && modelName === "qwen-3.8-27b" ? modelName : undefined;
-  const normalizedMessages = toolStringCodec.encodeMessages(
+  const normalizedMessages = toolArgumentEnvelope.encodeMessages(
     normalizeNativeMessages(paramsWithAttachments.messages, reasoningModel)
   );
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
@@ -3354,9 +3354,10 @@ async function generateTextAtEndpoint(
     // consumeStreamWithTransientRetry). Token streaming isn't user-visible for
     // coding. Regular chat falls through to the live-streaming path below.
     const fullActionSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-    const shouldBufferCodecEnvelope = toolStringCodec.enabled && params.streamStructured === true;
+    const shouldBufferArgumentEnvelope =
+      toolArgumentEnvelope.enabled && params.streamStructured === true;
     const shouldBufferStream =
-      shouldBufferCodecEnvelope ||
+      shouldBufferArgumentEnvelope ||
       preparedOutput?.transform !== undefined ||
       fullActionSurface === "1" ||
       fullActionSurface === "true" ||
@@ -3367,8 +3368,8 @@ async function generateTextAtEndpoint(
       modelType,
       preparedOutput?.transform
         ? "buffered-transform"
-        : shouldBufferCodecEnvelope
-          ? "buffered-string-codec"
+        : shouldBufferArgumentEnvelope
+          ? "buffered-argument-envelope"
           : shouldBufferStream
             ? "buffered-full-surface"
             : params.streamStructured === true
@@ -3393,12 +3394,12 @@ async function generateTextAtEndpoint(
         assertModelNotCoolingDown(modelCooldowns, modelName);
         const result = await consumeStreamWithTransientRetry(
           generateParams,
-          hasResponseTransform || shouldBufferCodecEnvelope ? undefined : params.onStreamChunk,
+          hasResponseTransform || shouldBufferArgumentEnvelope ? undefined : params.onStreamChunk,
           {
             model: modelName,
             retryState,
             yieldRateLimit,
-            maxRetries: toolStringCodec.enabled && toolStringCodec.hasEffectHooks ? 0 : 5,
+            maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5,
             onExhausted,
             beforeAttempt: () => assertPreparedAttempt(details),
             streamTiming,
@@ -3419,7 +3420,7 @@ async function generateTextAtEndpoint(
         });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
-          toolStringCodec.decodeCalls(result.toolCalls),
+          toolArgumentEnvelope.decodeCalls(result.toolCalls),
           normalizedToolResult.recordArgTransformsByTool
         );
         details.response = text;
@@ -3444,7 +3445,7 @@ async function generateTextAtEndpoint(
           usageProvider
         );
       }
-      const canonicalBufferedText = shouldBufferCodecEnvelope
+      const canonicalBufferedText = shouldBufferArgumentEnvelope
         ? buffered.toolCalls?.length === 1
           ? JSON.stringify(buffered.toolCalls[0].arguments)
           : buffered.text
@@ -3453,7 +3454,7 @@ async function generateTextAtEndpoint(
         textStream: (async function* replayBufferedStream() {
           if (canonicalBufferedText) {
             buffered.observeDelivery?.();
-            if (hasResponseTransform || shouldBufferCodecEnvelope) {
+            if (hasResponseTransform || shouldBufferArgumentEnvelope) {
               params.onStreamChunk?.(canonicalBufferedText);
             }
             yield canonicalBufferedText;
@@ -3583,7 +3584,7 @@ async function generateTextAtEndpoint(
       logToolPairingRejectionShape(capturedStreamError, generateParams);
       if (
         failedBeforeFirstToken &&
-        attempt >= (toolStringCodec.enabled && toolStringCodec.hasEffectHooks ? 0 : 5) &&
+        attempt >= (toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5) &&
         !abortSignal?.aborted &&
         isTransientProviderError(capturedStreamError)
       ) {
@@ -3591,7 +3592,7 @@ async function generateTextAtEndpoint(
       }
       if (
         !failedBeforeFirstToken ||
-        attempt >= (toolStringCodec.enabled && toolStringCodec.hasEffectHooks ? 0 : 5) ||
+        attempt >= (toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5) ||
         abortSignal?.aborted ||
         yieldRateLimit?.(capturedStreamError) ||
         !isTransientProviderError(capturedStreamError)
@@ -3600,7 +3601,7 @@ async function generateTextAtEndpoint(
       }
       await waitForTransientRetry({
         lane: "stream-start",
-        maxRetries: toolStringCodec.enabled && toolStringCodec.hasEffectHooks ? 0 : 5,
+        maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5,
         error: capturedStreamError,
         model: modelName,
         signal: abortSignal,
@@ -3668,7 +3669,7 @@ async function generateTextAtEndpoint(
     const rawToolCallsPromise = streamCompanions.toolCalls;
     const restoredToolCallsPromise = handledMappedPromise(rawToolCallsPromise, (toolCalls) =>
       restoreRecordArgToolCalls(
-        toolStringCodec.decodeCalls(toolCalls),
+        toolArgumentEnvelope.decodeCalls(toolCalls),
         normalizedToolResult.recordArgTransformsByTool
       )
     );
@@ -3853,7 +3854,7 @@ async function generateTextAtEndpoint(
       model: modelName,
       retryState,
       yieldRateLimit,
-      maxRetries: toolStringCodec.enabled && toolStringCodec.hasEffectHooks ? 0 : 3,
+      maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 3,
       onExhausted,
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
@@ -3876,7 +3877,7 @@ async function generateTextAtEndpoint(
       ? cerebrasReasoningContent(result.response?.body, reasoningModel)
       : [];
     const restoredToolCalls = restoreRecordArgToolCalls(
-      toolStringCodec.decodeCalls(result.toolCalls),
+      toolArgumentEnvelope.decodeCalls(result.toolCalls),
       normalizedToolResult.recordArgTransformsByTool
     );
     details.response = restoredText;

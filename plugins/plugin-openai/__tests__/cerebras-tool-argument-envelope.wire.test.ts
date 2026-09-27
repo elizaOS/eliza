@@ -58,9 +58,13 @@ it.each([
     noOptIn = false,
   }) => {
     const expected = ' "quoted 雪" \r\n';
-    const rawArguments = JSON.stringify({
-      content: malformed ? "not-a-json-string" : noOptIn ? expected : JSON.stringify(expected),
-    });
+    const rawArguments = JSON.stringify(
+      noOptIn
+        ? { content: expected }
+        : malformed
+          ? { arguments: "not-an-object" }
+          : { arguments: { content: expected } }
+    );
     const requests: Array<{ tools: unknown[]; messages: unknown[] }> = [];
     const server = createServer((req, res) => {
       const chunks: Buffer[] = [];
@@ -218,8 +222,13 @@ it.each([
       } else await run();
       expect(requests).toHaveLength(1);
       if (hookFailure) expect(inputEffects).toBe(1);
-      if (noOptIn) expect(JSON.stringify(requests[0].tools)).not.toContain("JSON string literals");
-      else expect(JSON.stringify(requests[0].tools)).toContain("JSON string literals");
+      const schema = (
+        requests[0].tools[0] as {
+          function: { parameters: { properties: Record<string, unknown> } };
+        }
+      ).function.parameters;
+      if (noOptIn) expect(schema.properties).toHaveProperty("content");
+      else expect(schema.properties).toHaveProperty("arguments");
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

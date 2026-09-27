@@ -1,49 +1,45 @@
-/** Reversible transport for the observed Cerebras Qwen native string-boundary loss. */
+/** Native object envelope preserves string boundaries on the observed Cerebras Qwen endpoint. */
 import {
   assertSchemaAnnotationsSerializable,
   ElizaError,
   MAX_WELL_FORMED_DEPTH,
 } from "@elizaos/core";
 import { asSchema, type JSONSchema7, jsonSchema, type ModelMessage, type ToolSet } from "ai";
-
-import { cloneSchemaForBoundedTransport } from "./schema-compat";
-
-const guidance =
-  "String argument values must be JSON string literals with enclosing quotes; object property names stay unchanged.";
+import {
+  cloneSchemaForBoundedTransport,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
+} from "./schema-compat";
 
 function invalid(path: string, reason: string): never {
-  throw new ElizaError(`Native tool string transport rejected ${reason}.`, {
-    code: "CEREBRAS_TOOL_STRING_CODEC_INVALID",
+  throw new ElizaError(`Native tool argument envelope rejected ${reason}.`, {
+    code: "CEREBRAS_TOOL_ARGUMENT_ENVELOPE_INVALID",
     severity: "ephemeral",
     context: { path },
   });
 }
 
-/** JSON values only; never infer missing quotes, whitespace, or escapes. */
-export function mapToolStrings(
-  value: unknown,
-  direction: "encode" | "decode",
-  path = "$",
-  depth = 0
-): unknown {
+/** Copy JSON values without invoking accessors or silently erasing transformed values. */
+function cloneJsonValue(value: unknown, path = "$", depth = 0): unknown {
   if (depth > MAX_WELL_FORMED_DEPTH) invalid(path, "excessive depth");
-  if (typeof value === "string") {
-    if (direction === "encode") return JSON.stringify(value);
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(value);
-    } catch {
-      invalid(path, "a malformed JSON string literal");
-    }
-    if (typeof decoded !== "string") invalid(path, "a non-string JSON literal");
-    return decoded;
-  }
   if (typeof value === "number" && !Number.isFinite(value)) invalid(path, "a non-finite number");
-  if (value === null || typeof value === "boolean" || typeof value === "number") return value;
-  if (Array.isArray(value))
-    return value.map((item, index) =>
-      mapToolStrings(item, direction, `${path}[${index}]`, depth + 1)
-    );
+  if (value === null || ["string", "boolean", "number"].includes(typeof value)) return value;
+  if (Array.isArray(value)) {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const length = descriptors.length.value as number;
+    if (Reflect.ownKeys(descriptors).length !== length + 1)
+      invalid(path, "a sparse or non-JSON array");
+    const result: unknown[] = [];
+    for (let index = 0; index < length; index++) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor) invalid(path, "a sparse array");
+      if (!("value" in descriptor)) invalid(path, "an accessor array element");
+      result.push(cloneJsonValue(descriptor.value, `${path}[${index}]`, depth + 1));
+    }
+    return result;
+  }
   if (!value || typeof value !== "object") invalid(path, "a non-JSON value");
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
     invalid(path, "a non-JSON object");
@@ -55,94 +51,80 @@ export function mapToolStrings(
       enumerable: true,
       configurable: true,
       writable: true,
-      value: mapToolStrings(descriptor.value, direction, `${path}.${key}`, depth + 1),
+      value: cloneJsonValue(descriptor.value, `${path}.${key}`, depth + 1),
     });
   }
   return result;
 }
 
-const schemaMaps = [
-  "properties",
-  "patternProperties",
-  "$defs",
-  "definitions",
-  "dependentSchemas",
-  "dependencies",
-];
-const schemaSingles = [
-  "additionalProperties",
-  "additionalItems",
-  "contains",
-  "not",
-  "if",
-  "then",
-  "else",
-  "propertyNames",
-  "unevaluatedProperties",
-  "unevaluatedItems",
-];
-const schemaArrays = ["anyOf", "oneOf", "allOf", "prefixItems"];
-
-/** Keeps full source constraints visible; validation still uses the original schema. */
-export function encodeToolStringSchema(schema: JSONSchema7, depth = 0): JSONSchema7 {
-  if (depth > MAX_WELL_FORMED_DEPTH) invalid("schema", "excessive depth");
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return schema;
-  const next = { ...schema } as Record<string, unknown>;
-  for (const key of ["const", "enum", "default", "examples"]) {
-    if (Object.hasOwn(next, key)) next[key] = mapToolStrings(next[key], "encode");
-  }
-  {
-    const constraints: Record<string, unknown> = {};
-    for (const key of [
-      "minLength",
-      "maxLength",
-      "pattern",
-      "format",
-      "contentEncoding",
-      "contentMediaType",
-    ]) {
-      if (Object.hasOwn(next, key)) {
-        constraints[key] = next[key];
-        delete next[key];
-      }
-    }
-    if (Object.keys(constraints).length)
-      next.description = [
-        schema.description,
-        `Original decoded-string constraints: ${JSON.stringify(constraints)}.`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-  }
-  for (const key of schemaMaps) {
-    const entries = next[key];
-    if (entries && typeof entries === "object" && !Array.isArray(entries))
-      next[key] = Object.fromEntries(
-        Object.entries(entries).map(([name, child]) => [
-          name,
-          encodeToolStringSchema(child as JSONSchema7, depth + 1),
-        ])
-      );
-  }
-  for (const key of schemaSingles) {
-    // Object keys are not string argument values and must not be encoded.
-    if (key === "propertyNames") continue;
-    if (next[key] && typeof next[key] === "object")
-      next[key] = encodeToolStringSchema(next[key] as JSONSchema7, depth + 1);
-  }
-  for (const key of schemaArrays)
-    if (Array.isArray(next[key]))
-      next[key] = (next[key] as JSONSchema7[]).map((child) =>
-        encodeToolStringSchema(child, depth + 1)
-      );
-  if (next.items)
-    next.items = Array.isArray(next.items)
-      ? next.items.map((child) => encodeToolStringSchema(child, depth + 1))
-      : encodeToolStringSchema(next.items as JSONSchema7, depth + 1);
-  return next as JSONSchema7;
+function cloneArgumentObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    invalid("arguments", "non-object arguments");
+  return cloneJsonValue(value) as Record<string, unknown>;
 }
 
-export function usesCerebrasToolStringCodec(endpoint: string | undefined, model: string): boolean {
+export function encodeToolArguments(value: unknown): { arguments: Record<string, unknown> } {
+  return { arguments: cloneArgumentObject(value) };
+}
+
+export function decodeToolArguments(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    invalid("envelope", "a non-object envelope");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).length !== 1 || !Object.hasOwn(descriptors, "arguments"))
+    invalid("envelope", "missing or extra envelope fields");
+  const descriptor = descriptors.arguments;
+  if (!("value" in descriptor)) invalid("arguments", "an accessor value");
+  return cloneArgumentObject(descriptor.value);
+}
+
+/** Rebase local document pointers; unsupported resource scopes fail before dispatch. */
+function rebaseLocalSchemaReferences(schema: unknown, depth = 0): void {
+  if (depth > MAX_WELL_FORMED_DEPTH) invalid("schema", "excessive depth");
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  const node = schema as Record<string, unknown>;
+  if (
+    ["$id", "$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveRef"].some((key) =>
+      Object.hasOwn(node, key)
+    )
+  )
+    invalid("schema", "unsupported reference resource scopes");
+  if (Object.hasOwn(node, "$ref")) {
+    const ref = node.$ref;
+    if (typeof ref !== "string" || (ref !== "#" && !ref.startsWith("#/")))
+      invalid("schema", "unsupported external or anchor reference");
+    node.$ref = `#/properties/arguments${ref.slice(1)}`;
+  }
+  for (const key of [...JSON_SCHEMA_MAP_KEYWORDS, ...JSON_SCHEMA_MIXED_MAP_KEYWORDS]) {
+    const map = node[key];
+    if (map && typeof map === "object" && !Array.isArray(map))
+      for (const value of Object.values(map)) rebaseLocalSchemaReferences(value, depth + 1);
+  }
+  for (const key of [...JSON_SCHEMA_ARRAY_KEYWORDS, "items"]) {
+    const child = node[key];
+    if (Array.isArray(child))
+      for (const value of child) rebaseLocalSchemaReferences(value, depth + 1);
+    else rebaseLocalSchemaReferences(child, depth + 1);
+  }
+  for (const key of JSON_SCHEMA_SINGLE_KEYWORDS) rebaseLocalSchemaReferences(node[key], depth + 1);
+}
+
+/** The complete canonical schema stays native and unchanged inside one object property. */
+export function envelopeToolSchema(schema: JSONSchema7): JSONSchema7 {
+  const nested = cloneSchemaForBoundedTransport(schema) as JSONSchema7;
+  rebaseLocalSchemaReferences(nested);
+  return {
+    type: "object",
+    properties: { arguments: nested },
+    required: ["arguments"],
+    additionalProperties: false,
+  };
+}
+
+export function usesCerebrasToolArgumentEnvelope(
+  endpoint: string | undefined,
+  model: string
+): boolean {
   if (model !== "qwen-3.8-27b") return false;
   try {
     const url = new URL(endpoint ?? "");
@@ -152,7 +134,7 @@ export function usesCerebrasToolStringCodec(endpoint: string | undefined, model:
   }
 }
 
-export async function prepareCerebrasToolStringCodec(
+export async function prepareCerebrasToolArgumentEnvelope(
   tools: ToolSet | undefined,
   enabled: boolean,
   signal?: AbortSignal
@@ -177,7 +159,7 @@ export async function prepareCerebrasToolStringCodec(
         invalid(name, "an executable tool without original-schema validation");
       const validatedInputs = new WeakMap<object, { wire: string; decoded: unknown }>();
       const encodeValidated = (decoded: unknown): unknown => {
-        const encoded = mapToolStrings(decoded, "encode");
+        const encoded = encodeToolArguments(decoded);
         if (encoded && typeof encoded === "object")
           validatedInputs.set(encoded, { wire: JSON.stringify(encoded), decoded });
         return encoded;
@@ -185,22 +167,22 @@ export async function prepareCerebrasToolStringCodec(
       const decodeForHook = async (input: unknown): Promise<unknown> => {
         const prior = input && typeof input === "object" ? validatedInputs.get(input) : undefined;
         if (prior && prior.wire === JSON.stringify(input))
-          return mapToolStrings(mapToolStrings(prior.decoded, "encode"), "decode");
-        const decoded = mapToolStrings(input, "decode");
+          return cloneArgumentObject(prior.decoded);
+        const decoded = decodeToolArguments(input);
         if (!original.validate) invalid(name, "an effect hook without original-schema validation");
         const result = await original.validate(decoded);
         if (!result.success) throw result.error;
-        return result.value;
+        return cloneArgumentObject(result.value);
       };
       const descriptors = Object.getOwnPropertyDescriptors(tool);
       descriptors.inputSchema = {
         configurable: true,
         enumerable: true,
         writable: true,
-        value: jsonSchema(encodeToolStringSchema(originalJsonSchema), {
+        value: jsonSchema(envelopeToolSchema(originalJsonSchema), {
           validate: async (value) => {
             try {
-              const decoded = mapToolStrings(value, "decode");
+              const decoded = decodeToolArguments(value);
               if (original.validate) {
                 const result = await original.validate(decoded);
                 if (!result.success) return result;
@@ -223,7 +205,7 @@ export async function prepareCerebrasToolStringCodec(
         configurable: true,
         enumerable: true,
         writable: true,
-        value: [tool.description, guidance].filter(Boolean).join("\n"),
+        value: tool.description,
       };
       if (typeof tool.needsApproval === "function") {
         const needsApproval = tool.needsApproval;
@@ -241,7 +223,7 @@ export async function prepareCerebrasToolStringCodec(
       }
       if (tool.onInputStart || tool.onInputDelta || tool.onInputAvailable) {
         if (!original.validate) invalid(name, "an input hook without original-schema validation");
-        // SDK deltas contain transport strings. Publish only a complete validated
+        // SDK deltas contain the transport wrapper. Publish only a complete validated
         // canonical argument object, retaining call metadata and cancellation.
         const starts = new Map<string, Parameters<NonNullable<typeof tool.onInputStart>>[0]>();
         const deltas = new Map<string, Parameters<NonNullable<typeof tool.onInputDelta>>[0]>();
@@ -327,7 +309,7 @@ export async function prepareCerebrasToolStringCodec(
               ...message,
               content: message.content.map((part) =>
                 part.type === "tool-call" && names.has(part.toolName)
-                  ? { ...part, input: mapToolStrings(part.input, "encode") }
+                  ? { ...part, input: encodeToolArguments(part.input) }
                   : part
               ),
             }
@@ -357,7 +339,7 @@ export async function prepareCerebrasToolStringCodec(
             invalid(name, "malformed outer arguments");
           }
         }
-        const decoded = mapToolStrings(input, "decode");
+        const decoded = decodeToolArguments(input);
         return call.function && !Object.hasOwn(call, field)
           ? { ...call, function: { ...call.function, arguments: decoded } }
           : { ...call, [field]: decoded };
