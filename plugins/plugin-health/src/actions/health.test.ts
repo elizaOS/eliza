@@ -453,7 +453,10 @@ describe("health action runner", () => {
         hasAccess: async () => true,
         createService: () => service,
         messageText: () => "",
-        renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
+        renderReply: async ({ fallback }) => ({
+          kind: "model",
+          text: fallback,
+        }),
         recentConversationTexts: async () => [],
         runJsonModel: async () => null,
         resolveTimeZone: () => "Asia/Tokyo",
