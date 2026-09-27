@@ -3570,6 +3570,7 @@
   "scheduledtask.applyError": "Failed to update scheduled item.",
   "scheduledtask.complete": "Complete",
   "scheduledtask.dismiss": "Dismiss",
+  "scheduledtask.fireUnavailable": "The task could not be run right now.",
   "scheduledtask.missing": "This scheduled item is no longer available.",
   "scheduledtask.noSchedule": "No schedule",
   "scheduledtask.prompt": "What it does",
