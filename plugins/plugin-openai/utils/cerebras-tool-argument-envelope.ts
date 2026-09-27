@@ -27,7 +27,7 @@ function cloneJsonValue(value: unknown, path = "$", depth = 0): unknown {
   if (typeof value === "number" && !Number.isFinite(value)) invalid(path, "a non-finite number");
   if (value === null || ["string", "boolean", "number"].includes(typeof value)) return value;
   if (Array.isArray(value)) {
-    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value as object);
     const length = descriptors.length.value as number;
     if (Reflect.ownKeys(descriptors).length !== length + 1)
       invalid(path, "a sparse or non-JSON array");
