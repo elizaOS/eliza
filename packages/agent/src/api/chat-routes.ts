@@ -47,6 +47,7 @@ import {
   nextInferenceTurnId,
   normalizeCharacterLanguage,
   normalizeEffectReceipts,
+  PRIVACY_DENIED_TEXT,
   parseChatFailureKind,
   parseChatTerminalFailure,
   type ReadJsonBodyOptions,
@@ -923,7 +924,12 @@ const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180000;
 const REMOTE_CHAT_GENERATION_TIMEOUT_MS = 600000;
 const CHAT_GENERATION_TIMEOUT_PATTERN =
   /chat generation timed out after \d+ms/i;
-const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
+const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set([
+  "REPLY",
+  "NONE",
+  "IGNORE",
+  "PRIVACY_DENIED",
+]);
 type SyntheticChatFailureKind =
   | ChatFailureKind
   | "no_response"
@@ -1650,7 +1656,6 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
   return [
     "I could not complete that request because the model returned actions that were not executed.",
     `Unexecuted actions: ${actionsLabel}.`,
-    "No side effects were applied.",
   ].join("\n");
 }
 
@@ -2600,6 +2605,7 @@ async function generateChatResponseWithTiming(
         >
       | undefined;
     let terminalFailure: ChatTerminalFailure | undefined;
+    let privacyDenied = false;
     let replyFailure: ActionReplyFailure | undefined;
     let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
@@ -2837,16 +2843,22 @@ async function generateChatResponseWithTiming(
           // but it is not permission to start optional post-processing after a
           // disconnect. The remaining path finalizes that result and only runs
           // new work while the owner signal is live.
+          privacyDenied = Boolean(
+            result?.responseContent?.actions?.includes("PRIVACY_DENIED") ||
+              asRecord(result?.responseContent?.data)?.privacyDenied === true,
+          );
           terminalFailure = parseChatTerminalFailure(
-            result?.outcome.status === "failed"
+            !privacyDenied && result?.outcome.status === "failed"
               ? result.outcome.error
               : undefined,
           );
-          replyFailure = result?.actionResults
-            ?.map((actionResult) =>
-              readActionReplyFailure(actionResult.replyFailure),
-            )
-            .find((failure) => failure !== undefined);
+          replyFailure = privacyDenied
+            ? undefined
+            : result?.actionResults
+                ?.map((actionResult) =>
+                  readActionReplyFailure(actionResult.replyFailure),
+                )
+                .find((failure) => failure !== undefined);
           if (terminalFailure) {
             const failureText =
               opts?.onChunk && !opts.onSnapshot
@@ -2950,7 +2962,7 @@ async function generateChatResponseWithTiming(
             );
           }
           // A terminal reply failure must not start new actions after a commit.
-          if (result && !terminalFailure) {
+          if (result && !terminalFailure && !privacyDenied) {
             const rc = result.responseContent as Record<string, unknown> | null;
             const resultRecord = asRecord(result);
             runtime.logger.info(
@@ -3152,12 +3164,14 @@ async function generateChatResponseWithTiming(
       result,
       normalizedResponseText,
     );
-    const finalText = intentionalNoResponse
-      ? ""
-      : isClientVisibleNoResponse(normalizedResponseText)
-        ? (noResponseFallback ??
-          (normalizedResponseText || responseText || "(no response)"))
-        : normalizedResponseText;
+    const finalText = privacyDenied
+      ? PRIVACY_DENIED_TEXT
+      : intentionalNoResponse
+        ? ""
+        : isClientVisibleNoResponse(normalizedResponseText)
+          ? (noResponseFallback ??
+            (normalizedResponseText || responseText || "(no response)"))
+          : normalizedResponseText;
     // A visible action callback and its internal terminal receipt can carry the
     // same canonical text. The receipt stays out of the transcript, but it must
     // not retroactively hide the callback that already owns the turn's response.
@@ -3205,8 +3219,13 @@ async function generateChatResponseWithTiming(
         )
       : [];
     const terminalFailureKind = terminalFailure?.kind;
-    const responseContent: Content | null =
-      result?.responseContent && typeof result.responseContent === "object"
+    const responseContent: Content | null = privacyDenied
+      ? {
+          text: PRIVACY_DENIED_TEXT,
+          actions: ["PRIVACY_DENIED"],
+          data: { privacyDenied: true },
+        }
+      : result?.responseContent && typeof result.responseContent === "object"
         ? (() => {
             const content = {
               ...result.responseContent,
@@ -3285,11 +3304,16 @@ async function generateChatResponseWithTiming(
       responseContent.thought.trim()
         ? responseContent.thought
         : undefined;
-    const actionResultSummaries = summarizeRuntimeActionResults(
-      runtime,
-      typeof message.id === "string" ? message.id : undefined,
-      result?.actionResults,
-    );
+    // Denial replaces prose at the assistant boundary, but complete action
+    // evidence remains in the runtime. Do not disclose that evidence through
+    // the host's secondary client projection (including receipt resource IDs).
+    const actionResultSummaries = privacyDenied
+      ? []
+      : summarizeRuntimeActionResults(
+          runtime,
+          typeof message.id === "string" ? message.id : undefined,
+          result?.actionResults,
+        );
     const successfulDeliveredActionCallbacks = deliveredActionCallbacks.filter(
       (entry) => {
         const canonicalName =
@@ -3325,26 +3349,31 @@ async function generateChatResponseWithTiming(
       successfulDeliveredActionCallbacks.length > 0 || successfulActionMode;
     return {
       text: finalText,
-      ...(planningAcknowledgment ? { planningAcknowledgment } : {}),
+      ...(!privacyDenied && planningAcknowledgment
+        ? { planningAcknowledgment }
+        : {}),
       agentName,
-      ...(result?.outcome ? { outcome: result.outcome } : {}),
+      ...(!privacyDenied && result?.outcome ? { outcome: result.outcome } : {}),
       ...(transcriptVisibility ? { transcriptVisibility } : {}),
-      ...(thought ? { thought } : {}),
+      ...(!privacyDenied && thought ? { thought } : {}),
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }
         : {}),
-      ...(failureKind ? { failureKind } : {}),
-      ...(terminalFailure ? { terminalFailure } : {}),
-      ...(accountConnect ? { accountConnect } : {}),
-      ...(localInference ? { localInference } : {}),
+      ...(!privacyDenied && failureKind ? { failureKind } : {}),
+      ...(!privacyDenied && terminalFailure ? { terminalFailure } : {}),
+      ...(!privacyDenied && accountConnect ? { accountConnect } : {}),
+      ...(!privacyDenied && localInference ? { localInference } : {}),
       ...(usedActionCallbacks ? { usedActionCallbacks: true } : {}),
-      ...(actionCallbackHistory.length > 0
+      ...(!privacyDenied && actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
         : {}),
       ...(actionResultSummaries.length > 0
         ? { actionResults: actionResultSummaries }
         : {}),
-      ...(replyFailure && result?.replyRecovery && result.actionResults
+      ...(!privacyDenied &&
+      replyFailure &&
+      result?.replyRecovery &&
+      result.actionResults
         ? {
             replyRecovery: {
               ...result.replyRecovery,
