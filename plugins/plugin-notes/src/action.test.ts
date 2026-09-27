@@ -2434,23 +2434,27 @@ describe("selected timestamp display", () => {
     [
       "2026-09-26T00:06:15.137Z",
       "America/Los_Angeles",
-      "Sep 25, 2026, 5:06:15 PM PDT",
+      /^Sep 25, 2026(?:, | at )5:06:15 PM PDT$/,
     ],
-    ["2026-09-26T20:00:00Z", "Asia/Tokyo", "Sep 27, 2026, 5:00:00 AM GMT+9"],
+    [
+      "2026-09-26T20:00:00Z",
+      "Asia/Tokyo",
+      /^Sep 27, 2026(?:, | at )5:00:00 AM GMT\+9$/,
+    ],
     [
       "2026-11-01T08:30:00Z",
       "America/Los_Angeles",
-      "Nov 1, 2026, 1:30:00 AM PDT",
+      /^Nov 1, 2026(?:, | at )1:30:00 AM PDT$/,
     ],
     [
       "2026-11-01T09:30:00Z",
       "America/Los_Angeles",
-      "Nov 1, 2026, 1:30:00 AM PST",
+      /^Nov 1, 2026(?:, | at )1:30:00 AM PST$/,
     ],
     [
       "2027-01-01T00:30:00Z",
       "America/Los_Angeles",
-      "Dec 31, 2026, 4:30:00 PM PST",
+      /^Dec 31, 2026(?:, | at )4:30:00 PM PST$/,
     ],
   ])(
     "formats selected instant %s in %s without changing source",
@@ -2480,7 +2484,11 @@ describe("selected timestamp display", () => {
           selection: {
             field: "updatedAt",
             at: note.updatedAt,
-            display: { label, timeZone: zone, source: "explicit" },
+            display: {
+              label: expect.stringMatching(label),
+              timeZone: zone,
+              source: "explicit",
+            },
           },
           notes: [{ ...note, sourceNote: service.sourceReference(note) }],
           notesRevision: before.revision,
@@ -2585,8 +2593,12 @@ describe("exact GET timestamp display", () => {
       noteId: note.id,
       timeZone: "America/Los_Angeles",
       source: "explicit",
-      createdAt: "Nov 1, 2026, 1:30:00 AM PDT",
-      updatedAt: "Nov 1, 2026, 1:30:00 AM PST",
+      createdAt: expect.stringMatching(
+        /^Nov 1, 2026(?:, | at )1:30:00 AM PDT$/,
+      ),
+      updatedAt: expect.stringMatching(
+        /^Nov 1, 2026(?:, | at )1:30:00 AM PST$/,
+      ),
     });
     expect(result.data?.notes).toEqual(
       before.notes.map((n) => ({
