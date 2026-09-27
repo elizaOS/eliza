@@ -2,10 +2,12 @@
 
 /**
  * iOS native Cloud sign-in (#16420): drives the real mobile PKCE client
- * through a stubbed ASWebAuthenticationSession bridge and a scripted Cloud
- * protocol endpoint. Proves single browser ownership, typed cancellation with
- * verifier cleanup, write-before-ACK credential activation, and that a
- * consumed authorization code is never replayed.
+ * through a stubbed ASWebAuthenticationSession bridge, an in-memory Keychain
+ * standing in for `@elizaos/capacitor-secure-store`, and a scripted Cloud
+ * protocol endpoint. Proves single browser ownership, typed cancellation,
+ * inactive-until-ACK Keychain staging, exact recovery of an interrupted
+ * activation, exact-key revocation, and that a consumed authorization code is
+ * never replayed.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +35,7 @@ vi.mock("@capacitor/core", () => ({
 }));
 
 const credential = vi.hoisted(() => ({ token: null as string | null }));
+const keychain = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("@elizaos/plugin-elizacloud/steward-session-client", () => ({
   readStoredStewardToken: () => credential.token,
@@ -44,18 +47,48 @@ vi.mock("@elizaos/plugin-elizacloud/steward-session-client", () => ({
   },
 }));
 
+vi.mock("@elizaos/capacitor-secure-store", () => ({
+  ElizaSecureStore: {
+    get: async ({ key }: { key: string }) =>
+      keychain.has(key)
+        ? { ok: true, value: keychain.get(key) }
+        : { ok: false, error: "not_found" },
+    set: async ({ key, value }: { key: string; value: string }) => {
+      keychain.set(key, value);
+      return { ok: true };
+    },
+    remove: async ({ key }: { key: string }) => {
+      keychain.delete(key);
+      return { ok: true };
+    },
+  },
+}));
+
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
 import {
+  hasIosNativeCloudCredential,
   IosCloudAuthError,
   isIosNativeCloudAuthAvailable,
+  recoverIosCloudCredential,
   signInWithIosCloud,
+  signOutIosCloud,
 } from "./ios-cloud-auth";
 
 const API = DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+const STAGED_KEY = "session.cloud_mobile_pending";
+const SECRET = `eliza_mobile_${"a".repeat(64)}`;
+const CREDENTIAL_ID = "11111111-1111-4111-8111-111111111111";
 
-type Call = { url: string; body: Record<string, unknown> | null };
+type Call = {
+  url: string;
+  method: string;
+  authorization: string | null;
+  body: Record<string, unknown> | null;
+};
 let calls: Call[];
 let tokenStatus: number;
+let ackStatus: number;
+let revokeStatus: number;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -64,10 +97,18 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function stagedRecord(): Record<string, unknown> | null {
+  const raw = keychain.get(STAGED_KEY);
+  return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+}
+
 beforeEach(() => {
   calls = [];
   tokenStatus = 200;
+  ackStatus = 200;
+  revokeStatus = 200;
   credential.token = null;
+  keychain.clear();
   native.starts = [];
   native.next = null;
   vi.stubGlobal(
@@ -78,7 +119,13 @@ beforeEach(() => {
         typeof init?.body === "string"
           ? (JSON.parse(init.body) as Record<string, unknown>)
           : null;
-      calls.push({ url, body });
+      const headers = new Headers(init?.headers);
+      calls.push({
+        url,
+        method: init?.method ?? "GET",
+        authorization: headers.get("Authorization"),
+        body,
+      });
       if (url.includes("/api/v1/app-auth/mobile/config")) {
         const params = new URL(url).searchParams;
         return jsonResponse(200, {
@@ -97,22 +144,45 @@ beforeEach(() => {
             error_description: "Authorization code was already used.",
           });
         }
-        // Inactive until ACK: nothing is stored yet at exchange time.
-        expect(credential.token).toBeNull();
+        // Nothing is staged or active at exchange time.
+        expect(keychain.has(STAGED_KEY)).toBe(false);
         return jsonResponse(200, {
           success: true,
-          secret: "mobile-secret",
-          credentialId: "cred-1",
+          secret: SECRET,
+          credentialId: CREDENTIAL_ID,
         });
       }
       if (url.endsWith("/api/v1/app-auth/mobile/ack")) {
-        // The credential must be durably stored before activation.
-        expect(credential.token).toBe("mobile-secret");
+        // Inactive until ACK: the secret is durably staged in the Keychain but
+        // has not become the renderer's session.
+        expect(stagedRecord()).toMatchObject({
+          acknowledged: false,
+          credentialId: CREDENTIAL_ID,
+          secret: SECRET,
+        });
+        expect(credential.token).not.toBe(SECRET);
+        if (ackStatus !== 200) {
+          return jsonResponse(ackStatus, {
+            success: false,
+            error: "temporarily_unavailable",
+          });
+        }
         return jsonResponse(200, {
           success: true,
           status: "acknowledged",
-          credentialId: "cred-1",
+          credentialId: CREDENTIAL_ID,
         });
+      }
+      if (
+        url.endsWith("/api/v1/api-keys/current") &&
+        init?.method === "DELETE"
+      ) {
+        return revokeStatus === 200
+          ? jsonResponse(200, { success: true, credentialId: CREDENTIAL_ID })
+          : jsonResponse(revokeStatus, {
+              success: false,
+              error: "Revocation unavailable",
+            });
       }
       return jsonResponse(404, { success: false });
     }),
@@ -140,14 +210,16 @@ describe("iOS native Eliza Cloud sign-in", () => {
     await expect(isIosNativeCloudAuthAvailable()).resolves.toBe(true);
   });
 
-  it("exchanges the callback once, stores the credential before ACK, and labels the device", async () => {
+  it("exchanges once, stages until ACK, then activates the Keychain credential", async () => {
     native.next = async () => ({
       callbackUrl: callbackFor(lastStart()),
     });
     const completion = await signInWithIosCloud(API);
 
     expect(completion.apiBase).toBe(API);
-    expect(credential.token).toBe("mobile-secret");
+    expect(credential.token).toBe(SECRET);
+    expect(keychain.has(STAGED_KEY)).toBe(false);
+    expect(hasIosNativeCloudCredential()).toBe(true);
     const start = lastStart();
     const authorize = new URL(
       new URL(start.url).searchParams.get("returnTo") ?? "",
@@ -161,6 +233,17 @@ describe("iOS native Eliza Cloud sign-in", () => {
     expect(
       calls.filter((call) => call.url.endsWith("/mobile/ack")),
     ).toHaveLength(1);
+  });
+
+  it("discards the staged credential and keeps the prior session when ACK fails", async () => {
+    credential.token = "previous-session";
+    ackStatus = 400;
+    native.next = async () => ({
+      callbackUrl: callbackFor(lastStart()),
+    });
+    await expect(signInWithIosCloud(API)).rejects.toThrow();
+    expect(credential.token).toBe("previous-session");
+    expect(keychain.has(STAGED_KEY)).toBe(false);
   });
 
   it("joins a concurrent request instead of opening a second browser", async () => {
@@ -189,6 +272,7 @@ describe("iOS native Eliza Cloud sign-in", () => {
     expect(error).toBeInstanceOf(IosCloudAuthError);
     expect((error as IosCloudAuthError).code).toBe("cancelled");
     expect(credential.token).toBeNull();
+    expect(keychain.has(STAGED_KEY)).toBe(false);
     expect(calls.some((call) => call.url.endsWith("/mobile/token"))).toBe(
       false,
     );
@@ -204,5 +288,78 @@ describe("iOS native Eliza Cloud sign-in", () => {
       calls.filter((call) => call.url.endsWith("/mobile/token")),
     ).toHaveLength(1);
     expect(credential.token).toBeNull();
+  });
+});
+
+describe("iOS Keychain credential recovery", () => {
+  it("discards an unacknowledged staged credential instead of activating it", async () => {
+    keychain.set(
+      STAGED_KEY,
+      JSON.stringify({
+        version: 1,
+        acknowledged: false,
+        credentialId: CREDENTIAL_ID,
+        secret: SECRET,
+      }),
+    );
+    await expect(recoverIosCloudCredential(API)).resolves.toBe("discarded");
+    expect(credential.token).toBeNull();
+    expect(keychain.has(STAGED_KEY)).toBe(false);
+  });
+
+  it("promotes an acknowledged staged credential exactly once", async () => {
+    keychain.set(
+      STAGED_KEY,
+      JSON.stringify({
+        version: 1,
+        acknowledged: true,
+        credentialId: CREDENTIAL_ID,
+        secret: SECRET,
+      }),
+    );
+    await expect(recoverIosCloudCredential(API)).resolves.toBe("activated");
+    expect(credential.token).toBe(SECRET);
+    expect(keychain.has(STAGED_KEY)).toBe(false);
+    await expect(recoverIosCloudCredential(API)).resolves.toBe("none");
+  });
+
+  it("resumes an acknowledged credential without opening a second browser", async () => {
+    keychain.set(
+      STAGED_KEY,
+      JSON.stringify({
+        version: 1,
+        acknowledged: true,
+        credentialId: CREDENTIAL_ID,
+        secret: SECRET,
+      }),
+    );
+    const completion = await signInWithIosCloud(API);
+    expect(completion.state).toBe("recovered");
+    expect(credential.token).toBe(SECRET);
+    expect(native.starts).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("iOS Cloud sign-out", () => {
+  it("revokes exactly the presented mobile credential, then clears the Keychain", async () => {
+    credential.token = SECRET;
+    await signOutIosCloud(API);
+    const revoke = calls.find((call) =>
+      call.url.endsWith("/api/v1/api-keys/current"),
+    );
+    expect(revoke?.method).toBe("DELETE");
+    expect(revoke?.authorization).toBe(`Bearer ${SECRET}`);
+    expect(credential.token).toBeNull();
+    expect(keychain.has(STAGED_KEY)).toBe(false);
+  });
+
+  it("keeps the local credential when the server refuses revocation", async () => {
+    credential.token = SECRET;
+    revokeStatus = 503;
+    await expect(signOutIosCloud(API)).rejects.toThrow(
+      "Revocation unavailable",
+    );
+    expect(credential.token).toBe(SECRET);
   });
 });

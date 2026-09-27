@@ -59,9 +59,12 @@ import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
 import {
+  hasIosNativeCloudCredential,
   IosCloudAuthError,
   isIosNativeCloudAuthAvailable,
+  recoverIosCloudCredential,
   signInWithIosCloud,
+  signOutIosCloud,
 } from "../ios-cloud/ios-cloud-auth";
 import { logger } from "../logger.ts";
 import {
@@ -241,6 +244,14 @@ function rememberCloudLoginPopup(popup: Window | null): void {
   if (popup && !popup.closed) {
     activeCloudLoginPopup = popup;
   }
+}
+/** True when the active session is a native iOS mobile credential. */
+function isIosNativeCloudSession(): boolean {
+  return (
+    Capacitor.getPlatform() === "ios" &&
+    Capacitor.isNativePlatform() &&
+    hasIosNativeCloudCredential()
+  );
 }
 function openNamedCloudLoginPopup(url: string): Window | null {
   if (typeof window === "undefined" || typeof window.open !== "function") {
@@ -776,6 +787,33 @@ export function useCloudState({
     },
     [loadWalletConfig, pollCloudCredits],
   );
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== "ios" || !Capacitor.isNativePlatform()) {
+      return;
+    }
+    let cancelled = false;
+    // An iOS sign-in interrupted between the server ACK and Keychain promotion
+    // left an acknowledged credential staged; finish it exactly. An
+    // unacknowledged one is discarded and never becomes the session.
+    void recoverIosCloudCredential(
+      getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+    )
+      .then(async (outcome) => {
+        if (cancelled || outcome !== "activated") return;
+        await reconcileAndroidCloudSession();
+      })
+      .catch((err: unknown) => {
+        // error-policy:J4 recovery failure leaves the explicit sign-in path
+        // available; the staged credential is never treated as active.
+        logger.warn(
+          { err },
+          "[useCloudState] iOS Cloud credential recovery failed",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reconcileAndroidCloudSession]);
   useEffect(() => {
     if (!isAndroidCloudBuild() || !Capacitor.isNativePlatform()) return;
     let cancelled = false;
@@ -1421,6 +1459,25 @@ export function useCloudState({
                 `Couldn't open the sign-in browser. Open this link to log in: ${resp.browserUrl}`,
               );
             }
+          } else if (isCapacitorNativeRuntime()) {
+            // Native sign-in is owned by the dismissible Capacitor Browser
+            // surface. A renderer `window.open` here escapes to an unowned
+            // browser and strands the user outside the app (#30853).
+            closePrePoppedWindow();
+            const opened = await openExternalUrl(resp.browserUrl).catch(
+              (error: unknown) => {
+                logger.warn(
+                  { error },
+                  "[useCloudState] native Cloud sign-in browser failed to open",
+                );
+                return false;
+              },
+            );
+            if (!opened) {
+              setElizaCloudLoginError(
+                `Couldn't open the sign-in browser. Open this link to log in: ${resp.browserUrl}`,
+              );
+            }
           } else if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl, {
               preserveOpener: true,
@@ -1458,6 +1515,16 @@ export function useCloudState({
         }
         let pollInFlight = false;
         let consecutivePollErrors = 0;
+        // The CLI session hands its token out once. After a claimed response,
+        // later ticks retry only its persistence and never poll the consumed
+        // session again, which would lose the credential (#30853).
+        let claimedPoll: {
+          status: string;
+          organizationId?: string;
+          token?: string;
+          userId?: string;
+          error?: string;
+        } | null = null;
         const pollDeadline = Date.now() + ELIZA_CLOUD_LOGIN_TIMEOUT_MS;
         const stopCloudLoginPolling = (error: string | null = null) => {
           if (elizaCloudLoginPollTimer.current !== null) {
@@ -1489,7 +1556,9 @@ export function useCloudState({
               userId?: string;
               error?: string;
             };
-            if (useDirectAuth) {
+            if (claimedPoll) {
+              poll = claimedPoll;
+            } else if (useDirectAuth) {
               poll = await client.cloudLoginPollDirect(
                 authenticatedCloudApiBase,
                 sessionId,
@@ -1498,6 +1567,9 @@ export function useCloudState({
               poll = await client.cloudLoginPoll(sessionId);
             }
             if (!elizaCloudLoginPollTimer.current) return;
+            if (poll.status === "authenticated" && poll.token) {
+              claimedPoll = poll;
+            }
             consecutivePollErrors = 0;
             if (poll.status === "authenticated") {
               if (poll.token && typeof window !== "undefined") {
@@ -1890,8 +1962,15 @@ export function useCloudState({
         // Confirm the protected credential is durably absent before any
         // signed-out UI or logical account state is published. A denied native
         // deletion stays in the connected/error path and cannot rehydrate a
-        // token after the UI claimed a successful disconnect.
-        await clearStoredStewardToken();
+        // token after the UI claimed a successful disconnect. A native iOS
+        // mobile credential is revoked server-side first, exactly.
+        if (isIosNativeCloudSession()) {
+          await signOutIosCloud(
+            getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+          );
+        } else {
+          await clearStoredStewardToken();
+        }
         setElizaCloudEnabled(false);
         setElizaCloudConnected(false);
         publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
@@ -1976,6 +2055,10 @@ export function useCloudState({
           getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
         await signOutAndroidCloud(cloudApiBase);
         markAndroidCloudAccountSwitchPending();
+      } else if (isIosNativeCloudSession()) {
+        await signOutIosCloud(
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+        );
       } else {
         await signOutFromSsoBridgedHost();
       }
