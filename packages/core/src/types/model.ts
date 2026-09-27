@@ -915,6 +915,8 @@ export interface GenerateTextResult {
  * their string under `text`; some carry it under `content`).
  */
 export interface GenerateTextContentPart {
+	/** Provider-scoped metadata needed to replay private assistant content. */
+	providerOptions?: Record<string, JsonValue | object | undefined>;
 	type?: string;
 	text?: string;
 	content?: string;
