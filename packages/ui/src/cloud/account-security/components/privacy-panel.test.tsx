@@ -72,15 +72,15 @@ vi.mock("../data/account-deletion-client", async (importOriginal) => {
 
 import { PrivacyPanel } from "./privacy-panel";
 
-const visionRecord = (granted: boolean) => ({
-  purpose: "vision_capture",
+const trainingRecord = (granted: boolean) => ({
+  purpose: "trajectory_training",
   granted,
   policyVersion: "2026-09-privacy-panel-v1",
   source: "cloud-ui",
   recordedAt: "2026-09-26T12:00:00.000Z",
 });
 
-type TestRecord = ReturnType<typeof visionRecord>;
+type TestRecord = ReturnType<typeof trainingRecord>;
 
 /** A `GET /api/v1/me/consents` body as the server builds it. */
 function consentList(records: TestRecord[], trainingDefault = true) {
@@ -135,21 +135,22 @@ afterEach(() => {
 });
 
 describe("PrivacyPanel", () => {
-  it("renders server consent, with the training default stated when unset", async () => {
-    apiMock.mockResolvedValueOnce(consentList([visionRecord(false)]));
+  it("renders the training default without offering an unenforced vision switch", async () => {
+    apiMock.mockResolvedValueOnce(consentList([]));
     renderPanel();
-    const vision = screen.getByTestId("vision-toggle");
-    expect(vision.getAttribute("role")).toBe("switch");
-    expect(vision.getAttribute("data-agent-id")).toBe("cloud-privacy-vision");
-    expect(screen.getByText("Loading your privacy choices…")).toBeTruthy();
-    expect(vision.hasAttribute("disabled")).toBe(true);
-
-    await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
-    expect(apiMock).toHaveBeenCalledWith("/api/v1/me/consents");
-    expect(vision.getAttribute("aria-checked")).toBe("false");
     const trajectory = screen.getByTestId("trajectory-toggle");
+    expect(screen.getByText("Loading your privacy choices…")).toBeTruthy();
+    expect(trajectory.hasAttribute("disabled")).toBe(true);
+    await waitFor(() =>
+      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    );
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/me/consents");
     expect(trajectory.getAttribute("aria-checked")).toBe("true");
     expect(screen.getByText(/the Cloud default \(on\) applies/)).toBeTruthy();
+    expect(screen.queryByTestId("vision-toggle")).toBeNull();
+    expect(
+      screen.getByText(/Account-wide capture controls are not available/),
+    ).toBeTruthy();
   });
 
   it("renders the opt-in server default when training consent is required", async () => {
@@ -167,7 +168,7 @@ describe("PrivacyPanel", () => {
   it("renders an explicit grant without the default note", async () => {
     apiMock.mockResolvedValueOnce(
       consentList(
-        [{ ...visionRecord(true), purpose: "trajectory_training" }],
+        [{ ...trainingRecord(true), purpose: "trajectory_training" }],
         false,
       ),
     );
@@ -190,20 +191,22 @@ describe("PrivacyPanel", () => {
 
   it("records a consent change on the server and shows the receipt", async () => {
     apiMock
-      .mockResolvedValueOnce(consentList([]))
-      .mockResolvedValueOnce({ consent: visionRecord(true) });
+      .mockResolvedValueOnce(consentList([trainingRecord(false)]))
+      .mockResolvedValueOnce({ consent: trainingRecord(true) });
     renderPanel();
-    const vision = screen.getByTestId("vision-toggle");
-    await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
-
-    fireEvent.click(vision);
+    const trajectory = screen.getByTestId("trajectory-toggle");
     await waitFor(() =>
-      expect(vision.getAttribute("aria-checked")).toBe("true"),
+      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    );
+
+    fireEvent.click(trajectory);
+    await waitFor(() =>
+      expect(trajectory.getAttribute("aria-checked")).toBe("true"),
     );
     expect(apiMock).toHaveBeenLastCalledWith("/api/v1/me/consents", {
       method: "POST",
       json: {
-        purpose: "vision_capture",
+        purpose: "trajectory_training",
         granted: true,
         policyVersion: "2026-09-privacy-panel-v1",
       },
@@ -214,33 +217,35 @@ describe("PrivacyPanel", () => {
 
   it("keeps the prior state and shows an error when recording fails", async () => {
     apiMock
-      .mockResolvedValueOnce(consentList([visionRecord(false)]))
+      .mockResolvedValueOnce(consentList([trainingRecord(false)]))
       .mockRejectedValueOnce(new Error("consent store offline"));
     renderPanel();
-    const vision = screen.getByTestId("vision-toggle");
-    await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
+    const trajectory = screen.getByTestId("trajectory-toggle");
+    await waitFor(() =>
+      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    );
 
-    fireEvent.click(vision);
+    fireEvent.click(trajectory);
     expect(
       (await screen.findByTestId("privacy-consent-error")).textContent,
     ).toContain("consent store offline");
-    expect(vision.getAttribute("aria-checked")).toBe("false");
+    expect(trajectory.getAttribute("aria-checked")).toBe("false");
   });
 
   it("shows a load error with retry and never falls back to local state", async () => {
     apiMock
       .mockRejectedValueOnce(new Error("network down"))
-      .mockResolvedValueOnce(consentList([visionRecord(true)]));
+      .mockResolvedValueOnce(consentList([trainingRecord(true)]));
     renderPanel();
     expect(await screen.findByText("network down")).toBeTruthy();
-    expect(screen.getByTestId("vision-toggle").hasAttribute("disabled")).toBe(
-      true,
-    );
+    expect(
+      screen.getByTestId("trajectory-toggle").hasAttribute("disabled"),
+    ).toBe(true);
 
     fireEvent.click(screen.getByTestId("privacy-consents-retry"));
     await waitFor(() =>
       expect(
-        screen.getByTestId("vision-toggle").getAttribute("aria-checked"),
+        screen.getByTestId("trajectory-toggle").getAttribute("aria-checked"),
       ).toBe("true"),
     );
   });

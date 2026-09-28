@@ -1,6 +1,5 @@
 /**
  * Privacy controls + data-subject rights, all server-authoritative:
- *   - vision / screen-capture consent (`/api/v1/me/consents`, default off)
  *   - model-call training consent (`/api/v1/me/consents`; with no recorded
  *     choice the server-reported deployment default applies, and the copy
  *     says which default that is)
@@ -58,12 +57,10 @@ export function PrivacyPanel() {
   });
 
   const loaded = consents.isSuccess;
-  // Both switches render the policy the server enforces: the recorded choice,
+  // Render the training policy the server enforces: the recorded choice,
   // or the deployment default when none is recorded. Until the policy loads
-  // they stay off and disabled rather than guessing.
-  const vision = consents.data?.effective.vision_capture;
+  // the switch stays off and disabled rather than guessing.
   const trajectory = consents.data?.effective.trajectory_training;
-  const visionChecked = vision?.granted ?? false;
   const trajectoryChecked = trajectory?.granted ?? false;
 
   const onConsentChange = (purpose: ConsentPurpose, granted: boolean) => {
@@ -148,21 +145,15 @@ export function PrivacyPanel() {
         })}
       >
         {consentStatus}
-        <SettingsSwitchRow
-          agentId="cloud-privacy-vision"
-          group="cloud-privacy"
+        <SettingsRow
           icon={Camera}
-          testId="vision-toggle"
-          label={t("cloud.privacyPanel.visionTitle", {
-            defaultValue: "Allow vision / screen capture",
+          label={t("cloud.privacyPanel.visionPermissionsTitle", {
+            defaultValue: "Vision and screen capture",
           })}
-          description={t("cloud.privacyPanel.visionConsentDescription", {
+          description={t("cloud.privacyPanel.visionPermissionsDescription", {
             defaultValue:
-              "Off unless you turn it on. Your choice is saved to your Eliza Cloud account; screen and camera capture still ask for device permission. Remote models charge per image — check Settings → Billing first.",
+              "Manage camera and screen capture through your device permissions. Account-wide capture controls are not available yet.",
           })}
-          checked={visionChecked}
-          disabled={!loaded || pendingPurpose !== null}
-          onCheckedChange={(next) => onConsentChange("vision_capture", next)}
         />
         <SettingsSwitchRow
           agentId="cloud-privacy-trajectory"
@@ -200,7 +191,7 @@ export function PrivacyPanel() {
             <>
               {t("cloud.privacyPanel.downloadAccountDescription", {
                 defaultValue:
-                  "Download a JSON archive of the records linked to your account and organization. Secrets and credentials are redacted.",
+                  "Download a JSON archive of records owned by your account. Organization-wide records are excluded. Secrets and credentials are redacted.",
               })}
               {exportState.kind === "ready" ? (
                 <span role="status" className="block">

@@ -101,6 +101,43 @@ it("holds entries until a durable sink commits them and keeps them across restar
   ]);
 });
 
+it("rejects sink attachment and every queued record when storage is unavailable", async () => {
+  const { file, agentId } = await storage();
+  const runtime = await openRuntime(file, agentId);
+  const sink = await createRuntimeLogAuditSink(runtime);
+  await runtime.close();
+  const audit = new SandboxAuditLog({
+    console: false,
+    requireDurableSink: true,
+  });
+  const records = Promise.allSettled([
+    audit.record({
+      type: "sandbox_lifecycle",
+      summary: "first",
+      severity: "info",
+    }),
+    audit.record({
+      type: "sandbox_lifecycle",
+      summary: "second",
+      severity: "info",
+    }),
+  ]);
+
+  await expect(audit.addSink(sink)).rejects.toMatchObject({
+    code: "AUDIT_SINK_FAILED",
+    context: { failedEntries: 2 },
+  });
+  expect(await records).toMatchObject([
+    { status: "rejected", reason: { code: "AUDIT_SINK_FAILED" } },
+    { status: "rejected", reason: { code: "AUDIT_SINK_FAILED" } },
+  ]);
+  expect(audit.pendingCount).toBe(0);
+
+  const reopened = await openRuntime(file, agentId);
+  cleanups.push(() => reopened.close());
+  expect(await reopened.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE })).toEqual([]);
+});
+
 it("rejects a record when the required durable sink cannot commit it", async () => {
   const { file, agentId } = await storage();
   const runtime = await openRuntime(file, agentId);

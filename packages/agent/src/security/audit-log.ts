@@ -230,11 +230,28 @@ export class SandboxAuditLog {
     this.sinks.push(sink);
     if (!sink.durable) return;
     const pending = this.outbox.splice(0);
-    await Promise.all(
-      pending.map(({ entry, resolve, reject }) =>
-        this.deliver(entry).then(resolve, reject),
-      ),
+    const outcomes = await Promise.allSettled(
+      pending.map(async ({ entry, resolve, reject }) => {
+        try {
+          await this.deliver(entry);
+          resolve();
+        } catch (error) {
+          // error-policy:J2 settle the held record and fail sink attachment too.
+          reject(error);
+          throw error;
+        }
+      }),
     );
+    const failures = outcomes.flatMap((outcome) =>
+      outcome.status === "rejected" ? [outcome.reason] : [],
+    );
+    if (failures.length > 0) {
+      throw new ElizaError("Audit outbox could not be durably drained", {
+        code: "AUDIT_SINK_FAILED",
+        cause: new AggregateError(failures),
+        context: { failedEntries: failures.length },
+      });
+    }
   }
 
   /**
