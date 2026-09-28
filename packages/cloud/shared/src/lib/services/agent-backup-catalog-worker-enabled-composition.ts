@@ -24,6 +24,10 @@ import {
   type AgentBackupCaptureV3LegacyWriterDrainReceipt,
   createAgentBackupCaptureV2CatalogExecutor,
 } from "./agent-backup-capture-v2-catalog-executor";
+import {
+  DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+  MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+} from "./agent-backup-capture-v2-failure-disposition";
 import type { AgentBackupCaptureV3SpoolConfig } from "./agent-backup-capture-v2-spool";
 import { createAgentBackupCaptureV3PublicationSourceResolver } from "./agent-backup-capture-v3-publication-source";
 import { createAgentBackupCaptureV3RuntimeContextResolver } from "./agent-backup-capture-v3-runtime-context";
@@ -40,10 +44,6 @@ import {
   runAgentBackupCatalogCycleStage,
 } from "./agent-backup-catalog-worker-composition";
 import { createAgentBackupCatalogPublicationExecutor } from "./agent-backup-publication-executor";
-
-const MAX_SPOOL_BYTES = 1024 ** 4;
-const MAX_TOKEN_BYTES = 16 * 1024;
-const MAX_PROVIDER_IDENTITY_BYTES = 256;
 import {
   type AgentBackupRestoreCoordinatorStreamer,
   createProductionCoordinatorDependencies,
@@ -51,6 +51,10 @@ import {
 } from "./agent-backup-restore-coordinator";
 import { readAgentBackupRestoreCoordinatorConfig } from "./agent-backup-restore-coordinator-runtime";
 import { streamAgentBackupRestoreV3FromCatalogue } from "./agent-backup-restore-v3-catalogue-stream";
+
+const MAX_SPOOL_BYTES = 1024 ** 4;
+const MAX_TOKEN_BYTES = 16 * 1024;
+const MAX_PROVIDER_IDENTITY_BYTES = 256;
 const PLUGIN_ID_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$/;
 const DEPLOYMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -72,6 +76,8 @@ export interface AgentBackupCatalogWorkerEnabledConfig {
   spool: AgentBackupCaptureV3SpoolConfig;
   spoolCleanupBatchSize: number;
   captureDeadlineMs: number;
+  /** Claims of one capture operation before a retryable failure escalates (#23235). */
+  captureEscalationAttempts: number;
   publication: {
     scope: string;
     primaryEndpointAlias: string;
@@ -392,6 +398,16 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
       max: 100,
     }),
     captureDeadlineMs,
+    captureEscalationAttempts:
+      env.AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS === undefined ||
+      env.AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS === ""
+        ? DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS
+        : boundedInteger({
+            env,
+            name: "AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS",
+            min: 1,
+            max: MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+          }),
     publication: {
       scope,
       primaryEndpointAlias,
@@ -526,6 +542,7 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
       resolveContext,
       recordCaptured: recordCapturedAgentBackupManifest,
       captureDeadlineMs: config.captureDeadlineMs,
+      captureEscalationAttempts: config.captureEscalationAttempts,
     },
     config.legacyWriterDrain,
   );
@@ -543,23 +560,6 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
     backup: dependencies.createAccountDeletionBackup(registry),
     spool: dependencies.createAccountDeletionSpool(config.spool),
   });
-  return Object.freeze({
-    enabled: true,
-    accountDeletionAuthorities,
-    async runCycle(signal?: AbortSignal) {
-      const summary = await runAgentBackupCatalogCycleStage("catalog-runtime", () =>
-        dependencies.runCycle({
-          config: config.runtime,
-          registry,
-          captureExecutor,
-          publicationExecutor,
-          spoolCleanupJanitor,
-          signal,
-        }),
-      );
-      await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
-        dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
-      );
   // The restore coordinator shares this worker's KMS key bundle and storage
   // registry. It is disabled-first and validated with the rest of the config.
   const restoreConfig = readAgentBackupRestoreCoordinatorConfig(input.env);
@@ -593,10 +593,23 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
   const restoreDependencies = restoreConfig.enabled
     ? createProductionCoordinatorDependencies(restoreStreamer)
     : null;
-      return summary;
-    },
-  });
-}
+  return Object.freeze({
+    enabled: true,
+    accountDeletionAuthorities,
+    async runCycle(signal?: AbortSignal) {
+      const summary = await runAgentBackupCatalogCycleStage("catalog-runtime", () =>
+        dependencies.runCycle({
+          config: config.runtime,
+          registry,
+          captureExecutor,
+          publicationExecutor,
+          spoolCleanupJanitor,
+          signal,
+        }),
+      );
+      await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
+        dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
+      );
       if (restoreConfig.enabled && restoreDependencies) {
         const restore = await runAgentBackupCatalogCycleStage("restore-coordinator", () =>
           runAgentBackupRestoreCoordinatorCycle({
@@ -613,3 +626,7 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
           });
         }
       }
+      return summary;
+    },
+  });
+}
