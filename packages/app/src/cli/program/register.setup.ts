@@ -3,17 +3,22 @@
  * behind it. Bootstraps the XDG state-dir config and the agent workspace:
  * sets a provider key non-interactively from --provider/--key/--key-stdin flags
  * or walks the TTY wizard, persists it into the config's `env` section, ensures
- * the workspace directory exists, then prints a doctor summary. Also exports the
- * config read/write helpers (loadConfig/saveConfig/resolveConfigPath),
- * hasModelKey provider detection, and runProviderWizard for reuse elsewhere.
+ * the workspace directory exists, then prints a doctor summary. Also exports
+ * saveConfigEnvValues (config `env` writes through the canonical
+ * load/saveElizaConfig), hasModelKey provider detection, and runProviderWizard
+ * for reuse elsewhere.
  * Secret entry suppresses terminal echo; --key-stdin is preferred over --key so
  * keys never land in shell history or process lists.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { resolveConfigPath } from "@elizaos/agent";
-import { type Command } from "commander";
-import JSON5 from "json5";
+import {
+  collectConfigEnvVars,
+  loadElizaConfig,
+  resolveConfigPath,
+  saveElizaConfig,
+} from "@elizaos/agent";
+import type { Command } from "commander";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
@@ -131,30 +136,16 @@ async function readStdinValue(): Promise<string> {
 // ---------------------------------------------------------------------------
 // Config read/write
 // ---------------------------------------------------------------------------
-export { resolveConfigPath };
-export function loadConfig(configPath: string): Record<string, unknown> {
-  if (!fs.existsSync(configPath)) return {};
-  const raw = fs.readFileSync(configPath, "utf-8");
-  let parsed: unknown;
-  try {
-    parsed = JSON5.parse(raw);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Cannot parse config at ${configPath}: ${reason}. Fix or remove the file before running setup.`,
-    );
-  }
-  return typeof parsed === "object" && parsed !== null
-    ? (parsed as Record<string, unknown>)
-    : {};
-}
-export function saveConfig(
-  configPath: string,
-  config: Record<string, unknown>,
-): void {
-  const dir = path.dirname(configPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+/**
+ * Merge `values` into the config's `env` section and persist it through the
+ * canonical `saveElizaConfig` (0600 file, atomic temp+rename,
+ * symlink-preserving, persist-path and bind-mount overlay aware). Returns the
+ * canonical config path for display.
+ */
+export function saveConfigEnvValues(values: Record<string, string>): string {
+  const config = loadElizaConfig();
+  saveElizaConfig({ ...config, env: { ...config.env, ...values } });
+  return resolveConfigPath();
 }
 function resolveLaunchCommand(cwd = process.cwd()): string {
   const localEntry = path.join(cwd, "eliza.mjs");
@@ -162,15 +153,6 @@ function resolveLaunchCommand(cwd = process.cwd()): string {
   return fs.existsSync(localEntry) && fs.existsSync(localPackage)
     ? "node eliza.mjs start"
     : "eliza start";
-}
-function getEnvSection(
-  config: Record<string, unknown>,
-): Record<string, string> {
-  const env = config.env;
-  if (env && typeof env === "object" && !Array.isArray(env)) {
-    return { ...(env as Record<string, string>) };
-  }
-  return {};
 }
 export function hasModelKey(
   env: Record<string, string | undefined>,
@@ -203,19 +185,16 @@ export function hasModelKey(
 // Interactive provider wizard
 // ---------------------------------------------------------------------------
 export async function runProviderWizard(
-  configPath: string,
   options: ProviderWizardOptions = {},
 ): Promise<void> {
   const prompt = options.ask ?? ask;
   const promptSecret = options.askSecret ?? askSecret;
   const env = options.env ?? process.env;
   const log = options.log ?? console.log;
-  const config = loadConfig(configPath);
-  const envSection = getEnvSection(config);
-  const combinedEnv = { ...env, ...envSection } as Record<
-    string,
-    string | undefined
-  >;
+  const combinedEnv = {
+    ...env,
+    ...collectConfigEnvVars(loadElizaConfig()),
+  } as Record<string, string | undefined>;
   const existingKey = hasModelKey(combinedEnv);
   if (existingKey) {
     log(
@@ -261,10 +240,7 @@ export async function runProviderWizard(
     log(`${theme.warn("⚠")}  No value entered. Skipping.`);
     return;
   }
-  // Write into config env section
-  envSection[provider.key] = value;
-  config.env = envSection;
-  saveConfig(configPath, config);
+  const configPath = saveConfigEnvValues({ [provider.key]: value });
   log(
     `${theme.success("✓")} Saved ${theme.command(provider.key)} to ${configPath}`,
   );
@@ -298,10 +274,8 @@ export function registerSetupCommand(program: Command) {
         wizard: boolean;
       }) => {
         await runCommandWithRuntime(defaultRuntime, async () => {
-          const { loadElizaConfig } = await import("@elizaos/agent");
           const { ensureAgentWorkspace, resolveDefaultAgentWorkspaceDir } =
             await import("@elizaos/agent");
-          const configPath = resolveConfigPath();
           const keyFromStdin = opts.keyStdin ? await readStdinValue() : "";
           const keyValue = opts.key ?? keyFromStdin;
           if (opts.key && opts.keyStdin) {
@@ -322,11 +296,7 @@ export function registerSetupCommand(program: Command) {
               providerEntry?.key ??
               opts.provider.toUpperCase().replace(/[^A-Z0-9]/g, "_") +
                 "_API_KEY";
-            const config = loadConfig(configPath);
-            const envSection = getEnvSection(config);
-            envSection[envKey] = keyValue;
-            config.env = envSection;
-            saveConfig(configPath, config);
+            saveConfigEnvValues({ [envKey]: keyValue });
             console.log(`${theme.success("✓")} Saved ${theme.command(envKey)}`);
             if (opts.key) {
               console.log(
@@ -336,7 +306,7 @@ export function registerSetupCommand(program: Command) {
           }
           // ── Interactive wizard (TTY only, skipped with --no-wizard) ──────
           if (opts.wizard !== false && process.stdin.isTTY && !opts.provider) {
-            await runProviderWizard(configPath);
+            await runProviderWizard();
           }
           // ── Workspace bootstrap ──────────────────────────────────────────
           let config: Record<string, unknown> = {};

@@ -26,7 +26,7 @@ import {
   resolveApiBindHost,
 } from "@elizaos/core/runtime-env";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { type Command } from "commander";
+import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
 
@@ -106,13 +106,12 @@ async function openAuthStoreFromCli(): Promise<{
     },
   };
 }
+const DEFAULT_PROOF_TIMEOUT_MS = 5 * 60 * 1000;
 interface ProofChallengeOptions {
-  proofPath: string;
   challenge: string;
   reader: () => Promise<string | null>;
   pollIntervalMs?: number;
-  timeoutMs?: number;
-  log?: (line: string) => void;
+  timeoutMs: number;
 }
 /**
  * Wait for the operator to write the challenge token into the proof file.
@@ -122,9 +121,8 @@ async function waitForProofMatch(
   options: ProofChallengeOptions,
 ): Promise<boolean> {
   const interval = options.pollIntervalMs ?? 500;
-  const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+  while (Date.now() - start < options.timeoutMs) {
     const seen = await options.reader();
     if (seen !== null && seen.trim() === options.challenge) return true;
     await new Promise((resolve) => setTimeout(resolve, interval));
@@ -174,16 +172,26 @@ export async function runElizaAuthReset(
   const challenge = params.challenge ?? crypto.randomBytes(32).toString("hex");
   const stateDir = resolveElizaStateDir();
   const proofPath = path.join(stateDir, "auth", RESET_PROOF_FILENAME);
+  const timeoutMs = params.proofTimeoutMs ?? DEFAULT_PROOF_TIMEOUT_MS;
+  const waitMinutes = Math.max(1, Math.round(timeoutMs / 60_000));
   log(theme.heading("Eliza auth reset"));
   log(
     theme.muted("This revokes every active session. Identities and password"),
   );
   log(theme.muted("hashes are NOT touched — log in afterwards as usual."));
   log("");
+  // The challenge is minted per run, so the operator must write it while THIS
+  // process waits; re-running the command would issue a different token.
   log("To prove filesystem access, write the following 32-byte hex token");
-  log(`into ${theme.command(proofPath)} and then re-run this command:`);
+  log(`into ${theme.command(proofPath)}:`);
   log("");
   log(`  ${theme.command(challenge)}`);
+  log("");
+  log(
+    theme.muted(
+      `Keep this command running — it waits up to ${waitMinutes} minute(s) for the file and continues automatically. Re-running it issues a new token.`,
+    ),
+  );
   log("");
   const reader =
     params.proofReader ??
@@ -196,18 +204,16 @@ export async function runElizaAuthReset(
       }
     });
   const matched = await waitForProofMatch({
-    proofPath,
     challenge,
     reader,
-    log,
     pollIntervalMs: params.proofPollIntervalMs,
-    timeoutMs: params.proofTimeoutMs,
+    timeoutMs,
   });
   if (!matched) {
     return {
       ok: false,
       reason: "proof_failed",
-      message: "filesystem proof was not written within the timeout",
+      message: `filesystem proof was not written to ${proofPath} within ${waitMinutes} minute(s); run the command again and write the NEW token it prints while it waits`,
     };
   }
   let store = params.store;
@@ -217,35 +223,38 @@ export async function runElizaAuthReset(
     store = opened.store;
     cleanup = opened.close;
   }
-  const now = Date.now();
-  // Revoke every active session by walking owner identities. The schema
-  // doesn't index sessions across identities so we iterate.
-  const owners = await store.listIdentitiesByKind("owner");
   let revoked = 0;
-  for (const ident of owners) {
-    revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
+  try {
+    const now = Date.now();
+    // Revoke every active session by walking owner identities. The schema
+    // doesn't index sessions across identities so we iterate.
+    const owners = await store.listIdentitiesByKind("owner");
+    for (const ident of owners) {
+      revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
+    }
+    // Machines can have sessions too. Sweep them.
+    const machines = await store.listIdentitiesByKind("machine");
+    for (const ident of machines) {
+      revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
+    }
+    const { appendAuditEvent } = await import("../../api/auth/index");
+    await appendAuditEvent(
+      {
+        actorIdentityId: null,
+        ip: null,
+        userAgent: "eliza-cli auth reset",
+        action: "auth.reset.cli",
+        outcome: "success",
+        metadata: { revoked },
+      },
+      { store },
+    );
+    if (!params.skipProofCleanup) {
+      await fs.rm(proofPath, { force: true });
+    }
+  } finally {
+    if (cleanup) await cleanup();
   }
-  // Machines can have sessions too. Sweep them.
-  const machines = await store.listIdentitiesByKind("machine");
-  for (const ident of machines) {
-    revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
-  }
-  const { appendAuditEvent } = await import("../../api/auth/index");
-  await appendAuditEvent(
-    {
-      actorIdentityId: null,
-      ip: null,
-      userAgent: "eliza-cli auth reset",
-      action: "auth.reset.cli",
-      outcome: "success",
-      metadata: { revoked },
-    },
-    { store },
-  );
-  if (!params.skipProofCleanup) {
-    await fs.rm(proofPath, { force: true });
-  }
-  if (cleanup) await cleanup();
   log("");
   log(theme.success(`auth reset complete — revoked ${revoked} session(s)`));
   return { ok: true };
@@ -451,20 +460,11 @@ export async function runDevWalletLogin(
   let saveError: string | undefined;
   if (params.save !== false) {
     try {
-      const { resolveConfigPath, loadConfig, saveConfig } = await import(
-        "./register.setup"
-      );
-      const configPath = resolveConfigPath();
-      const config = loadConfig(configPath);
-      const envSection =
-        config.env && typeof config.env === "object"
-          ? (config.env as Record<string, string>)
-          : {};
-      envSection.ELIZAOS_CLOUD_API_KEY = apiKey;
-      envSection.ELIZAOS_CLOUD_ENABLED = "true";
-      config.env = envSection;
-      saveConfig(configPath, config);
-      savedTo = configPath;
+      const { saveConfigEnvValues } = await import("./register.setup");
+      savedTo = saveConfigEnvValues({
+        ELIZAOS_CLOUD_API_KEY: apiKey,
+        ELIZAOS_CLOUD_ENABLED: "true",
+      });
     } catch (err) {
       // error-policy:J4 explicit user-facing degrade — the key was minted and
       // is still returned/printed, but a failed persist must be LOUD: a muted

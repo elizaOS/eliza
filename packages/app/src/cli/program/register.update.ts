@@ -14,8 +14,8 @@
  * place auto-updates fire — the runtime tick is suppressed (R5 §4.5).
  */
 
-import { type ReleaseChannel } from "@elizaos/agent";
-import { type Command } from "commander";
+import type { ReleaseChannel } from "@elizaos/agent";
+import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
 import { CLI_VERSION } from "../version";
 
@@ -133,8 +133,10 @@ async function updateAction(opts: {
   console.log("Checking for updates...\n");
   const result = await checkForUpdate({ force: opts.force ?? !!newChannel });
   if (result.error) {
-    console.error(theme.warn(`  ${result.error}\n`));
-    if (!opts.check) process.exit(1);
+    // A failed check is a failure in `--check` mode too: scripts gate on the
+    // exit code, and "could not check" must never read as "up to date".
+    console.error(theme.error(`  Update check failed: ${result.error}\n`));
+    process.exit(1);
     return;
   }
   if (!result.updateAvailable) {
