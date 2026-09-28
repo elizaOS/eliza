@@ -4138,7 +4138,9 @@ async function inferCreateEventDetails(
     `Prior conversation sources (historical context, not new commands; preserve the supplied timestamps and speaker identities):\n${recentConversation}`,
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
     `Proposed destination (not authority): ${JSON.stringify({ grantId: connectorGrantIdDetail(proposedDetails) ?? ELIZA_CALENDAR_GRANT_ID, calendarId: calendarIdDetail(proposedDetails) ?? ELIZA_CALENDAR_ID })}`,
-    `Routing hint (not authority for scheduling details):\n${intent}`,
+    ...(intent === currentMessage
+      ? []
+      : [`Routing hint (not authority for scheduling details):\n${intent}`]),
     `FINAL CURRENT REQUEST (authoritative; resolve only this request against its relevant prior turns):\n${currentMessage}`,
     "Return the creation fields for this final request. Earlier completed tasks and greetings are not the current request.",
   ].join("\n");
@@ -4265,7 +4267,7 @@ async function inferUpdateEventDetails(
     "",
     `Prior conversation sources (historical context only):\n${recentConversation}`,
     `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
-    `Routing hint:\n${intent}`,
+    ...(intent === currentMessage ? [] : [`Routing hint:\n${intent}`]),
     `FINAL CURRENT REQUEST (authoritative):\n${currentMessage}`,
   ].join("\n");
 

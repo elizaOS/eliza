@@ -165,6 +165,118 @@ async function create(
 }
 
 describe("calendar conversational write boundary", () => {
+  it.each(["create_event", "update_event"] as const)(
+    "omits only an exactly equal resolved routing hint from %s extraction",
+    async (operation) => {
+      const observedAt = "2027-09-17T12:00:00.000Z";
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(observedAt));
+      try {
+        const currentMessage = "Schedule the planning appointment tomorrow.";
+        const history =
+          "[2027-09-17T11:58:00Z] user: Use the work calendar.\nKeep this continuation line.\n[2027-09-17T11:59:00Z] assistant: What time?";
+        const calls: CalendarModelCallArgs[] = [];
+        const hints = [
+          currentMessage,
+          "Resolve the planning appointment time.",
+          currentMessage.replace("the planning", "the  planning"),
+          currentMessage.toLowerCase(),
+        ];
+        for (const intent of hints) {
+          const { runtime, service } = fixture([busy]);
+          const updateCalendarEvent = vi.fn();
+          Object.assign(service, {
+            getConditionalCalendarMutationTarget: vi.fn(async () => busy),
+            updateCalendarEvent,
+          });
+          const runJsonModel = vi.fn(async (args: CalendarModelCallArgs) => {
+            calls.push(args);
+            return {
+              rawResponse: '{"requiresInput":true}',
+              parsed: { requiresInput: true },
+            };
+          });
+          const action = createCalendarActionRunner({
+            runJsonModel: runJsonModel as CalendarActionDeps["runJsonModel"],
+            runTextModel: async () => null,
+            recentConversationTexts: async () => [],
+          });
+          await action.handler(
+            runtime,
+            {
+              id: "00000000-0000-4000-8000-000000000aab",
+              entityId: "00000000-0000-4000-8000-000000000aac",
+              roomId: "00000000-0000-4000-8000-000000000aad",
+              createdAt: Date.parse(observedAt),
+              content: {
+                text: currentMessage,
+                metadata: { uiTimeZone: "America/New_York" },
+              },
+            } as Memory,
+            { values: { recentMessages: history }, data: {}, text: "" },
+            {
+              parameters: {
+                subaction: operation,
+                intent,
+                ...(operation === "update_event"
+                  ? { targetKind: "eventId", target: busy.externalId }
+                  : {}),
+                details: {
+                  timeZone: "America/New_York",
+                  ...(operation === "update_event"
+                    ? { eventId: busy.externalId }
+                    : { grantId: key.grantId, calendarId: key.calendarId }),
+                },
+              },
+            },
+          );
+          expect(runJsonModel).toHaveBeenCalledTimes(1);
+          expect(service.createCalendarEvent).not.toHaveBeenCalled();
+          expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+          expect(updateCalendarEvent).not.toHaveBeenCalled();
+        }
+
+        const heading =
+          operation === "create_event"
+            ? "Routing hint (not authority for scheduling details):"
+            : "Routing hint:";
+        const equal = calls[0];
+        expect(equal.prompt).not.toContain(heading);
+        expect(equal.prompt).toContain(history);
+        expect(equal.prompt).toContain(observedAt);
+        expect(equal.prompt).toContain("Current timezone: America/New_York");
+        expect(equal.prompt).toContain(`\n${currentMessage}`);
+        expect(equal).toMatchObject({
+          actionType: `lifeops.calendar.extract_${operation}`,
+          temperature: 0,
+          source: "action:calendar",
+          responseSchema: { type: "object" },
+        });
+        if (operation === "create_event") {
+          expect(equal.prompt).toContain("LOCAL DATE ANCHORS");
+          expect(equal.prompt).toContain('"grantId":"eliza-calendar"');
+          expect(equal.prompt).toContain('"calendarId":"primary"');
+        } else {
+          expect(equal.prompt).toContain("Current event:");
+          expect(equal.prompt).toContain(`title: ${busy.title}`);
+          expect(equal.prompt).toContain(`startAt: ${busy.startAt}`);
+          expect(equal.prompt).toContain(`endAt: ${busy.endAt}`);
+        }
+        for (const [index, distinct] of calls.entries()) {
+          if (index === 0) continue;
+          const hintEntry = `${heading}\n${hints[index]}\n`;
+          expect(distinct.prompt).toContain(hintEntry);
+          expect(distinct.prompt.replace(hintEntry, "")).toBe(equal.prompt);
+          expect(distinct.responseSchema).toEqual(equal.responseSchema);
+          expect(distinct.actionType).toBe(equal.actionType);
+          expect(distinct.temperature).toBe(equal.temperature);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("grounds same-named calendars in their distinct account identities", async () => {
     const calendars = ["personal@example.test", "work@company.test"].map(
       (accountEmail, index) => ({
