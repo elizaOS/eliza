@@ -510,6 +510,63 @@ describe("Miniflare Durable Object integration", () => {
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
 
+  test("a per-key rate_limit caps one key under the plan tier without limiting others", async () => {
+    const gate = "rate-limit:v2:api-key-cap";
+    const tier = {
+      windowMs: 60_000,
+      maxRequests: 10,
+      windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+    };
+    const capped = { id: "key-capped", maxRequests: 2 };
+    const decide = async (endpointType: string, apiKey?: typeof capped) => {
+      const response = await post(
+        "/rate-limit",
+        { ...tier, endpointType, ...(apiKey && { apiKey }) },
+        gate,
+      );
+      return {
+        status: response.status,
+        body: JSON.parse(await response.text()) as {
+          allowed: boolean;
+          remaining: number;
+        },
+      };
+    };
+
+    // The key cap counts across endpoints and is reported as the binding limit.
+    expect(await decide("completions", capped)).toMatchObject({
+      status: 200,
+      body: { allowed: true, remaining: 1 },
+    });
+    expect((await decide("embeddings", capped)).status).toBe(200);
+    expect(await decide("completions", capped)).toMatchObject({
+      status: 429,
+      body: { allowed: false, remaining: 0 },
+    });
+    // Another key, and a key-less caller, still get the rest of the tier.
+    expect(
+      (await decide("completions", { id: "key-other", maxRequests: 2 })).status,
+    ).toBe(200);
+    expect(await decide("completions")).toMatchObject({
+      status: 200,
+      body: { allowed: true },
+    });
+    // An invalid cap is rejected rather than ignored.
+    expect(
+      (
+        await post(
+          "/rate-limit",
+          {
+            ...tier,
+            endpointType: "completions",
+            apiKey: { id: "k", maxRequests: 0 },
+          },
+          gate,
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   test("a separate rate-limit identity answers without duplicating a window across cutover", async () => {
     const windowMs = 1_000;
     const legacyWindowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;

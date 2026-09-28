@@ -291,6 +291,7 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
+          apiKeyId,
         })
       : Promise.resolve(null);
 

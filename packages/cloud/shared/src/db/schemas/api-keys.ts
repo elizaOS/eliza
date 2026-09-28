@@ -47,6 +47,8 @@ export const apiKeys = pgTable(
     // Mobile credentials retain their security attribution after the source
     // app registration is deleted, so this deliberately has no foreign key.
     source_app_id: uuid("source_app_id"),
+    // Requests per minute across every inference endpoint. Enforced by the
+    // inference rate limiter as a cap under the plan tier; it never raises it.
     rate_limit: integer("rate_limit").notNull().default(1000),
     is_active: boolean("is_active").notNull().default(true),
     usage_count: integer("usage_count").default(0).notNull(),
