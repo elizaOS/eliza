@@ -1107,7 +1107,10 @@ jobs:
     # A canonical manual staging dispatch is equally authoritative after the
     # same release and routing checks; supporting it makes intentional pinned
     # releases certifiable when staging is moving faster than hosted runners.
-    if: ${{ always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
+    # A freshness-guard skip also ends green without deploying, so only a run
+    # that released BOTH the Worker and Pages (and therefore ran their exact
+    # commit verification) may certify its tree (#27229/#28746).
+    if: ${{ always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' && needs.release.outputs.api_deployed == 'true' && needs.release.outputs.pages_deployed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

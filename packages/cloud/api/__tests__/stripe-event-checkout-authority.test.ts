@@ -50,6 +50,17 @@ mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
   },
 }));
 mock.module("@/db/helpers", () => ({ dbRead: {} }));
+mock.module("@/lib/services/billing-hold", () => ({
+  billingHoldService: {
+    settleOutstandingShortfalls: async () => ({
+      appliedUsd: "0.000000",
+      outstandingUsd: "0.000000",
+      releasedHoldIds: [],
+      repaymentTransactionId: null,
+    }),
+    getState: async () => ({ status: "clear" }),
+  },
+}));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Authoritative" })),

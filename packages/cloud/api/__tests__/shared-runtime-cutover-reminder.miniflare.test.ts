@@ -124,6 +124,16 @@ const RUNTIME_STUBS = {
         throw new Error("Committed cutover reached Shared inference");
       },
       async stream(agent, rpc, options) {
+        if (rpc.id === "fallback-account-state-stream") {
+          // Echo the server-owned account state the streaming turn admitted.
+          const body = JSON.stringify({
+            accountState: options.trustedAccountState ?? null,
+            funding: options.funding,
+          });
+          return new Response("event: done\\ndata: " + body + "\\n\\n", {
+            headers: { "content-type": "text/event-stream" },
+          });
+        }
         if (rpc.id === "barge-eviction") {
           const roomId = rpc.params.roomId;
           const interrupted = [
@@ -517,6 +527,47 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     );
     expect(echoed).toEqual({ accountState, funding: "platform", history: [] });
 
+    // The signed, expiring pay-action link crosses the boundary unchanged on
+    // both the buffered and the streaming turn.
+    const linked = {
+      ...accountState,
+      recoveryAction: {
+        ...accountState.recoveryAction,
+        link: {
+          url: "https://cloud.example.test/api/v1/eliza/personal/recovery/eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ1In0.c2ln",
+          expiresAt: "2026-09-30T00:00:00.000Z",
+        },
+      },
+    };
+    const linkedTurn = await fallbackTurn(linked);
+    const linkedBody = await linkedTurn.text();
+    expect(linkedTurn.status, linkedBody).toBe(200);
+    expect(
+      JSON.parse(
+        (JSON.parse(linkedBody) as { result: { text: string } }).result.text,
+      ).accountState,
+    ).toEqual(linked);
+    const streamed = await post(
+      `${personalAgent.id}:${journalRoomId}`,
+      "/personal-stream",
+      {
+        operation: "personal-stream",
+        agent: personalAgent,
+        trustedAccountState: linked,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "fallback-account-state-stream",
+          method: "message.send",
+          params: { text: "Where is my Dedicated?", roomId: journalRoomId },
+        },
+      },
+    );
+    const streamedBody = await streamed.text();
+    expect(streamed.status, streamedBody).toBe(200);
+    expect(streamedBody).toContain(
+      JSON.stringify({ accountState: linked, funding: "platform" }),
+    );
+
     // Anything but the exact minimal shape is rejected at the boundary.
     for (const invalid of [
       { ...accountState, cardLast4: "4242" },
@@ -526,6 +577,23 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         recoveryAction: {
           kind: "restore_subscription",
           path: "https://x.test",
+        },
+      },
+      {
+        ...linked,
+        recoveryAction: {
+          ...linked.recoveryAction,
+          link: {
+            ...linked.recoveryAction.link,
+            url: `${linked.recoveryAction.link.url}?card=4242424242424242`,
+          },
+        },
+      },
+      {
+        ...linked,
+        recoveryAction: {
+          ...linked.recoveryAction,
+          link: { ...linked.recoveryAction.link, cardLast4: "4242" },
         },
       },
     ]) {

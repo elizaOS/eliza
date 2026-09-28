@@ -50,7 +50,6 @@ beforeAll(async () => {
     ALTER TABLE credit_transactions ALTER COLUMN id SET DEFAULT gen_random_uuid();
     ALTER TABLE credit_transactions ADD COLUMN user_id uuid;
     ALTER TABLE credit_transactions ADD COLUMN description text;
-    ALTER TABLE credit_transactions ADD COLUMN stripe_payment_intent_id text UNIQUE;
     ALTER TABLE credit_transactions ADD COLUMN created_at timestamp DEFAULT now();
     ALTER TABLE credit_transactions ADD COLUMN settled_at timestamp;
     CREATE TABLE generations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, status text, metadata jsonb);

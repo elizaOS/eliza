@@ -7265,5 +7265,19 @@
   "desktop.tray.hideWindow": "Itago ang Window",
   "desktop.tray.quit": "Huminto",
   "desktop.tray.testNotification.title": "Desktop",
-  "desktop.tray.testNotification.body": "Nakakonekta at sumasagot ang mga renderer tray action."
+  "desktop.tray.testNotification.body": "Nakakonekta at sumasagot ang mga renderer tray action.",
+  "chat.personalRoute.retryNotice": "Lumilipat ng runtime ang iyong Eliza. Ibinalik namin ang mensahe mo sa composer; ipadala ulit maya-maya.",
+  "chat.personalRoute.switchedNotice": "Nasa iyong Dedicated Eliza na ang usapang ito. Ibinalik namin ang mensahe mo sa composer; ipadala ulit.",
+  "chat.personalRoute.switchFailedNotice": "Lumipat ang usapang ito sa iyong Dedicated Eliza, pero hindi makakonekta ang app. Ibinalik namin ang mensahe mo sa composer; subukan ulit.",
+  "chat.personalFallback.reason.billingSuspended": "Naka-pause ang iyong Dedicated Eliza dahil ubos na ang credits ng account mo.",
+  "chat.personalFallback.reason.paymentFailed": "Naka-pause ang iyong Dedicated Eliza dahil pumalya ang isang bayad sa subscription.",
+  "chat.personalFallback.reason.subscriptionEnded": "Naka-pause ang iyong Dedicated Eliza dahil natapos na ang subscription mo.",
+  "chat.personalFallback.recoveryPending": "Naibalik na ang billing at nagre-restart ang iyong Dedicated Eliza. Si Shared Eliza muna ang sasagot hanggang makabalik ito.",
+  "chat.personalFallback.addCredits": "Magdagdag ng credits",
+  "chat.personalFallback.restoreSubscription": "Ibalik ang subscription",
+  "chat.personalFallback.sharedActive": "Kausap mo si Shared Eliza. Hindi magagamit ang memorya ng Dedicated Eliza hangga't hindi naibabalik ang billing.",
+  "chat.personalFallback.retainedUntil": "Itatabi ang iyong Dedicated Eliza hanggang {{date}}.",
+  "chat.personalFallback.retry": "Subukan ulit",
+  "chat.personalFallback.reconciling": "Ibinabalik ng iyong Dedicated Eliza ang kamakailang usapan mo. Karaniwang ilang segundo lang ito.",
+  "chat.personalFallback.fallbackPending": "Lumilipat ang iyong Eliza sa Shared. Karaniwang ilang segundo lang ito."
 }

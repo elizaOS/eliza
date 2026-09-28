@@ -69,6 +69,7 @@ import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
 } from "../organization-inference-admission";
+import { hydrationSettledWithin, SHARED_TURN_HYDRATION_WAIT_MS } from "./bounded-hydration";
 import {
   formatPersonalSharedFallbackAccountContext,
   type PersonalSharedFallbackAccountState,
@@ -967,6 +968,11 @@ async function characterFor(
         });
       });
     options.executionCtx.waitUntil(hydration);
+    // Join the authoritative fill for a bounded time before failing the turn.
+    if (await hydrationSettledWithin(hydration)) {
+      const hydrated = linkedCharacterMemoryCache.get(characterId);
+      if (hydrated) return projectSharedAgentCharacter(agent, hydrated);
+    }
     throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
   }
   return projectSharedAgentCharacter(agent, linked);
@@ -1062,6 +1068,7 @@ async function admitTurn(
       admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
         agent.organization_id,
         executionCtx,
+        { awaitHydrationMs: SHARED_TURN_HYDRATION_WAIT_MS },
       );
     } catch (error) {
       // error-policy:J1 a combined policy miss remains a retryable warmup and

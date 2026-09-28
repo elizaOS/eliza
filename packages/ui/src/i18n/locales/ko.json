@@ -7349,5 +7349,19 @@
   "walletkeys.err.generic": "지갑 키를 {{verb}}하지 못했어요. 다시 시도해 주세요. (HTTP {{status}})",
   "walletkeys.err.rateLimited": "요청이 너무 많아요. 잠시 후 다시 시도해 주세요. (HTTP {{status}})",
   "walletkeys.err.serverDown": "지갑 키를 {{verb}}하지 못했어요. 볼트 서비스를 사용할 수 없어요. 잠시 후 다시 시도해 주세요. (HTTP {{status}})",
-  "walletkeys.err.unauthorized": "여기서 지갑 키를 관리할 권한이 없어요. (HTTP {{status}})"
+  "walletkeys.err.unauthorized": "여기서 지갑 키를 관리할 권한이 없어요. (HTTP {{status}})",
+  "chat.personalRoute.retryNotice": "Eliza의 실행 환경을 전환하는 중입니다. 메시지를 입력창에 되돌려 두었으니 잠시 후 다시 보내 주세요.",
+  "chat.personalRoute.switchedNotice": "이 대화는 이제 전용 Eliza에서 진행됩니다. 메시지를 입력창에 되돌려 두었으니 다시 보내 주세요.",
+  "chat.personalRoute.switchFailedNotice": "이 대화가 전용 Eliza로 옮겨졌지만 앱이 연결하지 못했습니다. 메시지를 입력창에 되돌려 두었으니 다시 시도해 주세요.",
+  "chat.personalFallback.reason.billingSuspended": "계정 크레딧이 소진되어 전용 Eliza가 일시 중지되었습니다.",
+  "chat.personalFallback.reason.paymentFailed": "구독 결제에 실패하여 전용 Eliza가 일시 중지되었습니다.",
+  "chat.personalFallback.reason.subscriptionEnded": "구독이 종료되어 전용 Eliza가 일시 중지되었습니다.",
+  "chat.personalFallback.recoveryPending": "결제가 복구되어 전용 Eliza를 다시 시작하는 중입니다. 돌아올 때까지 공유 Eliza가 응답합니다.",
+  "chat.personalFallback.addCredits": "크레딧 추가",
+  "chat.personalFallback.restoreSubscription": "구독 복구",
+  "chat.personalFallback.sharedActive": "지금은 공유 Eliza와 대화 중입니다. 결제가 복구될 때까지 전용 Eliza의 메모리는 사용할 수 없습니다.",
+  "chat.personalFallback.retainedUntil": "전용 Eliza는 {{date}}까지 보관됩니다.",
+  "chat.personalFallback.retry": "다시 시도",
+  "chat.personalFallback.reconciling": "전용 Eliza가 최근 대화를 복원하는 중입니다. 보통 몇 초 정도 걸립니다.",
+  "chat.personalFallback.fallbackPending": "Eliza를 공유로 전환하는 중입니다. 보통 몇 초 정도 걸립니다."
 }

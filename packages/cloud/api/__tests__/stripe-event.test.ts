@@ -28,10 +28,14 @@ const refundCredits = mock(async () => ({
   transaction: { id: "tx-reinstated" },
   newBalance: 100,
 }));
-const recordLostChargebackHold = mock(async () => ({
-  hold: { id: "hold-1" },
-  created: true,
+const releaseShortfallHoldForReinstatement = mock(async () => null);
+const settleOutstandingShortfalls = mock(async () => ({
+  appliedUsd: "0.000000",
+  outstandingUsd: "0.000000",
+  releasedHoldIds: [],
+  repaymentTransactionId: null,
 }));
+const getBillingHoldState = mock(async () => ({ status: "clear" }));
 const logWarning = mock(async (_warning: { context?: unknown }) => true);
 const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
@@ -100,7 +104,13 @@ mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: mock(async () => Response.json({ ok: true })),
 }));
 mock.module("@/db/repositories/payment-reversal-holds", () => ({
-  recordLostChargebackHold,
+  releaseShortfallHoldForReinstatement,
+}));
+mock.module("@/lib/services/billing-hold", () => ({
+  billingHoldService: {
+    settleOutstandingShortfalls,
+    getState: getBillingHoldState,
+  },
 }));
 mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
 mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
@@ -210,7 +220,9 @@ beforeEach(() => {
   addCredits.mockClear();
   clawbackCredits.mockClear();
   refundCredits.mockClear();
-  recordLostChargebackHold.mockClear();
+  releaseShortfallHoldForReinstatement.mockClear();
+  settleOutstandingShortfalls.mockClear();
+  getBillingHoldState.mockClear();
   logWarning.mockClear();
   getByStripeInvoiceId.mockClear();
   getByStripeInvoiceId.mockResolvedValue(null);
@@ -800,58 +812,30 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
-  test("a lost dispute places one organization hold without touching credits", async () => {
+  test("a closed dispute never changes credits or billing holds", async () => {
     getTransactionByStripePaymentIntent.mockResolvedValue({
-      id: "tx-grant",
+      id: "tx-clawback",
       organization_id: "org-1",
-      amount: "45",
-      type: "credit",
+      amount: "-45",
+      type: "clawback",
     });
-    const lost = {
-      id: "dp_lost",
-      status: "lost",
-      amount: 4500,
-      charge: "ch_1",
-      payment_intent: "pi_1",
-    };
-    expect(
-      await processStripeEvent(delivery("charge.dispute.closed", lost)),
-    ).toBe("ack");
-    expect(recordLostChargebackHold).toHaveBeenCalledWith({
-      organizationId: "org-1",
-      stripeDisputeId: "dp_lost",
-      stripeChargeId: "ch_1",
-      stripePaymentIntentId: "pi_1",
-      amountCents: 4500,
-    });
+    for (const status of ["lost", "won"]) {
+      expect(
+        await processStripeEvent(
+          delivery("charge.dispute.closed", {
+            id: `dp_${status}`,
+            status,
+            amount: 4500,
+            charge: "ch_1",
+            payment_intent: "pi_1",
+          }),
+        ),
+      ).toBe("ack");
+    }
     expect(clawbackCredits).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
-  });
-
-  test("won disputes and lost disputes without a credit grant place no hold", async () => {
-    expect(
-      await processStripeEvent(
-        delivery("charge.dispute.closed", {
-          id: "dp_won",
-          status: "won",
-          amount: 4500,
-          charge: "ch_1",
-          payment_intent: "pi_1",
-        }),
-      ),
-    ).toBe("ack");
-    expect(
-      await processStripeEvent(
-        delivery("charge.dispute.closed", {
-          id: "dp_unattributed",
-          status: "lost",
-          amount: 4500,
-          charge: "ch_2",
-          payment_intent: "pi_no_grant",
-        }),
-      ),
-    ).toBe("ack");
-    expect(recordLostChargebackHold).not.toHaveBeenCalled();
+    expect(releaseShortfallHoldForReinstatement).not.toHaveBeenCalled();
+    expect(settleOutstandingShortfalls).not.toHaveBeenCalled();
   });
 
   test("acks a lookup whose error message is a permanent 'not found'", async () => {

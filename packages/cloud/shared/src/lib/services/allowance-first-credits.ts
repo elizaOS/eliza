@@ -12,6 +12,7 @@ import type { DbTransaction } from "../../db/client";
 import type { BillingFundingReservation } from "../../db/schemas/billing-funding-reservations";
 import { logger } from "../utils/logger";
 import { readAgentFundingAccount } from "./agent-funding-account";
+import { billingHoldService } from "./billing-hold";
 import {
   type CreditReconciliationResult,
   type CreditReservation,
@@ -279,6 +280,8 @@ export async function reserveAllowanceEligibleCredits(
   },
 ): Promise<CreditReservation> {
   const { operationKey, reservationTtlMs, ...creditParams } = params;
+  // A pre-spend hold is new paid admission: fail closed while held (#22930).
+  await billingHoldService.assertNoHold(params.organizationId);
   if (params.amount > 0 && (await isAllowanceFirstOrganization(params.organizationId))) {
     return await reserveSubscriptionFundedCredits({
       organizationId: params.organizationId,

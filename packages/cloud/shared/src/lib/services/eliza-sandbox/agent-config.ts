@@ -274,6 +274,17 @@ export function resolveManagedProvisionDockerImage(
 }
 
 /**
+ * True when agent state lives only on the container's local volume: the agent
+ * opted into local PGlite and did not ship its own external `DATABASE_URL`.
+ * Mirrors {@link computeManagedAgentDbEnv}'s placement decision.
+ */
+export function keepsAgentStateOnContainerVolume(callerEnv: Record<string, string>): boolean {
+  const callerSuppliedDatabaseUrl =
+    typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
+  return callerEnv.ELIZA_AGENT_LOCAL_STATE === "1" && !callerSuppliedDatabaseUrl;
+}
+
+/**
  * Decide how the shared managed DB URL is exposed to an agent container (#8696).
  *
  * - A self-contained image that shipped its OWN `DATABASE_URL` keeps it; the

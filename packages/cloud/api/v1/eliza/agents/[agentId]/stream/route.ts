@@ -9,6 +9,10 @@ import { z } from "zod";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { chatSseFrame } from "@/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@/lib/services/personal-direct-chat-route";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { coordinateSharedStream } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
@@ -90,7 +94,44 @@ async function __hono_POST(
       );
     }
 
-    const rpcRequest = parsed.data as BridgeRequest;
+    let rpcRequest = parsed.data as BridgeRequest;
+    // A personal turn follows its entitlement route (#25146): Dedicated
+    // ownership is refused with its agent id, and a withdrawn Dedicated is
+    // answered in the scoped fallback journal with the account state.
+    let trustedAccountState:
+      | Extract<
+          Awaited<ReturnType<typeof resolveSharedSurfaceTarget>>,
+          { ok: true }
+        >["accountState"]
+      | undefined;
+    if (resolved.agentKind === "personal") {
+      const requestedRoom = parsed.data.params.roomId;
+      const target = await resolveSharedSurfaceTarget({
+        agent: resolved.agent,
+        personal: true,
+        conversationId: requestedRoom?.trim()
+          ? requestedRoom
+          : resolved.agent.id,
+        namespace: resolved.namespace,
+      });
+      if (!target.ok) {
+        const refusal = personalDirectChatRefusalResponse(target.refusal);
+        return applyCorsHeaders(
+          Response.json(refusal.body, {
+            status: refusal.status,
+            headers: refusal.headers,
+          }),
+          CORS_METHODS,
+        );
+      }
+      if (target.accountState) {
+        trustedAccountState = target.accountState;
+        rpcRequest = {
+          ...rpcRequest,
+          params: { ...rpcRequest.params, roomId: target.roomId },
+        };
+      }
+    }
 
     const upstreamResponse = await coordinateSharedStream(
       resolved.agent,
@@ -101,6 +142,7 @@ async function __hono_POST(
         namespace: resolved.namespace,
         agentKind: resolved.agentKind,
         trustedUserUtterance: parsed.data.params.text,
+        ...(trustedAccountState ? { trustedAccountState } : {}),
       },
     );
 
