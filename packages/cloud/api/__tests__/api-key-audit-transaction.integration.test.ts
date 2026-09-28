@@ -69,6 +69,7 @@ beforeAll(async () => {
       last_used_at timestamp,
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now(),
+      user_created boolean NOT NULL DEFAULT false,
       deleted_at timestamp
     )
   `);
