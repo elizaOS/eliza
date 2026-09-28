@@ -457,6 +457,9 @@ const PAIRING_MAX_ATTEMPTS = 5;
 const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 let pairingCode: string | null = null;
 let pairingExpiresAt = 0;
+// Identifies this server process so a code issued by one instance cannot pair
+// against a restarted or different replica (remote-agent-pairing contract).
+const pairingInstanceId = crypto.randomUUID();
 const pairingAttempts = new Map<
   string,
   {
@@ -508,6 +511,9 @@ export function rateLimitPairing(ip: string | null): boolean {
 }
 export function getPairingExpiresAt(): number {
   return pairingExpiresAt;
+}
+export function getPairingInstanceId(): string {
+  return pairingInstanceId;
 }
 export function clearPairing(): void {
   pairingCode = null;

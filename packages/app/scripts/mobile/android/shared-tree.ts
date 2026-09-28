@@ -1,6 +1,6 @@
 /** Owns android shared tree using the shared build context and existing platform contracts. */
 import path from "node:path";
-import { APP, androidDir, platformsDir } from "../context.ts";
+import { APP, androidDir, platformsDir, WHITELABEL } from "../context.ts";
 
 export function packageNameToPath(packageName) {
   return path.join(...packageName.split("."));
@@ -8,7 +8,7 @@ export function packageNameToPath(packageName) {
 
 export function assertSharedTreeOnlyForEliza(what) {
   if (
-    APP.appId !== "ai.elizaos.app" &&
+    (APP.appId !== "ai.elizaos.app" || WHITELABEL !== null) &&
     path.resolve(androidDir) === path.resolve(platformsDir, "android")
   ) {
     throw new Error(

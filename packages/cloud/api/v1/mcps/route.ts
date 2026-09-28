@@ -1,7 +1,7 @@
 /**
  * GET/POST /api/v1/mcps
- * CRUD endpoints for user-created MCP servers (monetization via credits or
- * x402).
+ * CRUD endpoints for user-created MCP servers. Listings are free: paid
+ * listings are retired (#22961) and a price answers 410.
  */
 
 import { isIP } from "node:net";

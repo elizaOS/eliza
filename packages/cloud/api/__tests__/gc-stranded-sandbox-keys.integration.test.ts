@@ -45,7 +45,8 @@ beforeAll(async () => {
       last_used_at timestamp,
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now(),
-      deleted_at timestamp
+      deleted_at timestamp,
+      user_created boolean NOT NULL DEFAULT false
     )
   `);
 }, PGLITE_TIMEOUT_MS);

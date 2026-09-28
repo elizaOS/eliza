@@ -112,6 +112,8 @@ export interface SubscriptionResourceCeilingsDto {
   containers: number;
   storageGiB: number;
   apps: number;
+  /** Active user-created API keys; keys themselves are free. */
+  apiKeys: number;
 }
 
 export interface SubscriptionAllowanceDto {

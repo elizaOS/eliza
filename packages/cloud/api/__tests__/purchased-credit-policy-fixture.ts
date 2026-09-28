@@ -49,6 +49,10 @@ export function purchasedCreditPolicyFixture(): OrganizationQuotaPolicy {
         status: "unavailable",
         code: "NOT_EXERCISED_BY_BILLING_FIXTURE",
       },
+      apiKeys: {
+        status: "unavailable",
+        code: "NOT_EXERCISED_BY_BILLING_FIXTURE",
+      },
     },
   };
 }

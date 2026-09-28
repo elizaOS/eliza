@@ -9,9 +9,7 @@ import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import {
   appsRepository,
-  type CreditPack,
   type CreditTransaction,
-  creditPacksRepository,
   creditTransactionsRepository,
   type NewCreditTransaction,
   organizationsRepository,
@@ -568,7 +566,7 @@ function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
 }
 
 /**
- * Service for managing credits, transactions, and credit packs.
+ * Service for managing credits and credit transactions.
  */
 export class CreditsService {
   private async applyCreditIncrease(
@@ -839,6 +837,7 @@ export class CreditsService {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
     await CacheInvalidation.onCreditMutation(organizationId);
+    await CacheInvalidation.onPurchasedCreditMutation(organizationId);
   }
 
   async deductCredits(params: DeductCreditsParams): Promise<{
@@ -1583,6 +1582,8 @@ export class CreditsService {
     invalidateOrganizationCache(params.organizationId).catch((error) => {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
+    // A reversal lowers the purchased-credit total behind the RPM tier.
+    await CacheInvalidation.onPurchasedCreditMutation(params.organizationId);
     return result;
   }
 
@@ -3009,32 +3010,6 @@ export class CreditsService {
       reservationTransactionId: null,
       reconcile: async () => {},
     };
-  }
-
-  // Credit Packs
-  async getCreditPackById(id: string): Promise<CreditPack | undefined> {
-    return await creditPacksRepository.findById(id);
-  }
-
-  async getCreditPackByStripePriceId(stripePriceId: string): Promise<CreditPack | undefined> {
-    return await creditPacksRepository.findByStripePriceId(stripePriceId);
-  }
-
-  /**
-   * List active credit packs with caching.
-   * Credit packs rarely change so we cache aggressively with SWR.
-   */
-  async listActiveCreditPacks(): Promise<CreditPack[]> {
-    // Import cache lazily to avoid circular dependencies
-    const { creditPacksCache } = await import("../cache/credit-packs-cache");
-
-    return await creditPacksCache.getWithSWR(async () => {
-      return await creditPacksRepository.listActive();
-    });
-  }
-
-  async listAllCreditPacks(): Promise<CreditPack[]> {
-    return await creditPacksRepository.listAll();
   }
 }
 

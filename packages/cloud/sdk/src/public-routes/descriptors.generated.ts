@@ -1486,6 +1486,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/domains/resolve/route.ts",
   },
+  "GET /api/v1/earnings/statement": {
+    method: "GET",
+    path: "/api/v1/earnings/statement",
+    methodName: "getApiV1EarningsStatement",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/earnings/statement/route.ts",
+  },
   "GET /api/v1/eliza/agents": {
     method: "GET",
     path: "/api/v1/eliza/agents",
@@ -1775,6 +1784,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/personal/route.ts",
+  },
+  "GET /api/v1/eliza/personal/recovery/{token}": {
+    method: "GET",
+    path: "/api/v1/eliza/personal/recovery/{token}",
+    methodName: "getApiV1ElizaPersonalRecoveryByToken",
+    responseMode: "json",
+    pathParams: ["token"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/personal/recovery/[token]/route.ts",
   },
   "GET /api/v1/eliza/plaid/status": {
     method: "GET",

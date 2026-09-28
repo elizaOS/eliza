@@ -514,6 +514,7 @@ export async function requireGenerativeRouteCaller(
               resolution.ctx.admission,
               options.rateLimitEndpoint,
             ),
+            apiKeyId: resolution.ctx.apiKeyId,
           },
         );
         if (limited) {

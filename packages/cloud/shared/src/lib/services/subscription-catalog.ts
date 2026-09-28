@@ -29,13 +29,15 @@ const resourceCeilingsSchema = z
     containers: z.number().int().nonnegative().safe(),
     storageGiB: z.number().int().nonnegative().safe(),
     apps: z.number().int().nonnegative().safe(),
+    apiKeys: z.number().int().nonnegative().safe(),
   })
   .strict();
 
 /**
- * Free-tier resource ceilings. The Free entitlement projection, the database
- * seed for new organizations (migration 0373) and the paid-plan floor all use
- * these values.
+ * Free-tier (pay-as-you-go) resource ceilings. The Free entitlement
+ * projection, the database seed for new organizations (migration 0373) and the
+ * paid-plan floor all use these values. `apiKeys` is read from the catalogue
+ * at admission time rather than projected into organization_entitlements.
  */
 export const FREE_RESOURCE_CEILINGS = Object.freeze({
   cloudCharacters: 5,
@@ -43,7 +45,18 @@ export const FREE_RESOURCE_CEILINGS = Object.freeze({
   containers: 1,
   storageGiB: 5,
   apps: 25,
+  apiKeys: 5,
 } as const satisfies SubscriptionResourceCeilingsDto);
+
+/**
+ * API keys are free; only their count is plan-limited (#22958): pay-as-you-go
+ * 5, Plus 10, Pro 25.
+ */
+export const API_KEY_CEILINGS = Object.freeze({
+  free: FREE_RESOURCE_CEILINGS.apiKeys,
+  plus_monthly: 10,
+  pro_monthly: 25,
+} as const);
 
 const planDefinitionSchema = z
   .object({
@@ -147,7 +160,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 60,
       strictRpm: 10,
     },
-    resourceCeilings: { ...FREE_RESOURCE_CEILINGS },
+    resourceCeilings: { ...FREE_RESOURCE_CEILINGS, apiKeys: API_KEY_CEILINGS.plus_monthly },
   },
   {
     key: "pro_monthly",
@@ -171,7 +184,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 120,
       strictRpm: 30,
     },
-    resourceCeilings: { ...FREE_RESOURCE_CEILINGS },
+    resourceCeilings: { ...FREE_RESOURCE_CEILINGS, apiKeys: API_KEY_CEILINGS.pro_monthly },
   },
 ]);
 

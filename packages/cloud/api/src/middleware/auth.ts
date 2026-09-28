@@ -95,7 +95,6 @@ const publicPathPrefixes = [
   "/api/v1/topup",
   "/api/v1/x402",
   "/api/v1/market/preview",
-  "/api/stripe/credit-packs",
   "/api/stripe/webhook",
   // Unified payment_requests settlement webhook. Public like the compatibility
   // /api/stripe/webhook above; the handler enforces the stripe-signature and

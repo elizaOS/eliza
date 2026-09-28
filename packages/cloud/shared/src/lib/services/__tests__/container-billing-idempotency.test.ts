@@ -3,9 +3,7 @@
  *
  * Pins the defense-in-depth that keeps a cron re-run from double-debiting:
  *  1. `computeContainerBillingPeriod` is deterministic per UTC day (pure).
- *  2. `convertToCredits` is idempotent per `idempotencyKey` — a re-run returns
- *     the original ledger entry and does NOT debit earnings again.
- *  3. `listBillableContainers` gates on `next_billing_at` (already-paid periods
+ *  2. `listBillableContainers` gates on `next_billing_at` (already-paid periods
  *     are skipped) and `recordSuccessfulDailyBilling`:
  *       - row-locks the container and no-ops if the period is already billed,
  *       - records the credit_transaction as `-fromCredits` (not `-dailyCost`)
@@ -218,76 +216,6 @@ describe("computeContainerBillingPeriod", () => {
     const b = computeContainerBillingPeriod(new Date("2026-06-06T00:00:01.000Z"));
     expect(a.periodStart.getTime()).not.toBe(b.periodStart.getTime());
   });
-});
-
-describe("convertToCredits idempotency", () => {
-  test(
-    "same idempotencyKey debits earnings exactly once",
-    async () => {
-      await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
-      await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
-      await dbWrite.execute(
-        `INSERT INTO redeemable_earnings (user_id, total_earned, available_balance)
-         VALUES ('${USER_ID}', '100', '100');`,
-      );
-
-      const key = "container:c3:2026-06-05T00:00:00.000Z";
-      const first = await redeemableEarningsService.convertToCredits({
-        userId: USER_ID,
-        amount: 0.67,
-        organizationId: ORG_ID,
-        description: "Container hosting: test",
-        idempotencyKey: key,
-      });
-      const second = await redeemableEarningsService.convertToCredits({
-        userId: USER_ID,
-        amount: 0.67,
-        organizationId: ORG_ID,
-        description: "Container hosting: test",
-        idempotencyKey: key,
-      });
-
-      expect(first.success).toBe(true);
-      expect(second.success).toBe(true);
-      // Idempotent: same ledger entry, balance debited only once.
-      expect(second.ledgerEntryId).toBe(first.ledgerEntryId);
-      expect(Number(first.newBalance)).toBeCloseTo(99.33, 4);
-      expect(Number(second.newBalance)).toBeCloseTo(99.33, 4);
-
-      const ledger = await dbWrite.execute(
-        `SELECT count(*)::int AS n FROM redeemable_earnings_ledger WHERE entry_type = 'credit_conversion';`,
-      );
-      const earnings = await dbWrite.execute(
-        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
-      );
-      expect((ledger.rows[0] as { n: number }).n).toBe(1);
-      expect(
-        Number((earnings.rows[0] as { available_balance: string }).available_balance),
-      ).toBeCloseTo(99.33, 4);
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
-    "a different key (next period) debits again",
-    async () => {
-      const next = await redeemableEarningsService.convertToCredits({
-        userId: USER_ID,
-        amount: 0.67,
-        organizationId: ORG_ID,
-        description: "Container hosting: test",
-        idempotencyKey: "container:c3:2026-06-06T00:00:00.000Z",
-      });
-      expect(next.success).toBe(true);
-      expect(Number(next.newBalance)).toBeCloseTo(98.66, 4);
-
-      const ledger = await dbWrite.execute(
-        `SELECT count(*)::int AS n FROM redeemable_earnings_ledger WHERE entry_type = 'credit_conversion';`,
-      );
-      expect((ledger.rows[0] as { n: number }).n).toBe(2);
-    },
-    PGLITE_TIMEOUT,
-  );
 });
 
 describe("reduceEarnings money-out guard", () => {

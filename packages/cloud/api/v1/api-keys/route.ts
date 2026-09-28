@@ -1,11 +1,15 @@
 /**
- * GET /api/v1/api-keys — list user-managed keys for the authenticated organization.
- * POST /api/v1/api-keys — create a new key (returns plainKey once).
+ * GET /api/v1/api-keys — list user-managed keys for the authenticated organization,
+ *   with the plan's API-key usage (`used`/`limit`/`remaining`).
+ * POST /api/v1/api-keys — create a new key (returns plainKey once). Keys are free;
+ *   their count is limited per plan (pay-as-you-go 5, Plus 10, Pro 25) and a
+ *   create at the ceiling fails with 403 `api_key_limit_exceeded` (#22958).
  *
  * Mobile lifecycle credentials are deliberately absent. API key management
  * requires a session — API keys cannot manage other API keys.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
@@ -15,7 +19,10 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import {
+  ApiKeyLimitExceededError,
+  apiKeysService,
+} from "@/lib/services/api-keys";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -47,11 +54,34 @@ function toClientApiKey(
   };
 }
 
+async function readUsage(organizationId: string) {
+  try {
+    return {
+      status: "available" as const,
+      ...(await apiKeysService.getUsage(organizationId)),
+    };
+  } catch (error) {
+    // error-policy:J4 an unavailable plan ceiling is reported as such; the
+    // key list itself stays readable.
+    if (
+      error instanceof ElizaError &&
+      (error.code === "RESOURCE_POLICY_UNAVAILABLE" ||
+        error.code === "ORGANIZATION_POLICY_UNAVAILABLE")
+    ) {
+      return { status: "unavailable" as const, code: error.code };
+    }
+    throw error;
+  }
+}
+
 app.get("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
-    const keys = await apiKeysService.listByOrganization(user.organization_id);
-    return c.json({ keys: keys.map(toClientApiKey) });
+    const [keys, usage] = await Promise.all([
+      apiKeysService.listByOrganization(user.organization_id),
+      readUsage(user.organization_id),
+    ]);
+    return c.json({ keys: keys.map(toClientApiKey), usage });
   } catch (error) {
     // error-policy:J1 route boundary — every catch in v1/api-keys/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty key list).
     logger.error("Error fetching API keys:", error);
@@ -99,7 +129,7 @@ app.post("/", async (c) => {
     }
 
     const audit = createTransactionalAudit();
-    const { apiKey, plainKey } = await apiKeysService.create(
+    const { apiKey, plainKey, usage } = await apiKeysService.createUserManaged(
       {
         name,
         description,
@@ -109,7 +139,6 @@ app.post("/", async (c) => {
         expires_at: expires_at ?? null,
         is_active: true,
       },
-      undefined,
       async (tx, created) => {
         await audit.write(tx, {
           actor: { type: "user", id: user.id },
@@ -136,10 +165,22 @@ app.post("/", async (c) => {
           expires_at: apiKey.expires_at,
         },
         plainKey,
+        usage,
       },
       201,
     );
   } catch (error) {
+    if (error instanceof ApiKeyLimitExceededError) {
+      return c.json(
+        {
+          success: false,
+          error: `API key limit reached. Your plan allows ${error.limit} API keys; delete one or upgrade your plan to create another.`,
+          code: "api_key_limit_exceeded" as const,
+          details: { used: error.used, limit: error.limit, remaining: 0 },
+        },
+        403,
+      );
+    }
     logger.error("Error creating API key:", error);
     if (error instanceof z.ZodError) {
       return c.json({ error: "Validation error", details: error.issues }, 400);

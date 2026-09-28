@@ -67,7 +67,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "결제와 크레딧",
       description:
-        "크레딧을 관리하고 사용량을 확인하고 크레딧 팩을 구매하세요. 모든 AI 작업에 투명한 가격이 적용돼요.",
+        "Plus 또는 Pro를 구독해 매월 사용 한도를 받거나, 종량제 크레딧을 $5부터 $1,000까지 충전하세요. 모든 AI 작업에 투명한 가격이 적용돼요.",
     },
     apiKeys: {
       title: "API 키",
