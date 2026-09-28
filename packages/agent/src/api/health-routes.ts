@@ -11,6 +11,7 @@
  * and cloud health as best-effort and degrade rather than 500. Also exports
  * `computeCanRespond`, the shared "first-turn capability online" predicate
  * (live runtime AND `running` AND a registered text-generation handler AND no
+ * loaded weights when the sole provider is local inference AND no
  * cached Cloud catalog answer that the only text provider's model is gone) reused
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
@@ -18,6 +19,7 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,
+  ModelType,
   parseCanonicalInteger,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -449,7 +451,7 @@ export function serializeForRuntimeDebug(
  * Distinct from `ready` (which is `true` even for stopped/error/paused states —
  * it only negates `starting`/`restarting`). `canRespond` ANDs a live runtime, a
  * `running` state, AND a registered TEXT_GENERATION handler — so it is `false`
- * when no model provider is wired (local-inference is optional) and only flips
+ * when no model provider is wired or the sole local handler has no loaded weights, and only flips
  * `true` at the exact moment the agent can answer a first turn. This is the
  * signal the UI uses to fade in first-turn capability: the shell paints early
  * (agentState "starting"), and the composer goes live when this flips.
@@ -463,10 +465,63 @@ export function computeCanRespond(
   }
   try {
     if (!hasTextGenerationHandler(runtime)) return false;
+    if (readLocalTextModelReadiness(runtime)?.status === "model_not_loaded")
+      return false;
   } catch {
     return false;
   }
   return !isCloudTextModelUnavailable(runtime);
+}
+
+/** Readiness of this runtime's sole local text provider, without loading models. */
+export function readLocalTextModelReadiness(runtime: AgentRuntime | null): {
+  provider: "eliza-local-inference";
+  status: "available" | "model_not_loaded";
+} | null {
+  if (!runtime) return null;
+  try {
+    const textTypes: ReadonlySet<string> = new Set([
+      ModelType.TEXT_LARGE,
+      ModelType.TEXT_SMALL,
+      ModelType.TEXT_MEDIUM,
+      ModelType.TEXT_NANO,
+      ModelType.TEXT_MEGA,
+      ModelType.ACTION_PLANNER,
+      ModelType.RESPONSE_HANDLER,
+    ]);
+    const registrations = runtime
+      .getModelRegistrations()
+      .filter((entry) => textTypes.has(entry.modelType));
+    if (
+      !registrations.length ||
+      registrations.some((entry) => entry.provider !== "eliza-local-inference")
+    )
+      return null;
+    // Loader state belongs to this agent; the process-global catalog can
+    // describe another runtime and must not unlock this one's composer.
+    const loader = runtime.getService("localInferenceLoader");
+    const modelPath: unknown =
+      loader &&
+      "currentModelPath" in loader &&
+      typeof loader.currentModelPath === "function"
+        ? loader.currentModelPath()
+        : null;
+    return {
+      provider: "eliza-local-inference",
+      status:
+        typeof modelPath === "string" && modelPath.trim()
+          ? "available"
+          : "model_not_loaded",
+    };
+  } catch (error) {
+    // error-policy:J7 An unreadable readiness source is unknown, not evidence
+    // of missing weights or permission to block another provider.
+    runtime.logger.warn(
+      { src: "health-routes", error },
+      "Local model readiness unavailable",
+    );
+    return null;
+  }
 }
 
 /**
@@ -641,6 +696,7 @@ export async function handleHealthRoutes(
       model,
       canRespond: computeCanRespond(state.runtime, state.agentState),
       ...cloudModelReadinessField(state.runtime),
+      localModelReadiness: readLocalTextModelReadiness(state.runtime),
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
