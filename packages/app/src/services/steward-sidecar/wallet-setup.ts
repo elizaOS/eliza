@@ -261,10 +261,67 @@ async function performFirstLaunchSetup(
   });
 
   if (!tenantResponse.ok) {
-    const body = (await tenantResponse.json()) as { error?: string };
-    if (!body.error?.includes("already exists")) {
-      throw new Error(`Failed to create tenant: ${body.error}`);
+    let payload: unknown = null;
+    try {
+      payload = await tenantResponse.json();
+    } catch (cause) {
+      // error-policy:J2 the tenant endpoint is an external boundary; preserve
+      // its parser failure while naming the setup step that cannot continue.
+      throw new ElizaError(
+        `Failed to create Steward tenant (HTTP ${tenantResponse.status}): response was not valid JSON`,
+        {
+          code: "STEWARD_TENANT_CREATE_FAILED",
+          cause,
+          context: {
+            tenantId: DEFAULT_TENANT_ID,
+            status: tenantResponse.status,
+          },
+          severity: "ephemeral",
+        },
+      );
     }
+    const serverError =
+      isRecord(payload) && typeof payload.error === "string"
+        ? payload.error.trim()
+        : "";
+    if (
+      tenantResponse.status === 409 ||
+      serverError.toLowerCase().includes("already exists")
+    ) {
+      // The tenant's API key is only known to the process that registered it
+      // and Steward exposes no path to rotate it. Continuing with a freshly
+      // generated key would fail agent creation on every launch, so stop with
+      // an actionable recovery message instead.
+      const credPath = path.join(dataDir, CREDENTIALS_FILE);
+      const stewardDbPath = path.join(dataDir, "data");
+      throw new ElizaError(
+        `Steward tenant "${DEFAULT_TENANT_ID}" already exists but no local credentials hold its API key` +
+          `${serverError ? ` (${serverError})` : ""}. ` +
+          `Restore ${credPath} from a backup, or reset the local Steward vault by removing ${stewardDbPath} ` +
+          "(this permanently discards the existing local wallet) and restart.",
+        {
+          code: "STEWARD_TENANT_CREDENTIALS_LOST",
+          context: {
+            tenantId: DEFAULT_TENANT_ID,
+            status: tenantResponse.status,
+            credentialsPath: credPath,
+            stewardDataPath: stewardDbPath,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    throw new ElizaError(
+      `Failed to create Steward tenant (HTTP ${tenantResponse.status})${serverError ? `: ${serverError}` : ""}`,
+      {
+        code: "STEWARD_TENANT_CREATE_FAILED",
+        context: {
+          tenantId: DEFAULT_TENANT_ID,
+          status: tenantResponse.status,
+        },
+        severity: "ephemeral",
+      },
+    );
   }
 
   // 2. Create agent with wallet
