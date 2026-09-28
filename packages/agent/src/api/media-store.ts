@@ -8,10 +8,13 @@
  * description cache (keyed on the same hash), and only a compact served URL —
  * never raw base64 — lands in the message record or the agent's context.
  *
- * The sha256 filename is an unguessable capability, so media is served before
- * the auth gate (like static assets); `<img>`/`<audio>` requests carry no auth
- * header. `serveMediaFile` only ever serves names matching the strict
- * content-addressed pattern from the dedicated media directory.
+ * The sha256 filename is an unguessable capability, so on ordinary hosts media
+ * is served before the auth gate (like static assets); `<img>`/`<audio>`
+ * requests carry no auth header. Under the protected profile
+ * (`isMediaAuthRequired`) a capability URL is not enough: media is served only
+ * after the auth gate, where same-origin `<img>`/`<audio>` GETs authenticate
+ * with the session cookie. `serveMediaFile` only ever serves names matching
+ * the strict content-addressed pattern from the dedicated media directory.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -25,6 +28,7 @@ import {
 } from "@elizaos/core";
 
 import { resolveStateDir } from "../config/paths.ts";
+import { isProtectedProfileSelected } from "../security/protected-profile-state.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -1133,6 +1137,14 @@ export function handleMediaRouteRequest(
     });
   }
   return { status: 206, headers: plan.headers, body };
+}
+/**
+ * Whether stored media requires an authenticated request. True only under the
+ * protected profile, where a leaked capability URL must not disclose bytes;
+ * ordinary hosts keep pre-auth capability serving.
+ */
+export function isMediaAuthRequired(): boolean {
+  return isProtectedProfileSelected();
 }
 /**
  * Serve a stored media file for `GET/HEAD /api/media/<name>`. Returns true when

@@ -181,7 +181,7 @@ import {
   loadLocalInferenceRouteApi,
   loadLocalInferenceVoiceRouteApi,
 } from "./local-inference-server-api.ts";
-import { serveMediaFile } from "./media-store.ts";
+import { isMediaAuthRequired, serveMediaFile } from "./media-store.ts";
 import {
   getModelOptions,
   getOrFetchAllProviders,
@@ -1647,8 +1647,9 @@ async function handleRequestForViewClient(
     if (serveStaticUi(req, res, pathname)) return;
     // Chat media (uploaded + generated). Content-addressed sha256 filenames act
     // as unguessable capabilities, so media loads from <img>/<audio> without an
-    // auth header — same rationale as static assets above.
-    if (serveMediaFile(req, res, pathname)) return;
+    // auth header — same rationale as static assets above. The protected
+    // profile serves media only after the auth gate below.
+    if (!isMediaAuthRequired() && serveMediaFile(req, res, pathname)) return;
   }
   // ── Runtime-mode visibility gate ────────────────────────────────────────
   // Enforced here, in the server every host shares, so the bare agent
@@ -1690,6 +1691,15 @@ async function handleRequestForViewClient(
     !isBoundaryRoleAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+  // Protected profile: authenticated media (same-origin <img>/<audio> GETs
+  // carry the session cookie, which the gate above accepts without CSRF).
+  if (
+    (method === "GET" || method === "HEAD") &&
+    isMediaAuthRequired() &&
+    serveMediaFile(req, res, pathname)
+  ) {
     return;
   }
   // Complete trajectory inputs and outputs belong to the owner's developer
