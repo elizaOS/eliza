@@ -34,6 +34,7 @@ import { prepareIosOverlay } from "./overlay.ts";
 import {
   isFullIosBunEngineRequested,
   isIosAppStoreBuild,
+  isIosAppStoreLocalRuntimeEnabled,
   isIosSimulatorBuildTarget,
   resolveIosBuildConfiguration,
   resolveIosCapacitorSyncEnv,
@@ -73,15 +74,23 @@ export function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphonesimulator");
 }
 
+/**
+ * App Store defaults are Cloud-only (#16420). Explicit runtime-mode exports
+ * still win, and ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=1 keeps the App Store-safe
+ * cloud-hybrid on-device runtime.
+ */
 export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
   setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
+  const localRuntime = isIosAppStoreLocalRuntimeEnabled(process.env);
+  const iosRuntimeMode = localRuntime ? "cloud-hybrid" : "cloud";
+  const executionMode = localRuntime ? "local-safe" : "cloud";
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", iosRuntimeMode);
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", iosRuntimeMode);
+  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", executionMode);
+  setDefaultProcessEnv("RUNTIME_MODE", executionMode);
+  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", executionMode);
+  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", executionMode);
   process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
 }
 

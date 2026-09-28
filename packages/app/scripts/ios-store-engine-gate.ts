@@ -22,15 +22,16 @@ export function evaluateIosStoreEngineGate(env = process.env) {
   const storeVariant =
     env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store";
-  // Default ON: an operator must explicitly opt into a cloud-only thin client.
-  const localRuntimeDisabled = /^(0|false|no|off)$/i.test(
-    (env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
+  // Default OFF (#16420): store builds are Cloud-only unless an operator
+  // explicitly opts into the on-device runtime.
+  const localRuntimeDisabled = !/^(1|true|yes|on)$/i.test(
+    (env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "").trim(),
   );
   const engineForced = /^(1|true|yes|on)$/i.test(
     (env.ELIZA_IOS_FULL_BUN_ENGINE ?? "").trim(),
   );
-  // Ships when explicitly forced, or for a store build with the local runtime
-  // left enabled (the default).
+  // Ships when explicitly forced, or for a store build whose operator enabled
+  // the local runtime.
   const engineWillEmbed =
     engineForced || (storeVariant && !localRuntimeDisabled);
   return { storeVariant, localRuntimeDisabled, engineForced, engineWillEmbed };
