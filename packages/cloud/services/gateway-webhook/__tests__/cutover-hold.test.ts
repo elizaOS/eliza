@@ -339,4 +339,19 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     expect(stats).toMatchObject({ delivered: 1 });
     expect(await redis.get(leaseKey)).toBe("other-replica-lease");
   }, 60_000);
+
+  test("lease release and renewal are atomic compare-and-act on the owner token", async () => {
+    const redis = createRedis();
+    const leaseKey = "webhook:cutover-hold-lease:webhook:blooio:msg_cutover_5";
+    await redis.set(leaseKey, "lease-b", { ex: 60 });
+
+    // A drainer holding lease-a (already lost) cannot extend or delete lease-b.
+    expect(await redis.expireIfEquals(leaseKey, "lease-a", 1)).toBe(false);
+    expect(await redis.delIfEquals(leaseKey, "lease-a")).toBe(false);
+    expect(await redis.get(leaseKey)).toBe("lease-b");
+
+    expect(await redis.expireIfEquals(leaseKey, "lease-b", 120)).toBe(true);
+    expect(await redis.delIfEquals(leaseKey, "lease-b")).toBe(true);
+    expect(await redis.get(leaseKey)).toBeNull();
+  });
 });

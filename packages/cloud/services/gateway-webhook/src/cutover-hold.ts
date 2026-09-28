@@ -163,22 +163,11 @@ export interface CutoverHoldDrainStats {
   expired: number;
 }
 
-// GatewayRedis has no scripting, so lease ownership is a GET-then-act check.
-// Lease values are UUIDs: the adapters JSON-parse reads, and a numeric value
-// would come back as a number.
-async function ownsLease(
-  redis: GatewayRedis,
-  leaseKey: string,
-  leaseToken: string,
-): Promise<boolean> {
-  return String(await redis.get(leaseKey)) === leaseToken;
-}
-
 /**
  * Keep a redelivery's lease alive for as long as the redelivery runs. A
  * Personal Shared turn can run for many lease periods, and a lapsed lease lets
- * another replica run the same held turn again. Renewal stops once the lease
- * belongs to someone else.
+ * another replica run the same held turn again. Renewal is an atomic
+ * compare-and-expire and stops once the lease belongs to someone else.
  */
 function renewLeaseWhileRedelivering(
   redis: GatewayRedis,
@@ -190,8 +179,7 @@ function renewLeaseWhileRedelivering(
   const timer = setInterval(
     () => {
       void (async () => {
-        if (await ownsLease(redis, leaseKey, leaseToken)) {
-          await redis.expire(leaseKey, leaseSeconds);
+        if (await redis.expireIfEquals(leaseKey, leaseToken, leaseSeconds)) {
           return;
         }
         clearInterval(timer);
@@ -285,9 +273,7 @@ export async function drainCutoverHolds(
       else stats.released += 1;
     } finally {
       stopRenewal();
-      if (await ownsLease(redis, leaseKey, leaseToken)) {
-        await redis.del(leaseKey);
-      }
+      await redis.delIfEquals(leaseKey, leaseToken);
     }
   }
   return stats;
