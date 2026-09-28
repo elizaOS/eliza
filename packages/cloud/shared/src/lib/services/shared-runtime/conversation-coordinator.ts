@@ -393,6 +393,9 @@ export async function coordinateSharedStream(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedAccountState
+          ? { trustedAccountState: options.trustedAccountState }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },

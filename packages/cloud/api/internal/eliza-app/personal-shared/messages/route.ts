@@ -1559,10 +1559,12 @@ app.post("/", async (c) => {
     // confirmed, unfunded billing stop) is answered by Shared in a separately
     // scoped fallback journal; a recovered interval is reconciled into
     // Dedicated before its first send. Groups keep their owner-bound
-    // Dedicated contract.
+    // Dedicated contract: the fallback journal is the owner's direct
+    // conversation only, so a group turn is refused while access is withdrawn
+    // and never reaches Dedicated memory.
     let sharedFallback: PersonalSharedFallbackDelivery | null = null;
     let fallbackToReconcile: PersonalDedicatedFallback | null = null;
-    if (dedicated && !isGroupMessage(parsed.data)) {
+    if (dedicated) {
       const route = await resolvePersonalDedicatedRoute({
         dedicated,
         organizationId: account.organizationId,
@@ -1580,6 +1582,17 @@ app.post("/", async (c) => {
           route.status,
           { "Retry-After": String(route.retryAfterSeconds) },
         );
+      }
+      if (route.route === "shared_fallback" && isGroupMessage(parsed.data)) {
+        // The owner's billing state is never disclosed to group members.
+        return c.json({
+          success: true,
+          data: {
+            code: "group_dedicated_access_paused",
+            reply: "Eliza is unavailable in this group right now.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
+          },
+        });
       }
       if (route.route === "shared_fallback") {
         sharedFallback = route.delivery;
