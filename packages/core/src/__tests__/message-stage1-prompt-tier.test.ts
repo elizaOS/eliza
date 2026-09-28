@@ -395,11 +395,26 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
 		expect(turnContent).not.toContain("## Response Handler Fields");
+		// Stage 1 is context-only: the planner discovers operations, so the
+		// model-facing request omits the legacy action-name hint field.
+		const params = (runtime.useModel as { mock: { calls: unknown[][] } }).mock
+			.calls[0][1] as {
+			tools?: Array<{
+				parameters?: {
+					properties?: Record<string, unknown>;
+					required?: string[];
+				};
+			}>;
+		};
 		expect(
-			JSON.stringify(
-				(runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls[0][1],
-			),
-		).toContain(candidateActionNamesFieldEvaluator.schema.description);
+			params.tools?.[0]?.parameters?.properties?.candidateActionNames,
+		).toBeUndefined();
+		expect(params.tools?.[0]?.parameters?.required).not.toContain(
+			"candidateActionNames",
+		);
+		expect(JSON.stringify(params)).not.toContain(
+			candidateActionNamesFieldEvaluator.schema.description,
+		);
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {
