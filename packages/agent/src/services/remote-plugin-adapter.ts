@@ -1451,7 +1451,48 @@ function trustDecision(
     reason,
   };
 }
-function resolveConfiguredRemotePluginTrustPolicy(
+export type RemotePluginTrustPolicySettingKey =
+  | "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES"
+  | "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY";
+/**
+ * Thrown when a configured trust-policy setting is present but malformed.
+ * A set-but-unparseable policy must fail closed: silently treating it as
+ * unset would drop the module allowlist and signature requirements.
+ */
+export class RemotePluginTrustPolicyConfigError extends Error {
+  readonly setting: RemotePluginTrustPolicySettingKey;
+  constructor(
+    setting: RemotePluginTrustPolicySettingKey,
+    detail: string,
+    options?: {
+      cause?: unknown;
+    },
+  ) {
+    super(`Invalid ${setting}: ${detail}`, options);
+    this.name = "RemotePluginTrustPolicyConfigError";
+    this.setting = setting;
+  }
+}
+function parseRemotePluginTrustPolicySetting(
+  setting: RemotePluginTrustPolicySettingKey,
+  raw: string,
+): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new RemotePluginTrustPolicyConfigError(
+      setting,
+      `value is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+      { cause: error },
+    );
+  }
+}
+/**
+ * Builds the remote plugin trust policy from router settings. Unset policy
+ * settings keep the default (endpoint allowlist only); malformed ones throw
+ * {@link RemotePluginTrustPolicyConfigError}.
+ */
+export function resolveConfiguredRemotePluginTrustPolicy(
   runtime: IAgentRuntime,
 ): RemotePluginTrustPolicy | undefined {
   const routerConfig = resolveRemoteCapabilityRouterConfig(runtime);
@@ -1494,23 +1535,27 @@ function configuredAllowedModuleIds(
       ? configured
       : process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
   if (typeof raw !== "string" || !raw.trim()) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return uniqueStrings(parsed);
-    }
-    if (!parsed || typeof parsed !== "object") return [];
-    const modules = new Set<string>();
-    for (const endpointId of endpointIds) {
-      const value = (parsed as Record<string, unknown>)[endpointId];
-      for (const moduleId of uniqueStrings(value)) {
-        modules.add(moduleId);
-      }
-    }
-    return [...modules];
-  } catch {
-    return [];
+  const parsed = parseRemotePluginTrustPolicySetting(
+    "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
+    raw,
+  );
+  if (Array.isArray(parsed)) {
+    return uniqueStrings(parsed);
   }
+  if (!parsed || typeof parsed !== "object") {
+    throw new RemotePluginTrustPolicyConfigError(
+      "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
+      "must be a JSON array of module ids or an object keyed by endpoint id",
+    );
+  }
+  const modules = new Set<string>();
+  for (const endpointId of endpointIds) {
+    const value = (parsed as Record<string, unknown>)[endpointId];
+    for (const moduleId of uniqueStrings(value)) {
+      modules.add(moduleId);
+    }
+  }
+  return [...modules];
 }
 function configuredRemotePluginTrustPolicyOptions(
   runtime: IAgentRuntime,
@@ -1524,33 +1569,32 @@ function configuredRemotePluginTrustPolicyOptions(
       ? configured
       : process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
   if (typeof raw !== "string" || !raw.trim()) return {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const record = parsed as Record<string, unknown>;
-    const candidates = endpointIds
-      .map((endpointId) => record[endpointId])
-      .filter(
-        (value): value is Record<string, unknown> =>
-          !!value && typeof value === "object" && !Array.isArray(value),
-      );
-    const globalCandidate =
-      "allowedProvenanceIssuers" in record ||
-      "trustedProvenancePublicKeys" in record ||
-      "requireSignedProvenance" in record ||
-      "requireVerifiedProvenance" in record ||
-      "requireProvenanceDigestMatch" in record
-        ? [record]
-        : [];
-    return mergeConfiguredTrustPolicyOptions([
-      ...globalCandidate,
-      ...candidates,
-    ]);
-  } catch {
-    return {};
+  const parsed = parseRemotePluginTrustPolicySetting(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+    raw,
+  );
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new RemotePluginTrustPolicyConfigError(
+      "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+      "must be a JSON object",
+    );
   }
+  const record = parsed as Record<string, unknown>;
+  const candidates = endpointIds
+    .map((endpointId) => record[endpointId])
+    .filter(
+      (value): value is Record<string, unknown> =>
+        !!value && typeof value === "object" && !Array.isArray(value),
+    );
+  const globalCandidate =
+    "allowedProvenanceIssuers" in record ||
+    "trustedProvenancePublicKeys" in record ||
+    "requireSignedProvenance" in record ||
+    "requireVerifiedProvenance" in record ||
+    "requireProvenanceDigestMatch" in record
+      ? [record]
+      : [];
+  return mergeConfiguredTrustPolicyOptions([...globalCandidate, ...candidates]);
 }
 function mergeConfiguredTrustPolicyOptions(
   values: Array<Record<string, unknown>>,
