@@ -303,8 +303,13 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     // replacement manager overlap another full PGlite archive in memory.
     await this.activeDataDirExport?.released;
     if (this.client) {
+      const client = this.client;
       try {
-        await this.client.close();
+        // PGlite.close() does not wait for its query queue: terminating while a
+        // detached query (e.g. a background schema check) is mid-flight wedges
+        // the WASM backend and blocks the event loop. Close only once every
+        // in-flight query and transaction has settled.
+        await client.runExclusive(async () => await client.close());
       } catch (error) {
         // error-policy:J6 best-effort teardown — a failed client close still
         // proceeds to release the data-dir lock so the writer slot is freed.
