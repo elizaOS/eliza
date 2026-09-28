@@ -714,13 +714,27 @@ test.describe("shared→dedicated tier upgrade", () => {
         splitTurn.status,
         `stale Shared turn must fail: ${JSON.stringify(splitTurn.json)}`,
       ).not.toBe(200);
+      // The personal surface no longer serves the sealed Shared transcript:
+      // Dedicated ownership is a typed 409 naming the agent to switch to
+      // (#25146), and the refused turn never reached the imported room.
       const archivedHistory = await c<{
-        messages?: Array<{ role: string; text: string }>;
+        code?: string;
+        activeAgentId?: string;
       }>("GET", convoUrl);
       expect(
-        archivedHistory.json.messages?.length,
+        archivedHistory.status,
+        "a stale client is sent to the Dedicated owner",
+      ).toBe(409);
+      expect(archivedHistory.json).toMatchObject({
+        code: "personal_eliza_dedicated",
+        activeAgentId: dedicatedAgentId,
+      });
+      expect(
+        stack.mocks.controlPlane.store
+          .getConversationByAgent(dedicatedAgentId, sharedAgentId)
+          .map((message) => message.text),
         "a stale client cannot append to the sealed Shared transcript",
-      ).toBe(4);
+      ).not.toContain("This must not create a new Shared turn.");
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {
