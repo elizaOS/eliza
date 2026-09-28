@@ -8791,12 +8791,15 @@
   "cloud.earningsStatement.metaTitle": "Creator earnings statement",
   "cloud.earningsStatement.none": "You had no unpaid creator earnings at retirement.",
   "cloud.earningsStatement.pending": "Of which pending redemption",
-  "cloud.earningsStatement.retiredNotice": "Creator earnings and payouts have been retired. Balances earned before retirement are frozen and will be settled by our team. No action is needed.",
+  "cloud.earningsStatement.retiredNotice": "Creator earnings and payouts have been retired. Balances earned before retirement are frozen and will be settled by our team. Affiliate earnings since then are still paid out through Stripe Connect.",
   "cloud.earningsStatement.settledOn": "Settled on {{date}}.",
   "cloud.earningsStatement.totalEarned": "Lifetime earned",
   "cloud.earningsStatement.totalRedeemed": "Already paid out",
   "cloud.earningsStatement.unpaid": "Unpaid balance",
   "cloud.invoiceDetail.affiliateMarkup": "Affiliate markup",
   "cloud.invoiceDetail.platformFee": "Platform fee",
-  "cloud.invoiceDetail.totalCharged": "Total charged"
+  "cloud.invoiceDetail.totalCharged": "Total charged",
+  "cloud.earningsStatement.affiliatePayable": "Affiliate earnings available for payout",
+  "cloud.mcps.freeListingNote": "MCP listings are free. Paid listings and creator earnings have been retired.",
+  "cloud.mcps.missingFields": "Fill in the name, description and endpoint."
 }

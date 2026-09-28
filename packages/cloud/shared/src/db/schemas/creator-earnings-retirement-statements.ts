@@ -13,7 +13,16 @@
 
 import type { InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { check, index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const creatorEarningsRetirementStatements = pgTable(
   "creator_earnings_retirement_statements",
@@ -77,3 +86,19 @@ export const creatorEarningsRetirementStatements = pgTable(
 export type CreatorEarningsRetirementStatement = InferSelectModel<
   typeof creatorEarningsRetirementStatements
 >;
+
+/**
+ * Singleton recording when creator monetization was retired (migration 0500).
+ * Affiliate earnings credited after `retired_at` are payable through the
+ * affiliate-only payout path; balances before it are frozen.
+ */
+export const creatorMonetizationRetirement = pgTable(
+  "creator_monetization_retirement",
+  {
+    id: boolean("id").primaryKey().default(true),
+    retired_at: timestamp("retired_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    singleton_check: check("creator_monetization_retirement_singleton_check", sql`${table.id}`),
+  }),
+);

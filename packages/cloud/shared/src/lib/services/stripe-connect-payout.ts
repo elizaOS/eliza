@@ -1,12 +1,137 @@
 /**
- * Stripe Connect account status for creators (#8922).
+ * Stripe Connect fiat payout for affiliates (#8922).
  *
- * Creator payouts are retired (#23022): onboarding and transfers were removed
- * and their routes answer 410. Only the webhook status mapping remains so the
- * Connect webhook keeps historical connected-account rows current.
+ * Creator payouts are retired (#23022); this rail now pays affiliate earnings
+ * only, gated by `affiliate-payouts.ts` so a frozen creator balance can never
+ * be transferred. The money math and balance debit stay in the redeemable
+ * earnings ledger; this module only orchestrates the Stripe side: onboarding,
+ * transfers and webhook status.
+ *
+ * The Stripe SDK is injected (`StripeConnectClient`) rather than imported, so the
+ * flow is testable without a live key and the route layer passes
+ * `requireStripe()` at the boundary.
  */
 
 import type { StripeConnectStatus } from "../../db/schemas/stripe-connect-accounts";
+
+/** Payout currency. Kept inline (not imported from `../stripe`) so this module
+ * stays SDK-agnostic — it never loads the Stripe SDK; the route injects the
+ * client. Matches `STRIPE_CURRENCY` in `../stripe`. */
+const STRIPE_CURRENCY = "usd";
+
+/** Minimal structural subset of the Stripe SDK this module uses. */
+export interface StripeConnectClient {
+  accounts: {
+    create(params: {
+      type: "express";
+      email?: string;
+      metadata?: Record<string, string>;
+    }): Promise<{ id: string }>;
+  };
+  accountLinks: {
+    create(params: {
+      account: string;
+      refresh_url: string;
+      return_url: string;
+      type: "account_onboarding";
+    }): Promise<{ url: string }>;
+  };
+  transfers: {
+    create(
+      params: {
+        amount: number;
+        currency: string;
+        destination: string;
+        metadata?: Record<string, string>;
+      },
+      options?: { idempotencyKey?: string },
+    ): Promise<{ id: string }>;
+  };
+}
+
+export interface OnboardingInput {
+  userId: string;
+  email?: string;
+  /** Where Stripe returns the user if the link expires before completion. */
+  refreshUrl: string;
+  /** Where Stripe returns the user after onboarding. */
+  returnUrl: string;
+  /** Reuse an existing connected account instead of creating a new one. */
+  existingAccountId?: string;
+}
+
+export interface OnboardingResult {
+  accountId: string;
+  onboardingUrl: string;
+  /** True when a fresh Express account was created (caller persists it). */
+  created: boolean;
+}
+
+/**
+ * Create (or reuse) an Express connected account and return a one-time
+ * onboarding URL. The caller persists `accountId` on first creation.
+ */
+export async function createConnectOnboarding(
+  stripe: StripeConnectClient,
+  input: OnboardingInput,
+): Promise<OnboardingResult> {
+  let accountId = input.existingAccountId;
+  let created = false;
+  if (!accountId) {
+    const account = await stripe.accounts.create({
+      type: "express",
+      email: input.email,
+      metadata: { userId: input.userId },
+    });
+    accountId = account.id;
+    created = true;
+  }
+  const link = await stripe.accountLinks.create({
+    account: accountId,
+    refresh_url: input.refreshUrl,
+    return_url: input.returnUrl,
+    type: "account_onboarding",
+  });
+  return { accountId, onboardingUrl: link.url, created };
+}
+
+/** Convert a USD amount to integer Stripe cents, rejecting invalid values. */
+export function usdToStripeCents(amountUsd: number): number {
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+    throw new Error(`Invalid payout amount: ${amountUsd}`);
+  }
+  return Math.round(amountUsd * 100);
+}
+
+export interface TransferInput {
+  accountId: string;
+  amountUsd: number;
+  /** Stable key so a retried withdraw never double-pays. */
+  idempotencyKey: string;
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Transfer funds to a connected account. Assumes the caller has already run the
+ * existing withdraw validations (creator role, monetization on, balance ≥
+ * amount) and debited the ledger atomically — this is the Stripe side only.
+ */
+export async function transferToConnectAccount(
+  stripe: StripeConnectClient,
+  input: TransferInput,
+): Promise<{ transferId: string; amountCents: number }> {
+  const amountCents = usdToStripeCents(input.amountUsd);
+  const transfer = await stripe.transfers.create(
+    {
+      amount: amountCents,
+      currency: STRIPE_CURRENCY,
+      destination: input.accountId,
+      metadata: input.metadata,
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return { transferId: transfer.id, amountCents };
+}
 
 /** Derive the account status enum from Stripe capability flags. */
 export function connectStatusFromCapabilities(caps: {

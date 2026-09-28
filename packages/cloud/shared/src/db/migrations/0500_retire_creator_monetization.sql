@@ -1,6 +1,8 @@
 -- #22961 / #23022: creator monetization is retired (owner decision, see #22957).
 -- Cloud billing is subscription (Plus/Pro) plus pay-as-you-go; creators no
--- longer accrue earnings and every self-serve payout rail is closed.
+-- longer accrue earnings and every creator payout rail is closed. The
+-- affiliate program continues: affiliate earnings credited after the
+-- retirement instant remain payable through the affiliate-only payout path.
 --
 -- This migration never deletes or rewrites ledger history. It:
 --   1. records every user's unpaid creator balance as a frozen, read-only
@@ -11,6 +13,18 @@
 --      purchase share) so buyers stop paying a creator surcharge that no
 --      longer accrues to anyone.
 -- Frozen balances are settled manually by an operator; nothing here pays out.
+-- The retirement instant. Affiliate earnings credited after it stay payable
+-- through the affiliate-only payout path; everything before it is frozen.
+CREATE TABLE IF NOT EXISTS "creator_monetization_retirement" (
+  "id" boolean PRIMARY KEY DEFAULT true NOT NULL,
+  "retired_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "creator_monetization_retirement_singleton_check" CHECK ("id")
+);
+--> statement-breakpoint
+INSERT INTO "creator_monetization_retirement" ("id", "retired_at")
+VALUES (true, now())
+ON CONFLICT ("id") DO NOTHING;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "creator_earnings_retirement_statements" (
   -- No foreign keys: the liability record must outlive account deletion.
   "user_id" uuid PRIMARY KEY NOT NULL,

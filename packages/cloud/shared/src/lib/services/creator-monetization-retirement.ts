@@ -3,8 +3,10 @@
  *
  * Cloud billing is subscription (Plus/Pro) plus pay-as-you-go. Creators no
  * longer accrue earnings from MCP usage or agent inference markup, and every
- * self-serve payout rail (token redemption, Stripe Connect transfer, app
- * earnings withdrawal, earnings-funded hosting) is closed. Historical ledger
+ * creator payout rail (token redemption, app earnings withdrawal,
+ * earnings-funded hosting) is closed. The affiliate program continues:
+ * affiliate earnings credited after retirement are paid through Stripe Connect
+ * by `affiliate-payouts.ts`, which never draws on a frozen balance. Historical ledger
  * rows stay readable. Unpaid balances were recorded by migration 0500 as frozen
  * statements and are settled manually; nothing here pays out.
  */
@@ -17,25 +19,26 @@ import {
 } from "../../db/schemas/creator-earnings-retirement-statements";
 import { redeemableEarnings } from "../../db/schemas/redeemable-earnings";
 import { ApiError } from "../api/cloud-worker-errors";
+import { getAffiliatePayableBalance } from "./affiliate-payouts";
 
 export const CREATOR_MONETIZATION_RETIRED_CODE = "creator_monetization_retired" as const;
 
 export type RetiredCreatorCapability =
   | "token_redemption"
-  | "stripe_connect_payout"
   | "app_earnings_withdrawal"
   | "earnings_funded_hosting"
   | "agent_inference_markup"
   | "app_monetization"
+  | "paid_mcp_listing"
   | "payout_processing";
 
 const RETIRED_MESSAGES: Record<RetiredCreatorCapability, string> = {
   token_redemption: "Creator earnings redemptions have been retired.",
-  stripe_connect_payout: "Creator payouts have been retired.",
   app_earnings_withdrawal: "App earnings withdrawals have been retired.",
   earnings_funded_hosting: "Paying for hosting from creator earnings has been retired.",
   agent_inference_markup: "Agent inference markup has been retired.",
   app_monetization: "App creator monetization has been retired.",
+  paid_mcp_listing: "Paid MCP listings have been retired. MCP listings are free.",
   payout_processing: "Creator payout processing has been retired.",
 };
 
@@ -80,6 +83,8 @@ export interface CreatorEarningsStatement {
     settledAt: string | null;
     settlementReference: string | null;
   } | null;
+  /** Affiliate earnings credited after retirement that can be paid out now. */
+  affiliatePayableUsd: string;
   /** Current ledger balance. It can exceed the frozen amount when affiliate fees keep accruing. */
   current: {
     availableBalanceUsd: string;
@@ -115,19 +120,21 @@ function statementFromRow(
 export class CreatorMonetizationRetirementService {
   /** Read-only statement for one user. Never mutates balances. */
   async getStatement(userId: string): Promise<CreatorEarningsStatement> {
-    const [frozenRow, balanceRow] = await Promise.all([
+    const [frozenRow, balanceRow, affiliatePayable] = await Promise.all([
       dbRead.query.creatorEarningsRetirementStatements.findFirst({
         where: eq(creatorEarningsRetirementStatements.user_id, userId),
       }),
       dbRead.query.redeemableEarnings.findFirst({
         where: eq(redeemableEarnings.user_id, userId),
       }),
+      getAffiliatePayableBalance(userId),
     ]);
 
     return {
       status: frozenRow ? frozenRow.status : "none",
       payoutsRetired: true,
       frozen: frozenRow ? statementFromRow(frozenRow) : null,
+      affiliatePayableUsd: affiliatePayable.payableUsd,
       current: {
         availableBalanceUsd: balanceRow?.available_balance ?? "0.0000",
         pendingRedemptionUsd: balanceRow?.total_pending ?? "0.0000",

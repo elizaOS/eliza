@@ -26,6 +26,7 @@ export type ApiErrorCode =
   | "agent_image_not_digest_pinned"
   | "billing_state_conflict"
   | "creator_monetization_retired"
+  | "affiliate_payout_exceeds_payable"
   | "service_unavailable"
   | "internal_error";
 

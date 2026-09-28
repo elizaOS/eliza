@@ -39,6 +39,7 @@ export interface CreatorEarningsStatementDto {
     };
     settledAt: string | null;
   } | null;
+  affiliatePayableUsd: string;
   current: {
     availableBalanceUsd: string;
     pendingRedemptionUsd: string;
@@ -78,7 +79,7 @@ export function CreatorEarningsStatementView({
         <p>
           {t("cloud.earningsStatement.retiredNotice", {
             defaultValue:
-              "Creator earnings and payouts have been retired. Balances earned before retirement are frozen and will be settled by our team. No action is needed.",
+              "Creator earnings and payouts have been retired. Balances earned before retirement are frozen and will be settled by our team. Affiliate earnings since then are still paid out through Stripe Connect.",
           })}
         </p>
       </Alert>
@@ -183,6 +184,12 @@ export function CreatorEarningsStatementView({
             defaultValue: "Pending",
           })}
           value={usd(statement.current.pendingRedemptionUsd)}
+        />
+        <StatementRow
+          label={t("cloud.earningsStatement.affiliatePayable", {
+            defaultValue: "Affiliate earnings available for payout",
+          })}
+          value={usd(statement.affiliatePayableUsd)}
         />
       </Card>
     </div>

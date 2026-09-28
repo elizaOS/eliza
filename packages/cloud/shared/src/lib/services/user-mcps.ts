@@ -13,7 +13,6 @@ import {
   type McpUsageChargeReceipt,
   mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_UNIT,
-  organizationCreditsToLegacyMcpPoints,
 } from "../../billing/organization-credits";
 import { mcpUsageRepository, type UserMcp, userMcpsRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
@@ -21,6 +20,7 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { assertSafeOutboundUrlSync } from "../security/outbound-url";
 import { logger } from "../utils/logger";
 import { containersService } from "./containers";
+import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { creditsService } from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
@@ -236,43 +236,6 @@ function parseMcpSharePercentage(
   return parseMcpBillingNumber(value, field, fallback, { min: 0, max: 100 });
 }
 
-function resolveStoredMcpPricePoints(params: {
-  priceUsd?: number;
-  legacyCreditsPerRequest?: number;
-  fallback?: number;
-}): number | undefined {
-  const canonicalPrice =
-    params.priceUsd === undefined
-      ? undefined
-      : parseNonNegativeMcpBillingNumber(params.priceUsd, "priceUsd", 0);
-  const legacyPrice =
-    params.legacyCreditsPerRequest === undefined
-      ? undefined
-      : parseNonNegativeMcpBillingNumber(params.legacyCreditsPerRequest, "creditsPerRequest", 0);
-  const convertedCanonical =
-    canonicalPrice === undefined ? undefined : organizationCreditsToLegacyMcpPoints(canonicalPrice);
-
-  if (
-    convertedCanonical !== undefined &&
-    legacyPrice !== undefined &&
-    Math.abs(convertedCanonical - legacyPrice) > 1e-9
-  ) {
-    throw new ElizaError(
-      "priceUsd and deprecated creditsPerRequest describe different MCP prices",
-      {
-        code: "MCP_PRICE_UNIT_CONFLICT",
-        context: {
-          priceUsd: canonicalPrice,
-          creditsPerRequest: legacyPrice,
-        },
-        severity: "ephemeral",
-      },
-    );
-  }
-
-  return convertedCanonical ?? legacyPrice ?? params.fallback;
-}
-
 /** Presentation price for one stored MCP row, or an explicit unavailable price. */
 export type CanonicalMcpPrice =
   | { priceAvailable: true; priceUsd: string }
@@ -354,6 +317,35 @@ function resolveCreatorRevenueUsd(mcp: UserMcp | PublicUserMcp): string | null {
 }
 
 /**
+ * Listing price charged per MCP call after paid listings were retired
+ * (#22961). Migration 0502 zeroed every stored price; this constant keeps a
+ * stale or hand-edited row from ever charging a buyer.
+ */
+export const RETIRED_MCP_LISTING_PRICE_POINTS = 0;
+
+/**
+ * Refuse any listing input that would set a price (#22961). Listings are free:
+ * `pricingType` may only be `free`, prices only 0 and x402 stays off.
+ */
+export function assertFreeMcpListing(params: {
+  pricingType?: "free" | "credits" | "x402";
+  priceUsd?: number;
+  creditsPerRequest?: number;
+  x402PriceUsd?: number;
+  x402Enabled?: boolean;
+}): void {
+  if (
+    (params.pricingType !== undefined && params.pricingType !== "free") ||
+    (params.priceUsd !== undefined && params.priceUsd !== 0) ||
+    (params.creditsPerRequest !== undefined && params.creditsPerRequest !== 0) ||
+    (params.x402PriceUsd !== undefined && params.x402PriceUsd !== 0) ||
+    params.x402Enabled === true
+  ) {
+    throw new CreatorMonetizationRetiredError("paid_mcp_listing");
+  }
+}
+
+/**
  * Revenue split for one MCP call after creator monetization was retired
  * (#22961). The creator share no longer accrues: no creator organization
  * credit and no redeemable earning is written, and the stored
@@ -389,6 +381,7 @@ class UserMcpsService {
    * Create a new user MCP
    */
   async create(params: CreateMcpParams): Promise<UserMcp> {
+    assertFreeMcpListing(params);
     // Validate container exists if using container endpoint
     if (params.endpointType === "container" && params.containerId) {
       const container = await containersService.getById(params.containerId, params.organizationId);
@@ -432,18 +425,11 @@ class UserMcpsService {
       endpoint_path: params.endpointPath ?? "/mcp",
       transport_type: params.transportType ?? "streamable-http",
       tools: params.tools ?? [],
-      pricing_type: params.pricingType ?? "credits",
-      credits_per_request: resolveStoredMcpPricePoints({
-        priceUsd: params.priceUsd,
-        legacyCreditsPerRequest: params.creditsPerRequest,
-        fallback: 1,
-      })?.toString(),
-      x402_price_usd: parseNonNegativeMcpBillingNumber(
-        params.x402PriceUsd,
-        "x402PriceUsd",
-        0.0001,
-      ).toString(),
-      x402_enabled: params.x402Enabled ?? false,
+      // Paid listings are retired (#22961): every listing is free.
+      pricing_type: "free",
+      credits_per_request: "0",
+      x402_price_usd: "0",
+      x402_enabled: false,
       creator_share_percentage: creatorSharePercentage.toString(),
       platform_share_percentage: (100 - creatorSharePercentage).toString(),
       documentation_url: params.documentationUrl,
@@ -547,21 +533,21 @@ class UserMcpsService {
     if (params.endpointPath !== undefined) updateData.endpoint_path = params.endpointPath;
     if (params.transportType !== undefined) updateData.transport_type = params.transportType;
     if (params.tools !== undefined) updateData.tools = params.tools;
-    if (params.pricingType !== undefined) updateData.pricing_type = params.pricingType;
-    if (params.priceUsd !== undefined || params.creditsPerRequest !== undefined) {
-      updateData.credits_per_request = resolveStoredMcpPricePoints({
-        priceUsd: params.priceUsd,
-        legacyCreditsPerRequest: params.creditsPerRequest,
-      })?.toString();
+    // Paid listings are retired (#22961): an update can only keep or make the
+    // listing free, never set a price.
+    assertFreeMcpListing(params);
+    if (
+      params.pricingType !== undefined ||
+      params.priceUsd !== undefined ||
+      params.creditsPerRequest !== undefined ||
+      params.x402PriceUsd !== undefined ||
+      params.x402Enabled !== undefined
+    ) {
+      updateData.pricing_type = "free";
+      updateData.credits_per_request = "0";
+      updateData.x402_price_usd = "0";
+      updateData.x402_enabled = false;
     }
-    if (params.x402PriceUsd !== undefined) {
-      updateData.x402_price_usd = parseNonNegativeMcpBillingNumber(
-        params.x402PriceUsd,
-        "x402PriceUsd",
-        0.0001,
-      ).toString();
-    }
-    if (params.x402Enabled !== undefined) updateData.x402_enabled = params.x402Enabled;
     if (params.creatorSharePercentage !== undefined) {
       const creatorSharePercentage = parseMcpSharePercentage(
         params.creatorSharePercentage,
@@ -688,25 +674,10 @@ class UserMcpsService {
       throw new Error("MCP not found");
     }
 
-    // Calculate charges and revenue split
-    let creditsCharged = 0;
-    let x402AmountUsd = 0;
-
-    // Fail closed on corrupt price rows BEFORE any charge/credit/earnings runs:
-    // a NaN price would slip past the `totalCreditsToDeduct > 0` charge gate
-    // (NaN > 0 === false) yet still execute the tool call for free and write
-    // "NaN" into the ledger.
-    if (params.paymentType === "credits") {
-      creditsCharged = parseNonNegativeMcpBillingNumber(
-        mcp.credits_per_request,
-        "credits_per_request",
-        0,
-      );
-    } else {
-      x402AmountUsd = parseNonNegativeMcpBillingNumber(mcp.x402_price_usd, "x402_price_usd", 0);
-      // Convert to credits using configured rate
-      creditsCharged = organizationCreditsToLegacyMcpPoints(x402AmountUsd);
-    }
+    // Paid listings are retired (#22961): the stored listing price is never
+    // charged, for credits or x402, so the base and every fee on it are zero.
+    const creditsCharged: number = RETIRED_MCP_LISTING_PRICE_POINTS;
+    const x402AmountUsd = 0;
 
     // WHY affiliate fee on top of creditsCharged: Customer pays base + affiliate% + platform%;
     // we pay affiliate from that. Referral splits are not used for MCP, keeps one payout

@@ -1,7 +1,10 @@
 /**
  * User MCP Proxy Endpoint
  *
- * Proxies requests to user-created MCPs and handles monetization.
+ * Proxies requests to user-created MCPs. Paid MCP listings are retired
+ * (#22961): every listing is free, so a call charges nothing, admits no credit
+ * reservation and records usage at zero. The caller's credential is still
+ * checked before the upstream call.
  *
  * POST /api/mcp/proxy/[mcpId] - Proxy MCP request
  * GET /api/mcp/proxy/[mcpId] - Get MCP info
@@ -36,7 +39,11 @@ import { affiliatesService } from "@/lib/services/affiliates";
 import { containersService } from "@/lib/services/containers";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { userMcpsService } from "@/lib/services/user-mcps";
+import { assertInferenceCredentialActive } from "@/lib/services/inference-credential-revocation";
+import {
+  RETIRED_MCP_LISTING_PRICE_POINTS,
+  userMcpsService,
+} from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
@@ -325,7 +332,10 @@ app.post("/", async (c) => {
       return c.json({ error: "MCP not found" }, 404);
     }
 
-    const creditsRequired = Number(mcp.credits_per_request || "1");
+    // Paid listings are retired (#22961): the listing price is never charged,
+    // whatever a stale row stores. Only an affiliate surcharge on a positive
+    // base could apply, and the base is zero, so the whole call is free.
+    const creditsRequired = RETIRED_MCP_LISTING_PRICE_POINTS;
     let affiliateOwnerId: string | undefined;
     let affiliateCodeId: string | undefined;
 
@@ -542,52 +552,66 @@ app.post("/", async (c) => {
       };
 
       try {
-        admission = await admitFlatGenerativeOperation({
-          c,
-          context: {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: caller.apiKeyId,
-            model: `mcp/${mcp.id}`,
-            provider: "mcp",
-            billingSource: "selfhosted",
-            requestId,
-            description: `MCP: ${mcp.name}`,
-            metadata: {
-              mcp_id: mcp.id,
-              mcp_name: mcp.name,
-              base_credits: creditsRequired.toFixed(4),
-              affiliate_fee: affiliateFeeCredits.toFixed(4),
-              platform_fee: platformFeeCredits.toFixed(4),
-              total_credits_charged: totalCreditsRequired.toFixed(4),
-              base_amount_usd: formatOrganizationCreditUsd(
-                chargeReceipt.baseAmountUsd,
-              ),
-              affiliate_fee_usd: formatOrganizationCreditUsd(
-                chargeReceipt.affiliateFeeUsd,
-              ),
-              platform_fee_usd: formatOrganizationCreditUsd(
-                chargeReceipt.platformFeeUsd,
-              ),
-              total_amount_usd: formatOrganizationCreditUsd(
-                chargeReceipt.totalAmountUsd,
-              ),
-              credit_unit: ORGANIZATION_CREDIT_UNIT,
-              ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
-              ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
+        if (chargeReceipt.totalAmountUsd <= 0) {
+          // Nothing to reserve. Run the deferred strong credential check now,
+          // before the upstream call, instead of at disposal.
+          const credential = credentialGuard.credentialForAdmission();
+          if (credential) {
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              credential,
+            );
+          }
+        } else {
+          admission = await admitFlatGenerativeOperation({
+            c,
+            context: {
+              organizationId: user.organization_id,
+              userId: user.id,
+              apiKeyId: caller.apiKeyId,
+              model: `mcp/${mcp.id}`,
+              provider: "mcp",
+              billingSource: "selfhosted",
+              requestId,
+              description: `MCP: ${mcp.name}`,
+              metadata: {
+                mcp_id: mcp.id,
+                mcp_name: mcp.name,
+                base_credits: creditsRequired.toFixed(4),
+                affiliate_fee: affiliateFeeCredits.toFixed(4),
+                platform_fee: platformFeeCredits.toFixed(4),
+                total_credits_charged: totalCreditsRequired.toFixed(4),
+                base_amount_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.baseAmountUsd,
+                ),
+                affiliate_fee_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.affiliateFeeUsd,
+                ),
+                platform_fee_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.platformFeeUsd,
+                ),
+                total_amount_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.totalAmountUsd,
+                ),
+                credit_unit: ORGANIZATION_CREDIT_UNIT,
+                ...(affiliateOwnerId && {
+                  affiliate_owner_id: affiliateOwnerId,
+                }),
+                ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
+              },
             },
-          },
-          apiKeyId: caller.apiKeyId,
-          admissionSnapshot: caller.admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
-          atomicProviderBoundary: true,
-          cost: {
-            baseTotalCost: chargeReceipt.baseAmountUsd,
-            platformMarkup:
-              chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
-            totalCost: chargeReceipt.totalAmountUsd,
-          },
-        });
+            apiKeyId: caller.apiKeyId,
+            admissionSnapshot: caller.admissionSnapshot,
+            credential: credentialGuard.credentialForAdmission(),
+            atomicProviderBoundary: true,
+            cost: {
+              baseTotalCost: chargeReceipt.baseAmountUsd,
+              platformMarkup:
+                chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
+              totalCost: chargeReceipt.totalAmountUsd,
+            },
+          });
+        }
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return c.json(
@@ -615,7 +639,7 @@ app.post("/", async (c) => {
 
       let mcpResponse: Response;
       try {
-        await activeAdmission.markProviderDispatched?.();
+        await activeAdmission?.markProviderDispatched?.();
         providerDispatchStarted = true;
         if (isExternalEndpoint) {
           // safeFetch validates + IP-pins the request and (redirect: "error")
@@ -778,9 +802,9 @@ app.post("/", async (c) => {
       const rpcErrored = mcpResponse.ok && isJsonRpcErrorResponse(responseBody);
       if (mcpResponse.ok && !rpcErrored) {
         const accountingTask = (async () => {
-          const reconciliation = await activeAdmission.settle(
-            chargeReceipt.totalAmountUsd,
-          );
+          const reconciliation = activeAdmission
+            ? await activeAdmission.settle(chargeReceipt.totalAmountUsd)
+            : null;
           if (reconciliation?.adjustmentType === "uncollected_overage") {
             logger.error("[MCP Proxy] Final charge was not collected", {
               mcpId,
@@ -806,7 +830,7 @@ app.post("/", async (c) => {
               responseTime: Date.now() - startTime,
               success: true,
               preChargeTransactionId:
-                activeAdmission.reservation?.reservationTransactionId ??
+                activeAdmission?.reservation?.reservationTransactionId ??
                 requestId,
               totalCreditsCharged: totalCreditsRequired,
               affiliateFeeCredits,

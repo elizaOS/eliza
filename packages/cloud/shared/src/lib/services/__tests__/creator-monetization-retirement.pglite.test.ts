@@ -2,7 +2,9 @@
  * Creator monetization retirement (#22961 / #23022) on PGlite: migration 0500
  * freezes every unpaid balance into a read-only statement without touching the
  * ledger, turns off earnings-funded hosting and creator markups, and a paid
- * MCP call no longer accrues creator earnings or creator org credit.
+ * MCP call no longer accrues creator earnings or creator org credit. Affiliate
+ * earnings credited after retirement stay payable, but a payout can never draw
+ * on a frozen creator balance. Migration 0502 makes every MCP listing free.
  */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
@@ -60,11 +62,8 @@ async function seedAccount() {
   return { organization, user };
 }
 
-async function replay0500() {
-  const migration = await readFile(
-    join(import.meta.dir, "../../../db/migrations/0500_retire_creator_monetization.sql"),
-    "utf8",
-  );
+async function replayMigration(name: string) {
+  const migration = await readFile(join(import.meta.dir, `../../../db/migrations/${name}`), "utf8");
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await dbWrite.execute(sql.raw(statement));
   }
@@ -132,8 +131,8 @@ beforeAll(async () => {
   } as never);
 
   // Replayed twice to prove the snapshot is idempotent.
-  await replay0500();
-  await replay0500();
+  await replayMigration("0500_retire_creator_monetization.sql");
+  await replayMigration("0500_retire_creator_monetization.sql");
 }, TEST_TIMEOUT);
 
 afterAll(async () => {
@@ -256,6 +255,152 @@ test(
       .from(organizations)
       .where(eq(organizations.id, creator.organization.id));
     expect(Number(creatorOrg?.credit_balance)).toBe(0);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a frozen creator balance cannot be paid out; affiliate earnings since retirement can",
+  async () => {
+    const { debitAffiliatePayout, getAffiliatePayableBalance, AffiliatePayoutExceedsPayableError } =
+      await import("../affiliate-payouts");
+    const { redeemableEarningsService } = await import("../redeemable-earnings");
+
+    // The frozen creator user has $15 available, all frozen.
+    expect((await getAffiliatePayableBalance(unpaid.user.id)).payableUsd).toBe("0.0000");
+    await expect(
+      debitAffiliatePayout({
+        userId: unpaid.user.id,
+        amountUsd: 1,
+        idempotencyKey: unique("payout"),
+        description: "test payout",
+      }),
+    ).rejects.toBeInstanceOf(AffiliatePayoutExceedsPayableError);
+
+    // New affiliate earnings are payable; new non-affiliate earnings are not.
+    await redeemableEarningsService.addEarnings({
+      userId: unpaid.user.id,
+      amount: 7,
+      source: "affiliate",
+      sourceId: unique("affiliate-fee"),
+      description: "affiliate fee after retirement",
+    });
+    await redeemableEarningsService.addEarnings({
+      userId: unpaid.user.id,
+      amount: 10,
+      source: "creator_revenue_share",
+      sourceId: unique("revenue-share"),
+      description: "non-affiliate earning after retirement",
+    });
+    const payable = await getAffiliatePayableBalance(unpaid.user.id);
+    expect(payable).toMatchObject({
+      payableUsd: "7.0000",
+      availableBalanceUsd: "32.0000",
+      frozenAvailableUsd: "15.0000",
+    });
+
+    const key = unique("payout");
+    const first = await debitAffiliatePayout({
+      userId: unpaid.user.id,
+      amountUsd: 5,
+      idempotencyKey: key,
+      description: "test payout",
+    });
+    expect(first.deduplicated).toBe(false);
+    const replay = await debitAffiliatePayout({
+      userId: unpaid.user.id,
+      amountUsd: 5,
+      idempotencyKey: key,
+      description: "test payout",
+    });
+    expect(replay.deduplicated).toBe(true);
+    expect((await getAffiliatePayableBalance(unpaid.user.id)).payableUsd).toBe("2.0000");
+
+    // $3 would reach the frozen creator balance.
+    await expect(
+      debitAffiliatePayout({
+        userId: unpaid.user.id,
+        amountUsd: 3,
+        idempotencyKey: unique("payout"),
+        description: "test payout",
+      }),
+    ).rejects.toBeInstanceOf(AffiliatePayoutExceedsPayableError);
+    await debitAffiliatePayout({
+      userId: unpaid.user.id,
+      amountUsd: 2,
+      idempotencyKey: unique("payout"),
+      description: "test payout",
+    });
+
+    const [balance] = await dbWrite
+      .select()
+      .from(redeemableEarnings)
+      .where(eq(redeemableEarnings.user_id, unpaid.user.id));
+    // 15 frozen + 10 non-affiliate remain; exactly the 7 affiliate dollars left.
+    expect(balance?.available_balance).toBe("25.0000");
+    const [statement] = await dbWrite
+      .execute(
+        sql`SELECT available_balance_usd, status FROM creator_earnings_retirement_statements WHERE user_id = ${unpaid.user.id}`,
+      )
+      .then((r) => r.rows as Array<{ available_balance_usd: string; status: string }>);
+    expect(statement).toMatchObject({ available_balance_usd: "15.0000", status: "frozen" });
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "paid MCP listings become free and new prices are refused",
+  async () => {
+    const creator = await seedAccount();
+    const [paid] = await dbWrite
+      .insert(userMcps)
+      .values({
+        name: "Paid listing",
+        slug: unique("paid"),
+        description: "was paid",
+        organization_id: creator.organization.id,
+        created_by_user_id: creator.user.id,
+        pricing_type: "credits",
+        credits_per_request: "25",
+        x402_price_usd: "0.5",
+        x402_enabled: true,
+        status: "live",
+      } as never)
+      .returning();
+
+    await replayMigration("0502_free_mcp_listings.sql");
+    await replayMigration("0502_free_mcp_listings.sql");
+
+    const [after] = await dbWrite.select().from(userMcps).where(eq(userMcps.id, paid.id));
+    expect(after).toMatchObject({ pricing_type: "free", x402_enabled: false });
+    expect(Number(after?.credits_per_request)).toBe(0);
+    expect(Number(after?.x402_price_usd)).toBe(0);
+    expect(after?.metadata).toMatchObject({
+      retired_paid_listing: { pricing_type: "credits", x402_enabled: true },
+    });
+
+    const { userMcpsService } = await import("../user-mcps");
+    const { CreatorMonetizationRetiredError } = await import("../creator-monetization-retirement");
+    await expect(
+      userMcpsService.update(paid.id, creator.organization.id, { priceUsd: 0.05 }),
+    ).rejects.toBeInstanceOf(CreatorMonetizationRetiredError);
+    await expect(
+      userMcpsService.create({
+        name: "New paid",
+        slug: unique("new-paid"),
+        description: "should be refused",
+        organizationId: creator.organization.id,
+        userId: creator.user.id,
+        pricingType: "x402",
+        x402Enabled: true,
+      } as never),
+    ).rejects.toBeInstanceOf(CreatorMonetizationRetiredError);
+
+    // Making a listing free is still allowed.
+    const free = await userMcpsService.update(paid.id, creator.organization.id, {
+      pricingType: "free",
+    });
+    expect(free.pricing_type).toBe("free");
   },
   TEST_TIMEOUT,
 );
