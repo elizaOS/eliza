@@ -6,11 +6,11 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { NativeSocketBrowserTarget } from "../../../plugins/plugin-browser/src/native-socket-target.ts";
-import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import { NativeSocketBrowserTarget } from "@elizaos/plugin-browser/native-socket-target";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const require = createRequire(
-  new URL("../../../plugins/plugin-browser/package.json", import.meta.url),
+  import.meta.resolve("@elizaos/plugin-browser/package.json"),
 );
 const { default: puppeteer } = require("puppeteer-core");
 const root = resolve(import.meta.dirname, "..");
@@ -43,7 +43,7 @@ try {
     [
       join(root, "scripts/install-native-host.mjs"),
       "--host",
-      join(root, "scripts/native-host.mjs"),
+      "/usr/libexec/elizaos-browser-native-host",
       "--manifest-dir",
       join(profile, "NativeMessagingHosts"),
     ],
@@ -51,15 +51,12 @@ try {
   );
   assert.equal(install.status, 0, install.stderr);
   browser = await puppeteer.launch({
-    executablePath: "/usr/bin/chromium",
+    executablePath: process.env.ELIZA_BROWSER_EXECUTABLE || "/usr/bin/chromium",
     headless: true,
     userDataDir: profile,
     env: { ...process.env, XDG_RUNTIME_DIR: temporary },
     ignoreDefaultArgs: ["--disable-extensions"],
-    args: [
-      `--disable-extensions-except=${join(root, "dist/chrome")}`,
-      `--load-extension=${join(root, "dist/chrome")}`,
-    ],
+    args: [],
   });
   const deadline = Date.now() + 20000;
   while (!(await target.available()) && Date.now() < deadline)

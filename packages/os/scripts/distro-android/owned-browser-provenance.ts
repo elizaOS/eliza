@@ -2,7 +2,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 export const COMPONENT_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 export const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium";
@@ -144,10 +143,7 @@ export function verifyOwnedProvenance(root, pin, architecture) {
   const overlay = JSON.parse(overlayBytes.toString("utf8"));
   const reviewed = JSON.parse(
     fs.readFileSync(
-      path.join(
-        resolveElizaSourceRoot(),
-        "packages/browser-bridge-extension/scripts/chromium/upstream.json",
-      ),
+      new URL("../../browser/scripts/chromium/upstream.json", import.meta.url),
       "utf8",
     ),
   );

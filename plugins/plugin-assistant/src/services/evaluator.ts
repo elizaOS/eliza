@@ -389,6 +389,11 @@ function buildPrompt(params: {
     }
   >();
   const sharedIds = params.roomTranscript?.map((record) => record.id);
+  const sections: Array<{
+    name: string;
+    contract: string | undefined;
+    body: string;
+  }> = [];
   for (const entry of active) {
     const { evaluator, prepared } = entry;
     const context = {
@@ -469,11 +474,28 @@ function buildPrompt(params: {
         evidenceSelection = `only the exact source IDs in ${set.id} defined above`;
       }
     }
-    dynamic.push({
-      content: `### ${evaluator.name}\n${entry.progress ? `Incremental evidence contract: process ${evidenceSelection}. Removed source IDs: ${stringifyForModel(entry.progress.removedMessageIds)}. Edited source IDs: ${stringifyForModel(entry.progress.changedMessageIds)}.\n` : ""}${segments
+    sections.push({
+      name: evaluator.name,
+      contract: entry.progress
+        ? `Incremental evidence contract: process ${evidenceSelection}. Removed source IDs: ${stringifyForModel(entry.progress.removedMessageIds)}. Edited source IDs: ${stringifyForModel(entry.progress.changedMessageIds)}.`
+        : undefined,
+      body: segments
         .filter((segment) => !segment.stable)
         .map((segment) => segment.content)
-        .join("")}\n\n`,
+        .join(""),
+    });
+  }
+  // Evaluators processing the same evidence page share one contract line;
+  // it is stated once for all of them instead of once per section.
+  const sharedContract =
+    sections.length > 1 &&
+    sections[0].contract !== undefined &&
+    sections.every((section) => section.contract === sections[0].contract)
+      ? sections[0].contract
+      : undefined;
+  for (const section of sections) {
+    dynamic.push({
+      content: `### ${section.name}\n${section.contract && !sharedContract ? `${section.contract}\n` : ""}${section.body}\n\n`,
       stable: false,
     });
   }
@@ -494,7 +516,7 @@ function buildPrompt(params: {
   const promptSegments = [
     ...stable,
     {
-      content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}\n\n## Active Evaluators\n\n`,
+      content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}${sharedContract ? `\n\nEvery active evaluator below: ${sharedContract}` : ""}\n\n## Active Evaluators\n\n`,
       stable: false,
     },
     ...dynamic,

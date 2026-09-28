@@ -123,31 +123,29 @@ export function createPlannerToolDiscoveryAction(
     );
   };
   const catalog = catalogFor(authorizedActions);
+  // One statement per behavior: what names=[] returns depends on the catalog
+  // mode, so it is stated once for the mode actually served.
   const discoveryDescription =
     "Find authorized operations by query and/or contexts, or load exact names (parents load their families). " +
-    "To perform work use mode=load: complete schemas appear in the next tool surface. " +
+    "mode=load enables complete schemas in the next tool surface; use loaded tools to perform work. " +
     "mode=describe answers capability or parameter questions without enabling tools. " +
-    "names=[] reads the complete authorized catalog. Search and loads refresh permissions; no domain work executes. " +
-    "Use loaded tools to perform work. A search miss does not prove a capability is unavailable.";
+    (catalogIndex
+      ? "names=[] returns a routing index; add mode=describe for complete descriptions. "
+      : "names=[] reads the complete authorized catalog. ") +
+    "Discovery refreshes permissions and never executes domain work. A search miss does not prove a capability is unavailable.";
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
   const referenceDescription = `${discoveryDescription} No name index is preloaded here.`;
   return {
     name: DISCOVER_ACTIONS_NAME,
     similes: [DISCOVER_TOOLS_NAME],
     description: options?.deferNameIndex
-      ? referenceDescription +
-        (catalogIndex
-          ? " Empty names returns a routing index; use mode=describe for complete descriptions."
-          : "")
-      : inlineDescription +
-        (catalogIndex
-          ? " Empty names returns a routing index; use mode=describe for complete descriptions."
-          : ""),
+      ? referenceDescription
+      : inlineDescription,
     parameters: [
       {
         name: "mode",
         description:
-          "load (default) enables named tools; describe reads complete descriptions and, for named tools, parameter schemas. Neither executes domain work.",
+          "load (default) enables named tools; describe reads complete descriptions and, for named tools, parameter schemas.",
         required: false,
         schema: { type: "string", enum: ["load", "describe"] },
       },
@@ -167,7 +165,7 @@ export function createPlannerToolDiscoveryAction(
       },
       {
         name: "contexts",
-        description: `Optional exact domain IDs to scope search, including without a query. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names; names=[] still reads the complete catalog.`,
+        description: `Optional exact domain IDs to scope search, including without a query. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names.`,
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },

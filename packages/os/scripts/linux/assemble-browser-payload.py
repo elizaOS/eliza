@@ -36,7 +36,7 @@ NODE_SHA256 = {
 }
 # Reviewed https://nodejs.org/dist/v24.15.0/SHASUMS256.txt, SHA256
 # 1e812945dee26c3e4ca41a8c0b582668ff2401ba0ae727a122300c0e8514edb0.
-BRIDGE_SCRIPTS = Path(__file__).resolve().parents[4] / "packages/browser-bridge-extension/scripts"
+BRIDGE_SCRIPTS = Path(__file__).resolve().parents[2] / "browser/scripts"
 NATIVE_HOST = BRIDGE_SCRIPTS / "native-host.mjs"
 UPSTREAM = BRIDGE_SCRIPTS / "chromium/upstream.json"
 GRIT_HEADER = "gen/chrome/grit/component_extension_resources.h"
