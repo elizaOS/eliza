@@ -301,6 +301,22 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(block).toContain("github.event_name == 'workflow_dispatch'");
     expect(block).toContain("github.ref == 'refs/heads/staging'");
     expect(block).toContain("needs.release.result == 'success'");
+    // A freshness-guard skip ends green without deploying; only a run that
+    // released both surfaces may certify its tree (#27229/#28746).
+    expect(block).toContain("needs.release.outputs.api_deployed == 'true'");
+    expect(block).toContain("needs.release.outputs.pages_deployed == 'true'");
+    expect(releaseWorkflow).toContain(
+      "value: $" + "{{ jobs.deploy-api.outputs.api_deployed }}",
+    );
+    expect(releaseWorkflow).toContain(
+      "value: $" + "{{ jobs.deploy-app.outputs.pages_deployed }}",
+    );
+    expect(releaseWorkflow).toContain(
+      'args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health --canonical-ref "$CANONICAL_REF")',
+    );
+    expect(releaseWorkflow).toContain(
+      'args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --canonical-ref "$CANONICAL_REF")',
+    );
     expect(block).toContain("git rev-parse 'HEAD^{tree}'");
     expect(block).toContain("staging-release-certification.ts create");
     expect(block).toContain('--event "$GITHUB_EVENT_NAME"');
