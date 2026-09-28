@@ -6691,7 +6691,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "Error en la solicitud de eliminación: {{message}}",
   "cloud.privacyPanel.title": "Privacidad",
   "cloud.privacyPanel.subtitle": "Controla la captura de datos opcional y ejerce tus derechos sobre los datos.",
-  "cloud.privacyPanel.visionTitle": "Permitir visión / captura de pantalla",
   "cloud.privacyPanel.downloadTitle": "Descargar mis datos",
   "cloud.privacyPanel.export": "Exportar",
   "cloud.privacyPanel.deleteTitle": "Eliminar mi cuenta",

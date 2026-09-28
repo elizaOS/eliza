@@ -6680,7 +6680,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "Solicitação de exclusão falhou: {{message}}",
   "cloud.privacyPanel.title": "Privacidade",
   "cloud.privacyPanel.subtitle": "Controle a captura opcional de dados e exerça seus direitos sobre os dados.",
-  "cloud.privacyPanel.visionTitle": "Permitir visão / captura de tela",
   "cloud.privacyPanel.downloadTitle": "Baixar meus dados",
   "cloud.privacyPanel.export": "Exportar",
   "cloud.privacyPanel.deleteTitle": "Excluir minha conta",

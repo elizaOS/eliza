@@ -1,9 +1,9 @@
-/** Verifies PrivacyPanel renders and records server-authoritative consent. */
+/** Verifies PrivacyPanel discloses server-authoritative privacy policy. */
 // @vitest-environment jsdom
 /**
- * Renders PrivacyPanel against a mocked Cloud API client: consent comes from
- * `GET /api/v1/me/consents`, changes are `POST`ed and reflected only from the
- * server receipt, and the data export verifies the digest before download.
+ * Renders PrivacyPanel against a mocked Cloud API client: the recording policy
+ * comes from `GET /api/v1/me/consents`, vision capture is left to device
+ * permissions, and the data export verifies the digest before download.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -143,26 +143,26 @@ afterEach(() => {
 });
 
 describe("PrivacyPanel", () => {
-  it("renders server consent and discloses that recording is off", async () => {
+  it("discloses that recording is off and defers vision to device permissions", async () => {
     apiMock.mockResolvedValueOnce(consentList([visionRecord(false)]));
     renderPanel();
-    const vision = screen.getByTestId("vision-toggle");
-    expect(vision.getAttribute("role")).toBe("switch");
-    expect(vision.getAttribute("data-agent-id")).toBe("cloud-privacy-vision");
     expect(screen.getByText("Loading your privacy choices…")).toBeTruthy();
-    expect(vision.hasAttribute("disabled")).toBe(true);
     expect(screen.queryByTestId("model-call-recording-status")).toBeNull();
 
-    await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
+    const status = await screen.findByTestId("model-call-recording-status");
     expect(apiMock).toHaveBeenCalledWith("/api/v1/me/consents");
-    expect(vision.getAttribute("aria-checked")).toBe("false");
-    const status = screen.getByTestId("model-call-recording-status");
     expect(status.getAttribute("data-state")).toBe("off");
     expect(status.textContent).toBe(
       "Model-call recording is off on this deployment. Nothing you send is kept for training.",
     );
-    // Recording is deployment policy, never a per-user switch.
-    expect(screen.queryByTestId("trajectory-toggle")).toBeNull();
+    expect(
+      screen.getByText(
+        "Manage camera and screen capture through your device permissions. Account-wide capture controls are not available yet.",
+      ),
+    ).toBeTruthy();
+    // Neither vision nor recording is a per-user switch here.
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(apiMock).toHaveBeenCalledTimes(1);
   });
 
   it("discloses recording with its retention window when the deployment records", async () => {
@@ -196,61 +196,20 @@ describe("PrivacyPanel", () => {
     ).toBeTruthy();
   });
 
-  it("records a consent change on the server and shows the receipt", async () => {
-    apiMock
-      .mockResolvedValueOnce(consentList([]))
-      .mockResolvedValueOnce({ consent: visionRecord(true) });
-    renderPanel();
-    const vision = screen.getByTestId("vision-toggle");
-    await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
-
-    fireEvent.click(vision);
-    await waitFor(() =>
-      expect(vision.getAttribute("aria-checked")).toBe("true"),
-    );
-    expect(apiMock).toHaveBeenLastCalledWith("/api/v1/me/consents", {
-      method: "POST",
-      json: {
-        purpose: "vision_capture",
-        granted: true,
-        policyVersion: "2026-09-privacy-panel-v1",
-      },
-    });
-    // The server emits the audit event with the recorded result.
-    expect(emitAuditEventMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps the prior state and shows an error when recording fails", async () => {
-    apiMock
-      .mockResolvedValueOnce(consentList([visionRecord(false)]))
-      .mockRejectedValueOnce(new Error("consent store offline"));
-    renderPanel();
-    const vision = screen.getByTestId("vision-toggle");
-    await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
-
-    fireEvent.click(vision);
-    expect(
-      (await screen.findByTestId("privacy-consent-error")).textContent,
-    ).toContain("consent store offline");
-    expect(vision.getAttribute("aria-checked")).toBe("false");
-  });
-
   it("shows a load error with retry and never falls back to local state", async () => {
     apiMock
       .mockRejectedValueOnce(new Error("network down"))
-      .mockResolvedValueOnce(consentList([visionRecord(true)]));
+      .mockResolvedValueOnce(consentList([], { enabled: true }));
     renderPanel();
     expect(await screen.findByText("network down")).toBeTruthy();
-    expect(screen.getByTestId("vision-toggle").hasAttribute("disabled")).toBe(
-      true,
-    );
+    expect(screen.queryByTestId("model-call-recording-status")).toBeNull();
 
     fireEvent.click(screen.getByTestId("privacy-consents-retry"));
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("vision-toggle").getAttribute("aria-checked"),
-      ).toBe("true"),
-    );
+    expect(
+      (await screen.findByTestId("model-call-recording-status")).getAttribute(
+        "data-state",
+      ),
+    ).toBe("on");
   });
 
   it("rejects a malformed consent payload instead of rendering it", async () => {

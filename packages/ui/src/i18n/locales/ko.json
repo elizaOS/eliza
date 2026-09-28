@@ -6680,7 +6680,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "삭제 요청 실패: {{message}}",
   "cloud.privacyPanel.title": "개인정보",
   "cloud.privacyPanel.subtitle": "선택적 데이터 수집을 제어하고 데이터 권리를 행사하세요.",
-  "cloud.privacyPanel.visionTitle": "비전 / 화면 캡처 허용",
   "cloud.privacyPanel.downloadTitle": "내 데이터 다운로드",
   "cloud.privacyPanel.export": "내보내기",
   "cloud.privacyPanel.deleteTitle": "내 계정 삭제",

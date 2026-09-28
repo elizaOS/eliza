@@ -6673,7 +6673,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "Nabigo ang kahilingan sa pagbubura: {{message}}",
   "cloud.privacyPanel.title": "Pribasidad",
   "cloud.privacyPanel.subtitle": "Kontrolin ang opsyonal na pagkuha ng data at gamitin ang iyong mga karapatan sa data.",
-  "cloud.privacyPanel.visionTitle": "Payagan ang vision / screen capture",
   "cloud.privacyPanel.downloadTitle": "I-download ang aking data",
   "cloud.privacyPanel.export": "I-export",
   "cloud.privacyPanel.deleteTitle": "Burahin ang aking account",

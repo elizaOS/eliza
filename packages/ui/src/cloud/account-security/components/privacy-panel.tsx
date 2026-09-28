@@ -1,19 +1,15 @@
 /**
  * Privacy controls + data-subject rights, all server-authoritative:
- *   - vision / screen-capture consent (`/api/v1/me/consents`, default off)
+ *   - vision / screen capture, which is governed by device permissions
  *   - a read-only disclosure of the deployment's model-call recording policy
- *     (reported by the same endpoint; recording is deployment configuration,
- *     not a per-user choice)
+ *     (reported by `/api/v1/me/consents`; recording is deployment
+ *     configuration, not a per-user choice)
  *   - live-account data export (`/api/v1/me/data-export`, digest-verified)
  *   - account deletion via the Worker's lifecycle admission state
- *
- * The server records each consent change and emits its audit event; this panel
- * only renders the receipts and never keeps consent in browser storage.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
 import {
   SettingsGroup,
   SettingsRow,
@@ -21,11 +17,7 @@ import {
 } from "../../../components/settings/settings-layout";
 import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import {
-  type ConsentPurpose,
-  useConsents,
-  useRecordConsent,
-} from "../data/consent-client";
+import { useConsents } from "../data/consent-client";
 import {
   DataExportTooLargeError,
   downloadAccountDataExport,
@@ -49,29 +41,11 @@ type ExportState =
 export function PrivacyPanel() {
   const t = useCloudT();
   const consents = useConsents();
-  const recordConsent = useRecordConsent();
-  const [pendingPurpose, setPendingPurpose] = useState<ConsentPurpose | null>(
-    null,
-  );
   const [exportState, setExportState] = useState<ExportState>({
     kind: "idle",
   });
 
-  const loaded = consents.isSuccess;
-  // The switch renders the policy the server enforces: the recorded choice,
-  // or the deployment default when none is recorded. Until the policy loads
-  // it stays off and disabled rather than guessing.
-  const vision = consents.data?.effective.vision_capture;
-  const visionChecked = vision?.granted ?? false;
   const recording = consents.data?.capture.modelCallRecording;
-
-  const onConsentChange = (purpose: ConsentPurpose, granted: boolean) => {
-    setPendingPurpose(purpose);
-    recordConsent.mutate(
-      { purpose, granted },
-      { onSettled: () => setPendingPurpose(null) },
-    );
-  };
 
   const onExport = async () => {
     setExportState({ kind: "pending" });
@@ -150,35 +124,17 @@ export function PrivacyPanel() {
         })}
       >
         {consentStatus}
-        <SettingsSwitchRow
-          agentId="cloud-privacy-vision"
-          group="cloud-privacy"
+        <SettingsRow
           icon={Camera}
-          testId="vision-toggle"
-          label={t("cloud.privacyPanel.visionTitle", {
-            defaultValue: "Allow vision / screen capture",
+          label={t("cloud.privacyPanel.visionPermissionsTitle", {
+            defaultValue: "Vision and screen capture",
           })}
-          description={t("cloud.privacyPanel.visionConsentDescription", {
+          description={t("cloud.privacyPanel.visionPermissionsDescription", {
             defaultValue:
-              "Off unless you turn it on. Your choice is saved to your Eliza Cloud account; screen and camera capture still ask for device permission. Remote models charge per image — check Settings → Billing first.",
+              "Manage camera and screen capture through your device permissions. Account-wide capture controls are not available yet.",
           })}
-          checked={visionChecked}
-          disabled={!loaded || pendingPurpose !== null}
-          onCheckedChange={(next) => onConsentChange("vision_capture", next)}
         />
         {recordingRow}
-        {recordConsent.isError ? (
-          <p
-            role="alert"
-            data-testid="privacy-consent-error"
-            className="px-4 py-2 text-sm text-danger"
-          >
-            {t("cloud.privacyPanel.consentSaveFailed", {
-              defaultValue: "Couldn't save your choice: {{message}}",
-              message: errorMessage(recordConsent.error),
-            })}
-          </p>
-        ) : null}
         <SettingsRow
           icon={Download}
           label={t("cloud.privacyPanel.downloadTitle", {
@@ -188,7 +144,7 @@ export function PrivacyPanel() {
             <>
               {t("cloud.privacyPanel.downloadAccountDescription", {
                 defaultValue:
-                  "Download a JSON archive of the records linked to your account and organization. Secrets and credentials are redacted.",
+                  "Download a JSON archive of records owned by your account. Organization-wide records are excluded. Secrets and credentials are redacted.",
               })}
               {exportState.kind === "ready" ? (
                 <span role="status" className="block">

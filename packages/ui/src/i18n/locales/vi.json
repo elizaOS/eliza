@@ -6673,7 +6673,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "Yêu cầu xóa thất bại: {{message}}",
   "cloud.privacyPanel.title": "Quyền riêng tư",
   "cloud.privacyPanel.subtitle": "Kiểm soát thu thập dữ liệu tùy chọn và thực hiện quyền dữ liệu của bạn.",
-  "cloud.privacyPanel.visionTitle": "Cho phép vision / chụp màn hình",
   "cloud.privacyPanel.downloadTitle": "Tải xuống dữ liệu của tôi",
   "cloud.privacyPanel.export": "Xuất",
   "cloud.privacyPanel.deleteTitle": "Xóa tài khoản của tôi",

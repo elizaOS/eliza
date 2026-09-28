@@ -1,5 +1,5 @@
 /**
- * Server-authoritative privacy consent client for `GET/POST /api/v1/me/consents`.
+ * Server-authoritative privacy consent client for `GET /api/v1/me/consents`.
  *
  * Eliza Cloud stores one append-only record per choice (purpose, granted,
  * policy version, source, time) and emits the audit event for each change, so
@@ -12,7 +12,7 @@
  */
 
 import { ElizaError } from "@elizaos/core/errors";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
 import {
   authenticatedQueryKey,
@@ -20,9 +20,6 @@ import {
 } from "../../lib/auth-query";
 
 export type ConsentPurpose = "vision_capture";
-
-/** Version of the privacy copy the user is agreeing to in this panel. */
-export const PRIVACY_CONSENT_POLICY_VERSION = "2026-09-privacy-panel-v1";
 
 export interface ConsentRecord {
   purpose: ConsentPurpose;
@@ -195,14 +192,6 @@ export function parseConsentList(payload: unknown): ConsentState {
   };
 }
 
-export function parseRecordedConsent(payload: unknown): ConsentRecord {
-  const consent =
-    typeof payload === "object" && payload !== null
-      ? (payload as { consent?: unknown }).consent
-      : undefined;
-  return parseConsentRecord(consent);
-}
-
 const CONSENTS_KEY = ["cloud-account", "consents"] as const;
 
 /** Current consent records for the signed-in user. */
@@ -212,44 +201,5 @@ export function useConsents() {
     queryKey: authenticatedQueryKey(CONSENTS_KEY, gate),
     queryFn: async () => parseConsentList(await api("/api/v1/me/consents")),
     enabled: gate.enabled,
-  });
-}
-
-/** Record a consent choice; the cache updates only from the server receipt. */
-export function useRecordConsent() {
-  const gate = useAuthenticatedQueryGate();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { purpose: ConsentPurpose; granted: boolean }) =>
-      parseRecordedConsent(
-        await api("/api/v1/me/consents", {
-          method: "POST",
-          json: {
-            purpose: input.purpose,
-            granted: input.granted,
-            policyVersion: PRIVACY_CONSENT_POLICY_VERSION,
-          },
-        }),
-      ),
-    onSuccess: (record) => {
-      queryClient.setQueryData<ConsentState>(
-        authenticatedQueryKey(CONSENTS_KEY, gate),
-        (previous) =>
-          previous
-            ? {
-                ...previous,
-                recorded: { ...previous.recorded, [record.purpose]: record },
-                effective: {
-                  ...previous.effective,
-                  [record.purpose]: {
-                    ...previous.effective[record.purpose],
-                    granted: record.granted,
-                    basis: "recorded",
-                  },
-                },
-              }
-            : previous,
-      );
-    },
   });
 }

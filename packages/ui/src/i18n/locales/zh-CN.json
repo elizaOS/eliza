@@ -6680,7 +6680,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "删除请求失败：{{message}}",
   "cloud.privacyPanel.title": "隐私",
   "cloud.privacyPanel.subtitle": "控制可选数据捕获并行使您的数据权利。",
-  "cloud.privacyPanel.visionTitle": "允许视觉/屏幕捕获",
   "cloud.privacyPanel.downloadTitle": "下载我的数据",
   "cloud.privacyPanel.export": "导出",
   "cloud.privacyPanel.deleteTitle": "删除我的账号",

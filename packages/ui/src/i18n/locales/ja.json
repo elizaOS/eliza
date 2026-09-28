@@ -6680,7 +6680,6 @@
   "cloud.privacyPanel.deleteRequestFailed": "削除リクエストに失敗しました: {{message}}",
   "cloud.privacyPanel.title": "プライバシー",
   "cloud.privacyPanel.subtitle": "オプションのデータ収集を管理し、データに関する権利を行使してください。",
-  "cloud.privacyPanel.visionTitle": "ビジョン / 画面キャプチャを許可",
   "cloud.privacyPanel.downloadTitle": "データをダウンロード",
   "cloud.privacyPanel.export": "エクスポート",
   "cloud.privacyPanel.deleteTitle": "アカウントを削除",
