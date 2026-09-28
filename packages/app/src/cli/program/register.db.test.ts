@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 const loadElizaConfig = vi.fn();
 
@@ -20,6 +20,13 @@ const { registerDbCommand } = await import("./register.db");
 
 let tmp: string;
 const savedEnv = { ...process.env };
+
+// register.db lazily imports @elizaos/agent, whose runtime module is large to
+// transform on a cold cache; load it once here so each case measures only the
+// reset behavior.
+beforeAll(async () => {
+  await import("@elizaos/agent");
+}, 600_000);
 
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-db-reset-"));
