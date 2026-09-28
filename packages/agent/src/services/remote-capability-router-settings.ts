@@ -276,6 +276,15 @@ export function parseCapabilityRouterTrustPolicySetting(
         `entry "${entryKey}" must be a trust policy object`,
       );
     }
+    const unknownField = Object.keys(entry).find(
+      (field) => !TRUST_POLICY_FIELD_SET.has(field),
+    );
+    if (unknownField !== undefined) {
+      throw new CapabilityRouterSettingError(
+        key,
+        `entry "${entryKey}" has unknown trust policy option "${unknownField}"`,
+      );
+    }
     const policy = parseTrustPolicyValue(entry, `entry "${entryKey}"`);
     const id = entryKey.trim();
     if (id && Object.keys(policy).length > 0) endpoints[id] = policy;

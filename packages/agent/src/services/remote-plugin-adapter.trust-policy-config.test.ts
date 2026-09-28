@@ -139,6 +139,11 @@ describe("resolveConfiguredRemotePluginTrustPolicy", () => {
     ["string endpoint flag", '{"primary":{"requireVerifiedProvenance":"yes"}}'],
     ["non-array issuers", '{"primary":{"allowedProvenanceIssuers":"issuer"}}'],
     ["non-string public key", '{"trustedProvenancePublicKeys":{"issuer":42}}'],
+    [
+      "misspelled endpoint option",
+      '{"primary":{"requireVerifedProvenance":true}}',
+    ],
+    ["misspelled global option", '{"requireVerifedProvenance":true}'],
   ])("throws on a malformed trust policy entry (%s)", (_label, value) => {
     const run = () =>
       resolveConfiguredRemotePluginTrustPolicy(
