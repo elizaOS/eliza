@@ -741,3 +741,27 @@ test("runtime provenance deduplicates identical paths and refuses conflicting re
     /Conflicting runtime provenance/,
   );
 });
+
+test("Alpine apk extraction failures propagate and are not cached as extracted", async () => {
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "alpine-apk-"));
+  try {
+    const archCache = path.join(cacheDir, "alpine-x86_64");
+    fs.mkdirSync(archCache, { recursive: true });
+    // Pre-seed corrupt apks so no network download happens and tar must fail.
+    for (const { file } of __testables.APK_PACKAGES) {
+      fs.writeFileSync(path.join(archCache, file), "not a gzip tarball");
+    }
+
+    await assert.rejects(
+      __testables.ensureAlpineApkExtracted({
+        cacheDir,
+        alpineArch: "x86_64",
+        log: () => {},
+      }),
+      /Failed to extract Alpine musl \(x86_64\)/,
+    );
+    assert.equal(fs.existsSync(path.join(archCache, ".extracted")), false);
+  } finally {
+    removePathRecursive(cacheDir);
+  }
+});

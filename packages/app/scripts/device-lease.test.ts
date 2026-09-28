@@ -6,7 +6,14 @@
  * prove the atomic `wx` create admits exactly one winner.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -237,6 +244,99 @@ describe("device leases", () => {
     const persisted = readDeviceLease("android:contested", { stateDir });
     expect(persisted.pid).toBe(winners[0].handle.lease.pid);
     winners[0].handle.release();
+  });
+
+  it("does not reclaim an unparsable lease inside the grace period", async () => {
+    const stateDir = tempDir();
+    const leasePath = deviceLeasePath("android:garbled", stateDir);
+    writeFileSync(leasePath, '{"pid": 9');
+
+    await expect(
+      acquireDeviceLease("android:garbled", {
+        stateDir,
+        sessionId: "contender",
+        pid: 601,
+        waitMs: 0,
+        isProcessAlive: () => true,
+      }),
+    ).rejects.toThrow(/unparsable lease file/);
+    expect(readdirSync(stateDir)).toEqual(["android_garbled.json"]);
+  });
+
+  it("reclaims an unparsable lease once it is older than the grace period", async () => {
+    const stateDir = tempDir();
+    const leasePath = deviceLeasePath("android:garbled-old", stateDir);
+    writeFileSync(leasePath, "not json");
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    utimesSync(leasePath, old, old);
+
+    const handle = await acquireDeviceLease("android:garbled-old", {
+      stateDir,
+      sessionId: "reclaimer",
+      pid: 602,
+      waitMs: 0,
+      isProcessAlive: () => true,
+    });
+    expect(readDeviceLease("android:garbled-old", { stateDir })).toMatchObject({
+      pid: 602,
+      sessionId: "reclaimer",
+    });
+    handle.release();
+    expect(readdirSync(stateDir)).toEqual([]);
+  });
+
+  it("never deletes a lease re-created after the stale one was observed", async () => {
+    const stateDir = tempDir();
+    const leasePath = deviceLeasePath("android:swap", stateDir);
+    await acquireDeviceLease("android:swap", {
+      stateDir,
+      sessionId: "dead",
+      pid: 701,
+      isProcessAlive: () => true,
+    });
+    const liveLease = {
+      deviceKey: "android:swap",
+      pid: 702,
+      sessionId: "other-reclaimer",
+      acquiredAt: new Date().toISOString(),
+      ttlMs: 60_000,
+    };
+
+    await expect(
+      acquireDeviceLease("android:swap", {
+        stateDir,
+        sessionId: "late-reclaimer",
+        pid: 703,
+        waitMs: 0,
+        isProcessAlive: (pid) => {
+          if (pid === 701) {
+            // Another contender reclaims the dead lease and publishes its own
+            // live lease between our read and our reclaim.
+            unlinkSync(leasePath);
+            writeFileSync(leasePath, JSON.stringify(liveLease));
+            return false;
+          }
+          return true;
+        },
+      }),
+    ).rejects.toThrow(/leased by pid 702/);
+    expect(readDeviceLease("android:swap", { stateDir })).toMatchObject({
+      pid: 702,
+      sessionId: "other-reclaimer",
+    });
+  });
+
+  it("publishes leases without leaving temp or lock files behind", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("ios:clean", {
+      stateDir,
+      sessionId: "clean",
+      pid: 801,
+      isProcessAlive: () => true,
+    });
+    expect(readdirSync(stateDir)).toEqual(["ios_clean.json"]);
+    handle.release();
+    expect(readdirSync(stateDir)).toEqual([]);
   });
 
   it("reports active leases for status tooling", async () => {
