@@ -31,6 +31,7 @@ import {
   isPromotedSubactionVirtual,
   pinnedDiscriminatorForPromotedChild,
   projectActionResultForClipboard,
+  promotedSubactionDescription,
   promotedSubactionParent,
   stableJsonStringify,
 } from "@elizaos/core";
@@ -75,6 +76,9 @@ interface PromotedFamilySurface {
 
 /** The child's own words: its description minus the umbrella description it was composed from and the default "subaction = value" blurb. */
 function promotedChildBlurb(parent: Action, child: Action): string {
+  const promoted = promotedSubactionDescription(child);
+  if (promoted?.parent === parent.name)
+    return promoted.operationDescription ?? "";
   let blurb = child.description ?? "";
   if (parent.description && blurb.startsWith(parent.description)) {
     blurb = blurb.slice(parent.description.length);

@@ -8,6 +8,10 @@ import {
 } from "./runtime/assistant-reasoning.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
+import {
+  PLANNER_CONTINUATION_TASK,
+  registerPlannerContinuationWorker,
+} from "./services/message/planner-continuation.ts";
 import { DefaultMessageService } from "./services/message.ts";
 
 export function createAssistantPlugin(): Plugin {
@@ -27,10 +31,24 @@ export function createAssistantPlugin(): Plugin {
       runtime.contexts.tryRegisterMany(DEFAULT_CONTEXT_DEFINITIONS);
       runtime.messageService = new DefaultMessageService();
       registerCoreShouldRespondRiskHook(runtime);
+      // Registered once per runtime, after storage is ready: recovery reads the
+      // persisted continuation tasks left by a previous process.
+      void runtime.initPromise
+        .then(() => registerPlannerContinuationWorker(runtime))
+        .catch((error) =>
+          runtime.reportError(
+            "PlannerContinuation.registrationFailure",
+            error,
+            {
+              agentId: runtime.agentId,
+            },
+          ),
+        );
       await behavior.init?.(config, runtime);
     },
     async dispose(runtime) {
       disposeAssistantReasoning(runtime);
+      runtime.unregisterTaskWorker(PLANNER_CONTINUATION_TASK);
       runtime.messageService = null;
       await behavior.dispose?.(runtime);
     },

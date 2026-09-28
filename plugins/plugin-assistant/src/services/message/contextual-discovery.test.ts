@@ -2,6 +2,7 @@
 import {
   type Action,
   AgentRuntime,
+  actionGateRejection,
   buildPlannerToolsFromActions,
   ContextRegistry,
   type IAgentRuntime,
@@ -9,13 +10,18 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { fileAction } from "../../../../plugin-coding-tools/src/actions/file.ts";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
+import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
+import { postAction } from "../../features/advanced-capabilities/actions/post.ts";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
   collectV5PlannerCandidateActions,
+  inferActionSearchContexts,
   retrieveContextualPlannerActions,
 } from "./action-surface";
 import {
@@ -36,6 +42,632 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it.each([
+    ["message", ["MESSAGE"]],
+    ["help with my messages", ["MESSAGE"]],
+    ["Help with my messages.", ["MESSAGE"]],
+    ["send a message", ["MESSAGE_SEND"]],
+    ["search messages", ["MESSAGE_SEARCH"]],
+    ["search my inbox", ["MESSAGE_SEARCH_INBOX"]],
+    ["list inbox", ["MESSAGE_LIST_INBOX"]],
+    ["send draft", ["MESSAGE_SEND_DRAFT"]],
+    ["send drafts", ["MESSAGE_SEND_DRAFT"]],
+    ["send scheduled drafts", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
+    ['send "search and send draft" to Amy', ["MESSAGE_SEND"]],
+    ["MESSAGE_SEND_DRAFT", ["MESSAGE_SEND_DRAFT"]],
+    ["schedule draft send", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
+    ["check my inbox", ["MESSAGE_LIST_INBOX", "MESSAGE_SEARCH_INBOX"]],
+    ["triage messages", ["MESSAGE_TRIAGE"]],
+  ])(
+    "retrieves the requested messaging operation for %s",
+    (query, expected) => {
+      const actions = promoteSubactionsToActions(messageAction);
+      const result = retrieveContextualPlannerActions({
+        actions,
+        query,
+        contexts: ["messaging"],
+      });
+      expect(result.actions.map((action) => action.name).sort()).toEqual(
+        expected,
+      );
+      for (const action of result.actions) expect(actions).toContain(action);
+      // Selection never rewrites or removes the full discoverable registry.
+      expect(actions.some((action) => action.name === "MESSAGE_SEND")).toBe(
+        true,
+      );
+      expect(actions.some((action) => action.name === "MESSAGE_SEARCH")).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each([
+    ["search messages", "send a message"],
+    ["send a message", "send draft"],
+  ])("retains independent outcomes %s and %s", (first, second) => {
+    const actions = promoteSubactionsToActions(messageAction);
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query: `${first} and ${second}`,
+      intents: [first, second],
+      contexts: ["messaging"],
+    });
+    const expected = first.startsWith("search")
+      ? ["MESSAGE_SEARCH", "MESSAGE_SEND"]
+      : ["MESSAGE_SEND", "MESSAGE_SEND_DRAFT"];
+    expect(result.actions.map((action) => action.name).sort()).toEqual(
+      expected,
+    );
+  });
+
+  it.each([
+    ["messaging", "send a DM", "MESSAGE_SEND"],
+    ["messaging", "search my inbox", "MESSAGE_SEARCH_INBOX"],
+    ["social_posting", "send a public post", "POST_SEND"],
+  ])("keeps %s operation ownership for %s", (context, query, expected) => {
+    const actions = [
+      ...promoteSubactionsToActions(messageAction),
+      ...promoteSubactionsToActions(postAction),
+    ];
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query,
+      contexts: [context],
+    });
+    expect(result.actions.map((action) => action.name)).toEqual([expected]);
+  });
+
+  it("does not substitute a metadata-only umbrella for executable children", () => {
+    const actions = promoteSubactionsToActions(messageAction).map((action) =>
+      action.name === "MESSAGE" ? { ...action, handler: undefined } : action,
+    );
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query: "message",
+      contexts: ["messaging"],
+    });
+    expect(result.actions.length).toBeGreaterThan(0);
+    expect(result.actions.some((action) => action.name === "MESSAGE")).toBe(
+      false,
+    );
+    expect(
+      result.actions.every((action) => typeof action.handler === "function"),
+    ).toBe(true);
+  });
+
+  it("never reconstructs a missing family parent and preserves exact child hints", () => {
+    const actions = promoteSubactionsToActions(messageAction);
+    const child = actions.find(
+      (action) => action.name === "MESSAGE_SEND_DRAFT",
+    );
+    if (!child) throw new Error("Registered send-draft operation is missing");
+    const result = retrieveContextualPlannerActions({
+      actions: actions.filter((action) => action.name !== "MESSAGE"),
+      query: "message",
+      contexts: ["messaging"],
+      selectedActions: [child],
+    });
+    expect(result.actions).toContain(child);
+    expect(result.actions.some((action) => action.name === "MESSAGE")).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    {
+      query: "Read input.json and report product and verificationCode",
+      intents: ["read input.json", "report product and verificationCode"],
+    },
+    {
+      query:
+        "Save the following text exactly, including its final newline, to /tmp/planner-readback/note.txt, then read the file and report its verification code:\nCHECK-2877\nSecond line: blue\nThird line: ready\n",
+      intents: [
+        "Write the exact provided text with its final newline to /tmp/planner-readback/note.txt",
+        "Read the resulting file and report its verification code",
+      ],
+    },
+    {
+      query: "Read note.txt and report its reference code.",
+      intents: ["Read note.txt", "Report its reference code"],
+    },
+  ])(
+    "keeps FILE bootstrap scoped for readback identifiers: $query",
+    async ({ query, intents }) => {
+      const originalIntents = [...intents];
+      const currentRuntime = new AgentRuntime({
+        character: { name: "File field boundary", bio: "Test" },
+        logLevel: "fatal",
+      });
+      currentRuntime.contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      currentRuntime.actions.push(
+        fileAction,
+        {
+          name: "TASKS_CREATE",
+          contexts: ["code"],
+          description: "Create coding tasks",
+        },
+        {
+          name: "PLUGIN_READ_CONFIG",
+          contexts: ["files", "settings"],
+          description: "Read plugin configuration files",
+        },
+      );
+      const admitted = await collectV5PlannerCandidateActions({
+        runtime: currentRuntime,
+        message: { content: { text: query, channelType: "DM" } } as Memory,
+        state: { text: "", values: {}, data: {} },
+        selectedContexts: ["files"],
+        intents,
+        userRoles: ["OWNER"],
+      });
+      expect(admitted.map((action) => action.name)).not.toContain(
+        "TASKS_CREATE",
+      );
+      expect(
+        retrieveContextualPlannerActions({
+          actions: admitted,
+          query,
+          intents,
+          contexts: ["files"],
+          deferUnscopedBootstrap: true,
+        }).actions,
+      ).toEqual([fileAction]);
+      expect(intents).toEqual(originalIntents);
+    },
+  );
+
+  it.each([
+    "Build the code in the repository",
+    "Edit the code after reading note.txt",
+    "Read note.txt and refactor the code",
+  ])("keeps genuine pending programming work: %s", async (intent) => {
+    const actions: Action[] = [
+      fileAction,
+      {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create a coding task",
+      },
+    ];
+    const selected = retrieveContextualPlannerActions({
+      actions,
+      query: intent,
+      intents: [intent],
+      contexts: ["files"],
+      deferUnscopedBootstrap: true,
+    }).actions;
+    expect(selected.map((action) => action.name)).toContain("TASKS_CREATE");
+  });
+
+  it("preserves an explicit programming domain for editing verification code", () => {
+    const codingAction: Action = {
+      name: "TASKS_CREATE",
+      contexts: ["code"],
+      description: "Create a coding task",
+    };
+    const selected = retrieveContextualPlannerActions({
+      actions: [fileAction, codingAction],
+      query: "Edit verification code",
+      intents: ["Edit verification code"],
+      contexts: ["code"],
+      deferUnscopedBootstrap: true,
+    }).actions;
+    expect(selected).toContain(codingAction);
+  });
+
+  it("defers ambiguous initial routing but preserves explicit hints and global discovery", async () => {
+    const actions: Action[] = [
+      { name: "FILE_READ", contexts: ["files"], description: "Read file" },
+      {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create coding tasks",
+      },
+    ];
+    const query = "Read input.json without modifying the file";
+    const args = {
+      actions,
+      query,
+      intents: [query],
+      contexts: [],
+      deferUnscopedBootstrap: true,
+    };
+    expect(retrieveContextualPlannerActions(args).actions).toEqual([]);
+    expect(
+      retrieveContextualPlannerActions({
+        ...args,
+        selectedActions: [actions[0]],
+      }).actions,
+    ).toEqual([actions[0]]);
+    const copiedSelection = retrieveContextualPlannerActions({
+      ...args,
+      selectedActions: [{ ...actions[0] }],
+    });
+    expect(copiedSelection.deferredCount).toBe(copiedSelection.matchCount - 1);
+
+    expect(
+      retrieveContextualPlannerActions({
+        ...args,
+        intents: [query, "inspect source code"],
+      }).actions,
+    ).toContain(actions[1]);
+    expect(
+      retrieveContextualPlannerActions({
+        ...args,
+        deferUnscopedBootstrap: false,
+      }).actions.length,
+    ).toBeGreaterThan(0);
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      async () => actions,
+    );
+    const exact = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "fileRead" },
+    });
+    expect(exact?.data?.loadedTools).toEqual(["FILE_READ"]);
+  });
+
+  it.each([
+    ["report verificationCode", []],
+    ["report verification_code", []],
+    ["report verification-code", []],
+    ["report verification.code", []],
+    ["read /tmp/code/input.json", []],
+    ["read /code", []],
+    ["read code/", []],
+    ["read code\\", []],
+    ["read code/input.json", []],
+    ["read C:\\code\\input.json", []],
+    ["read sourceCode", []],
+    ["inspect source code", ["code"]],
+    ["inspect code.", ["code"]],
+    ["code: inspect the repository", ["code"]],
+    ["inspect (code), then report", ["code"]],
+    ["read screen_time", ["screen_time"]],
+    ["read screen time", ["screen_time"]],
+    ["read app usage", ["screen_time"]],
+    ["read screen_time_value", []],
+    ["read screenTimeValue", []],
+    ["read files and inspect source code", ["files", "code"]],
+  ])("infers whole domain phrases from %s", (query, expected) => {
+    const actions: Action[] = [
+      {
+        name: "FILE_READ",
+        contexts: ["files"],
+        description: "Read local files",
+      },
+      {
+        name: "CODE_INSPECT",
+        contexts: ["code"],
+        description: "Inspect source code",
+      },
+      {
+        name: "SCREEN_TIME_GET",
+        contexts: ["screen_time"],
+        description: "Read screen time",
+      },
+    ];
+    expect(
+      inferActionSearchContexts(actions, query, (context) =>
+        context === "screen_time" ? ["app usage"] : [],
+      ),
+    ).toEqual(expected);
+  });
+
+  it("does not expand a file read into coding tools because of an output field identifier", () => {
+    const read: Action = {
+      name: "FILE_READ",
+      contexts: ["files"],
+      description: "Read file contents",
+    };
+    const code: Action = {
+      name: "CODE_READ",
+      contexts: ["code"],
+      description: "Read source code",
+    };
+    const found = retrieveContextualPlannerActions({
+      actions: [read, code],
+      contexts: ["files"],
+      query: "Read input.json and report product and verificationCode",
+      intents: ["read input.json", "report product and verificationCode"],
+    }).actions;
+    expect(found).toEqual([read]);
+  });
+
+  it("recovers the authorized FILE owner from empty routing contexts and singular file intents", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "File bootstrap", bio: "Test" },
+      logLevel: "fatal",
+    });
+    currentRuntime.contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+    currentRuntime.actions.push(
+      fileAction,
+      {
+        name: "PLUGIN_READ_CONFIG",
+        contexts: ["files", "settings"],
+        description: "Read plugin configuration files",
+      },
+      {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create delegated coding tasks",
+      },
+    );
+    const currentMessage = {
+      content: {
+        text: "Write /tmp/index.html, then read the file and report its contents.",
+        channelType: "DM",
+      },
+    } as Memory;
+    const args = {
+      runtime: currentRuntime,
+      message: currentMessage,
+      state: { text: "", values: {}, data: {} },
+      selectedContexts: [],
+      intents: [
+        "write file at /tmp/index.html",
+        "read the saved file and report its contents",
+      ],
+      userRoles: ["OWNER" as const],
+    };
+    const admitted = await collectV5PlannerCandidateActions(args);
+    expect(admitted.map((action) => action.name)).toEqual(["FILE"]);
+    const denied = await collectV5PlannerCandidateActions({
+      ...args,
+      userRoles: ["USER"],
+    });
+    expect(denied.map((action) => action.name)).not.toContain("FILE");
+    const prohibited = await collectV5PlannerCandidateActions({
+      ...args,
+      intents: ["Do not write a file"],
+    });
+    expect(prohibited.map((action) => action.name)).not.toContain("FILE");
+  });
+
+  it.each(["file", "filesystem", "directory", "directories"])(
+    "discovers the FILE owner through its registered %s domain alias",
+    async (noun) => {
+      const contexts = new ContextRegistry();
+      contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const currentRuntime = { ...runtime, contexts } as IAgentRuntime;
+      const contact: Action = {
+        name: "CONTACT_READ",
+        contexts: ["contacts"],
+        description: "Read a contact directory",
+      };
+      const delegated: Action = {
+        name: "TASKS_CREATE",
+        contexts: ["code"],
+        description: "Create delegated coding tasks",
+      };
+      const actions = [
+        fileAction,
+        contact,
+        delegated,
+        {
+          name: "PLUGIN_READ_CONFIG",
+          contexts: ["files", "settings"],
+          description: "Read plugin configuration files",
+        },
+      ];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        () => {},
+        async () => actions,
+      );
+      const result = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        { parameters: { query: `write ${noun} and read it` } },
+      );
+      expect(result?.data?.inferredContexts).toEqual(["files"]);
+      expect(result?.data?.loadedTools).toEqual(["FILE"]);
+      const mixed = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        { parameters: { query: `read contacts and ${noun}` } },
+      );
+      expect(mixed?.data?.loadedTools).toEqual(
+        expect.arrayContaining(["FILE", "CONTACT_READ"]),
+      );
+      const explicit = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        {
+          parameters: {
+            query: "read contact directory",
+            contexts: ["contacts"],
+          },
+        },
+      );
+      expect(explicit?.data?.loadedTools).toEqual(["CONTACT_READ"]);
+      const exact = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        { parameters: { names: ["TASKS_CREATE"] } },
+      );
+      expect(exact?.data?.loadedTools).toEqual(["TASKS_CREATE"]);
+    },
+  );
+  it("admits the real FILE owner for files-only work without promoting plugin configuration", async () => {
+    const request = {
+      content: {
+        text: "Create /tmp/index.html with the supplied HTML, then read the file back.",
+      },
+    } as Memory;
+    const incidental: Action[] = ["PLUGIN_LIST", "PLUGIN_READ_CONFIG"].map(
+      (name) => ({
+        name,
+        description: "Read plugin configuration files",
+        contexts: ["files", "settings"],
+      }),
+    );
+    const actions = [...incidental, fileAction];
+    expect(
+      actionGateRejection(fileAction, {
+        message: request,
+        userRoles: ["OWNER"],
+        activeContexts: ["files"],
+      }),
+    ).toBeUndefined();
+    expect(
+      actionGateRejection(fileAction, {
+        message: request,
+        userRoles: ["USER"],
+        activeContexts: ["files"],
+      }),
+    ).toBeDefined();
+    expect(
+      retrieveContextualPlannerActions({
+        actions,
+        query: request.content.text as string,
+        contexts: ["files"],
+        intents: ["Create the HTML file", "Read saved file back"],
+      }).actions,
+    ).toEqual([fileAction]);
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (selected) => {
+        loaded = selected;
+      },
+      async () => actions,
+      { taskIntents: ["Create HTML file", "Read saved file back"] },
+    );
+    const result = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["files"] },
+    });
+    expect(result?.data?.loadedTools).toEqual(["FILE"]);
+    expect(loaded).toEqual([fileAction]);
+    expect(loaded[0]?.parameters).toEqual(fileAction.parameters);
+    expect(
+      retrieveContextualPlannerActions({
+        actions,
+        query: request.content.text as string,
+        intents: ["Read the file"],
+        contexts: ["files"],
+        selectedActions: [incidental[1]],
+      }).actions,
+    ).toEqual([incidental[1], fileAction]);
+  });
+
+  it.each([{}, { names: [] }, { mode: "load", names: [] }])(
+    "searches current work for empty selectors %j without dumping unrelated catalog bodies",
+    async (parameters) => {
+      const original = "Complete unrelated action documentation Ω\n".repeat(
+        200,
+      );
+      const actions: Action[] = [
+        {
+          name: "NOTES_LIST",
+          description: "Search notes",
+          contexts: ["notes"],
+        },
+        { name: "UNRELATED", description: original, contexts: ["other"] },
+        {
+          name: "REVOKED",
+          description: "Private revoked action",
+          contexts: ["notes"],
+        },
+      ];
+      let loaded: Action[] = [];
+      const fresh = actions.slice(0, 2);
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        (selected) => {
+          loaded = selected;
+        },
+        async () => fresh,
+        { taskIntents: ["search notes"] },
+      );
+      const request = {
+        content: { text: "Search notes for groceries" },
+      } as Memory;
+      const result = await discovery.handler?.(runtime, request, undefined, {
+        parameters,
+      });
+      expect(result?.success).toBe(true);
+      expect(loaded).toEqual([actions[0]]);
+      expect(result?.data?.catalog).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain(original);
+      expect(JSON.stringify(result)).not.toContain("REVOKED");
+      const full = await discovery.handler?.(runtime, request, undefined, {
+        parameters: { mode: "describe", names: [] },
+      });
+      expect(full?.data?.catalog).toHaveLength(2);
+      expect(JSON.stringify(full)).toContain(
+        JSON.stringify(original).slice(1, -1),
+      );
+      expect(JSON.stringify(full)).not.toContain("REVOKED");
+      expect(loaded).toEqual([actions[0]]);
+    },
+  );
+
+  it("ranks context-only loads by the current task while keeping explicit queries and catalog reads intact", async () => {
+    const unrelated: Action[] = Array.from({ length: 12 }, (_, index) => ({
+      name: `NOTES_DELETE_${index}`,
+      description: "Delete a saved note",
+      contexts: ["notes"],
+    }));
+    const list: Action = {
+      name: "NOTES_LIST",
+      description: "Search saved notes",
+      contexts: ["notes"],
+      parameters: [
+        { name: "query", schema: { type: "string" }, required: true },
+      ],
+    };
+    const create: Action = {
+      name: "NOTES_CREATE",
+      description: "Create a saved note",
+      contexts: ["notes"],
+    };
+    const actions = [...unrelated, list, create];
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (selected) => {
+        loaded = selected;
+      },
+      async () => actions,
+      { taskIntents: ["search notes"] },
+    );
+    const request = {
+      content: { text: "Find my saved grocery note." },
+    } as Memory;
+    const found = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["notes"] },
+    });
+    expect(found?.success).toBe(true);
+    expect(loaded).toEqual([list]);
+    expect(loaded[0]?.parameters).toEqual(list.parameters);
+    await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["notes"], query: "create a note" },
+    });
+    expect(loaded).toEqual([create]);
+    const described = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { contexts: ["notes"], mode: "describe" },
+    });
+    expect(described?.data).toMatchObject({
+      matchCount: 14,
+      selectedCount: 10,
+      deferredCount: 4,
+    });
+    expect(loaded).toEqual([create]);
+    const full = await discovery.handler?.(runtime, request, undefined, {
+      parameters: { names: [], mode: "describe" },
+    });
+    expect(full?.data?.catalog).toHaveLength(14);
+    await discovery.handler?.(runtime, request, undefined, {
+      parameters: { names: [unrelated[11].name] },
+    });
+    expect(loaded).toEqual([unrelated[11]]);
+  });
   it("bounds broad query loads while keeping deferred operations exactly discoverable", async () => {
     const actions: Action[] = Array.from({ length: 24 }, (_, index) => ({
       name: `RECORDS_READ_${index}`,
@@ -74,7 +706,7 @@ describe("contextual native discovery", () => {
     ).toBe(true);
     expect(loaded).toEqual([omitted]);
     const catalog = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { names: [] },
+      parameters: { names: [], mode: "describe" },
     });
     expect(catalog?.data?.catalog).toHaveLength(24);
   });
@@ -398,21 +1030,40 @@ describe("contextual native discovery", () => {
       ),
     ).toBe(true);
   });
-  it("does not load record operations for a navigation-only intent", () => {
+  it.each(["VIEWS", "VIEWS_SHOW"])(
+    "does not load record operations for navigation-only %s",
+    (name) => {
+      const view: Action = {
+        name,
+        description: "Open a view",
+        contexts: ["general", "notes", "calendar"],
+      };
+      expect(
+        retrieveContextualPlannerActions({
+          actions: [view, ...(notesPlugin.actions ?? [])],
+          query: "Open Notes view",
+          intents: ["Open Notes view"],
+          contexts: ["general", "notes"],
+          selectedActions: [view],
+        }).actions,
+      ).toEqual([view]);
+    },
+  );
+  it("keeps the Notes read owner when selected navigation accompanies a read intent", () => {
     const view: Action = {
       name: "VIEWS_SHOW",
       description: "Open a view",
       contexts: ["general", "notes", "calendar"],
     };
-    expect(
-      retrieveContextualPlannerActions({
-        actions: [view, ...(notesPlugin.actions ?? [])],
-        query: "Open Notes view",
-        intents: ["Open Notes view"],
-        contexts: ["general", "notes"],
-        selectedActions: [view],
-      }).actions,
-    ).toEqual([view]);
+    const selected = retrieveContextualPlannerActions({
+      actions: [view, ...(notesPlugin.actions ?? [])],
+      query: "Open Notes and read my grocery note",
+      intents: ["Open Notes view", "Read grocery note"],
+      contexts: ["general", "notes"],
+      selectedActions: [view],
+    }).actions;
+    expect(selected[0]).toBe(view);
+    expect(selected.map((action) => action.name)).toContain("NOTES_LIST");
   });
 
   it.each([
@@ -458,6 +1109,46 @@ describe("contextual native discovery", () => {
       );
     },
   );
+
+  it("does not load a domain family from an incidental domain word in a clause claimed by a selected action (#31017)", () => {
+    const echo: Action = {
+      name: "ECHO_TEST",
+      contexts: ["general"],
+      description: "Echo the user's message back",
+    };
+    const worldOperations: Action[] = [
+      {
+        name: "MESSAGE_LIST_WORLDS",
+        contexts: ["messaging", "world"],
+        description: "List shared worlds",
+      },
+      {
+        name: "MESSAGE_EDIT",
+        contexts: ["messaging", "world"],
+        description: "Edit a sent message",
+      },
+    ];
+    const retrieve = (intent: string) =>
+      retrieveContextualPlannerActions({
+        actions: [echo, ...worldOperations],
+        query: intent,
+        intents: [intent],
+        contexts: ["general"],
+        selectedActions: [echo],
+      }).actions.map((action) => action.name);
+    // ECHO_TEST claims the clause; "world" names a registered domain, but
+    // nothing asks for one of its operations, so the family stays behind
+    // DISCOVER_ACTIONS.
+    expect(
+      retrieve("please echo this message back to me: hello world"),
+    ).toEqual(["ECHO_TEST"]);
+    // An unclaimed clause naming the domain still loads its matching
+    // operation without its siblings.
+    expect(retrieve("list the world rooms")).toEqual([
+      "ECHO_TEST",
+      "MESSAGE_LIST_WORLDS",
+    ]);
+  });
 
   it("does not use negated operations to widen a positive read intent", () => {
     const view: Action = {
@@ -786,16 +1477,22 @@ describe("contextual native discovery", () => {
       query: "notes",
       contexts: ["notes"],
     }).actions;
-    expect(result.map((action) => action.name)).toEqual(
-      expect.arrayContaining([
-        "NOTES_LIST",
-        "NOTES_GET",
-        "NOTES_CREATE",
-        "NOTES_UPDATE",
-        "NOTES_DELETE",
-        "NOTES_PATCH",
-      ]),
-    );
+    expect(result.map((action) => action.name)).toEqual(["NOTES"]);
+    for (const name of [
+      "NOTES_LIST",
+      "NOTES_GET",
+      "NOTES_CREATE",
+      "NOTES_UPDATE",
+      "NOTES_DELETE",
+      "NOTES_PATCH",
+    ]) {
+      const discovered = retrieveContextualPlannerActions({
+        actions,
+        query: name,
+        contexts: ["notes"],
+      }).actions;
+      expect(discovered.map((action) => action.name)).toContain(name);
+    }
   });
 
   it("scopes an unqualified Notes query using fresh registered domains", async () => {

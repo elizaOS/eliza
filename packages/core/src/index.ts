@@ -203,9 +203,11 @@ export {
 export * from "./access-control/role-primitives.js";
 export { actionToJsonSchema } from "./actions/action-schema.ts";
 export {
+	composedPromotedSubactionDescription,
 	pinnedDiscriminatorDescription,
 	pinnedDiscriminatorForPromotedChild,
 	promotedParentRoutingHint,
+	promotedSubactionDescription,
 	promotedSubactionParent,
 } from "./actions/promote-subactions.ts";
 export {

@@ -1347,7 +1347,9 @@ export async function startBenchmarkServer() {
   if (groqApiKey && !_suppressGroqForOtherProvider) {
     process.env.GROQ_API_KEY = groqApiKey;
     try {
-      const { default: groqPlugin } = await import("@elizaos/plugin-groq");
+      // Resolve this optional provider at runtime, preserving the fallback below.
+      const moduleName: string = "@elizaos/plugin-groq";
+      const { default: groqPlugin } = await import(moduleName);
       plugins.push(toPlugin(groqPlugin, "@elizaos/plugin-groq"));
       elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-groq");
     } catch (error: unknown) {

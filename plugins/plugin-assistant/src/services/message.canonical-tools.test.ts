@@ -8,6 +8,7 @@ import type { Action } from "@elizaos/core";
 import {
   AgentRuntime,
   actionToJsonSchema,
+  composedPromotedSubactionDescription,
   createContextObject,
   type JsonSchema,
   promoteSubactionsToActions,
@@ -83,13 +84,12 @@ describe("canonical promoted-family planner surface", () => {
     const tools = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "RECORDS",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
-    const wire = JSON.parse(JSON.stringify(tools));
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["RECORDS", "REPLY", "IGNORE", "STOP"].sort(),
+    );
+    const wire = JSON.parse(
+      JSON.stringify(tools.find((tool) => tool.name === "RECORDS")),
+    );
     const text = `${"complete payload ".repeat(12000)}last record boundary`;
     const runtime = new AgentRuntime({
       plugins: [createAssistantPlugin()],
@@ -100,7 +100,7 @@ describe("canonical promoted-family planner surface", () => {
     for (const action of ["create", "update"]) {
       const params = { action, id: "record", text: `${action}: ${text}` };
       const errors: string[] = [];
-      validateSchema(wire[0].parameters as JsonSchema, params, "", errors);
+      validateSchema(wire.parameters as JsonSchema, params, "", errors);
       expect(errors).toEqual([]);
       const result = await actions[0].handler?.(
         runtime,
@@ -122,21 +122,19 @@ describe("canonical promoted-family planner surface", () => {
     expect(collectActionsFromContext(context)).toEqual(actions);
   });
 
-  it("represents an explicitly selected generated alias through its umbrella and keeps it executable", async () => {
+  it("represents a fully admitted generated family through its umbrella and keeps aliases executable", async () => {
     const { actions, context, stored } = fixture();
-    // Stage 1 naming RECORDS_CREATE adds no second native tool: the umbrella
-    // is always exposed beside a named alias, and a direct alias tool repeated
-    // the umbrella's complete parameter schema on every planner round.
+    // No directActionNames are selected here: full-family admission carries
+    // complete alias contracts while the dispatch context retains each alias.
     const tools = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "RECORDS",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
-    expect(tools[0]?.description).toContain('"name":"RECORDS_CREATE"');
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["RECORDS", "REPLY", "IGNORE", "STOP"].sort(),
+    );
+    expect(
+      tools.find((tool) => tool.name === "RECORDS")?.description,
+    ).toContain('"name":"RECORDS_CREATE"');
     expect(collectCanonicalPlannerActions(actions)).toEqual([actions[0]]);
     // Execution keeps every context action, so the alias still dispatches
     // with its implicit operation when called by name.
@@ -196,7 +194,8 @@ describe("canonical promoted-family planner surface", () => {
     const { actions, context } = fixture();
     const tool = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
-    })[0];
+    }).find((tool) => tool.name === "RECORDS");
+    if (!tool) throw new Error("Missing RECORDS native tool");
     const contracts: Array<{
       name: string;
       description?: string;
@@ -219,7 +218,9 @@ describe("canonical promoted-family planner surface", () => {
       expect(contract.description).toBeUndefined();
       const pin = Object.values(contract.pins ?? {})[0];
       const suffix = contract.descriptionSuffix ?? ` — subaction = ${pin}`;
-      expect(`${actions[0].description}${suffix}`).toBe(original.description);
+      expect(`${actions[0].description}${suffix}`).toBe(
+        composedPromotedSubactionDescription(original),
+      );
       const {
         parentParameterNames,
         propertyOverrides = {},

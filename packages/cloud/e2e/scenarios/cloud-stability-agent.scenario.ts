@@ -419,7 +419,12 @@ const definition = scenario({
         name: "cloud-reminder-post-action-evaluator",
         match: {
           modelType: "RESPONSE_HANDLER",
-          input: { includes: request },
+          // The evaluator's latest user message is its current decision state;
+          // the original request stays in the earlier context message.
+          input: {
+            pattern:
+              "^# Current decision state\\n[\\s\\S]*\\nQueued call IDs: \\[\\]\\nCommitted effect receipt IDs: \\[\\]\\n[\\s\\S]*\\nrequiresReplyField: true\\nhasUnresolvedToolFailure: false\\n[\\s\\S]*\\nintent:1: create reminder\\nEvidence step sources[^\\n]*\\nstep:1: OWNER_REMINDERS_CREATE; success=false$",
+          },
           toolNames: [],
         },
         response: {

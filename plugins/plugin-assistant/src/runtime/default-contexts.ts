@@ -106,6 +106,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "files",
       label: "Files",
+      aliases: ["file", "filesystem", "directory", "directories"],
       description: "Local files and directories.",
       parent: "code",
       sensitivity: "private",
@@ -249,6 +250,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "messaging",
       label: "Messaging",
+      aliases: ["message", "messages"],
       description: "Private and group messages and inboxes.",
       sensitivity: "private",
       cacheScope: "turn",

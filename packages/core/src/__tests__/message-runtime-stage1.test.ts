@@ -2200,7 +2200,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			signal?: AbortSignal;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
-		expect(params.tools?.[0]?.parameters?.required).toContain(
+		expect(params.tools?.[0]?.parameters?.required).not.toContain(
 			"candidateActionNames",
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
@@ -3604,7 +3604,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			"intents",
 			"replyText",
 			"replyEffectStatus",
-			"candidateActionNames",
 			"facts",
 			"relationships",
 			"addressedTo",
@@ -9645,9 +9644,15 @@ describe("runV5MessageRuntimeStage1", () => {
 			tools?: Array<{ name?: string; description?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
-			"CHECK_RUNTIME",
-		);
+		// An entirely unresolved selection (no action hints, no intents, only
+		// the general context) starts with discovery instead of preloading
+		// every admitted operation; CHECK_RUNTIME stays discoverable.
+		expect(plannerParams.tools?.map((tool) => tool.name)).toEqual([
+			"DISCOVER_ACTIONS",
+			"IGNORE",
+			"REPLY",
+			"STOP",
+		]);
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"prior_dialogue_policy",
 		);
@@ -13614,8 +13619,10 @@ describe("explicit discovery survives planner surface construction", () => {
 				plannerTools(index)
 					.filter(({ name }) => name.startsWith("LEDGER"))
 					.map(({ name }) => name);
+			// The model-facing tool projection is canonically name-ordered so
+			// equal admitted sets keep an identical wire (cache) order.
 			expect(familyNames(2)).toEqual(
-				selectedChild ? ["LEDGER_CREATE", "LEDGER"] : ["LEDGER"],
+				selectedChild ? ["LEDGER", "LEDGER_CREATE"] : ["LEDGER"],
 			);
 			const firstUmbrella = plannerTools(2).find(
 				({ name }) => name === "LEDGER",
@@ -13625,11 +13632,11 @@ describe("explicit discovery survives planner surface construction", () => {
 				firstUmbrella?.description?.includes('"name":"LEDGER_CREATE"'),
 			).toBe(!selectedChild);
 			for (const index of [3, 4]) {
-				expect(familyNames(index)).toEqual(
-					selectedChild
-						? ["LEDGER_CREATE", "LEDGER", "LEDGER_DELETE"]
-						: ["LEDGER", "LEDGER_CREATE", "LEDGER_DELETE"],
-				);
+				expect(familyNames(index)).toEqual([
+					"LEDGER",
+					"LEDGER_CREATE",
+					"LEDGER_DELETE",
+				]);
 			}
 			for (const index of [1, 2, 3, 4]) {
 				const expanded = plannerTools(index);

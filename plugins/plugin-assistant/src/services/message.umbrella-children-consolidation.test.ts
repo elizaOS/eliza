@@ -19,6 +19,7 @@ import type {
 } from "@elizaos/core";
 import {
   actionToJsonSchema,
+  composedPromotedSubactionDescription,
   createContextObject,
   dispatchSubaction,
   type JsonSchema,
@@ -272,32 +273,35 @@ describe("umbrella children consolidation on the planner wire", () => {
     const tools = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "TASKS",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["TASKS", "REPLY", "IGNORE", "STOP"].sort(),
+    );
     expect(collectCanonicalPlannerActions(actions)).toEqual([actions[0]]);
-    const umbrella = tools[0];
+    const umbrella = tools.find((tool) => tool.name === "TASKS");
     const contracts = aliasContracts(umbrella?.description);
     expect(contracts.map((contract) => contract.name)).toEqual(
-      TASK_OPS.map((op) => aliasName("TASKS", op)),
+      TASK_OPS.map((op) => aliasName("TASKS", op)).sort(),
     );
-    for (const [index, contract] of contracts.entries()) {
+    for (const contract of contracts) {
       // The pinned `action` is the only overridden property and every
       // operand is optional, so the alias differs from the umbrella by its
       // pin alone: no parameters object at all.
-      expect(contract.pins).toEqual({ action: TASK_OPS[index] });
+      expect(contract.pins).toEqual({
+        action: TASK_OPS.find((op) => aliasName("TASKS", op) === contract.name),
+      });
       expect(contract.parameters).toBeUndefined();
       expect(contract.description).toBeUndefined();
     }
     // The default " — subaction = <pin>" blurb is implied by the pin; only
     // spawn_agent's override blurb is spelled out.
-    expect(contracts[0]?.descriptionSuffix).toBeUndefined();
-    expect(contracts[1]?.descriptionSuffix).toBe(
-      ` — ${SPAWN_AGENT_DESCRIPTION}`,
-    );
+    expect(
+      contracts.find((contract) => contract.name === "TASKS_CREATE")
+        ?.descriptionSuffix,
+    ).toBeUndefined();
+    expect(
+      contracts.find((contract) => contract.name === "TASKS_SPAWN_AGENT")
+        ?.descriptionSuffix,
+    ).toBe(` — ${SPAWN_AGENT_DESCRIPTION}`);
     // The umbrella description and its four complete discriminator enums
     // render once, in the umbrella itself.
     const wire = JSON.stringify(tools);
@@ -318,7 +322,7 @@ describe("umbrella children consolidation on the planner wire", () => {
       contractBlockLength(
         collectPlannerTools(family.context, undefined, {
           canonicalFamilies: true,
-        })[0]?.description,
+        }).find((tool) => tool.name === "TASKS")?.description,
       );
     expect(blockLength(wide)).toBe(blockLength(compact));
     // Fourteen contracts together cost less than one direct child tool did
@@ -348,28 +352,30 @@ describe("umbrella children consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(actions), undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "CONTACT",
-      "DATABASE",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
-    expect(tools[0]?.parameters.required).toEqual(["action"]);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["CONTACT", "DATABASE", "REPLY", "IGNORE", "STOP"].sort(),
+    );
+    expect(
+      tools.find((tool) => tool.name === "CONTACT")?.parameters.required,
+    ).toEqual(["action"]);
     for (const [tool, ops] of [
-      [tools[0], contactOps],
-      [tools[1], databaseOps],
+      [tools.find((tool) => tool.name === "CONTACT"), contactOps],
+      [tools.find((tool) => tool.name === "DATABASE"), databaseOps],
     ] as const) {
       const contracts = aliasContracts(tool?.description);
       expect(contracts.map((contract) => contract.name)).toEqual(
-        ops.map((op) => aliasName(tool?.name ?? "", op)),
+        ops.map((op) => aliasName(tool?.name ?? "", op)).sort(),
       );
-      for (const [index, contract] of contracts.entries()) {
+      for (const contract of contracts) {
         // The umbrella requires the discriminator and each alias pins it, so
         // nothing the umbrella requires is missing from any alias; with no
         // required operand and every property in umbrella order the alias
         // differs from the umbrella by its pin alone.
-        expect(contract.pins).toEqual({ action: ops[index] });
+        expect(contract.pins).toEqual({
+          action: ops.find(
+            (op) => aliasName(tool?.name ?? "", op) === contract.name,
+          ),
+        });
         expect(contract.parameters).toBeUndefined();
         expect(contract.descriptionSuffix).toBeUndefined();
       }
@@ -389,15 +395,13 @@ describe("umbrella children consolidation on the planner wire", () => {
     const tools = collectPlannerTools(lossy.context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "TASKS",
-      ...direct,
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["TASKS", ...direct, "REPLY", "IGNORE", "STOP"].sort(),
+    );
     expect(
-      aliasContracts(tools[0]?.description).map((contract) => contract.name),
+      aliasContracts(
+        tools.find((tool) => tool.name === "TASKS")?.description,
+      ).map((contract) => contract.name),
     ).toEqual(["TASKS_CREATE", "TASKS_SPAWN_AGENT"]);
     // Stricter child requirements stay machine-readable, not prose-only.
     const stricter = tasksFamily({
@@ -461,13 +465,13 @@ describe("umbrella children consolidation on the planner wire", () => {
     const { actions, context } = tasksFamily();
     const tool = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
-    })[0];
+    }).find((tool) => tool.name === "TASKS");
     const parentSchema = actionToJsonSchema(actions[0]);
     for (const contract of aliasContracts(tool?.description)) {
       const alias = actions.find((action) => action.name === contract.name);
       if (!alias) throw new Error(`${contract.name} missing from the context`);
       expect(reconstructAliasDescription(actions[0], contract)).toBe(
-        alias.description,
+        composedPromotedSubactionDescription(alias),
       );
       expect(reconstructAliasSchema(parentSchema, contract)).toEqual(
         actionToJsonSchema(alias),

@@ -23,7 +23,9 @@ import {
   buildPlannerToolsFromTieredActions,
   CORE_PLANNER_TERMINALS,
   completionContextSources,
+  composedPromotedSubactionDescription,
   composeToolDiagnosticRedactor,
+  ElizaError,
   type ExecutePlannedToolCallContext,
   type ExecutePlannedToolCallOptions,
   emitStreamingHook,
@@ -671,7 +673,48 @@ export function collectPlannerTools(
       ),
   );
   if (!hasAnyAction) return [];
-  const actions = narrowedActions ?? collectActionsFromContext(context);
+  // Retrieval rank and execution order are untouched; canonicalize only the
+  // model-facing projection so equal admitted sets have equal wire order.
+  const actions = [
+    ...(narrowedActions ?? collectActionsFromContext(context)),
+  ].sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
+  const definitions = new Map<string, Action>();
+  for (const action of actions) {
+    const previous = definitions.get(action.name);
+    if (
+      previous &&
+      previous !== action &&
+      canonicalJson({
+        tool: buildPlannerToolsFromTieredActions([previous], {
+          expandSubActions: false,
+        }),
+        subActions: [...(previous.subActions ?? [])].sort((left, right) =>
+          (typeof left === "string" ? left : left.name).localeCompare(
+            typeof right === "string" ? right : right.name,
+          ),
+        ),
+      }) !==
+        canonicalJson({
+          tool: buildPlannerToolsFromTieredActions([action], {
+            expandSubActions: false,
+          }),
+          subActions: [...(action.subActions ?? [])].sort((left, right) =>
+            (typeof left === "string" ? left : left.name).localeCompare(
+              typeof right === "string" ? right : right.name,
+            ),
+          ),
+        })
+    )
+      throw new ElizaError(
+        `Conflicting native definitions for action ${action.name}`,
+        {
+          code: "PLANNER_TOOL_NAME_CONFLICT",
+        },
+      );
+    definitions.set(action.name, action);
+  }
   const tierAParents = readTierAParentsFromContext(context);
   const wireActions = options.canonicalFamilies
     ? collectCanonicalPlannerActions(actions, options.directActionNames)
@@ -699,6 +742,10 @@ export function collectPlannerTools(
       const parentSchema = normalizeActionJsonSchema(parent);
       const parentPropertyNames = Object.keys(parentSchema.properties ?? {});
       const parentStrict = parent.toolSchemaStrict ?? true;
+      // A generated alias states only its operation; its complete contract is
+      // the umbrella description it was promoted from plus that operation.
+      const aliasDescription = (alias: Action): string =>
+        composedPromotedSubactionDescription(alias) ?? alias.description;
       // Aliases promoted from an earlier umbrella description keep it as
       // their common lead after the umbrella's own description changed
       // (MESSAGE, live 2026-09-14: 27 aliases each restated the same
@@ -709,8 +756,8 @@ export function collectPlannerTools(
       // blurb.
       const sharedAliasPreamble = sharedDescriptionPreamble(
         aliases
-          .filter((alias) => !alias.description.startsWith(parent.description))
-          .map((alias) => alias.description),
+          .map(aliasDescription)
+          .filter((description) => !description.startsWith(parent.description)),
       );
       const aliasContracts = aliases.map((alias) => {
         const {
@@ -720,6 +767,7 @@ export function collectPlannerTools(
           additionalProperties,
           ...schema
         } = normalizeActionJsonSchema(alias);
+        const description = aliasDescription(alias);
         const propertyNames = Object.keys(properties);
         // A generated alias composes `${parent.description} — ${blurb}`
         // (promoteSubactionsToActions), so a complete alias description
@@ -728,13 +776,13 @@ export function collectPlannerTools(
         // block was the 1,977-char umbrella description repeated 14 times;
         // CALENDAR 3,702 of 8,270). The suffix appends verbatim to this
         // tool's description.
-        const extendsParentDescription = alias.description.startsWith(
+        const extendsParentDescription = description.startsWith(
           parent.description,
         );
         const extendsSharedPreamble =
           !extendsParentDescription &&
           sharedAliasPreamble !== undefined &&
-          alias.description.startsWith(sharedAliasPreamble);
+          description.startsWith(sharedAliasPreamble);
         // An alias accepting every umbrella property in order (no
         // `subactions` applicability lists: TASKS, CONTACT, DATABASE)
         // repeated the complete name list per alias (TASKS: 56 names × 14
@@ -769,11 +817,11 @@ export function collectPlannerTools(
         const defaultSuffix =
           pinValues.length === 1 ? ` — subaction = ${pinValues[0]}` : undefined;
         const suffix = extendsParentDescription
-          ? alias.description.slice(parent.description.length)
+          ? description.slice(parent.description.length)
           : undefined;
         const tail =
           extendsSharedPreamble && sharedAliasPreamble !== undefined
-            ? alias.description.slice(sharedAliasPreamble.length)
+            ? description.slice(sharedAliasPreamble.length)
             : undefined;
         const parameters = {
           ...schema,
@@ -800,7 +848,7 @@ export function collectPlannerTools(
               ? tail === defaultSuffix
                 ? {}
                 : { descriptionTail: tail }
-              : { description: alias.description }),
+              : { description }),
           routingHint: alias.routingHint,
           ...((alias.toolSchemaStrict ?? true) === parentStrict
             ? {}
@@ -828,7 +876,9 @@ export function collectPlannerTools(
       (tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
     ),
     ...CORE_PLANNER_TERMINALS,
-  ];
+  ].sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
 }
 
 /** Word-boundary common lead of two or more texts when it is long enough to be worth stating once. */
