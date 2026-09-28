@@ -1,9 +1,9 @@
 /** Session-readiness regression coverage for the public invite acceptance page. */
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const apiMock = vi.hoisted(() => vi.fn());
@@ -62,6 +62,8 @@ vi.mock("../../../../components/primitives", () => {
 });
 
 import InviteAcceptPage from "./invite-accept-page";
+
+afterEach(cleanup);
 
 beforeEach(() => {
   navigateMock.mockReset();
