@@ -10,6 +10,7 @@ import {
   type Memory,
   type MessageHandlerResult,
   ModelType,
+  promoteSubactionsToActions,
   ResponseHandlerFieldRegistry,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
@@ -26,10 +27,16 @@ import {
   runPlannerLoop,
 } from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { toolMessageContent } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
-import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
+import {
+  collectV5PlannerCandidateActions,
+  retrieveContextualPlannerActions,
+} from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
+import { collectBudgetedStageOneCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/planned-tool.ts";
 import { renderMessageHandlerModelInput } from "../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
+import { calendarAction } from "../../../plugins/plugin-calendar/src/actions/calendar.ts";
+import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import {
   closeRuntimeViewRegistry,
@@ -625,6 +632,171 @@ const clientMessage = (): Memory => ({
 });
 
 describe("model-selected host navigation", () => {
+  it.each([
+    { verb: "Open", contexts: ["general", "notes", "calendar"] },
+    { verb: "Switch to", contexts: ["general", "notes", "calendar"] },
+    { verb: "Open", contexts: ["simple", "general"] },
+    { verb: "Switch to", contexts: ["simple", "general"] },
+  ])(
+    "retains known show and both reads for $verb with $contexts",
+    async ({ verb, contexts }) => {
+      const f = await fixture();
+      f.runtime.actions = [
+        ...(createElizaPlugin().actions ?? []).filter((action) =>
+          action.name.startsWith("VIEWS"),
+        ),
+        ...(notesPlugin.actions ?? []),
+        ...promoteSubactionsToActions(calendarAction),
+      ];
+      const input = clientMessage();
+      input.content.text =
+        "Open Notes and read my latest existing note and my next saved Calendar event. Do not create, edit, or delete anything.";
+      const intents = [
+        `${verb} Notes view`,
+        "Read latest existing note",
+        "Read next saved Calendar event",
+      ];
+      const selected = await selectNavigation(
+        f,
+        input,
+        { disposition: "planning", viewId: "notes" },
+        { contexts, intents, candidateActions: [], reply: "" },
+      );
+      const initial = collectBudgetedStageOneCandidateActions({
+        actions: f.runtime.actions,
+        candidateActions: selected.plan.candidateActions ?? [],
+        contexts: selected.plan.contexts,
+        intents: selected.plan.intents,
+        deferUnselectedContexts: true,
+        deferParentHints: true,
+      });
+      const loaded = retrieveContextualPlannerActions({
+        actions: f.runtime.actions,
+        query: intents.join("\n"),
+        intents,
+        contexts: selected.plan.contexts,
+        selectedActions: initial,
+        contextAliases: (context) => (context === "notes" ? ["note"] : []),
+      }).actions;
+      expect(loaded.map((action) => action.name).sort()).toEqual([
+        "CALENDAR_NEXT_EVENT",
+        "NOTES_GET",
+        "NOTES_LIST",
+        "VIEWS_SHOW",
+      ]);
+      expect(selected.plan.candidateActions).toEqual(["VIEWS_SHOW"]);
+      expect(selected.plan.intents).toEqual(intents);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+      const show = loaded.find((action) => action.name === "VIEWS_SHOW");
+      const result = await show?.handler?.(f.runtime, input, undefined, {
+        parameters: { view: "notes" },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: { navigation: { status: "delivered", path: "/notes" } },
+      });
+      expect(f.frames).toHaveLength(1);
+      expect(f.frames[0].client).toBe("origin-client");
+    },
+  );
+
+  it("keeps an unknown destination discoverable through list without executing navigation", async () => {
+    const f = await fixture();
+    f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+      action.name.startsWith("VIEWS"),
+    );
+    const input = clientMessage();
+    const selected = await selectNavigation(
+      f,
+      input,
+      { disposition: "planning", viewId: "unregistered" },
+      { intents: ["Find the requested view"], candidateActions: [] },
+    );
+    expect(selected.plan.candidateActions).toEqual(["VIEWS"]);
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    const loaded = collectBudgetedStageOneCandidateActions({
+      actions: f.runtime.actions,
+      candidateActions: selected.plan.candidateActions ?? [],
+      contexts: selected.plan.contexts,
+      intents: selected.plan.intents,
+      deferUnselectedContexts: true,
+      deferParentHints: true,
+    });
+    expect(loaded.map((action) => action.name)).toEqual(["VIEWS_LIST"]);
+    expect(
+      await loaded[0].handler?.(f.runtime, input, undefined, {
+        parameters: {},
+      }),
+    ).toMatchObject({ success: true });
+    expect(f.requests()).toBe(0);
+  });
+
+  it("keeps conditional known navigation in planning with its prerequisites intact", async () => {
+    const f = await fixture();
+    f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+      action.name.startsWith("VIEWS"),
+    );
+    const intents = [
+      "Read the requested note",
+      "Switch to Notes only if the record exists",
+    ];
+    const selected = await selectNavigation(
+      f,
+      clientMessage(),
+      { disposition: "planning", viewId: "notes" },
+      { intents, candidateActions: [] },
+    );
+    expect(selected.plan.candidateActions).toEqual(["VIEWS_SHOW"]);
+    expect(selected.plan.intents).toEqual(intents);
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(f.requests()).toBe(0);
+  });
+
+  it.each([
+    ["Switch to Notes view", "Read the note"],
+    ["Switch to Notes view"],
+    ["Choose between Notes and Calendar after checking records"],
+  ])(
+    "retains list and show while navigation remains unresolved: %s",
+    async (...intents) => {
+      const f = await fixture();
+      f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+        action.name.startsWith("VIEWS"),
+      );
+      const selected = await selectNavigation(
+        f,
+        clientMessage(),
+        { disposition: "unresolved", viewId: "notes" },
+        {
+          intents,
+          candidateActions: [],
+        },
+      );
+      expect(selected.plan.candidateActions).toEqual([
+        "VIEWS_LIST",
+        "VIEWS_SHOW",
+      ]);
+      const loaded = collectBudgetedStageOneCandidateActions({
+        actions: f.runtime.actions,
+        candidateActions: selected.plan.candidateActions ?? [],
+        contexts: selected.plan.contexts,
+        intents: selected.plan.intents,
+        deferUnselectedContexts: true,
+        deferParentHints: true,
+      });
+      expect(loaded.map((action) => action.name).sort()).toEqual([
+        "VIEWS_LIST",
+        "VIEWS_SHOW",
+      ]);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(JSON.stringify(selected)).toContain(
+        "navigation remains unresolved",
+      );
+      expect(f.requests()).toBe(0);
+    },
+  );
+
   it("composes fresh view identity without changing schema or retaining another turn's view", async () => {
     const f = await fixture();
     const fields = new ResponseHandlerFieldRegistry();
@@ -750,7 +922,9 @@ describe("model-selected host navigation", () => {
       expect(selected.plan.intents).toEqual(intents);
       expect(selected.plan.deterministicToolCall).toBeUndefined();
       expect(f.requests()).toBe(0);
-      expect(selected.plan.candidateActions).toEqual(known ? ["VIEWS"] : []);
+      expect(selected.plan.candidateActions).toEqual(
+        known ? ["VIEWS_LIST", "VIEWS_SHOW"] : [],
+      );
       if (known) {
         const actions = await collectV5PlannerCandidateActions({
           runtime: f.runtime,
@@ -772,6 +946,9 @@ describe("model-selected host navigation", () => {
     "preserves domain-only work from Calendar with %s navigation",
     async (disposition) => {
       const f = await fixture();
+      f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+        action.name.startsWith("VIEWS"),
+      );
       const input = clientMessage();
       input.content.text =
         "Create a note named Input audit September 25 with the exact text: The audit token is amber.";
@@ -916,6 +1093,9 @@ describe("model-selected host navigation", () => {
     "does not directly execute %s",
     async (disposition) => {
       const f = await fixture();
+      f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+        action.name.startsWith("VIEWS"),
+      );
       const input = clientMessage();
       await runWithStreamingContext(
         { messageId: String(input.id), onStreamChunk: () => {} },
@@ -942,6 +1122,9 @@ describe("model-selected host navigation", () => {
     "rechecks owner role and cancellation for %s",
     async (disposition) => {
       const f = await fixture();
+      f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+        action.name.startsWith("VIEWS"),
+      );
       const input = clientMessage();
       const roleChanged = await selectNavigation(
         f,
@@ -959,6 +1142,9 @@ describe("model-selected host navigation", () => {
       expect(roleChanged.plan.deterministicToolCall).toBeUndefined();
       expect(roleChanged.plan.candidateActions).toEqual([]);
       const other = await fixture();
+      other.runtime.actions = (createElizaPlugin().actions ?? []).filter(
+        (action) => action.name.startsWith("VIEWS"),
+      );
       const controller = new AbortController();
       await runWithStreamingContext(
         {

@@ -6,6 +6,7 @@ import {
   type IAgentRuntime,
   isObjectRecord,
   type Memory,
+  pinnedDiscriminatorForPromotedChild,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
   satisfiesRoleGate,
@@ -202,6 +203,22 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
           view.label.toLowerCase() === target ||
           (target === "home" && view.id === "chat")),
     );
+    const viewAction = runtime.actions.find(
+      (action) => action.name === "VIEWS",
+    );
+    const knownShow =
+      matches.length === 1 && viewAction
+        ? pinnedDiscriminatorForPromotedChild(
+            viewAction,
+            "VIEWS_SHOW",
+            (name) => runtime.actions.find((action) => action.name === name),
+          )
+        : undefined;
+    // Preserve the validated operation through lexical family narrowing. This
+    // is an availability hint; the planner and executor still own permission,
+    // conditions, ordering and delivery. Parent-only hosts keep the umbrella.
+    const showCandidate =
+      knownShow?.value === "show" ? knownShow.child : undefined;
     if (value.disposition === "unresolved") {
       if (
         matches.length !== 1 ||
@@ -209,8 +226,18 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         !plan.intents?.length
       )
         return;
+      const knownList = viewAction
+        ? pinnedDiscriminatorForPromotedChild(
+            viewAction,
+            "VIEWS_LIST",
+            (name) => runtime.actions.find((action) => action.name === name),
+          )
+        : undefined;
       return {
-        addCandidateActions: ["VIEWS"],
+        addCandidateActions:
+          showCandidate && knownList?.value === "list"
+            ? [knownList.child, showCandidate]
+            : ["VIEWS"],
         addContextSlices: [
           `Current-request navigation judgment: ${JSON.stringify(value)}. The target matches one caller-visible view, but navigation remains unresolved. Tool availability is not permission to navigate. Preserve conditions, ordering and every domain intent; clarify unresolved choices before effects. No navigation has executed.`,
         ],
@@ -232,7 +259,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         requiresTool: true,
         clearReply: true,
         addContexts: ["general"],
-        addCandidateActions: ["VIEWS"],
+        addCandidateActions: [showCandidate ?? "VIEWS"],
         addContextSlices: [
           `Current-request navigation judgment: ${JSON.stringify(value)}. No navigation has executed.`,
           "Preserve every requested read/write and navigation intent. Use VIEWS action=show for an exact registered destination; use action=list for unknown targets. A domain read/write receipt does not satisfy navigation, and navigation does not satisfy domain work. Preserve ordering, conditions and restrictions: evaluate prerequisite reads before conditional navigation; do not navigate when the condition is false. Do not report the complete request finished while required navigation remains undelivered or unexplained.",
