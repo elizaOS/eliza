@@ -47,10 +47,10 @@ android {
     defaultConfig {
         buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"
         buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"\""
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles\""
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"+14159611510\""
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"Eliza Cloud Gateway (+14159611510)\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_SECRET') ?: '').replace('\\', '\\\\').replace('"', '\\"')}\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL') ?: 'https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles').replace('\\', '\\\\').replace('"', '\\"')}\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER') ?: '+14159611510').replace('\\', '\\\\').replace('"', '\\"')}\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL') ?: 'Eliza Cloud Gateway (+14159611510)').replace('\\', '\\\\').replace('"', '\\"')}\""
         def browserPackage = System.getenv('ELIZA_CHROMIUM_PACKAGE_NAME')
         if (browserPackage == null) browserPackage = 'org.chromium.chrome'
         if (!(browserPackage in ['org.chromium.chrome', 'ai.elizaos.chromium'])) {

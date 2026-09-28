@@ -1,8 +1,7 @@
 /** Transforms generated Android Gradle configuration for runtime packaging and target policy. */
 
 import fs from "node:fs";
-import process from "node:process";
-import { escapeJavaString, escapeRegExp } from "../escape.ts";
+import { escapeRegExp } from "../escape.ts";
 
 export function replaceOrInsertGradleString(content, key, value) {
   // AGP-modern uses `key = "value"`, AGP-legacy uses `key "value"`. Match
@@ -62,14 +61,39 @@ export function injectBuildConfigAospField(content) {
   return next;
 }
 
+function groovySingleQuoted(value) {
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+}
+
+/**
+ * String BuildConfig field whose value Gradle reads from the environment when
+ * the build runs. The value never lands in build.gradle, which is git-tracked
+ * for the in-tree `platforms/android` build — writing the resolved env value
+ * here would leak secrets such as ELIZA_ANDROID_SMS_GATEWAY_SECRET into the
+ * working tree. The Groovy expression escapes `\` and `"` so the emitted Java
+ * string literal stays valid for any env value.
+ */
+function envStringBuildConfigFieldLine(name, fallback) {
+  return `        buildConfigField "String", "${name}", "\\"\${(System.getenv('${name}') ?: ${groovySingleQuoted(fallback)}).replace('\\\\', '\\\\\\\\').replace('"', '\\\\"')}\\""`;
+}
+
 export function androidSmsGatewayBuildConfigFieldLines() {
   return [
     `        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_SECRET ?? "")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ?? "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ?? "Eliza Cloud Gateway (+14159611510)")}\\""`,
+    envStringBuildConfigFieldLine("ELIZA_ANDROID_SMS_GATEWAY_SECRET", ""),
+    envStringBuildConfigFieldLine(
+      "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL",
+      "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles",
+    ),
+    envStringBuildConfigFieldLine(
+      "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER",
+      "+14159611510",
+    ),
+    envStringBuildConfigFieldLine(
+      "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL",
+      "Eliza Cloud Gateway (+14159611510)",
+    ),
   ];
 }
 
