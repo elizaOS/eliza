@@ -20,8 +20,8 @@ import type {
 	StewardSidecar,
 	StewardSidecarStatus,
 } from "../../../../src/services/steward-sidecar";
-import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
+import { resolveStateDir } from "./auth-bridge";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -251,26 +251,24 @@ export async function resetSteward(): Promise<StewardSidecarStatus> {
 	// Stop the sidecar first
 	await stopSteward();
 
-	// Delete credentials and data directory
+	// Delete credentials and data directory. The sidecar keeps its data under
+	// the per-user state dir (`$XDG_STATE_HOME|~/.local/state/<ns>/steward`),
+	// not the legacy `~/.<ns>/` dotdir.
 	const fs = await import("node:fs");
 	const path = await import("node:path");
-	const home = process.env.HOME || process.env.USERPROFILE || "";
+	const stateBase = path.resolve(resolveStateDir());
 	const dataDir =
-		process.env.STEWARD_DATA_DIR ||
-		path.join(home, `.${getBrandConfig().namespace}`, "steward");
+		process.env.STEWARD_DATA_DIR || path.join(stateBase, "steward");
 
-	// Safety: ensure dataDir resolves inside the app namespace dir to prevent accidental
-	// deletion of unrelated directories via env var manipulation.
+	// Safety: ensure dataDir resolves inside the app state dir to prevent
+	// accidental deletion of unrelated directories via env var manipulation.
 	const resolvedDataDir = path.resolve(dataDir);
-	const stateBase = path.resolve(
-		path.join(home, `.${getBrandConfig().namespace}`),
-	);
 	if (
 		!resolvedDataDir.startsWith(stateBase + path.sep) &&
 		resolvedDataDir !== stateBase
 	) {
 		throw new Error(
-			`[Steward] Refusing to delete dataDir outside ~/.${getBrandConfig().namespace}/: ${resolvedDataDir}`,
+			`[Steward] Refusing to delete dataDir outside ${stateBase}: ${resolvedDataDir}`,
 		);
 	}
 
