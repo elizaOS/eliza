@@ -20,7 +20,7 @@ export async function initializeManagedBrowserHost(
     });
   const [{ BrowserService, browserPlugin }, remoteHost] = await Promise.all([
     import("@elizaos/plugin-browser"),
-    import("@elizaos/remote-control-host"),
+    import("@elizaos/plugin-browser/remote-controller"),
   ]);
   if (!runtime.getService("browser")) {
     // The ordinary constructor initializes the target registry. Local start()

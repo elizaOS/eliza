@@ -5,7 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { remoteBrowserController } from "@elizaos/remote-control-host";
+import { remoteBrowserController } from "@elizaos/plugin-browser/remote-controller";
 import { Elysia } from "elysia";
 import type { AgentManager } from "./agent-manager";
 import { EventBodySchema } from "./handlers/event";

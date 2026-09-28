@@ -1,3 +1,4 @@
+/** Validates the actual deployment dependency closure for managed browser controllers. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -26,7 +27,6 @@ test("managed image source closure includes every required workspace dependency"
         assert.ok(packages.has(name), `${info.name} needs ${name}`);
     }
   }
-  assert.ok(packages.has("@elizaos/remote-control-host"));
   assert.ok(packages.has("@elizaos/plugin-browser"));
   assert.ok(packages.has("@elizaos/plugin-web-search"));
   assert.ok(!packages.has("@elizaos/app"));
@@ -38,7 +38,7 @@ test("standalone cloud image ships reviewed host code and invokes it after runti
   const entry = read("packages/app/deploy/cloud-agent-shared.ts");
   assert.match(
     docker,
-    /COPY eliza\/packages\/remote-control-host packages\/remote-control-host/,
+    /COPY eliza\/plugins\/plugin-browser plugins\/plugin-browser/,
   );
   const { packageManager } = JSON.parse(read("package.json"));
   assert.ok(packageManager.startsWith("bun@"));

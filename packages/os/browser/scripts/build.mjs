@@ -51,9 +51,7 @@ const wireBuild = spawnSync(
   "bun",
   [
     "build",
-    fileURLToPath(
-      new URL("../../plugins/plugin-browser/src/native-wire.ts", root),
-    ),
+    fileURLToPath(import.meta.resolve("@elizaos/plugin-browser/native-wire")),
     "--target=browser",
     `--outfile=${fileURLToPath(new URL("protocol.mjs", out))}`,
   ],
