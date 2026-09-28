@@ -600,9 +600,14 @@ export async function openAgentBackupRestoreQuarantineForLockedAuthoritiesInTran
   if (!input.targetEligibleForFirstPlacement) {
     conflict("Restore quarantine target is no longer eligible for first placement");
   }
+  // A restore that failed before its route CAS leaves its own activation
+  // `blocked` while the previous route keeps serving; a later restore may
+  // replace that closed activation exactly as it replaces an active one.
+  const replacesClosedRestore =
+    sandbox.activation_phase === "blocked" && sandbox.activation_purpose === "restore";
   if (
     sandbox.activation_generation !== null &&
-    (sandbox.activation_phase !== "active" ||
+    ((sandbox.activation_phase !== "active" && !replacesClosedRestore) ||
       sandbox.activation_purpose === null ||
       !hasCurrentActivationLifecycle(sandbox))
   ) {

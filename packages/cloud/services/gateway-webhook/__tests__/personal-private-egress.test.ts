@@ -46,6 +46,15 @@ class MemoryRedis implements GatewayRedis {
   async expire(): Promise<unknown> {
     return 1;
   }
+  async zadd(): Promise<unknown> {
+    return 1;
+  }
+  async zrangebyscore(): Promise<string[]> {
+    return [];
+  }
+  async zrem(): Promise<unknown> {
+    return 1;
+  }
 }
 
 interface ProviderCall {

@@ -24,6 +24,7 @@ import {
 import { generations } from "../../db/schemas/generations";
 import { organizations } from "../../db/schemas/organizations";
 import { logger } from "../utils/logger";
+import { enqueueCollectedAffiliatePayout } from "./affiliate-payout-outbox";
 import { creditsService } from "./credits";
 import {
   SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
@@ -105,7 +106,17 @@ export interface SettleSubscriptionFundingInput {
   operation: SubscriptionFundingOperation;
   actualAmount: string;
   occurredAt: Date;
+  /**
+   * Reservation metadata. A pinned `affiliatePayout` contract makes the first
+   * settlement enqueue the collected affiliate markup in the same transaction.
+   */
   metadata?: Record<string, unknown>;
+  /**
+   * Pre-cap charge that the affiliate payout is computed against, when the
+   * caller already capped `actualAmount` to the funded amount. Defaults to
+   * `actualAmount`.
+   */
+  payoutActualAmount?: string;
 }
 
 export interface SubscriptionFundingReservationResult {
@@ -587,8 +598,23 @@ export class SubscriptionFundingService {
           : null,
       purchasedCreditRefundTransactionId: refundId,
     };
+    // The affiliate payout commits atomically with the funded debit. Replays
+    // never re-enqueue: the first settlement already wrote the outbox row.
+    const enqueuePayout = async (replayed: boolean): Promise<void> => {
+      if (replayed || input.metadata?.affiliatePayout === undefined) return;
+      await enqueueCollectedAffiliatePayout(tx, {
+        reservationMetadata: input.metadata,
+        actualTotalCost: Number(
+          input.payoutActualAmount === undefined
+            ? actualAmount
+            : canonicalMoney(input.payoutActualAmount, "payoutActualAmount", true),
+        ),
+        collectedTotalCost: Number(microsToMoney(collected)),
+      });
+    };
     if (allowanceAllocation) {
       const terminal = await subscriptionAllowanceRepository.finalize(tx, terminalInput);
+      await enqueuePayout(terminal.replayed);
       return {
         reservation: terminal.reservation,
         replayed: terminal.replayed,
@@ -609,6 +635,7 @@ export class SubscriptionFundingService {
       purchasedCreditRefundTransactionId: refundId,
       databaseNow: now,
     });
+    await enqueuePayout(terminal.replayed);
     return {
       reservation: terminal.reservation,
       replayed: terminal.replayed,

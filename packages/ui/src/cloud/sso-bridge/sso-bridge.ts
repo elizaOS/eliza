@@ -373,10 +373,11 @@ export function buildBridgeExchangeUrl(
  * explicitly signed out here, and while the loop guard is clear.
  *
  * Steward cookies are deliberately host-only, so the app origin cannot use an
- * auth-origin cookie as a preflight hint. The first bridge visit is therefore
- * also the signed-out login handoff: the mint route remembers the app-approved
- * state, sends the user through auth-origin login, then resumes the PKCE mint.
- * A failed attempt remains bounded to one bounce per tab per five minutes.
+ * auth-origin cookie as a preflight hint. The bridge visit only shares an
+ * existing auth-origin session: when there is none, the mint route returns
+ * immediately to this app origin's own login, so sign-in always stays on the
+ * host the user started on (#19214). A failed attempt remains bounded to one
+ * bounce per tab per five minutes.
  */
 export function shouldAutoBridgeToSso(
   hostname: string = window.location.hostname,

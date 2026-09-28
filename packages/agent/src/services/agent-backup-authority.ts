@@ -35,6 +35,8 @@ async function syncDirectory(directory: string): Promise<void> {
 }
 
 export interface AgentBackupAuthority {
+  /** Identifier written into the held claim, so durable work can name its owner. */
+  readonly operationId: string;
   generation(agentId: string): Promise<string>;
   /** Retires earlier snapshots even if subsequent destructive work is uncertain. */
   retire(agentId: string, operationId: string): Promise<string>;
@@ -80,6 +82,7 @@ export async function withAgentBackupAuthority<T>(
     );
   }
   let active = true;
+  const operationId = randomUUID();
   const generationPath = (agentId: string) => {
     if (!active || agentId.length === 0)
       throw new ElizaError("[AgentBackup] Backup authority is no longer held", {
@@ -145,6 +148,7 @@ export async function withAgentBackupAuthority<T>(
     await syncDirectory(directory);
   };
   const authority: AgentBackupAuthority = {
+    operationId,
     async generation(agentId) {
       const record = await readRecord(agentId);
       if (record?.phase === "pending")
@@ -196,9 +200,7 @@ export async function withAgentBackupAuthority<T>(
   };
   let outcome: { ok: true; value: T } | { ok: false; error: unknown };
   try {
-    await lock.writeFile(
-      JSON.stringify({ pid: process.pid, operationId: randomUUID() }),
-    );
+    await lock.writeFile(JSON.stringify({ pid: process.pid, operationId }));
     await lock.sync();
     await syncDirectory(directory);
     outcome = { ok: true, value: await operation(authority) };
@@ -226,4 +228,71 @@ export async function withAgentBackupAuthority<T>(
   }
   if (!outcome.ok) throw outcome.error;
   return outcome.value;
+}
+
+const claimRecord = z.object({
+  pid: z.number().int().positive(),
+  operationId: z.string().uuid(),
+});
+/** The claim currently held on a state directory, or null when none exists. */
+export async function readAgentBackupAuthorityClaim(
+  stateDir: string,
+): Promise<{ pid: number; operationId: string } | null> {
+  const lockPath = path.join(
+    stateDir,
+    AGENT_BACKUP_AUTHORITY_DIRECTORY,
+    "operation.lock",
+  );
+  let raw: string;
+  try {
+    raw = await fs.readFile(lockPath, "utf8");
+  } catch (cause) {
+    // error-policy:J4 Absence of the claim file means no operation holds it.
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+      return null;
+    throw cause;
+  }
+  try {
+    return claimRecord.parse(JSON.parse(raw));
+  } catch (cause) {
+    // error-policy:J2 An unreadable claim cannot be attributed to any operation.
+    throw new ElizaError(
+      "[AgentBackup] Backup authority claim is unreadable; reconcile it offline",
+      {
+        code: "AGENT_BACKUP_AUTHORITY_UNAVAILABLE",
+        context: { lockPath },
+        cause,
+      },
+    );
+  }
+}
+/**
+ * Remove a claim abandoned by a crashed process. Only the exact claim named by
+ * durable work that the caller has just reconciled may be removed, and only
+ * once its owner process no longer exists.
+ */
+export async function releaseAbandonedAgentBackupAuthorityClaim(
+  stateDir: string,
+  operationId: string,
+): Promise<void> {
+  const claim = await readAgentBackupAuthorityClaim(stateDir);
+  if (!claim) return;
+  if (claim.operationId !== operationId || isProcessAlive(claim.pid))
+    throw new ElizaError(
+      "[AgentBackup] Backup authority claim is not the abandoned operation",
+      { code: "AGENT_BACKUP_AUTHORITY_UNAVAILABLE" },
+    );
+  const directory = path.join(stateDir, AGENT_BACKUP_AUTHORITY_DIRECTORY);
+  await fs.unlink(path.join(directory, "operation.lock"));
+  await syncDirectory(directory);
+}
+/** True unless the OS reports that no process has this id. */
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // error-policy:J4 ESRCH is the only proof of absence; EPERM means alive.
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
 }

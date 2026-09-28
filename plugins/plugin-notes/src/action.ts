@@ -173,6 +173,14 @@ function committed(data: Record<string, unknown>): ActionResult {
         }
       : {}),
     data: { actionName: "NOTES", ...data },
+    ...(data.note || Array.isArray(data.notes)
+      ? {
+          promptData: {
+            noteContentFormat:
+              "Stored note content is title + body exactly. title is the prefix; body is the verbatim remainder, including any separator. Separate title/body input is joined by a newline; additional whitespace is content. Compare complete content, not the stored remainder alone, with the requested note.",
+          },
+        }
+      : {}),
   };
 }
 

@@ -14,14 +14,18 @@ afterEach(() => {
   else process.env.TEST_API_BASE_URL = originalBaseUrl;
 });
 
-function start(body: string, contentType = "text/plain;charset=UTF-8") {
+function start(
+  body: string,
+  contentType = "text/plain;charset=UTF-8",
+  failures = 1,
+) {
   let calls = 0;
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch() {
       calls++;
-      return calls === 1
+      return calls <= failures
         ? new Response(body, {
             status: 500,
             headers: { "Content-Type": contentType },
@@ -40,11 +44,37 @@ test("retries a local Miniflare lost-connection GET and retains the auth rejecti
   expect(calls()).toBe(2);
 });
 
-test("never replays a mutation after a proxy connection failure", async () => {
-  const calls = start(proxyFailure);
+test.each(["post", "patch", "delete"] as const)(
+  "replays a %s dropped by the local ProxyWorker exactly once",
+  async (method) => {
+    const calls = start(proxyFailure);
+    const response =
+      method === "delete"
+        ? await api.delete("/mutation")
+        : await api[method]("/mutation", {});
+    expect(response.status).toBe(401);
+    expect(calls()).toBe(2);
+  },
+);
+
+test("replays a dropped mutation at most once", async () => {
+  const calls = start(proxyFailure, "text/plain;charset=UTF-8", 2);
   expect((await api.post("/mutation", {})).status).toBe(500);
-  expect(calls()).toBe(1);
+  expect(calls()).toBe(2);
 });
+
+test.each([
+  ["Internal Server Error", "text/plain"],
+  ["Error: Network connection lost.", "text/plain"],
+  [proxyFailure, "application/problem+json"],
+])(
+  "never replays a mutation after other failures (%s)",
+  async (body, contentType) => {
+    const calls = start(body, contentType);
+    expect((await api.post("/mutation", {})).status).toBe(500);
+    expect(calls()).toBe(1);
+  },
+);
 
 test.each([
   ["Error: Network connection lost.", "text/plain"],

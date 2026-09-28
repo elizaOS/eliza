@@ -180,16 +180,21 @@ describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
     }
   });
 
-  it("signed out on eliza.app → the canonical login with the bridge leg preserved", async () => {
-    setReferrer("https://cloud.eliza.app/");
-    stubNetwork(() => json(500, {}));
-    renderBridge("eliza.app", MINT_QS);
-    await waitFor(() =>
-      expect(replacedUrls).toEqual([
-        `/login?returnTo=${encodeURIComponent(`/auth/bridge?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2Fchat`)}`,
-      ]),
-    );
-    expect(fetchLog).toEqual([]);
+  it("signed out on eliza.app → back to the originating app host's own login, never this host's (#19214)", async () => {
+    for (const [mintHost, appOrigin] of [
+      ["eliza.app", "https://cloud.eliza.app"],
+      ["staging.eliza.app", "https://cloud-staging.eliza.app"],
+    ] as const) {
+      setReferrer(`${appOrigin}/`);
+      stubNetwork(() => json(500, {}));
+      renderBridge(mintHost, MINT_QS);
+      await waitFor(() =>
+        expect(replacedUrls).toEqual([`${appOrigin}/login?returnTo=%2Fchat`]),
+      );
+      expect(fetchLog).toEqual([]);
+      expect(sessionStorage.length).toBe(0);
+      cleanup();
+    }
   });
 
   it("signed in + app-initiated → mints with Bearer + challenge and bounces to the app exchange leg, state echoed, challenge NOT echoed", async () => {
@@ -505,7 +510,7 @@ describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
     );
     await waitFor(() =>
       expect(replacedUrls).toEqual([
-        `/login?returnTo=${encodeURIComponent(`/auth/bridge?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2F`)}`,
+        "https://cloud.eliza.app/login?returnTo=%2F",
       ]),
     );
   });

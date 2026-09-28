@@ -196,6 +196,32 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
   }
 
+  /**
+   * Run `operation` while no query can execute and close cannot begin, so the
+   * physical data directory is a quiescent, crash-consistent image. Callers copy
+   * files from disk themselves (bounded memory) instead of materializing a tar.
+   */
+  public async withQuiescedDataDir<T>(operation: (dataDir: string) => Promise<T>): Promise<T> {
+    if (this.shuttingDown) {
+      throw new Error("PGlite is closing");
+    }
+    const dataDir = this.getDataDir();
+    if (!dataDir || dataDir === ":memory:" || dataDir.includes("://")) {
+      throw this.createDataDirExportError(
+        PGLITE_DATA_DIR_EXPORT_UNBOUNDED_CODE,
+        "PGlite is not backed by a filesystem data directory"
+      );
+    }
+    const lease = this.acquireDataDirExportLease();
+    try {
+      return await this.withLifecycleLock(
+        async () => await this.client.runExclusive(async () => await operation(dataDir))
+      );
+    } finally {
+      lease.release();
+    }
+  }
+
   private acquireDataDirExportLease(): { release: () => void } {
     if (this.activeDataDirExport) {
       throw this.createDataDirExportError(
@@ -277,8 +303,13 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     // replacement manager overlap another full PGlite archive in memory.
     await this.activeDataDirExport?.released;
     if (this.client) {
+      const client = this.client;
       try {
-        await this.client.close();
+        // PGlite.close() does not wait for its query queue: terminating while a
+        // detached query (e.g. a background schema check) is mid-flight wedges
+        // the WASM backend and blocks the event loop. Close only once every
+        // in-flight query and transaction has settled.
+        await client.runExclusive(async () => await client.close());
       } catch (error) {
         // error-policy:J6 best-effort teardown — a failed client close still
         // proceeds to release the data-dir lock so the writer slot is freed.

@@ -16,6 +16,10 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  type JsonSchema,
+  validateSchema,
+} from "../../../../../packages/core/src/actions/validate-tool-args.ts";
+import {
   EVALUATOR_CONTEXT_ROUTES,
   evaluatorSchema,
   evaluatorTemplate,
@@ -358,6 +362,149 @@ describe("stable evaluator schema with authoritative decision state", () => {
       messageToUser: "The write failed; the service rejected it.",
     });
   });
+
+  it("makes the case9 omitted-answer FINISH invalid on the stable wire contract", () => {
+    const capturedShape = {
+      thought: "All three intents complete; no queue remaining or failures.",
+      success: true,
+      decision: "FINISH",
+      requestFullyCovered: true,
+      outcomeCoverage: [
+        { intentId: "1", status: "completed", evidenceStepIds: ["step:1"] },
+        { intentId: "2", status: "completed", evidenceStepIds: ["step:2"] },
+        { intentId: "3", status: "completed", evidenceStepIds: ["step:3"] },
+      ],
+      replyEffectStatus: "none",
+      effectReceiptIds: [],
+      recommendedToolCallId: "",
+    };
+    const before = {
+      ...evaluatorSchema,
+      required: evaluatorSchema.required?.filter(
+        (key) => key !== "messageToUser",
+      ),
+    };
+    const oldErrors: string[] = [];
+    validateSchema(before as JsonSchema, capturedShape, "evaluator", oldErrors);
+    expect(oldErrors).toEqual([]);
+    const errors: string[] = [];
+    validateSchema(
+      evaluatorSchema as JsonSchema,
+      capturedShape,
+      "evaluator",
+      errors,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("messageToUser");
+  });
+
+  it.each([undefined, ""])(
+    "retains fail-closed handling for missing/empty required replies: %j",
+    async (messageToUser) => {
+      const result = await captureSchema([], {
+        trajectory: {
+          codingMode: false,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: { id: "read", name: "READ" },
+              result: {
+                success: true,
+                transcriptVisibility: "internal",
+                modelReplyRequired: true,
+                data: { value: "amber" },
+              },
+            },
+          ],
+        },
+        output: {
+          ...continuing,
+          success: true,
+          decision: "FINISH",
+          ...(messageToUser === undefined ? {} : { messageToUser }),
+        },
+      });
+      expect(result.schema?.required).toContain("messageToUser");
+      expect(result.output).toMatchObject({
+        decision: "CONTINUE",
+        success: false,
+      });
+      expect(result.output.messageToUser).toBeUndefined();
+      expect(result.modelCalls).toBe(1);
+    },
+  );
+
+  it("accepts an empty CONTINUE and a grounded answer without a new planner round", async () => {
+    const next = await captureSchema([], {
+      output: { ...continuing, messageToUser: "" },
+    });
+    expect(next.output.decision).toBe("CONTINUE");
+    const answer = await captureSchema([], {
+      trajectory: {
+        codingMode: false,
+        steps: [
+          {
+            iteration: 1,
+            toolCall: { id: "read", name: "READ" },
+            result: {
+              success: true,
+              transcriptVisibility: "internal",
+              modelReplyRequired: true,
+              data: { value: "amber" },
+            },
+          },
+        ],
+      },
+      output: {
+        ...continuing,
+        success: true,
+        decision: "FINISH",
+        messageToUser: "The value is amber.",
+      },
+    });
+    expect(answer.output).toMatchObject({
+      decision: "FINISH",
+      success: true,
+      messageToUser: "The value is amber.",
+    });
+    expect(answer.modelCalls).toBe(1);
+    expect(answer.schema).toEqual(next.schema);
+  });
+
+  it.each([undefined, ""])(
+    "preserves approval of an existing native REPLY with %j",
+    async (messageToUser) => {
+      const result = await captureSchema([], {
+        trajectory: {
+          codingMode: false,
+          steps: [
+            {
+              iteration: 1,
+              terminalOnly: true,
+              terminalMessage: "The value is amber.",
+              toolCall: {
+                id: "reply",
+                name: "REPLY",
+                params: { text: "The value is amber." },
+              },
+              result: { success: true, text: "The value is amber." },
+            },
+          ],
+        },
+        output: {
+          ...continuing,
+          success: true,
+          decision: "FINISH",
+          ...(messageToUser === undefined ? {} : { messageToUser }),
+        },
+      });
+      expect(result.output).toMatchObject({
+        decision: "FINISH",
+        success: true,
+      });
+      expect(result.modelCalls).toBe(1);
+    },
+  );
 
   it("rejects a blank required internal-result reply without emitting effects", async () => {
     const result = await captureSchema([], {

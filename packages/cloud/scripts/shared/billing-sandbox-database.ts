@@ -32,7 +32,7 @@ export async function initializeBillingSandboxDatabase(db: Client) {
     "0410_app_billing_update_quotes",
     "0411_app_billing_merchant_identity",
     "0413_app_billing_notification_endpoints",
-    "0497_app_notification_secret_envelope_v2",
+    "0502_app_notification_secret_envelope_v2",
     "0414_app_subscription_outbox_delivery",
     "0415_app_billing_webhook_recovery",
     "0416_app_billing_checkout_expiry",

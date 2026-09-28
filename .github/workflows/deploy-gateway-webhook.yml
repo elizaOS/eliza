@@ -241,6 +241,12 @@ jobs:
           }
           echo "Railway project, environment, service, and public domain identities match."
 
+      - name: Check Blooio environment isolation
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
+        run: node packages/cloud/scripts/verify-blooio-environment-isolation.ts
+
       - name: Verify canonical Railway variables and sensitive names
         shell: bash
         env:

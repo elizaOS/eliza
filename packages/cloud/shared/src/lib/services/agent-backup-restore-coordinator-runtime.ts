@@ -13,6 +13,8 @@ const MAX_CLAIM_MS = 3_600_000;
 const DEFAULT_CLAIM_MS = 60_000;
 const DEFAULT_RETRY_BASE_MS = 5_000;
 const MAX_RETRY_MS = 3_600_000;
+const DEFAULT_MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 50;
 
 export type AgentBackupRestoreCoordinatorConfig =
   | { enabled: false }
@@ -21,9 +23,16 @@ export type AgentBackupRestoreCoordinatorConfig =
       workerId: string;
       claimMs: number;
       retryBaseMs: number;
+      /** Pre-boot attempts before a restore is closed without touching its route. */
+      maxAttempts: number;
       /** Explicit restore only; node-loss failover consumes this authority later. */
       automaticFailoverEnabled: false;
     };
+
+export type AgentBackupRestoreEnabledCoordinatorConfig = Extract<
+  AgentBackupRestoreCoordinatorConfig,
+  { enabled: true }
+>;
 
 /**
  * `"1"` is on; unset, empty, or `"0"` is off; any other value is a
@@ -100,6 +109,13 @@ export function readAgentBackupRestoreCoordinatorConfig(
       fallback: DEFAULT_RETRY_BASE_MS,
       min: 1,
       max: MAX_RETRY_MS,
+    }),
+    maxAttempts: readBoundedInteger({
+      env,
+      name: "AGENT_BACKUP_RESTORE_MAX_ATTEMPTS",
+      fallback: DEFAULT_MAX_ATTEMPTS,
+      min: 1,
+      max: MAX_ATTEMPTS,
     }),
     automaticFailoverEnabled: false,
   };

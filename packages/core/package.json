@@ -357,6 +357,18 @@
 			"import": "./dist/contracts/agent-backup-restore-v3-stream.js",
 			"default": "./dist/contracts/agent-backup-restore-v3-stream.js"
 		},
+		"./contracts/agent-backup-restore-v3-materializer": {
+			"eliza-source": "./src/contracts/agent-backup-restore-v3-materializer.ts",
+			"types": "./dist/contracts/agent-backup-restore-v3-materializer.d.ts",
+			"import": "./dist/contracts/agent-backup-restore-v3-materializer.js",
+			"default": "./dist/contracts/agent-backup-restore-v3-materializer.js"
+		},
+		"./contracts/agent-backup-restore-v3-serving": {
+			"eliza-source": "./src/contracts/agent-backup-restore-v3-serving.ts",
+			"types": "./dist/contracts/agent-backup-restore-v3-serving.d.ts",
+			"import": "./dist/contracts/agent-backup-restore-v3-serving.js",
+			"default": "./dist/contracts/agent-backup-restore-v3-serving.js"
+		},
 		"./contracts/agent-routes": {
 			"eliza-source": "./src/contracts/agent-routes.ts",
 			"types": "./dist/contracts/agent-routes.d.ts",

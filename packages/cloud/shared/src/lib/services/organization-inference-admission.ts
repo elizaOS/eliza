@@ -8,11 +8,24 @@
  * deterministic debit identity; the lease alarm is the durable backstop when
  * a response-side task disappears.
  *
- * Token-priced subscriber requests on the Worker take the same lease lane: the
- * lease is sized against funding capacity (purchased credit plus spendable
- * allowance) read in the policy transaction, and allowance-first funding runs
- * once after the provider responds. Other subscriber requests (non-Worker,
- * affiliate-marked, or flat-priced) keep the synchronous funding reservation.
+ * Subscriber requests on the Worker take the same lease lane: the lease is
+ * sized against funding capacity (purchased credit plus spendable allowance)
+ * read in the policy transaction, and allowance-first funding runs once after
+ * the provider responds. Token-priced, flat-priced and affiliate-marked
+ * requests all use it; an affiliate payout is pinned at admission and enqueued
+ * in the same funding transaction as the debit. Only non-Worker callers keep
+ * the synchronous funding reservation (see `isDeferredSubscriberLaneEligible`).
+ *
+ * Snapshot admission (`INFERENCE_SNAPSHOT_ADMISSION_ENABLED`) removes the
+ * remaining pre-dispatch database work on the warm Worker path: the policy
+ * read and the dispatch-policy transaction are served from the published
+ * admission snapshot, and the organization Durable Object fences it. Every
+ * snapshot publication first advances the gate's policy generation, so a
+ * lease or dispatch decided under an older generation fails closed; balance
+ * revisions older than the gate's keep the gate's newer ceiling. What the gate
+ * cannot see is a policy or balance write that has not been republished yet;
+ * that window is bounded by `SNAPSHOT_ADMISSION_MAX_AGE_MS` (the auth-context
+ * physical TTL), after which the request takes the authoritative path.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -21,6 +34,7 @@ import {
   lockOrganizationPolicy,
   lockOrganizationPolicyForRead,
 } from "../../db/repositories/organization-policy-generation";
+import { CacheTTL } from "../cache/keys";
 import { observeInferenceDependency } from "../observability/cloud-backend-observability";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
@@ -53,6 +67,7 @@ import {
   type InferenceAdmissionLease,
   InferenceAdmissionLeaseRejectedError,
   inferenceSettlementAmounts,
+  isInferenceAdmissionPolicyStaleError,
   markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 } from "./inference-admission-gate";
@@ -64,7 +79,10 @@ import {
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isInferenceAdmissionSnapshot } from "./inference-auth-cache";
-import { isDeferredAdmissionEnabled } from "./inference-billing-deferred";
+import {
+  isDeferredAdmissionEnabled,
+  isSnapshotAdmissionEnabled,
+} from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
   debitInferenceCost,
@@ -92,7 +110,6 @@ import {
 } from "./organization-policy-admission";
 import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
 import {
-  type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
@@ -368,6 +385,8 @@ export async function admitOrganizationInference(
   // KV/LRU entries are observations, never a CAS fence. Compare policy under
   // the same organization lock that serializes entitlement and override writes.
   const workerHotPath = typeof params.executionCtx?.waitUntil === "function";
+  const snapshot = snapshotAdmissionSnapshot(params, workerHotPath);
+  if (snapshot) return await admitFromSnapshot(params, snapshot);
   const lockPolicy = workerHotPath ? lockOrganizationPolicyForRead : lockOrganizationPolicy;
   const subscriberLaneEligible = isDeferredSubscriberLaneEligible(params);
   const { policy: authoritativePolicy, fundingCapacity } = await observeInferenceDependency(
@@ -431,9 +450,18 @@ export async function admitOrganizationInference(
       context: { organizationId: params.context.organizationId, reason: "stale_policy_snapshot" },
     });
   }
+  const policyGeneration = authoritativePolicy.authority.generation;
   const admission = fundingCapacity
-    ? await admitSubscriberViaDurableObject(params, fundingCapacity)
-    : await admitWithFundingPolicy(params, authoritativePolicy);
+    ? await admitSubscriberViaDurableObject(params, fundingCapacity, policyGeneration)
+    : await admitWithFundingPolicy(params, {
+        subscriptionFunded: authoritativePolicy.subscriptionFunded,
+        balance: () => {
+          const balance = requireOrganizationPolicyBalance(authoritativePolicy);
+          return { balanceUsd: balance.balanceUsd, revision: balance.revision };
+        },
+        observedAt: Date.parse(authoritativePolicy.observedAt),
+        policyGeneration,
+      });
   const previousDispatch = admission.markProviderDispatched;
   const admitDispatch = workerHotPath
     ? withOrganizationPolicyReadAdmission
@@ -471,17 +499,111 @@ export async function admitOrganizationInference(
   };
 }
 /**
+ * Maximum age of a published admission snapshot the snapshot lane trusts. It
+ * equals the auth-context physical TTL, so an entry is never trusted beyond
+ * the lifetime the cache already bounds; older observations take the
+ * authoritative path.
+ */
+export const SNAPSHOT_ADMISSION_MAX_AGE_MS = CacheTTL.inference.authContext * 1_000;
+/** Tolerated Worker-vs-primary clock skew for a snapshot's observation time. */
+const SNAPSHOT_ADMISSION_CLOCK_SKEW_MS = 5_000;
+
+/**
+ * Returns the admission snapshot when this Worker request may be admitted from
+ * it without a pre-dispatch database read. Anything the snapshot cannot prove
+ * (an active or unknown billing hold, missing subscriber capacity, an aged
+ * observation) selects the authoritative path instead.
+ */
+function snapshotAdmissionSnapshot(
+  params: OrganizationInferenceAdmissionParams,
+  workerHotPath: boolean,
+): InferenceAdmissionSnapshot | undefined {
+  if (!workerHotPath || !isSnapshotAdmissionEnabled()) return undefined;
+  const snapshot = params.admissionSnapshot;
+  if (!isInferenceAdmissionSnapshot(snapshot) || snapshot.billingHold !== false) return undefined;
+  const ageMs = Date.now() - snapshot.balance.balanceAt;
+  if (ageMs < -SNAPSHOT_ADMISSION_CLOCK_SKEW_MS || ageMs > SNAPSHOT_ADMISSION_MAX_AGE_MS) {
+    return undefined;
+  }
+  if (snapshot.subscriptionFunded) {
+    if (snapshot.funding?.balanceRevision !== snapshot.balance.balanceRevision) return undefined;
+  } else if (!isOptimisticBillingEnabled()) {
+    return undefined;
+  }
+  return snapshot;
+}
+
+/**
+ * Admit from the published snapshot. The only pre-dispatch round trip is the
+ * organization Durable Object lease/dispatch, which refuses a snapshot whose
+ * policy generation it has seen superseded. A refusal repairs the shared
+ * projection under the Worker lifetime and fails this request closed.
+ */
+async function admitFromSnapshot(
+  params: OrganizationInferenceAdmissionParams,
+  snapshot: InferenceAdmissionSnapshot,
+): Promise<OrganizationInferenceAdmission> {
+  const policyGeneration = snapshot.authority.generation;
+  const repairIfStale = (error: unknown): void => {
+    if (!isInferenceAdmissionPolicyStaleError(error)) return;
+    params.executionCtx?.waitUntil(
+      refreshStaleInferenceAdmissionSnapshot(params.context.organizationId).catch((cause) => {
+        // error-policy:J7 the request already fails closed; the next request
+        // retries the republish.
+        logger.warn("[inference-admission] stale snapshot refresh failed", {
+          organizationId: params.context.organizationId,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+      }),
+    );
+  };
+  let admission: OrganizationInferenceAdmission;
+  try {
+    admission =
+      snapshot.subscriptionFunded && snapshot.funding
+        ? await admitSubscriberViaDurableObject(params, snapshot.funding, policyGeneration)
+        : await admitWithFundingPolicy(params, {
+            subscriptionFunded: false,
+            balance: () => ({
+              balanceUsd: snapshot.balance.balanceUsd,
+              revision: snapshot.balance.balanceRevision,
+            }),
+            observedAt: snapshot.balance.balanceAt,
+            policyGeneration,
+          });
+  } catch (error) {
+    repairIfStale(error);
+    throw error;
+  }
+  const dispatch = admission.markProviderDispatched;
+  if (!dispatch) return admission;
+  return {
+    ...admission,
+    markProviderDispatched: async () => {
+      try {
+        await dispatch();
+      } catch (error) {
+        repairIfStale(error);
+        throw error;
+      }
+    },
+  };
+}
+
+/**
  * Worker requests whose subscriber funding can be deferred behind the lease.
- * Affiliate payouts and flat-priced operations (pending video settlement)
- * depend on the synchronous reservation's funding identity and stay on it.
+ *
+ * Token-priced, flat-priced and affiliate-marked requests are all eligible:
+ * the affiliate payout contract is pinned in the lease recovery context and
+ * enqueued inside the funding transaction, and a flat operation that outlives
+ * the request (pending video) takes its own funding hold before releasing the
+ * lease. Non-Worker callers cannot be deferred: they have no Worker lifetime
+ * (`waitUntil`) to run post-response settlement and no binding to the
+ * organization Durable Object that serializes in-flight leases and owns alarm
+ * recovery, so their funding must be reserved before dispatch.
  */
 function isDeferredSubscriberLaneEligible(params: OrganizationInferenceAdmissionParams): boolean {
-  return (
-    typeof params.executionCtx?.waitUntil === "function" &&
-    !params.flatCost &&
-    !params.affiliateCode?.trim() &&
-    isDeferredAdmissionEnabled()
-  );
+  return typeof params.executionCtx?.waitUntil === "function" && isDeferredAdmissionEnabled();
 }
 
 /**
@@ -491,21 +613,40 @@ function isDeferredSubscriberLaneEligible(params: OrganizationInferenceAdmission
 async function admitSubscriberViaDurableObject(
   params: OrganizationInferenceAdmissionParams,
   capacity: SubscriberFundingCapacity,
+  policyGeneration: string,
 ): Promise<OrganizationInferenceAdmission> {
   const executionCtx = params.executionCtx;
   if (!executionCtx) throw admissionUnavailable(params);
+  const affiliateMarked = Boolean(params.affiliateCode?.trim());
   let estimatedCostUsd: number;
+  let affiliateAttribution: AffiliateBillingAttribution | null;
   try {
-    estimatedCostUsd = (
-      await calculateCost(
-        normalizeModelName(params.context.model),
-        params.context.provider,
-        params.estimatedInputTokens,
-        params.estimatedOutputTokens,
-        params.context.billingSource,
-        { cacheOnly: true, executionCtx },
-      )
-    ).totalCost;
+    const [cost, attribution] = await Promise.all([
+      params.flatCost
+        ? Promise.resolve(params.flatCost)
+        : calculateCost(
+            normalizeModelName(params.context.model),
+            params.context.provider,
+            params.estimatedInputTokens,
+            params.estimatedOutputTokens,
+            params.context.billingSource,
+            { cacheOnly: true, executionCtx },
+          ),
+      affiliateMarked
+        ? getCachedInferenceAffiliateAttribution({
+            affiliateCode: params.affiliateCode,
+            organizationId: params.context.organizationId,
+            userId: params.context.userId,
+            executionCtx,
+          })
+        : null,
+    ]);
+    affiliateAttribution = attribution;
+    // Same sizing as the synchronous subscriber reservation: the affiliate
+    // markup is part of the charge, and a token estimate carries the buffer.
+    const markedUpEstimate = cost.totalCost * (1 + (affiliateAttribution?.markupPercent ?? 0));
+    estimatedCostUsd =
+      affiliateAttribution && !params.flatCost ? markedUpEstimate * COST_BUFFER : markedUpEstimate;
   } catch (error) {
     if (error instanceof AiPricingCacheWarmingError) {
       throw new InferencePricingCacheWarmingError(error);
@@ -513,8 +654,21 @@ async function admitSubscriberViaDurableObject(
     if (error instanceof AiPricingCacheUnavailableError) {
       throw new InferencePricingCacheUnavailableError(error);
     }
+    if (error instanceof AffiliateCacheWarmingError) {
+      throw new InferenceAffiliateCacheWarmingError(error);
+    }
+    if (error instanceof AffiliateCacheUnavailableError) {
+      throw new InferenceAffiliateCacheUnavailableError(error);
+    }
     throw error;
   }
+  const affiliatePayoutSourceId = affiliateAttribution
+    ? getAffiliatePayoutSourceId(params.context)
+    : null;
+  const affiliatePayout =
+    affiliateAttribution && affiliatePayoutSourceId
+      ? { attribution: affiliateAttribution, sourceId: affiliatePayoutSourceId }
+      : undefined;
   const requiredLeaseUsd = Math.max(estimatedCostUsd, MIN_RESERVATION);
   if (capacity.balanceUsd < requiredLeaseUsd) {
     throw new InsufficientCreditsError(
@@ -543,11 +697,20 @@ async function admitSubscriberViaDurableObject(
         billingSource: params.context.billingSource,
         description: params.context.description ?? `Inference request: ${params.context.model}`,
         ...(params.context.metadata && { metadata: params.context.metadata }),
-        accounting: { kind: "subscription_funding" },
+        accounting: affiliatePayout
+          ? {
+              kind: "subscription_funding",
+              affiliate: {
+                attribution: affiliatePayout.attribution,
+                payoutSourceId: affiliatePayout.sourceId,
+              },
+            }
+          : { kind: "subscription_funding" },
       },
       credential: params.credential,
       executionCtx,
       deferCommitUntilDispatch: params.atomicProviderBoundary === true,
+      policyGeneration,
     });
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
@@ -604,6 +767,7 @@ async function admitSubscriberViaDurableObject(
       description: params.context.description ?? `Inference request: ${params.context.model}`,
       metadata: params.context.metadata,
       amountUsd: actualCostUsd,
+      ...(affiliatePayout && { affiliatePayout }),
     });
     settledBalance = {
       balanceUsd: funded.capacity.balanceUsd,
@@ -620,11 +784,11 @@ async function admitSubscriberViaDurableObject(
       reservation: {
         reservedAmount: requiredLeaseUsd,
         reservationTransactionId: null,
-        affiliateAttribution: null,
-        affiliatePayoutSourceId: null,
+        affiliateAttribution,
+        affiliatePayoutSourceId,
         reconcile: settle,
       },
-      affiliateAttribution: null,
+      affiliateAttribution,
     },
     lease,
     params,
@@ -632,15 +796,28 @@ async function admitSubscriberViaDurableObject(
   );
 }
 
+/** The funding inputs a credit-funded admission needs, from policy or snapshot. */
+interface FundingPolicyObservation {
+  subscriptionFunded: boolean;
+  /** Throws when the observation carries no usable balance. */
+  balance(): { balanceUsd: number; revision: string };
+  /** Epoch milliseconds of the balance observation. */
+  observedAt: number;
+  policyGeneration: string;
+}
+
 async function admitWithFundingPolicy(
   params: OrganizationInferenceAdmissionParams,
-  policy: OrganizationQuotaPolicy,
+  policy: FundingPolicyObservation,
 ): Promise<OrganizationInferenceAdmission> {
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
 
   if (policy.subscriptionFunded) {
+    // Only callers outside the deferred subscriber lane reach this: non-Worker
+    // callers, or Workers with deferred admission disabled. See
+    // `isDeferredSubscriberLaneEligible` for why they reserve before dispatch.
     return await reserveSynchronously(params, true);
   }
   if (!workerHotPath && affiliateMarked) {
@@ -674,7 +851,7 @@ async function admitWithFundingPolicy(
     // The primary policy read already captured the balance and revision.
     // Requiring a separate projection here would reject a valid cold request
     // or let an older balance replace that observation before the lease fence.
-    const workerBalance = canDefer ? requireOrganizationPolicyBalance(policy) : undefined;
+    const workerBalance = canDefer ? policy.balance() : undefined;
     const [cost, gateBalance, resolvedAffiliateAttribution] = await Promise.all([
       params.flatCost
         ? Promise.resolve(params.flatCost)
@@ -693,7 +870,7 @@ async function admitWithFundingPolicy(
         ? Promise.resolve({
             balanceUsd: workerBalance.balanceUsd,
             balanceRevision: workerBalance.revision,
-            balanceAt: Date.parse(policy.observedAt),
+            balanceAt: policy.observedAt,
           })
         : params.admissionSnapshot
           ? Promise.resolve(params.admissionSnapshot.balance)
@@ -792,6 +969,7 @@ async function admitWithFundingPolicy(
         credential: params.credential,
         executionCtx: params.executionCtx,
         deferCommitUntilDispatch: params.atomicProviderBoundary === true,
+        policyGeneration: policy.policyGeneration,
       });
     } catch (error) {
       if (error instanceof InferenceCredentialRevokedError) {

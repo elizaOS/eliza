@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   isIosAppStoreBuild,
   resolveIosCapacitorSyncEnv,
+  resolveMobileBuildPolicy,
   shouldIncludeIosFullBunEngine,
 } from "./run-mobile-build.ts";
 
@@ -29,22 +30,34 @@ describe("iOS full-Bun engine embed gate", () => {
     expect(shouldIncludeIosFullBunEngine(env)).toBe(false);
   });
 
-  it("ELIZA_BUILD_VARIANT=store embeds the engine by default", () => {
+  it("ELIZA_BUILD_VARIANT=store is Cloud-only by default (#16420)", () => {
     const env = { ELIZA_BUILD_VARIANT: "store" };
     expect(isIosAppStoreBuild(env)).toBe(true);
+    expect(shouldIncludeIosFullBunEngine(env)).toBe(false);
+  });
+
+  it("a store build embeds the engine when the operator opts into the local runtime", () => {
+    const env = {
+      ELIZA_BUILD_VARIANT: "store",
+      ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+    };
     expect(shouldIncludeIosFullBunEngine(env)).toBe(true);
   });
 
   it("ELIZA_BUILD_VARIANT=store is case-insensitive", () => {
+    expect(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "STORE" })).toBe(true);
     expect(
-      shouldIncludeIosFullBunEngine({ ELIZA_BUILD_VARIANT: "STORE" }),
+      shouldIncludeIosFullBunEngine({
+        ELIZA_BUILD_VARIANT: "STORE",
+        ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+      }),
     ).toBe(true);
   });
 
-  it("ELIZA_RELEASE_AUTHORITY=apple-app-store embeds the engine by default", () => {
+  it("ELIZA_RELEASE_AUTHORITY=apple-app-store is Cloud-only by default", () => {
     const env = { ELIZA_RELEASE_AUTHORITY: "apple-app-store" };
     expect(isIosAppStoreBuild(env)).toBe(true);
-    expect(shouldIncludeIosFullBunEngine(env)).toBe(true);
+    expect(shouldIncludeIosFullBunEngine(env)).toBe(false);
   });
 
   it("explicit ELIZA_IOS_FULL_BUN_ENGINE=1 embeds the engine even on a direct build", () => {
@@ -102,5 +115,33 @@ describe("iOS full-Bun engine embed gate", () => {
     expect(
       resolveIosCapacitorSyncEnv({ ELIZA_IOS_RUNTIME_MODE: "local" }),
     ).toEqual({ ELIZA_IOS_RUNTIME_MODE: "local" });
+  });
+
+  it("the App Store lane is Cloud-only by default and cloud-hybrid only by explicit opt-in (#16420)", () => {
+    expect(resolveMobileBuildPolicy("ios", {})).toMatchObject({
+      capacitorTarget: "ios",
+      buildVariant: "store",
+      iosRuntimeMode: "cloud",
+      runtimeExecutionMode: "cloud",
+      releaseAuthority: "apple-app-store",
+    });
+    expect(
+      resolveMobileBuildPolicy("ios", {
+        ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
+      }),
+    ).toMatchObject({ iosRuntimeMode: "cloud", runtimeExecutionMode: "cloud" });
+    expect(
+      resolveMobileBuildPolicy("ios", {
+        ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+      }),
+    ).toMatchObject({
+      iosRuntimeMode: "cloud-hybrid",
+      runtimeExecutionMode: "local-safe",
+    });
+    // Developer lanes keep their on-device runtime.
+    expect(resolveMobileBuildPolicy("ios-local", {})).toMatchObject({
+      buildVariant: "direct",
+      iosRuntimeMode: "local",
+    });
   });
 });

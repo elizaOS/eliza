@@ -87,6 +87,12 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // V3 backup admission is independently fenced and defaults OFF in every
     // Worker environment. Keep the legacy six-hour caller below until an
     // explicitly authorized staging run proves this replacement end to end.
+    // #24407: admission is fair (64 sharded cursors, per-invocation claim and
+    // enrollment budgets, deferral with bounded reasons) but it only enrolls
+    // agents whose activation is `active` with published activation
+    // authority. Today only coordinator restores write that state, so legacy
+    // agents are covered solely by the six-hour caller; retiring it now would
+    // leave them with no scheduled backup at all.
     "/api/v1/cron/agent-backup-admission",
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",

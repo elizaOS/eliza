@@ -300,6 +300,9 @@
       "entry": [
         "src/index.ts",
         "src/bin.ts",
+        "src/services/agent-backup-restore-v3-controller-worker.ts",
+        "src/services/agent-backup-restore-v3-restored-runtime.ts",
+        "src/services/agent-backup-restore-v3-probe-client.ts",
         "scripts/**/*.ts",
         "test/**/*.{ts,tsx}",
         "vitest.config.ts"
