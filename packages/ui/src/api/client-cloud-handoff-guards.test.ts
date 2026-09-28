@@ -98,6 +98,25 @@ async function runHandoff(
 }
 
 describe("startCloudAgentHandoff never switches onto a shared runtime", () => {
+  it("switches to a ready dedicated target through the same HTTP fixture", async () => {
+    const cloud = await startCloud((base, agentId) => ({
+      id: agentId,
+      status: "running",
+      webUiUrl: `${base}/runtime/${agentId}`,
+      executionTier: "dedicated",
+    }));
+
+    const { result, switchedTo } = await runHandoff(cloud, {
+      agentId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+    });
+
+    expect(result.status).toBe("switched-empty");
+    expect(switchedTo).toEqual([`${cloud.base}/runtime/dedicated-1`]);
+    expect(cloud.detailReads("dedicated-1")).toBeGreaterThan(0);
+    expect(cloud.runtimeContacts()).toBeGreaterThan(0);
+  });
+
   it("refuses a shared source with no dedicated target, even when the control plane omits executionTier", async () => {
     const cloud = await startCloud((base, agentId) => ({
       id: agentId,
