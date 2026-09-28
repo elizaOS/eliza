@@ -1366,6 +1366,30 @@
 			"import": "./dist/security/log-redaction.js",
 			"default": "./dist/security/log-redaction.js"
 		},
+		"./security/redact": {
+			"eliza-source": "./src/security/redact.ts",
+			"types": "./dist/security/redact.d.ts",
+			"import": "./dist/security/redact.js",
+			"default": "./dist/security/redact.js"
+		},
+		"./network/ssrf": {
+			"eliza-source": "./src/network/ssrf.ts",
+			"types": "./dist/network/ssrf.d.ts",
+			"import": "./dist/network/ssrf.js",
+			"default": "./dist/network/ssrf.js"
+		},
+		"./types/primitives": {
+			"eliza-source": "./src/types/primitives.ts",
+			"types": "./dist/types/primitives.d.ts",
+			"import": "./dist/types/primitives.js",
+			"default": "./dist/types/primitives.js"
+		},
+		"./utils/string-to-uuid": {
+			"eliza-source": "./src/utils/string-to-uuid.ts",
+			"types": "./dist/utils/string-to-uuid.d.ts",
+			"import": "./dist/utils/string-to-uuid.js",
+			"default": "./dist/utils/string-to-uuid.js"
+		},
 		"./capability-catalog": {
 			"eliza-source": "./src/capability-catalog.ts",
 			"types": "./dist/capability-catalog.d.ts",
