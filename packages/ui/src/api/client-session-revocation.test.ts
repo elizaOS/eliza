@@ -1,5 +1,10 @@
-/** An authenticated socket revocation reaches the pairing owner without replaying queued sends. */
+/** A paired session revocation reaches the pairing owner over WebSocket or REST. */
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createPersistedActiveServer,
+  savePersistedActiveServer,
+} from "../state/persistence";
 import { ElizaClient } from "./client-base";
 
 class TestWebSocket {
@@ -28,9 +33,79 @@ class TestWebSocket {
 }
 
 afterEach(() => {
+  window.localStorage.clear();
   vi.unstubAllGlobals();
   vi.useRealTimers();
   TestWebSocket.instances = [];
+});
+
+it("treats a final 401 for the exact paired remote bearer as revocation", async () => {
+  const base = "http://10.0.0.241:31725";
+  savePersistedActiveServer(
+    createPersistedActiveServer({
+      kind: "remote",
+      apiBase: base,
+      accessToken: "paired-machine-session",
+    }),
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ),
+  );
+  const client = new ElizaClient(base);
+  client.setToken("paired-machine-session");
+  const events: Array<Record<string, unknown>> = [];
+  client.onWsEvent("auth-revoked", (event) => events.push(event));
+  await expect(client.rawRequest("/api/status")).rejects.toMatchObject({
+    status: 401,
+  });
+  expect(events).toEqual([
+    { type: "auth-revoked", apiBase: base, reason: "session_invalid" },
+  ]);
+});
+
+it("does not mistake a feature denial or changed saved authority for revocation", async () => {
+  const base = "http://10.0.0.241:31725";
+  savePersistedActiveServer(
+    createPersistedActiveServer({
+      kind: "remote",
+      apiBase: base,
+      accessToken: "paired-machine-session",
+    }),
+  );
+  const fetchMock = vi.fn(async () =>
+    new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const client = new ElizaClient(base);
+  client.setToken("paired-machine-session");
+  const events: Array<Record<string, unknown>> = [];
+  client.onWsEvent("auth-revoked", (event) => events.push(event));
+  await expect(client.rawRequest("/api/owner-only")).rejects.toMatchObject({
+    status: 401,
+  });
+  fetchMock.mockImplementationOnce(async () =>
+    new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+  );
+  await expect(client.rawRequest("/api/status")).rejects.toMatchObject({
+    status: 403,
+  });
+  savePersistedActiveServer(
+    createPersistedActiveServer({
+      kind: "remote",
+      apiBase: base,
+      accessToken: "different-session",
+    }),
+  );
+  await expect(client.rawRequest("/api/status")).rejects.toMatchObject({
+    status: 401,
+  });
+  expect(events).toEqual([]);
 });
 
 describe("revoked remote WebSocket session", () => {

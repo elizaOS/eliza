@@ -96,7 +96,10 @@ import {
 } from "@elizaos/plugin-scheduling";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import {
+  getAgentHostBridge,
+  type AgentHttpRequestAuthorization,
+} from "../runtime/host-bridge.ts";
 import {
   deleteConversationMemories,
   deleteConversationMessage,
@@ -599,6 +602,7 @@ type StreamSocketLike = StreamEventSource & {
 };
 interface ConversationStreamDisconnectTracker {
   signal: AbortSignal;
+  authorityReady: Promise<boolean>;
   abort: (reason?: unknown) => void;
   checkConnectionClosed: () => boolean;
   dispose: () => void;
@@ -684,16 +688,22 @@ function createRequestDisconnectAbortTracker({
     },
   };
 }
-function createConversationStreamDisconnectTracker({
+export function createConversationStreamDisconnectTracker({
   req,
   res,
   conversationId,
   roomId,
+  continueOnDisconnect,
+  pairedSessionToken,
+  runtime,
 }: {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   conversationId: string;
   roomId: UUID;
+  continueOnDisconnect: boolean;
+  pairedSessionToken?: string;
+  runtime?: AgentRuntime | null;
 }): ConversationStreamDisconnectTracker {
   const abortController = new AbortController();
   const registrations: Array<{
@@ -702,6 +712,7 @@ function createConversationStreamDisconnectTracker({
     listener: StreamEventListener;
   }> = [];
   let aborted = false;
+  let transportClosed = false;
   let completed = false;
   const requestSocket = isStreamSocketLike(
     (
@@ -737,8 +748,56 @@ function createConversationStreamDisconnectTracker({
         }
       ).writableEnded,
     );
+  const cancelGeneration = () => {
+    if (completed || aborted) return;
+    aborted = true;
+    transportClosed = true;
+    abortController.abort(new Error("Paired session revoked"));
+  };
+  const bridge = getAgentHostBridge();
+  const revalidatePairedSession = (): Promise<boolean> => {
+    if (!pairedSessionToken) return Promise.resolve(true);
+    return Promise.resolve()
+      .then(() =>
+        bridge.resolveSessionTokenAuthorization?.(
+          pairedSessionToken,
+          runtime ?? null,
+        ),
+      )
+      .then((authorization) => {
+        if (!authorization?.ok) cancelGeneration();
+        return authorization?.ok === true;
+      })
+      .catch(() => {
+        cancelGeneration();
+        return false;
+      });
+  };
+  const unsubscribeRevocations = pairedSessionToken
+    ? bridge.subscribeSessionRevocations?.((sessionId) => {
+        if (sessionId === pairedSessionToken) {
+          cancelGeneration();
+        } else if (sessionId === null) {
+          // A bulk revoke can except one device. Recheck its live authority
+          // before canceling the turn; a failed check denies continuation.
+          void revalidatePairedSession();
+        }
+      })
+    : undefined;
+  if (pairedSessionToken && !unsubscribeRevocations) cancelGeneration();
+  // Subscribe first, then close the gap from HTTP authorization to tracker
+  // creation. A revoke in that interval must not own a queued turn.
+  const authorityReady = revalidatePairedSession();
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
+    if (continueOnDisconnect) {
+      // A paired remote device may disappear after its turn was accepted.
+      // Stop writing to its SSE socket, but keep the room lease and generation
+      // alive so the durable reply can be read after reconnect. An explicit
+      // chat Stop still uses /api/turns/:roomId/abort.
+      transportClosed = true;
+      return;
+    }
     aborted = true;
     logger.info(
       { conversationId, roomId },
@@ -747,6 +806,7 @@ function createConversationStreamDisconnectTracker({
     abortController.abort(reason ?? new Error("Client disconnected"));
   };
   const checkConnectionClosed = () => {
+    if (transportClosed) return true;
     const socketClosed =
       requestSocket?.destroyed === true ||
       responseSocket?.destroyed === true ||
@@ -795,15 +855,17 @@ function createConversationStreamDisconnectTracker({
   }
   return {
     signal: abortController.signal,
+    authorityReady,
     abort,
     checkConnectionClosed,
     dispose: () => {
+      unsubscribeRevocations?.();
       for (const { source, event, listener } of registrations) {
         source.off?.(event, listener);
       }
       registrations.length = 0;
     },
-    isAborted: () => aborted,
+    isAborted: () => aborted || transportClosed,
     markCompleted: () => {
       completed = true;
     },
@@ -4882,12 +4944,28 @@ async function streamConversationMessage(
   if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
     return true;
   }
+  const pairedSessionToken =
+    trustedApiPrincipal.kind === "service_gateway" &&
+    trustedApiPrincipal.sessionRole === "USER" &&
+    trustedApiPrincipal.sessionIdentityId
+      ? /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1]
+      : undefined;
   const disconnectTracker = createConversationStreamDisconnectTracker({
     req,
     res,
     conversationId: conv.id,
     roomId: conv.roomId,
+    // Only a revocable, DB-backed paired session gets offline delivery.
+    // Other callers retain the existing disconnect-as-cancel behavior.
+    continueOnDisconnect: Boolean(pairedSessionToken),
+    pairedSessionToken,
+    runtime: state.runtime,
   });
+  if (!(await disconnectTracker.authorityReady) || disconnectTracker.signal.aborted) {
+    disconnectTracker.dispose();
+    error(res, "Paired session ended", 401);
+    return true;
+  }
   const finishStreamResponse = () => {
     disconnectTracker.markCompleted();
     disconnectTracker.dispose();

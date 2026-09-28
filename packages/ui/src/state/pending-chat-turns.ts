@@ -10,6 +10,8 @@ import { shellLocalStorage } from "../surface-realm-channel";
 
 const PENDING_CHAT_TURN_PREFIX = "eliza:chat:pending-turn:";
 export const PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS = 30_000;
+export const PENDING_CHAT_TURN_SETTLED_EVENT =
+  "eliza:chat:pending-turn-settled";
 
 export interface PendingChatTurnReceipt {
   conversationId: string;
@@ -121,6 +123,13 @@ export function clearSettledPendingChatTurns(
     );
     if (settled) {
       clearPendingChatTurn(conversationId, receipt.clientMessageId);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(PENDING_CHAT_TURN_SETTLED_EVENT, {
+            detail: { conversationId, text: receipt.text },
+          }),
+        );
+      }
     }
   }
 }

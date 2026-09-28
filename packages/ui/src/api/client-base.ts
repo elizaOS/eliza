@@ -1686,6 +1686,29 @@ export class ElizaClient {
           ? rawBodyRetryAfter
           : undefined;
       const retryAfter = bodyRetryAfter ?? headerRetryAfter;
+      if (
+        path === "/api/status" &&
+        res.status === 401 &&
+        token &&
+        this.apiToken === token
+      ) {
+        const activeServer = loadPersistedActiveServer();
+        if (
+          activeServer?.kind === "remote" &&
+          activeServer.accessToken === token &&
+          normalizeBaseUrl(activeServer.apiBase) ===
+            normalizeBaseUrl(requestBase)
+        ) {
+          // Every paired device may read agent status. Its final 401 means
+          // this exact saved bearer is no longer valid. Restrict this to
+          // status so a feature route's own 401 cannot falsely revoke it.
+          this.dispatchWsData({
+            type: "auth-revoked",
+            apiBase: requestBase,
+            reason: "session_invalid",
+          });
+        }
+      }
       // App-contributed routes are rejected before dispatch while their route
       // tail registers, so reissuing reads and writes is safe. A caller-owned
       // AbortSignal makes the mounted lifecycle the terminal budget and may

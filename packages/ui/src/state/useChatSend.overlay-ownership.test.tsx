@@ -16,6 +16,7 @@ import { resetCompletedActionNavigationForTests } from "../completed-action-navi
 import { NAVIGATE_VIEW_EVENT } from "../events";
 import { dispatchConversationResync } from "./AppContext.hooks";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
+import { persistPendingChatTurn } from "./pending-chat-turns";
 import { hydrateInitialConversation } from "./useChatCallbacks";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
@@ -224,6 +225,31 @@ beforeEach(() => {
 });
 
 describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
+  it("reuses an uncertain cold-relaunch send id instead of dispatching a second turn", async () => {
+    persistPendingChatTurn({
+      conversationId: "conv-a",
+      clientMessageId: "accepted-before-phone-off",
+      text: "same recovered prompt",
+      sentAt: Date.now() - 60_000,
+    });
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "existing answer",
+      completed: true,
+      userMessageId: "server-user-a",
+      messageId: "server-assistant-a",
+    });
+    const harness = makeHarness();
+    harness.activeConversationIdRef.current = "conv-a";
+    const { result } = mountComposed(harness);
+    await act(async () => {
+      await result.current.send.sendChatText("same recovered prompt");
+    });
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0]?.[9]).toBe(
+      "accepted-before-phone-off",
+    );
+  });
+
   it.each(["main", "action"])(
     "rejects a %s ready receipt after a real A to B to A ownership change",
     async (kind) => {

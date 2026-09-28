@@ -80,6 +80,7 @@ import {
 } from "./internal";
 import {
   clearPendingChatTurn,
+  listPendingChatTurns,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
 import {
@@ -311,11 +312,14 @@ function hasNewerUserTurn(
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
+  onFailure?: () => void,
 ): void {
   if (!roomId) return;
   // error-policy:J6 best-effort abort signal for a turn the user already
-  // stopped locally; the server also ends the turn when the SSE closes.
+  // stopped locally. Paired remote turns continue after transport loss, so
+  // the explicit abort route is the server-side Stop boundary.
   void client.abortConversationTurn(roomId, reason).catch((err) => {
+    onFailure?.();
     logger.warn(
       `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -1208,7 +1212,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
       );
       if (activeTurn?.roomId) {
-        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
+        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop", () => {
+          setActionNotice(
+            "Stop could not reach the connected host. This turn may still finish; check its history before retrying.",
+            "error",
+            12000,
+          );
+        });
       }
       if (activeTurn?.abortServerTurn) {
         activeTurn.controller.signal.removeEventListener(
@@ -1235,6 +1245,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatFirstTokenReceived,
       setServerTurnStatus,
       setChatSending,
+      setActionNotice,
     ]);
   const interruptActiveChatPipeline = useCallback((): string => {
     return interruptActiveChatPipelineWithDraft().text;
@@ -2731,15 +2742,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         setChatReplyTarget(null);
       }
       const identityOverride = options?.[CHAT_SEND_IDENTITY_OVERRIDE];
+      const conversationId =
+        options?.conversationId ?? activeConversationIdRef.current ?? null;
+      const recoveredClientMessageId =
+        conversationId && !hasAttachedImages
+          ? listPendingChatTurns(conversationId).find(
+              (receipt) => receipt.text === rawInput.trim(),
+            )?.clientMessageId
+          : undefined;
       const clientMessageId =
         identityOverride?.clientMessageId ??
         options?.clientMessageId ??
+        recoveredClientMessageId ??
         generateChatClientMessageId();
       const optimisticTurn =
         identityOverride?.optimisticTurn ??
         createOptimisticTurn(clientMessageId);
-      const conversationId =
-        options?.conversationId ?? activeConversationIdRef.current ?? null;
       const queuedTurn = {
         rawInput,
         channelType: options?.channelType ?? "DM",
