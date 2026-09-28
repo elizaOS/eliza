@@ -6,6 +6,17 @@ export interface SnapshotResult {
   backup?: AgentSandboxBackup;
   error?: string;
   retryable?: boolean;
+  /**
+   * Set when a manifest-v3 restore was admitted to the restore coordinator.
+   * The restore completes asynchronously; the operation id tracks it.
+   */
+  restoreOperation?: {
+    operationId: string;
+    restoreAttemptId: string;
+    backupId: string;
+    phase: string;
+    replayed: boolean;
+  };
 }
 
 /**

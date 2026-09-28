@@ -19,7 +19,7 @@ outside this patch.
 
 | Change | Result and caller contract |
 | --- | --- |
-| Remove nine `agent-backup-restore-v3-candidate-*` modules | Removes 11,871 lines of unfinished staging machinery. Imports and 80 distinctive exported symbols had no callers outside the cluster. Current restore routes continue using snapshot restore. |
+| ~~Remove nine `agent-backup-restore-v3-candidate-*` modules~~ (reversed) | The owner reversed this removal for #20732: manifest-v3 restore is being finished, and the candidate filesystem/record modules are the substrate its materializers, generation commit and restored-generation boot import. They are restored with the re-land of #30820 and the quarantine runtime bridge, and the restore coordinator now reaches them in production. |
 | Merge capture-v2 into `services/agent-backup.ts` | One backup implementation file owns snapshot capture/restore, encrypted local backups and binary capture. Directory constants, filesystem existence/containment and vault classification are shared. Streaming, cancellation, frame hashes, memory preflight and snapshot format remain distinct where required. |
 | Preserve the published capture-v2 subpath | Package export mapping points at the consolidated implementation; no forwarding source file remains. Internal HTTP imports and the services barrel use the canonical module. |
 | Consolidate wallet key handling | `api/wallet-keygen.ts` owns generation, EVM/Solana derivation, bounded Solana decoding and environment synchronization. `wallet.ts` imports/re-exports that implementation. Configuration imports the leaf without loading RPC/config cycles. The old env-sync package subpath maps to this leaf. |

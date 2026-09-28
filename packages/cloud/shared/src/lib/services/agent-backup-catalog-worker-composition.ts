@@ -22,11 +22,15 @@ export interface AgentBackupCatalogWorkerComposition {
 }
 
 /** Closed names for the cycle stages a daemon may report without values. */
-export type AgentBackupCatalogCycleStage = "catalog-runtime" | "account-deletion-authority";
+export type AgentBackupCatalogCycleStage =
+  | "catalog-runtime"
+  | "account-deletion-authority"
+  | "restore-coordinator";
 
 const CYCLE_STAGES: ReadonlySet<string> = new Set<AgentBackupCatalogCycleStage>([
   "catalog-runtime",
   "account-deletion-authority",
+  "restore-coordinator",
 ]);
 
 /**
