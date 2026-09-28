@@ -21,6 +21,8 @@ commands. Building an image does not flash a physical device.
 The Pixel 11 Pro lock targets stock B1 (`CD1A.260905.001.B1`) with the pinned
 Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference is
 a build input; physical installation still requires qualification and a signed contract.
+Alpha Phone (#31023) names Pixel 10, which has no lock here; see the grizzly
+`decisionNote` in `hardware-targets.json` before choosing a device.
 Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 
