@@ -8,6 +8,14 @@ export const MESSAGE_SOURCE_SUB_AGENT = "sub_agent" as const;
 export const MESSAGE_SOURCE_CODING_AGENT = "coding-agent" as const;
 export const MESSAGE_SOURCE_AGENT_GREETING = "agent_greeting" as const;
 export const MESSAGE_SOURCE_TRIGGER_PROMPT = "trigger-prompt" as const;
+/**
+ * Internal send-handler source for durable delivery into the owner's canonical
+ * app conversation. The app host registers it; a target carries no room, the
+ * host resolves (or creates) the owner conversation and persists the message
+ * before resolving. `content.source` labels the persisted row and
+ * `content.deliveryIdempotencyKey` makes redelivery return the stored message.
+ */
+export const MESSAGE_SOURCE_OWNER_CHAT = "owner_chat" as const;
 
 export const MESSAGE_SOURCES = {
 	CLIENT_CHAT: MESSAGE_SOURCE_CLIENT_CHAT,
@@ -15,6 +23,7 @@ export const MESSAGE_SOURCES = {
 	CODING_AGENT: MESSAGE_SOURCE_CODING_AGENT,
 	AGENT_GREETING: MESSAGE_SOURCE_AGENT_GREETING,
 	TRIGGER_PROMPT: MESSAGE_SOURCE_TRIGGER_PROMPT,
+	OWNER_CHAT: MESSAGE_SOURCE_OWNER_CHAT,
 } as const;
 
 export type MessageSourceSentinel =
