@@ -379,6 +379,9 @@ async function registerTenant(
       serverError,
     );
   }
+  // Only a well-formed 4xx is a definitive rejection. A 5xx may have been
+  // raised after the tenant was stored, so it proves nothing either way.
+  const rejected = tenantResponse.status >= 400 && tenantResponse.status < 500;
   throw new ElizaError(
     `Failed to create Steward tenant (HTTP ${tenantResponse.status})${serverError ? `: ${serverError}` : ""}`,
     {
@@ -386,6 +389,7 @@ async function registerTenant(
       context: {
         tenantId: DEFAULT_TENANT_ID,
         status: tenantResponse.status,
+        rejected,
       },
       severity: "ephemeral",
     },
@@ -544,14 +548,16 @@ async function performFirstLaunchSetup(
       platformKey,
     );
   } catch (error) {
-    // A definitive rejection proves Steward never stored this fresh key, so
-    // drop the checkpoint rather than resume with it. Transport failures
-    // (timeouts) keep it: the tenant may have been created before the cut.
+    // A definitive rejection (an existing tenant, or a well-formed 4xx)
+    // proves Steward never stored this fresh key, so drop the checkpoint
+    // rather than resume with it. Transport failures, 5xx, and unparsable
+    // responses keep it: the tenant may have been created before the failure.
     if (
       !resumeFrom &&
       error instanceof ElizaError &&
       (error.code === "STEWARD_TENANT_CREDENTIALS_LOST" ||
-        error.code === "STEWARD_TENANT_CREATE_FAILED")
+        (error.code === "STEWARD_TENANT_CREATE_FAILED" &&
+          error.context?.rejected === true))
     ) {
       fs.rmSync(path.join(dataDir, CREDENTIALS_FILE), { force: true });
     }

@@ -86,6 +86,44 @@ describe("steward wallet first-launch setup", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["HTTP 500", () => jsonResponse(500, { ok: false, error: "db down" })],
+    [
+      "a non-JSON body",
+      () => new Response("<html>bad gateway</html>", { status: 502 }),
+    ],
+  ])(
+    "keeps the tenant checkpoint when tenant creation fails with %s",
+    async (_label, respond) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => respond()),
+      );
+
+      await expect(
+        ensureWalletSetup(null, API_BASE, undefined, dataDir, () => {}),
+      ).rejects.toMatchObject({ code: "STEWARD_TENANT_CREATE_FAILED" });
+      // The server may have stored the tenant before failing, so the only
+      // copy of its key must survive for the next launch to resume with.
+      expect(readCheckpoint()).toMatchObject({ tenantId: "elizaos-desktop" });
+      expect(typeof readCheckpoint().tenantApiKey).toBe("string");
+    },
+  );
+
+  it("drops the tenant checkpoint when tenant creation is rejected with a 4xx", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(400, { ok: false, error: "Invalid tenant id" }),
+      ),
+    );
+
+    await expect(
+      ensureWalletSetup(null, API_BASE, undefined, dataDir, () => {}),
+    ).rejects.toMatchObject({ code: "STEWARD_TENANT_CREATE_FAILED" });
+    expect(fs.existsSync(path.join(dataDir, CREDENTIALS_FILE))).toBe(false);
+  });
+
   function readCheckpoint(): Record<string, unknown> {
     return JSON.parse(
       fs.readFileSync(path.join(dataDir, CREDENTIALS_FILE), "utf-8"),
