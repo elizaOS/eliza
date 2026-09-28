@@ -23,6 +23,26 @@ import {
 const STEWARD_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Durable state written before the tenant is registered, so the generated
+ * tenant key survives a failed or interrupted agent-creation step and the next
+ * launch resumes with it instead of registering the tenant again.
+ */
+export interface StewardTenantCheckpoint {
+  tenantId: string;
+  tenantApiKey: string;
+  agentId?: undefined;
+  agentToken?: undefined;
+  walletAddress?: undefined;
+  masterPassword?: string;
+}
+
+/** Where the Steward sidecar keeps its database; selects recovery guidance. */
+export interface StewardStorageOptions {
+  /** External Postgres connection string passed to the sidecar, if any. */
+  databaseUrl?: string;
+}
+
+/**
  * Bound every Steward sidecar API hop so a hung sidecar cannot pin
  * first-launch wallet setup. A caller-provided abort signal is composed with
  * the timeout (either cancelling aborts), not substituted for it.
@@ -45,12 +65,13 @@ export function stewardFetch(
  * Ensure wallet is set up: verify existing wallet or perform first-launch setup.
  */
 export async function ensureWalletSetup(
-  credentials: StewardCredentialCheckpoint | null,
+  credentials: StewardCredentialCheckpoint | StewardTenantCheckpoint | null,
   apiBase: string,
   masterPassword: string | undefined,
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
   platformKey?: string,
+  storage: StewardStorageOptions = {},
 ): Promise<StewardCredentials> {
   if (credentials?.walletAddress) {
     if (!hasAgentToken(credentials)) {
@@ -71,7 +92,28 @@ export async function ensureWalletSetup(
     dataDir,
     updateStatus,
     platformKey,
+    storage,
+    resumableTenantCheckpoint(credentials),
   );
+}
+
+function resumableTenantCheckpoint(
+  credentials: StewardCredentialCheckpoint | StewardTenantCheckpoint | null,
+): StewardTenantCheckpoint | null {
+  if (
+    credentials?.tenantId === DEFAULT_TENANT_ID &&
+    typeof credentials.tenantApiKey === "string" &&
+    credentials.tenantApiKey.trim()
+  ) {
+    return {
+      tenantId: credentials.tenantId,
+      tenantApiKey: credentials.tenantApiKey,
+      ...(credentials.masterPassword
+        ? { masterPassword: credentials.masterPassword }
+        : {}),
+    };
+  }
+  return null;
 }
 
 function hasAgentToken(
@@ -88,7 +130,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function persistCredentials(
-  credentials: StewardCredentialCheckpoint,
+  credentials: StewardCredentialCheckpoint | StewardTenantCheckpoint,
   dataDir: string,
 ): void {
   const credPath = path.join(dataDir, CREDENTIALS_FILE);
@@ -236,17 +278,55 @@ async function verifyExistingWallet(
   }
 }
 
-async function performFirstLaunchSetup(
-  apiBase: string,
-  _masterPassword: string | undefined,
+function tenantCredentialsLostError(
   dataDir: string,
-  updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
-  platformKey?: string,
-): Promise<StewardCredentials> {
-  logger.info("[StewardSidecar] First launch - creating tenant and wallet");
+  storage: StewardStorageOptions,
+  status: number,
+  serverError: string,
+): ElizaError {
+  const credPath = path.join(dataDir, CREDENTIALS_FILE);
+  const usesExternalDatabase = Boolean(storage.databaseUrl?.trim());
+  const stewardDbPath = path.join(dataDir, "data");
+  // Never echo the connection string: it routinely embeds a password.
+  const reset = usesExternalDatabase
+    ? `reset the Steward Postgres database configured by DATABASE_URL (removing ${stewardDbPath} does not affect it)`
+    : `reset the local Steward vault by removing ${stewardDbPath}`;
+  return new ElizaError(
+    `Steward tenant "${DEFAULT_TENANT_ID}" already exists but no local credentials hold its API key` +
+      `${serverError ? ` (${serverError})` : ""}. ` +
+      `Restore ${credPath} from a backup, or ${reset} ` +
+      "(this permanently discards the existing wallet) and restart.",
+    {
+      code: "STEWARD_TENANT_CREDENTIALS_LOST",
+      context: {
+        tenantId: DEFAULT_TENANT_ID,
+        status,
+        credentialsPath: credPath,
+        stewardDatabase: usesExternalDatabase ? "postgres" : "pglite",
+        ...(usesExternalDatabase ? {} : { stewardDataPath: stewardDbPath }),
+      },
+      severity: "fatal",
+    },
+  );
+}
 
-  // 1. Create tenant
-  const tenantApiKey = generateApiKey();
+function isAlreadyExists(status: number, serverError: string): boolean {
+  return status === 409 || serverError.toLowerCase().includes("already exists");
+}
+
+/**
+ * Register the tenant. Returns normally when the tenant is registered, or,
+ * when resuming from a tenant checkpoint, when it already exists (the saved
+ * key is then proven by the agent request that follows).
+ */
+async function registerTenant(
+  apiBase: string,
+  tenantApiKey: string,
+  resuming: boolean,
+  dataDir: string,
+  storage: StewardStorageOptions,
+  platformKey?: string,
+): Promise<void> {
   const tenantResponse = await stewardFetch(`${apiBase}/tenants`, {
     method: "POST",
     headers: {
@@ -259,62 +339,19 @@ async function performFirstLaunchSetup(
       apiKeyHash: fingerprintRandomToken(tenantApiKey),
     }),
   });
+  if (tenantResponse.ok) return;
 
-  if (!tenantResponse.ok) {
-    let payload: unknown = null;
-    try {
-      payload = await tenantResponse.json();
-    } catch (cause) {
-      // error-policy:J2 the tenant endpoint is an external boundary; preserve
-      // its parser failure while naming the setup step that cannot continue.
-      throw new ElizaError(
-        `Failed to create Steward tenant (HTTP ${tenantResponse.status}): response was not valid JSON`,
-        {
-          code: "STEWARD_TENANT_CREATE_FAILED",
-          cause,
-          context: {
-            tenantId: DEFAULT_TENANT_ID,
-            status: tenantResponse.status,
-          },
-          severity: "ephemeral",
-        },
-      );
-    }
-    const serverError =
-      isRecord(payload) && typeof payload.error === "string"
-        ? payload.error.trim()
-        : "";
-    if (
-      tenantResponse.status === 409 ||
-      serverError.toLowerCase().includes("already exists")
-    ) {
-      // The tenant's API key is only known to the process that registered it
-      // and Steward exposes no path to rotate it. Continuing with a freshly
-      // generated key would fail agent creation on every launch, so stop with
-      // an actionable recovery message instead.
-      const credPath = path.join(dataDir, CREDENTIALS_FILE);
-      const stewardDbPath = path.join(dataDir, "data");
-      throw new ElizaError(
-        `Steward tenant "${DEFAULT_TENANT_ID}" already exists but no local credentials hold its API key` +
-          `${serverError ? ` (${serverError})` : ""}. ` +
-          `Restore ${credPath} from a backup, or reset the local Steward vault by removing ${stewardDbPath} ` +
-          "(this permanently discards the existing local wallet) and restart.",
-        {
-          code: "STEWARD_TENANT_CREDENTIALS_LOST",
-          context: {
-            tenantId: DEFAULT_TENANT_ID,
-            status: tenantResponse.status,
-            credentialsPath: credPath,
-            stewardDataPath: stewardDbPath,
-          },
-          severity: "fatal",
-        },
-      );
-    }
+  let payload: unknown;
+  try {
+    payload = await tenantResponse.json();
+  } catch (cause) {
+    // error-policy:J2 the tenant endpoint is an external boundary; preserve
+    // its parser failure while naming the setup step that cannot continue.
     throw new ElizaError(
-      `Failed to create Steward tenant (HTTP ${tenantResponse.status})${serverError ? `: ${serverError}` : ""}`,
+      `Failed to create Steward tenant (HTTP ${tenantResponse.status}): response was not valid JSON`,
       {
         code: "STEWARD_TENANT_CREATE_FAILED",
+        cause,
         context: {
           tenantId: DEFAULT_TENANT_ID,
           status: tenantResponse.status,
@@ -323,47 +360,222 @@ async function performFirstLaunchSetup(
       },
     );
   }
+  const serverError =
+    isRecord(payload) && typeof payload.error === "string"
+      ? payload.error.trim()
+      : "";
+  if (isAlreadyExists(tenantResponse.status, serverError)) {
+    // A resumed checkpoint holds the key this process registered earlier (the
+    // previous attempt may have been cut off after the tenant was created).
+    if (resuming) return;
+    // The tenant's API key is only known to the process that registered it
+    // and Steward exposes no path to rotate it. Continuing with a freshly
+    // generated key would fail agent creation on every launch, so stop with
+    // an actionable recovery message instead.
+    throw tenantCredentialsLostError(
+      dataDir,
+      storage,
+      tenantResponse.status,
+      serverError,
+    );
+  }
+  throw new ElizaError(
+    `Failed to create Steward tenant (HTTP ${tenantResponse.status})${serverError ? `: ${serverError}` : ""}`,
+    {
+      code: "STEWARD_TENANT_CREATE_FAILED",
+      context: {
+        tenantId: DEFAULT_TENANT_ID,
+        status: tenantResponse.status,
+      },
+      severity: "ephemeral",
+    },
+  );
+}
 
-  // 2. Create agent with wallet
+function readAgentWallet(
+  payload: unknown,
+): { id: string; walletAddress: string } | null {
+  const data =
+    isRecord(payload) && payload.ok === true && isRecord(payload.data)
+      ? payload.data
+      : null;
+  if (
+    data &&
+    typeof data.id === "string" &&
+    data.id &&
+    typeof data.walletAddress === "string" &&
+    data.walletAddress
+  ) {
+    return { id: data.id, walletAddress: data.walletAddress };
+  }
+  return null;
+}
+
+async function readAgentPayload(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (cause) {
+    // error-policy:J2 the agent endpoint is an external boundary.
+    throw new ElizaError(
+      "Failed to create Steward agent: response was not valid JSON",
+      {
+        code: "STEWARD_AGENT_CREATE_FAILED",
+        cause,
+        context: { agentId: DEFAULT_AGENT_ID, status: response.status },
+        severity: "ephemeral",
+      },
+    );
+  }
+}
+
+/**
+ * Create the wallet agent, or recover it when a previous attempt created it
+ * but did not live to record the result.
+ */
+async function createOrRecoverAgent(
+  apiBase: string,
+  tenant: StewardTenantCheckpoint,
+  resuming: boolean,
+  dataDir: string,
+  storage: StewardStorageOptions,
+): Promise<{ id: string; walletAddress: string }> {
+  const tenantHeaders = {
+    "X-Steward-Tenant": tenant.tenantId,
+    "X-Steward-Key": tenant.tenantApiKey,
+  };
   const agentResponse = await stewardFetch(`${apiBase}/agents`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Steward-Tenant": DEFAULT_TENANT_ID,
-      "X-Steward-Key": tenantApiKey,
-    },
-    body: JSON.stringify({
-      id: DEFAULT_AGENT_ID,
-      name: DEFAULT_AGENT_NAME,
-    }),
+    headers: { "Content-Type": "application/json", ...tenantHeaders },
+    body: JSON.stringify({ id: DEFAULT_AGENT_ID, name: DEFAULT_AGENT_NAME }),
   });
 
-  if (!agentResponse.ok) {
-    const body = (await agentResponse.json()) as { error?: string };
-    throw new Error(`Failed to create agent: ${body.error}`);
+  if (agentResponse.ok) {
+    const agent = readAgentWallet(await readAgentPayload(agentResponse));
+    if (!agent) {
+      throw new ElizaError(
+        "Failed to create Steward agent: response did not include the agent wallet",
+        {
+          code: "STEWARD_AGENT_CREATE_FAILED",
+          context: { agentId: DEFAULT_AGENT_ID, status: agentResponse.status },
+          severity: "fatal",
+        },
+      );
+    }
+    return agent;
   }
 
-  const agentResult = (await agentResponse.json()) as {
-    ok: boolean;
-    data?: { id: string; walletAddress: string };
-  };
-
-  if (!agentResult.ok || !agentResult.data) {
-    throw new Error("Agent creation returned unexpected response");
+  const payload = await readAgentPayload(agentResponse);
+  const serverError =
+    isRecord(payload) && typeof payload.error === "string"
+      ? payload.error.trim()
+      : "";
+  if (
+    resuming &&
+    (agentResponse.status === 401 || agentResponse.status === 403)
+  ) {
+    // The saved key does not authenticate: the existing tenant was registered
+    // with a different key and cannot be recovered from this checkpoint.
+    throw tenantCredentialsLostError(
+      dataDir,
+      storage,
+      agentResponse.status,
+      serverError,
+    );
   }
+  if (isAlreadyExists(agentResponse.status, serverError)) {
+    const existing = await stewardFetch(
+      `${apiBase}/agents/${DEFAULT_AGENT_ID}`,
+      { headers: tenantHeaders },
+    );
+    const existingPayload = await readAgentPayload(existing);
+    const agent = existing.ok ? readAgentWallet(existingPayload) : null;
+    if (agent) return agent;
+    throw new ElizaError(
+      `Steward agent "${DEFAULT_AGENT_ID}" already exists but could not be read (HTTP ${existing.status})`,
+      {
+        code: "STEWARD_AGENT_CREATE_FAILED",
+        context: { agentId: DEFAULT_AGENT_ID, status: existing.status },
+        severity: "ephemeral",
+      },
+    );
+  }
+  throw new ElizaError(
+    `Failed to create Steward agent (HTTP ${agentResponse.status})${serverError ? `: ${serverError}` : ""}`,
+    {
+      code: "STEWARD_AGENT_CREATE_FAILED",
+      context: { agentId: DEFAULT_AGENT_ID, status: agentResponse.status },
+      severity: "ephemeral",
+    },
+  );
+}
 
-  // 3. Save an explicit incomplete checkpoint before requesting the token.
-  // The tenant and agent already exist remotely, so losing their generated
-  // tenant key here would make a later retry unable to authenticate.
-  const credentials: StewardCredentialCheckpoint = {
+async function performFirstLaunchSetup(
+  apiBase: string,
+  _masterPassword: string | undefined,
+  dataDir: string,
+  updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
+  platformKey: string | undefined,
+  storage: StewardStorageOptions,
+  resumeFrom: StewardTenantCheckpoint | null,
+): Promise<StewardCredentials> {
+  logger.info(
+    resumeFrom
+      ? "[StewardSidecar] Resuming interrupted setup with the saved tenant key"
+      : "[StewardSidecar] First launch - creating tenant and wallet",
+  );
+
+  // 1. Persist the tenant key before registering it. Steward only stores its
+  // hash, so a failure anywhere after registration (agent creation timing
+  // out, a sidecar restart) must not lose the only copy of the key.
+  const tenant: StewardTenantCheckpoint = resumeFrom ?? {
     tenantId: DEFAULT_TENANT_ID,
-    tenantApiKey,
-    agentId: agentResult.data.id,
-    walletAddress: agentResult.data.walletAddress,
+    tenantApiKey: generateApiKey(),
+  };
+  if (!resumeFrom) persistCredentials(tenant, dataDir);
+
+  // 2. Register the tenant (idempotent when resuming).
+  try {
+    await registerTenant(
+      apiBase,
+      tenant.tenantApiKey,
+      Boolean(resumeFrom),
+      dataDir,
+      storage,
+      platformKey,
+    );
+  } catch (error) {
+    // A definitive rejection proves Steward never stored this fresh key, so
+    // drop the checkpoint rather than resume with it. Transport failures
+    // (timeouts) keep it: the tenant may have been created before the cut.
+    if (
+      !resumeFrom &&
+      error instanceof ElizaError &&
+      (error.code === "STEWARD_TENANT_CREDENTIALS_LOST" ||
+        error.code === "STEWARD_TENANT_CREATE_FAILED")
+    ) {
+      fs.rmSync(path.join(dataDir, CREDENTIALS_FILE), { force: true });
+    }
+    throw error;
+  }
+
+  // 3. Create agent with wallet (or recover one a prior attempt created).
+  const agent = await createOrRecoverAgent(
+    apiBase,
+    tenant,
+    Boolean(resumeFrom),
+    dataDir,
+    storage,
+  );
+
+  // 4. Save an explicit incomplete checkpoint before requesting the token.
+  const credentials: StewardCredentialCheckpoint = {
+    ...tenant,
+    agentId: agent.id,
+    walletAddress: agent.walletAddress,
   };
   persistCredentials(credentials, dataDir);
 
-  // 4. Complete and persist the required token. A failure leaves the explicit
+  // 5. Complete and persist the required token. A failure leaves the explicit
   // checkpoint above so the next launch retries only this recoverable step.
   return completeAgentTokenSetup(credentials, apiBase, dataDir, updateStatus);
 }

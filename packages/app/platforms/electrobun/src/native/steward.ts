@@ -16,12 +16,35 @@
  *   4. Stops the sidecar on app shutdown
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
 	StewardSidecar,
 	StewardSidecarStatus,
 } from "../../../../src/services/steward-sidecar";
 import { logger } from "../logger";
-import { resolveStateDir } from "./auth-bridge";
+
+/**
+ * Guard the recursive delete in `resetSteward`: never remove the filesystem
+ * root or the home directory, and only remove an existing directory that
+ * holds steward state (`credentials.json` or `data/`).
+ */
+function assertStewardDataDirDeletable(dataDir: string): void {
+	const home = path.resolve(os.homedir());
+	if (dataDir === path.parse(dataDir).root || dataDir === home) {
+		throw new Error(`[Steward] Refusing to delete ${dataDir}`);
+	}
+	if (
+		fs.existsSync(dataDir) &&
+		!fs.existsSync(path.join(dataDir, "credentials.json")) &&
+		!fs.existsSync(path.join(dataDir, "data"))
+	) {
+		throw new Error(
+			`[Steward] Refusing to delete ${dataDir}: it does not contain steward data`,
+		);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -248,29 +271,14 @@ export async function restartSteward(): Promise<StewardSidecarStatus> {
 export async function resetSteward(): Promise<StewardSidecarStatus> {
 	logger.info("[Steward] Resetting steward data...");
 
-	// Stop the sidecar first
+	// Delete exactly the directory the sidecar is configured to use, so reset
+	// and the running sidecar can never disagree about where the wallet lives.
+	const resolvedDataDir = path.resolve(
+		(await getStewardSidecar()).getDataDir(),
+	);
+	assertStewardDataDirDeletable(resolvedDataDir);
+
 	await stopSteward();
-
-	// Delete credentials and data directory. The sidecar keeps its data under
-	// the per-user state dir (`$XDG_STATE_HOME|~/.local/state/<ns>/steward`),
-	// not the legacy `~/.<ns>/` dotdir.
-	const fs = await import("node:fs");
-	const path = await import("node:path");
-	const stateBase = path.resolve(resolveStateDir());
-	const dataDir =
-		process.env.STEWARD_DATA_DIR || path.join(stateBase, "steward");
-
-	// Safety: ensure dataDir resolves inside the app state dir to prevent
-	// accidental deletion of unrelated directories via env var manipulation.
-	const resolvedDataDir = path.resolve(dataDir);
-	if (
-		!resolvedDataDir.startsWith(stateBase + path.sep) &&
-		resolvedDataDir !== stateBase
-	) {
-		throw new Error(
-			`[Steward] Refusing to delete dataDir outside ${stateBase}: ${resolvedDataDir}`,
-		);
-	}
 
 	if (fs.existsSync(resolvedDataDir)) {
 		logger.info(`[Steward] Removing data directory: ${resolvedDataDir}`);

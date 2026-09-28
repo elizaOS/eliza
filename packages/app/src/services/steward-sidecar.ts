@@ -233,6 +233,7 @@ export class StewardSidecar {
           }
         },
         this.bootstrapPlatformKey,
+        { databaseUrl: this.config.databaseUrl },
       );
       if (!this.isLifecycleActive(generation)) {
         return this.status;
@@ -328,6 +329,10 @@ export class StewardSidecar {
   /** Get current sidecar status. */
   getStatus(): StewardSidecarStatus {
     return { ...this.status };
+  }
+  /** Directory holding this sidecar's credentials and database. */
+  getDataDir(): string {
+    return this.config.dataDir;
   }
   /** Get the API base URL for Steward. */
   getApiBase(): string {

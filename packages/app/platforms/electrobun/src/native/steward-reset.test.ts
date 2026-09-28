@@ -2,30 +2,29 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetSteward } from "./steward";
 
-vi.mock("@elizaos/app", () => ({
-	createDesktopStewardSidecar: () => {
-		const status = {
-			state: "stopped",
-			port: null,
-			pid: null,
-			error: null,
-			restartCount: 0,
-			walletAddress: null,
-			agentId: null,
-			tenantId: null,
-			startedAt: null,
-		};
-		return {
-			getStatus: () => status,
-			start: async () => status,
-			stop: async () => {},
-			getCredentials: () => null,
-			getApiBase: () => "http://127.0.0.1:3200",
-		};
-	},
-}));
+vi.mock("@elizaos/app", async () => {
+	// Real data-dir resolution; only the process lifecycle is faked.
+	const actual = await vi.importActual<
+		typeof import("../../../../src/services/steward-sidecar")
+	>("../../../../src/services/steward-sidecar");
+	return {
+		createDesktopStewardSidecar: (
+			overrides?: Parameters<typeof actual.createDesktopStewardSidecar>[0],
+		) => {
+			const real = actual.createDesktopStewardSidecar(overrides);
+			const status = real.getStatus();
+			return {
+				getStatus: () => status,
+				start: async () => status,
+				stop: async () => {},
+				getCredentials: () => null,
+				getApiBase: () => real.getApiBase(),
+				getDataDir: () => real.getDataDir(),
+			};
+		},
+	};
+});
 
 const ENV_KEYS = [
 	"HOME",
@@ -39,7 +38,13 @@ describe("resetSteward", () => {
 	let root: string;
 	const saved: Partial<Record<(typeof ENV_KEYS)[number], string>> = {};
 
-	beforeEach(() => {
+	let resetSteward: typeof import("./steward").resetSteward;
+
+	beforeEach(async () => {
+		// steward.ts caches the sidecar; load a fresh copy so each case resolves
+		// the data dir from its own environment.
+		vi.resetModules();
+		({ resetSteward } = await import("./steward"));
 		root = fs.mkdtempSync(path.join(os.tmpdir(), "steward-reset-"));
 		for (const key of ENV_KEYS) {
 			saved[key] = process.env[key];
@@ -85,12 +90,35 @@ describe("resetSteward", () => {
 		expect(fs.existsSync(dataDir)).toBe(false);
 	});
 
-	it("refuses to delete a STEWARD_DATA_DIR outside the state dir", async () => {
-		const outside = path.join(root, "elsewhere");
-		const credentials = seedStewardData(outside);
-		process.env.STEWARD_DATA_DIR = outside;
+	it("deletes the sidecar dir, not ELIZA_STATE_DIR/steward, when ELIZA_STATE_DIR is set", async () => {
+		const sidecarDir = path.join(root, "state", "acme", "steward");
+		const sidecarCredentials = seedStewardData(sidecarDir);
+		const stateDirSteward = path.join(root, "custom-state", "steward");
+		const unrelated = seedStewardData(stateDirSteward);
+		process.env.ELIZA_STATE_DIR = path.join(root, "custom-state");
+
+		await resetSteward();
+
+		expect(fs.existsSync(sidecarCredentials)).toBe(false);
+		expect(fs.existsSync(unrelated)).toBe(true);
+	});
+
+	it("refuses to delete a directory that holds no steward data", async () => {
+		const notSteward = path.join(root, "projects");
+		fs.mkdirSync(notSteward, { recursive: true });
+		const keep = path.join(notSteward, "notes.txt");
+		fs.writeFileSync(keep, "keep");
+		process.env.STEWARD_DATA_DIR = notSteward;
+
+		await expect(resetSteward()).rejects.toThrow(
+			/does not contain steward data/,
+		);
+		expect(fs.existsSync(keep)).toBe(true);
+	});
+
+	it("refuses to delete the home directory", async () => {
+		process.env.STEWARD_DATA_DIR = os.homedir();
 
 		await expect(resetSteward()).rejects.toThrow(/Refusing to delete/);
-		expect(fs.existsSync(credentials)).toBe(true);
 	});
 });

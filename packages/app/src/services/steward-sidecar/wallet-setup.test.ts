@@ -85,4 +85,164 @@ describe("steward wallet first-launch setup", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  function readCheckpoint(): Record<string, unknown> {
+    return JSON.parse(
+      fs.readFileSync(path.join(dataDir, CREDENTIALS_FILE), "utf-8"),
+    ) as Record<string, unknown>;
+  }
+
+  function tenantKeyHash(init: RequestInit | undefined): unknown {
+    return (JSON.parse(String(init?.body)) as { apiKeyHash?: unknown })
+      .apiKeyHash;
+  }
+
+  it("keeps the tenant key when agent creation fails and resumes with it", async () => {
+    const tenantHashes: unknown[] = [];
+    let agentAttempts = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `${API_BASE}/tenants`) {
+          tenantHashes.push(tenantKeyHash(init));
+          return tenantHashes.length === 1
+            ? jsonResponse(200, { ok: true })
+            : jsonResponse(409, { ok: false, error: "Tenant already exists" });
+        }
+        if (url === `${API_BASE}/agents`) {
+          agentAttempts += 1;
+          if (agentAttempts === 1) {
+            throw new DOMException("The operation timed out.", "TimeoutError");
+          }
+          return jsonResponse(200, {
+            ok: true,
+            data: { id: "eliza-wallet", walletAddress: "0xabc" },
+          });
+        }
+        if (url === `${API_BASE}/agents/eliza-wallet/token`) {
+          return jsonResponse(200, { ok: true, data: { token: "agent-tok" } });
+        }
+        return jsonResponse(404, { ok: false, error: "unexpected" });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      ensureWalletSetup(null, API_BASE, undefined, dataDir, () => {}),
+    ).rejects.toThrow("timed out");
+
+    const checkpoint = readCheckpoint();
+    expect(checkpoint).toMatchObject({ tenantId: "elizaos-desktop" });
+    expect(typeof checkpoint.tenantApiKey).toBe("string");
+    expect(checkpoint.walletAddress).toBeUndefined();
+
+    const credentials = await ensureWalletSetup(
+      checkpoint as never,
+      API_BASE,
+      undefined,
+      dataDir,
+      () => {},
+    );
+
+    expect(credentials).toMatchObject({
+      tenantApiKey: checkpoint.tenantApiKey,
+      agentId: "eliza-wallet",
+      walletAddress: "0xabc",
+      agentToken: "agent-tok",
+    });
+    // The resumed launch re-registers the same key rather than a fresh one.
+    expect(tenantHashes).toHaveLength(2);
+    expect(tenantHashes[1]).toBe(tenantHashes[0]);
+    expect(readCheckpoint()).toMatchObject({ agentToken: "agent-tok" });
+  });
+
+  it("recovers an agent a previous attempt created before being cut off", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `${API_BASE}/tenants`) {
+        return jsonResponse(409, { ok: false, error: "Tenant already exists" });
+      }
+      if (url === `${API_BASE}/agents`) {
+        return jsonResponse(409, { ok: false, error: "Agent already exists" });
+      }
+      if (url === `${API_BASE}/agents/eliza-wallet`) {
+        return jsonResponse(200, {
+          ok: true,
+          data: { id: "eliza-wallet", walletAddress: "0xdef" },
+        });
+      }
+      if (url === `${API_BASE}/agents/eliza-wallet/token`) {
+        return jsonResponse(200, { ok: true, data: { token: "agent-tok" } });
+      }
+      return jsonResponse(404, { ok: false, error: "unexpected" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const credentials = await ensureWalletSetup(
+      { tenantId: "elizaos-desktop", tenantApiKey: "saved-key" },
+      API_BASE,
+      undefined,
+      dataDir,
+      () => {},
+    );
+
+    expect(credentials).toMatchObject({
+      tenantApiKey: "saved-key",
+      walletAddress: "0xdef",
+      agentToken: "agent-tok",
+    });
+  });
+
+  it("reports lost credentials when a resumed key is rejected by Steward", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `${API_BASE}/tenants`) {
+        return jsonResponse(409, { ok: false, error: "Tenant already exists" });
+      }
+      return jsonResponse(403, { ok: false, error: "Invalid tenant key" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      ensureWalletSetup(
+        { tenantId: "elizaos-desktop", tenantApiKey: "stale-key" },
+        API_BASE,
+        undefined,
+        dataDir,
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "STEWARD_TENANT_CREDENTIALS_LOST" });
+  });
+
+  it("gives Postgres recovery guidance when the sidecar uses DATABASE_URL", async () => {
+    const databaseUrl = "postgres://steward:hunter2@db.internal:5432/steward";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(409, { ok: false, error: "Tenant already exists" }),
+      ),
+    );
+
+    const setup = ensureWalletSetup(
+      null,
+      API_BASE,
+      undefined,
+      dataDir,
+      () => {},
+      undefined,
+      { databaseUrl },
+    );
+
+    await expect(setup).rejects.toMatchObject({
+      code: "STEWARD_TENANT_CREDENTIALS_LOST",
+      context: expect.objectContaining({ stewardDatabase: "postgres" }),
+    });
+    await expect(setup).rejects.toThrow(
+      "reset the Steward Postgres database configured by DATABASE_URL",
+    );
+    await expect(setup).rejects.not.toThrow("hunter2");
+    await expect(setup).rejects.not.toThrow(
+      `reset the local Steward vault by removing ${path.join(dataDir, "data")}`,
+    );
+  });
 });
