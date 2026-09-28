@@ -677,6 +677,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@unbrowse/plugin-unbrowse": {
+      "git": {
+        "repo": "unbrowse-ai/unbrowse",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@unbrowse/plugin-unbrowse",
+        "v0": null,
+        "v1": null,
+        "v2": "12.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Unbrowse for elizaOS: read any page (WEB_FETCH), run website tasks through learned site APIs (UNBROWSE_RUN, UNBROWSE_DISCOVER, UNBROWSE_RESUME) and drive a cloud browser with saved logins (UNBROWSE_BROWSE) via the hosted Unbrowse MCP. Drop-in replacement for plugin-browser.",
+      "homepage": "https://github.com/unbrowse-ai/unbrowse/tree/main/plugins/elizaos",
+      "topics": [
+        "browser",
+        "web",
+        "scraping",
+        "web-fetch",
+        "automation",
+        "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/elizaos"
+    },
     "@usenami/plugin-funding": {
       "git": {
         "repo": "namixai/plugin-funding",

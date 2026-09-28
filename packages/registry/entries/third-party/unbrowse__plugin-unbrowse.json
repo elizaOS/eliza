@@ -1,0 +1,10 @@
+{
+  "package": "@unbrowse/plugin-unbrowse",
+  "repository": "github:unbrowse-ai/unbrowse",
+  "kind": "plugin",
+  "description": "Unbrowse for elizaOS: read any page (WEB_FETCH), run website tasks through learned site APIs (UNBROWSE_RUN, UNBROWSE_DISCOVER, UNBROWSE_RESUME) and drive a cloud browser with saved logins (UNBROWSE_BROWSE) via the hosted Unbrowse MCP. Drop-in replacement for plugin-browser.",
+  "homepage": "https://github.com/unbrowse-ai/unbrowse/tree/main/plugins/elizaos",
+  "version": "12.1.0",
+  "directory": "plugins/elizaos",
+  "tags": ["browser", "web", "scraping", "web-fetch", "automation", "mcp"]
+}
