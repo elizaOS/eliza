@@ -64,9 +64,17 @@ afterEach(() => {
   }
 });
 
-/** Local Cloud route: holds the turn while `attested` is false. */
+/**
+ * Local Cloud route: holds the turn while `attested` is false. An attested
+ * turn can be slowed with `replyDelayMs`; `onAttestedTurn` runs when Cloud
+ * starts executing it, before the reply returns.
+ */
 function startCloud() {
-  const state = { attested: false };
+  const state: {
+    attested: boolean;
+    replyDelayMs: number;
+    onAttestedTurn?: () => Promise<void>;
+  } = { attested: false, replyDelayMs: 0 };
   const turns: Array<Record<string, unknown>> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -88,6 +96,8 @@ function startCloud() {
           { status: 503, headers: { "Retry-After": "1" } },
         );
       }
+      await state.onAttestedTurn?.();
+      if (state.replyDelayMs > 0) await Bun.sleep(state.replyDelayMs);
       return Response.json({
         success: true,
         data: {
@@ -254,5 +264,79 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     // Released to the ordinary pre-egress handling: the ledger reopens.
     expect(await redis.get(dedupKey)).toBeNull();
     expect(providerSends).toEqual([]);
+  }, 60_000);
+
+  test("a redelivery that outlives one lease period is not run again by another replica", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_3";
+
+    await handleWebhook(
+      blooioWebhook("msg_cutover_3"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const heldTurns = cloud.turns.length;
+
+    // A Personal Shared turn may run far longer than one lease period
+    // (PERSONAL_SHARED_TURN_TIMEOUT_MS per attempt). Shorten the lease so the
+    // attested turn outlives it, then let a second replica drain meanwhile.
+    cloud.state.attested = true;
+    cloud.state.replyDelayMs = 2_500;
+    const leaseSeconds = 1;
+    const now = Date.now() + 60_000;
+    const first = drainCutoverHolds(redis, drainHandlers(cloud.origin, redis), {
+      now,
+      leaseSeconds,
+    });
+    await Bun.sleep(1_500);
+    const second = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now, leaseSeconds },
+    );
+
+    expect(second).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+    });
+    expect(await first).toMatchObject({ delivered: 1 });
+    expect(cloud.turns.length - heldTurns).toBe(1);
+    expect(providerSends).toHaveLength(1);
+    expect(await redis.get(dedupKey)).toBe("delivered");
+  }, 60_000);
+
+  test("a drainer releases only its own lease", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_4";
+    const leaseKey = `webhook:cutover-hold-lease:${dedupKey}`;
+
+    await handleWebhook(
+      blooioWebhook("msg_cutover_4"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+
+    // While this drainer's redelivery runs, its lease is lost and another
+    // replica takes it. Finishing must not delete that replica's lease.
+    cloud.state.attested = true;
+    cloud.state.onAttestedTurn = async () => {
+      await redis.set(leaseKey, "other-replica-lease", { ex: 60 });
+    };
+    const stats = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 60_000 },
+    );
+
+    expect(stats).toMatchObject({ delivered: 1 });
+    expect(await redis.get(leaseKey)).toBe("other-replica-lease");
   }, 60_000);
 });
