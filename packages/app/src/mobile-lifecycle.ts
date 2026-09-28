@@ -69,7 +69,16 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let deepLinkHandlingReady = false;
   let lifecycleListenersRegistered = false;
   let networkStatusListenerRegistered = false;
+  // Replay-channel dedupe: getLaunchUrl and the Android DeepLinkBuffer
+  // redeliver the same launch URL every second for COLD_LAUNCH_URL_REPLAY_MS.
+  // Warm `appUrlOpen` events are NOT deduped against this set — widget / assist
+  // producers emit constant URLs, so a repeated identical warm intent is a new
+  // user action that must apply every time.
   const handledDeepLinks = new Set<string>();
+  // URLs first captured by the cold-launch replay channel whose single
+  // Capacitor `appUrlOpen` echo (iOS retains the launch event until a listener
+  // consumes it) has not arrived yet. Cleared when the replay window closes.
+  const coldLaunchEchoCandidates = new Set<string>();
   const pendingDeepLinks = new Map<string, Array<() => void>>();
   // Acknowledgements queued behind a URL's IN-FLIGHT `ctx.handleDeepLink`
   // outcome. Android's cold-launch replay polls the still-unacked buffer
@@ -214,6 +223,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       };
     };
 
+    // Non-null while the cold-launch replay window is open.
+    let replayTimer: ReturnType<typeof setInterval> | null = null;
+
     const captureDeepLinkOnce = (
       url: string | null | undefined,
       acknowledge?: () => void,
@@ -241,6 +253,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         return false;
       }
       handledDeepLinks.add(trimmed);
+      if (replayTimer) coldLaunchEchoCandidates.add(trimmed);
       if (deepLinkHandlingReady) {
         applyDeepLink(trimmed, acknowledge ? [acknowledge] : []);
       } else {
@@ -249,12 +262,42 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       return true;
     };
 
+    // Warm `appUrlOpen` always applies, even when the identical URL was
+    // already handled earlier in this session (#46: repeated widget Ask/Voice
+    // taps and assist gestures carry constant URLs). The only suppressed event
+    // is the one Capacitor echo of a URL the cold-launch replay already
+    // captured; that echo routes through the replay dedupe instead.
+    const captureWarmDeepLink = (url: string | null | undefined): void => {
+      const trimmed = url?.trim();
+      if (!trimmed) return;
+      // The Android buffer also captured this warm intent (MainActivity
+      // onNewIntent); acknowledge it once applied so a later renderer boot does
+      // not replay an intent this renderer already delivered.
+      const acknowledge = acknowledgeBufferedUrl(trimmed);
+      if (coldLaunchEchoCandidates.delete(trimmed)) {
+        captureDeepLinkOnce(trimmed, acknowledge);
+        return;
+      }
+      handledDeepLinks.add(trimmed);
+      const acknowledgements = acknowledge ? [acknowledge] : [];
+      if (deepLinkHandlingReady) {
+        applyDeepLink(trimmed, acknowledgements);
+        return;
+      }
+      const queued = pendingDeepLinks.get(trimmed);
+      if (queued) {
+        queued.push(...acknowledgements);
+      } else {
+        pendingDeepLinks.set(trimmed, acknowledgements);
+      }
+    };
+
     // Warm intents can arrive while the renderer is reloading. main.tsx arms
     // this during module evaluation, before DOMContentLoaded, so Capacitor never
     // dispatches a URL only into the previous document's dead callback registry.
     void Promise.resolve(
       CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-        captureDeepLinkOnce(url);
+        captureWarmDeepLink(url);
       }),
       // error-policy:J4 App plugin unavailable — deep links degrade to the
       // cold-launch replay below / web routing
@@ -262,12 +305,12 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       logNativePluginUnavailable("App", error);
     });
 
-    let replayTimer: ReturnType<typeof setInterval> | null = null;
     const replayStartedAt = Date.now();
     const stopReplay = (): void => {
       if (!replayTimer) return;
       clearInterval(replayTimer);
       replayTimer = null;
+      coldLaunchEchoCandidates.clear();
     };
     const readLaunchUrls = (): void => {
       void CapacitorApp.getLaunchUrl()
