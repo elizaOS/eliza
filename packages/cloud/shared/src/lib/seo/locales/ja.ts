@@ -67,7 +67,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "請求とクレジット",
       description:
-        "クレジットを管理し、使用量を確認し、クレジットパックを購入できます。すべての AI 操作で透明な価格設定です。",
+        "Plus または Pro に登録して毎月の利用枠を受け取るか、従量課金クレジットを $5〜$1,000 の範囲でチャージできます。すべての AI 操作で透明な価格設定です。",
     },
     apiKeys: {
       title: "API キー",

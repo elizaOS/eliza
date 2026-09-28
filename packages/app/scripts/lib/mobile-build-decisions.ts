@@ -16,12 +16,19 @@ const appCoreScriptsDir = path.resolve(__dirname, "..");
  * Brand-separation invariant (issue #9309): the shared canonical Android tree
  * is used only for the elizaOS app itself. Whitelabel builds use appDir/android
  * so identity overlays cannot corrupt another brand's native project.
+ * Same-ID private white-label builds (ELIZA_WHITELABEL_DIR) also use appDir.
  */
 export function androidUsesAppDirFor(
   appId: string,
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  return env.ELIZA_ANDROID_USE_APP_DIR === "1" || appId !== "ai.elizaos.app";
+  return (
+    env.ELIZA_ANDROID_USE_APP_DIR === "1" ||
+    appId !== "ai.elizaos.app" ||
+    // A private white-label keeps the canonical app ID but must still never
+    // write its name or artwork into the tracked shared Android tree.
+    Boolean(env.ELIZA_WHITELABEL_DIR?.trim())
+  );
 }
 
 const MTP_BUILD_SCRIPT = path.resolve(

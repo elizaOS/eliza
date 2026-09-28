@@ -12,13 +12,20 @@
 //
 // Uses sharp (the repo's image toolchain) to rasterize + composite the SVG;
 // no external ImageMagick dependency.
+//
+// White-label: ELIZA_WHITELABEL_DIR points at a private brand directory outside
+// the repository (see packages/app/scripts/mobile/whitelabel.ts). Its
+// brand.json `bootanimation.logo` and `bootanimation.background` replace the
+// elizaOS logo and field; geometry and desc.txt stay unchanged. `--out-dir`
+// renders elsewhere (for validation) instead of the vendor tree.
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
 
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
@@ -29,14 +36,29 @@ const reqFromApp = createRequire(
   path.join(repoRoot, "packages/app/package.json"),
 );
 
-const LOGO_SVG = path.join(
-  repoRoot,
-  "packages/app/public/brand/logos/logo_white_nobg.svg",
+const { values: args } = parseArgs({
+  options: { "out-dir": { type: "string" } },
+  strict: true,
+});
+const { loadWhitelabelBrand } = await import(
+  pathToFileURL(
+    path.join(repoRoot, "packages/app/scripts/mobile/whitelabel.ts"),
+  ).href
 );
-const BOOTANIM_DIR = path.resolve(
-  here,
-  "../../android/vendor/eliza/bootanimation",
-);
+const whitelabel = loadWhitelabelBrand(process.env, repoRoot);
+if (whitelabel && !whitelabel.bootanimation) {
+  console.error(
+    "White-label brand.json must define bootanimation.logo and bootanimation.background",
+  );
+  process.exit(1);
+}
+
+const LOGO_SVG =
+  whitelabel?.bootanimation.logo ??
+  path.join(repoRoot, "packages/app/public/brand/logos/logo_white_nobg.svg");
+const BOOTANIM_DIR = args["out-dir"]
+  ? path.resolve(args["out-dir"])
+  : path.resolve(here, "../../android/vendor/eliza/bootanimation");
 const PART0 = path.join(BOOTANIM_DIR, "part0"); // one-shot intro: logo fades in
 const PART1 = path.join(BOOTANIM_DIR, "part1"); // idle loop until boot completes
 const rmRecursiveScript = path.resolve(
@@ -51,8 +73,15 @@ const HEIGHT = 2400;
 const FPS = 30;
 const LOGO_W = 480;
 const INTRO_FRAMES = 16;
-// elizaOS blue, identical to the Linux greeter field (#0B35F1).
-const BLUE = { r: 0x0b, g: 0x35, b: 0xf1, alpha: 1 };
+// elizaOS blue, identical to the Linux greeter field (#0B35F1), unless a
+// white-label brand supplies its own field color.
+const FIELD_HEX = whitelabel?.bootanimation.background ?? "#0B35F1";
+const BLUE = {
+  r: Number.parseInt(FIELD_HEX.slice(1, 3), 16),
+  g: Number.parseInt(FIELD_HEX.slice(3, 5), 16),
+  b: Number.parseInt(FIELD_HEX.slice(5, 7), 16),
+  alpha: 1,
+};
 
 let sharp;
 try {
@@ -148,7 +177,7 @@ fs.writeFileSync(
 );
 
 console.log(
-  `Rendered elizaOS boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
+  `Rendered ${whitelabel ? "white-label" : "elizaOS"} boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
 );
 console.log(
   `Pack it with: node scripts/android/build-eliza-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,

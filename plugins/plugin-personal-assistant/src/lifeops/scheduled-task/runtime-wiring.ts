@@ -22,8 +22,13 @@ import {
   ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
+  isElizaError,
   logger,
+  MESSAGE_SOURCE_OWNER_CHAT,
+  requireConfirmedSendHandlerDelivery,
+  SEND_HANDLER_NOT_FOUND,
   ServiceType,
+  type UUID,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
@@ -450,6 +455,74 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+type OwnerChatDelivery =
+  | { ok: true; roomId: UUID | null; messageId: UUID | null }
+  | { ok: false; failure: DispatchResult };
+
+/**
+ * Persist an in_app scheduled delivery into the owner's chat history through
+ * the host's `owner_chat` handler, which resolves or creates the owner's
+ * canonical conversation. The occurrence key derives the stored message id,
+ * so a redelivery returns the existing row. A host without the handler
+ * (headless runtime, no app server) reports no history surface; a registered
+ * handler that fails is a typed, retryable dispatch failure.
+ */
+async function deliverScheduledTaskToOwnerChat(
+  runtime: IAgentRuntime,
+  record: ScheduledTaskDispatchRecord,
+  message: string,
+): Promise<OwnerChatDelivery> {
+  const deliveryIdempotencyKey =
+    metadataString(record.metadata, "dispatchIdempotencyKey") ??
+    `${record.taskId}:${record.firedAtIso}`;
+  if (typeof runtime.sendMessageToTarget !== "function") {
+    return { ok: true, roomId: null, messageId: null };
+  }
+  try {
+    const result = await runtime.sendMessageToTarget(
+      { source: MESSAGE_SOURCE_OWNER_CHAT },
+      {
+        text: message,
+        source: "lifeops-scheduled-task",
+        deliveryIdempotencyKey,
+        scheduledTaskId: record.taskId,
+        firedAtIso: record.firedAtIso,
+        channelKey: record.channelKey,
+      },
+    );
+    const disposition = requireConfirmedSendHandlerDelivery(result);
+    const memory = disposition.memories?.[0];
+    if (!memory?.roomId) {
+      throw new ElizaError("owner_chat returned no persisted message", {
+        code: "OWNER_CHAT_NOT_PERSISTED",
+        context: { taskId: record.taskId },
+      });
+    }
+    return { ok: true, roomId: memory.roomId, messageId: memory.id ?? null };
+  } catch (error) {
+    if (isElizaError(error) && error.code === SEND_HANDLER_NOT_FOUND) {
+      return { ok: true, roomId: null, messageId: null };
+    }
+    // error-policy:J1 boundary translation — the history write failed; the
+    // runner retries (the idempotency key keeps redelivery to one row) and
+    // the failure reaches RECENT_ERRORS.
+    runtime.reportError("lifeops:scheduled-task:owner-chat-dispatch", error, {
+      taskId: record.taskId,
+      channelKey: record.channelKey,
+    });
+    return {
+      ok: false,
+      failure: {
+        ok: false,
+        reason: "transport_error",
+        acceptance: "not_accepted",
+        userActionable: false,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
 function metadataString(
   metadata: ScheduledTaskDispatchRecord["metadata"],
   key: string,
@@ -848,25 +921,38 @@ export function createProductionScheduledTaskDispatcher(opts: {
 
       if (!channel?.send) {
         // Honest delivery accounting: an in_app dispatch "succeeded" only
-        // if at least one real surface accepted the payload — the live
-        // assistant event bus (transient stream) or the notification
-        // service (durable inbox). Previously this branch returned
-        // ok:true unconditionally, fabricating delivery on hosts where
-        // both surfaces were absent, so nothing ever retried/escalated.
+        // if a durable surface accepted the payload — the owner's chat
+        // history (the host's owner_chat handler, which creates the owner
+        // conversation when none exists) or the notification service
+        // (durable inbox). The assistant event bus is a transient live
+        // stream: it reaches nobody while no client is connected, so it
+        // never counts as delivery.
         let surfacesAccepted = 0;
+        const history = await deliverScheduledTaskToOwnerChat(
+          opts.runtime,
+          record,
+          message,
+        );
+        if (!history.ok) return history.failure;
+        if (history.roomId) surfacesAccepted += 1;
         const eventService = getAgentEventService(opts.runtime) as {
           emit?: (event: {
             runId: string;
             stream: string;
             data: Record<string, unknown>;
             agentId?: string;
+            roomId?: UUID;
           }) => void;
         } | null;
         if (typeof eventService?.emit === "function") {
+          // With a persisted row the event carries its room, so the host's
+          // autonomy router recognizes the open conversation and does not
+          // persist a second copy.
           eventService.emit({
             runId: crypto.randomUUID(),
             stream: "assistant",
             agentId: opts.runtime.agentId,
+            ...(history.roomId ? { roomId: history.roomId } : {}),
             data: {
               text: message,
               source: "lifeops-scheduled-task",
@@ -883,7 +969,6 @@ export function createProductionScheduledTaskDispatcher(opts: {
                 : {}),
             },
           });
-          surfacesAccepted += 1;
         }
         const notifier = getNotifier(opts.runtime);
         if (notifier) {
@@ -929,7 +1014,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
             reason: "disconnected",
             userActionable: false,
             message:
-              "No in-app surface (assistant event bus or notification service) accepted the payload.",
+              "No durable in-app surface (owner chat history or notification service) accepted the payload.",
           };
         }
         return {
@@ -939,6 +1024,16 @@ export function createProductionScheduledTaskDispatcher(opts: {
           target:
             normalizeChannelTarget(record.channelKey, record.output?.target) ??
             "in_app",
+          ...(history.roomId
+            ? {
+                metadata: {
+                  ownerChatRoomId: history.roomId,
+                  ...(history.messageId
+                    ? { ownerChatMessageId: history.messageId }
+                    : {}),
+                },
+              }
+            : {}),
         };
       }
 

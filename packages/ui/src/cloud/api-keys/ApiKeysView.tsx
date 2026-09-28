@@ -52,10 +52,12 @@ import { Input } from "../../components/ui/input";
 import { SemanticForm } from "../../components/ui/semantic-form";
 import { ApiError, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import type { ApiKeyRecord } from "./use-api-keys";
+import type { ApiKeysResponse, ApiKeyUsage } from "./use-api-keys";
 
 interface ApiKeysViewProps {
   keys: ApiKeyDisplay[];
+  /** Plan ceiling for user-created keys, as reported by the server. */
+  usage?: ApiKeyUsage;
 }
 
 interface MutatedApiKeyResponse {
@@ -88,7 +90,7 @@ function deriveKeyStats(keys: ApiKeyDisplay[]): {
   };
 }
 
-export function ApiKeysView({ keys }: ApiKeysViewProps) {
+export function ApiKeysView({ keys, usage }: ApiKeysViewProps) {
   const t = useCloudT();
   const queryClient = useQueryClient();
   const refreshApiKeys = useCallback(() => {
@@ -170,9 +172,13 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
       // serve the just-deleted row. Optimistically drop it from every cached
       // `["api-keys", ...]` query (the key is partitioned per user, so match
       // on the prefix) so it disappears immediately.
-      queryClient.setQueriesData<ApiKeyRecord[]>(
+      queryClient.setQueriesData<ApiKeysResponse>(
         { queryKey: ["api-keys"] },
-        (existing) => existing?.filter((key) => key.id !== id),
+        (existing) =>
+          existing && {
+            ...existing,
+            keys: existing.keys.filter((key) => key.id !== id),
+          },
       );
       toast.success(
         t("cloud.apiKeys.deleted", { defaultValue: "API key revoked" }),
@@ -204,6 +210,23 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
           {stats.lastCreatedAt
             ? ` · last created ${formatApiKeyDate(stats.lastCreatedAt)}`
             : ""}
+        </p>
+      ) : null}
+
+      {usage?.status === "available" ? (
+        <p className="text-sm text-muted" data-testid="api-key-usage">
+          {usage.remaining > 0
+            ? t("cloud.apiKeys.planUsage", {
+                used: usage.used,
+                limit: usage.limit,
+                defaultValue:
+                  "{{used}} of {{limit}} keys on your plan. API keys are free.",
+              })
+            : t("cloud.apiKeys.planLimitReached", {
+                limit: usage.limit,
+                defaultValue:
+                  "Your plan allows {{limit}} API keys. Delete a key or upgrade your plan to create another.",
+              })}
         </p>
       ) : null}
 

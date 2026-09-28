@@ -333,6 +333,12 @@ INFERENCE_HOT_PATH_CACHES = "false"
 INFERENCE_AUTH_CACHE_ENABLED = "false"
 # Strong revocation is staged independently; auth caching requires both flags.
 INFERENCE_STRONG_REVOCATION_ENABLED = "false"
+# Snapshot admission (#30806): warm Worker admission is served from the
+# published admission snapshot, fenced by the organization Durable Object's
+# policy generation, with no database work before provider dispatch. Requires
+# INFERENCE_DEFERRED_ADMISSION. Rollback = flip off (the authoritative policy
+# transaction path is unchanged).
+INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -714,6 +720,11 @@ INFERENCE_AUTH_CACHE_ENABLED = "true"
 # authoritative authorization until this lane passes the release latency and
 # revocation probes.
 INFERENCE_STRONG_REVOCATION_ENABLED = "true"
+# Staging soak for snapshot admission (#30806): the warm path reads no policy
+# or dispatch-policy transaction; the org Durable Object fences stale policy
+# generations. Production stays off until this soak and the production
+# strong-revocation canary below both pass.
+INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "true"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -997,7 +1008,35 @@ INFERENCE_HOT_PATH_CACHES = "true"
 # waitUntil and the 60s physical TTL bounds lost invalidation.
 INFERENCE_AUTH_CACHE_ENABLED = "true"
 # Default authoritative until the Durable Object revocation lane is soaked.
+#
+# Production canary for strong revocation (#30796). Do not flip this line
+# directly; follow the staged procedure through the protected release workflow:
+#   1. Staging gate: staging has run INFERENCE_STRONG_REVOCATION_ENABLED="true"
+#      for at least 7 days with zero `InferenceCredentialRevocationUnavailableError`
+#      spikes, and the revocation probes (API-key revoke, org disable, subject
+#      disable, session revoke-through) deny within one request on the exact
+#      release SHA.
+#   2. Writer audit: confirm every revocation writer (API keys, organization
+#      lifecycle, subject/membership disable, Steward session revocation) calls
+#      the inference-credential-revocation mutations and runs where the
+#      INFERENCE_ADMISSION_GATES binding exists; a writer without the binding
+#      fails its mutation closed rather than skipping the gate.
+#   3. Canary: deploy a production version with this flag "true" as a gradual
+#      Worker version deployment (`wrangler versions deploy`) at 5% traffic
+#      for 1 hour. Watch p95 admission latency on the inference routes (budget:
+#      +15 ms), 503 `INFERENCE_ADMISSION_UNAVAILABLE` rate (budget: < 0.1%),
+#      and `/credential/check` timeouts. Run the revocation probes against a
+#      canary-pinned internal test org.
+#   4. Ramp 5% -> 25% -> 100% with one hour between steps if every budget
+#      holds. Any breach: redeploy the previous version at 100% (rollback is the
+#      prior version; the flag defaults to authoritative authorization).
+#   5. After 100% holds for 24 hours, change this line to "true" in the same
+#      release so the next full deploy keeps the canary state.
 INFERENCE_STRONG_REVOCATION_ENABLED = "false"
+# Snapshot admission (#30806) stays off in production until the staging soak
+# passes and strong revocation above has completed its canary. Enable it with
+# the same gradual-version procedure; rollback = flip off.
+INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding

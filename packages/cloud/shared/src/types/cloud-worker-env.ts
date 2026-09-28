@@ -618,6 +618,13 @@ export interface Bindings {
   INFERENCE_AUTH_CACHE_ENABLED?: string;
   /** Strong Durable Object boundary required before positive auth caching can activate. */
   INFERENCE_STRONG_REVOCATION_ENABLED?: string;
+  /**
+   * "true" serves warm Worker admission from the published admission snapshot:
+   * no policy or dispatch-policy transaction runs before provider dispatch. The
+   * organization Durable Object fences the snapshot's policy generation and
+   * balance revision. Requires INFERENCE_DEFERRED_ADMISSION.
+   */
+  INFERENCE_SNAPSHOT_ADMISSION_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead

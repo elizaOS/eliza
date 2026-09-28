@@ -16,6 +16,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
+import { buildAlphaRoutinesPack } from "./alpha-routines-pack.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
@@ -141,6 +142,17 @@ describe("resolvePacksToSeed", () => {
   it("returns consumer packs unchanged when no fallback is present", () => {
     const consumer = consumerPack();
     expect(resolvePacksToSeed([consumer])).toEqual([consumer]);
+  });
+
+  it("keeps supplemental packs without letting them suppress the fallback", () => {
+    const fallback = buildFallbackDefaultPack({ agentId: "a" });
+    const alpha = buildAlphaRoutinesPack({ agentId: "a" });
+    expect(resolvePacksToSeed([fallback, alpha])).toEqual([fallback, alpha]);
+    const consumer = consumerPack();
+    expect(resolvePacksToSeed([fallback, consumer, alpha])).toEqual([
+      consumer,
+      alpha,
+    ]);
   });
 });
 

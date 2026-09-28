@@ -2038,7 +2038,9 @@ export class AccountDeletionRequestsRepository {
           account_deletion_request_id: null,
           paid_work_fenced_at: null,
           auto_top_up_enabled: request.restore_auto_top_up_enabled ?? false,
-          pay_as_you_go_from_earnings: request.restore_pay_as_you_go_from_earnings ?? false,
+          // Earnings-funded hosting is retired (#22961 / #23022); a restore
+          // must not re-enable it from a pre-retirement snapshot.
+          pay_as_you_go_from_earnings: false,
           is_active: true,
           updated_at: input.now,
         })

@@ -4,7 +4,8 @@
  * allowance at the organization balance revision, allowance-only spend advances
  * that revision (migration 0491), settlement funds allowance first then
  * purchased credit and never overdraws, the post-accounting capacity comes from
- * the funding transaction itself, and alarm recovery replays live settlement.
+ * the funding transaction itself, alarm recovery replays live settlement, and a
+ * pinned affiliate payout commits in the same transaction as the funded debit.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -19,6 +20,7 @@ let client: typeof import("../../db/client");
 let helpers: typeof import("../../db/helpers");
 let allowance: typeof import("../../db/repositories/subscription-allowance");
 let subscriber: typeof import("./subscriber-inference-funding");
+let allowanceFirst: typeof import("./allowance-first-credits");
 let fixture: {
   exec(query: string): Promise<unknown>;
   query<T extends Record<string, unknown> = Record<string, unknown>>(
@@ -34,6 +36,7 @@ beforeAll(async () => {
   helpers = await import("../../db/helpers");
   allowance = await import("../../db/repositories/subscription-allowance");
   subscriber = await import("./subscriber-inference-funding");
+  allowanceFirst = await import("./allowance-first-credits");
   const pglite = client.getPgliteClientForTests();
   fixture = {
     exec: (query) => pglite.exec(query),
@@ -58,6 +61,7 @@ beforeAll(async () => {
     "0177_organization_balance_revision.sql",
     "0491_allowance_advances_balance_revision.sql",
     "0493_zero_collected_inference_receipts.sql",
+    "0179_affiliate_payout_outbox.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -70,7 +74,25 @@ beforeAll(async () => {
   // The shared fixture's historical period has already ended; retire it so
   // each test observes only the periods it seeds.
   await allowance.subscriptionAllowanceRepository.expireEndedPeriods();
+  await fixture.query("INSERT INTO users(id) VALUES ($1) ON CONFLICT DO NOTHING", [
+    AFFILIATE.affiliateUserId,
+  ]);
 }, 120_000);
+
+const AFFILIATE = {
+  affiliateCodeId: "73000000-0000-4000-8000-000000000001",
+  affiliateUserId: "74000000-0000-4000-8000-000000000001",
+  affiliateCode: "PARTNER",
+  markupPercent: 0.2,
+};
+
+async function payoutsFor(sourceId: string) {
+  const { rows } = await fixture.query<{ amount: string; metadata: Record<string, unknown> }>(
+    "SELECT amount::text, metadata FROM affiliate_payout_outbox WHERE source_id = $1",
+    [sourceId],
+  );
+  return rows;
+}
 
 afterAll(async () => {
   await client.closeDatabaseConnectionsForTests();
@@ -384,6 +406,113 @@ describe("deferred subscriber inference funding", () => {
     );
     expect(replay.reconciliation).toEqual(live.reconciliation);
     expect(await readState(org)).toEqual(beforeReplay);
+  });
+
+  test("an affiliate payout commits with the funded debit and pays only collected markup", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "0.500000",
+      credits: "1.000000",
+    });
+    const fullSource = "ai_billing:affiliate:subscriber-affiliate-0001";
+    // $1.00 pre-affiliate cost at a 20% markup is a $1.20 charge.
+    const full = await subscriber.fundSubscriberInferenceCharge({
+      ...charge(org, "subscriber-affiliate-0001", 1.2),
+      affiliatePayout: { attribution: AFFILIATE, sourceId: fullSource },
+    });
+    expect(full.reconciliation).toMatchObject({ collectedAmount: 1.2, adjustmentType: "none" });
+    const [payout] = await payoutsFor(fullSource);
+    expect(payout?.amount).toBe("0.2000");
+    expect(payout?.metadata).toMatchObject({
+      affiliateCodeId: AFFILIATE.affiliateCodeId,
+      actualTotalCost: "1.200000",
+      collectedTotalCost: "1.200000",
+    });
+
+    // Alarm recovery replays under the same key with a larger estimate: the
+    // debit and the payout both stay exactly as the live settlement wrote them.
+    const replay = await subscriber.fundSubscriberInferenceCharge({
+      ...charge(org, "subscriber-affiliate-0001", 3),
+      affiliatePayout: { attribution: AFFILIATE, sourceId: fullSource },
+    });
+    expect(replay.capacity).toEqual(full.capacity);
+    expect(await payoutsFor(fullSource)).toEqual([payout!]);
+
+    // Only $0.30 of capacity remains; the $1.20 charge collects $0.30, which
+    // does not cover the $1.00 pre-affiliate cost, so no markup was collected.
+    const shortSource = "ai_billing:affiliate:subscriber-affiliate-0002";
+    const short = await subscriber.fundSubscriberInferenceCharge({
+      ...charge(org, "subscriber-affiliate-0002", 1.2),
+      affiliatePayout: { attribution: AFFILIATE, sourceId: shortSource },
+    });
+    expect(short.reconciliation).toMatchObject({
+      collectedAmount: 0.3,
+      adjustmentType: "uncollected_overage",
+    });
+    expect(await payoutsFor(shortSource)).toEqual([]);
+  });
+
+  test("the synchronous subscriber reservation enqueues its pinned affiliate payout on settlement", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "1.000000",
+      credits: "1.000000",
+    });
+    const sourceId = "ai_billing:affiliate:subscriber-affiliate-sync-0001";
+    const reservation = await allowanceFirst.reserveSubscriptionFundedCredits({
+      organizationId: org,
+      operation: "ai_inference",
+      logicalOperationId: "inference-gate:subscriber-affiliate-sync-0001",
+      amount: "1.800000",
+      description: "Synchronous subscriber inference",
+      metadata: {
+        affiliatePayout: { version: 1, sourceId, attribution: AFFILIATE, model: "gpt-oss-120b" },
+      },
+    });
+    await reservation.reconcile(1.2);
+    await reservation.reconcile(1.2);
+    const payouts = await payoutsFor(sourceId);
+    expect(payouts.map((row) => row.amount)).toEqual(["0.2000"]);
+  });
+
+  test("a published admission snapshot carries subscriber capacity and hold state at one revision", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "2.000000",
+      credits: "3.000000",
+    });
+    const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
+    const { inferenceAdmissionSnapshotInTransaction } = await import(
+      "./inference-admission-snapshot"
+    );
+    const publish = () =>
+      withOrganizationPolicyAdmission(org, undefined, (policy, tx) =>
+        inferenceAdmissionSnapshotInTransaction(tx, org, policy),
+      );
+    const snapshot = await publish();
+    const revision = (await revisionOf(org)).toString();
+    expect(snapshot).toMatchObject({
+      subscriptionFunded: true,
+      billingHold: false,
+      balance: { balanceUsd: 3, balanceRevision: revision },
+      funding: { balanceUsd: 5, balanceRevision: revision },
+    });
+
+    // A payment-reversal hold is published so snapshot admission cannot
+    // bypass the primary's hold check.
+    await fixture.query(
+      `INSERT INTO organization_payment_reversal_holds(organization_id, reason, stripe_dispute_id,
+         stripe_charge_id, amount_cents)
+       VALUES ($1, 'chargeback_lost', 'dp_snapshot_hold', 'ch_snapshot_hold', 100)`,
+      [org],
+    );
+    expect(await publish()).toMatchObject({ billingHold: true });
   });
 
   test("an ex-subscriber's lapsed allowance is not counted as capacity", async () => {

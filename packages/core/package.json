@@ -621,6 +621,12 @@
 			"import": "./dist/contracts/relationships-routes.js",
 			"default": "./dist/contracts/relationships-routes.js"
 		},
+		"./contracts/remote-agent-pairing": {
+			"eliza-source": "./src/contracts/remote-agent-pairing.ts",
+			"types": "./dist/contracts/remote-agent-pairing.d.ts",
+			"import": "./dist/contracts/remote-agent-pairing.js",
+			"default": "./dist/contracts/remote-agent-pairing.js"
+		},
 		"./contracts/remote-agent-request": {
 			"eliza-source": "./src/contracts/remote-agent-request.ts",
 			"types": "./dist/contracts/remote-agent-request.d.ts",

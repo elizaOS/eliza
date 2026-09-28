@@ -65,6 +65,7 @@ function buildRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
     getTasks: vi.fn(async () => []),
     createTask: vi.fn(async () => "driver-task-id"),
     reportError: vi.fn(),
+    getSetting: () => null,
     ...overrides,
   } as unknown as IAgentRuntime;
 }

@@ -199,17 +199,16 @@ function checkIos() {
       "Set ELIZA_BUILD_VARIANT=store and ELIZA_RELEASE_AUTHORITY=apple-app-store on the build job.",
     );
 
-    // The shipped IPA must actually contain a local-agent runtime. This mirrors
-    // shouldIncludeIosFullBunEngine() in run-mobile-build.ts: the on-device
-    // no-JIT Bun engine ships when explicitly requested, or for a store build
-    // with the local runtime left enabled (the default). An operator can opt
-    // into a cloud-only thin client with ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0 —
-    // only then is shipping without the engine intentional.
+    // A store build that opted into the local runtime must actually contain
+    // it. This mirrors shouldIncludeIosFullBunEngine() in run-mobile-build.ts:
+    // the on-device no-JIT Bun engine ships when explicitly requested, or for a
+    // store build with ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=1. Store builds are
+    // Cloud-only by default (#16420), so omitting the engine is intentional.
     if (localRuntimeDisabled) {
       addCheck(
         "On-device local agent runtime",
         true,
-        "cloud-only store build (ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0) — on-device runtime intentionally omitted",
+        "Cloud-only store build (default) — on-device runtime intentionally omitted",
       );
     } else {
       addCheck(
@@ -218,7 +217,7 @@ function checkIos() {
         engineWillEmbed
           ? "the no-JIT Bun engine will be embedded — local agent will start on device"
           : "store build would ship WITHOUT the Bun engine; the in-app local agent would hard-fail",
-        "Set ELIZA_BUILD_VARIANT=store (engine ships by default) or ELIZA_IOS_FULL_BUN_ENGINE=1, or set ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0 for an intentional cloud-only build.",
+        "Set ELIZA_BUILD_VARIANT=store with ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=1, or ELIZA_IOS_FULL_BUN_ENGINE=1, or unset ELIZA_IOS_APP_STORE_LOCAL_RUNTIME for the default Cloud-only build.",
       );
     }
   }

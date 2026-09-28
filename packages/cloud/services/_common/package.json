@@ -21,7 +21,8 @@
     "./telegram-delivery": "./src/telegram-delivery.ts",
     "./gateway-routing": "./src/gateway-routing.ts",
     "./gateway-forward": "./src/gateway-forward.ts",
-    "./bounded-fetch": "./src/bounded-fetch.ts"
+    "./bounded-fetch": "./src/bounded-fetch.ts",
+    "./blooio-environment": "./src/blooio-environment.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

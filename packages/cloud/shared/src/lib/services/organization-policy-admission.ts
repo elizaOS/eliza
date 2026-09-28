@@ -1,5 +1,6 @@
 /** Serializes authoritative policy admission with organization lifecycle and override publication. */
 import { ElizaError } from "@elizaos/core";
+import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
 import {
   lockOrganizationPolicy,
@@ -15,10 +16,15 @@ import {
   type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
 } from "./organization-quota-policy";
+/**
+ * The callback receives the locked transaction so publication can read the
+ * remaining admission inputs (subscriber capacity, billing holds) under the
+ * same policy lock and clock.
+ */
 export async function withOrganizationPolicyAdmission<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return admitUnderPolicyLock(organizationId, expected, operation, lockOrganizationPolicy);
 }
@@ -31,14 +37,14 @@ export async function withOrganizationPolicyAdmission<T>(
 export async function withOrganizationPolicyReadAdmission<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return admitUnderPolicyLock(organizationId, expected, operation, lockOrganizationPolicyForRead);
 }
 async function admitUnderPolicyLock<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
   lock: typeof lockOrganizationPolicy,
 ): Promise<T> {
   return observeInferenceDependency("transaction", "policy_admission", () =>
@@ -59,7 +65,7 @@ async function admitUnderPolicyLock<T>(
           context: { organizationId },
           severity: "ephemeral",
         });
-      return operation(policy);
+      return operation(policy, tx);
     }),
   );
 }

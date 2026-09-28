@@ -31,6 +31,7 @@ import {
   parseAppMonetizationNumber,
 } from "./app-credit-math";
 import { APP_USAGE_PROJECTION_VERSION } from "./app-usage-projections";
+import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import {
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
@@ -2272,6 +2273,9 @@ export class AppCreditsService {
       purchaseSharePercentage?: number;
     },
   ): Promise<void> {
+    if (settings.monetizationEnabled === true) {
+      throw new CreatorMonetizationRetiredError("app_monetization");
+    }
     if (
       settings.inferenceMarkupPercentage !== undefined &&
       (settings.inferenceMarkupPercentage < 0 || settings.inferenceMarkupPercentage > 1000)
@@ -2303,15 +2307,6 @@ export class AppCreditsService {
     // through (fenced) so the toggle takes effect immediately without
     // manufacturing a cold cache-only miss on the very next inference.
     await publishAppCacheAfterMutation(appId, updated);
-
-    // When enabling monetization, ensure earnings record exists
-    // This prevents null state when viewing earnings dashboard
-    if (settings.monetizationEnabled === true) {
-      await appEarningsRepository.getOrCreate(appId);
-      logger.info("[AppCredits] Initialized earnings record for app", {
-        appId,
-      });
-    }
 
     logger.info("[AppCredits] Updated monetization settings", {
       appId,

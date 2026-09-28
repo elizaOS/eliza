@@ -25,6 +25,7 @@ import {
   resolveDesktopBuildConcurrency,
 } from "./lib/desktop-preflight.ts";
 import { buildDesktopRenderer } from "./lib/desktop-renderer-build.mjs";
+import { hardenElectrobunCallbackStrings } from "./lib/electrobun-ffi-callback-strings.ts";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.ts";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.ts";
 import {
@@ -623,7 +624,15 @@ function hardenInstalledElectrobunRpc() {
       `[desktop-build] Hardened Electrobun RPC to loopback: ${path.relative(ROOT, sourcePath)}`,
     );
   }
-  return changed.length;
+  const callbackSources = hardenElectrobunCallbackStrings(
+    path.dirname(manifestPath),
+  );
+  for (const sourcePath of callbackSources) {
+    console.log(
+      `[desktop-build] Hardened Electrobun native callback strings: ${path.relative(ROOT, sourcePath)}`,
+    );
+  }
+  return changed.length + callbackSources.length;
 }
 
 function ensureAppDirs() {

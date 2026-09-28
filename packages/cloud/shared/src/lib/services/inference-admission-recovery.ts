@@ -39,8 +39,18 @@ export interface OrganizationInferenceAdmissionRecovery extends RecoveryBase {
   kind: "organization";
   accounting:
     | { kind: "direct_debit" }
-    /** Allowance-first subscriber funding; the gate ceiling is funding capacity. */
-    | { kind: "subscription_funding" }
+    /**
+     * Allowance-first subscriber funding; the gate ceiling is funding capacity.
+     * An affiliate-marked request pins its payout contract so recovery enqueues
+     * the collected markup atomically with the funded debit.
+     */
+    | {
+        kind: "subscription_funding";
+        affiliate?: {
+          attribution: AffiliateBillingAttribution;
+          payoutSourceId: string;
+        };
+      }
     | {
         kind: "affiliate_debit";
         attribution: AffiliateBillingAttribution;
@@ -310,6 +320,18 @@ export async function recoverExpiredInferenceAdmissionLease(
   if (context.kind === "organization" && context.accounting.kind === "subscription_funding") {
     // Replays the live settlement's funding identity. The post-accounting
     // capacity is read inside the funding transaction, so no readback follows.
+    const affiliate = context.accounting.affiliate;
+    if (
+      affiliate &&
+      (!isAffiliateBillingAttribution(affiliate.attribution) ||
+        affiliate.attribution.affiliateUserId === context.userId ||
+        !affiliate.payoutSourceId ||
+        affiliate.payoutSourceId.trim() !== affiliate.payoutSourceId)
+    ) {
+      throw new Error(
+        "Subscriber affiliate inference recovery requires pinned attribution and payout identity",
+      );
+    }
     const funded = await fundSubscriberInferenceCharge({
       organizationId: context.organizationId,
       requestId: context.requestId,
@@ -320,6 +342,12 @@ export async function recoverExpiredInferenceAdmissionLease(
       description: context.description,
       metadata: context.metadata,
       amountUsd: estimatedCostUsd,
+      ...(affiliate && {
+        affiliatePayout: {
+          attribution: affiliate.attribution,
+          sourceId: affiliate.payoutSourceId,
+        },
+      }),
     });
     const recovered = recoveredCharge(
       estimatedCostUsd,

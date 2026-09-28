@@ -25,9 +25,14 @@ export function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
 }
 
+/**
+ * App Store builds are Cloud-only by default (#16420): the on-device runtime
+ * ships only when an operator explicitly opts in with
+ * ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=1.
+ */
 export function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
-  return !/^(0|false|no|off)$/i.test(
-    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
+  return /^(1|true|yes|on)$/i.test(
+    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "").trim(),
   );
 }
 
@@ -61,9 +66,9 @@ export function shouldSkipIosPodInstall(env = process.env) {
 
 // An iOS build ships the on-device no-JIT Bun engine (and thus a real local
 // agent) when it is explicitly requested, OR when it is a store/App Store build
-// with the local runtime left enabled (the default). App Store builds are
-// cloud-hybrid: they keep the App Store-safe local runtime unless an operator
-// opts into a cloud-only thin client via ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0.
+// whose operator opted into the local runtime. App Store builds default to the
+// Cloud-only thin client (#16420); ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=1 keeps
+// the App Store-safe cloud-hybrid local runtime.
 // Exported so the release preflight + tests share one definition of "will the
 // shipped IPA actually contain a local agent runtime".
 export function shouldIncludeIosFullBunEngine(env = process.env) {

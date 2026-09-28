@@ -71,7 +71,7 @@ import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/ste
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
-import { client } from "@elizaos/ui/api";
+import { client, ElizaClient } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
   invokeDesktopBridgeRequest,
@@ -139,6 +139,11 @@ import {
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
 import {
+  exchangeRemoteAgentPairing,
+  parseRemoteAgentPairingDeepLink,
+  RemoteAgentPairingError,
+} from "@elizaos/ui/platform/remote-agent-pairing";
+import {
   dispatchRemoteControllerPairingIntent,
   parseRemoteControllerPairingDeepLink,
 } from "@elizaos/ui/platform/remote-target-pairing-intent";
@@ -170,6 +175,7 @@ import {
   savePersistedActiveServer,
 } from "@elizaos/ui/state/persistence";
 import { getPushToTalkAccelerator } from "@elizaos/ui/state/push-to-talk-hotkey";
+import { isTrustedBuildConfiguredRemoteApiBaseUrl } from "@elizaos/ui/state/runtime-url-trust";
 import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
 import {
   initStartupTrace,
@@ -204,7 +210,10 @@ import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
-import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
+import {
+  resolveAppCloudOnlyBranding,
+  resolveNativeCloudRuntimeMode,
+} from "./cloud-only-branding";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
@@ -469,10 +478,17 @@ const APP_BRANDING: Partial<BrandingConfig> = {
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode:
-      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
-        ? "cloud"
-        : undefined,
+    nativeRuntimeMode: resolveNativeCloudRuntimeMode({
+      platform: Capacitor.getPlatform(),
+      buildVariant:
+        typeof __ELIZA_BUILD_VARIANT__ === "string"
+          ? __ELIZA_BUILD_VARIANT__
+          : undefined,
+      iosRuntimeMode: (import.meta.env as Record<string, string | undefined>)
+        .VITE_ELIZA_IOS_RUNTIME_MODE,
+      androidCloudBuild: isAndroidCloudBuild(),
+      androidRemoteFallbackApiBase: getMobileRemoteFallbackApiBase(),
+    }),
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -2075,6 +2091,39 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   dispatchConnect();
 }
 
+// Remote-mode pairing QR/deep link for a hosted agent (remote-agent pairing
+// contract in @elizaos/core): `<scheme>://remote/agent-pair?v=1&url=&code=&instance=`.
+// The link carries a one-time code, never a token. The code is exchanged on a
+// separate client against the already-trusted origin (for Alpha phones, the
+// build-pinned VITE_ELIZA_REMOTE_FALLBACK_API_BASE), then the normal connect
+// path asks the user to confirm the host before switching.
+function pairRemoteAgentDeepLink(url: string): boolean {
+  const payload = parseRemoteAgentPairingDeepLink(url, APP_URL_SCHEME);
+  if (!payload) return false;
+  void exchangeRemoteAgentPairing(
+    payload,
+    new ElizaClient(payload.apiBase),
+    (apiBase) =>
+      isTrustedBuildConfiguredRemoteApiBaseUrl(apiBase) ||
+      isTrustedDeepLinkApiBaseUrl(new URL(apiBase)),
+  )
+    .then(({ apiBase, token }) => {
+      dispatchConnectRequest({
+        gatewayUrl: apiBase,
+        token,
+        completeFirstRun: true,
+      });
+    })
+    .catch((error: unknown) => {
+      // error-policy:J2 pairing failure is surfaced, never a silent connect
+      console.error(
+        `${APP_LOG_PREFIX} Remote agent pairing failed:`,
+        error instanceof RemoteAgentPairingError ? error.code : error,
+      );
+    });
+  return true;
+}
+
 async function recordIosAuthCallbackSmoke(
   parsed: URL,
   path: string,
@@ -2253,6 +2302,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
       subview: "my-runtimes",
     });
   }
+  if (pairRemoteAgentDeepLink(url)) return;
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,

@@ -37,6 +37,10 @@ import {
   parseActiveBillingNumber,
 } from "./active-billing-numeric";
 import {
+  type AutoTopUpChargeBreakdown,
+  autoTopUpChargeBreakdownFromMetadata,
+} from "./auto-top-up-charge-breakdown";
+import {
   billingResourceCancellationsService,
   type RequestBillingCancellationOptions,
 } from "./billing-resource-cancellations";
@@ -83,6 +87,8 @@ export interface BillingLedgerEntry {
   resourceType: BillableResourceType | "credits" | "usage" | "unknown";
   resourceId: string | null;
   metadata: Record<string, unknown>;
+  /** Auto top-up line items (base, affiliate markup, platform fee, total), #23020. */
+  chargeBreakdown: AutoTopUpChargeBreakdown | null;
 }
 
 export interface CancelBillableResourceOptions {
@@ -372,6 +378,7 @@ class ActiveBillingService {
         resourceType: detected.resourceType,
         resourceId: detected.resourceId,
         metadata,
+        chargeBreakdown: autoTopUpChargeBreakdownFromMetadata(metadata),
       };
     });
   }
