@@ -9,6 +9,7 @@ vi.mock("@elizaos/app", async () => {
 		typeof import("../../../../src/services/steward-sidecar")
 	>("../../../../src/services/steward-sidecar");
 	return {
+		resolveDesktopStewardStateRoot: actual.resolveDesktopStewardStateRoot,
 		createDesktopStewardSidecar: (
 			overrides?: Parameters<typeof actual.createDesktopStewardSidecar>[0],
 		) => {
@@ -104,7 +105,7 @@ describe("resetSteward", () => {
 	});
 
 	it("refuses to delete a directory that holds no steward data", async () => {
-		const notSteward = path.join(root, "projects");
+		const notSteward = path.join(root, "state", "acme", "projects");
 		fs.mkdirSync(notSteward, { recursive: true });
 		const keep = path.join(notSteward, "notes.txt");
 		fs.writeFileSync(keep, "keep");
@@ -116,9 +117,21 @@ describe("resetSteward", () => {
 		expect(fs.existsSync(keep)).toBe(true);
 	});
 
-	it("refuses to delete the home directory", async () => {
-		process.env.STEWARD_DATA_DIR = os.homedir();
+	it("refuses a STEWARD_DATA_DIR outside the state roots even if it holds steward data", async () => {
+		const outside = path.join(root, "elsewhere");
+		const credentials = seedStewardData(outside);
+		process.env.STEWARD_DATA_DIR = outside;
 
-		await expect(resetSteward()).rejects.toThrow(/Refusing to delete/);
+		await expect(resetSteward()).rejects.toThrow(/outside/);
+		expect(fs.existsSync(credentials)).toBe(true);
+	});
+
+	it("refuses to delete the state root itself", async () => {
+		const stateRoot = path.join(root, "state", "acme");
+		const credentials = seedStewardData(stateRoot);
+		process.env.STEWARD_DATA_DIR = stateRoot;
+
+		await expect(resetSteward()).rejects.toThrow(/outside/);
+		expect(fs.existsSync(credentials)).toBe(true);
 	});
 });

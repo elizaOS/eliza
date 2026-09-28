@@ -17,23 +17,35 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type {
 	StewardSidecar,
 	StewardSidecarStatus,
 } from "../../../../src/services/steward-sidecar";
 import { logger } from "../logger";
+import { resolveStateDir } from "./auth-bridge";
+
+function isStrictlyInside(dir: string, root: string): boolean {
+	const relative = path.relative(path.resolve(root), dir);
+	return (
+		relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+	);
+}
 
 /**
- * Guard the recursive delete in `resetSteward`: never remove the filesystem
- * root or the home directory, and only remove an existing directory that
- * holds steward state (`credentials.json` or `data/`).
+ * Guard the recursive delete in `resetSteward`: the directory must sit inside
+ * the sidecar's own state root or the app state dir (so a stray
+ * STEWARD_DATA_DIR cannot point the delete elsewhere), and an existing
+ * directory must hold steward state (`credentials.json` or `data/`).
  */
-function assertStewardDataDirDeletable(dataDir: string): void {
-	const home = path.resolve(os.homedir());
-	if (dataDir === path.parse(dataDir).root || dataDir === home) {
-		throw new Error(`[Steward] Refusing to delete ${dataDir}`);
+function assertStewardDataDirDeletable(
+	dataDir: string,
+	allowedRoots: readonly string[],
+): void {
+	if (!allowedRoots.some((root) => isStrictlyInside(dataDir, root))) {
+		throw new Error(
+			`[Steward] Refusing to delete ${dataDir}: outside ${allowedRoots.join(" and ")}`,
+		);
 	}
 	if (
 		fs.existsSync(dataDir) &&
@@ -276,7 +288,11 @@ export async function resetSteward(): Promise<StewardSidecarStatus> {
 	const resolvedDataDir = path.resolve(
 		(await getStewardSidecar()).getDataDir(),
 	);
-	assertStewardDataDirDeletable(resolvedDataDir);
+	const { resolveDesktopStewardStateRoot } = await loadStewardSidecarModule();
+	assertStewardDataDirDeletable(resolvedDataDir, [
+		resolveDesktopStewardStateRoot(),
+		resolveStateDir(),
+	]);
 
 	await stopSteward();
 

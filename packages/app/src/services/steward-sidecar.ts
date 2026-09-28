@@ -798,9 +798,11 @@ export class StewardSidecar {
  *   - STEWARD_ENTRY_POINT: path to steward API entry
  *   - DATABASE_URL: Postgres connection string
  */
-export function createDesktopStewardSidecar(
-  overrides?: Partial<StewardSidecarConfig>,
-): StewardSidecar {
+/**
+ * Per-namespace state root the desktop sidecar keeps its data under by
+ * default: `$XDG_STATE_HOME|~/.local/state` + `/<namespace>`.
+ */
+export function resolveDesktopStewardStateRoot(): string {
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
@@ -809,11 +811,17 @@ export function createDesktopStewardSidecar(
       ? xdgStateHome
       : path.join(home, xdgStateHome)
     : path.join(home, ".local", "state");
+  return path.join(stateHome, namespace);
+}
+
+export function createDesktopStewardSidecar(
+  overrides?: Partial<StewardSidecarConfig>,
+): StewardSidecar {
   return new StewardSidecar({
     dataDir:
       process.env.STEWARD_DATA_DIR ||
       overrides?.dataDir ||
-      path.join(stateHome, namespace, "steward"),
+      path.join(resolveDesktopStewardStateRoot(), "steward"),
     port:
       parseInt(process.env.STEWARD_PORT || "", 10) ||
       overrides?.port ||
