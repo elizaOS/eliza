@@ -6,6 +6,7 @@ import { usePairingState } from "./usePairingState";
 const mocks = vi.hoisted(() => ({
   pair: vi.fn(),
   getBaseUrl: vi.fn(() => "http://10.0.2.2:31338"),
+  getRestAuthToken: vi.fn(() => "test-session" as string | null),
   setToken: vi.fn(),
   persist: vi.fn(),
   resume: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("../first-run/adopt-remote-first-run", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getBaseUrl.mockReturnValue("http://10.0.2.2:31338");
+  mocks.getRestAuthToken.mockReturnValue("test-session");
   mocks.pair.mockResolvedValue({ token: "test-session" });
   mocks.persist.mockResolvedValue(undefined);
   mocks.resume.mockRejectedValue(new Error("Host setup unavailable"));
@@ -71,6 +73,19 @@ it("refreshes the startup coordinator after the paired setup completes", async (
     mocks.resume.mock.invocationCallOrder[0],
   );
   expect(result.current.state.pairingError).toBeNull();
+});
+
+it("uses a new pairing code after a previously paired same-base token is revoked", async () => {
+  mocks.resume.mockResolvedValue(undefined);
+  const { result } = renderHook(() => usePairingState(vi.fn()));
+  act(() => result.current.setPairingCodeInput("FIRST-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  mocks.getRestAuthToken.mockReturnValue(null);
+  mocks.pair.mockResolvedValue({ token: "replacement-session" });
+  act(() => result.current.setPairingCodeInput("NEW-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.pair).toHaveBeenNthCalledWith(2, "NEW-CODE");
+  expect(mocks.setToken).toHaveBeenLastCalledWith("replacement-session");
 });
 
 it("pairs again after authenticated setup rejects the issued session", async () => {

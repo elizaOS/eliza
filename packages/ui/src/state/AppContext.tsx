@@ -1548,6 +1548,7 @@ function AppProviderInner({
         }
         const cleared = scrubRevokedRemoteCredential(token, apiBase);
         client.setToken(null);
+        setPairingCodeInput("");
         setActionNotice(
           "This device's session ended. Pair it again.",
           "error",
@@ -1565,7 +1566,7 @@ function AppProviderInner({
             );
           });
       }),
-    [retryStartup, setActionNotice],
+    [retryStartup, setActionNotice, setPairingCodeInput],
   );
 
   // Memoize the coordinator handle so that unrelated re-renders (e.g. chatInput

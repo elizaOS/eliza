@@ -76,6 +76,12 @@ export function usePairingState(onPaired: () => void) {
     if (pairedApiBaseRef.current !== apiBase) pairedApiBaseRef.current = null;
     if (pendingCredentialRef.current?.apiBase !== apiBase)
       pendingCredentialRef.current = null;
+    // A prior successful pair can be revoked while this hook remains mounted.
+    // Its same-base retry marker must not skip a fresh one-time code.
+    if (pairedApiBaseRef.current && !client.getRestAuthToken()) {
+      pairedApiBaseRef.current = null;
+      pendingCredentialRef.current = null;
+    }
     const code = pairingCodeInput.trim();
     if (!code && !pairedApiBaseRef.current && !pendingCredentialRef.current) {
       setPairingError("Enter the pairing code from your server.");
