@@ -59,20 +59,6 @@ mock.module("@/lib/services/auto-top-up", () => ({
     },
   },
 }));
-// The route's auth graph (repositories -> allowance-first funding) imports
-// other credits exports, so keep them real and replace only the pack lookup.
-const creditsActual = await import("@/lib/services/credits");
-mock.module("@/lib/services/credits", () => ({
-  ...creditsActual,
-  creditsService: {
-    getCreditPackById: async () => ({
-      is_active: true,
-      stripe_price_id: "price_test",
-      price_cents: 500,
-      credits: 5,
-    }),
-  },
-}));
 mock.module("@/lib/services/stripe-customer-authority", () => ({
   stripeCustomerAuthorityService: {
     ensure: async () => {
@@ -263,13 +249,14 @@ for (const path of ["checkout", "topup", "portal"]) {
     });
 }
 
-test("checkout: primary downgrade during price lookup prevents durable payment effects", async () => {
-  afterPriceRead = async () => {
-    await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
-  };
-  expect(
-    (await request("checkout", {}, org, { creditPackId: randomUUID() })).status,
-  ).toBe(403);
+test("checkout: a retired credit pack id is rejected before payment effects (#22963)", async () => {
+  const response = await request("checkout", {}, org, {
+    creditPackId: randomUUID(),
+  });
+  expect(response.status).toBe(400);
+  expect(((await response.json()) as { error?: string }).error).toMatch(
+    /Credit packs are retired/,
+  );
   expect(effects).toEqual([]);
 });
 test("checkout: hardware checkout retains existing member authority", async () => {
@@ -282,8 +269,8 @@ test("checkout: hardware checkout retains existing member authority", async () =
 });
 
 for (const [amount, cents] of [
-  [1, 100],
-  [1.15, 115],
+  [5, 500],
+  [5.15, 515],
   [19.99, 1999],
   [1000, 100000],
 ]) {
@@ -295,7 +282,7 @@ for (const [amount, cents] of [
     );
   });
 }
-for (const amount of [0.99, 1000.01, 1.001, 1.1500000000000001]) {
+for (const amount of [1, 4.99, 1000.01, 5.001, 5.150000000000001]) {
   test(`checkout rejects ${amount} before payment effects`, async () => {
     const response = await request("checkout", {}, org, { amount });
     expect(response.status).toBe(400);

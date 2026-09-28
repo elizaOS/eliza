@@ -8,6 +8,10 @@
 
 "use client";
 
+import {
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+  ORGANIZATION_CREDIT_TOP_UP_PRESETS_USD,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { CornerBrackets, Input, Label } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
@@ -84,9 +88,11 @@ interface BillingTabProps {
   billingCancellationCoordinator?: BillingCancelIntentCoordinator;
 }
 
+// Pay-as-you-go top-up bounds come from the server's checkout contract; the
+// quick picks are plain amounts of the same checkout, not priced packs.
 const AMOUNT_LIMITS = {
-  MIN: 1,
-  MAX: 10000,
+  MIN: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+  MAX: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
 } as const;
 
 type PaymentMethod = "card" | "crypto";
@@ -795,6 +801,50 @@ export function BillingTab({
                     </Button>
                   </div>
                 )}
+
+                {paymentMethod === "crypto" && cryptoStatus?.enabled ? (
+                  <p
+                    className="text-sm text-muted-strong"
+                    data-testid="crypto-refund-policy"
+                  >
+                    {t("cloud.billingTab.cryptoRefundPolicy", {
+                      defaultValue:
+                        "Crypto payments can't be reversed on-chain. If a refund is due, it is issued as Eliza Cloud credits, never back to your wallet, a card or a bank account.",
+                    })}
+                  </p>
+                ) : null}
+
+                <fieldset
+                  className="flex flex-wrap gap-2"
+                  aria-label={t("cloud.billingTab.quickAmounts", {
+                    defaultValue: "Quick amounts",
+                  })}
+                >
+                  {ORGANIZATION_CREDIT_TOP_UP_PRESETS_USD.map((preset) => {
+                    const selected = amountValue === preset;
+                    return (
+                      <Button
+                        key={preset}
+                        variant="choice"
+                        type="button"
+                        disabled={isProcessingCheckout}
+                        onClick={() => {
+                          setPurchaseAmount(String(preset));
+                          setCardCheckoutError(null);
+                          if (submitAttempted) setSubmitAttempted(false);
+                        }}
+                        aria-pressed={selected}
+                        data-state={selected ? "on" : "off"}
+                        className="font-mono tabular-nums"
+                      >
+                        {t("cloud.billingTab.presetAmount", {
+                          amount: preset,
+                          defaultValue: "$" + "{{amount}}",
+                        })}
+                      </Button>
+                    );
+                  })}
+                </fieldset>
 
                 <SemanticForm
                   onSubmit={handleSubmitBuy}

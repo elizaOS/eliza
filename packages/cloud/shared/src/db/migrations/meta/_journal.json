@@ -3291,6 +3291,48 @@
       "when": 1796083200117,
       "tag": "0495_agent_backup_restore_serving_state",
       "breakpoints": true
+    },
+    {
+      "idx": 470,
+      "version": "7",
+      "when": 1796083200118,
+      "tag": "0500_retire_creator_monetization",
+      "breakpoints": true
+    },
+    {
+      "idx": 471,
+      "version": "7",
+      "when": 1796083200119,
+      "tag": "0501_agent_funding_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 472,
+      "version": "7",
+      "when": 1796083200120,
+      "tag": "0502_free_mcp_listings",
+      "breakpoints": true
+    },
+    {
+      "idx": 473,
+      "version": "7",
+      "when": 1796083200121,
+      "tag": "0503_storage_pricing_catalogue_mirror",
+      "breakpoints": true
+    },
+    {
+      "idx": 474,
+      "version": "7",
+      "when": 1796083200122,
+      "tag": "0504_retire_credit_packs",
+      "breakpoints": true
+    },
+    {
+      "idx": 475,
+      "version": "7",
+      "when": 1796083200123,
+      "tag": "0505_api_key_plan_ceilings",
+      "breakpoints": true
     }
   ]
 }

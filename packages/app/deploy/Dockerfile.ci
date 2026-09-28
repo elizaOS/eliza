@@ -3,6 +3,10 @@
 # Pre-built artifacts come from GHA (bun install + tsdown + vite build done before docker)
 ARG NODE_VERSION=24
 ARG BUN_VERSION=1.4.2
+# Base image references. Reproducible deployments (deploy/dstack-alpha) pass
+# digest-pinned values; the defaults keep the tag-based CI behavior.
+ARG NODE_IMAGE=node:${NODE_VERSION}-slim
+ARG BUN_IMAGE=oven/bun:${BUN_VERSION}
 ARG APP_CORE_DIR=packages/app
 ARG AGENT_DIR=packages/agent
 ARG APP_DIR=packages/app
@@ -24,7 +28,7 @@ ARG TAILSCALE_VERSION=1.98.3
 # Install the declared external dependencies of the supported runtime closure.
 # Copy manifests separately so source edits do not invalidate the install layer.
 # Browser and native exclusions are owned by the shared dependency collector.
-FROM node:${NODE_VERSION}-slim AS runtime-deps
+FROM ${NODE_IMAGE} AS runtime-deps
 WORKDIR /app
 ARG APP_CORE_DIR
 COPY --parents package.json bun.lock \
@@ -48,7 +52,7 @@ RUN mkdir -p /deps \
     --fetch-retry-maxtimeout=120000 \
     $(cat /deps/deps.txt)
 
-FROM node:${NODE_VERSION}-slim AS pruner
+FROM ${NODE_IMAGE} AS pruner
 WORKDIR /app
 COPY . .
 ARG APP_CORE_DIR
@@ -115,16 +119,16 @@ RUN find node_modules -name '*.map' -delete 2>/dev/null; \
 # trees). So install tsx in a dedicated stage and COPY it into the final image
 # at `/opt/tsx` (referenced absolutely by APP_CMD_START). Idempotent and
 # version-pinned.
-FROM node:${NODE_VERSION}-slim AS tsx
+FROM ${NODE_IMAGE} AS tsx
 RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.23.15 \
   && npm cache clean --force
 
 # Workflow execution uses Bun's SQLite runtime even when the agent entrypoint
 # runs on Node. Copy only the pinned binary so the final image can execute
 # Smithers workers without inheriting the full build-stage filesystem.
-FROM oven/bun:${BUN_VERSION} AS bun-runtime
+FROM ${BUN_IMAGE} AS bun-runtime
 
-FROM node:${NODE_VERSION}-slim
+FROM ${NODE_IMAGE}
 ARG BUN_VERSION
 ARG APP_CORE_DIR
 ARG APP_ENTRYPOINT

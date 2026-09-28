@@ -553,7 +553,7 @@ export function AffiliatesPageClient() {
             </strong>{" "}
             {t("cloud.affiliates.pricingExampleBody", {
               defaultValue:
-                "If an API normally costs 10 credits and you set a 20% markup, your user pays 12 credits. You will earn exactly 2 credits which drops instantly into your redeemable token balance.",
+                "If an API normally costs 10 credits and you set a 20% markup, your user pays 12 credits. You earn exactly 2 credits, which are added to your affiliate earnings.",
             })}
           </div>
         </Alert>

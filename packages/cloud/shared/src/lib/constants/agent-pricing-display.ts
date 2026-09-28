@@ -7,5 +7,4 @@ export {
   formatUSD,
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
-  packSavingsPercent,
 } from "@elizaos/cloud-sdk/browser-contracts";

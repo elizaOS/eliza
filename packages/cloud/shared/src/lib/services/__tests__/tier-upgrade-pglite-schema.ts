@@ -553,6 +553,7 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "created_at" timestamp NOT NULL DEFAULT now(),
   "updated_at" timestamp NOT NULL DEFAULT now(),
   "deleted_at" timestamp,
+  "user_created" boolean NOT NULL DEFAULT false,
   PRIMARY KEY ("id")
 )`,
   `CREATE TABLE IF NOT EXISTS "jobs" (

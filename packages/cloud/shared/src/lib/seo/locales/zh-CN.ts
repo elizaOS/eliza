@@ -57,7 +57,8 @@ export const seoMessages: SeoMessages = {
     },
     billing: {
       title: "账单与积分",
-      description: "管理你的积分、查看使用情况、购买积分包。所有 AI 操作价格透明。",
+      description:
+        "订阅 Plus 或 Pro 获取每月额度，或按需充值 $5 至 $1,000 的预付积分。所有 AI 操作价格透明。",
     },
     apiKeys: {
       title: "API 密钥",

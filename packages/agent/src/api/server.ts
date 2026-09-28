@@ -247,6 +247,7 @@ import {
   extractWebSocketHandshakeToken,
   getConfiguredApiToken,
   getPairingExpiresAt,
+  getPairingInstanceId,
   isAllowedHost,
   isAuthorized,
   isBoundaryRoleAuthorized,
@@ -2039,6 +2040,7 @@ async function handleRequestForViewClient(
       normalizePairingCode,
       rateLimitPairing,
       getPairingExpiresAt,
+      getPairingInstanceId,
       clearPairing,
     })
   ) {

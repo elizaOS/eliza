@@ -30,7 +30,12 @@ import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
-import { putPublicObject } from "@/lib/storage/r2-public-object";
+import {
+  assertGeneratedMediaStorageHeadroom,
+  discardGeneratedMediaObject,
+  putGeneratedMediaObject,
+  type StoredGeneratedMedia,
+} from "@/lib/storage/generated-media-storage";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
@@ -78,16 +83,21 @@ interface StoredAudio {
 
 async function storeGeneratedSfx(
   env: Bindings,
+  organizationId: string,
   generated: GeneratedAudio,
   keyPrefix: string,
   customMetadata: Record<string, string>,
-): Promise<StoredAudio> {
+): Promise<{ stored: StoredAudio; storage: StoredGeneratedMedia | null }> {
   if (generated.source === "hosted") {
+    // Provider-hosted results never touch Cloud R2, so they use no storage.
     return {
-      url: generated.url,
-      file_name: generated.fileName,
-      file_size: generated.fileSize,
-      content_type: generated.contentType,
+      stored: {
+        url: generated.url,
+        file_name: generated.fileName,
+        file_size: generated.fileSize,
+        content_type: generated.contentType,
+      },
+      storage: null,
     };
   }
 
@@ -100,17 +110,22 @@ async function storeGeneratedSfx(
     generated.bytes.byteOffset,
     generated.bytes.byteOffset + generated.bytes.byteLength,
   ) as ArrayBuffer;
-  const stored = await putPublicObject(env, {
+  // Byte results count toward the organization storage quota (#20956).
+  const storage = await putGeneratedMediaObject(env, {
+    organizationId,
     key,
     body,
     contentType: generated.contentType,
     customMetadata,
   });
   return {
-    url: stored.url,
-    file_name: key.split("/").at(-1),
-    file_size: generated.bytes.byteLength,
-    content_type: generated.contentType,
+    stored: {
+      url: storage.url,
+      file_name: key.split("/").at(-1),
+      file_size: storage.sizeBytes,
+      content_type: generated.contentType,
+    },
+    storage,
   };
 }
 
@@ -240,6 +255,11 @@ app.post("/", async (c) => {
       billingSource: definition.billingSource,
     };
 
+    // A full storage quota is refused before admission, so it is never charged.
+    if (getAudioProvider(definition.billingSource).storesOutputInCloud) {
+      await assertGeneratedMediaStorageHeadroom(user.organization_id);
+    }
+
     try {
       admission = await admitFlatGenerativeOperation({
         c,
@@ -290,8 +310,9 @@ app.post("/", async (c) => {
       },
     });
 
-    const audio = await storeGeneratedSfx(
+    const { stored: audio, storage } = await storeGeneratedSfx(
       c.env,
+      user.organization_id,
       generated,
       `generations/sfx/${user.organization_id}/${user.id}`,
       {
@@ -304,37 +325,51 @@ app.post("/", async (c) => {
 
     const requestId = generated.requestId;
     const generationId = crypto.randomUUID();
-    await generationsService.create({
-      id: generationId,
-      organization_id: user.organization_id,
-      user_id: user.id,
-      type: "sfx",
-      model: request.model,
-      provider: definition.provider,
-      prompt: request.prompt,
-      result: {
-        requestId,
-        billingSource: definition.billingSource,
-        raw: generated.raw,
-      },
-      status: "completed",
-      storage_url: audio.url,
-      thumbnail_url: null,
-      file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
-      mime_type: audio.content_type ?? "audio/mpeg",
-      parameters: {
-        durationSeconds,
-        promptInfluence: request.promptInfluence,
-        outputFormat: request.outputFormat,
-      },
-      dimensions: {
-        duration: durationSeconds,
-      },
-      cost: String(cost.totalCost),
-      credits: String(cost.totalCost),
-      job_id: requestId,
-      completed_at: new Date(),
-    });
+    try {
+      await generationsService.create({
+        id: generationId,
+        organization_id: user.organization_id,
+        user_id: user.id,
+        type: "sfx",
+        model: request.model,
+        provider: definition.provider,
+        prompt: request.prompt,
+        result: {
+          requestId,
+          billingSource: definition.billingSource,
+          ...(storage ? { storageQuotaBytes: storage.storageQuotaBytes } : {}),
+          raw: generated.raw,
+        },
+        status: "completed",
+        storage_url: audio.url,
+        thumbnail_url: null,
+        file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
+        mime_type: audio.content_type ?? "audio/mpeg",
+        parameters: {
+          durationSeconds,
+          promptInfluence: request.promptInfluence,
+          outputFormat: request.outputFormat,
+        },
+        dimensions: {
+          duration: durationSeconds,
+        },
+        cost: String(cost.totalCost),
+        credits: String(cost.totalCost),
+        job_id: requestId,
+        completed_at: new Date(),
+      });
+    } catch (error) {
+      // error-policy:J6 a stored object without its history row is removed and
+      // its storage released before the causal failure is rethrown.
+      if (storage) {
+        await discardGeneratedMediaObject(c.env, {
+          organizationId: user.organization_id,
+          key: storage.key,
+          storageQuotaBytes: storage.storageQuotaBytes,
+        });
+      }
+      throw error;
+    }
 
     const settlementTask = billFlatUsage(
       billingContext,
