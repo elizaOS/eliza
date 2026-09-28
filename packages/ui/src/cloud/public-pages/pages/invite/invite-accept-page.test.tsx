@@ -63,6 +63,8 @@ vi.mock("../../../../components/primitives", () => {
 
 import InviteAcceptPage from "./invite-accept-page";
 
+afterEach(cleanup);
+
 beforeEach(() => {
   navigateMock.mockReset();
   apiMock.mockReset();
