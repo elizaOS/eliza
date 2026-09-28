@@ -344,13 +344,41 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     id: string,
     error: OperationError,
   ): Promise<void> {
+    const finishedAt = Date.now();
+    await this.closeRunningPhase(id, finishedAt);
     await this.repository.update(id, {
       status: "failed",
-      finishedAt: Date.now(),
+      finishedAt,
       error,
     });
     logger.warn(
       `[runtime-ops] Operation ${id} failed: ${error.code ?? "unknown"} — ${error.message}`,
     );
+  }
+
+  /**
+   * A failure can interrupt a phase that was appended as `running` (the
+   * health-check gate, or a strategy-reported phase). Close it as failed so
+   * the persisted phase log never shows a running phase on a settled op.
+   * Best-effort: a phase-write failure is logged and must not stop the op
+   * itself from settling (which releases the single-flight gate).
+   */
+  private async closeRunningPhase(
+    id: string,
+    finishedAt: number,
+  ): Promise<void> {
+    try {
+      const op = await this.repository.get(id);
+      const last = op?.phases[op.phases.length - 1];
+      if (last?.status !== "running") return;
+      await this.repository.updateLastPhase(id, {
+        status: "failed",
+        finishedAt,
+      });
+    } catch (err) {
+      logger.error(
+        `[runtime-ops] Failed to close running phase for op ${id}: ${err instanceof Error ? err.stack : String(err)}`,
+      );
+    }
   }
 }

@@ -143,6 +143,13 @@ describe("DefaultRuntimeOperationManager", () => {
       code: "execution-failed",
     });
     expect(failed.finishedAt).toBeTypeOf("number");
+    const lastPhase = failed.phases[failed.phases.length - 1];
+    expect(lastPhase?.name).toBe("health-check");
+    expect(lastPhase?.status).toBe("failed");
+    expect(lastPhase?.finishedAt).toBeTypeOf("number");
+    expect(failed.phases.some((phase) => phase.status === "running")).toBe(
+      false,
+    );
     expect(await manager.findActive()).toBeNull();
 
     throwHealth = false;
@@ -153,5 +160,38 @@ describe("DefaultRuntimeOperationManager", () => {
     if (second.kind !== "accepted") return;
     const succeeded = await waitForTerminal(repository, second.operation.id);
     expect(succeeded.status).toBe("succeeded");
+  });
+  it("closes a strategy-reported running phase when the strategy throws", async () => {
+    const cold: ReloadStrategy = {
+      tier: "cold",
+      async apply({ reportPhase }) {
+        await reportPhase({
+          name: "cold-restart",
+          status: "running",
+          startedAt: Date.now(),
+        });
+        throw new Error("swap exploded");
+      },
+    };
+    const manager = new DefaultRuntimeOperationManager({
+      repository,
+      runtime: () => runtime,
+      classifyContext: () => ({}),
+      healthChecker: healthChecker(async () => OK_REPORT),
+      strategies: { cold },
+    });
+
+    const outcome = await manager.start({
+      intent: { kind: "restart", reason: "strategy-throws" },
+    });
+    if (outcome.kind !== "accepted") throw new Error(outcome.kind);
+
+    const failed = await waitForTerminal(repository, outcome.operation.id);
+    expect(failed.status).toBe("failed");
+    expect(failed.error?.message).toBe("swap exploded");
+    const lastPhase = failed.phases[failed.phases.length - 1];
+    expect(lastPhase?.name).toBe("cold-restart");
+    expect(lastPhase?.status).toBe("failed");
+    expect(lastPhase?.finishedAt).toBeTypeOf("number");
   });
 });
