@@ -6,7 +6,7 @@ import { organizations } from "./organizations";
 import { users } from "./users";
 
 /** Purposes a user can grant or revoke. Extend deliberately (API + UI contract). */
-export const USER_CONSENT_PURPOSES = ["vision_capture", "trajectory_training"] as const;
+export const USER_CONSENT_PURPOSES = ["vision_capture"] as const;
 export type UserConsentPurpose = (typeof USER_CONSENT_PURPOSES)[number];
 
 /**
@@ -42,7 +42,7 @@ export const userConsents = pgTable(
     ),
     purpose_check: check(
       "user_consents_purpose_check",
-      sql`${table.purpose} IN ('vision_capture', 'trajectory_training')`,
+      sql`${table.purpose} IN ('vision_capture')`,
     ),
   }),
 );

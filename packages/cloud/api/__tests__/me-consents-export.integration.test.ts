@@ -1,7 +1,8 @@
 /**
  * Drives the consent ledger and live data-export routes on real PGlite:
  * latest-per-purpose reads, audit written in the consent transaction (and
- * rolled back with it), the training-capture gate, and the explicit 413.
+ * rolled back with it), the read-only model-call recording disclosure, and
+ * the explicit 413.
  */
 import {
   afterAll,
@@ -52,7 +53,6 @@ let closeDatabaseConnectionsForTests: typeof import("@/db/client").closeDatabase
 let consentsRoute: typeof import("../v1/me/consents/route").default;
 let createDataExportRoute: typeof import("../v1/me/data-export/route").createDataExportRoute;
 let auditEventsSink: typeof import("../src/services/audit-events").auditEventsSink;
-let isTrajectoryCaptureAllowed: typeof import("@/lib/services/user-consents").isTrajectoryCaptureAllowed;
 let AccountDeletionExportError: typeof import("@/lib/services/account-deletion-export").AccountDeletionExportError;
 
 beforeAll(async () => {
@@ -61,9 +61,6 @@ beforeAll(async () => {
   consentsRoute = (await import("../v1/me/consents/route")).default;
   ({ createDataExportRoute } = await import("../v1/me/data-export/route"));
   ({ auditEventsSink } = await import("../src/services/audit-events"));
-  ({ isTrajectoryCaptureAllowed } = await import(
-    "@/lib/services/user-consents"
-  ));
   ({ AccountDeletionExportError } = await import(
     "@/lib/services/account-deletion-export"
   ));
@@ -94,7 +91,8 @@ beforeAll(async () => {
 
 afterEach(async () => {
   mock.restore();
-  delete process.env.TRAJECTORY_CAPTURE_REQUIRES_CONSENT;
+  delete process.env.LLM_TRAJECTORY_CAPTURE;
+  delete process.env.LLM_TRAJECTORY_RETENTION_DAYS;
   await dbWrite.execute(sql`DELETE FROM user_consents`);
   await dbWrite.execute(sql`DELETE FROM auth_events`);
 });
@@ -124,12 +122,39 @@ async function auditActions(): Promise<string[]> {
   return result.rows.map((row) => row.action);
 }
 
+type ConsentsBody = {
+  consents: Array<{ purpose: string; granted: boolean }>;
+  effective: Array<{
+    purpose: string;
+    granted: boolean;
+    basis: string;
+    defaultGranted: boolean;
+  }>;
+  capture: {
+    modelCallRecording: {
+      enabled: boolean;
+      source: string;
+      retentionDays: number;
+    };
+  };
+};
+
+async function readConsents(): Promise<ConsentsBody> {
+  const response = await consentsRoute.request(
+    "http://localhost/",
+    undefined,
+    WORKER_ENV,
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()) as ConsentsBody;
+}
+
 describe("/api/v1/me/consents", () => {
   test(
     "POST records a decision with its audit event and GET returns the latest per purpose",
     async () => {
       const first = await postConsent({
-        purpose: "trajectory_training",
+        purpose: "vision_capture",
         granted: true,
         policyVersion: "2026-09",
       });
@@ -138,7 +163,7 @@ describe("/api/v1/me/consents", () => {
         consent: Record<string, unknown>;
       };
       expect(created.consent).toMatchObject({
-        purpose: "trajectory_training",
+        purpose: "vision_capture",
         granted: true,
         policyVersion: "2026-09",
         source: "api",
@@ -146,24 +171,21 @@ describe("/api/v1/me/consents", () => {
       expect(typeof created.consent.recordedAt).toBe("string");
 
       await postConsent({
-        purpose: "trajectory_training",
+        purpose: "vision_capture",
         granted: false,
         policyVersion: "2026-09",
       });
-      const list = await consentsRoute.request(
-        "http://localhost/",
-        undefined,
-        WORKER_ENV,
-      );
-      expect(list.status).toBe(200);
-      const body = (await list.json()) as {
-        consents: Array<{ purpose: string; granted: boolean }>;
-      };
+      const body = await readConsents();
       expect(body.consents).toEqual([
-        expect.objectContaining({
-          purpose: "trajectory_training",
+        expect.objectContaining({ purpose: "vision_capture", granted: false }),
+      ]);
+      expect(body.effective).toEqual([
+        {
+          purpose: "vision_capture",
           granted: false,
-        }),
+          basis: "recorded",
+          defaultGranted: false,
+        },
       ]);
       expect(await auditActions()).toEqual([
         "consent.granted",
@@ -174,64 +196,44 @@ describe("/api/v1/me/consents", () => {
   );
 
   test(
-    "GET reports the effective policy for a no-choice account under both server defaults",
+    "GET discloses the deployment recording policy without a consent purpose",
     async () => {
-      const read = async () =>
-        (await (
-          await consentsRoute.request(
-            "http://localhost/",
-            undefined,
-            WORKER_ENV,
-          )
-        ).json()) as {
-          consents: unknown[];
-          effective: Array<{
-            purpose: string;
-            granted: boolean;
-            basis: string;
-            defaultGranted: boolean;
-          }>;
-        };
-
-      const optOut = await read();
-      expect(optOut.consents).toEqual([]);
-      expect(optOut.effective).toEqual([
+      const unset = await readConsents();
+      expect(unset.consents).toEqual([]);
+      expect(unset.effective).toEqual([
         {
           purpose: "vision_capture",
           granted: false,
           basis: "default",
           defaultGranted: false,
         },
-        {
-          purpose: "trajectory_training",
-          granted: true,
-          basis: "default",
-          defaultGranted: true,
-        },
       ]);
+      // NODE_ENV=test is non-production: recording defaults on.
+      expect(unset.capture).toEqual({
+        modelCallRecording: {
+          enabled: true,
+          source: "deployment-default",
+          retentionDays: 90,
+        },
+      });
 
-      process.env.TRAJECTORY_CAPTURE_REQUIRES_CONSENT = "true";
-      const optIn = await read();
-      expect(optIn.effective).toContainEqual({
-        purpose: "trajectory_training",
-        granted: false,
-        basis: "default",
-        defaultGranted: false,
+      process.env.LLM_TRAJECTORY_CAPTURE = "off";
+      process.env.LLM_TRAJECTORY_RETENTION_DAYS = "30";
+      expect((await readConsents()).capture).toEqual({
+        modelCallRecording: {
+          enabled: false,
+          source: "explicit",
+          retentionDays: 30,
+        },
       });
-      expect(await isTrajectoryCaptureAllowed(USER_ID, ORG_ID)).toBe(false);
 
-      await postConsent({
-        purpose: "trajectory_training",
-        granted: true,
-        policyVersion: "2026-09",
-      });
-      const granted = await read();
-      expect(granted.effective).toContainEqual({
-        purpose: "trajectory_training",
-        granted: true,
-        basis: "recorded",
-        defaultGranted: false,
-      });
+      process.env.LLM_TRAJECTORY_CAPTURE = "sometimes";
+      const invalid = await consentsRoute.request(
+        "http://localhost/",
+        undefined,
+        WORKER_ENV,
+      );
+      expect(invalid.status).toBeGreaterThanOrEqual(500);
     },
     PGLITE_TIMEOUT_MS,
   );
@@ -279,43 +281,14 @@ describe("/api/v1/me/consents", () => {
         WORKER_ENV,
       );
       expect(crossSite.status).toBe(403);
-      const unknown = await postConsent({
-        purpose: "marketing",
-        granted: true,
-        policyVersion: "1",
-      });
-      expect(unknown.status).toBe(400);
-    },
-    PGLITE_TIMEOUT_MS,
-  );
-});
-
-describe("trajectory capture consent gate", () => {
-  test(
-    "explicit revocation blocks capture; no record follows TRAJECTORY_CAPTURE_REQUIRES_CONSENT",
-    async () => {
-      expect(await isTrajectoryCaptureAllowed(USER_ID, ORG_ID, {})).toBe(true);
-      expect(
-        await isTrajectoryCaptureAllowed(USER_ID, ORG_ID, {
-          TRAJECTORY_CAPTURE_REQUIRES_CONSENT: "true",
-        }),
-      ).toBe(false);
-      await postConsent({
-        purpose: "trajectory_training",
-        granted: false,
-        policyVersion: "1",
-      });
-      expect(await isTrajectoryCaptureAllowed(USER_ID, ORG_ID, {})).toBe(false);
-      await postConsent({
-        purpose: "trajectory_training",
-        granted: true,
-        policyVersion: "1",
-      });
-      expect(
-        await isTrajectoryCaptureAllowed(USER_ID, ORG_ID, {
-          TRAJECTORY_CAPTURE_REQUIRES_CONSENT: "true",
-        }),
-      ).toBe(true);
+      for (const purpose of ["marketing", "trajectory_training"]) {
+        const unknown = await postConsent({
+          purpose,
+          granted: true,
+          policyVersion: "1",
+        });
+        expect(unknown.status).toBe(400);
+      }
     },
     PGLITE_TIMEOUT_MS,
   );

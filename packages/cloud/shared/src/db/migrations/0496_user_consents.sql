@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS "user_consents" (
   "policy_version" text NOT NULL,
   "source" text NOT NULL,
   "recorded_at" timestamp with time zone DEFAULT now() NOT NULL,
-  CONSTRAINT "user_consents_purpose_check" CHECK ("purpose" IN ('vision_capture', 'trajectory_training'))
+  CONSTRAINT "user_consents_purpose_check" CHECK ("purpose" IN ('vision_capture'))
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "user_consents_user_purpose_idx"

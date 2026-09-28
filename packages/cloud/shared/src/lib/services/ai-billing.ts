@@ -751,15 +751,12 @@ export async function recordUsageAnalytics(
       });
     }
 
-    // Log LLM call trajectory for training data collection, only when the
-    // user's server-recorded consent allows it. A consent lookup failure
-    // lands in the catch below and skips capture (fail closed).
+    // Record the model call for training when the deployment capture policy
+    // allows it (production defaults off). A policy/config error lands in the
+    // catch below and skips capture (fail closed).
     try {
-      const { isTrajectoryCaptureAllowed } = await import("./user-consents");
-      if (!(await isTrajectoryCaptureAllowed(context.userId, context.organizationId))) {
-        logger.debug("[AI Billing] Trajectory capture skipped by user consent", {
-          organizationId: context.organizationId,
-        });
+      const { resolveTrajectoryCapturePolicy } = await import("../config/llm-trajectory-policy");
+      if (!resolveTrajectoryCapturePolicy().enabled) {
         return usageRecord;
       }
       const { llmTrajectoryService } = await import("./llm-trajectory");

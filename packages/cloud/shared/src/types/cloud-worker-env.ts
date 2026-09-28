@@ -85,6 +85,12 @@ export interface Bindings {
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
   BLOB: RuntimeR2Bucket;
+  /**
+   * Optional dedicated PRIVATE bucket for recorded model-call payloads. `BLOB`
+   * has a public host and is never used for them; without this binding the
+   * encrypted payloads stay inline in Postgres.
+   */
+  TRAJECTORY_BLOB?: RuntimeR2Bucket;
 
   // ---- Cloudflare KV (Worker cache backend) ----
   /**
@@ -332,7 +338,10 @@ export interface Bindings {
    * below 1024 are ignored.
    */
   SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
-  LLM_TRAJECTORY_STORAGE?: string;
+  /** `on` / `off`; unset = off in production, on elsewhere. */
+  LLM_TRAJECTORY_CAPTURE?: string;
+  /** Days recorded model calls are kept (default 90). */
+  LLM_TRAJECTORY_RETENTION_DAYS?: string;
 
   // ---- First-party login ----
   /** Authoritative base URL of the owned @elizaos/auth service. */

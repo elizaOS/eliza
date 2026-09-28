@@ -2,9 +2,11 @@
  * GET/POST /api/v1/me/consents
  *
  * Server-recorded consent ledger for the signed-in user. GET returns the
- * latest decision per purpose plus the policy the server enforces for every
+ * latest decision per purpose, the policy the server enforces for every
  * purpose (`effective`, which distinguishes a recorded choice from the
- * deployment default); POST appends a new decision and writes the
+ * deployment default), and a read-only `capture` block describing the
+ * deployment's model-call recording policy (not a user choice); POST appends
+ * a new decision and writes the
  * matching `consent.granted` / `consent.revoked` audit record in the same
  * database transaction (a failed audit write records nothing).
  */
@@ -16,6 +18,7 @@ import { dbWrite } from "@/db/client";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { describeModelCallRecording } from "@/lib/config/llm-trajectory-policy";
 import {
   getRequestIp,
   RateLimitPresets,
@@ -48,7 +51,11 @@ app.get("/", async (c) => {
       user.id,
       user.organization_id,
     );
-    return c.json({ consents, effective: resolveEffectiveConsents(consents) });
+    return c.json({
+      consents,
+      effective: resolveEffectiveConsents(consents),
+      capture: { modelCallRecording: describeModelCallRecording() },
+    });
   } catch (error) {
     // error-policy:J1 The HTTP boundary translates service failures into a structured response.
     return failureResponse(c, error);

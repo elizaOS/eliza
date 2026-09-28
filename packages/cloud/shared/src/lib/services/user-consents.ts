@@ -11,7 +11,6 @@ import {
   userConsentsRepository,
 } from "../../db/repositories/user-consents";
 import { USER_CONSENT_PURPOSES } from "../../db/schemas/user-consents";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 export { USER_CONSENT_PURPOSES, type UserConsentPurpose };
 
@@ -55,24 +54,18 @@ export interface EffectiveConsentDto {
 
 /**
  * Deployment default per purpose when the user has recorded no choice. Vision
- * capture is always opt-in; training capture is on unless
- * `TRAJECTORY_CAPTURE_REQUIRES_CONSENT=true`.
+ * capture is always opt-in. Model-call recording is a deployment policy, not a
+ * consent purpose (see `config/llm-trajectory-policy`).
  */
-export function resolveConsentDefaults(
-  env: NodeJS.ProcessEnv = getCloudAwareEnv(),
-): Record<UserConsentPurpose, boolean> {
-  return {
-    vision_capture: false,
-    trajectory_training: env.TRAJECTORY_CAPTURE_REQUIRES_CONSENT !== "true",
-  };
+export function resolveConsentDefaults(): Record<UserConsentPurpose, boolean> {
+  return { vision_capture: false };
 }
 
 /** The policy the server enforces for each purpose, given recorded choices. */
 export function resolveEffectiveConsents(
   consents: readonly UserConsentDto[],
-  env: NodeJS.ProcessEnv = getCloudAwareEnv(),
 ): EffectiveConsentDto[] {
-  const defaults = resolveConsentDefaults(env);
+  const defaults = resolveConsentDefaults();
   return USER_CONSENT_PURPOSES.map((purpose) => {
     const recorded = consents.find((consent) => consent.purpose === purpose);
     return recorded
@@ -109,24 +102,4 @@ export async function recordUserConsent(
     tx,
   );
   return toUserConsentDto(row);
-}
-
-/**
- * Whether an LLM call may be captured as a training trajectory for this user.
- * An explicit `trajectory_training` revocation always wins. With no recorded
- * choice, capture continues unless `TRAJECTORY_CAPTURE_REQUIRES_CONSENT=true`,
- * which requires an explicit grant.
- */
-export async function isTrajectoryCaptureAllowed(
-  userId: string,
-  organizationId: string,
-  env: NodeJS.ProcessEnv = getCloudAwareEnv(),
-): Promise<boolean> {
-  const latest = await userConsentsRepository.findLatest(
-    userId,
-    organizationId,
-    "trajectory_training",
-  );
-  if (latest) return latest.granted;
-  return resolveConsentDefaults(env).trajectory_training;
 }
