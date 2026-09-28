@@ -3,6 +3,10 @@
  * and participant identities across one-to-one and group deliveries.
  */
 import crypto from "node:crypto";
+import {
+  blooioRecipientIsolationViolation,
+  classifyBlooioEnvironment,
+} from "@elizaos/cloud-services-common/blooio-environment";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -126,6 +130,18 @@ const BlooioV4WebhookEnvelopeSchema = z.object({
 });
 
 type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
+
+/**
+ * The deployment this gateway serves, for Blooio environment isolation
+ * (#22787). An explicit ELIZA_APP_BLOOIO_ENVIRONMENT wins; Railway's injected
+ * environment name is the default.
+ */
+export function gatewayBlooioEnvironment() {
+  return classifyBlooioEnvironment(
+    process.env.ELIZA_APP_BLOOIO_ENVIRONMENT ??
+      process.env.RAILWAY_ENVIRONMENT_NAME,
+  );
+}
 
 function normalizedIdentifier(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
@@ -468,6 +484,21 @@ export const blooioAdapter: PlatformAdapter = {
     if (!event.sender) {
       logger.warn("Blooio event missing sender; skipping", {
         messageId: event.message_id,
+      });
+      return null;
+    }
+
+    // A non-production gateway never processes a message addressed to a
+    // production line, even if a shared account or copied subscription
+    // delivers one here (#22787).
+    const isolationViolation = blooioRecipientIsolationViolation({
+      environment: gatewayBlooioEnvironment(),
+      recipientNumber: event.internal_id ?? event.channel_id,
+    });
+    if (isolationViolation) {
+      logger.error("Blooio event addressed to another environment; skipping", {
+        messageId: event.message_id,
+        violation: isolationViolation,
       });
       return null;
     }

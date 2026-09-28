@@ -31,6 +31,13 @@ import type {
 import { PlatformDeliveryError } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
+import {
+  CUTOVER_HOLD_CODES,
+  type CutoverHoldSignal,
+  type HeldWebhook,
+  type HeldWebhookOutcome,
+  holdWebhookForCutover,
+} from "./cutover-hold";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -100,17 +107,51 @@ function safeObservedErrorName(error: unknown): string {
 class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
   readonly failure: PersonalSharedFailureMetadata | null;
+  /** Cloud refused the turn before execution because a cutover holds it. */
+  readonly hold: CutoverHoldSignal | null;
 
   constructor(
     message: string,
-    options?: { cause?: unknown; failure?: PersonalSharedFailureMetadata },
+    options?: {
+      cause?: unknown;
+      failure?: PersonalSharedFailureMetadata | null;
+      hold?: CutoverHoldSignal | null;
+    },
   ) {
     super(
       message,
       options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.failure = options?.failure ?? null;
+    this.hold = options?.hold ?? null;
   }
+}
+
+/** Read Cloud's explicit pre-execution cutover hold from a refused turn. */
+async function readCutoverHold(
+  response: Response,
+): Promise<CutoverHoldSignal | null> {
+  const payload = (await response.json()) as {
+    code?: unknown;
+    retryable?: unknown;
+  } | null;
+  if (
+    response.status !== 503 ||
+    payload?.retryable !== true ||
+    typeof payload.code !== "string" ||
+    !CUTOVER_HOLD_CODES.has(payload.code)
+  ) {
+    return null;
+  }
+  const retryAfter = Number.parseInt(
+    response.headers.get("Retry-After") ?? "",
+    10,
+  );
+  return {
+    code: payload.code,
+    retryAfterSeconds:
+      Number.isSafeInteger(retryAfter) && retryAfter > 0 ? retryAfter : null,
+  };
 }
 
 class PersonalSharedRecoverablePostEgressError extends Error {
@@ -730,66 +771,227 @@ export async function handleWebhook(
       });
     })
     .catch(async (err) => {
-      logger.error("Background message processing failed", {
-        error: err instanceof Error ? err.message : String(err),
-        project,
-        platform: adapter.platform,
-        messageId: event.messageId,
-        traceId: trace.traceId,
-      });
       if (
-        err instanceof PersonalSharedPreEgressError ||
-        err instanceof PersonalSharedRecoverablePostEgressError ||
-        (err instanceof PlatformDeliveryError &&
-          err.deliveryStatus === "failed")
+        err instanceof PersonalSharedPreEgressError &&
+        err.hold &&
+        !agentId &&
+        isPersonalElizaTransport(adapter.platform)
       ) {
         try {
-          // The Shared endpoint is idempotent, including its pooled-key media
-          // enrichment: the Worker keys a durable description record by the
-          // forwarded `<platform>:<project>:<messageId>`, so a reopened
-          // delivery reuses the stored description instead of re-spending.
-          // Blooio also keys provider egress by the inbound message id, so a
-          // lost receipt response can safely reopen the webhook without
-          // sending a second text.
-          await redis.del(dedupKey);
-        } catch (cleanupError) {
-          // error-policy:J7 The original delivery failure is already observed;
-          // cleanup diagnostics must not create another unhandled rejection.
-          logger.error("Failed to reopen personal Shared webhook delivery", {
+          // The provider already received its acknowledgement and will not
+          // retry, so a cutover hold parks the turn durably instead of
+          // reopening the webhook (#22934).
+          await holdWebhookForCutover(
+            redis,
+            {
+              dedupKey,
+              platform: adapter.platform,
+              project,
+              traceId: trace.traceId,
+              event,
+              code: err.hold.code,
+            },
+            err.hold,
+          );
+          logger.warn("Personal connector turn held for Dedicated cutover", {
+            project,
+            platform: adapter.platform,
+            messageId: event.messageId,
+            traceId: trace.traceId,
+            holdCode: err.hold.code,
+          });
+          return;
+        } catch (holdError) {
+          // error-policy:J7 the hold could not be persisted; fall through to
+          // the ordinary pre-egress handling so the failure stays visible.
+          logger.error("Failed to hold personal connector turn for cutover", {
             error:
-              cleanupError instanceof Error
-                ? cleanupError.message
-                : String(cleanupError),
+              holdError instanceof Error
+                ? holdError.message
+                : String(holdError),
             project,
             platform: adapter.platform,
             messageId: event.messageId,
           });
         }
-        return;
       }
-      try {
-        // A generic failure can occur after the provider accepted the reply.
-        // Persist ambiguity and refuse replay rather than converting a lost
-        // receipt into a duplicate user-visible message.
-        await redis.set(dedupKey, CONNECTOR_UNCERTAIN, {
-          ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-        });
-      } catch (ledgerError) {
-        // error-policy:J7 The provider result is already ambiguous; retain the
-        // original processing claim and surface the ledger failure separately.
-        logger.error("Failed to persist uncertain webhook delivery", {
-          error:
-            ledgerError instanceof Error
-              ? ledgerError.message
-              : String(ledgerError),
-          project,
-          platform: adapter.platform,
-          messageId: event.messageId,
-        });
-      }
+      await settleBackgroundDeliveryFailure(redis, err, {
+        dedupKey,
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        traceId: trace.traceId,
+      });
     });
 
   return ackResponse(adapter.platform);
+}
+
+/**
+ * Terminal ledger handling for an acknowledged webhook whose background
+ * processing failed: idempotent pre-egress failures reopen the delivery, and
+ * anything that may have reached the provider is recorded as uncertain.
+ */
+async function settleBackgroundDeliveryFailure(
+  redis: GatewayRedis,
+  err: unknown,
+  context: {
+    dedupKey: string;
+    project: string;
+    platform: Platform;
+    messageId: string;
+    traceId: string;
+  },
+): Promise<void> {
+  const { dedupKey, project, platform, messageId, traceId } = context;
+  logger.error("Background message processing failed", {
+    error: err instanceof Error ? err.message : String(err),
+    project,
+    platform,
+    messageId,
+    traceId,
+  });
+  if (
+    err instanceof PersonalSharedPreEgressError ||
+    err instanceof PersonalSharedRecoverablePostEgressError ||
+    (err instanceof PlatformDeliveryError && err.deliveryStatus === "failed")
+  ) {
+    try {
+      // The Shared endpoint is idempotent, including its pooled-key media
+      // enrichment: the Worker keys a durable description record by the
+      // forwarded `<platform>:<project>:<messageId>`, so a reopened
+      // delivery reuses the stored description instead of re-spending.
+      // Blooio also keys provider egress by the inbound message id, so a
+      // lost receipt response can safely reopen the webhook without
+      // sending a second text.
+      await redis.del(dedupKey);
+    } catch (cleanupError) {
+      // error-policy:J7 The original delivery failure is already observed;
+      // cleanup diagnostics must not create another unhandled rejection.
+      logger.error("Failed to reopen personal Shared webhook delivery", {
+        error:
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError),
+        project,
+        platform,
+        messageId,
+      });
+    }
+    return;
+  }
+  try {
+    // A generic failure can occur after the provider accepted the reply.
+    // Persist ambiguity and refuse replay rather than converting a lost
+    // receipt into a duplicate user-visible message.
+    await redis.set(dedupKey, CONNECTOR_UNCERTAIN, {
+      ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+    });
+  } catch (ledgerError) {
+    // error-policy:J7 The provider result is already ambiguous; retain the
+    // original processing claim and surface the ledger failure separately.
+    logger.error("Failed to persist uncertain webhook delivery", {
+      error:
+        ledgerError instanceof Error
+          ? ledgerError.message
+          : String(ledgerError),
+      project,
+      platform,
+      messageId,
+    });
+  }
+}
+
+/**
+ * Redeliver one webhook held for cutover with its original message identity.
+ * A renewed hold is returned to the drainer; every other outcome settles the
+ * dedup ledger exactly as the original background delivery would have.
+ */
+export async function redeliverHeldWebhook(
+  held: HeldWebhook,
+  adapter: PlatformAdapter,
+  deps: HandlerDeps,
+): Promise<HeldWebhookOutcome> {
+  const { redis, cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+  const failureContext = {
+    dedupKey: held.dedupKey,
+    project: held.project,
+    platform: adapter.platform,
+    messageId: held.event.messageId,
+    traceId: held.traceId,
+  };
+  try {
+    const config = await resolveWebhookConfig(
+      redis,
+      cloudBaseUrl,
+      getAuthHeader(),
+      adapter.platform,
+      held.project,
+      held.agentId,
+      reauth,
+    );
+    if (!config) {
+      throw new PersonalSharedPreEgressError(
+        "held connector webhook is no longer configured",
+      );
+    }
+    await processMessage(
+      adapter,
+      config,
+      held.event,
+      deps,
+      held.project,
+      { traceId: held.traceId, gatewayReceivedAtMs: held.heldAt },
+      held.agentId,
+    );
+  } catch (err) {
+    if (err instanceof PersonalSharedPreEgressError && err.hold) {
+      return { kind: "held", signal: err.hold };
+    }
+    await settleBackgroundDeliveryFailure(redis, err, failureContext);
+    return { kind: "released" };
+  }
+  await redis.set(held.dedupKey, CONNECTOR_DELIVERED, {
+    ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+  });
+  logger.info("Held personal connector turn delivered after cutover", {
+    project: held.project,
+    platform: adapter.platform,
+    messageId: held.event.messageId,
+    traceId: held.traceId,
+    heldForMs: Date.now() - held.heldAt,
+    attempts: held.attempts + 1,
+  });
+  return { kind: "delivered" };
+}
+
+/** Release a hold that outlived the cutover budget to ordinary failure handling. */
+export async function releaseExpiredHeldWebhook(
+  held: HeldWebhook,
+  redis: GatewayRedis,
+): Promise<void> {
+  logger.error("Held personal connector turn exceeded the cutover budget", {
+    project: held.project,
+    platform: held.platform,
+    messageId: held.event.messageId,
+    traceId: held.traceId,
+    heldForMs: Date.now() - held.heldAt,
+    holdCode: held.code,
+    operatorAction:
+      "inspect the Dedicated target's attestation; the turn was never executed",
+  });
+  await settleBackgroundDeliveryFailure(
+    redis,
+    new PersonalSharedPreEgressError("cutover hold expired"),
+    {
+      dedupKey: held.dedupKey,
+      project: held.project,
+      platform: held.platform,
+      messageId: held.event.messageId,
+      traceId: held.traceId,
+    },
+  );
 }
 
 function buildWebhookDedupeKey(
@@ -1430,12 +1632,15 @@ async function sendPersonalSharedReply(
   const { response } = attemptResult;
   if (!response.ok) {
     const failure = readPersonalSharedFailureMetadata(response);
+    let hold: CutoverHoldSignal | null = null;
     try {
-      await response.body?.cancel();
+      // Reading the body both releases it and exposes an explicit cutover
+      // hold, which the caller parks durably instead of dropping (#22934).
+      hold = await readCutoverHold(response);
     } catch (error) {
-      // error-policy:J6 response-body cleanup is best-effort and must never
-      // bypass the classified pre-egress failure or the private DM fallback.
-      logger.warn("Personal Shared failure body cleanup failed", {
+      // error-policy:J6 an unreadable failure body is not a hold; the
+      // classified pre-egress failure and the private DM fallback still run.
+      logger.warn("Personal Shared failure body read failed", {
         traceId,
         project,
         platform: adapter.platform,
@@ -1446,7 +1651,7 @@ async function sendPersonalSharedReply(
     }
     throw new PersonalSharedPreEgressError(
       `personal Shared chat failed (${response.status})`,
-      { failure },
+      { failure, hold },
     );
   }
   const cloudServerTiming = response.headers.get("Server-Timing");

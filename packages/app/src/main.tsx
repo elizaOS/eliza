@@ -204,7 +204,10 @@ import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
-import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
+import {
+  resolveAppCloudOnlyBranding,
+  resolveNativeCloudRuntimeMode,
+} from "./cloud-only-branding";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
@@ -469,10 +472,17 @@ const APP_BRANDING: Partial<BrandingConfig> = {
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode:
-      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
-        ? "cloud"
-        : undefined,
+    nativeRuntimeMode: resolveNativeCloudRuntimeMode({
+      platform: Capacitor.getPlatform(),
+      buildVariant:
+        typeof __ELIZA_BUILD_VARIANT__ === "string"
+          ? __ELIZA_BUILD_VARIANT__
+          : undefined,
+      iosRuntimeMode: (import.meta.env as Record<string, string | undefined>)
+        .VITE_ELIZA_IOS_RUNTIME_MODE,
+      androidCloudBuild: isAndroidCloudBuild(),
+      androidRemoteFallbackApiBase: getMobileRemoteFallbackApiBase(),
+    }),
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };

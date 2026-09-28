@@ -15,18 +15,35 @@ const env = (overrides = {}) => ({
 });
 
 describe("evaluateIosStoreEngineGate (#8861)", () => {
-  it("a store build with the local runtime left enabled EMBEDS the engine (the regression guard)", () => {
-    // This is the exact case the bug shipped wrong: store IPA without the
-    // engine → "start local agent" hard-fails. It MUST embed.
+  it("a store build that opted into the local runtime EMBEDS the engine (the regression guard)", () => {
+    // The #8861 regression: a store IPA whose renderer offers the local agent
+    // shipped without the engine and "start local agent" hard-failed. When the
+    // operator enables the local runtime, the engine MUST embed.
     expect(
-      evaluateIosStoreEngineGate(env({ ELIZA_BUILD_VARIANT: "store" }))
-        .engineWillEmbed,
+      evaluateIosStoreEngineGate(
+        env({
+          ELIZA_BUILD_VARIANT: "store",
+          ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+        }),
+      ).engineWillEmbed,
     ).toBe(true);
     expect(
       evaluateIosStoreEngineGate(
-        env({ ELIZA_RELEASE_AUTHORITY: "apple-app-store" }),
+        env({
+          ELIZA_RELEASE_AUTHORITY: "apple-app-store",
+          ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "true",
+        }),
       ).engineWillEmbed,
     ).toBe(true);
+  });
+
+  it("a default store build is the Cloud-only thin client (#16420)", () => {
+    const gate = evaluateIosStoreEngineGate(
+      env({ ELIZA_BUILD_VARIANT: "store" }),
+    );
+    expect(gate.storeVariant).toBe(true);
+    expect(gate.localRuntimeDisabled).toBe(true);
+    expect(gate.engineWillEmbed).toBe(false);
   });
 
   it("detects the store variant from either flag (case-insensitive)", () => {
@@ -41,16 +58,16 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
     expect(evaluateIosStoreEngineGate(env()).storeVariant).toBe(false);
   });
 
-  it("defaults the local runtime ON (must be explicitly disabled)", () => {
-    expect(evaluateIosStoreEngineGate(env()).localRuntimeDisabled).toBe(false);
-    for (const v of ["0", "false", "no", "off", "OFF", " 0 "]) {
+  it("defaults the local runtime OFF (must be explicitly enabled)", () => {
+    expect(evaluateIosStoreEngineGate(env()).localRuntimeDisabled).toBe(true);
+    for (const v of ["0", "false", "no", "off", "OFF", " 0 ", "anything"]) {
       expect(
         evaluateIosStoreEngineGate(
           env({ ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: v }),
         ).localRuntimeDisabled,
       ).toBe(true);
     }
-    for (const v of ["1", "true", "yes", "anything"]) {
+    for (const v of ["1", "true", "yes", "on", " ON "]) {
       expect(
         evaluateIosStoreEngineGate(
           env({ ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: v }),

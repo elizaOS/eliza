@@ -21,6 +21,7 @@ import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import {
+  PersonalCutoverHoldError,
   SharedRuntimeCacheWarmingError,
   SharedRuntimeTurnError,
   SharedTurnConflictError,
@@ -301,6 +302,19 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     throw statusMatchesDisposition
       ? turnError
       : SharedRuntimeTurnError.fromClassification(undefined, undefined);
+  }
+  // A Shared→Dedicated cutover refuses the turn before the Shared claim: 423
+  // while sealed, 409 once committed. Both are holds, never terminal
+  // conflicts, so ingress retries into the attested Dedicated route (#22934).
+  if (response.status === 423 && body?.code === "personal_cutover_in_progress") {
+    const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "", 10);
+    throw new PersonalCutoverHoldError(
+      false,
+      Number.isSafeInteger(retryAfter) && retryAfter > 0 ? retryAfter : 1,
+    );
+  }
+  if (response.status === 409 && body?.code === "personal_eliza_dedicated") {
+    throw new PersonalCutoverHoldError(true);
   }
   if (response.status === 503) {
     throw new SharedRuntimeCacheWarmingError(
