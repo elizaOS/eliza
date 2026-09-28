@@ -17,10 +17,12 @@ import {
   CapabilityError,
   decodeUrlPathComponent,
   type ElizaCapabilityRouter,
+  ElizaError,
   type IAgentRuntime,
   isLoopbackHost,
   isPrivateIpAddress,
   type JsonObject,
+  logger,
   normalizeHostLike,
   type RouteHelpers,
   type RouteRequestMeta,
@@ -56,6 +58,33 @@ import {
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
 
+/**
+ * A persisted capability-router config value (endpoints, module allowlists,
+ * trust policies or the trust audit trail) exists but cannot be parsed. The
+ * connect handler refuses to persist rather than rewriting the value as empty,
+ * which would silently erase every stored endpoint, policy and audit record.
+ */
+export class CapabilityRouterPersistedStateError extends ElizaError {
+  override readonly name = "CapabilityRouterPersistedStateError";
+  readonly key: string;
+
+  constructor(key: string, reason: string, options?: { cause?: unknown }) {
+    super(
+      `Persisted ${key} is unreadable (${reason}); refusing to overwrite it. Repair or remove ${key} and retry.`,
+      {
+        code: "CAPABILITY_ROUTER_PERSISTED_STATE_CORRUPT",
+        cause: options?.cause,
+        context: { key, reason },
+        severity: "fatal",
+      },
+    );
+    this.key = key;
+  }
+}
+const ENDPOINTS_KEY = "ELIZA_CAPABILITY_ROUTER_URLS";
+const ALLOWED_MODULES_KEY = "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES";
+const TRUST_POLICY_KEY = "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY";
+const TRUST_AUDIT_KEY = "ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT";
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -198,6 +227,11 @@ export async function handleRemoteCapabilityRoutes(
       );
       return true;
     }
+    if (persist && ctx.config) {
+      // Fail before connecting (and mutating runtime plugins) when the stored
+      // state cannot be merged; persisting would otherwise erase it.
+      readPersistedCapabilityRouterState(ctx.config.env?.vars ?? {});
+    }
     if (body.endpoint !== undefined) {
       const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
@@ -307,6 +341,19 @@ export async function handleRemoteCapabilityRoutes(
     error(res, "Request body must include either 'endpoint' or 'cloud'.", 400);
     return true;
   } catch (err) {
+    if (err instanceof CapabilityRouterPersistedStateError) {
+      logger.error(
+        {
+          src: "remote-capability-routes",
+          code: err.code,
+          key: err.key,
+          error: err,
+        },
+        "[capability-router] Refusing to persist over unreadable stored state",
+      );
+      error(res, err.message, 500);
+      return true;
+    }
     error(
       res,
       err instanceof Error
@@ -453,26 +500,17 @@ async function persistEndpointInner(
 ): Promise<void> {
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
-  const endpoints = mergePersistedEndpoints(
-    readPersistedEndpoints(
-      process.env.ELIZA_CAPABILITY_ROUTER_URLS ??
-        vars.ELIZA_CAPABILITY_ROUTER_URLS,
-    ),
-    endpoint,
-  );
+  // Read (and validate) every persisted value before the first write so a
+  // corrupt value aborts the whole save instead of being overwritten.
+  const persisted = readPersistedCapabilityRouterState(vars);
+  const endpoints = mergePersistedEndpoints(persisted.endpoints, endpoint);
   const moduleAllowlists = mergePersistedModuleAllowlists(
-    readPersistedModuleAllowlists(
-      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES ??
-        vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES,
-    ),
+    persisted.moduleAllowlists,
     endpoint.id,
     allowedModuleIds,
   );
   const persistedTrustPolicy = mergePersistedTrustPolicies(
-    readPersistedTrustPolicies(
-      process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY ??
-        vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY,
-    ),
+    persisted.trustPolicies,
     endpoint.id,
     trustPolicy,
   );
@@ -504,13 +542,7 @@ async function persistEndpointInner(
   }
   if (audit !== undefined) {
     vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = JSON.stringify(
-      appendTrustAuditRecord(
-        readTrustAuditRecords(
-          process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT ??
-            vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
-        ),
-        audit,
-      ),
+      appendTrustAuditRecord(persisted.trustAudit, audit),
     );
   }
   ctx.config.env = {
@@ -537,17 +569,73 @@ type CapabilityRouterTrustAuditRecord = {
   unloaded: string[];
   trustDecisions: RemotePluginSyncResult["trustDecisions"];
 };
+type PersistedCapabilityRouterState = {
+  endpoints: RemoteCapabilityEndpointConfig[];
+  moduleAllowlists: Record<string, string[]>;
+  trustPolicies: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>;
+  trustAudit: CapabilityRouterTrustAuditRecord[];
+};
+/**
+ * Reads every persisted capability-router value. An absent/blank value is
+ * empty; a present value that cannot be parsed throws
+ * {@link CapabilityRouterPersistedStateError}.
+ */
+function readPersistedCapabilityRouterState(
+  vars: Record<string, string>,
+): PersistedCapabilityRouterState {
+  return {
+    endpoints: readPersistedEndpoints(
+      process.env[ENDPOINTS_KEY] ?? vars[ENDPOINTS_KEY],
+    ),
+    moduleAllowlists: readPersistedModuleAllowlists(
+      process.env[ALLOWED_MODULES_KEY] ?? vars[ALLOWED_MODULES_KEY],
+    ),
+    trustPolicies: readPersistedTrustPolicies(
+      process.env[TRUST_POLICY_KEY] ?? vars[TRUST_POLICY_KEY],
+    ),
+    trustAudit: readTrustAuditRecords(
+      process.env[TRUST_AUDIT_KEY] ?? vars[TRUST_AUDIT_KEY],
+    ),
+  };
+}
+function parsePersistedJson(key: string, value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (err) {
+    throw new CapabilityRouterPersistedStateError(key, "invalid JSON", {
+      cause: err,
+    });
+  }
+}
+function requirePersistedRecord(
+  key: string,
+  parsed: unknown,
+): Record<string, unknown> {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new CapabilityRouterPersistedStateError(key, "expected an object");
+  }
+  return parsed as Record<string, unknown>;
+}
 function readTrustAuditRecords(
   value: string | undefined,
 ): CapabilityRouterTrustAuditRecord[] {
   if (!value?.trim()) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isTrustAuditRecord);
-  } catch {
-    return [];
+  const parsed = parsePersistedJson(TRUST_AUDIT_KEY, value);
+  if (!Array.isArray(parsed)) {
+    throw new CapabilityRouterPersistedStateError(
+      TRUST_AUDIT_KEY,
+      "expected an array",
+    );
   }
+  return parsed.map((record, index) => {
+    if (!isTrustAuditRecord(record)) {
+      throw new CapabilityRouterPersistedStateError(
+        TRUST_AUDIT_KEY,
+        `entry ${index} is not a trust audit record`,
+      );
+    }
+    return record;
+  });
 }
 function appendTrustAuditRecord(
   existing: CapabilityRouterTrustAuditRecord[],
@@ -594,23 +682,28 @@ function readPersistedModuleAllowlists(
   value: string | undefined,
 ): Record<string, string[]> {
   if (!value?.trim()) return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
+  const parsed = requirePersistedRecord(
+    ALLOWED_MODULES_KEY,
+    parsePersistedJson(ALLOWED_MODULES_KEY, value),
+  );
+  const result: Record<string, string[]> = {};
+  for (const [endpointId, moduleIds] of Object.entries(parsed)) {
+    if (
+      !Array.isArray(moduleIds) ||
+      moduleIds.some((item) => typeof item !== "string")
+    ) {
+      throw new CapabilityRouterPersistedStateError(
+        ALLOWED_MODULES_KEY,
+        `entry "${endpointId}" must be an array of strings`,
+      );
     }
-    const result: Record<string, string[]> = {};
-    for (const [endpointId, moduleIds] of Object.entries(parsed)) {
-      if (!endpointId.trim() || !Array.isArray(moduleIds)) continue;
-      const normalized = normalizeStringList(moduleIds);
-      if (normalized.length > 0) {
-        result[endpointId.trim()] = normalized;
-      }
+    if (!endpointId.trim()) continue;
+    const normalized = normalizeStringList(moduleIds);
+    if (normalized.length > 0) {
+      result[endpointId.trim()] = normalized;
     }
-    return result;
-  } catch {
-    return {};
   }
+  return result;
 }
 function mergePersistedModuleAllowlists(
   existing: Record<string, string[]>,
@@ -634,27 +727,31 @@ function readPersistedTrustPolicies(
   value: string | undefined,
 ): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
   if (!value?.trim()) return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const result: Record<string, RemoteCapabilityEndpointTrustPolicyOptions> =
-      {};
-    for (const [endpointId, candidate] of Object.entries(parsed)) {
-      if (!endpointId.trim()) continue;
-      const trustPolicy = parseOptionalEndpointTrustPolicy(
+  const parsed = requirePersistedRecord(
+    TRUST_POLICY_KEY,
+    parsePersistedJson(TRUST_POLICY_KEY, value),
+  );
+  const result: Record<string, RemoteCapabilityEndpointTrustPolicyOptions> = {};
+  for (const [endpointId, candidate] of Object.entries(parsed)) {
+    let trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined;
+    try {
+      trustPolicy = parseOptionalEndpointTrustPolicy(
         candidate,
-        `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY.${endpointId}`,
+        `${TRUST_POLICY_KEY}.${endpointId}`,
       );
-      if (trustPolicy && Object.keys(trustPolicy).length > 0) {
-        result[endpointId.trim()] = trustPolicy;
-      }
+    } catch (err) {
+      throw new CapabilityRouterPersistedStateError(
+        TRUST_POLICY_KEY,
+        err instanceof Error ? err.message : `entry "${endpointId}" is invalid`,
+        { cause: err },
+      );
     }
-    return result;
-  } catch {
-    return {};
+    if (!endpointId.trim()) continue;
+    if (trustPolicy && Object.keys(trustPolicy).length > 0) {
+      result[endpointId.trim()] = trustPolicy;
+    }
   }
+  return result;
 }
 function mergePersistedTrustPolicies(
   existing: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>,
@@ -674,36 +771,38 @@ function readPersistedEndpoints(
   value: string | undefined,
 ): RemoteCapabilityEndpointConfig[] {
   if (!value?.trim()) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item, index): RemoteCapabilityEndpointConfig | null => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) {
-          return null;
-        }
-        const record = item as Record<string, unknown>;
-        if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
-          return null;
-        }
-        return {
-          id:
-            typeof record.id === "string" && record.id.trim()
-              ? record.id.trim()
-              : `remote-${index + 1}`,
-          baseUrl: record.baseUrl.trim().replace(/\/+$/, ""),
-          ...(typeof record.token === "string" && record.token.trim()
-            ? { token: record.token.trim() }
-            : {}),
-        };
-      })
-      .filter(
-        (endpoint): endpoint is RemoteCapabilityEndpointConfig =>
-          endpoint !== null,
-      );
-  } catch {
-    return [];
+  const parsed = parsePersistedJson(ENDPOINTS_KEY, value);
+  if (!Array.isArray(parsed)) {
+    throw new CapabilityRouterPersistedStateError(
+      ENDPOINTS_KEY,
+      "expected an array",
+    );
   }
+  return parsed.map((item, index): RemoteCapabilityEndpointConfig => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new CapabilityRouterPersistedStateError(
+        ENDPOINTS_KEY,
+        `entry ${index} must be an object`,
+      );
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+      throw new CapabilityRouterPersistedStateError(
+        ENDPOINTS_KEY,
+        `entry ${index} is missing a baseUrl`,
+      );
+    }
+    return {
+      id:
+        typeof record.id === "string" && record.id.trim()
+          ? record.id.trim()
+          : `remote-${index + 1}`,
+      baseUrl: record.baseUrl.trim().replace(/\/+$/, ""),
+      ...(typeof record.token === "string" && record.token.trim()
+        ? { token: record.token.trim() }
+        : {}),
+    };
+  });
 }
 function mergePersistedEndpoints(
   existing: RemoteCapabilityEndpointConfig[],
