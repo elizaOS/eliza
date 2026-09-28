@@ -25,10 +25,12 @@ vi.mock("../../../lib/api-client", () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-vi.mock("../../../shell/CloudI18nProvider", () => ({
-  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
-}));
+vi.mock("../../../shell/CloudI18nProvider", () => {
+  // Match the provider's stable translator so validation settles after loading.
+  const t = (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key;
+  return { useCloudT: () => t };
+});
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
@@ -94,6 +96,7 @@ describe("InviteAcceptPage", () => {
       name: /checking sign-in/i,
     });
     expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(apiMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(action);
     expect(navigateMock).not.toHaveBeenCalled();
