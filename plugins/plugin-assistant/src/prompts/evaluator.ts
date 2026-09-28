@@ -89,13 +89,13 @@ rules:
 - NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome. Select recommendedToolCallId from the current decision state's queued IDs; preserve planned order and prerequisites. An empty queue forbids NEXT_RECOMMENDED. CONTINUE when the plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
 - if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
-- For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise omit it only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/restoration decisions must not publish a progress draft. Never add process-status bubbles after tools finish.
+- For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise use an empty string only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/restoration decisions use an empty string, not a progress draft. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
 - messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Use supplied local date/time labels and their timezone; keep AM/PM consistent and omit redundant daypart summaries. A past scheduled time proves neither attendance nor completion; describe it as scheduled or past, not done. Translate other machine dates and timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
 - Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.
 - Deliver the result directly; do not repeat the earlier acknowledgment, restate the whole request, or narrate that you are starting work already completed.
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
-- Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, omit messageToUser entirely unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
+- Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, use an empty messageToUser unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
 - If setting messageToUser, ground it in THIS request's outcome in everyday language. Do not rely on a fixed canned phrase list or use a process-status ack as the whole message.
 - Classify the reply's claimed outcome in replyEffectStatus: applied for a claimed committed mutation or send, even indirect or non-English wording; non_applied for a stopped, failed or clarification-only outcome; none for reads, receipt-grounded view navigation or other prose without a mutation claim. An applied claim needs committed receipt proof; the classification itself proves no execution.
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Rejecting or cancelling queued approvals, stored events, jobs, notes or other persisted state requires its own committed receipt; a promise not to execute the original action does not settle a pending request. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
@@ -163,7 +163,7 @@ export const evaluatorSchema: JSONSchema = {
     messageToUser: {
       type: "string",
       description:
-        "Corrected or new grounded outcome for FINISH. Omit to approve the latest terminal planner reply only after verifying all its claims and requested outcomes, or when verified tool text supplies the outcome or reply is suppressed.",
+        "Required string: provide the grounded outcome for FINISH when current decision state requires a reply. Use an empty string for other decisions, or to approve an accurate existing terminal reply, verified tool text or explicit reply suppression.",
     },
     replyEffectStatus: {
       type: "string",
@@ -194,5 +194,11 @@ export const evaluatorSchema: JSONSchema = {
     },
     recommendedToolCallId: { type: "string" },
   },
-  required: ["thought", "success", "decision", "replyEffectStatus"],
+  required: [
+    "thought",
+    "success",
+    "decision",
+    "replyEffectStatus",
+    "messageToUser",
+  ],
 };
