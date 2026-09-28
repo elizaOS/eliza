@@ -90,7 +90,6 @@ export default defineConfig({
       "scripts/dev-server-registry.test.ts",
       "scripts/device-e2e-bundle.test.ts",
       "scripts/device-evidence-workflows.test.ts",
-      "scripts/device-lease.test.ts",
       "scripts/devices-status.test.ts",
       "scripts/forced-host-mode-guard.test.ts",
       "scripts/ios-device-lib.test.ts",

@@ -326,7 +326,40 @@ describe("device leases", () => {
     });
   });
 
-  it("reclaims a mutation lock left empty by a crash well before the lock wait expires", async () => {
+  it("waits for a live mutation-lock owner even when its timestamp is old", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:old-live-lock", {
+      stateDir,
+      sessionId: "holder",
+      pid: 904,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    const raw = JSON.stringify({ pid: process.pid });
+    writeFileSync(lockPath, raw);
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, old, old);
+    let observedOwner = false;
+    const realKill = process.kill.bind(process);
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid === process.pid && signal === 0) {
+        expect(fs.readFileSync(lockPath, "utf8")).toBe(raw);
+        observedOwner = true;
+        unlinkSync(lockPath);
+        return true;
+      }
+      return realKill(pid, signal);
+    });
+    try {
+      handle.release();
+      expect(observedOwner).toBe(true);
+      expect(readdirSync(stateDir)).toEqual([]);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
+  it("preserves an abandoned mutation lock and asks for explicit recovery", async () => {
     const stateDir = tempDir();
     const handle = await acquireDeviceLease("android:empty-lock", {
       stateDir,
@@ -334,20 +367,22 @@ describe("device leases", () => {
       pid: 901,
       isProcessAlive: () => true,
     });
-    // A holder that crashed between creating and writing the lock leaves an
-    // empty file; it must not block release() into a lock-wait timeout.
     const lockPath = `${handle.path}.lock`;
     writeFileSync(lockPath, "");
     const old = new Date(Date.now() - 2_000);
     utimesSync(lockPath, old, old);
 
-    const startedAt = Date.now();
+    expect(() => handle.release()).toThrow(
+      /abandoned device lease mutation lock/,
+    );
+    expect(fs.readFileSync(lockPath, "utf8")).toBe("");
+    expect(readDeviceLease("android:empty-lock", { stateDir })?.pid).toBe(901);
+    unlinkSync(lockPath);
     handle.release();
-    expect(Date.now() - startedAt).toBeLessThan(1_000);
     expect(readdirSync(stateDir)).toEqual([]);
   });
 
-  it("never removes a mutation lock re-created after the stale one was judged", async () => {
+  it("never removes a replacement lock when a dead owner is observed", async () => {
     const stateDir = tempDir();
     const handle = await acquireDeviceLease("android:lock-swap", {
       stateDir,
@@ -359,56 +394,26 @@ describe("device leases", () => {
     const deadPid = 2_147_000_001;
     writeFileSync(lockPath, JSON.stringify({ pid: deadPid }));
     const otherLock = JSON.stringify({ pid: process.pid, holder: "other" });
-    let otherHolds = false;
-    let otherReleased = false;
-    const violations = [];
-
     const realKill = process.kill.bind(process);
     const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
       if (pid === deadPid) {
-        // Another contender reclaims the dead holder's lock and takes its own
-        // right after we judged the dead lock stale.
         unlinkSync(lockPath);
         writeFileSync(lockPath, otherLock);
-        otherHolds = true;
-        const error = new Error("no such process");
-        error.code = "ESRCH";
-        throw error;
-      }
-      if (pid === process.pid && signal === 0 && otherHolds) {
-        // While we wait on the other holder, it finishes and releases.
-        unlinkSync(lockPath);
-        otherHolds = false;
-        otherReleased = true;
-        return true;
+        throw Object.assign(new Error("no such process"), { code: "ESRCH" });
       }
       return realKill(pid, signal);
     });
-    const realOpen = fs.openSync;
-    const open = vi
-      .spyOn(fs, "openSync")
-      .mockImplementation((p, flags, ...rest) => {
-        if (p === lockPath && flags === "wx" && otherHolds) {
-          let current = null;
-          try {
-            current = fs.readFileSync(lockPath, "utf8");
-          } catch {
-            current = null;
-          }
-          if (current !== otherLock) violations.push(current);
-        }
-        return realOpen(p, flags, ...rest);
-      });
     try {
-      handle.release();
+      expect(() => handle.release()).toThrow(
+        /abandoned device lease mutation lock/,
+      );
+      expect(fs.readFileSync(lockPath, "utf8")).toBe(otherLock);
+      expect(readDeviceLease("android:lock-swap", { stateDir })?.pid).toBe(902);
     } finally {
       kill.mockRestore();
-      open.mockRestore();
     }
-
-    expect(violations).toEqual([]);
-    expect(otherReleased).toBe(true);
-    expect(readdirSync(stateDir)).toEqual([]);
+    unlinkSync(lockPath);
+    handle.release();
   });
 
   it("keeps the original mutation error when releasing the lock also fails", async () => {
@@ -423,18 +428,14 @@ describe("device leases", () => {
     const unlinkError = Object.assign(new Error("unlink failed"), {
       code: "EIO",
     });
-    const renameError = Object.assign(new Error("rename failed"), {
+    const releaseError = Object.assign(new Error("lock unlink failed"), {
       code: "EACCES",
     });
     const realUnlink = fs.unlinkSync;
-    const realRename = fs.renameSync;
     const unlink = vi.spyOn(fs, "unlinkSync").mockImplementation((p) => {
       if (p === handle.path) throw unlinkError;
+      if (p === lockPath) throw releaseError;
       return realUnlink(p);
-    });
-    const rename = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-      if (from === lockPath) throw renameError;
-      return realRename(from, to);
     });
     let thrown: unknown = null;
     try {
@@ -443,13 +444,12 @@ describe("device leases", () => {
       thrown = error;
     } finally {
       unlink.mockRestore();
-      rename.mockRestore();
     }
 
     expect(thrown).toBeInstanceOf(AggregateError);
     expect((thrown as AggregateError).errors).toEqual([
       unlinkError,
-      renameError,
+      releaseError,
     ]);
     expect((thrown as AggregateError).cause).toBe(unlinkError);
   });

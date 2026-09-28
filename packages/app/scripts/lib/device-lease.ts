@@ -13,9 +13,9 @@
  *   the file is still the exact one (same inode and bytes) that was judged
  *   stale or owned. A contender can therefore never delete a lease that was
  *   re-created by someone else after it looked.
- * - The mutation lock itself is only ever removed after an atomic rename to a
- *   private tombstone proves it is the exact lock (inode and bytes) that was
- *   judged stale or owned; a newer lock moved by mistake is linked back.
+ * - Only the mutation-lock owner removes its lock. Abandoned locks fail
+ *   explicitly: a read followed by rename/unlink cannot atomically prove
+ *   ownership, so automatic reclamation could remove a newer live lock.
  * - A lease file that cannot be parsed is never reclaimed until it is older
  *   than `unparsableGraceMs`.
  */
@@ -29,10 +29,8 @@ const DEFAULT_WAIT_MS = 10 * 60 * 1000;
 const DEFAULT_POLL_MS = 2_000;
 const DEFAULT_UNPARSABLE_GRACE_MS = 60 * 1000;
 const MUTATION_LOCK_WAIT_MS = 5_000;
-const MUTATION_LOCK_STALE_MS = 30 * 1000;
 const MUTATION_LOCK_POLL_MS = 10;
-// A lock left empty/unparsable by a holder that crashed between create and
-// write is reclaimable after this grace, which must stay under the lock wait.
+// Allow a fresh owner to finish writing its PID before diagnosing a crash.
 const MUTATION_LOCK_UNPARSABLE_GRACE_MS = 1_000;
 
 export class DeviceLeaseLockTimeoutError extends Error {
@@ -228,61 +226,39 @@ function sameMutationLock(a, b) {
   );
 }
 
-/**
- * Returns the snapshot of the lock when it is stale (holder dead, lock too old,
- * or left empty/unparsable by a crash past a short grace), otherwise null.
- */
-function staleMutationLockSnapshot(lockPath) {
+export class DeviceLeaseLockAbandonedError extends Error {
+  constructor(lockPath: string) {
+    super(
+      `abandoned device lease mutation lock ${lockPath}; stop device runners and remove this lock before retrying`,
+    );
+    this.name = "DeviceLeaseLockAbandonedError";
+  }
+}
+
+function assertMutationLockLive(lockPath: string): void {
   const snapshot = readMutationLockSnapshot(lockPath);
-  // A vanished lock was released; the caller simply retries the create.
-  if (snapshot === null) return null;
-  const ageMs = Date.now() - snapshot.mtimeMs;
-  if (ageMs > MUTATION_LOCK_STALE_MS) return snapshot;
+  if (snapshot === null) return;
   let holder: { pid?: unknown } | null;
   try {
     holder = JSON.parse(snapshot.raw);
   } catch (error) {
-    // error-policy:J3 an empty/unparsable lock is either mid-write (fresh) or
-    // left behind by a holder that crashed between create and write. Only the
-    // latter outlives the short grace, which is well under the lock wait.
+    // error-policy:J3 a fresh lock may still be receiving its owner record.
     if (!(error instanceof SyntaxError)) throw error;
-    return ageMs > MUTATION_LOCK_UNPARSABLE_GRACE_MS ? snapshot : null;
+    if (Date.now() - snapshot.mtimeMs <= MUTATION_LOCK_UNPARSABLE_GRACE_MS)
+      return;
+    throw new DeviceLeaseLockAbandonedError(lockPath);
   }
-  // The lock records the real OS pid of its holder, so probe it for real.
-  return processIsAlive(Number(holder?.pid)) ? null : snapshot;
+  if (!processIsAlive(Number(holder?.pid))) {
+    throw new DeviceLeaseLockAbandonedError(lockPath);
+  }
 }
 
-/**
- * Remove the mutation lock only if it is still exactly `expected`. The lock is
- * atomically renamed to a private tombstone first; if the tombstone turns out
- * to be a different (newer) lock, it is linked back into place untouched.
- * Returns whether `expected` was removed.
- */
+/** Only the owner releases locks; contenders never rename or unlink them. */
 function removeMutationLockIfUnchanged(lockPath, expected) {
-  const tombstonePath = `${lockPath}.${process.pid}.${randomUUID()}.stale`;
-  try {
-    fs.renameSync(lockPath, tombstonePath);
-  } catch (error) {
-    // error-policy:J3 the lock is already gone (released or reclaimed).
-    if (error?.code === "ENOENT") return false;
-    throw error;
-  }
-  try {
-    if (sameMutationLock(readMutationLockSnapshot(tombstonePath), expected)) {
-      return true;
-    }
-    try {
-      fs.linkSync(tombstonePath, lockPath);
-    } catch (error) {
-      if (error?.code === "EEXIST") {
-        throw new DeviceLeaseLockConflictError(lockPath);
-      }
-      throw error;
-    }
+  if (!sameMutationLock(readMutationLockSnapshot(lockPath), expected))
     return false;
-  } finally {
-    fs.rmSync(tombstonePath, { force: true });
-  }
+  fs.unlinkSync(lockPath);
+  return true;
 }
 
 /**
@@ -309,11 +285,7 @@ function withLeaseMutationLock<T>(leasePath: string, fn: () => T): T {
     } catch (error) {
       // error-policy:J3 EEXIST is lock contention; anything else is real.
       if (error?.code !== "EEXIST") throw error;
-      const stale = staleMutationLockSnapshot(lockPath);
-      if (stale !== null) {
-        removeMutationLockIfUnchanged(lockPath, stale);
-        continue;
-      }
+      assertMutationLockLive(lockPath);
       const waited = Date.now() - startedAt;
       if (waited >= MUTATION_LOCK_WAIT_MS) {
         throw new DeviceLeaseLockTimeoutError(lockPath, waited);
@@ -338,8 +310,7 @@ function withLeaseMutationLock<T>(leasePath: string, fn: () => T): T {
     }
     throw error;
   }
-  // Only ever remove our own lock. If it is no longer ours, another process
-  // judged it stale mid-section and exclusion did not hold: surface that.
+  // An external replacement invalidates ownership; leave it untouched.
   if (!removeMutationLockIfUnchanged(lockPath, ownLock)) {
     throw new DeviceLeaseLockConflictError(lockPath);
   }
