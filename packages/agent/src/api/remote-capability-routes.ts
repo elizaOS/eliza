@@ -44,6 +44,19 @@ import {
 } from "../services/remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
+  CAPABILITY_ROUTER_ALLOWED_MODULES_SETTING,
+  CAPABILITY_ROUTER_TRUST_POLICY_SETTING,
+  CAPABILITY_ROUTER_URLS_SETTING,
+  type CapabilityRouterModuleAllowlistSetting,
+  CapabilityRouterSettingError,
+  type CapabilityRouterTrustPolicySetting,
+  parseCapabilityRouterEndpointsSetting,
+  parseCapabilityRouterModuleAllowlistSetting,
+  parseCapabilityRouterTrustPolicySetting,
+  serializeCapabilityRouterModuleAllowlistSetting,
+  serializeCapabilityRouterTrustPolicySetting,
+} from "../services/remote-capability-router-settings.ts";
+import {
   desktopCompanionCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
@@ -81,9 +94,9 @@ export class CapabilityRouterPersistedStateError extends ElizaError {
     this.key = key;
   }
 }
-const ENDPOINTS_KEY = "ELIZA_CAPABILITY_ROUTER_URLS";
-const ALLOWED_MODULES_KEY = "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES";
-const TRUST_POLICY_KEY = "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY";
+const ENDPOINTS_KEY = CAPABILITY_ROUTER_URLS_SETTING;
+const ALLOWED_MODULES_KEY = CAPABILITY_ROUTER_ALLOWED_MODULES_SETTING;
+const TRUST_POLICY_KEY = CAPABILITY_ROUTER_TRUST_POLICY_SETTING;
 const TRUST_AUDIT_KEY = "ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT";
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
@@ -524,19 +537,21 @@ async function persistEndpointInner(
   );
   vars.ELIZA_CAPABILITY_ROUTER_ENABLED = "true";
   vars.ELIZA_CAPABILITY_ROUTER_URLS = JSON.stringify(sanitizedEndpoints);
-  if (Object.keys(moduleAllowlists).length > 0) {
-    vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
-      JSON.stringify(moduleAllowlists);
+  const serializedModuleAllowlists =
+    serializeCapabilityRouterModuleAllowlistSetting(moduleAllowlists);
+  if (serializedModuleAllowlists !== undefined) {
+    vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES = serializedModuleAllowlists;
   } else {
     delete vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
   }
-  if (Object.keys(persistedTrustPolicy).length > 0) {
+  const serializedTrustPolicy =
+    serializeCapabilityRouterTrustPolicySetting(persistedTrustPolicy);
+  if (serializedTrustPolicy !== undefined) {
     await ctx.persistConfigEnv(
       "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
-      JSON.stringify(persistedTrustPolicy),
+      serializedTrustPolicy,
     );
-    vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY =
-      JSON.stringify(persistedTrustPolicy);
+    vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY = serializedTrustPolicy;
   } else {
     delete vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
   }
@@ -571,8 +586,8 @@ type CapabilityRouterTrustAuditRecord = {
 };
 type PersistedCapabilityRouterState = {
   endpoints: RemoteCapabilityEndpointConfig[];
-  moduleAllowlists: Record<string, string[]>;
-  trustPolicies: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>;
+  moduleAllowlists: CapabilityRouterModuleAllowlistSetting;
+  trustPolicies: CapabilityRouterTrustPolicySetting;
   trustAudit: CapabilityRouterTrustAuditRecord[];
 };
 /**
@@ -584,19 +599,44 @@ function readPersistedCapabilityRouterState(
   vars: Record<string, string>,
 ): PersistedCapabilityRouterState {
   return {
-    endpoints: readPersistedEndpoints(
-      process.env[ENDPOINTS_KEY] ?? vars[ENDPOINTS_KEY],
+    endpoints: readPersistedSetting(() =>
+      parseCapabilityRouterEndpointsSetting(
+        process.env[ENDPOINTS_KEY] ?? vars[ENDPOINTS_KEY],
+      ),
     ),
-    moduleAllowlists: readPersistedModuleAllowlists(
-      process.env[ALLOWED_MODULES_KEY] ?? vars[ALLOWED_MODULES_KEY],
+    moduleAllowlists: readPersistedSetting(
+      () =>
+        parseCapabilityRouterModuleAllowlistSetting(
+          process.env[ALLOWED_MODULES_KEY] ?? vars[ALLOWED_MODULES_KEY],
+        ) ?? { kind: "endpoints", endpoints: {} },
     ),
-    trustPolicies: readPersistedTrustPolicies(
-      process.env[TRUST_POLICY_KEY] ?? vars[TRUST_POLICY_KEY],
+    trustPolicies: readPersistedSetting(
+      () =>
+        parseCapabilityRouterTrustPolicySetting(
+          process.env[TRUST_POLICY_KEY] ?? vars[TRUST_POLICY_KEY],
+        ) ?? { global: {}, endpoints: {} },
     ),
     trustAudit: readTrustAuditRecords(
       process.env[TRUST_AUDIT_KEY] ?? vars[TRUST_AUDIT_KEY],
     ),
   };
+}
+/**
+ * Runs a shared capability-router setting parser, reporting a malformed value
+ * as {@link CapabilityRouterPersistedStateError} so the connect handler refuses
+ * to overwrite it.
+ */
+function readPersistedSetting<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (err) {
+    if (err instanceof CapabilityRouterSettingError) {
+      throw new CapabilityRouterPersistedStateError(err.key, err.reason, {
+        cause: err,
+      });
+    }
+    throw err;
+  }
 }
 function parsePersistedJson(key: string, value: string): unknown {
   try {
@@ -606,15 +646,6 @@ function parsePersistedJson(key: string, value: string): unknown {
       cause: err,
     });
   }
-}
-function requirePersistedRecord(
-  key: string,
-  parsed: unknown,
-): Record<string, unknown> {
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new CapabilityRouterPersistedStateError(key, "expected an object");
-  }
-  return parsed as Record<string, unknown>;
 }
 function readTrustAuditRecords(
   value: string | undefined,
@@ -678,131 +709,45 @@ function isTrustAuditRecord(
     Array.isArray(record.trustDecisions)
   );
 }
-function readPersistedModuleAllowlists(
-  value: string | undefined,
-): Record<string, string[]> {
-  if (!value?.trim()) return {};
-  const parsed = requirePersistedRecord(
-    ALLOWED_MODULES_KEY,
-    parsePersistedJson(ALLOWED_MODULES_KEY, value),
-  );
-  const result: Record<string, string[]> = {};
-  for (const [endpointId, moduleIds] of Object.entries(parsed)) {
-    if (
-      !Array.isArray(moduleIds) ||
-      moduleIds.some((item) => typeof item !== "string")
-    ) {
-      throw new CapabilityRouterPersistedStateError(
-        ALLOWED_MODULES_KEY,
-        `entry "${endpointId}" must be an array of strings`,
-      );
-    }
-    if (!endpointId.trim()) continue;
-    const normalized = normalizeStringList(moduleIds);
-    if (normalized.length > 0) {
-      result[endpointId.trim()] = normalized;
-    }
-  }
-  return result;
-}
+/**
+ * Records this endpoint's allowlist. A stored global array stays global (the
+ * runtime unions allowlists across endpoints), extended with any modules this
+ * connect allows; per-endpoint entries are replaced or removed.
+ */
 function mergePersistedModuleAllowlists(
-  existing: Record<string, string[]>,
+  existing: CapabilityRouterModuleAllowlistSetting,
   endpointId: string,
   allowedModuleIds: string[] | undefined,
-): Record<string, string[]> {
-  const next = { ...existing };
-  if (allowedModuleIds === undefined) {
-    delete next[endpointId];
-    return next;
+): CapabilityRouterModuleAllowlistSetting {
+  const normalized = normalizeStringList(allowedModuleIds ?? []);
+  if (existing.kind === "global") {
+    return {
+      kind: "global",
+      moduleIds: normalizeStringList([...existing.moduleIds, ...normalized]),
+    };
   }
-  const normalized = normalizeStringList(allowedModuleIds);
+  const next = { ...existing.endpoints };
   if (normalized.length === 0) {
     delete next[endpointId];
   } else {
     next[endpointId] = normalized;
   }
-  return next;
+  return { kind: "endpoints", endpoints: next };
 }
-function readPersistedTrustPolicies(
-  value: string | undefined,
-): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
-  if (!value?.trim()) return {};
-  const parsed = requirePersistedRecord(
-    TRUST_POLICY_KEY,
-    parsePersistedJson(TRUST_POLICY_KEY, value),
-  );
-  const result: Record<string, RemoteCapabilityEndpointTrustPolicyOptions> = {};
-  for (const [endpointId, candidate] of Object.entries(parsed)) {
-    let trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined;
-    try {
-      trustPolicy = parseOptionalEndpointTrustPolicy(
-        candidate,
-        `${TRUST_POLICY_KEY}.${endpointId}`,
-      );
-    } catch (err) {
-      throw new CapabilityRouterPersistedStateError(
-        TRUST_POLICY_KEY,
-        err instanceof Error ? err.message : `entry "${endpointId}" is invalid`,
-        { cause: err },
-      );
-    }
-    if (!endpointId.trim()) continue;
-    if (trustPolicy && Object.keys(trustPolicy).length > 0) {
-      result[endpointId.trim()] = trustPolicy;
-    }
-  }
-  return result;
-}
+/** Replaces this endpoint's trust policy; global policy keys are kept as-is. */
 function mergePersistedTrustPolicies(
-  existing: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>,
+  existing: CapabilityRouterTrustPolicySetting,
   endpointId: string,
   trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined,
-): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
-  const next = { ...existing };
+): CapabilityRouterTrustPolicySetting {
+  const next = { ...existing.endpoints };
   const normalized = normalizeEndpointTrustPolicyOptions(trustPolicy);
   if (Object.keys(normalized).length === 0) {
     delete next[endpointId];
   } else {
     next[endpointId] = normalized;
   }
-  return next;
-}
-function readPersistedEndpoints(
-  value: string | undefined,
-): RemoteCapabilityEndpointConfig[] {
-  if (!value?.trim()) return [];
-  const parsed = parsePersistedJson(ENDPOINTS_KEY, value);
-  if (!Array.isArray(parsed)) {
-    throw new CapabilityRouterPersistedStateError(
-      ENDPOINTS_KEY,
-      "expected an array",
-    );
-  }
-  return parsed.map((item, index): RemoteCapabilityEndpointConfig => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new CapabilityRouterPersistedStateError(
-        ENDPOINTS_KEY,
-        `entry ${index} must be an object`,
-      );
-    }
-    const record = item as Record<string, unknown>;
-    if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
-      throw new CapabilityRouterPersistedStateError(
-        ENDPOINTS_KEY,
-        `entry ${index} is missing a baseUrl`,
-      );
-    }
-    return {
-      id:
-        typeof record.id === "string" && record.id.trim()
-          ? record.id.trim()
-          : `remote-${index + 1}`,
-      baseUrl: record.baseUrl.trim().replace(/\/+$/, ""),
-      ...(typeof record.token === "string" && record.token.trim()
-        ? { token: record.token.trim() }
-        : {}),
-    };
-  });
+  return { global: existing.global, endpoints: next };
 }
 function mergePersistedEndpoints(
   existing: RemoteCapabilityEndpointConfig[],

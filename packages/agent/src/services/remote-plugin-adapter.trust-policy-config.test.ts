@@ -97,6 +97,57 @@ describe("resolveConfiguredRemotePluginTrustPolicy", () => {
     expect(run).toThrow(/ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES/);
   });
 
+  it("applies per-endpoint allowlists and policies for configured endpoints", () => {
+    const policy = resolveConfiguredRemotePluginTrustPolicy(
+      runtimeWith({
+        ...base,
+        ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES:
+          '{"primary":["mod-a"],"other":["mod-b"]}',
+        ELIZA_CAPABILITY_ROUTER_TRUST_POLICY:
+          '{"allowedProvenanceIssuers":["issuer-g"],"primary":{"requireProvenanceDigestMatch":true}}',
+      }),
+    );
+    expect(policy).toEqual({
+      allowedEndpointIds: ["primary"],
+      allowedModuleIds: ["mod-a"],
+      allowedProvenanceIssuers: ["issuer-g"],
+      requireSignedProvenance: true,
+      requireProvenanceDigestMatch: true,
+      requireEndpointId: true,
+    });
+  });
+
+  it.each([
+    ["non-array endpoint entry", '{"primary":"mod-a"}'],
+    ["non-string module id", '{"primary":["mod-a",7]}'],
+    ["non-string global module id", '["mod-a",7]'],
+  ])("throws on a malformed allowlist entry (%s)", (_label, value) => {
+    const run = () =>
+      resolveConfiguredRemotePluginTrustPolicy(
+        runtimeWith({
+          ...base,
+          ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES: value,
+        }),
+      );
+    expect(run).toThrow(RemotePluginTrustPolicyConfigError);
+    expect(run).toThrow(/ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES/);
+  });
+
+  it.each([
+    ["non-object endpoint policy", '{"primary":"strict"}'],
+    ["string global flag", '{"requireSignedProvenance":"true"}'],
+    ["string endpoint flag", '{"primary":{"requireVerifiedProvenance":"yes"}}'],
+    ["non-array issuers", '{"primary":{"allowedProvenanceIssuers":"issuer"}}'],
+    ["non-string public key", '{"trustedProvenancePublicKeys":{"issuer":42}}'],
+  ])("throws on a malformed trust policy entry (%s)", (_label, value) => {
+    const run = () =>
+      resolveConfiguredRemotePluginTrustPolicy(
+        runtimeWith({ ...base, ELIZA_CAPABILITY_ROUTER_TRUST_POLICY: value }),
+      );
+    expect(run).toThrow(RemotePluginTrustPolicyConfigError);
+    expect(run).toThrow(/ELIZA_CAPABILITY_ROUTER_TRUST_POLICY/);
+  });
+
   it("throws on a malformed policy supplied through the environment", () => {
     process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY = "{oops";
     expect(() =>

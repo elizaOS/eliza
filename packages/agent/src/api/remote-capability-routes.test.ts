@@ -139,16 +139,113 @@ describe("capability-router connect persistence", () => {
     ).toHaveLength(2);
   });
 
+  function savedVars(harness: Harness): Record<string, string> {
+    return (
+      harness.saveConfig.mock.calls[0][0] as {
+        env: { vars: Record<string, string> };
+      }
+    ).env.vars;
+  }
+
+  it.each([
+    ["comma-separated list", "https://a.example.com,https://b.example.com/"],
+    ["string array", '["https://a.example.com","https://b.example.com"]'],
+  ])(
+    "accepts and round-trips endpoint URLs given as a %s",
+    async (_label, value) => {
+      process.env.ELIZA_CAPABILITY_ROUTER_URLS = value;
+      const harness = createHarness({});
+
+      await handleRemoteCapabilityRoutes(harness.ctx);
+
+      expect(harness.error).not.toHaveBeenCalled();
+      expect(
+        JSON.parse(savedVars(harness).ELIZA_CAPABILITY_ROUTER_URLS),
+      ).toEqual([
+        { id: "remote-1", baseUrl: "https://a.example.com" },
+        { id: "remote-2", baseUrl: "https://b.example.com" },
+        { id: "fresh", baseUrl: "https://fresh.example.com" },
+      ]);
+    },
+  );
+
+  it("keeps a global module allowlist array global when persisting", async () => {
+    const harness = createHarness({
+      ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES: '["mod-a"]',
+    });
+
+    await handleRemoteCapabilityRoutes(harness.ctx);
+
+    expect(harness.error).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(savedVars(harness).ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES),
+    ).toEqual(["mod-a"]);
+  });
+
+  it("extends a global module allowlist with the connected endpoint's modules", async () => {
+    const harness = createHarness({
+      ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES: '["mod-a"]',
+    });
+    harness.ctx.readJsonBody = vi.fn(async () => ({
+      endpoint: { id: "fresh", baseUrl: "https://fresh.example.com" },
+      allowedModuleIds: ["mod-b"],
+    })) as unknown as RemoteCapabilityRouteContext["readJsonBody"];
+
+    await handleRemoteCapabilityRoutes(harness.ctx);
+
+    expect(harness.error).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(savedVars(harness).ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES),
+    ).toEqual(["mod-a", "mod-b"]);
+  });
+
+  it("round-trips global trust policy keys next to per-endpoint policies", async () => {
+    const harness = createHarness({
+      ELIZA_CAPABILITY_ROUTER_TRUST_POLICY: JSON.stringify({
+        requireVerifiedProvenance: true,
+        allowedProvenanceIssuers: ["issuer-a"],
+        existing: { requireSignedProvenance: true },
+      }),
+    });
+    harness.ctx.readJsonBody = vi.fn(async () => ({
+      endpoint: { id: "fresh", baseUrl: "https://fresh.example.com" },
+      trustPolicy: { requireProvenanceDigestMatch: true },
+    })) as unknown as RemoteCapabilityRouteContext["readJsonBody"];
+
+    await handleRemoteCapabilityRoutes(harness.ctx);
+
+    expect(harness.error).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(savedVars(harness).ELIZA_CAPABILITY_ROUTER_TRUST_POLICY),
+    ).toEqual({
+      allowedProvenanceIssuers: ["issuer-a"],
+      requireSignedProvenance: true,
+      requireVerifiedProvenance: true,
+      existing: { requireSignedProvenance: true },
+      fresh: {
+        requireSignedProvenance: true,
+        requireProvenanceDigestMatch: true,
+      },
+    });
+  });
+
   it.each([
     ["ELIZA_CAPABILITY_ROUTER_URLS", "[not json"],
     ["ELIZA_CAPABILITY_ROUTER_URLS", '{"id":"existing"}'],
     ["ELIZA_CAPABILITY_ROUTER_URLS", '[{"id":"no-base-url"}]'],
+    ["ELIZA_CAPABILITY_ROUTER_URLS", '["https://a.example.com", 7]'],
+    ["ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES", '["mod-a", 7]'],
     ["ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES", "{broken"],
     ["ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES", '{"existing":"mod"}'],
     ["ELIZA_CAPABILITY_ROUTER_TRUST_POLICY", "{broken"],
     [
       "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
       '{"existing":{"requireSignedProvenance":"yes"}}',
+    ],
+    ["ELIZA_CAPABILITY_ROUTER_TRUST_POLICY", '{"existing":"strict"}'],
+    [
+      "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+      '{"requireSignedProvenance":"true"}',
     ],
     ["ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT", "[broken"],
     ["ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT", '[{"mode":"endpoint"}]'],
