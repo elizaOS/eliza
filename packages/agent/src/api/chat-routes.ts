@@ -138,6 +138,7 @@ import {
   isAuthorized,
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
+import { readUiLanguageHeader } from "./server-helpers-config.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
@@ -2156,20 +2157,6 @@ function parseRequestChannelType(
     return null;
   }
   return normalized as ChannelType;
-}
-function readUiLanguageHeader(
-  req: http.IncomingMessage | undefined,
-): string | undefined {
-  if (!req) {
-    return undefined;
-  }
-  const header = req.headers["x-eliza-ui-language"];
-  if (Array.isArray(header)) {
-    return header.find((value) => value.trim())?.trim();
-  }
-  return typeof header === "string" && header.trim()
-    ? header.trim()
-    : undefined;
 }
 export async function readChatRequestPayload(
   req: http.IncomingMessage,
