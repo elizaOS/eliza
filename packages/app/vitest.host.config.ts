@@ -71,6 +71,7 @@ export default defineConfig({
       "scripts/lib/linux-cef-helper.test.mjs",
       "scripts/lib/local-voice-startup.test.ts",
       "scripts/copy-runtime-node-modules.test.ts",
+      "scripts/copy-runtime-node-modules-lock.test.ts",
       "scripts/android-native-sms.test.ts",
       "scripts/android-native-plugins.test.ts",
       "scripts/native-plugin-build.test.ts",
