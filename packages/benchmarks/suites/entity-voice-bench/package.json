@@ -18,6 +18,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/testing": "workspace:*"
   },
   "devDependencies": {

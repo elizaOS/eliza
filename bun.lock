@@ -565,6 +565,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
+        "@elizaos/plugin-relationships": "workspace:*",
         "@elizaos/testing": "workspace:*",
       },
       "devDependencies": {
@@ -652,6 +653,7 @@
       "dependencies": {
         "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
       },
       "devDependencies": {
