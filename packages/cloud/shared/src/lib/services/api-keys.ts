@@ -6,10 +6,12 @@
 
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
-import { and, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, count, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
+import { writeTransaction } from "../../db/helpers";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
+import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
 import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
@@ -22,10 +24,64 @@ import {
   invalidateInferenceAuthContextsByKeyHashes,
 } from "./inference-auth-cache";
 import { revokeInferenceApiKey } from "./inference-credential-revocation";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "./organization-quota-policy";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
+
+/** Plan-limited count of user-created API keys; keys themselves are free (#22958). */
+export interface ApiKeyUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+/** Typed refusal when a user-created key would exceed the plan's API-key ceiling. */
+export class ApiKeyLimitExceededError extends ElizaError {
+  override readonly name = "ApiKeyLimitExceededError";
+  constructor(
+    readonly organizationId: string,
+    readonly used: number,
+    readonly limit: number,
+  ) {
+    super(`Organization has reached its API key limit of ${limit}`, {
+      code: "API_KEY_LIMIT_EXCEEDED",
+      context: { organizationId, used, limit },
+    });
+  }
+}
+
+type UserCreatedApiKeyInput = Omit<
+  NewApiKey,
+  | "key_hash"
+  | "key_prefix"
+  | "key_ciphertext"
+  | "key_nonce"
+  | "key_auth_tag"
+  | "key_kms_key_id"
+  | "key_kms_key_version"
+  | "source_app_id"
+  | "user_created"
+>;
+
+/** Counts keys held against the ceiling: every user-created key not yet deleted. */
+async function countUserCreatedKeys(tx: DbTransaction, organizationId: string): Promise<number> {
+  const [row] = await tx
+    .select({ value: count() })
+    .from(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.organization_id, organizationId),
+        eq(apiKeys.user_created, true),
+        isNull(apiKeys.deleted_at),
+      ),
+    );
+  return Number(row?.value ?? 0);
+}
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
@@ -386,6 +442,42 @@ export class ApiKeysService {
     };
   }
 
+  /**
+   * Creates a user-managed key under the plan's API-key ceiling. The
+   * organization policy lock serializes concurrent creates, so N parallel
+   * requests at N-1 keys admit exactly one. Deactivated keys still count
+   * until deleted, so deactivate/create/reactivate cannot exceed the ceiling.
+   */
+  async createUserManaged(
+    data: UserCreatedApiKeyInput,
+  ): Promise<{ apiKey: ApiKey; plainKey: string; usage: ApiKeyUsage }> {
+    // Encrypt outside the transaction so KMS work does not hold the policy lock.
+    const { apiKey, plainKey } = await this.buildApiKeyInsert({ ...data, user_created: true });
+    return writeTransaction(async (tx) => {
+      await lockOrganizationPolicy(tx, data.organization_id);
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+      const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
+      const used = await countUserCreatedKeys(tx, data.organization_id);
+      if (used >= limit) throw new ApiKeyLimitExceededError(data.organization_id, used, limit);
+      const created = await apiKeysRepository.create(apiKey, tx);
+      return {
+        apiKey: created,
+        plainKey,
+        usage: { used: used + 1, limit, remaining: Math.max(limit - used - 1, 0) },
+      };
+    });
+  }
+
+  /** Reads the organization's API-key usage against its plan ceiling. */
+  async getUsage(organizationId: string): Promise<ApiKeyUsage> {
+    return writeTransaction(async (tx) => {
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+      const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
+      const used = await countUserCreatedKeys(tx, organizationId);
+      return { used, limit, remaining: Math.max(limit - used, 0) };
+    });
+  }
+
   private async buildApiKeyInsert(
     data: Omit<
       NewApiKey,
@@ -507,6 +599,7 @@ export class ApiKeysService {
             created_at: sql<Date>`NOW()`.as("created_at"),
             updated_at: sql<Date>`NOW()`.as("updated_at"),
             deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as("deleted_at"),
+            user_created: sql<boolean>`false`.as("user_created"),
           })
           .from(sql`(SELECT 1) AS singleton`)
           .where(notExists(usableDefaultKey)),
@@ -624,6 +717,7 @@ export class ApiKeysService {
       rate_limit: existing.rate_limit,
       is_active: true,
       expires_at: existing.expires_at,
+      user_created: existing.user_created,
     });
     const apiKey = await apiKeysRepository.replace(existing.id, replacement);
     await this.invalidateCache(existing.key_hash);

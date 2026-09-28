@@ -55,6 +55,11 @@ export const apiKeys = pgTable(
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
     deleted_at: timestamp("deleted_at"),
+    // True only for keys a user created through the API-key management
+    // surface. These count toward the plan's API-key ceiling (#22958);
+    // system-provisioned credentials (default, explorer, sign-in, app and
+    // agent keys) do not.
+    user_created: boolean("user_created").notNull().default(false),
   },
   (table) => ({
     key_hash_idx: uniqueIndex("api_keys_key_hash_idx").on(table.key_hash),
@@ -65,6 +70,9 @@ export const apiKeys = pgTable(
       .on(table.source_app_id)
       .where(sql`${table.source_app_id} IS NOT NULL`),
     deleted_at_idx: index("api_keys_deleted_at_idx").on(table.deleted_at),
+    user_created_org_idx: index("api_keys_user_created_org_idx")
+      .on(table.organization_id)
+      .where(sql`${table.user_created} AND ${table.deleted_at} IS NULL`),
   }),
 );
 

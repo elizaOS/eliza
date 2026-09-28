@@ -26,6 +26,11 @@ import {
   type OrgTierData,
   resolveOrgTierFromSourceValues,
 } from "./org-rate-limits";
+import {
+  API_KEY_CEILINGS,
+  resolveSubscriptionPlanDefinition,
+  SubscriptionCatalogError,
+} from "./subscription-catalog";
 import { withSubscriptionPaymentGrace } from "./subscription-payment-grace";
 
 export interface OrganizationPolicyStamp {
@@ -44,7 +49,8 @@ export type OrganizationResource =
   | "sandboxes"
   | "containers"
   | "apps"
-  | "storage";
+  | "storage"
+  | "apiKeys";
 export type OrganizationResourceLimit =
   | { status: "available"; limit: bigint; source: string }
   | { status: "unavailable"; code: string };
@@ -117,6 +123,26 @@ function limit(value: number | bigint | null, source: string): OrganizationResou
       context: { source },
     });
   return { status: "available", limit: BigInt(value), source };
+}
+/** API-key count ceiling for the granted plan, read from the immutable catalogue. */
+function subscriptionApiKeyLimit(
+  planKey: string,
+  catalogVersion: string | null,
+): OrganizationResourceLimit {
+  if (planKey !== "plus_monthly" && planKey !== "pro_monthly")
+    return limit(API_KEY_CEILINGS.free, "subscription-catalog");
+  try {
+    return limit(
+      resolveSubscriptionPlanDefinition(planKey, catalogVersion ?? "").resourceCeilings.apiKeys,
+      "subscription-catalog",
+    );
+  } catch (error) {
+    // error-policy:J4 an unknown catalogue revision is an unavailable ceiling,
+    // which admission refuses with RESOURCE_POLICY_UNAVAILABLE.
+    if (error instanceof SubscriptionCatalogError)
+      return { status: "unavailable", code: "resource_policy_unavailable" };
+    throw error;
+  }
 }
 export function requireOrganizationResourceLimit(
   policy: OrganizationQuotaPolicy,
@@ -263,6 +289,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
         ),
         apps: resource(() => limit(getMaxAppsPerOrg(), "legacy-app-policy")),
         storage: limit(storage?.bytes_limit ?? 5n * 1024n * 1024n * 1024n, "legacy-storage-policy"),
+        apiKeys: limit(API_KEY_CEILINGS.free, "pay-as-you-go-policy"),
       },
     };
   }
@@ -401,6 +428,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
           ? "authorized-storage-override"
           : "subscription-entitlement",
       ),
+      apiKeys: subscriptionApiKeyLimit(granted.plan_key, granted.catalog_version),
     },
   };
 }

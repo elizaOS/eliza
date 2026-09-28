@@ -7993,6 +7993,8 @@
   "cloud.monetization.deployAgent": "Deploy an Agent",
   "cloud.monetization.viewEarnings": "View Earnings",
   "cloud.apiKeys.pageTitle": "API Keys",
+  "cloud.apiKeys.planUsage": "{{used}} of {{limit}} keys on your plan. API keys are free.",
+  "cloud.apiKeys.planLimitReached": "Your plan allows {{limit}} API keys. Delete a key or upgrade your plan to create another.",
   "cloud.apiKeys.createApiKey": "Generate key",
   "cloud.apiKeys.loadFailed": "Failed to load API key",
   "cloud.apiKeys.deleted": "API key revoked",
