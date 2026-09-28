@@ -174,8 +174,7 @@ function inferenceAuthTimingMetrics(telemetry: InferenceAuthTelemetry): ServerTi
   const optional = [
     ["auth_cache_available", telemetry.timings.cacheAvailabilityMs],
     ["auth_cache_read", telemetry.timings.cacheReadMs],
-    ["auth_key_lookup", telemetry.timings.keyLookupMs],
-    ["auth_user_org", telemetry.timings.userOrgLookupMs],
+    ["auth_identity", telemetry.timings.identityLookupMs],
     ["auth_moderation", telemetry.timings.moderationMs],
     ["auth_cache_write", telemetry.timings.cacheWriteMs],
   ] as const;

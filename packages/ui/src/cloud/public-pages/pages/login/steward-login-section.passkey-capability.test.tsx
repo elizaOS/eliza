@@ -812,10 +812,16 @@ describe("StewardLoginSection passkey capability gating", () => {
       name: /Magic Link/i,
     });
     fireEvent.click(magicLink);
-    expect(await screen.findByText("Enter your email")).toBeTruthy();
+    const message = await screen.findByText("Enter your email");
     expect(emailLoginSpies.start).not.toHaveBeenCalled();
 
+    // #27241: the email field owns its validation message and focus.
     const input = screen.getByPlaceholderText("you@example.com");
+    expect(message.getAttribute("role")).toBe("alert");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(message.id);
+    expect(document.activeElement).toBe(input);
+
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(magicLink);
     expect(await screen.findByText("SMTP unavailable")).toBeTruthy();

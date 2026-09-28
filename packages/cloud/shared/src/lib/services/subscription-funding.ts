@@ -277,6 +277,61 @@ async function findReservation(
 }
 
 export class SubscriptionFundingService {
+  /** Records a completed inference that collected no funds, so recovery cannot debit it later. */
+  async recordUnfundedInferenceInTransaction(
+    tx: DbTransaction,
+    input: {
+      organizationId: string;
+      logicalOperationId: string;
+      actualAmount: string;
+      reservationTtlMs: number;
+    },
+  ): Promise<BillingFundingReservation> {
+    validateOperationId(input.logicalOperationId);
+    const actualAmount = canonicalMoney(input.actualAmount, "actualAmount", true);
+    if (!Number.isFinite(input.reservationTtlMs) || input.reservationTtlMs <= 0) {
+      fundingError(SUBSCRIPTION_FUNDING_INVALID_AMOUNT, "Funding receipt TTL must be positive", {});
+    }
+    await lockOrganization(tx, input.organizationId);
+    const now = await readPostLockDatabaseNow(tx);
+    const digest = await requestDigest([
+      "unfunded_inference",
+      input.organizationId,
+      input.logicalOperationId,
+      actualAmount,
+    ]);
+    const [receipt] = await tx
+      .insert(billingFundingReservations)
+      .values({
+        organization_id: input.organizationId,
+        logical_operation_id: input.logicalOperationId,
+        request_digest: digest,
+        funding_class: "allowance_eligible",
+        requested_amount: "0.000000",
+        reserved_amount: "0.000000",
+        uncollected_overage_amount: actualAmount,
+        status: "finalized",
+        settlement_key: `settle.${digest}`,
+        settlement_digest: digest,
+        created_at: now,
+        updated_at: now,
+        finalized_at: now,
+        expires_at: new Date(now.getTime() + input.reservationTtlMs),
+      })
+      .returning();
+    if (!receipt) {
+      fundingError(
+        SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
+        "Unfunded inference receipt was not stored",
+        {
+          organizationId: input.organizationId,
+          logicalOperationId: input.logicalOperationId,
+        },
+      );
+    }
+    return receipt;
+  }
+
   async reserve(
     input: ReserveSubscriptionFundingInput,
   ): Promise<SubscriptionFundingReservationResult> {

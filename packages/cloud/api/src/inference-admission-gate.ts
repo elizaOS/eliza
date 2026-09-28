@@ -35,8 +35,17 @@ interface ActiveLease extends ActiveLeaseTiming {
   recovery: InferenceAdmissionRecoveryContext;
 }
 
+/**
+ * Which authoritative balance the ceiling reflects. Absent means purchased
+ * credit only. "funding" is subscriber capacity: purchased credit plus
+ * spendable allowance at the same organization balance revision. At equal
+ * revisions the funding view supersedes a credit-only observation.
+ */
+type BalanceView = "funding";
+
 interface GateLedger {
   balanceRevision: string;
+  balanceView?: BalanceView;
   balanceCeilingUsd: number;
   availableUsd: number;
   uncollectedDebtUsd: number;
@@ -57,6 +66,7 @@ interface LeaseRequest {
   requestId: string;
   balanceUsd: number;
   balanceRevision: string;
+  balanceView?: BalanceView;
   estimatedCostUsd: number;
   recovery: InferenceAdmissionRecoveryContext;
 }
@@ -76,6 +86,7 @@ interface AuthorizedLeaseDispatchRequest extends AuthorizedLeaseRequest {
 interface HydrateRequest {
   balanceUsd: number;
   balanceRevision: string;
+  balanceView?: BalanceView;
 }
 
 interface SettleRequest {
@@ -84,6 +95,7 @@ interface SettleRequest {
   gateConsumedUsd: number;
   balanceUsd: number;
   balanceRevision: string;
+  balanceView?: BalanceView;
 }
 
 interface LeaseIdentityRequest {
@@ -305,7 +317,7 @@ function validRecoveryContext(
     const accounting = record.accounting;
     if (!accounting || typeof accounting !== "object") return false;
     const lane = accounting as Record<string, unknown>;
-    if (lane.kind === "direct_debit") {
+    if (lane.kind === "direct_debit" || lane.kind === "subscription_funding") {
       return Object.keys(lane).length === 1;
     }
     return (
@@ -364,6 +376,14 @@ function canonicalJson(value: unknown): string {
   return serialized;
 }
 
+function validBalanceView(value: unknown): value is BalanceView | undefined {
+  return value === undefined || value === "funding";
+}
+
+function balanceViewRank(view: BalanceView | undefined): number {
+  return view === "funding" ? 1 : 0;
+}
+
 function balanceRevision(value: unknown): bigint | null {
   if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) {
     return null;
@@ -378,6 +398,7 @@ function jsonError(message: string, status: 400 | 409 | 503): Response {
 function cloneLedger(ledger: GateLedger): GateLedger {
   return {
     balanceRevision: ledger.balanceRevision,
+    ...(ledger.balanceView && { balanceView: ledger.balanceView }),
     balanceCeilingUsd: ledger.balanceCeilingUsd,
     availableUsd: ledger.availableUsd,
     uncollectedDebtUsd: ledger.uncollectedDebtUsd,
@@ -445,19 +466,33 @@ function applyBalanceSnapshot(
   ledger: GateLedger,
   balanceUsd: number,
   revision: string,
+  view?: BalanceView,
 ): void {
   const incomingRevision = balanceRevision(revision);
   const currentRevision = balanceRevision(ledger.balanceRevision);
-  if (incomingRevision === null || currentRevision === null) {
+  if (
+    incomingRevision === null ||
+    currentRevision === null ||
+    !validBalanceView(view)
+  ) {
     throw new Error("Inference admission balance revision is invalid");
   }
-  if (incomingRevision > currentRevision) {
+  if (
+    incomingRevision > currentRevision ||
+    (incomingRevision === currentRevision &&
+      balanceViewRank(view) > balanceViewRank(ledger.balanceView))
+  ) {
     ledger.balanceRevision = revision;
+    if (view) ledger.balanceView = view;
+    else delete ledger.balanceView;
     ledger.balanceCeilingUsd = balanceUsd;
     recomputeAvailable(ledger);
     return;
   }
-  if (incomingRevision === currentRevision) {
+  if (
+    incomingRevision === currentRevision &&
+    balanceViewRank(view) === balanceViewRank(ledger.balanceView)
+  ) {
     ledger.balanceCeilingUsd = Math.min(ledger.balanceCeilingUsd, balanceUsd);
     ledger.availableUsd = Math.min(
       ledger.availableUsd,
@@ -546,6 +581,7 @@ export class InferenceAdmissionGate {
         !nonNegativeFinite(this.ledger.availableUsd) ||
         !nonNegativeFinite(this.ledger.uncollectedDebtUsd) ||
         balanceRevision(this.ledger.balanceRevision) === null ||
+        !validBalanceView(this.ledger.balanceView) ||
         !Number.isSafeInteger(this.ledger.activeLeaseCount) ||
         this.ledger.activeLeaseCount < 0 ||
         this.ledger.activeLeaseCount > MAX_ACTIVE_LEASES ||
@@ -785,6 +821,7 @@ export class InferenceAdmissionGate {
       !validId(request.organizationId) ||
       !nonNegativeFinite(request.balanceUsd) ||
       balanceRevision(request.balanceRevision) === null ||
+      !validBalanceView(request.balanceView) ||
       !nonNegativeFinite(request.estimatedCostUsd) ||
       request.estimatedCostUsd === 0 ||
       (preProviderCancellationToken !== undefined &&
@@ -793,7 +830,12 @@ export class InferenceAdmissionGate {
         request.recovery,
         request.requestId,
         request.organizationId,
-      )
+      ) ||
+      // Subscriber funding leases are admitted only against subscriber
+      // capacity, and credit-funded leases only against credit balances.
+      (request.balanceView === "funding") !==
+        (request.recovery.kind === "organization" &&
+          request.recovery.accounting.kind === "subscription_funding")
     ) {
       return jsonError("Invalid inference admission lease", 400);
     }
@@ -810,7 +852,12 @@ export class InferenceAdmissionGate {
       );
     }
     const ledger = cloneLedger(existing);
-    applyBalanceSnapshot(ledger, request.balanceUsd, request.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      request.balanceUsd,
+      request.balanceRevision,
+      request.balanceView,
+    );
 
     const prior = await this.loadLease(request.requestId);
     if (prior) {
@@ -942,7 +989,8 @@ export class InferenceAdmissionGate {
   private async hydrate(request: HydrateRequest): Promise<Response> {
     if (
       !nonNegativeFinite(request.balanceUsd) ||
-      balanceRevision(request.balanceRevision) === null
+      balanceRevision(request.balanceRevision) === null ||
+      !validBalanceView(request.balanceView)
     ) {
       return jsonError("Invalid inference admission hydration", 400);
     }
@@ -950,6 +998,7 @@ export class InferenceAdmissionGate {
     if (!existing) {
       await this.save({
         balanceRevision: request.balanceRevision,
+        ...(request.balanceView && { balanceView: request.balanceView }),
         balanceCeilingUsd: request.balanceUsd,
         availableUsd: request.balanceUsd,
         uncollectedDebtUsd: 0,
@@ -961,7 +1010,12 @@ export class InferenceAdmissionGate {
       return Response.json({ hydrated: true, initialized: true });
     }
     const ledger = cloneLedger(existing);
-    applyBalanceSnapshot(ledger, request.balanceUsd, request.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      request.balanceUsd,
+      request.balanceRevision,
+      request.balanceView,
+    );
     await this.save(ledger);
     return Response.json({ hydrated: true, initialized: false });
   }
@@ -973,7 +1027,8 @@ export class InferenceAdmissionGate {
       !nonNegativeFinite(request.gateConsumedUsd) ||
       request.gateConsumedUsd < request.balanceBackedUsd ||
       !nonNegativeFinite(request.balanceUsd) ||
-      balanceRevision(request.balanceRevision) === null
+      balanceRevision(request.balanceRevision) === null ||
+      !validBalanceView(request.balanceView)
     ) {
       return jsonError("Invalid inference admission settlement", 400);
     }
@@ -1001,7 +1056,12 @@ export class InferenceAdmissionGate {
     removeActiveLease(ledger, lease);
     ledger.uncollectedDebtUsd +=
       request.gateConsumedUsd - request.balanceBackedUsd;
-    applyBalanceSnapshot(ledger, request.balanceUsd, request.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      request.balanceUsd,
+      request.balanceRevision,
+      request.balanceView,
+    );
     recomputeAvailable(ledger);
     rememberSettledRequest(ledger, request.requestId);
     await this.save(ledger, {
@@ -1800,6 +1860,7 @@ export class InferenceAdmissionGate {
     if (
       !nonNegativeFinite(recovery.balanceUsd) ||
       balanceRevision(recovery.balanceRevision) === null ||
+      !validBalanceView(recovery.balanceView) ||
       !nonNegativeFinite(recovery.collectedUsd) ||
       !nonNegativeFinite(recovery.gateConsumedUsd) ||
       recovery.gateConsumedUsd < recovery.collectedUsd
@@ -1810,7 +1871,12 @@ export class InferenceAdmissionGate {
     removeActiveLease(ledger, currentLease);
     ledger.uncollectedDebtUsd +=
       recovery.gateConsumedUsd - recovery.collectedUsd;
-    applyBalanceSnapshot(ledger, recovery.balanceUsd, recovery.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      recovery.balanceUsd,
+      recovery.balanceRevision,
+      recovery.balanceView,
+    );
     recomputeAvailable(ledger);
     rememberSettledRequest(ledger, requestId);
     await this.save(ledger, {

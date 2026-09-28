@@ -23,6 +23,7 @@ public class ElizaSecureStorePlugin: CAPPlugin, CAPBridgedPlugin {
     private let allowedKeys: Set<String> = [
         "session.device_auth",
         "session.steward_token",
+        "session.cloud_mobile_pending",
         "runtime.active_server",
         "runtime.agent_profiles",
     ]

@@ -72,6 +72,7 @@ async function runKeepwarm(c: AppContext) {
     // 503 (#22552): warm each recently active room's conversation object and
     // turn-ingress modules. Sequential for the same flat-pressure reason.
     let personalRoomsWarmed = 0;
+    let personalOrganizationsWarmed = 0;
     if (rowlessPersonal > 0) {
       const namespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
       if (!namespace) {
@@ -84,15 +85,20 @@ async function runKeepwarm(c: AppContext) {
           since,
           KEEPWARM_MAX_PERSONAL_ROOMS,
         );
+      // Each room reports its verified owner; the owning organization's
+      // rate-limit gate is warmed once per sweep.
+      const warmedOrganizations = new Set<string>();
       for (const room of rooms) {
         if (!isPersonalSharedAgentId(room.agentId)) continue;
         await prewarmPersonalSharedRoom(
           room.agentId,
           room.channelId,
           namespace,
+          warmedOrganizations,
         );
         personalRoomsWarmed++;
       }
+      personalOrganizationsWarmed = warmedOrganizations.size;
     }
 
     await prewarmSharedElizaRuntime();
@@ -102,6 +108,7 @@ async function runKeepwarm(c: AppContext) {
       warmed,
       rowlessPersonal,
       personalRoomsWarmed,
+      personalOrganizationsWarmed,
       missing,
     });
 
@@ -112,6 +119,7 @@ async function runKeepwarm(c: AppContext) {
         warmed,
         rowlessPersonal,
         personalRoomsWarmed,
+        personalOrganizationsWarmed,
         missing,
       },
     });
