@@ -6,6 +6,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { isDstackEvidenceProvider } from "../services/tee-dstack-evidence.ts";
+import { DstackGuestKeyReleaseClient } from "../services/tee-dstack-key-release.ts";
 import { resolveDstackEvidenceConfiguration } from "../services/tee-dstack-release.ts";
 import {
   HttpTeeKeyReleaseClient,
@@ -68,10 +69,22 @@ function keyReleaseRejected(purpose: string): ElizaError {
   );
 }
 
+/** Exact class instances only: a subclass could override `releaseKey`. */
+function isExactInstance<T extends object>(
+  value: object,
+  ctor: { prototype: T },
+): value is T {
+  return (
+    Object.getPrototypeOf(value) === ctor.prototype &&
+    !Object.hasOwn(value, "releaseKey")
+  );
+}
+
 /**
- * Under the protected profile only a secure-transport KMS client bound to the
- * pinned dstack evidence adapter may release keys; the local development KDF
- * and generic evidence providers are refused.
+ * Under the protected profile only two clients may release keys, both bound to
+ * the pinned dstack evidence adapter: a secure-transport KMS client, or the
+ * dstack guest `GetKey` client pinned to the configured socket, app id and KMS
+ * root key. The local development KDF and generic providers are refused.
  */
 export function assertProtectedKeyReleaseClient(
   client: TeeKeyReleaseClient,
@@ -80,21 +93,33 @@ export function assertProtectedKeyReleaseClient(
   const state = captureProtectedProfile();
   if (!state.profile) return;
   let pinned = false;
-  if (client instanceof HttpTeeKeyReleaseClient && client.secureTransport) {
-    try {
-      pinned = isDstackEvidenceProvider(
-        client.attestationProvider,
-        resolveDstackEvidenceConfiguration(state.environment),
-      );
-    } catch {
-      // error-policy:J2 Invalid pinned configuration never admits a client.
-      pinned = false;
+  try {
+    const config = resolveDstackEvidenceConfiguration(state.environment);
+    if (
+      isExactInstance(client, HttpTeeKeyReleaseClient) &&
+      client.secureTransport
+    ) {
+      pinned = isDstackEvidenceProvider(client.attestationProvider, config);
+    } else if (isExactInstance(client, DstackGuestKeyReleaseClient)) {
+      pinned =
+        config.kmsRootPublicKey !== undefined &&
+        client.kmsRootPublicKey === config.kmsRootPublicKey.toLowerCase() &&
+        client.pinnedAppId === config.appId.toLowerCase() &&
+        client.socketPath === config.socketPath &&
+        isDstackEvidenceProvider(client.attestationProvider, config);
     }
+  } catch {
+    // error-policy:J2 Invalid pinned configuration never admits a client.
+    pinned = false;
   }
   if (!pinned) throw keyReleaseRejected(purpose);
 }
 
-/** Refuse released keys whose trust decision did not come from dstack. */
+/**
+ * Refuse released keys unless this process's own appraisal of its fresh,
+ * request-bound evidence came from the pinned dstack verifier. A key source's
+ * decision (for example a KMS response) is never accepted as that proof.
+ */
 export function assertProtectedReleaseEvidence(
   release: TeeKeyReleaseResult,
   purpose: string,
@@ -104,7 +129,11 @@ export function assertProtectedReleaseEvidence(
   if (
     !release.decision.trusted ||
     evidence?.provider !== "dstack" ||
-    !evidence.freshness?.verifier?.startsWith("dstack-verifier:sha256:")
+    !evidence.freshness?.verifier?.startsWith("dstack-verifier:sha256:") ||
+    !evidence.freshness.nonce ||
+    !evidence.reportData ||
+    (release.keySourceDecision !== undefined &&
+      release.keySourceDecision.trusted !== true)
   ) {
     throw keyReleaseRejected(purpose);
   }

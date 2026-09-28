@@ -39,10 +39,11 @@ import type { TeeEvidencePolicy } from "./tee-policy.ts";
  * INTEGRATION (one line, to be added by the local-model runtime boot):
  *
  *     const confidential = await prepareConfidentialModelWeights({
- *       keyReleaseClient,            // HttpTeeKeyReleaseClient (prod) / LocalTeeKeyReleaseClient (dev)
+ *       keyReleaseClient,            // DstackGuestKeyReleaseClient / HttpTeeKeyReleaseClient (prod), LocalTeeKeyReleaseClient (dev)
  *       policy: teeBootGate.policy,  // the boot-gate's resolved + production-merged policy
  *       sealedWeights,               // the at-rest AES-256-GCM weights blob
- *       requiredMeasurements: [...], // agent, policy, container, os, npuFirmware, modelWeights
+ *       requiredMeasurements: [...], // NPU/GPU: agent, policy, container, os, firmware, modelWeights; tdx-cpu: app, compose, os
+ *       topology,                    // "local" (NPU), "cloud" (GPU) or "tdx-cpu" (CPU inside the dstack TDX CVM)
  *     });
  *     // confidential === undefined  -> flag off; load cleartext weights as before
  *     // confidential.weights        -> decrypted-in-memory bytes; hand to runtime, then zeroize

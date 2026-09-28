@@ -51,6 +51,31 @@ export type TeeProductionProfileOptions = {
    * `local` (the device's default deployment shape).
    */
   inference?: "local" | "cloud";
+  /**
+   * `dstack-tdx`: a dstack Intel TDX CVM with NVIDIA CC GPUs (cloud only).
+   * See {@link DSTACK_TDX_CLOUD_CLAIMS} for how its floor differs.
+   */
+  platform?: "generic" | "dstack-tdx";
+};
+
+/**
+ * Cloud-inference floor for a dstack TDX CVM with NVIDIA CC GPUs: exactly the
+ * claims its verified evidence establishes. secureBoot is replaced by the
+ * pinned measured-boot OS image (`os` measurement, required by the merge).
+ * ioProtected is omitted: NRAS claims 3.0 carries no claim stating GPU CC mode
+ * or protected PCIe, so no verified source establishes it; CPU-GPU traffic
+ * protection rests on the verified GPU attestation (`gpuProtected`).
+ */
+export const DSTACK_TDX_CLOUD_CLAIMS: Required<
+  Pick<
+    TeeClaims,
+    "debugDisabled" | "memoryEncrypted" | "productionLifecycle" | "gpuProtected"
+  >
+> = {
+  debugDisabled: true,
+  memoryEncrypted: true,
+  productionLifecycle: true,
+  gpuProtected: true,
 };
 
 export type TeeProductionProfile = Required<
@@ -65,6 +90,18 @@ export function teeProductionProfile(
   options: TeeProductionProfileOptions = {},
 ): TeeProductionProfile {
   const inference = options.inference ?? "local";
+  if (options.platform === "dstack-tdx") {
+    if (inference !== "cloud")
+      throw new Error(
+        "dstack TDX production profile supports cloud inference only.",
+      );
+    return {
+      required: true,
+      rejectSimulatedEvidence: true,
+      requiredClaims: { ...DSTACK_TDX_CLOUD_CLAIMS },
+      maxAgeMs: TEE_PRODUCTION_MAX_AGE_MS,
+    };
+  }
   return {
     required: true,
     rejectSimulatedEvidence: true,
@@ -90,6 +127,15 @@ export function mergeTeeProductionProfile(
 ): TeeEvidencePolicy {
   const profile = teeProductionProfile(options);
   const base = policy ?? {};
+  if (
+    options.platform === "dstack-tdx" &&
+    !base.requiredMeasurements?.os?.trim()
+  ) {
+    // Measured boot stands in for secureBoot only when the OS image is pinned.
+    throw new Error(
+      "dstack TDX cloud profile requires a pinned `os` (measured-boot image) measurement.",
+    );
+  }
   const callerMaxAge = base.maxAgeMs;
   return {
     ...base,
