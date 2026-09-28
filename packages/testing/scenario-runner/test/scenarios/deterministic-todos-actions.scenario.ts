@@ -615,9 +615,25 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "TODO clear removes the user's whole cross-room list",
+      name: "TODO clear previews the user's whole list before removing it",
       actionName: "TODO",
       text: "clear todos",
+      options: { parameters: { action: "clear" } },
+      assertTurn: expectTodoTurn("clear", (data) =>
+        data.count === 0 &&
+        data.requiresConfirmation === true &&
+        records(data.preview).length === 6
+          ? undefined
+          : `expected a 6-row clear preview with nothing removed, saw ${JSON.stringify(
+              { count: data.count, preview: records(data.preview).length },
+            )}`,
+      ),
+    },
+    {
+      kind: "action",
+      name: "TODO clear removes the user's whole cross-room list",
+      actionName: "TODO",
+      text: "yes",
       options: { parameters: { action: "clear" } },
       // Clear is user-scoped (#28006): the 3 surviving seeded rows (roomId
       // null), the 2 full-write rows and the 1 created row are all removed.

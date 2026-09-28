@@ -3631,6 +3631,7 @@ export type {
 export {
 	clearPendingConfirmation,
 	gateDestructiveConfirmation,
+	isAffirmativeConfirmationReply,
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
