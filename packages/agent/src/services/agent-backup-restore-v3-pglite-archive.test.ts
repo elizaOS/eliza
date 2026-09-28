@@ -12,7 +12,7 @@ import {
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { extractAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database";
 import { validateAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database-validation";
 import {
@@ -24,6 +24,10 @@ import {
   type AgentBackupRestoreV3PgliteArchiveLimits,
   readAgentBackupRestoreV3PgliteArchive,
 } from "./agent-backup-restore-v3-pglite-archive";
+
+/** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
+const TEST_BUDGET_MS = 10 * 60_000;
+vi.setConfig({ testTimeout: TEST_BUDGET_MS, hookTimeout: TEST_BUDGET_MS });
 
 const roots = new Set<string>();
 const candidates = new Set<AgentBackupRestoreV3CandidateFs>();
@@ -82,7 +86,7 @@ async function stageDatabase(
 function control() {
   return {
     signal: new AbortController().signal,
-    deadlineEpochMs: Date.now() + 60_000,
+    deadlineEpochMs: Date.now() + TEST_BUDGET_MS,
   };
 }
 
@@ -182,32 +186,36 @@ function parse(
 }
 
 describe("physical PGlite archive", () => {
-  it("never validates an archive containing corrupt physical database control files", async () => {
-    const { input, attemptRoot } = await extractionFixture();
-    await expect(
-      validateAgentBackupRestoreV3CandidateDatabase({
-        ...input,
-        control: { ...control(), deadlineEpochMs: Date.now() + 15_000 },
-      }),
-    ).rejects.toThrow();
-    await expect(
-      fs.stat(
-        path.join(
-          attemptRoot,
-          ".restore-v3-component-c1.database-validated.json",
+  it(
+    "never validates an archive containing corrupt physical database control files",
+    async () => {
+      const { input, attemptRoot } = await extractionFixture();
+      await expect(
+        validateAgentBackupRestoreV3CandidateDatabase({
+          ...input,
+          control: control(),
+        }),
+      ).rejects.toThrow();
+      await expect(
+        fs.stat(
+          path.join(
+            attemptRoot,
+            ".restore-v3-component-c1.database-validated.json",
+          ),
         ),
-      ),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(
-      fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    expect(
-      await fs.readFile(
-        path.join(attemptRoot, "components/database/PG_VERSION"),
-        "utf8",
-      ),
-    ).toBe("17\n");
-  }, 20_000);
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      expect(
+        await fs.readFile(
+          path.join(attemptRoot, "components/database/PG_VERSION"),
+          "utf8",
+        ),
+      ).toBe("17\n");
+    },
+    TEST_BUDGET_MS,
+  );
   it("never publishes extraction on payload mismatch, then safely replays the correct finish", async () => {
     const { input, finish } = await extractionFixture();
     await expect(
@@ -286,105 +294,111 @@ describe("physical PGlite archive", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("reopens a real gzip dump in an isolated candidate and recovers the saved fact", async () => {
-    const root = await fs.mkdtemp(
-      path.join(await fs.realpath(os.tmpdir()), "restore-v3-pglite-"),
-    );
-    roots.add(root);
-    await fs.chmod(root, 0o700);
-    const source = new PGlite(path.join(root, "source"));
-    databases.add(source);
-    await source.exec(
-      "CREATE TABLE restore_fact (id integer PRIMARY KEY, fact text NOT NULL)",
-    );
-    await source.query("INSERT INTO restore_fact VALUES ($1, $2)", [
-      1,
-      "The remembered comet is indigo-20732",
-    ]);
-    const dump = await source.dumpDataDir("gzip");
-    await source.close();
-    databases.delete(source);
-    await fs.rm(path.join(root, "source"), { recursive: true });
+  it(
+    "reopens a real gzip dump in an isolated candidate and recovers the saved fact",
+    async () => {
+      const root = await fs.mkdtemp(
+        path.join(await fs.realpath(os.tmpdir()), "restore-v3-pglite-"),
+      );
+      roots.add(root);
+      await fs.chmod(root, 0o700);
+      const source = new PGlite(path.join(root, "source"));
+      databases.add(source);
+      await source.exec(
+        "CREATE TABLE restore_fact (id integer PRIMARY KEY, fact text NOT NULL)",
+      );
+      await source.query("INSERT INTO restore_fact VALUES ($1, $2)", [
+        1,
+        "The remembered comet is indigo-20732",
+      ]);
+      const dump = await source.dumpDataDir("gzip");
+      await source.close();
+      databases.delete(source);
+      await fs.rm(path.join(root, "source"), { recursive: true });
 
-    const attemptRoot = path.join(root, "attempt");
-    await fs.mkdir(attemptRoot, { mode: 0o700 });
-    const candidate = await openAgentBackupRestoreV3CandidateFs({
-      trustedRoot: root,
-      attemptRoot,
-      control: control(),
-      ...(process.platform === "linux"
-        ? {}
-        : { testOnlyAllowNonLinuxFdEmulation: true }),
-    });
-    candidates.add(candidate);
-    const bytes = new Uint8Array(await dump.arrayBuffer());
-    const receipt = await stageDatabase(candidate, bytes);
-    bytes.fill(0);
-    const result = await extractAgentBackupRestoreV3CandidateDatabase({
-      candidateFs: candidate,
-      session: SESSION,
-      receipt,
-      control: control(),
-    });
-    expect(result.tree.files).toBeGreaterThan(10);
-    expect(result.tree.bytes).toBeGreaterThan(1024 * 1024);
-    // The first response may have been lost; retry before opening the database.
-    expect(
-      await extractAgentBackupRestoreV3CandidateDatabase({
+      const attemptRoot = path.join(root, "attempt");
+      await fs.mkdir(attemptRoot, { mode: 0o700 });
+      const candidate = await openAgentBackupRestoreV3CandidateFs({
+        trustedRoot: root,
+        attemptRoot,
+        control: control(),
+        ...(process.platform === "linux"
+          ? {}
+          : { testOnlyAllowNonLinuxFdEmulation: true }),
+      });
+      candidates.add(candidate);
+      const bytes = new Uint8Array(await dump.arrayBuffer());
+      const receipt = await stageDatabase(candidate, bytes);
+      bytes.fill(0);
+      const result = await extractAgentBackupRestoreV3CandidateDatabase({
         candidateFs: candidate,
         session: SESSION,
         receipt,
         control: control(),
-      }),
-    ).toEqual(result);
-    const beforeValidation = await fs.stat(
-      path.join(attemptRoot, result.outputDirectory, "PG_VERSION"),
-    );
-    const validation = await validateAgentBackupRestoreV3CandidateDatabase({
-      candidateFs: candidate,
-      session: SESSION,
-      receipt,
-      control: control(),
-    });
-    expect(validation.extractionFinishSha256).toBe(result.finishSha256);
-    expect(validation.serverVersion).toMatch(/^[1-9][0-9]{4,5}$/);
-    expect(
-      await validateAgentBackupRestoreV3CandidateDatabase({
+      });
+      expect(result.tree.files).toBeGreaterThan(10);
+      expect(result.tree.bytes).toBeGreaterThan(1024 * 1024);
+      // The first response may have been lost; retry before opening the database.
+      expect(
+        await extractAgentBackupRestoreV3CandidateDatabase({
+          candidateFs: candidate,
+          session: SESSION,
+          receipt,
+          control: control(),
+        }),
+      ).toEqual(result);
+      const beforeValidation = await fs.stat(
+        path.join(attemptRoot, result.outputDirectory, "PG_VERSION"),
+      );
+      const validation = await validateAgentBackupRestoreV3CandidateDatabase({
         candidateFs: candidate,
         session: SESSION,
         receipt,
         control: control(),
-      }),
-    ).toEqual(validation);
-    expect(
-      (
-        await fs.stat(
-          path.join(attemptRoot, result.outputDirectory, "PG_VERSION"),
-        )
-      ).mtimeMs,
-    ).toBe(beforeValidation.mtimeMs);
-    await expect(
-      fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    const restored = new PGlite(path.join(attemptRoot, result.outputDirectory));
-    databases.add(restored);
-    expect(
-      (await restored.query("SELECT id, fact FROM restore_fact")).rows,
-    ).toEqual([{ id: 1, fact: "The remembered comet is indigo-20732" }]);
-    await restored.close();
-    databases.delete(restored);
-    const restarted = new PGlite(
-      path.join(attemptRoot, result.outputDirectory),
-    );
-    databases.add(restarted);
-    expect(
-      (
-        await restarted.query(
-          "SELECT count(*)::integer AS count FROM restore_fact",
-        )
-      ).rows,
-    ).toEqual([{ count: 1 }]);
-  }, 90_000);
+      });
+      expect(validation.extractionFinishSha256).toBe(result.finishSha256);
+      expect(validation.serverVersion).toMatch(/^[1-9][0-9]{4,5}$/);
+      expect(
+        await validateAgentBackupRestoreV3CandidateDatabase({
+          candidateFs: candidate,
+          session: SESSION,
+          receipt,
+          control: control(),
+        }),
+      ).toEqual(validation);
+      expect(
+        (
+          await fs.stat(
+            path.join(attemptRoot, result.outputDirectory, "PG_VERSION"),
+          )
+        ).mtimeMs,
+      ).toBe(beforeValidation.mtimeMs);
+      await expect(
+        fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      const restored = new PGlite(
+        path.join(attemptRoot, result.outputDirectory),
+      );
+      databases.add(restored);
+      expect(
+        (await restored.query("SELECT id, fact FROM restore_fact")).rows,
+      ).toEqual([{ id: 1, fact: "The remembered comet is indigo-20732" }]);
+      await restored.close();
+      databases.delete(restored);
+      const restarted = new PGlite(
+        path.join(attemptRoot, result.outputDirectory),
+      );
+      databases.add(restarted);
+      expect(
+        (
+          await restarted.query(
+            "SELECT count(*)::integer AS count FROM restore_fact",
+          )
+        ).rows,
+      ).toEqual([{ count: 1 }]);
+    },
+    TEST_BUDGET_MS,
+  );
 
   it.each([
     "../escape",

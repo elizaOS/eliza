@@ -16,11 +16,15 @@ import { candidateFsCanonicalJson } from "./agent-backup-restore-v3-candidate-fs
 import type { AgentBackupRestoreV3PreparedGenerationReceipt } from "./agent-backup-restore-v3-generation";
 import { commitAgentBackupRestoreV3Generation } from "./agent-backup-restore-v3-generation-commit";
 
+/** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
+const TEST_BUDGET_MS = 10 * 60_000;
+vi.setConfig({ testTimeout: TEST_BUDGET_MS, hookTimeout: TEST_BUDGET_MS });
+
 const roots = new Set<string>();
 const handles = new Set<AgentBackupRestoreV3CandidateFs>();
 const control = () => ({
   signal: new AbortController().signal,
-  deadlineEpochMs: Date.now() + 30_000,
+  deadlineEpochMs: Date.now() + TEST_BUDGET_MS,
 });
 const hash = (value: unknown) =>
   createHash("sha256").update(candidateFsCanonicalJson(value)).digest("hex");

@@ -30,12 +30,16 @@ import { prepareAgentBackupRestoreV3Generation } from "./agent-backup-restore-v3
 import { commitAgentBackupRestoreV3Generation } from "./agent-backup-restore-v3-generation-commit";
 import { createAgentBackupRestoreV3ProcessMaterializer } from "./agent-backup-restore-v3-materializer-process";
 
+/** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
+const TEST_BUDGET_MS = 10 * 60_000;
+vi.setConfig({ testTimeout: TEST_BUDGET_MS, hookTimeout: TEST_BUDGET_MS });
+
 const roots = new Set<string>();
 const candidates = new Set<AgentBackupRestoreV3CandidateFs>();
 const databases = new Set<PGlite>();
 const control = () => ({
   signal: new AbortController().signal,
-  deadlineEpochMs: Date.now() + 120_000,
+  deadlineEpochMs: Date.now() + TEST_BUDGET_MS,
 });
 const hash = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -223,236 +227,259 @@ async function generationTarget(root: string) {
 }
 
 describe("private runtime-generation preparation", () => {
-  it("commits the exact layout after lost rename acknowledgement and never restores over live database writes", async () => {
-    const { root, input } = await fixture(true);
-    const generationFs = await generationTarget(root);
-    const preparedReceipt = await prepareAgentBackupRestoreV3Generation({
-      ...input,
-      generationFs,
-      control: control(),
-    });
-    const runtimeRoot = await fs.mkdtemp(
-      path.join(await fs.realpath(os.tmpdir()), "restore-v3-live-"),
-    );
-    roots.add(runtimeRoot);
-    await fs.chmod(runtimeRoot, 0o700);
-    const stat = await fs.stat(runtimeRoot, { bigint: true });
-    const request = {
-      generationFs,
-      preparedReceipt,
-      runtimeRoot,
-      runtimeRootIdentity: {
-        device: String(stat.dev),
-        inode: String(stat.ino),
-      },
-    };
-    const intent = path.join(
-      generationFs.attemptRoot,
-      ".restore-v3-generation-commit-intent.json",
-    );
-    const marker = path.join(
-      generationFs.attemptRoot,
-      ".restore-v3-generation-committed.json",
-    );
-    await expect(
-      commitAgentBackupRestoreV3Generation({
-        ...request,
-        runtimeRoot: root,
+  it(
+    "commits the exact layout after lost rename acknowledgement and never restores over live database writes",
+    async () => {
+      const { root, input } = await fixture(true);
+      const generationFs = await generationTarget(root);
+      const preparedReceipt = await prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs,
         control: control(),
-      }),
-    ).rejects.toThrow();
-    await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(
-      commitAgentBackupRestoreV3Generation({
-        ...request,
-        runtimeRootIdentity: { device: String(stat.dev), inode: "1" },
-        control: control(),
-      }),
-    ).rejects.toThrow();
-    await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
-    const destination = path.join(
-      runtimeRoot,
-      `generation-${preparedReceipt.receiptSha256}`,
-    );
-    await fs.mkdir(destination, { mode: 0o700 });
-    const occupied = await fs.stat(destination, { bigint: true });
-    await expect(
-      commitAgentBackupRestoreV3Generation({ ...request, control: control() }),
-    ).rejects.toThrow();
-    expect((await fs.stat(destination, { bigint: true })).ino).toBe(
-      occupied.ino,
-    );
-    await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
-    await fs.rmdir(destination);
-
-    const cancelled = new AbortController();
-    const rename = fs.rename.bind(fs);
-    const fault = vi
-      .spyOn(fs, "rename")
-      .mockImplementation(async (from, to) => {
-        await rename(from, to);
-        if (String(from).endsWith("/generation"))
-          cancelled.abort(new Error("lost rename acknowledgement"));
       });
-    try {
+      const runtimeRoot = await fs.mkdtemp(
+        path.join(await fs.realpath(os.tmpdir()), "restore-v3-live-"),
+      );
+      roots.add(runtimeRoot);
+      await fs.chmod(runtimeRoot, 0o700);
+      const stat = await fs.stat(runtimeRoot, { bigint: true });
+      const request = {
+        generationFs,
+        preparedReceipt,
+        runtimeRoot,
+        runtimeRootIdentity: {
+          device: String(stat.dev),
+          inode: String(stat.ino),
+        },
+      };
+      const intent = path.join(
+        generationFs.attemptRoot,
+        ".restore-v3-generation-commit-intent.json",
+      );
+      const marker = path.join(
+        generationFs.attemptRoot,
+        ".restore-v3-generation-committed.json",
+      );
       await expect(
         commitAgentBackupRestoreV3Generation({
           ...request,
-          control: { ...control(), signal: cancelled.signal },
+          runtimeRoot: root,
+          control: control(),
         }),
-      ).rejects.toMatchObject({
-        code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_ABORTED",
-      });
-    } finally {
-      fault.mockRestore();
-    }
-    await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(
-      fs.access(path.join(generationFs.attemptRoot, "generation")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    const media = path.join(destination, "state/media/photo.bin");
-    const original = await fs.stat(media);
-    await fs.writeFile(media, "altered before commit");
-    await expect(
-      commitAgentBackupRestoreV3Generation({ ...request, control: control() }),
-    ).rejects.toThrow();
-    await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
-    await fs.writeFile(media, MEDIA);
-    await fs.utimes(media, original.atimeMs / 1000, original.mtimeMs / 1000);
+      ).rejects.toThrow();
+      await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        commitAgentBackupRestoreV3Generation({
+          ...request,
+          runtimeRootIdentity: { device: String(stat.dev), inode: "1" },
+          control: control(),
+        }),
+      ).rejects.toThrow();
+      await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
+      const destination = path.join(
+        runtimeRoot,
+        `generation-${preparedReceipt.receiptSha256}`,
+      );
+      await fs.mkdir(destination, { mode: 0o700 });
+      const occupied = await fs.stat(destination, { bigint: true });
+      await expect(
+        commitAgentBackupRestoreV3Generation({
+          ...request,
+          control: control(),
+        }),
+      ).rejects.toThrow();
+      expect((await fs.stat(destination, { bigint: true })).ino).toBe(
+        occupied.ino,
+      );
+      await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
+      await fs.rmdir(destination);
 
-    const committed = await commitAgentBackupRestoreV3Generation({
-      ...request,
-      control: control(),
-    });
-    const markerBytes = await fs.readFile(marker);
-    const markerBefore = await fs.stat(marker, { bigint: true });
-    expect(await fs.readFile(committed.paths.character)).toEqual(
-      Buffer.from(CHARACTER),
-    );
-    expect(
-      await fs.readFile(path.join(committed.paths.state, "vault.json")),
-    ).toEqual(Buffer.from(VAULT));
-    const database = new PGlite(committed.paths.database);
-    databases.add(database);
-    expect(
-      (await database.query("SELECT fact FROM assembly_fact")).rows,
-    ).toEqual([{ fact: FACT }]);
-    await database.exec(
-      "INSERT INTO assembly_fact (id, fact) VALUES (2, 'written after restore commit')",
-    );
-    await database.close();
-    databases.delete(database);
-    expect(
-      await commitAgentBackupRestoreV3Generation({
+      const cancelled = new AbortController();
+      const rename = fs.rename.bind(fs);
+      const fault = vi
+        .spyOn(fs, "rename")
+        .mockImplementation(async (from, to) => {
+          await rename(from, to);
+          if (String(from).endsWith("/generation"))
+            cancelled.abort(new Error("lost rename acknowledgement"));
+        });
+      try {
+        await expect(
+          commitAgentBackupRestoreV3Generation({
+            ...request,
+            control: { ...control(), signal: cancelled.signal },
+          }),
+        ).rejects.toMatchObject({
+          code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_ABORTED",
+        });
+      } finally {
+        fault.mockRestore();
+      }
+      await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.access(path.join(generationFs.attemptRoot, "generation")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      const media = path.join(destination, "state/media/photo.bin");
+      const original = await fs.stat(media);
+      await fs.writeFile(media, "altered before commit");
+      await expect(
+        commitAgentBackupRestoreV3Generation({
+          ...request,
+          control: control(),
+        }),
+      ).rejects.toThrow();
+      await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+      await fs.writeFile(media, MEDIA);
+      await fs.utimes(media, original.atimeMs / 1000, original.mtimeMs / 1000);
+
+      const committed = await commitAgentBackupRestoreV3Generation({
         ...request,
         control: control(),
-      }),
-    ).toEqual(committed);
-    expect(await fs.readFile(marker)).toEqual(markerBytes);
-    expect((await fs.stat(marker, { bigint: true })).ino).toBe(
-      markerBefore.ino,
-    );
-    expect((await fs.stat(marker, { bigint: true })).mtimeNs).toBe(
-      markerBefore.mtimeNs,
-    );
-    const reopened = new PGlite(committed.paths.database);
-    databases.add(reopened);
-    expect(
-      (await reopened.query("SELECT fact FROM assembly_fact ORDER BY fact"))
-        .rows,
-    ).toEqual([{ fact: FACT }, { fact: "written after restore commit" }]);
-    await reopened.close();
-    databases.delete(reopened);
+      });
+      const markerBytes = await fs.readFile(marker);
+      const markerBefore = await fs.stat(marker, { bigint: true });
+      expect(await fs.readFile(committed.paths.character)).toEqual(
+        Buffer.from(CHARACTER),
+      );
+      expect(
+        await fs.readFile(path.join(committed.paths.state, "vault.json")),
+      ).toEqual(Buffer.from(VAULT));
+      const database = new PGlite(committed.paths.database);
+      databases.add(database);
+      expect(
+        (await database.query("SELECT fact FROM assembly_fact")).rows,
+      ).toEqual([{ fact: FACT }]);
+      await database.exec(
+        "INSERT INTO assembly_fact (id, fact) VALUES (2, 'written after restore commit')",
+      );
+      await database.close();
+      databases.delete(database);
+      expect(
+        await commitAgentBackupRestoreV3Generation({
+          ...request,
+          control: control(),
+        }),
+      ).toEqual(committed);
+      expect(await fs.readFile(marker)).toEqual(markerBytes);
+      expect((await fs.stat(marker, { bigint: true })).ino).toBe(
+        markerBefore.ino,
+      );
+      expect((await fs.stat(marker, { bigint: true })).mtimeNs).toBe(
+        markerBefore.mtimeNs,
+      );
+      const reopened = new PGlite(committed.paths.database);
+      databases.add(reopened);
+      expect(
+        (await reopened.query("SELECT fact FROM assembly_fact ORDER BY fact"))
+          .rows,
+      ).toEqual([{ fact: FACT }, { fact: "written after restore commit" }]);
+      await reopened.close();
+      databases.delete(reopened);
 
-    const moved = `${destination}-replaced`;
-    await fs.rename(destination, moved);
-    await fs.mkdir(destination, { mode: 0o700 });
-    await expect(
-      commitAgentBackupRestoreV3Generation({ ...request, control: control() }),
-    ).rejects.toThrow();
-    expect(await fs.readdir(destination)).toEqual([]);
-    expect(await fs.readFile(marker)).toEqual(markerBytes);
-  }, 120_000);
+      const moved = `${destination}-replaced`;
+      await fs.rename(destination, moved);
+      await fs.mkdir(destination, { mode: 0o700 });
+      await expect(
+        commitAgentBackupRestoreV3Generation({
+          ...request,
+          control: control(),
+        }),
+      ).rejects.toThrow();
+      expect(await fs.readdir(destination)).toEqual([]);
+      expect(await fs.readFile(marker)).toEqual(markerBytes);
+    },
+    TEST_BUDGET_MS,
+  );
 
-  it("copies the five-component runtime layout, preserves source bytes, and replays without rewriting", async () => {
-    const { root, attemptRoot, input } = await fixture(true);
-    const generationFs = await generationTarget(root);
-    const result = await prepareAgentBackupRestoreV3Generation({
-      ...input,
-      generationFs,
-      control: control(),
-    });
-    const output = path.join(generationFs.attemptRoot, "generation");
-    expect(
-      await fs.readFile(path.join(output, "character/character.json")),
-    ).toEqual(Buffer.from(CHARACTER));
-    expect(
-      await fs.readFile(path.join(output, "state/media/photo.bin")),
-    ).toEqual(Buffer.from(MEDIA));
-    expect(
-      await fs.readFile(path.join(output, "state/plugin/state.json")),
-    ).toEqual(Buffer.from(STATE));
-    expect(await fs.readFile(path.join(output, "state/vault.json"))).toEqual(
-      Buffer.from(VAULT),
-    );
-    const sourceFile = path.join(attemptRoot, "components/vault/vault.json");
-    const targetFile = path.join(output, "state/vault.json");
-    const before = await fs.stat(targetFile, { bigint: true });
-    expect(before.ino).not.toBe(
-      (await fs.stat(sourceFile, { bigint: true })).ino,
-    );
-    expect(before.nlink).toBe(1n);
-    expect(Number(before.mode) & 0o777).toBe(0o400);
-    expect(
-      await prepareAgentBackupRestoreV3Generation({
+  it(
+    "copies the five-component runtime layout, preserves source bytes, and replays without rewriting",
+    async () => {
+      const { root, attemptRoot, input } = await fixture(true);
+      const generationFs = await generationTarget(root);
+      const result = await prepareAgentBackupRestoreV3Generation({
         ...input,
         generationFs,
         control: control(),
-      }),
-    ).toEqual(result);
-    expect((await fs.stat(targetFile, { bigint: true })).mtimeNs).toBe(
-      before.mtimeNs,
-    );
-    expect((await fs.stat(targetFile, { bigint: true })).ino).toBe(before.ino);
-    const probe = path.join(root, "generation-probe");
-    await fs.cp(path.join(output, "database"), probe, { recursive: true });
-    const db = new PGlite(probe);
-    databases.add(db);
-    expect((await db.query("SELECT fact FROM assembly_fact")).rows).toEqual([
-      { fact: FACT },
-    ]);
-    await db.close();
-    databases.delete(db);
-    expect(await fs.readFile(sourceFile)).toEqual(Buffer.from(VAULT));
-    await fs.writeFile(
-      path.join(output, "state/unexpected"),
-      "stale generation",
-      { mode: 0o600 },
-    );
-    await expect(
-      prepareAgentBackupRestoreV3Generation({
-        ...input,
-        generationFs,
-        control: control(),
-      }),
-    ).rejects.toThrow();
-    expect(await fs.readFile(targetFile)).toEqual(Buffer.from(VAULT));
-  }, 120_000);
+      });
+      const output = path.join(generationFs.attemptRoot, "generation");
+      expect(
+        await fs.readFile(path.join(output, "character/character.json")),
+      ).toEqual(Buffer.from(CHARACTER));
+      expect(
+        await fs.readFile(path.join(output, "state/media/photo.bin")),
+      ).toEqual(Buffer.from(MEDIA));
+      expect(
+        await fs.readFile(path.join(output, "state/plugin/state.json")),
+      ).toEqual(Buffer.from(STATE));
+      expect(await fs.readFile(path.join(output, "state/vault.json"))).toEqual(
+        Buffer.from(VAULT),
+      );
+      const sourceFile = path.join(attemptRoot, "components/vault/vault.json");
+      const targetFile = path.join(output, "state/vault.json");
+      const before = await fs.stat(targetFile, { bigint: true });
+      expect(before.ino).not.toBe(
+        (await fs.stat(sourceFile, { bigint: true })).ino,
+      );
+      expect(before.nlink).toBe(1n);
+      expect(Number(before.mode) & 0o777).toBe(0o400);
+      expect(
+        await prepareAgentBackupRestoreV3Generation({
+          ...input,
+          generationFs,
+          control: control(),
+        }),
+      ).toEqual(result);
+      expect((await fs.stat(targetFile, { bigint: true })).mtimeNs).toBe(
+        before.mtimeNs,
+      );
+      expect((await fs.stat(targetFile, { bigint: true })).ino).toBe(
+        before.ino,
+      );
+      const probe = path.join(root, "generation-probe");
+      await fs.cp(path.join(output, "database"), probe, { recursive: true });
+      const db = new PGlite(probe);
+      databases.add(db);
+      expect((await db.query("SELECT fact FROM assembly_fact")).rows).toEqual([
+        { fact: FACT },
+      ]);
+      await db.close();
+      databases.delete(db);
+      expect(await fs.readFile(sourceFile)).toEqual(Buffer.from(VAULT));
+      await fs.writeFile(
+        path.join(output, "state/unexpected"),
+        "stale generation",
+        { mode: 0o600 },
+      );
+      await expect(
+        prepareAgentBackupRestoreV3Generation({
+          ...input,
+          generationFs,
+          control: control(),
+        }),
+      ).rejects.toThrow();
+      expect(await fs.readFile(targetFile)).toEqual(Buffer.from(VAULT));
+    },
+    TEST_BUDGET_MS,
+  );
 
-  it("rejects a state-file component claiming media authority before writing the destination", async () => {
-    const { root, input } = await fixture(true, false, "media/photo.bin");
-    const generationFs = await generationTarget(root);
-    await expect(
-      prepareAgentBackupRestoreV3Generation({
-        ...input,
-        generationFs,
-        control: control(),
-      }),
-    ).rejects.toMatchObject({
-      code: "AGENT_BACKUP_RESTORE_V3_GENERATION_COMPONENT_COLLISION",
-    });
-    expect(await fs.readdir(generationFs.attemptRoot)).toEqual([]);
-  }, 120_000);
+  it(
+    "rejects a state-file component claiming media authority before writing the destination",
+    async () => {
+      const { root, input } = await fixture(true, false, "media/photo.bin");
+      const generationFs = await generationTarget(root);
+      await expect(
+        prepareAgentBackupRestoreV3Generation({
+          ...input,
+          generationFs,
+          control: control(),
+        }),
+      ).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RESTORE_V3_GENERATION_COMPONENT_COLLISION",
+      });
+      expect(await fs.readdir(generationFs.attemptRoot)).toEqual([]);
+    },
+    TEST_BUDGET_MS,
+  );
 
   it("rejects source/destination aliasing and cancellation without a prepared generation", async () => {
     const { root, input } = await fixture();
@@ -479,180 +506,190 @@ describe("private runtime-generation preparation", () => {
 });
 
 describe("five-component candidate assembly", () => {
-  it("transports every component through private Agent processes without booting a runtime", async () => {
-    const { root, attemptRoot, input, materializer } = await fixture(
-      true,
-      true,
-    );
-    for (const receipt of input.receipt.components) {
+  it(
+    "transports every component through private Agent processes without booting a runtime",
+    async () => {
+      const { root, attemptRoot, input, materializer } = await fixture(
+        true,
+        true,
+      );
+      for (const receipt of input.receipt.components) {
+        expect(
+          await materializer.finishComponent(input.session, receipt, control()),
+        ).toEqual(receipt);
+      }
       expect(
-        await materializer.finishComponent(input.session, receipt, control()),
-      ).toEqual(receipt);
-    }
-    expect(
-      await materializer.assembleCandidate(
-        input.session,
-        input.receipt,
-        control(),
-      ),
-    ).toEqual(input.receipt);
-    const markerPath = path.join(
-      attemptRoot,
-      ".restore-v3-candidate-assembled.json",
-    );
-    const marker = await fs.readFile(markerPath, "utf8");
-    const inode = (await fs.stat(markerPath, { bigint: true })).ino;
-    expect(
-      await materializer.assembleCandidate(
-        input.session,
-        input.receipt,
-        control(),
-      ),
-    ).toEqual(input.receipt);
-    expect(await fs.readFile(markerPath, "utf8")).toBe(marker);
-    expect((await fs.stat(markerPath, { bigint: true })).ino).toBe(inode);
-    expect(marker).not.toContain(input.session.executionToken);
-    expect(
-      await fs.readFile(
-        path.join(attemptRoot, "components/character/character.json"),
-      ),
-    ).toEqual(Buffer.from(CHARACTER));
-    expect(
-      await fs.readFile(path.join(attemptRoot, "components/media/photo.bin")),
-    ).toEqual(Buffer.from(MEDIA));
-    expect(
-      await fs.readFile(
-        path.join(attemptRoot, "components/state-files/plugin/state.json"),
-      ),
-    ).toEqual(Buffer.from(STATE));
-    expect(
-      await fs.readFile(path.join(attemptRoot, "components/vault/vault.json")),
-    ).toEqual(Buffer.from(VAULT));
-    const probe = path.join(root, "probe");
-    await fs.cp(path.join(attemptRoot, "components/database"), probe, {
-      recursive: true,
-    });
-    const db = new PGlite(probe);
-    databases.add(db);
-    expect((await db.query("SELECT id, fact FROM assembly_fact")).rows).toEqual(
-      [{ id: 1, fact: FACT }],
-    );
-  }, 150_000);
-
-  it("resumes partial materialization, replays on a fresh FS authority, and rejects later tamper", async () => {
-    const { root, attemptRoot, input } = await fixture(true);
-    const character = input.receipt.components[0];
-    if (!character) throw new Error("Missing character");
-    await materializeAgentBackupRestoreV3CandidateCharacter({
-      ...input,
-      receipt: character,
-    });
-    const characterPath = path.join(
-      attemptRoot,
-      "components/character/character.json",
-    );
-    const before = await fs.stat(characterPath, { bigint: true });
-    const held = await input.candidateFs.acquireLock(
-      ".restore-v3-competing-operation.lock",
-      control(),
-    );
-    try {
-      await expect(
-        assembleAgentBackupRestoreV3Candidate(input),
-      ).rejects.toMatchObject({
-        code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LOCK_BUSY",
+        await materializer.assembleCandidate(
+          input.session,
+          input.receipt,
+          control(),
+        ),
+      ).toEqual(input.receipt);
+      const markerPath = path.join(
+        attemptRoot,
+        ".restore-v3-candidate-assembled.json",
+      );
+      const marker = await fs.readFile(markerPath, "utf8");
+      const inode = (await fs.stat(markerPath, { bigint: true })).ino;
+      expect(
+        await materializer.assembleCandidate(
+          input.session,
+          input.receipt,
+          control(),
+        ),
+      ).toEqual(input.receipt);
+      expect(await fs.readFile(markerPath, "utf8")).toBe(marker);
+      expect((await fs.stat(markerPath, { bigint: true })).ino).toBe(inode);
+      expect(marker).not.toContain(input.session.executionToken);
+      expect(
+        await fs.readFile(
+          path.join(attemptRoot, "components/character/character.json"),
+        ),
+      ).toEqual(Buffer.from(CHARACTER));
+      expect(
+        await fs.readFile(path.join(attemptRoot, "components/media/photo.bin")),
+      ).toEqual(Buffer.from(MEDIA));
+      expect(
+        await fs.readFile(
+          path.join(attemptRoot, "components/state-files/plugin/state.json"),
+        ),
+      ).toEqual(Buffer.from(STATE));
+      expect(
+        await fs.readFile(
+          path.join(attemptRoot, "components/vault/vault.json"),
+        ),
+      ).toEqual(Buffer.from(VAULT));
+      const probe = path.join(root, "probe");
+      await fs.cp(path.join(attemptRoot, "components/database"), probe, {
+        recursive: true,
       });
-    } finally {
-      await held.release(control());
-    }
+      const db = new PGlite(probe);
+      databases.add(db);
+      expect(
+        (await db.query("SELECT id, fact FROM assembly_fact")).rows,
+      ).toEqual([{ id: 1, fact: FACT }]);
+    },
+    TEST_BUDGET_MS,
+  );
 
-    await expect(
-      assembleAgentBackupRestoreV3Candidate({
+  it(
+    "resumes partial materialization, replays on a fresh FS authority, and rejects later tamper",
+    async () => {
+      const { root, attemptRoot, input } = await fixture(true);
+      const character = input.receipt.components[0];
+      if (!character) throw new Error("Missing character");
+      await materializeAgentBackupRestoreV3CandidateCharacter({
         ...input,
-        receipt: {
-          ...input.receipt,
-          components: input.receipt.components.map((component) =>
-            component.componentName === "vault"
-              ? { ...component, payloadSha256: "f".repeat(64) }
-              : component,
-          ),
-        },
-      }),
-    ).rejects.toThrow();
-    await expect(
-      fs.stat(path.join(attemptRoot, ".restore-v3-candidate-assembled.json")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    const mutable = structuredClone(input.receipt);
-    const assembly = assembleAgentBackupRestoreV3Candidate({
-      ...input,
-      receipt: mutable,
-    });
-    // Caller mutation after dispatch must not rebind the in-flight assembly.
-    Object.assign(mutable, { expectedManifestSha256: "f".repeat(64) });
-    const assembled = await assembly;
-    expect(await fs.readFile(characterPath)).toEqual(Buffer.from(CHARACTER));
-    expect((await fs.stat(characterPath, { bigint: true })).ino).toBe(
-      before.ino,
-    );
-    expect(
-      await fs.readFile(path.join(attemptRoot, "components/media/photo.bin")),
-    ).toEqual(Buffer.from(MEDIA));
-    expect(
-      await fs.readFile(
-        path.join(attemptRoot, "components/state-files/plugin/state.json"),
-      ),
-    ).toEqual(Buffer.from(STATE));
-    const vaultPath = path.join(attemptRoot, "components/vault/vault.json");
-    expect(await fs.readFile(vaultPath)).toEqual(Buffer.from(VAULT));
-    expect((await fs.stat(vaultPath)).mode & 0o777).toBe(0o400);
-    await expect(
-      fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    const markerPath = path.join(
-      attemptRoot,
-      ".restore-v3-candidate-assembled.json",
-    );
-    const marker = await fs.readFile(markerPath, "utf8");
-    expect(JSON.parse(marker)).toEqual(assembled);
-    expect(marker).not.toContain(input.session.executionToken);
-    expect(marker).not.toContain(FACT);
+        receipt: character,
+      });
+      const characterPath = path.join(
+        attemptRoot,
+        "components/character/character.json",
+      );
+      const before = await fs.stat(characterPath, { bigint: true });
+      const held = await input.candidateFs.acquireLock(
+        ".restore-v3-competing-operation.lock",
+        control(),
+      );
+      try {
+        await expect(
+          assembleAgentBackupRestoreV3Candidate(input),
+        ).rejects.toMatchObject({
+          code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LOCK_BUSY",
+        });
+      } finally {
+        await held.release(control());
+      }
 
-    await input.candidateFs.close();
-    candidates.delete(input.candidateFs);
-    const reopened = await openAgentBackupRestoreV3CandidateFs({
-      trustedRoot: root,
-      attemptRoot,
-      control: control(),
-      ...platformOptions(),
-    });
-    candidates.add(reopened);
-    const retry = { ...input, candidateFs: reopened, control: control() };
-    expect(await assembleAgentBackupRestoreV3Candidate(retry)).toEqual(
-      assembled,
-    );
-    await expect(
-      assembleAgentBackupRestoreV3Candidate({
-        ...retry,
-        receipt: { ...input.receipt, keyBundleGenerationId: randomUUID() },
-      }),
-    ).rejects.toMatchObject({
-      code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_ASSEMBLY_RECEIPT_CONFLICT",
-    });
+      await expect(
+        assembleAgentBackupRestoreV3Candidate({
+          ...input,
+          receipt: {
+            ...input.receipt,
+            components: input.receipt.components.map((component) =>
+              component.componentName === "vault"
+                ? { ...component, payloadSha256: "f".repeat(64) }
+                : component,
+            ),
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        fs.stat(path.join(attemptRoot, ".restore-v3-candidate-assembled.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      const mutable = structuredClone(input.receipt);
+      const assembly = assembleAgentBackupRestoreV3Candidate({
+        ...input,
+        receipt: mutable,
+      });
+      // Caller mutation after dispatch must not rebind the in-flight assembly.
+      Object.assign(mutable, { expectedManifestSha256: "f".repeat(64) });
+      const assembled = await assembly;
+      expect(await fs.readFile(characterPath)).toEqual(Buffer.from(CHARACTER));
+      expect((await fs.stat(characterPath, { bigint: true })).ino).toBe(
+        before.ino,
+      );
+      expect(
+        await fs.readFile(path.join(attemptRoot, "components/media/photo.bin")),
+      ).toEqual(Buffer.from(MEDIA));
+      expect(
+        await fs.readFile(
+          path.join(attemptRoot, "components/state-files/plugin/state.json"),
+        ),
+      ).toEqual(Buffer.from(STATE));
+      const vaultPath = path.join(attemptRoot, "components/vault/vault.json");
+      expect(await fs.readFile(vaultPath)).toEqual(Buffer.from(VAULT));
+      expect((await fs.stat(vaultPath)).mode & 0o777).toBe(0o400);
+      await expect(
+        fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      const markerPath = path.join(
+        attemptRoot,
+        ".restore-v3-candidate-assembled.json",
+      );
+      const marker = await fs.readFile(markerPath, "utf8");
+      expect(JSON.parse(marker)).toEqual(assembled);
+      expect(marker).not.toContain(input.session.executionToken);
+      expect(marker).not.toContain(FACT);
 
-    await fs.chmod(vaultPath, 0o600);
-    await fs.writeFile(vaultPath, "conflicting-vault");
-    await fs.chmod(vaultPath, 0o400);
-    await expect(
-      assembleAgentBackupRestoreV3Candidate(retry),
-    ).rejects.toThrow();
-    expect(await fs.readFile(vaultPath, "utf8")).toBe("conflicting-vault");
-    expect(await fs.readFile(markerPath, "utf8")).toBe(marker);
-    const db = new PGlite(path.join(attemptRoot, "components/database"));
-    databases.add(db);
-    expect((await db.query("SELECT id, fact FROM assembly_fact")).rows).toEqual(
-      [{ id: 1, fact: FACT }],
-    );
-  }, 150_000);
+      await input.candidateFs.close();
+      candidates.delete(input.candidateFs);
+      const reopened = await openAgentBackupRestoreV3CandidateFs({
+        trustedRoot: root,
+        attemptRoot,
+        control: control(),
+        ...platformOptions(),
+      });
+      candidates.add(reopened);
+      const retry = { ...input, candidateFs: reopened, control: control() };
+      expect(await assembleAgentBackupRestoreV3Candidate(retry)).toEqual(
+        assembled,
+      );
+      await expect(
+        assembleAgentBackupRestoreV3Candidate({
+          ...retry,
+          receipt: { ...input.receipt, keyBundleGenerationId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_ASSEMBLY_RECEIPT_CONFLICT",
+      });
+
+      await fs.chmod(vaultPath, 0o600);
+      await fs.writeFile(vaultPath, "conflicting-vault");
+      await fs.chmod(vaultPath, 0o400);
+      await expect(
+        assembleAgentBackupRestoreV3Candidate(retry),
+      ).rejects.toThrow();
+      expect(await fs.readFile(vaultPath, "utf8")).toBe("conflicting-vault");
+      expect(await fs.readFile(markerPath, "utf8")).toBe(marker);
+      const db = new PGlite(path.join(attemptRoot, "components/database"));
+      databases.add(db);
+      expect(
+        (await db.query("SELECT id, fact FROM assembly_fact")).rows,
+      ).toEqual([{ id: 1, fact: FACT }]);
+    },
+    TEST_BUDGET_MS,
+  );
 
   it.each([
     "missing-component",

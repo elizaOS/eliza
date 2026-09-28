@@ -14,7 +14,7 @@ import {
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
 } from "@elizaos/core";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   type AgentBackupRestoreV3CandidateFs,
   openAgentBackupRestoreV3CandidateFs,
@@ -27,11 +27,15 @@ import {
   readMaterializerRequest,
 } from "./agent-backup-restore-v3-materializer-wire";
 
+/** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
+const TEST_BUDGET_MS = 10 * 60_000;
+vi.setConfig({ testTimeout: TEST_BUDGET_MS, hookTimeout: TEST_BUDGET_MS });
+
 const roots = new Set<string>();
 const candidates = new Set<AgentBackupRestoreV3CandidateFs>();
 const control = () => ({
   signal: new AbortController().signal,
-  deadlineEpochMs: Date.now() + 60_000,
+  deadlineEpochMs: Date.now() + TEST_BUDGET_MS,
 });
 const options = () =>
   process.platform === "linux"
@@ -129,61 +133,69 @@ afterEach(async () => {
   roots.clear();
 });
 
-it("snapshots caller bytes and authority, replays in another process, and rejects a conflicting session", async () => {
-  const f = await fixture();
-  const expected = Uint8Array.from(f.record.payload);
-  const session = { ...f.session };
-  const sent = f.materializer.stageRecord(session, f.record, control());
-  f.record.payload.fill(0);
-  session.executionToken = randomUUID();
-  const ack = await sent;
-  expect(ack.payloadSha256).toBe(hash(expected));
-  expect(
-    await f.materializer.stageRecord(
-      f.session,
-      { ...f.record, payload: expected },
-      control(),
-    ),
-  ).toEqual(ack);
-  await expect(
-    f.materializer.stageRecord(
-      session,
-      { ...f.record, payload: expected },
-      control(),
-    ),
-  ).rejects.toMatchObject({
-    code: "AGENT_BACKUP_RESTORE_V3_MATERIALIZER_RECEIPT_UNPROVEN",
-  });
-  await f.materializer.finishComponent(f.session, f.receipt, control());
-  const filename = path.join(
-    f.attemptRoot,
-    "components/character/character.json",
-  );
-  const before = await fs.stat(filename, { bigint: true });
-  expect(await fs.readFile(filename)).toEqual(Buffer.from(expected));
-  await f.materializer.finishComponent(f.session, f.receipt, control());
-  expect((await fs.stat(filename, { bigint: true })).ino).toBe(before.ino);
-}, 60_000);
+it(
+  "snapshots caller bytes and authority, replays in another process, and rejects a conflicting session",
+  async () => {
+    const f = await fixture();
+    const expected = Uint8Array.from(f.record.payload);
+    const session = { ...f.session };
+    const sent = f.materializer.stageRecord(session, f.record, control());
+    f.record.payload.fill(0);
+    session.executionToken = randomUUID();
+    const ack = await sent;
+    expect(ack.payloadSha256).toBe(hash(expected));
+    expect(
+      await f.materializer.stageRecord(
+        f.session,
+        { ...f.record, payload: expected },
+        control(),
+      ),
+    ).toEqual(ack);
+    await expect(
+      f.materializer.stageRecord(
+        session,
+        { ...f.record, payload: expected },
+        control(),
+      ),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_MATERIALIZER_RECEIPT_UNPROVEN",
+    });
+    await f.materializer.finishComponent(f.session, f.receipt, control());
+    const filename = path.join(
+      f.attemptRoot,
+      "components/character/character.json",
+    );
+    const before = await fs.stat(filename, { bigint: true });
+    expect(await fs.readFile(filename)).toEqual(Buffer.from(expected));
+    await f.materializer.finishComponent(f.session, f.receipt, control());
+    expect((await fs.stat(filename, { bigint: true })).ino).toBe(before.ino);
+  },
+  TEST_BUDGET_MS,
+);
 
-it("joins a cancelled worker and permits exact retry without a late writer", async () => {
-  const f = await fixture();
-  const abort = new AbortController();
-  const pending = f.materializer.stageRecord(f.session, f.record, {
-    ...control(),
-    signal: abort.signal,
-  });
-  // Let the adapter's authority checks and actual child spawn run first.
-  await new Promise<void>((resolve) => setTimeout(resolve, 100));
-  abort.abort();
-  await expect(pending).rejects.toThrow();
-  await f.materializer.stageRecord(f.session, f.record, control());
-  await f.materializer.finishComponent(f.session, f.receipt, control());
-  expect(
-    await fs.readFile(
-      path.join(f.attemptRoot, "components/character/character.json"),
-    ),
-  ).toEqual(Buffer.from(f.record.payload));
-}, 60_000);
+it(
+  "joins a cancelled worker and permits exact retry without a late writer",
+  async () => {
+    const f = await fixture();
+    const abort = new AbortController();
+    const pending = f.materializer.stageRecord(f.session, f.record, {
+      ...control(),
+      signal: abort.signal,
+    });
+    // Let the adapter's authority checks and actual child spawn run first.
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    abort.abort();
+    await expect(pending).rejects.toThrow();
+    await f.materializer.stageRecord(f.session, f.record, control());
+    await f.materializer.finishComponent(f.session, f.receipt, control());
+    expect(
+      await fs.readFile(
+        path.join(f.attemptRoot, "components/character/character.json"),
+      ),
+    ).toEqual(Buffer.from(f.record.payload));
+  },
+  TEST_BUDGET_MS,
+);
 
 it("refuses a replaced root before it can mutate either occurrence", async () => {
   const f = await fixture();

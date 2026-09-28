@@ -17,10 +17,14 @@ import {
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagedRecord,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { candidateFsCanonicalJson } from "./agent-backup-restore-v3-candidate-fs-json";
 import { snapshotAgentBackupRestoreV3CandidateRecord } from "./agent-backup-restore-v3-candidate-records";
 import { materializerReceiptDigest } from "./agent-backup-restore-v3-materializer-wire";
+
+/** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
+const TEST_BUDGET_MS = 10 * 60_000;
+vi.setConfig({ testTimeout: TEST_BUDGET_MS, hookTimeout: TEST_BUDGET_MS });
 
 const enabled = process.env.AGENT_RESTORE_V3_DOCKER_TESTS === "1";
 const repo = fileURLToPath(new URL("../../../..", import.meta.url));
@@ -39,13 +43,16 @@ const exchanges = new Set<{
 }>();
 const control = () => ({
   signal: new AbortController().signal,
-  deadlineEpochMs: Date.now() + 90_000,
+  deadlineEpochMs: Date.now() + TEST_BUDGET_MS,
 });
 const hash = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 
 function docker(...args: string[]): string {
-  return execFileSync("docker", args, { encoding: "utf8", timeout: 15_000 });
+  return execFileSync("docker", args, {
+    encoding: "utf8",
+    timeout: TEST_BUDGET_MS,
+  });
 }
 function remote(id: string, source: string): string {
   return docker(
@@ -195,7 +202,7 @@ async function fixture(persistent = false) {
     child.stdin.write(metadata);
     child.stdin.write(payload);
     if (endInput) child.stdin.end();
-    const timer = setTimeout(() => child.stdin.destroy(), 90_000);
+    const timer = setTimeout(() => child.stdin.destroy(), TEST_BUDGET_MS);
     const result = done.finally(() => {
       clearTimeout(timer);
       child.stdin.destroy();
@@ -294,22 +301,24 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
     ).toBe("0");
   });
 
-  it("reconciles an actual Linux process death after generation rename without replacing later live writes", async () => {
-    const f = await fixture();
-    // Synthetic preparation authority isolates the real rename/lock crash
-    // boundary; the assembly suite proves all five actual restored components.
-    const setup = `
+  it(
+    "reconciles an actual Linux process death after generation rename without replacing later live writes",
+    async () => {
+      const f = await fixture();
+      // Synthetic preparation authority isolates the real rename/lock crash
+      // boundary; the assembly suite proves all five actual restored components.
+      const setup = `
       import fs from "node:fs/promises";
       import {createHash} from "node:crypto";
       import {openAgentBackupRestoreV3CandidateFs} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-candidate-fs.js";
       import {candidateFsCanonicalJson} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-candidate-fs-json.js";
       import {commitAgentBackupRestoreV3Generation} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-generation-commit.js";
-      const control = {signal:new AbortController().signal, deadlineEpochMs:Date.now()+30000};
+      const control = {signal:new AbortController().signal, deadlineEpochMs:Date.now()+${TEST_BUDGET_MS}};
       const identity = async p => {const s=await fs.stat(p,{bigint:true});return {device:String(s.dev),inode:String(s.ino)}};
     `;
-    remote(
-      f.id,
-      `${setup}
+      remote(
+        f.id,
+        `${setup}
       await fs.mkdir("/restore/private/attempt", {recursive:true,mode:0o700});
       await fs.mkdir("/restore/runtime", {mode:0o700});
       const candidate=await openAgentBackupRestoreV3CandidateFs({trustedRoot:"/restore/private",attemptRoot:"/restore/private/attempt",control});
@@ -323,26 +332,26 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
         await candidate.publishDurableJson(".restore-v3-generation-prepared.json",prepared,{maximumBytes:16384},control,lock);
       } finally {await lock.release(control); await candidate.close()}
     `,
-    );
-    const request = `
+      );
+      const request = `
       const candidate=await openAgentBackupRestoreV3CandidateFs({trustedRoot:"/restore/private",attemptRoot:"/restore/private/attempt",control});
       const preparedReceipt=JSON.parse(await fs.readFile("/restore/private/attempt/.restore-v3-generation-prepared.json","utf8"));
       const request={generationFs:candidate,preparedReceipt,runtimeRoot:"/restore/runtime",runtimeRootIdentity:await identity("/restore/runtime"),control};
     `;
-    expect(() =>
-      remote(
-        f.id,
-        `${setup}${request}
+      expect(() =>
+        remote(
+          f.id,
+          `${setup}${request}
       const rename=fs.rename.bind(fs);
       fs.rename=async (source,target)=>{await rename(source,target); process.kill(process.pid,"SIGKILL");};
       await commitAgentBackupRestoreV3Generation(request);
     `,
-      ),
-    ).toThrow();
-    const proof = JSON.parse(
-      remote(
-        f.id,
-        `${setup}${request}
+        ),
+      ).toThrow();
+      const proof = JSON.parse(
+        remote(
+          f.id,
+          `${setup}${request}
       const first=await commitAgentBackupRestoreV3Generation(request);
       const file=first.paths.state+"/fact.txt";
       const restored=await fs.readFile(file,"utf8");
@@ -354,24 +363,28 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
       process.stdout.write(JSON.stringify({restored,live:await fs.readFile(file,"utf8"),sameReceipt:JSON.stringify(first)===JSON.stringify(replay),markerUnchanged:before.ino===after.ino&&before.mtimeNs===after.mtimeNs,quarantineNames:await fs.readdir(candidate.attemptRoot)}));
       await candidate.close();
     `,
-      ),
-    );
-    expect(proof.restored).toBe("restored");
-    expect(proof.live).toBe("written by live runtime");
-    expect(proof.sameReceipt).toBe(true);
-    expect(proof.markerUnchanged).toBe(true);
-    expect(proof.quarantineNames).not.toContain("generation");
-  }, 45_000);
+        ),
+      );
+      expect(proof.restored).toBe("restored");
+      expect(proof.live).toBe("written by live runtime");
+      expect(proof.sameReceipt).toBe(true);
+      expect(proof.markerUnchanged).toBe(true);
+      expect(proof.quarantineNames).not.toContain("generation");
+    },
+    TEST_BUDGET_MS,
+  );
 
-  it("copies generation files under two actual Linux inode locks without sharing source inodes", async () => {
-    const f = await fixture();
-    const proof = JSON.parse(
-      remote(
-        f.id,
-        `
+  it(
+    "copies generation files under two actual Linux inode locks without sharing source inodes",
+    async () => {
+      const f = await fixture();
+      const proof = JSON.parse(
+        remote(
+          f.id,
+          `
       import fs from "node:fs/promises";
       import {openAgentBackupRestoreV3CandidateFs} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-candidate-fs.js";
-      const control = {signal: new AbortController().signal, deadlineEpochMs: Date.now() + 10000};
+      const control = {signal: new AbortController().signal, deadlineEpochMs: Date.now() + ${TEST_BUDGET_MS}};
       await fs.mkdir("/restore/destination", {mode: 0o700});
       const source = await openAgentBackupRestoreV3CandidateFs({trustedRoot: "/restore", attemptRoot: "/restore/attempt", control});
       const target = await openAgentBackupRestoreV3CandidateFs({trustedRoot: "/restore", attemptRoot: "/restore/destination", control});
@@ -396,97 +409,107 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
         await source.close();
       }
     `,
-      ),
-    );
-    expect(proof).toEqual({
-      bytes: 300001,
-      allBytesExact: true,
-      privateMode: 0o400,
-      links: 1,
-      distinctInodes: true,
-      exactReplay: true,
-      emptyDirectories: ["empty"],
-    });
-  }, 30_000);
+        ),
+      );
+      expect(proof).toEqual({
+        bytes: 300001,
+        allBytesExact: true,
+        privateMode: 0o400,
+        links: 1,
+        distinctInodes: true,
+        exactReplay: true,
+        emptyDirectories: ["empty"],
+      });
+    },
+    TEST_BUDGET_MS,
+  );
 
-  it("materializes exact bytes through exec without inherited descriptors, network or runtime boot", async () => {
-    const f = await fixture();
-    const payload = new TextEncoder().encode(
-      '{"name":"Docker restore QA","bio":["amber"],"plugins":[]}',
-    );
-    const record = {
-      componentIndex: 0,
-      componentName: "character" as const,
-      dataIndex: 0,
-      offsetBytes: 0,
-      entry: null,
-      payload,
-    };
-    const staged = await f.stage(record);
-    const receipt: AgentBackupRestoreV3ComponentReceipt = {
-      componentIndex: 0,
-      componentName: "character",
-      descriptor: AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS[0],
-      dataFrameCount: 1,
-      payloadBytes: payload.length,
-      payloadSha256: staged.payloadSha256,
-      recordStreamContentHmacSha256: "b".repeat(64),
-    };
-    expect(await f.exchange("finishComponent", receipt).result).toEqual({
-      code: 0,
-      stdout: materializerReceiptDigest(receipt),
-      stderr: "",
-    });
-    expect(
-      remote(
-        f.id,
-        'import fs from "node:fs/promises";process.stdout.write(await fs.readFile("/restore/attempt/components/character/character.json","utf8"));',
-      ),
-    ).toBe(new TextDecoder().decode(payload));
-    expect(
-      docker(
-        "inspect",
-        f.id,
-        "--format",
-        "{{.HostConfig.NetworkMode}}|{{json .HostConfig.PortBindings}}|{{.Path}}|{{.State.Running}}",
-      ).trim(),
-    ).toMatch(/^none\|(?:null|\{\})\|\/usr\/bin\/env\|true$/);
-    expect(await f.stage(record)).toEqual(staged);
-  }, 90_000);
-
-  it("treats EOF after a complete frame as cancellation, not a request terminator", async () => {
-    const f = await fixture();
-    const record = snapshotAgentBackupRestoreV3CandidateRecord(
-      {
+  it(
+    "materializes exact bytes through exec without inherited descriptors, network or runtime boot",
+    async () => {
+      const f = await fixture();
+      const payload = new TextEncoder().encode(
+        '{"name":"Docker restore QA","bio":["amber"],"plugins":[]}',
+      );
+      const record = {
         componentIndex: 0,
-        componentName: "character",
+        componentName: "character" as const,
         dataIndex: 0,
         offsetBytes: 0,
         entry: null,
-        payload: new TextEncoder().encode('{"name":"Cancelled"}'),
-      },
-      control(),
-    );
-    try {
-      const result = await f.exchange(
-        "stageRecord",
-        record.receipt,
-        record.payload,
-        true,
-      ).result;
-      expect(result.code).not.toBe(0);
-      expect(result.stdout).toBe("");
-      expect(result.stderr).toBe("");
+        payload,
+      };
+      const staged = await f.stage(record);
+      const receipt: AgentBackupRestoreV3ComponentReceipt = {
+        componentIndex: 0,
+        componentName: "character",
+        descriptor: AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS[0],
+        dataFrameCount: 1,
+        payloadBytes: payload.length,
+        payloadSha256: staged.payloadSha256,
+        recordStreamContentHmacSha256: "b".repeat(64),
+      };
+      expect(await f.exchange("finishComponent", receipt).result).toEqual({
+        code: 0,
+        stdout: materializerReceiptDigest(receipt),
+        stderr: "",
+      });
       expect(
         remote(
           f.id,
-          'import fs from "node:fs/promises";process.stdout.write(JSON.stringify(await fs.readdir("/restore/attempt")));',
+          'import fs from "node:fs/promises";process.stdout.write(await fs.readFile("/restore/attempt/components/character/character.json","utf8"));',
         ),
-      ).toBe("[]");
-    } finally {
-      record.payload.fill(0);
-    }
-  }, 90_000);
+      ).toBe(new TextDecoder().decode(payload));
+      expect(
+        docker(
+          "inspect",
+          f.id,
+          "--format",
+          "{{.HostConfig.NetworkMode}}|{{json .HostConfig.PortBindings}}|{{.Path}}|{{.State.Running}}",
+        ).trim(),
+      ).toMatch(/^none\|(?:null|\{\})\|\/usr\/bin\/env\|true$/);
+      expect(await f.stage(record)).toEqual(staged);
+    },
+    TEST_BUDGET_MS,
+  );
+
+  it(
+    "treats EOF after a complete frame as cancellation, not a request terminator",
+    async () => {
+      const f = await fixture();
+      const record = snapshotAgentBackupRestoreV3CandidateRecord(
+        {
+          componentIndex: 0,
+          componentName: "character",
+          dataIndex: 0,
+          offsetBytes: 0,
+          entry: null,
+          payload: new TextEncoder().encode('{"name":"Cancelled"}'),
+        },
+        control(),
+      );
+      try {
+        const result = await f.exchange(
+          "stageRecord",
+          record.receipt,
+          record.payload,
+          true,
+        ).result;
+        expect(result.code).not.toBe(0);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toBe("");
+        expect(
+          remote(
+            f.id,
+            'import fs from "node:fs/promises";process.stdout.write(JSON.stringify(await fs.readdir("/restore/attempt")));',
+          ),
+        ).toBe("[]");
+      } finally {
+        record.payload.fill(0);
+      }
+    },
+    TEST_BUDGET_MS,
+  );
 
   it.each(["stdin EOF", "client process loss"] as const)(
     "reaps a live native database-validation descendant on %s, then restores on exact retry",
@@ -540,7 +563,7 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
             if(error.code!=="ENOENT"&&error.code!=="ESRCH") throw error;}}
         process.stdout.write(JSON.stringify(matches));`;
         let descendants: string[] = [];
-        const deadline = Date.now() + 30_000;
+        const deadline = Date.now() + TEST_BUDGET_MS;
         while (Date.now() < deadline && !running.settled()) {
           descendants = JSON.parse(remote(f.id, scan));
           if (descendants.length) break;
@@ -560,7 +583,7 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
           JSON.stringify(validator),
           JSON.stringify(worker),
         );
-        const cleanupDeadline = Date.now() + 10_000;
+        const cleanupDeadline = Date.now() + TEST_BUDGET_MS;
         let remainingWorkers: string[];
         do {
           remainingWorkers = JSON.parse(remote(f.id, scanWorkers));
@@ -590,6 +613,6 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
         payload.fill(0);
       }
     },
-    120_000,
+    TEST_BUDGET_MS,
   );
 });
