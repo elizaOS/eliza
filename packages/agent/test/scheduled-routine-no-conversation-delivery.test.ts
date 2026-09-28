@@ -32,6 +32,10 @@ import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { createProductionScheduledTaskDispatcher } from "../../../plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts";
+import {
+  type ConversationRouteState,
+  ensureOwnerConversation,
+} from "../src/api/conversation-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 
 const ROUTINE_SOURCE = "lifeops-scheduled-task";
@@ -204,5 +208,58 @@ it("persists a routine fired with no conversation into the owner's conversation 
     await runtime.close();
     vi.unstubAllEnvs();
     await rm(directory, { recursive: true, force: true });
+  }
+}, 180_000);
+
+it("concurrent owner deliveries wait for the same durable conversation setup", async () => {
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({ name: "ConcurrentOwnerChat" }),
+    enableAutonomy: false,
+    logLevel: "fatal",
+  });
+  const state: ConversationRouteState = {
+    runtime,
+    config: {},
+    agentName: "ConcurrentOwnerChat",
+    adminEntityId: null,
+    chatUserId: null,
+    logBuffer: [],
+    conversations: new Map(),
+    activeChatTurnCount: 0,
+    conversationRestorePromise: null,
+    deletedConversationIds: new Set(),
+    broadcastWs: null,
+  };
+  const release = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  const ensureConnection = runtime.ensureConnection.bind(runtime);
+  runtime.ensureConnection = async (...args) => {
+    entered.resolve();
+    await release.promise;
+    await ensureConnection(...args);
+  };
+  let first: ReturnType<typeof ensureOwnerConversation> | undefined;
+  let second: ReturnType<typeof ensureOwnerConversation> | undefined;
+  try {
+    await runtime.initialize();
+    first = ensureOwnerConversation(state, runtime);
+    await entered.promise;
+    let secondResolved = false;
+    second = ensureOwnerConversation(state, runtime).then((value) => {
+      secondResolved = true;
+      return value;
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(secondResolved).toBe(false);
+    release.resolve();
+    const [one, two] = await Promise.all([first, second]);
+    expect(two.id).toBe(one.id);
+    expect(await runtime.getRoom(one.roomId)).not.toBeNull();
+    expect(state.conversations.size).toBe(1);
+  } finally {
+    release.resolve();
+    await Promise.allSettled([first, second].filter(Boolean));
+    await runtime.stop();
+    await runtime.close();
   }
 }, 180_000);
