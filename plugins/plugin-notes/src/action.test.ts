@@ -26,9 +26,11 @@ import {
 } from "../../../packages/core/src/actions/validate-tool-args.ts";
 import {
   __renderRoutingHintsBlockForTests,
+  actionResultToPlannerToolResult,
   type PlannerToolCall,
   runPlannerLoop,
 } from "../../plugin-assistant/src/runtime/planner-loop.ts";
+import { projectToolResultForModel } from "../../plugin-assistant/src/runtime/planner-rendering.ts";
 import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createPlannerToolDiscoveryAction } from "../../plugin-assistant/src/services/message/tool-discovery.ts";
 import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
@@ -40,6 +42,7 @@ import {
   NotesService,
 } from "./service.js";
 import { NotesStore } from "./store.js";
+import { reconstructNoteContent, type StickyNote } from "./types.js";
 
 const tmpDirs: string[] = [];
 
@@ -2653,5 +2656,87 @@ describe("exact GET timestamp display", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("Notes model-bound content representation", () => {
+  it.each([
+    "Title\nCopper lantern. Keep two  spaces.",
+    "Title\n\nUser body starts with a blank line.  ",
+    "Title\r\nKeep CRLF.\r\nNext line.",
+    "  Single line with  spaces.  ",
+    `${"x".repeat(260)}\nBody after a long first line.`,
+  ])(
+    "preserves complete content and raw parts through create and model projection: %j",
+    async (content) => {
+      const runtime = await executorHarness();
+      const result = await execute(runtime, {
+        name: "NOTES_CREATE",
+        params: { content },
+      });
+      expect(result.success).toBe(true);
+      const note = result.data?.note as StickyNote;
+      expect(reconstructNoteContent(note)).toBe(content);
+      const before = structuredClone(result);
+      const projected = projectToolResultForModel(
+        actionResultToPlannerToolResult(result),
+      );
+      expect(projected.data).toEqual(result.data);
+      expect(projected.effectReceipts).toEqual(result.effectReceipts);
+      expect(projected.promptData).toEqual(result.promptData);
+      expect(projected.promptData?.noteContentFormat).toContain(
+        "title + body exactly",
+      );
+      expect(projected.promptData?.noteContentFormat).toContain(
+        "additional whitespace is content",
+      );
+      expect(projected.promptDataMode).toBeUndefined();
+      expect(JSON.stringify(projected.promptData)).not.toContain(content);
+      expect(result).toEqual(before);
+      const service = getNotesService(runtime);
+      expect(service.getNote(note.id)).toEqual(note);
+      const snapshot = service.snapshot();
+      for (const name of ["NOTES_GET", "NOTES_LIST"]) {
+        const read = await execute(runtime, {
+          name,
+          params: name === "NOTES_GET" ? { noteId: note.id } : {},
+        });
+        const wire = projectToolResultForModel(
+          actionResultToPlannerToolResult(read),
+        );
+        expect(wire.promptData).toEqual(result.promptData);
+        expect(wire.data).toEqual(read.data);
+        expect(wire.data?.notes).toEqual([
+          { ...note, sourceNote: service.sourceReference(note) },
+        ]);
+        expect(wire.data?.notesRevision).toBe(snapshot.revision);
+      }
+      expect(service.snapshot()).toEqual(snapshot);
+    },
+  );
+
+  it("labels a structured body replacement without discarding an additional user newline", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({ content: "Title\nOriginal" });
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        expectedRevision: service.snapshot().revision,
+        target: { kind: "id", value: note.id },
+        changes: [{ field: "body", value: "\nKeep  this blank line.  " }],
+      },
+    });
+    expect(result.success).toBe(true);
+    const updated = result.data?.note as StickyNote;
+    expect(updated.body).toBe("\n\nKeep  this blank line.  ");
+    expect(reconstructNoteContent(updated)).toBe(
+      "Title\n\nKeep  this blank line.  ",
+    );
+    const wire = projectToolResultForModel(
+      actionResultToPlannerToolResult(result),
+    );
+    expect(wire.data).toEqual(result.data);
+    expect(wire.promptData?.noteContentFormat).toContain("verbatim remainder");
   });
 });
