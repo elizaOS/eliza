@@ -128,6 +128,7 @@ describe("Alpha dstack application", () => {
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
       ELIZA_DISABLE_FFI_LLAMA: "1",
       ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
+      ELIZA_SCHEDULING_DEFAULT_PACKS: "alpha-routines",
     });
     expect(env.ELIZA_LOCAL_LLAMA).toBeUndefined();
     // Measured evidence config is complete except the signed release identity.

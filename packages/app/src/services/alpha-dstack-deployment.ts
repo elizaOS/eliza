@@ -233,6 +233,9 @@ function measuredEnvironment(
       ? { ELIZAOS_CLOUD_TTS_VOICE: deployment.speech.ttsVoice }
       : {}),
     ...embeddings,
+    // Alpha routines (morning brief, reminders, nudge) seed disabled until
+    // the owner enables them; they fire in the owner's timezone.
+    ELIZA_SCHEDULING_DEFAULT_PACKS: "alpha-routines",
     // Local models disabled: no plugin, no boot-hook registration, no
     // in-process llama loader and no local embedder or warmup.
     ELIZA_SKIP_PLUGINS: "@elizaos/plugin-local-inference",

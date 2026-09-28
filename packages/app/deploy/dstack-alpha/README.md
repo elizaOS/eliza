@@ -44,6 +44,13 @@ The compose uses a persistent `eliza-state` volume at `/data/eliza`,
 authenticates the encrypted launch variables against the signed release before
 the agent loads. The agent then admits itself through the `dstack-cpu` boot gate.
 
+The environment also seeds the `alpha-routines` pack (morning brief, reminders,
+nudge) in a disabled state. After the owner's timezone is set, enable a routine
+by posting its `metadata.enableTrigger` as the new `trigger` to
+`POST /api/lifeops/scheduled-tasks/:id/edit`. If onboarding later links Eliza
+Cloud, the agent config's service routing overrides these environment
+defaults. Keep text on Cerebras and speech on Cloud.
+
 ## Verify and pair
 
 ```bash

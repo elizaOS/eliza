@@ -7,7 +7,12 @@
  * runner. Each runtime keeps one runner service, one injected deps set, and one
  * scheduled-task REST route.
  */
-import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  resolveSetting,
+} from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import {
@@ -228,12 +233,15 @@ const OPT_IN_DEFAULT_PACK_BUILDERS: Readonly<
 
 /**
  * Register the opt-in supplemental packs named by the
- * `ELIZA_SCHEDULING_DEFAULT_PACKS` setting. Unknown ids are reported (not
- * silently ignored) and do not block the known packs from seeding.
+ * `ELIZA_SCHEDULING_DEFAULT_PACKS` setting or environment variable. Unknown
+ * ids are reported (not silently ignored) and do not block the known packs
+ * from seeding.
  */
 export function registerOptInDefaultPacks(runtime: IAgentRuntime): string[] {
+  // Runtime setting first, then the deployment environment (e.g. the
+  // measured dstack compose), matching other single-tenant host settings.
   const requested = parseDefaultPackSetting(
-    runtime.getSetting(SCHEDULING_DEFAULT_PACKS_SETTING),
+    resolveSetting(runtime, SCHEDULING_DEFAULT_PACKS_SETTING),
   );
   const registered: string[] = [];
   for (const packId of requested) {
