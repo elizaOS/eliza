@@ -27,6 +27,10 @@ import {
 } from "../api/client-base";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
+  describePersonalRouteRefusal,
+  type PersonalRouteRefusal,
+} from "../api/personal-fallback";
+import {
   consumePendingCapabilityIntent,
   findCapabilityHandoff,
   markPendingCapabilityReady,
@@ -78,6 +82,10 @@ import {
   clearPendingChatTurn,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
+import {
+  markPersonalRouteRetrying,
+  refreshPersonalRoute,
+} from "./personal-fallback-route";
 import { streamingRenderDelayMs } from "./streaming-render-cadence";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";
 
@@ -1519,6 +1527,84 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [setConversationMessagesForConversation],
   );
+  // A typed personal-route refusal (#25146) means the server refused the turn
+  // before persisting it: the conversation moved to Dedicated (409) or is
+  // between runtimes (503). Put the unsent draft back in the composer, drop
+  // the optimistic rows, and let the route owner repoint or report retry.
+  const handlePersonalRouteRefusal = useCallback(
+    async (
+      refusal: PersonalRouteRefusal,
+      turn: {
+        conversationId: string | null;
+        userMsgId: string;
+        assistantMsgId: string;
+        rawText: string;
+        images: ImageAttachment[] | undefined;
+      },
+    ): Promise<void> => {
+      const ids = [turn.userMsgId, turn.assistantMsgId];
+      setConversationMessagesForConversation(turn.conversationId, (prev) =>
+        prev.filter((message) => !ids.includes(message.id)),
+      );
+      for (const messageId of ids) {
+        applyConversationMessageOverlayModification(
+          turn.conversationId,
+          messageId,
+          { messageId, mode: "drop" },
+        );
+      }
+      const restoredToComposer = isConversationCommitActive(
+        turn.conversationId,
+      );
+      if (restoredToComposer) {
+        const draft = [turn.rawText, chatInputRef.current]
+          .filter(Boolean)
+          .join("\n");
+        chatInputRef.current = draft;
+        setChatInput(draft);
+        if (turn.images?.length) {
+          const images = [...turn.images, ...chatPendingImagesRef.current];
+          chatPendingImagesRef.current = images;
+          setChatPendingImages(images);
+        }
+      }
+      if (refusal.kind === "retry") {
+        markPersonalRouteRetrying(refusal);
+        setActionNotice(t("chat.personalRoute.retryNotice"), "info", 8000);
+        return;
+      }
+      const outcome = await refreshPersonalRoute();
+      if (outcome.status === "switched") {
+        setActionNotice(t("chat.personalRoute.switchedNotice"), "info", 8000);
+        return;
+      }
+      if (outcome.status === "retrying") {
+        setActionNotice(t("chat.personalRoute.retryNotice"), "info", 8000);
+        return;
+      }
+      if (outcome.status === "failed") {
+        logger.warn(
+          `[useChatSend] personal Dedicated switch failed: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`,
+        );
+      }
+      setActionNotice(
+        t("chat.personalRoute.switchFailedNotice"),
+        "error",
+        10000,
+      );
+    },
+    [
+      applyConversationMessageOverlayModification,
+      chatInputRef,
+      chatPendingImagesRef,
+      isConversationCommitActive,
+      setActionNotice,
+      setChatInput,
+      setChatPendingImages,
+      setConversationMessagesForConversation,
+      t,
+    ],
+  );
   // A successful stream can carry durable user/assistant receipt ids before the
   // follow-up history endpoint exposes those rows.
   // When an action or compatibility response requires that immediate refresh,
@@ -1825,8 +1911,19 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
           convId = conversation.id;
           convRoomId = conversation.roomId;
-        } catch {
+        } catch (createErr) {
           if (discardCancelledSetup()) return;
+          const personalRoute = describePersonalRouteRefusal(createErr);
+          if (personalRoute) {
+            await handlePersonalRouteRefusal(personalRoute, {
+              conversationId: optimisticOwnerConversationId,
+              userMsgId,
+              assistantMsgId,
+              rawText,
+              images: imagesToSend,
+            });
+            return;
+          }
           // error-policy:J4 surfaced user-facing failure state.
           // First-message conversation creation failed (cold open on weak
           // signal). Remove the local accepted-turn rows and restore the draft:
@@ -2135,6 +2232,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         // provider_issue Retry chip below (#18045). The classifier is the
         // same fail-closed 402 walk the /join surface layers its
         // welcome-bonus reading on.
+        const personalRoute = describePersonalRouteRefusal(err);
+        if (personalRoute) {
+          await handlePersonalRouteRefusal(personalRoute, {
+            conversationId: convId,
+            userMsgId,
+            assistantMsgId,
+            rawText,
+            images: imagesToSend,
+          });
+          return;
+        }
         const creditGate = describeCreditGateError(err);
         if (creditGate) {
           applyStreamingModificationForConversation(convId, {
@@ -2445,6 +2553,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       appendLocalCommandTurn,
       createTurnViewHandoff,
+      handlePersonalRouteRefusal,
       applyStreamingModificationForConversation,
       reconcileTerminalStream,
       loadConversationMessages,

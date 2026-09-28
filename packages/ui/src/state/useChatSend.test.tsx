@@ -38,6 +38,10 @@ import { readChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
 import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
+  __resetPersonalFallbackRouteForTests,
+  getPersonalFallbackView,
+} from "./personal-fallback-route";
+import {
   buildSendFailureNotice,
   createConversationForFirstSend,
   getSendValidationFailureMessage,
@@ -89,6 +93,10 @@ const mocks = vi.hoisted(() => ({
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
     getBaseUrl: vi.fn(() => ""),
+    getRestAuthToken: vi.fn((): string | null => null),
+    getPersonalSharedEliza: vi.fn(),
+    setToken: vi.fn(),
+    repointBaseUrl: vi.fn(),
   },
 }));
 
@@ -4443,5 +4451,146 @@ describe("resolveAbortRoomId", () => {
     expect(resolveAbortRoomId("conversation-1", null, null)).toBe(
       "conversation-1",
     );
+  });
+});
+
+describe("useChatSend personal Dedicated route refusals (#25146)", () => {
+  const PERSONAL_ID = "personal:0f8fad5b-d9cb-5fa0-b5a9-8a2b1c3d4e5f";
+  const PERSONAL_SHARED_BASE = `https://api.elizacloud.ai/api/v1/eliza/agents/${PERSONAL_ID}`;
+  const DEDICATED_AGENT_ID = "11111111-2222-4333-8444-555555555555";
+  const PERSONAL_DEDICATED_BASE = `https://${DEDICATED_AGENT_ID}.elizacloud.ai`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetPersonalFallbackRouteForTests();
+    window.localStorage.clear();
+    mocks.client.getBaseUrl.mockReturnValue(PERSONAL_SHARED_BASE);
+    mocks.client.getRestAuthToken.mockReturnValue("steward-session");
+  });
+
+  afterEach(() => {
+    __resetPersonalFallbackRouteForTests();
+  });
+
+  it("switches the chat to the Dedicated agent on a 409 and gives the draft back", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("This personal Eliza is active on Dedicated."), {
+        status: 409,
+        code: "personal_eliza_dedicated",
+        data: {
+          success: false,
+          code: "personal_eliza_dedicated",
+          error: "This personal Eliza is active on Dedicated.",
+          retryable: false,
+          activeAgentId: DEDICATED_AGENT_ID,
+        },
+      }),
+    );
+    mocks.client.getPersonalSharedEliza.mockResolvedValue({
+      personalElizaId: PERSONAL_ID,
+      agentId: PERSONAL_ID,
+      activeAgentId: DEDICATED_AGENT_ID,
+      agentName: "Eliza",
+      apiBase: PERSONAL_DEDICATED_BASE,
+      runtime: "dedicated",
+    });
+    const deps = makeActiveConversationDeps();
+    deps.chatInputRef.current = "and a follow-up";
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("summarize my week", {
+        conversationId: "conv-1",
+      });
+    });
+
+    // The authoritative lookup ran against the Shared base's own Cloud origin.
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledWith({
+      cloudApiBase: "https://api.elizacloud.ai",
+      authToken: "steward-session",
+    });
+    // Repointed in place to the Dedicated agent under the same identity.
+    expect(mocks.client.repointBaseUrl).toHaveBeenCalledWith(
+      PERSONAL_DEDICATED_BASE,
+    );
+    const active = JSON.parse(
+      window.localStorage.getItem("elizaos:active-server") ?? "null",
+    );
+    expect(active).toMatchObject({
+      id: `cloud:${PERSONAL_ID}`,
+      apiBase: PERSONAL_DEDICATED_BASE,
+      cloudRuntimeAgentId: DEDICATED_AGENT_ID,
+      cloudRuntime: "dedicated",
+    });
+    // The refused turn is not left in the thread, and the draft (merged with
+    // anything typed since) is back in the composer.
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (m) => m.text === "summarize my week",
+      ),
+    ).toBe(false);
+    expect(deps.setChatInput).toHaveBeenLastCalledWith(
+      "summarize my week\nand a follow-up",
+    );
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      "chat.personalRoute.switchedNotice",
+      "info",
+      8000,
+    );
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the draft and shows a retryable state on a 503 dedicated_reconciling", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(
+        new Error("Dedicated Eliza is restoring your recent conversation."),
+        {
+          status: 503,
+          code: "dedicated_reconciling",
+          retryAfter: 5,
+          data: {
+            success: false,
+            code: "dedicated_reconciling",
+            retryable: true,
+          },
+        },
+      ),
+    );
+    const deps = makeActiveConversationDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("draft to keep", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setChatInput).toHaveBeenLastCalledWith("draft to keep");
+    expect(getPersonalFallbackView()).toEqual({
+      status: "retrying",
+      code: "dedicated_reconciling",
+      retryAfterSeconds: 5,
+    });
+    expect(mocks.client.repointBaseUrl).not.toHaveBeenCalled();
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      "chat.personalRoute.retryNotice",
+      "info",
+      8000,
+    );
+  });
+
+  it("does not treat a code-less 409 as a Dedicated handoff", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("Conflict"), { status: 409 }),
+    );
+    const deps = makeActiveConversationDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(mocks.client.repointBaseUrl).not.toHaveBeenCalled();
   });
 });

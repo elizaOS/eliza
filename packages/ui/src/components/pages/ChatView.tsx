@@ -85,6 +85,7 @@ import {
   isLikelyAccountRequiredError,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { PersonalAccountStateBanner } from "../chat/PersonalAccountStateBanner";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
@@ -1026,6 +1027,7 @@ export function ChatView({
       shellRef={composerRef}
       before={
         <>
+          <PersonalAccountStateBanner t={t} locale={uiLanguage} />
           <CodingAgentControlChip />
           {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
@@ -1099,6 +1101,7 @@ export function ChatView({
       style={defaultComposerShellStyle}
       before={
         <>
+          <PersonalAccountStateBanner t={t} locale={uiLanguage} />
           <CodingAgentControlChip />
           {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
