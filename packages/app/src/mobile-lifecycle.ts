@@ -75,9 +75,13 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   // producers emit constant URLs, so a repeated identical warm intent is a new
   // user action that must apply every time.
   const handledDeepLinks = new Set<string>();
-  // URLs first captured by the cold-launch replay channel whose single
-  // Capacitor `appUrlOpen` echo (iOS retains the launch event until a listener
-  // consumes it) has not arrived yet. Cleared when the replay window closes.
+  // iOS launch URLs first captured by the cold-launch replay's `getLaunchUrl`
+  // whose single Capacitor `appUrlOpen` echo (iOS retains the launch event
+  // until a listener consumes it) has not arrived yet. Each entry swallows at
+  // most one echo. Android never echoes the launch intent (`appUrlOpen` fires
+  // only from `onNewIntent`), so it registers none: an identical Android tap
+  // inside the replay window is a genuine repeat that must apply. Cleared when
+  // the replay window closes.
   const coldLaunchEchoCandidates = new Set<string>();
   const pendingDeepLinks = new Map<string, Array<() => void>>();
   // Acknowledgements queued behind a URL's IN-FLIGHT `ctx.handleDeepLink`
@@ -229,6 +233,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     const captureDeepLinkOnce = (
       url: string | null | undefined,
       acknowledge?: () => void,
+      expectsAppUrlOpenEcho = false,
     ): boolean => {
       const trimmed = url?.trim();
       if (!trimmed) return false;
@@ -253,7 +258,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         return false;
       }
       handledDeepLinks.add(trimmed);
-      if (replayTimer) coldLaunchEchoCandidates.add(trimmed);
+      if (replayTimer && expectsAppUrlOpenEcho) {
+        coldLaunchEchoCandidates.add(trimmed);
+      }
       if (deepLinkHandlingReady) {
         applyDeepLink(trimmed, acknowledge ? [acknowledge] : []);
       } else {
@@ -315,7 +322,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     const readLaunchUrls = (): void => {
       void CapacitorApp.getLaunchUrl()
         .then((result) => {
-          captureDeepLinkOnce(result?.url);
+          // Only iOS replays the launch URL as a later `appUrlOpen` echo.
+          captureDeepLinkOnce(result?.url, undefined, ctx.isIOS);
         })
         // error-policy:J4 App plugin unavailable — native replay may still work
         .catch((error) => {
