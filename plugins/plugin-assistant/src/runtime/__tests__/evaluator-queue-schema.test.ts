@@ -1,9 +1,11 @@
 /** Verifies completion output schemas against real queue construction with a captured model boundary. */
 
-import type {
-  JSONSchema,
-  PlannerToolCall,
-  PlannerTrajectory,
+import {
+  type ContextObject,
+  completionContextSources,
+  type JSONSchema,
+  type PlannerToolCall,
+  type PlannerTrajectory,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,11 +19,12 @@ import { runEvaluator } from "../evaluator";
 async function captureSchema(
   plannedQueue: PlannerToolCall[],
   redactSecrets = (text: string) => text,
+  context: ContextObject = { id: "queue-contract" },
 ) {
   let schema: JSONSchema | undefined;
   let messages = "";
   const trajectory: PlannerTrajectory = {
-    context: { id: "queue-contract" },
+    context,
     steps: [],
     plannedQueue,
     evaluatorOutputs: [],
@@ -61,11 +64,8 @@ it("keeps every non-queue instruction unchanged", () => {
 describe("completion recommendations describe the current planner queue", () => {
   it("does not advertise a queued-call decision when no calls remain", async () => {
     const { schema, messages } = await captureSchema([]);
-    expect(schema?.properties?.decision.enum).toEqual([
-      "FINISH",
-      "CONTINUE",
-      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
-    ]);
+    // Nothing was deferred, so no restoration decision can be honored.
+    expect(schema?.properties?.decision.enum).toEqual(["FINISH", "CONTINUE"]);
     expect(schema?.properties).not.toHaveProperty("recommendedToolCallId");
     expect(schema?.additionalProperties).toBe(false);
     expect(schema?.properties).not.toHaveProperty("contextRequest");
@@ -74,7 +74,12 @@ describe("completion recommendations describe the current planner queue", () => 
     expect(messages).not.toContain("NEXT_RECOMMENDED");
     expect(messages).toContain("No executable calls remain queued");
     expect(messages).toContain("more_work_pending");
-    expect(messages).toContain("effectReceiptIds");
+    // No committed receipt exists to cite, so neither the field nor its
+    // selection rule is offered.
+    expect(messages).not.toContain("effectReceiptIds");
+    expect(schema?.properties).not.toHaveProperty("effectReceiptIds");
+    expect(messages).not.toContain("RESTORE_");
+    expect(messages).not.toContain("Choose one restoration decision");
     expect(messages).toContain(
       "Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning",
     );
@@ -90,7 +95,6 @@ describe("completion recommendations describe the current planner queue", () => 
       "FINISH",
       "NEXT_RECOMMENDED",
       "CONTINUE",
-      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
     ]);
     expect(messages).toContain(
       "NEXT_RECOMMENDED when the next queued tool remains grounded",
@@ -119,11 +123,60 @@ describe("completion recommendations describe the current planner queue", () => 
     );
     expect(JSON.stringify(schema)).not.toContain("private-call-id");
     expect(messages).not.toContain("NEXT_RECOMMENDED");
+    expect(schema?.properties?.decision.enum).toEqual(["FINISH", "CONTINUE"]);
+  });
+
+  it("advertises only the restoration its deferred context supports", async () => {
+    const context: ContextObject = {
+      id: "deferred-history",
+      events: [1, 2].map((id) => ({
+        id: `history:${id}`,
+        type: "segment" as const,
+        source: "prior-dialogue",
+        createdAt: id,
+        segment: {
+          id: `history:${id}`,
+          label: "prior_message:user",
+          content: `Original ${id}`,
+          stable: false,
+        },
+      })),
+    };
+    context.metadata = {
+      completionContext: {
+        mode: "selected",
+        complete: true,
+        sourceSetId: completionContextSources(context).sourceSetId,
+        relevantSourceIds: ["h1"],
+        constraintSourceIds: [],
+        referentSourceIds: [],
+        pendingIntentSourceIds: [],
+      },
+    };
+    const { schema, messages } = await captureSchema([], undefined, context);
     expect(schema?.properties?.decision.enum).toEqual([
       "FINISH",
       "CONTINUE",
-      ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
+      "RESTORE_HISTORY",
     ]);
+    expect(messages).toContain(
+      "RESTORE_HISTORY: read missing original dialogue",
+    );
+    expect(messages).toContain(
+      "Choose RESTORE_HISTORY only for missing evidence",
+    );
+    expect(messages).not.toContain("RESTORE_PROVIDERS");
+    expect(messages).not.toContain("RESTORE_FULL");
+  });
+
+  it("renders every restoration route when both sources are deferred", () => {
+    const template = evaluatorTemplateForQueue(false, true, false, {
+      history: true,
+      providers: true,
+    });
+    for (const route of Object.keys(EVALUATOR_CONTEXT_ROUTES))
+      expect(template).toContain(`- ${route}:`);
+    expect(template).toBe(evaluatorTemplateForQueue(false));
   });
 
   it("does not mutate the reusable canonical schema across turns", async () => {

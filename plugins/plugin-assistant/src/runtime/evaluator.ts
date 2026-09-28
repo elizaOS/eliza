@@ -58,6 +58,8 @@ import {
 } from "@elizaos/core";
 import {
   EVALUATOR_CONTEXT_ROUTES,
+  type EvaluatorRestorableContext,
+  evaluatorContextRouteNames,
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
@@ -402,7 +404,16 @@ async function runEvaluatorWithSelectedModel(
     redactDiagnosticText,
   );
   const clipboardAvailable = params.effects?.copyToClipboard !== false;
-  const { recommendedToolCallId, ...baseProperties } =
+  const restorable = evaluatorRestorableContext(
+    params.trajectory.modelBaseContext ?? params.context,
+  );
+  const decisionEnum = [
+    "FINISH",
+    ...(queuedCallIds.length ? ["NEXT_RECOMMENDED"] : []),
+    "CONTINUE",
+    ...evaluatorContextRouteNames(restorable),
+  ];
+  const { recommendedToolCallId, effectReceiptIds, ...baseProperties } =
     evaluatorSchema.properties ?? {};
   if (!clipboardAvailable) delete baseProperties.copyToClipboard;
   // Match the canonical proof boundary without changing the recorded results
@@ -423,6 +434,7 @@ async function runEvaluatorWithSelectedModel(
       ...baseProperties,
       // Candidate action names and past calls are not an executable queue.
       // The planner's existing dispatch/fallback checks remain authoritative.
+      decision: { ...baseProperties.decision, enum: decisionEnum },
       ...(queuedCallIds.length
         ? {
             recommendedToolCallId: {
@@ -430,16 +442,7 @@ async function runEvaluatorWithSelectedModel(
               enum: queuedCallIds,
             },
           }
-        : {
-            decision: {
-              ...baseProperties.decision,
-              enum: [
-                "FINISH",
-                "CONTINUE",
-                ...Object.keys(EVALUATOR_CONTEXT_ROUTES),
-              ],
-            },
-          }),
+        : {}),
       ...(requiresReplyField
         ? {
             messageToUser: {
@@ -453,12 +456,16 @@ async function runEvaluatorWithSelectedModel(
       ...(params.hasUnresolvedToolFailure
         ? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
         : {}),
-      effectReceiptIds: {
-        ...evaluatorSchema.properties?.effectReceiptIds,
-        ...(availableReceiptIds.length
-          ? { items: { type: "string", enum: availableReceiptIds } }
-          : { maxItems: 0 }),
-      },
+      // Without a committed receipt there is nothing to cite; the field and
+      // its selection rule are omitted rather than offered as empty-only.
+      ...(availableReceiptIds.length
+        ? {
+            effectReceiptIds: {
+              ...effectReceiptIds,
+              items: { type: "string", enum: availableReceiptIds },
+            },
+          }
+        : {}),
     },
   };
   const initialBudgetOptions = budgetResolution.contextWindowTokens
@@ -470,6 +477,8 @@ async function runEvaluatorWithSelectedModel(
     redactText: redactDiagnosticText,
     clipboardAvailable,
     requiresReplyField,
+    restorable,
+    effectReceiptsAvailable: availableReceiptIds.length > 0,
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -586,13 +595,7 @@ async function runEvaluatorWithSelectedModel(
     });
     const attemptWindow = resolvedBudget.contextWindowTokens;
     const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
-    const attemptInput = renderEvaluatorModelInput({
-      context: params.context,
-      trajectory: params.trajectory,
-      redactText: redactDiagnosticText,
-      clipboardAvailable,
-      requiresReplyField,
-    });
+    const attemptInput = renderEvaluatorModelInput(renderArgs);
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
       promptSegments: attemptInput.promptSegments,
@@ -781,11 +784,10 @@ async function runEvaluatorWithSelectedModel(
       contextRequest === "history" || contextRequest === "full";
     const readProviders =
       contextRequest === "providers" || contextRequest === "full";
+    const restorableNow = evaluatorRestorableContext(original);
     if (
-      (readHistory &&
-        (selectCompletionContext(original).applied ||
-          projectBackgroundHistory(original).applied)) ||
-      (readProviders && projectDeferredProviders(original).available.length)
+      (readHistory && restorableNow.history) ||
+      (readProviders && restorableNow.providers)
     ) {
       // A context read takes precedence over a conflicting verdict. Record
       // the invalid draft, but never deliver it or replay a completed action.
@@ -1007,12 +1009,26 @@ function reportEvaluatorUsage(
   }
 }
 
+/** The deferred sources a restoration decision can actually bring back. */
+function evaluatorRestorableContext(
+  original: ContextObject,
+): EvaluatorRestorableContext {
+  return {
+    history:
+      selectCompletionContext(original).applied ||
+      projectBackgroundHistory(original).applied,
+    providers: projectDeferredProviders(original).available.length > 0,
+  };
+}
+
 function renderEvaluatorModelInput(params: {
   context: ContextObject;
   trajectory: PlannerTrajectory;
   template?: string;
   clipboardAvailable?: boolean;
   requiresReplyField?: boolean;
+  restorable?: EvaluatorRestorableContext;
+  effectReceiptsAvailable?: boolean;
   redactText: ToolDiagnosticTextRedactor;
 }): {
   messages: ChatMessage[];
@@ -1061,6 +1077,8 @@ function renderEvaluatorModelInput(params: {
       evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
       params.clipboardAvailable,
       params.requiresReplyField,
+      params.restorable,
+      params.effectReceiptsAvailable,
     );
   const instructions = (
     template.split("context_object:")[0] ?? template

@@ -14,6 +14,11 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
+import { resolvePersonalDedicatedTrafficAccess } from "@/lib/services/personal-dedicated-fallback";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@/lib/services/personal-direct-chat-route";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { coordinateSharedBridge } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
@@ -85,7 +90,48 @@ async function __hono_POST(
       );
     }
 
-    const rpcRequest = parsed.data as BridgeRequest;
+    let rpcRequest = parsed.data as BridgeRequest;
+    // A personal turn follows its entitlement route (#25146): Dedicated
+    // ownership is refused with its agent id, and a withdrawn Dedicated is
+    // answered in the scoped fallback journal with the account state.
+    let trustedAccountState:
+      | Extract<
+          Awaited<ReturnType<typeof resolveSharedSurfaceTarget>>,
+          { ok: true }
+        >["accountState"]
+      | undefined;
+    if (
+      resolved.agentKind === "personal" &&
+      rpcRequest.method === "message.send"
+    ) {
+      const requestedRoom = rpcRequest.params?.roomId;
+      const target = await resolveSharedSurfaceTarget({
+        agent: resolved.agent,
+        personal: true,
+        conversationId:
+          typeof requestedRoom === "string" && requestedRoom.trim()
+            ? requestedRoom
+            : resolved.agent.id,
+        namespace: resolved.namespace,
+      });
+      if (!target.ok) {
+        const refusal = personalDirectChatRefusalResponse(target.refusal);
+        return applyCorsHeaders(
+          Response.json(refusal.body, {
+            status: refusal.status,
+            headers: refusal.headers,
+          }),
+          CORS_METHODS,
+        );
+      }
+      if (target.accountState) {
+        trustedAccountState = target.accountState;
+        rpcRequest = {
+          ...rpcRequest,
+          params: { ...rpcRequest.params, roomId: target.roomId },
+        };
+      }
+    }
     const trustedUserUtterance =
       rpcRequest.method === "message.send" &&
       typeof rpcRequest.params?.text === "string" &&
@@ -97,6 +143,7 @@ async function __hono_POST(
       namespace: resolved.namespace,
       agentKind: resolved.agentKind,
       ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
+      ...(trustedAccountState ? { trustedAccountState } : {}),
     });
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);
@@ -170,6 +217,31 @@ async function dispatchToDedicatedSandbox(
       );
     }
     const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    // A cut-over personal Dedicated whose owner's access is withdrawn is not
+    // reachable directly (#25146); its memory stays sealed until recovery.
+    const access = await resolvePersonalDedicatedTrafficAccess({
+      dedicatedAgentId: c.req.param("agentId")!,
+      organizationId: user.organization_id,
+    });
+    if (access.access === "withdrawn") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: access.error,
+            code: access.code,
+            retryable: access.retryable,
+          },
+          {
+            status: access.status,
+            ...(access.retryAfterSeconds
+              ? { headers: { "Retry-After": String(access.retryAfterSeconds) } }
+              : {}),
+          },
+        ),
+        CORS_METHODS,
+      );
+    }
     const response = await elizaSandboxService.bridge(
       c.req.param("agentId")!,
       user.organization_id,

@@ -98,8 +98,8 @@ beforeAll(async () => {
     "0480_personal_dedicated_fallbacks.sql",
     "0490_personal_dedicated_fallback_entitlement.sql",
     "0490_personal_dedicated_fallback_entitlement.sql",
-    "0492_payment_reversal_shortfall_holds.sql",
-    "0492_payment_reversal_shortfall_holds.sql",
+    "0494_payment_reversal_shortfall_holds.sql",
+    "0494_payment_reversal_shortfall_holds.sql",
   ]) {
     const migration = await readFile(
       join(import.meta.dir, `../../../db/migrations/${name}`),
@@ -927,6 +927,269 @@ test(
     expect(await resumeJobs(lapsed.agentId)).toHaveLength(1);
     expect((await fallbackRows(lapsed))[0]).toMatchObject({ state: "recovery_pending" });
     expect(fallback.PERSONAL_DEDICATED_FALLBACK_RETENTION_DAYS).toBeGreaterThan(0);
+  },
+  TEST_TIMEOUT,
+);
+
+/** Records which conversation-coordinator rooms a reconcile read, serving one fixed journal. */
+function journalNamespace(history: Array<Record<string, unknown>>) {
+  const rooms: string[] = [];
+  return {
+    rooms,
+    namespace: {
+      getByName(name: string) {
+        rooms.push(name);
+        return { fetch: async () => Response.json({ history }) };
+      },
+    },
+  };
+}
+
+async function withRecoveryLinkSigning<T>(run: () => Promise<T>): Promise<T> {
+  const { exportPKCS8, exportSPKI, generateKeyPair } = await import("jose");
+  const { privateKey, publicKey } = await generateKeyPair("ES256", { extractable: true });
+  const saved = {
+    JWT_SIGNING_PRIVATE_KEY: process.env.JWT_SIGNING_PRIVATE_KEY,
+    JWT_SIGNING_PUBLIC_KEY: process.env.JWT_SIGNING_PUBLIC_KEY,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  };
+  process.env.JWT_SIGNING_PRIVATE_KEY = Buffer.from(await exportPKCS8(privateKey)).toString(
+    "base64",
+  );
+  process.env.JWT_SIGNING_PUBLIC_KEY = Buffer.from(await exportSPKI(publicKey)).toString("base64");
+  process.env.NEXT_PUBLIC_APP_URL = "https://cloud.example.test";
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test(
+  "direct chat, groups and the shared gateway follow the entitlement route; recovery hands back the same Dedicated id",
+  async () => {
+    await withRecoveryLinkSigning(async () => {
+      const direct = await import("../personal-direct-chat-route");
+      const fallback = await import("../personal-dedicated-fallback");
+      const links = await import("../personal-fallback-recovery-link");
+      const { parsePersonalSharedFallbackAccountState } = await import(
+        "../shared-runtime/personal-fallback-account-state"
+      );
+      const account = await seedPlanAccount();
+      const agent = {
+        id: account.sourceAgentId,
+        organization_id: account.orgId,
+        user_id: account.userId,
+      };
+      const idle = journalNamespace([]);
+      const surface = (conversationId: string) =>
+        direct.resolveSharedSurfaceTarget({
+          agent,
+          personal: true,
+          conversationId,
+          namespace: idle.namespace,
+        });
+      const traffic = () =>
+        fallback.resolvePersonalDedicatedTrafficAccess({
+          dedicatedAgentId: account.agentId,
+          organizationId: account.orgId,
+        });
+
+      // Entitled: the identity hands out the Dedicated id and every Shared
+      // chat surface refuses with it; group and gateway traffic reach it.
+      const entitled = await direct.resolvePersonalDirectChatRoute({
+        organizationId: account.orgId,
+        userId: account.userId,
+        sourceAgentId: account.sourceAgentId,
+      });
+      expect(entitled.route === "dedicated" && entitled.dedicated.id).toBe(account.agentId);
+      expect(await surface(account.sourceAgentId)).toEqual({
+        ok: false,
+        refusal: direct.personalDedicatedOwnsConversation(account.agentId),
+      });
+      expect(await traffic()).toEqual({ access: "dedicated" });
+      // Organization Shared agents and non-agent ids are untouched.
+      expect(
+        await direct.resolveSharedSurfaceTarget({
+          agent,
+          personal: false,
+          conversationId: "room-1",
+          namespace: idle.namespace,
+        }),
+      ).toEqual({ ok: true, roomId: "room-1" });
+      expect(
+        await fallback.resolvePersonalDedicatedTrafficAccess({
+          dedicatedAgentId: "not-a-uuid",
+          organizationId: account.orgId,
+        }),
+      ).toEqual({ access: "dedicated" });
+
+      // The plan lapses: the canonical conversation is served from the scoped
+      // journal with the account-state provider and a signed pay action.
+      await publishPlan(account, 1, { status: "past_due" });
+      const lapsed = await surface(account.sourceAgentId);
+      if (!lapsed.ok || !lapsed.accountState) throw new Error("Expected the Shared fallback");
+      expect(lapsed.roomId).toStartWith("fallback:");
+      expect(lapsed.roomId).not.toBe(account.sourceAgentId);
+      // ES256 signatures are randomized; every other field is stable.
+      const byJournalId = await surface(lapsed.roomId);
+      expect(byJournalId.ok && byJournalId.roomId).toBe(lapsed.roomId);
+      expect(byJournalId.ok && byJournalId.accountState?.generation).toBe(
+        lapsed.accountState.generation,
+      );
+      expect(await surface("another-room")).toMatchObject({
+        ok: false,
+        refusal: { status: 404, code: "conversation_not_found" },
+      });
+      const state = lapsed.accountState;
+      expect(state).toMatchObject({
+        access: "shared_fallback",
+        reason: "subscription_payment_failed",
+        dedicatedMemory: "unavailable",
+        recoveryAction: { kind: "restore_subscription", path: "/cloud/billing" },
+      });
+      // The Durable Object boundary admits exactly this shape, link included.
+      expect(parsePersonalSharedFallbackAccountState(state)).toEqual(state);
+      expect(
+        parsePersonalSharedFallbackAccountState({
+          ...state,
+          recoveryAction: {
+            ...state.recoveryAction,
+            link: { ...state.recoveryAction.link, url: "https://evil.test/pay?card=4242" },
+          },
+        }),
+      ).toBeNull();
+
+      // The link is signed, expiring, and resolves to billing with the
+      // organization context only.
+      const link = state.recoveryAction.link;
+      if (!link) throw new Error("Expected a signed recovery link");
+      expect(link.url).toStartWith("https://cloud.example.test/api/v1/eliza/personal/recovery/");
+      expect(Date.parse(link.expiresAt)).toBeGreaterThan(Date.now());
+      const token = link.url.slice(link.url.lastIndexOf("/") + 1);
+      const resolved = await links.resolvePersonalFallbackRecoveryLink(token, {
+        appUrl: "https://cloud.example.test",
+      });
+      const billing = new URL(resolved.billingUrl);
+      expect(billing.origin + billing.pathname).toBe("https://cloud.example.test/cloud/billing");
+      expect(Object.fromEntries(billing.searchParams)).toEqual({
+        organizationId: account.orgId,
+        action: "restore_subscription",
+      });
+      expect(resolved.claims).toMatchObject({
+        organizationId: account.orgId,
+        userId: account.userId,
+        generation: 1,
+      });
+      const tampered = `${token.slice(0, -2)}${token.endsWith("AA") ? "BB" : "AA"}`;
+      await expect(links.resolvePersonalFallbackRecoveryLink(tampered)).rejects.toMatchObject({
+        code: "PERSONAL_FALLBACK_RECOVERY_LINK_INVALID",
+      });
+      await expect(
+        links.resolvePersonalFallbackRecoveryLink(token, {
+          now: new Date(Date.parse(link.expiresAt) + 60_000),
+        }),
+      ).rejects.toMatchObject({ code: "PERSONAL_FALLBACK_RECOVERY_LINK_EXPIRED" });
+
+      // Group and shared-gateway traffic has no fallback of its own: it is
+      // refused with the typed state and never reaches Dedicated memory.
+      expect(await traffic()).toMatchObject({
+        access: "withdrawn",
+        status: 409,
+        code: "personal_dedicated_access_withdrawn",
+        retryable: false,
+      });
+
+      // Payment returns. While the same runtime restarts Shared keeps the
+      // journal; once it is running, the interval is reconciled into it.
+      const [stop] = (await lifecycleJobs(account.agentId)).filter(
+        (job) => job.type === "agent_suspend",
+      );
+      await dbWrite
+        .update(jobs)
+        .set({ status: "completed", completed_at: new Date() })
+        .where(eq(jobs.id, stop.id));
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "stopped" })
+        .where(eq(agentSandboxes.id, account.agentId));
+      await publishPlan(account, 2, { status: "active" });
+      const restarting = await surface(account.sourceAgentId);
+      expect(restarting.ok && restarting.accountState?.state).toBe("recovery_pending");
+      expect(await traffic()).toMatchObject({ access: "withdrawn" });
+      const [resume] = await resumeJobs(account.agentId);
+      await dbWrite
+        .update(jobs)
+        .set({ status: "completed", completed_at: new Date() })
+        .where(eq(jobs.id, resume.id));
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "running" })
+        .where(eq(agentSandboxes.id, account.agentId));
+
+      // A gateway or cached Dedicated client can arrive before the owner
+      // reopens direct chat. Running compute alone must not admit that turn
+      // while the fallback journal still awaits its canonical import.
+      expect(await traffic()).toMatchObject({
+        access: "withdrawn",
+        status: 503,
+        code: "dedicated_reconciling",
+        retryable: true,
+      });
+      expect((await fallbackRows(account))[0]?.state).toBe("recovery_pending");
+
+      // Without the conversation coordinator the handback waits.
+      expect(
+        await direct.resolvePersonalDirectChatRoute({
+          organizationId: account.orgId,
+          userId: account.userId,
+          sourceAgentId: account.sourceAgentId,
+        }),
+      ).toMatchObject({ route: "refused", status: 503, code: "dedicated_reconciling" });
+
+      const journal = journalNamespace([
+        { id: "turn-user-1", role: "user", content: "Hi", createdAt: 1 },
+        { id: "turn-assistant-1", role: "assistant", content: "Hello", createdAt: 2 },
+      ]);
+      const imported = spyOn(
+        ElizaSandboxService.prototype,
+        "importCanonicalConversation",
+      ).mockResolvedValue({ complete: true, sourceMessageCount: 2, inserted: 2, skipped: 0 });
+      try {
+        const handback = await direct.resolvePersonalDirectChatRoute({
+          organizationId: account.orgId,
+          userId: account.userId,
+          sourceAgentId: account.sourceAgentId,
+          namespace: journal.namespace,
+        });
+        expect(handback.route === "dedicated" && handback.dedicated.id).toBe(account.agentId);
+        // Only the scoped journal was read, and it moved into the same agent.
+        expect(journal.rooms).toEqual([`${account.sourceAgentId}:${lapsed.roomId}`]);
+        expect(imported).toHaveBeenCalledTimes(1);
+        expect(imported.mock.calls[0]?.slice(0, 3)).toEqual([
+          account.agentId,
+          account.orgId,
+          account.sourceAgentId,
+        ]);
+      } finally {
+        imported.mockRestore();
+      }
+      expect((await fallbackRows(account))[0]).toMatchObject({
+        state: "recovered",
+        dedicated_agent_id: account.agentId,
+        reconciled_message_count: 2,
+      });
+      expect(await traffic()).toEqual({ access: "dedicated" });
+      expect(await surface(account.sourceAgentId)).toEqual({
+        ok: false,
+        refusal: direct.personalDedicatedOwnsConversation(account.agentId),
+      });
+      // The verified link of a recovered interval still only opens billing.
+      await expect(links.resolvePersonalFallbackRecoveryLink(token)).resolves.toBeDefined();
+    });
   },
   TEST_TIMEOUT,
 );

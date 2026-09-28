@@ -7,7 +7,7 @@
  */
 import * as crypto from "node:crypto";
 import * as http from "node:http";
-import type { AgentRemoteBrowserController } from "@elizaos/remote-control-host";
+import type { AgentRemoteBrowserController } from "@elizaos/plugin-browser/remote-controller";
 import { sql } from "drizzle-orm";
 import { ElizaError } from "../../core/src/errors";
 import restartExitCodeDefinition from "../../core/src/restart-exit-code.json" with {
@@ -517,7 +517,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         await Promise.all([
           import("@elizaos/plugin-browser"),
           import("@elizaos/plugin-web-search"),
-          import("@elizaos/remote-control-host"),
+          import("@elizaos/plugin-browser/remote-controller"),
         ]);
       const { assistantPlugin } = await import("@elizaos/plugin-assistant");
       plugins.push(assistantPlugin, browserPlugin, webSearchPlugin);

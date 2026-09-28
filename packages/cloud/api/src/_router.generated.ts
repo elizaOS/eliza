@@ -2910,6 +2910,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../v1/eliza/paypal/transactions/route"),
   },
   {
+    path: "/api/v1/eliza/personal/recovery/:token",
+    shard: "v1/eliza",
+    load: () => import("../v1/eliza/personal/recovery/[token]/route"),
+  },
+  {
     path: "/api/v1/eliza/personal",
     shard: "v1/eliza",
     load: () => import("../v1/eliza/personal/route"),

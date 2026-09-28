@@ -52,6 +52,6 @@ ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 UPDATE "organization_payment_reversal_holds"
 SET "released_at" = now(),
-  "released_by" = 'migration:0492_payment_reversal_shortfall_holds',
+  "released_by" = 'migration:0494_payment_reversal_shortfall_holds',
   "release_reason" = 'Superseded by the ratified reversal-shortfall billing hold (#22930 Decision A)'
 WHERE "reason" = 'chargeback_lost' AND "released_at" IS NULL;
