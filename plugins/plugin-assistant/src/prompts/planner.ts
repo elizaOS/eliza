@@ -29,15 +29,15 @@ export const plannerRequiredPolicy = {
   discovery:
     "- candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_ACTIONS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES, TRIGGER_CREATE for OWNER_REMINDERS). Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
   workClaims:
-    '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. A final user-facing reply ends this turn; tool-call returns still proceed through evaluation and continuation. If iterations end without usable results, state the actual attempt and outcome; never promise work that is not running.',
+    '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. A final user-facing reply ends this turn; tool-call returns still proceed through evaluation and continuation. Promise future work only when current evidence confirms an authorized, active persisted continuation or delegated task owns it; describe its actual status, not completion. A paused task awaiting user input does not authorize automatic continuation. If iterations end without usable results, state the actual attempt and outcome; never invent background work.',
   errorClaims:
     "- messageToUser and REPLY must not invent a failure, error, interruption or retry excuse in any wording. Require a real tool error or empty result THIS turn before reporting one or asking for retry. Choosing not to act is not a malfunction: take the appropriate available action or truthfully explain what is possible and clarify scope as needed.",
 } as const;
 
 const isShellTool = (name: string) =>
-  name === "SHELL" || name.startsWith("SHELL_");
+  name === "SHELL" || name.startsWith("SHELL_") || name === "TERMINAL_SHELL";
 const isCodingDelegationTool = (name: string) =>
-  name === "TASKS" || name === "TASKS_SPAWN_AGENT";
+  name === "TASKS" || name === "TASKS_CREATE" || name === "TASKS_SPAWN_AGENT";
 
 /**
  * Mandatory rules that constrain one tool family. They ride with that family
@@ -47,11 +47,11 @@ const isCodingDelegationTool = (name: string) =>
 export const plannerToolScopedPolicy = {
   recallTools: {
     appliesTo: isShellTool,
-    rule: "- SHELL is for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_ACTIONS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
+    rule: "- Shell tools are for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_ACTIONS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
   },
   codingDelegation: {
     appliesTo: isCodingDelegationTool,
-    rule: "- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Do not delegate a single live/current/public lookup to a coding agent. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
+    rule: "- Coding delegation is for coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Do not delegate a single live/current/public lookup to a coding agent. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
   },
 } as const;
 
@@ -123,7 +123,7 @@ export function buildPlannerTemplate({
 rules:
 - Use only the tools array; build the smallest grounded queue covering every explicit requested outcome. Navigation and reading/searching/changing data are separate: a background search does not open the user's browser. Queue both when requested. Routing hints never replace the full request or make a clause optional.
 - routed action: set parameters.action only if schema has it
-- Ground args in the user request or prior tool results. Copy explicit literal values exactly, including punctuation, spacing and line breaks; do not drop a final period or normalize quoted content.
+- Ground args in the user request or prior tool results. Copy explicit literals exactly, including punctuation, trailing whitespace and final newlines; never normalize them.
 - obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
 - For currently authorized work, call a matching tool even with missing details; its handler owns required clarification and validation. Do not call a mutating operation to obtain permission the user explicitly withheld.

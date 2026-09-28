@@ -139,8 +139,14 @@ export type FileWriteTextParams = CapabilityEndpointSelection & {
 };
 
 export type FileWriteTextResult = {
+	/** Path the provider wrote, in the provider's own namespace. */
 	path: string;
 	bytesWritten: number;
+	/**
+	 * The caller's requested path, echoed by providers that translate paths
+	 * (e.g. a host workspace path mapped into a sandbox workdir).
+	 */
+	requestedPath?: string;
 };
 
 export type TerminalRunParams = CapabilityEndpointSelection & {
@@ -1135,9 +1141,15 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				: { endpointId: params.endpointId }),
 		});
 		const object = requireObject(result, "fs.writeText");
+		const requestedPath = optionalString(
+			object,
+			"requestedPath",
+			"fs.writeText",
+		);
 		return {
 			path: requireString(object, "path", "fs.writeText"),
 			bytesWritten: requireNumber(object, "bytesWritten", "fs.writeText"),
+			...(requestedPath === undefined ? {} : { requestedPath }),
 		};
 	}
 

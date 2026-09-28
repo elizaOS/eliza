@@ -3,8 +3,13 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { type Memory, promoteSubactionsToActions } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import {
+  pluginAction,
+  pluginOperationSchemaOverrides,
+} from "../src/actions/plugin.ts";
 import { startApiServer } from "../src/api/server.ts";
 
 let directory: string;
@@ -316,5 +321,111 @@ it("applies saved secrets to a live plugin's cached configuration", async () => 
     await server.close();
     await fixture.cleanup();
     server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+  }
+}, 120_000);
+
+it("executes narrow promoted plugin schemas through authenticated HTTP without changing alias or secret boundaries", async () => {
+  const fixture = await createTestRuntime({
+    characterName: "PluginOperationSchemas",
+  });
+  vi.stubEnv("ELIZA_PORT", String(server.port));
+  const actions = promoteSubactionsToActions(pluginAction, {
+    overrides: pluginOperationSchemaOverrides(),
+  });
+  const operation = (name: string) => {
+    const action = actions.find((action) => action.name === name);
+    if (!action) throw new Error(`Missing ${name}`);
+    expect(action.roleGate).toEqual({ minRole: "OWNER" });
+    return action;
+  };
+  const message: Memory = {
+    id: randomUUID(),
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID(),
+    content: { text: "Configure the test plugin" },
+    createdAt: Date.now(),
+  };
+  try {
+    const list = operation("PLUGIN_LIST");
+    const listFields = list.parameters?.map((parameter) => parameter.name);
+    expect(listFields).toEqual(
+      expect.arrayContaining(["type", "status", "configured", "search"]),
+    );
+    expect(listFields).not.toContain("config");
+    expect(listFields).not.toContain("stream");
+    const listed = await list.handler(fixture.runtime, message, undefined, {
+      parameters: { type: "plugin", search: "openai" },
+    });
+    expect(listed).toMatchObject({ success: true });
+    expect(JSON.stringify(listed)).not.toContain(secret);
+
+    const configure = operation("PLUGIN_CONFIGURE");
+    expect(
+      configure.parameters?.find((parameter) => parameter.name === "config")
+        ?.required,
+    ).toBe(true);
+    expect(
+      configure.parameters?.some((parameter) => parameter.name === "enabled"),
+    ).toBe(false);
+    const configured = await configure.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          connectorId: "openai",
+          config: { OPENAI_API_KEY: secret },
+        },
+      },
+    );
+    expect(configured).toMatchObject({ success: true });
+    expect(JSON.stringify(configured)).not.toContain(secret);
+    expect(
+      JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
+        .plugins.entries.openai.config.OPENAI_API_KEY,
+    ).toBe(secret);
+
+    const toggle = operation("PLUGIN_TOGGLE");
+    expect(
+      toggle.parameters?.find((parameter) => parameter.name === "enabled")
+        ?.required,
+    ).toBe(true);
+    expect(
+      toggle.parameters?.some((parameter) => parameter.name === "config"),
+    ).toBe(false);
+    expect(
+      await toggle.handler(fixture.runtime, message, undefined, {
+        parameters: { pluginId: "openai", enabled: false },
+      }),
+    ).toMatchObject({ success: true });
+    expect(
+      JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
+        .plugins.entries.openai.enabled,
+    ).toBe(false);
+
+    const read = await operation("PLUGIN_READ_CONFIG").handler(
+      fixture.runtime,
+      message,
+      undefined,
+      { parameters: { pluginId: "openai" } },
+    );
+    expect(read).toMatchObject({ success: true });
+    expect(JSON.stringify(read)).not.toContain(secret);
+    expect(
+      await list.handler(fixture.runtime, message, undefined, {
+        parameters: {
+          op: "configure",
+          pluginId: "openai",
+          config: { OPENAI_API_KEY: "must-not-save" },
+        },
+      }),
+    ).toMatchObject({ success: false });
+    expect(
+      JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
+        .plugins.entries.openai.config.OPENAI_API_KEY,
+    ).toBe(secret);
+  } finally {
+    await fixture.cleanup();
   }
 }, 120_000);

@@ -1,10 +1,20 @@
 /** Runs the real CLI, provider, coding tools, database state and process shutdown. */
 import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import {
+  createPlannerTokenPacer,
+  plannerRateLimitEvidence,
+  plannerWorkloadFixture,
+  summarizePlannerObservation,
+  summarizePlannerTrajectories,
+  validatePlannerFixture,
+} from "../scripts/cerebras-planner-workload.ts";
 
 const enabled = process.env.BENCHMARK_NATIVE_CODING_E2E === "1";
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
@@ -210,4 +220,285 @@ test
     }
   },
   270_000,
+);
+
+test("paired planner fixtures validate actual file bytes and do not fabricate absent cache usage", async () => {
+  const workspace = await mkdtemp(
+    path.join(tmpdir(), "planner-fixture-validation-"),
+  );
+  try {
+    const kinds: Record<string, number> = {};
+    for (let index = 0; index < 30; index++) {
+      const fixture = plannerWorkloadFixture(index, workspace);
+      kinds[fixture.kind] = (kinds[fixture.kind] ?? 0) + 1;
+      for (const [name, content] of Object.entries(fixture.filesAfter))
+        await writeFile(path.join(workspace, name), content);
+      expect(
+        (
+          await validatePlannerFixture(fixture, workspace, {
+            text: fixture.expectedReply.join("\n"),
+          })
+        ).passed,
+      ).toBe(true);
+      const name = Object.keys(fixture.filesAfter)[0];
+      await writeFile(path.join(workspace, name), "incorrect bytes");
+      expect(
+        (
+          await validatePlannerFixture(fixture, workspace, {
+            text: fixture.expectedReply.join("\n"),
+          })
+        ).passed,
+      ).toBe(false);
+    }
+    expect(kinds).toEqual({
+      "html-readback": 10,
+      "read-compute": 10,
+      "multiline-write": 5,
+      "two-files": 5,
+    });
+    const summary = summarizePlannerTrajectories([
+      {
+        llmCalls: [
+          { promptTokens: 100, completionTokens: 5, modelType: "PLANNER" },
+        ],
+        toolEvents: [],
+      },
+    ]);
+    expect(summary.metrics.cacheReadInputTokens).toEqual({
+      totalReported: 0,
+      reportedCalls: 0,
+      missingCalls: 1,
+    });
+    expect(summary.metrics.freshPromptTokens).toEqual({
+      totalReported: 0,
+      reportedCalls: 0,
+      missingCalls: 1,
+    });
+    expect(summary.providerWireTTFT).toBeNull();
+    expect(summary.successfulReadReceipts).toBe(0);
+    const pacer = createPlannerTokenPacer({ fresh: 90_000, total: 400_000 }, 0);
+    const reservation = { fresh: 60_000, total: 100_000 };
+    expect(pacer.delay(reservation, 0)).toBe(0);
+    pacer.reserve(reservation, 0);
+    expect(pacer.delay(reservation, 0)).toBe(20_000);
+    expect(pacer.delay(reservation, 20_000)).toBe(0);
+    pacer.settle(reservation, { fresh: 90_000, total: 100_000 }, 20_000);
+    expect(pacer.delay(reservation, 20_000)).toBe(20_000);
+
+    const foreground = {
+      trajectory: { id: "foreground", status: "completed" },
+      llmCalls: [
+        { modelType: "ACTION_PLANNER", promptTokens: 100, completionTokens: 5 },
+      ],
+    };
+    const initial = summarizePlannerObservation([foreground]);
+    expect(initial.foreground?.modelCalls).toBe(1);
+    expect(initial.observedBackground).toBeNull();
+    expect(plannerRateLimitEvidence({ failureKind: "rate_limited" }, [])).toBe(
+      true,
+    );
+    expect(
+      plannerRateLimitEvidence({}, [
+        {
+          llmCalls: [
+            {
+              providerMetadata: {
+                error: "Too Many Requests: Tokens per minute limit exceeded",
+              },
+            },
+          ],
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      plannerRateLimitEvidence({ text: "File saved" }, [
+        { llmCalls: [{ providerMetadata: { error: "Invalid schema" } }] },
+      ]),
+    ).toBe(false);
+    expect(initial.backgroundObservation).toBe("not-observed");
+    const refreshed = summarizePlannerObservation([
+      foreground,
+      {
+        trajectory: { id: "late-background", status: "completed" },
+        llmCalls: [
+          {
+            modelType: "TEXT_SMALL",
+            systemPrompt: "Evaluate the completed turn using supplied evidence",
+            promptTokens: 30,
+            completionTokens: 2,
+          },
+        ],
+      },
+    ]);
+    expect(refreshed.foreground?.metrics.promptTokens.totalReported).toBe(100);
+    expect(
+      refreshed.observedBackground?.metrics.promptTokens.totalReported,
+    ).toBe(30);
+    expect(refreshed.allObserved.metrics.promptTokens.totalReported).toBe(130);
+    expect(refreshed.backgroundObservation).toBe("observed-completed");
+    expect(refreshed.futureBackgroundQuiescence).toBe("not-established");
+    expect(initial.observedBackground).toBeNull();
+    expect(
+      summarizePlannerObservation([{ llmCalls: [{ modelType: "TEXT_SMALL" }] }])
+        .unclassified?.modelCalls,
+    ).toBe(1);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test.each(["pacing", "request"] as const)(
+  "planner benchmark stops gracefully during %s without a second dispatch",
+  async (phase) => {
+    const output = await mkdtemp(path.join(tmpdir(), "planner-stop-"));
+    let messages = 0;
+    let conversations = 0;
+    let child: ReturnType<typeof spawn> | undefined;
+    const server = createServer(async (request, response) => {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      const reply = (value: unknown) => {
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify(value));
+      };
+      if (url.pathname === "/api/conversations") {
+        conversations++;
+        reply({
+          conversation: {
+            id: `c${conversations}`,
+            roomId: `r${conversations}`,
+          },
+        });
+      } else if (url.pathname.endsWith("/messages")) {
+        messages++;
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const body = JSON.parse(Buffer.concat(chunks).toString());
+        if (phase === "request") {
+          child?.kill("SIGUSR1");
+          // The response and real local write settle after the stop signal.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        const matched = String(body.text).match(
+          /^Create (.+?) containing exactly ("(?:[^"\\]|\\.)*")\./,
+        );
+        if (!matched) throw new Error("Unexpected fixture prompt");
+        const content: string = JSON.parse(matched[2]);
+        await writeFile(matched[1], content);
+        reply({ text: content });
+      } else if (url.pathname === "/api/trajectories") {
+        reply({ total: 2, trajectories: [{ id: "fg" }, { id: "bg" }] });
+      } else if (url.pathname === "/api/trajectories/fg") {
+        reply({
+          trajectory: { id: "fg", status: "completed" },
+          llmCalls: [
+            {
+              modelType: "ACTION_PLANNER",
+              promptTokens: 10,
+              completionTokens: 2,
+              cacheReadInputTokens: 0,
+            },
+          ],
+          toolEvents: [
+            {
+              actionName: "READ",
+              success: true,
+              parameters: { file_path: "index.html" },
+            },
+          ],
+        });
+      } else if (url.pathname === "/api/trajectories/bg") {
+        reply({
+          trajectory: { id: "bg", status: "completed" },
+          llmCalls: [
+            {
+              modelType: "TEXT_SMALL",
+              systemPrompt: "Evaluate the completed turn",
+              promptTokens: 2,
+              completionTokens: 1,
+              cacheReadInputTokens: 0,
+            },
+          ],
+        });
+      } else {
+        response.statusCode = 404;
+        reply({ error: "Unknown test route" });
+      }
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing test port");
+    const origin = `http://127.0.0.1:${address.port}`;
+    try {
+      child = spawn(
+        "bun",
+        [
+          "--conditions=eliza-source",
+          path.join(
+            repoRoot,
+            "packages/agent/scripts/cerebras-planner-workload.ts",
+          ),
+        ],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            BUN_OPTIONS: "",
+            BENCHMARK_PAIRS: "2",
+            BENCHMARK_OUTPUT_DIR: output,
+            BENCHMARK_BASELINE_URL: origin,
+            BENCHMARK_CANDIDATE_URL: origin,
+            BENCHMARK_MIN_TURN_INTERVAL_MS: "60000",
+            BENCHMARK_FRESH_TOKENS_PER_MINUTE: "90000",
+            BENCHMARK_TOTAL_TOKENS_PER_MINUTE: "400000",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      const exited = once(child, "exit");
+      if (phase === "pacing") {
+        const deadline = Date.now() + 10000;
+        let found = false;
+        while (Date.now() < deadline) {
+          try {
+            const report = JSON.parse(
+              await readFile(path.join(output, "report.json"), "utf8"),
+            );
+            if (report.status === "pacing") {
+              found = true;
+              break;
+            }
+          } catch {
+            /* Report is created and replaced by the running child. */
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(found).toBe(true);
+        child.kill("SIGUSR1");
+      }
+      expect((await exited)[0]).toBe(1);
+      const report = JSON.parse(
+        await readFile(path.join(output, "report.json"), "utf8"),
+      );
+      expect(report.status).toBe("interrupted-operator");
+      expect(messages).toBe(1);
+      expect(report.rows[0].response.text).toContain("CHECK-137");
+      expect(report.rows[0].validation.passed).toBe(true);
+      expect(
+        JSON.parse(await readFile(report.rows[0].trajectoryFile, "utf8")),
+      ).toHaveLength(2);
+      expect(
+        JSON.parse(await readFile(report.rows[0].finalTrajectoryFile, "utf8")),
+      ).toHaveLength(2);
+      if (phase === "pacing") expect(report.rows[1].dispatched).toBe(false);
+      else expect(report.rows).toHaveLength(1);
+    } finally {
+      if (child?.exitCode === null) child.kill("SIGKILL");
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(output, { recursive: true, force: true });
+    }
+  },
+  30000,
 );

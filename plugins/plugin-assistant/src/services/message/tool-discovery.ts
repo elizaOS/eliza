@@ -18,6 +18,7 @@ import {
   DISCOVER_ACTIONS_NAME,
   DISCOVER_TOOLS_NAME,
   ElizaError,
+  getUserMessageText,
   isDiscoveryActionName,
   isObjectRecord,
   normalizeActionJsonSchema,
@@ -99,7 +100,12 @@ export function createPlannerToolDiscoveryAction(
   /** Resolve named operations; [] requests fresh admission of the full catalog. */
   resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
   /** Keep legacy callers inline; reference mode uses the existing catalog read. */
-  options?: { deferNameIndex?: boolean; catalogIndex?: boolean },
+  options?: {
+    deferNameIndex?: boolean;
+    catalogIndex?: boolean;
+    /** Current Stage-1 outcomes rank context-only loads, never explicit reads. */
+    taskIntents?: readonly string[];
+  },
 ): Action {
   const catalogIndex = options?.catalogIndex === true;
   if (authorizedActions.some((action) => isDiscoveryActionName(action.name))) {
@@ -123,15 +129,13 @@ export function createPlannerToolDiscoveryAction(
     );
   };
   const catalog = catalogFor(authorizedActions);
-  // One statement per behavior: what names=[] returns depends on the catalog
-  // mode, so it is stated once for the mode actually served.
   const discoveryDescription =
     "Find authorized operations by query and/or contexts, or load exact names (parents load their families). " +
     "mode=load enables complete schemas in the next tool surface; use loaded tools to perform work. " +
-    "mode=describe answers capability or parameter questions without enabling tools. " +
+    "Empty load selectors search the current task. mode=describe reads complete descriptions and selected parameter schemas without enabling tools; mode=describe,names=[] reads the complete authorized catalog. " +
     (catalogIndex
-      ? "names=[] returns a routing index; add mode=describe for complete descriptions. "
-      : "names=[] reads the complete authorized catalog. ") +
+      ? "Without task context, names=[] returns a routing index. "
+      : "") +
     "Discovery refreshes permissions and never executes domain work. A search miss does not prove a capability is unavailable.";
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
   const referenceDescription = `${discoveryDescription} No name index is preloaded here.`;
@@ -145,15 +149,15 @@ export function createPlannerToolDiscoveryAction(
       {
         name: "mode",
         description:
-          "load (default) enables named tools; describe reads complete descriptions and, for named tools, parameter schemas.",
+          "load (default) enables matching tools; describe only reads their complete definitions.",
         required: false,
         schema: { type: "string", enum: ["load", "describe"] },
       },
       {
         name: "names",
         description: catalogIndex
-          ? "Exact authorized names; [] reads the routing index, or full descriptions with mode=describe."
-          : "Exact authorized parent or child names to load or describe; [] reads all catalog descriptions without loading tools.",
+          ? "Exact authorized names; [] searches the current task (routing index only when task context is absent). Use mode=describe,names=[] for the full catalog."
+          : "Exact authorized parent or child names. Empty load selectors search the current task; mode=describe,names=[] reads all catalog descriptions without loading tools.",
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
@@ -165,25 +169,45 @@ export function createPlannerToolDiscoveryAction(
       },
       {
         name: "contexts",
-        description: `Optional exact domain IDs to scope search, including without a query. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names.`,
+        description: `Optional exact domain IDs to scope search. Without a query, load ranks the current task; describe lists domain members. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names.`,
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
     ],
     validate: async () => true,
-    handler: async (runtime, _message, _state, options) => {
-      const mode = isObjectRecord(options?.parameters)
-        ? options.parameters.mode
+    handler: async (runtime, message, _state, callOptions) => {
+      const mode = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.mode
         : undefined;
-      const names = isObjectRecord(options?.parameters)
-        ? options.parameters.names
+      let names = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.names
         : undefined;
-      const query = isObjectRecord(options?.parameters)
-        ? options.parameters.query
+      let query = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.query
         : undefined;
-      const contexts = isObjectRecord(options?.parameters)
-        ? options.parameters.contexts
+      const contexts = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters.contexts
         : undefined;
+      const emptyLoad =
+        mode !== "describe" &&
+        query === undefined &&
+        contexts === undefined &&
+        (names === undefined || (Array.isArray(names) && names.length === 0));
+      if (emptyLoad && (mode === undefined || mode === "load")) {
+        const currentTask =
+          getUserMessageText(message) || options?.taskIntents?.join("\n") || "";
+        if (currentTask.trim()) {
+          query = currentTask;
+          names = undefined;
+        } else if (!(catalogIndex && Array.isArray(names))) {
+          return {
+            success: false,
+            error:
+              "Supply an intent query or exact names to load tools; use mode=describe,names=[] only to read the complete authorized catalog. No tools were loaded.",
+            data: { readOnlyOperation: true, coachingFailure: true },
+          };
+        }
+      }
       const searching = query !== undefined || contexts !== undefined;
       if (searching) {
         if (
@@ -220,8 +244,30 @@ export function createPlannerToolDiscoveryAction(
                 (context) => runtime.contexts?.get(context)?.aliases,
               )
             : [];
+        const availableContexts = [
+          ...new Set(
+            freshActions
+              .flatMap((action) => actionDiscoveryContexts(action))
+              .map(normalizeContextId),
+          ),
+        ].sort();
+        // Resolve only declared aliases of freshly authorized domains. An
+        // unknown explicit context stays restrictive rather than widening to a
+        // global search; canonical domain names take precedence over aliases.
+        const explicitContexts = contexts?.flatMap((context) => {
+          const normalized = normalizeContextId(context);
+          if (availableContexts.includes(normalized)) return [normalized];
+          const matching = availableContexts.filter((candidate) =>
+            runtime.contexts
+              ?.get(candidate)
+              ?.aliases?.some(
+                (alias) => normalizeContextId(alias) === normalized,
+              ),
+          );
+          return matching.length > 0 ? matching : [normalized];
+        });
         const searchContexts =
-          contexts ??
+          explicitContexts ??
           (inferredContexts.length > 0 ? inferredContexts : undefined);
         const scopedActions =
           searchContexts === undefined
@@ -233,9 +279,21 @@ export function createPlannerToolDiscoveryAction(
                     .includes(normalizeContextId(context)),
                 ),
               );
+        // Context-only loading serves this turn's work. Explicit describe/catalog
+        // reads retain membership semantics; an explicit query remains authoritative.
+        const taskQuery =
+          query === undefined && mode !== "describe"
+            ? getUserMessageText(message) ||
+              options?.taskIntents?.join("\n") ||
+              ""
+            : "";
         const selection = retrieveContextualPlannerActions({
           actions: scopedActions,
-          query: query ?? "",
+          query: query ?? taskQuery,
+          intents:
+            (query === undefined || emptyLoad) && mode !== "describe"
+              ? options?.taskIntents
+              : undefined,
           contexts: searchContexts,
         });
         const selected = selection.actions;
@@ -250,13 +308,14 @@ export function createPlannerToolDiscoveryAction(
           modelReplyRequired: true,
           text:
             selected.length === 0
-              ? "No matching operations. Rephrase the query, change contexts, or use names=[] to read the complete authorized catalog. No tools were loaded or executed."
+              ? "No matching operations. Rephrase the query or select from availableContexts to retry a scoped search. Explicit mode=describe,names=[] remains available for a complete catalog read. No tools were loaded or executed."
               : mode === "describe"
                 ? "Complete descriptions and schemas for the selected matching operations. Deferred matches remain discoverable. No tools were enabled or executed."
-                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or names=[] for the complete catalog; no domain work was executed.",
+                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or mode=describe,names=[] for the complete catalog; no domain work was executed.",
           data: {
             readOnlyOperation: true,
             ...(inferredContexts.length > 0 ? { inferredContexts } : {}),
+            ...(selected.length === 0 ? { availableContexts } : {}),
             matchCount: selection.matchCount,
             selectedCount: selection.selectedCount,
             deferredCount: selection.deferredCount,
@@ -308,7 +367,7 @@ export function createPlannerToolDiscoveryAction(
           return {
             success: false,
             error:
-              "Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use names=[] to inspect the current authorized catalog.",
+              "Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use mode=describe,names=[] to inspect the current authorized catalog.",
             data: { readOnlyOperation: true, coachingFailure: true },
           };
         }
@@ -356,7 +415,7 @@ export function createPlannerToolDiscoveryAction(
           text:
             names.length === 0
               ? "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed."
-              : "Complete descriptions and parameter schemas for the requested authorized tools. Other families remain discoverable with names=[]. No tools were enabled or domain work performed.",
+              : "Complete descriptions and parameter schemas for the requested authorized tools. Other families remain discoverable with mode=describe,names=[]. No tools were enabled or domain work performed.",
           data: {
             readOnlyOperation: true,
             catalog: completeCatalog.parents.map((parent) => ({
@@ -390,7 +449,7 @@ export function createPlannerToolDiscoveryAction(
         return {
           success: false,
           error:
-            "Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Search by query/context, or use names=[] for the complete catalog. Do not substitute an unrelated family for the requested operation.",
+            "Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Search by query/context, or use mode=describe,names=[] for the complete catalog. Do not substitute an unrelated family for the requested operation.",
           data: {
             readOnlyOperation: true,
             coachingFailure: true,

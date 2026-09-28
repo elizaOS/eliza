@@ -19,10 +19,13 @@ import {
 } from "@elizaos/core";
 
 import {
+  fileEffectReceipt,
+  fileMutationResult,
+} from "../lib/file-effect-receipt.js";
+import {
   failureToActionResult,
   readBoolParam,
   readStringParam,
-  userFacingSuccessResult,
 } from "../lib/format.js";
 import { resolveInputPath } from "../lib/path-utils.js";
 import { detectSecrets } from "../lib/secrets.js";
@@ -40,7 +43,11 @@ async function writeWithCapabilityRouter(params: {
   content: string;
 }): Promise<
   | { ok: true; bytesWritten: number }
-  | { ok: false; reason: "unavailable" | "failed"; message: string }
+  | {
+      ok: false;
+      reason: "unavailable" | "failed" | "unverified";
+      message: string;
+    }
 > {
   const router = getCapabilityRouter(params.runtime);
   if (!router) return { ok: false, reason: "unavailable", message: "" };
@@ -51,6 +58,19 @@ async function writeWithCapabilityRouter(params: {
       createDirectories: true,
       overwrite: true,
     });
+    // A path-translating provider acknowledges its own mapped path and echoes
+    // the requested one; either must identify the file this call asked for.
+    if (
+      result.path !== params.resolved &&
+      result.requestedPath !== params.resolved
+    ) {
+      return {
+        ok: false,
+        reason: "unverified",
+        message:
+          "filesystem provider acknowledged a different path; the requested write outcome is unknown",
+      };
+    }
     return { ok: true, bytesWritten: result.bytesWritten };
   } catch (error) {
     // error-policy:J1 capability-router boundary; the routed write is translated
@@ -161,6 +181,23 @@ export async function writeFileHandler(
     resolved,
     content,
   });
+  if (routed.ok === false && routed.reason === "unverified") {
+    // The provider call already ran. A contradictory resource acknowledgment
+    // proves neither the requested commit nor that nothing happened elsewhere.
+    // Never fall back to a second local write or permit an automatic retry.
+    return {
+      ...failureToActionResult(
+        { reason: "io_error", message: routed.message },
+        { path: resolved, acceptance: "unknown" },
+      ),
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_WRITE_UNVERIFIED",
+        retryable: false,
+      },
+    };
+  }
   if (routed.ok === false && routed.reason === "failed") {
     return failAtPath({
       reason: "io_error",
@@ -183,7 +220,50 @@ export async function writeFileHandler(
     }
   }
 
-  await fileState.recordWrite(conversationId, resolved);
+  let receipt: Awaited<ReturnType<typeof fileEffectReceipt>>;
+  try {
+    receipt = await fileEffectReceipt({
+      path: resolved,
+      content,
+      operation: "write",
+      ...(routed.ok ? { acceptedBytes: routed.bytesWritten } : {}),
+    });
+  } catch (error) {
+    // error-policy:J1 post-write verification boundary; the mutation may have
+    // happened, but no applied receipt or success callback is fabricated.
+    return {
+      ...failAtPath({
+        reason: "io_error",
+        message: `write completed but verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_WRITE_UNVERIFIED",
+        retryable: false,
+      },
+    };
+  }
+
+  try {
+    await fileState.recordWrite(conversationId, resolved);
+  } catch (error) {
+    // error-policy:J1 bookkeeping failed after commit; preserve the actual
+    // mutation proof and do not deliver an unqualified success confirmation.
+    return {
+      ...failAtPath({
+        reason: "internal",
+        message: `write committed but file-state tracking failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+      effectReceipts: [receipt],
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_STATE_TRACKING_FAILED",
+        retryable: false,
+      },
+    };
+  }
   const bytes =
     routed.ok === true
       ? routed.bytesWritten
@@ -193,19 +273,12 @@ export async function writeFileHandler(
   );
 
   const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`;
-  if (callback) await callback({ text, source: "coding-tools" });
-
-  // The write confirmation is the complete answer to a single-operation turn:
-  // verified + turnComplete make the callback the sole delivery (the live bug
-  // was "Wrote N bytes to <path>" followed by an evaluator "done. <path>").
-  // Multi-step coding turns keep their evaluator — the gate requires a sole
-  // completed tool with a drained queue.
-  return {
-    ...userFacingSuccessResult(text, {
-      path: resolved,
-      bytes,
-    }),
-    verifiedUserFacing: true,
-    turnComplete: true,
-  };
+  return fileMutationResult({
+    runtime,
+    receipt,
+    text,
+    content,
+    data: { path: resolved, bytes },
+    callback,
+  });
 }

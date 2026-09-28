@@ -131,6 +131,8 @@ function nowMs(): number {
 // ---------------------------------------------------------------------------
 
 type GroqPluginModule = { groqPlugin?: Plugin; default?: Plugin };
+// Optional runtime installation; its absence uses the explicit synthetic-smoke path.
+const GROQ_PLUGIN_MODULE: string = "@elizaos/plugin-groq";
 
 async function resolveGroqPlugin(): Promise<Plugin | null> {
   // If no API key, don't load Groq plugin — it will throw on init.
@@ -144,7 +146,7 @@ async function resolveGroqPlugin(): Promise<Plugin | null> {
   }
   let mod: GroqPluginModule;
   try {
-    mod = (await import("@elizaos/plugin-groq")) as GroqPluginModule;
+    mod = (await import(GROQ_PLUGIN_MODULE)) as GroqPluginModule;
   } catch {
     console.warn(
       "[three-agent-dialogue] Failed to load @elizaos/plugin-groq. Using synthetic fallback.",

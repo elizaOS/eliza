@@ -28,6 +28,7 @@ import {
   successActionResult,
 } from "../lib/format.js";
 import { resolveInputPath } from "../lib/path-utils.js";
+import { finalLineEnding } from "../lib/text-boundary.js";
 import {
   type FileStateService,
   fileRevision,
@@ -498,6 +499,10 @@ async function readFileContent(
     return {
       ...successActionResult(text, {
         readView,
+        // A slice boundary is not evidence about the end of the whole file.
+        ...(window.start === 0 && !window.hasMore
+          ? { finalLineEnding: finalLineEnding(text) }
+          : {}),
         diagnostics: {
           sourceBytesRead: window.sourceBytesRead,
           bytesReturned: Buffer.byteLength(window.content),

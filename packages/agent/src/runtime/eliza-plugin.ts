@@ -33,7 +33,10 @@ import { memoryAction } from "../actions/memories.ts";
 import { notifyAction } from "../actions/notify.ts";
 import { pageDelegateAction } from "../actions/page-action-groups.ts";
 import { pairOwnerAccountAction } from "../actions/pair-owner-account.ts";
-import { pluginAction } from "../actions/plugin.ts";
+import {
+  pluginAction,
+  pluginOperationSchemaOverrides,
+} from "../actions/plugin.ts";
 import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
@@ -201,7 +204,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       pageDelegateAction,
       ...promoteSubactionsToActions(contactAction),
       settingsAction,
-      ...promoteSubactionsToActions(pluginAction),
+      ...promoteSubactionsToActions(pluginAction, {
+        overrides: pluginOperationSchemaOverrides(),
+      }),
       // Observability / introspection actions
       ...promoteSubactionsToActions(logsAction),
       ...promoteSubactionsToActions(runtimeAction),

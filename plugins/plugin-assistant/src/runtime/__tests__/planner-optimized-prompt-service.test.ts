@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   plannerBatchScopeDescription,
+  plannerRequiredPolicy,
   plannerTemplate,
 } from "../../prompts/planner.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt";
@@ -166,6 +167,11 @@ it("states the batch-scope rule once for an optimized template that omits it and
   const instructions = system?.content as string;
   expect(instructions).toContain("OPTIMIZED_INSTRUCTION_WITHOUT_BATCH_SCOPE");
   expect(instructions).toContain("mandatory planner policy:");
+  // Custom prompts retain the same evidence-bound continuation ownership.
+  expect(instructions.split(plannerRequiredPolicy.workClaims)).toHaveLength(2);
+  expect(instructions).not.toContain(
+    "further work requires a new user message",
+  );
   // The backstop states the rule exactly once, as the template's own bullet.
   expect(
     instructions.split(`- Batch scope: ${plannerBatchScopeDescription}`),

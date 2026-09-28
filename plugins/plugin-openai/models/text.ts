@@ -61,6 +61,10 @@ import {
   isCerebrasReasoningPart,
 } from "../utils/cerebras-reasoning";
 import {
+  prepareCerebrasToolArgumentEnvelope,
+  usesCerebrasToolArgumentEnvelope,
+} from "../utils/cerebras-tool-argument-envelope";
+import {
   getActionPlannerModel,
   getApiKey,
   getBaseURL,
@@ -2821,7 +2825,12 @@ function providerTimingDurations(raw: unknown): Record<string, number> {
 function createStreamTiming(
   runtime: IAgentRuntime,
   modelType: ModelTypeName,
-  mode: "live-text" | "live-structured" | "buffered-transform" | "buffered-full-surface"
+  mode:
+    | "live-text"
+    | "live-structured"
+    | "buffered-transform"
+    | "buffered-full-surface"
+    | "buffered-argument-envelope"
 ) {
   let beginAttempt: ((attempt: number) => StreamAttemptTiming) | undefined;
   observeStreamTiming(runtime, () => {
@@ -3141,15 +3150,28 @@ async function generateTextAtEndpoint(
       maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
     });
   }
-  const normalizedTools = normalizedToolResult.tools;
+  const toolArgumentEnvelope = await prepareCerebrasToolArgumentEnvelope(
+    normalizedToolResult.tools,
+    (
+      paramsWithAttachments.providerOptions as
+        | { eliza?: { preferLosslessToolArguments?: unknown } }
+        | undefined
+    )?.eliza?.preferLosslessToolArguments === true &&
+      cerebrasMode &&
+      usesCerebrasToolArgumentEnvelope(
+        typeof endpoint === "object" ? endpoint.baseURL : (endpoint ?? getBaseURL(runtime)),
+        modelName
+      ),
+    params.signal
+  );
+  const normalizedTools = toolArgumentEnvelope.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
     toolNameMap: normalizedToolResult.toolNameMap,
   });
   const reasoningModel =
     usageProvider === "cerebras" && modelName === "qwen-3.8-27b" ? modelName : undefined;
-  const normalizedMessages = normalizeNativeMessages(
-    paramsWithAttachments.messages,
-    reasoningModel
+  const normalizedMessages = toolArgumentEnvelope.encodeMessages(
+    normalizeNativeMessages(paramsWithAttachments.messages, reasoningModel)
   );
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
   const effectiveMessages =
@@ -3332,7 +3354,10 @@ async function generateTextAtEndpoint(
     // consumeStreamWithTransientRetry). Token streaming isn't user-visible for
     // coding. Regular chat falls through to the live-streaming path below.
     const fullActionSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+    const shouldBufferArgumentEnvelope =
+      toolArgumentEnvelope.enabled && params.streamStructured === true;
     const shouldBufferStream =
+      shouldBufferArgumentEnvelope ||
       preparedOutput?.transform !== undefined ||
       fullActionSurface === "1" ||
       fullActionSurface === "true" ||
@@ -3343,11 +3368,13 @@ async function generateTextAtEndpoint(
       modelType,
       preparedOutput?.transform
         ? "buffered-transform"
-        : shouldBufferStream
-          ? "buffered-full-surface"
-          : params.streamStructured === true
-            ? "live-structured"
-            : "live-text"
+        : shouldBufferArgumentEnvelope
+          ? "buffered-argument-envelope"
+          : shouldBufferStream
+            ? "buffered-full-surface"
+            : params.streamStructured === true
+              ? "live-structured"
+              : "live-text"
     );
     if (shouldBufferStream) {
       const details = createLlmCallDetails(
@@ -3367,12 +3394,12 @@ async function generateTextAtEndpoint(
         assertModelNotCoolingDown(modelCooldowns, modelName);
         const result = await consumeStreamWithTransientRetry(
           generateParams,
-          hasResponseTransform ? undefined : params.onStreamChunk,
+          hasResponseTransform || shouldBufferArgumentEnvelope ? undefined : params.onStreamChunk,
           {
             model: modelName,
             retryState,
             yieldRateLimit,
-            maxRetries: 5,
+            maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5,
             onExhausted,
             beforeAttempt: () => assertPreparedAttempt(details),
             streamTiming,
@@ -3393,7 +3420,7 @@ async function generateTextAtEndpoint(
         });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
-          result.toolCalls,
+          toolArgumentEnvelope.decodeCalls(result.toolCalls),
           normalizedToolResult.recordArgTransformsByTool
         );
         details.response = text;
@@ -3418,17 +3445,22 @@ async function generateTextAtEndpoint(
           usageProvider
         );
       }
+      const canonicalBufferedText = shouldBufferArgumentEnvelope
+        ? buffered.toolCalls?.length === 1
+          ? JSON.stringify(buffered.toolCalls[0].arguments)
+          : buffered.text
+        : buffered.text;
       return {
         textStream: (async function* replayBufferedStream() {
-          if (buffered.text) {
+          if (canonicalBufferedText) {
             buffered.observeDelivery?.();
-            if (hasResponseTransform) {
-              params.onStreamChunk?.(buffered.text);
+            if (hasResponseTransform || shouldBufferArgumentEnvelope) {
+              params.onStreamChunk?.(canonicalBufferedText);
             }
-            yield buffered.text;
+            yield canonicalBufferedText;
           }
         })(),
-        text: Promise.resolve(buffered.text),
+        text: Promise.resolve(canonicalBufferedText),
         ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
@@ -3552,7 +3584,7 @@ async function generateTextAtEndpoint(
       logToolPairingRejectionShape(capturedStreamError, generateParams);
       if (
         failedBeforeFirstToken &&
-        attempt >= 5 &&
+        attempt >= (toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5) &&
         !abortSignal?.aborted &&
         isTransientProviderError(capturedStreamError)
       ) {
@@ -3560,7 +3592,7 @@ async function generateTextAtEndpoint(
       }
       if (
         !failedBeforeFirstToken ||
-        attempt >= 5 ||
+        attempt >= (toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5) ||
         abortSignal?.aborted ||
         yieldRateLimit?.(capturedStreamError) ||
         !isTransientProviderError(capturedStreamError)
@@ -3569,7 +3601,7 @@ async function generateTextAtEndpoint(
       }
       await waitForTransientRetry({
         lane: "stream-start",
-        maxRetries: 5,
+        maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5,
         error: capturedStreamError,
         model: modelName,
         signal: abortSignal,
@@ -3636,7 +3668,10 @@ async function generateTextAtEndpoint(
     const rawFinishReasonPromise = streamCompanions.finishReason;
     const rawToolCallsPromise = streamCompanions.toolCalls;
     const restoredToolCallsPromise = handledMappedPromise(rawToolCallsPromise, (toolCalls) =>
-      restoreRecordArgToolCalls(toolCalls, normalizedToolResult.recordArgTransformsByTool)
+      restoreRecordArgToolCalls(
+        toolArgumentEnvelope.decodeCalls(toolCalls),
+        normalizedToolResult.recordArgTransformsByTool
+      )
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
     const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
@@ -3819,7 +3854,7 @@ async function generateTextAtEndpoint(
       model: modelName,
       retryState,
       yieldRateLimit,
-      maxRetries: 3,
+      maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 3,
       onExhausted,
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
@@ -3842,7 +3877,7 @@ async function generateTextAtEndpoint(
       ? cerebrasReasoningContent(result.response?.body, reasoningModel)
       : [];
     const restoredToolCalls = restoreRecordArgToolCalls(
-      result.toolCalls,
+      toolArgumentEnvelope.decodeCalls(result.toolCalls),
       normalizedToolResult.recordArgTransformsByTool
     );
     details.response = restoredText;

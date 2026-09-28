@@ -2,8 +2,11 @@
 
 import type { Action } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { routeMessageHandlerOutput } from "../runtime/message-handler.ts";
+import { retrieveContextualPlannerActions } from "./message/action-surface.ts";
 import { inferDirectCurrentRequestCandidateInference } from "./message/direct-action-heuristics.ts";
 import { parseMessageHandlerModelOutput } from "./message/stage1-generation.ts";
+import { inferDirectCurrentRequestCandidateInference as inferRoutedCandidates } from "./message/stage1-reply-policy.ts";
 import {
   collectBudgetedStageOneCandidateActions,
   messageHandlerFromFieldResult,
@@ -21,6 +24,131 @@ const actions: Action[] = [
 ];
 
 describe("budgeted model-selected action surface", () => {
+  it.each([
+    "Create /tmp/index.html with supplied HTML. Read the file back.",
+    "Create the directory and index.html with the exact provided HTML. Read the saved file back and report its exact contents.",
+  ])(
+    "keeps resolved files work out of legacy coding rescue: %s",
+    (messageText) => {
+      const available: Action[] = [
+        {
+          name: "FILE",
+          description: "Read and write local files",
+          contexts: ["files"],
+          tags: ["resource:files"],
+          parameters: [],
+        },
+        {
+          name: "TASKS",
+          description: "Delegate coding work",
+          contexts: ["code"],
+          tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+          subActions: ["TASKS_CREATE", "TASKS_LIST_AGENTS"],
+        },
+        {
+          name: "TASKS_CREATE",
+          description: "Create a delegated task",
+          contexts: ["code"],
+        },
+        {
+          name: "TASKS_LIST_AGENTS",
+          description: "List coding agents",
+          contexts: ["code"],
+        },
+      ];
+      const envelope = {
+        shouldRespond: "RESPOND",
+        contexts: ["files"],
+        intents: [
+          "Create the directory and index.html with the exact provided HTML",
+          "Read the file back and report its exact contents",
+        ],
+        replyText: "On it.",
+        replyEffectStatus: "pending",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      for (const parsed of [
+        messageHandlerFromFieldResult(envelope, undefined, {
+          actions: available,
+          messageText,
+        }),
+        parseMessageHandlerModelOutput(JSON.stringify(envelope), {
+          actions: available,
+          messageText,
+        }),
+      ]) {
+        expect(parsed?.plan.contexts).toEqual(["files"]);
+        expect(parsed?.plan.intents).toEqual(envelope.intents);
+        expect(parsed?.plan.candidateActions ?? []).toEqual([]);
+        expect(
+          inferRoutedCandidates(available, messageText, parsed?.plan.contexts)
+            .names,
+        ).toEqual([]);
+        const selected = retrieveContextualPlannerActions({
+          actions: available,
+          query: messageText,
+          contexts: parsed?.plan.contexts,
+          intents: parsed?.plan.intents,
+        });
+        expect(selected.actions.map((action) => action.name)).toEqual(["FILE"]);
+      }
+    },
+  );
+  it.each(["general", "simple", "code"])(
+    "retains legacy coding rescue for %s routing",
+    (context) => {
+      const available = [
+        {
+          name: "TASKS",
+          tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+        },
+      ];
+      const result = messageHandlerFromFieldResult(
+        {
+          shouldRespond: "RESPOND",
+          contexts: [context],
+          intents: ["Create the file"],
+          replyText: "On it.",
+          replyEffectStatus: "pending",
+        },
+        undefined,
+        { actions: available, messageText: "Create the file." },
+      );
+      expect(result.plan.candidateActions).toContain("TASKS");
+    },
+  );
+  it("preserves explicit delegation and exact hints despite a files context", () => {
+    const available = [
+      {
+        name: "TASKS",
+        tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+      },
+    ];
+    const envelope = {
+      shouldRespond: "RESPOND",
+      contexts: ["files"],
+      intents: ["Create the file"],
+      replyText: "On it.",
+      replyEffectStatus: "pending",
+    };
+    expect(
+      messageHandlerFromFieldResult(
+        { ...envelope, candidateActionNames: ["TASKS"] },
+        undefined,
+        { actions: available, messageText: "Create the file." },
+      ).plan.candidateActions,
+    ).toContain("TASKS");
+    expect(
+      inferRoutedCandidates(
+        available,
+        "Spawn a coding agent to create the file.",
+        ["files"],
+      ).names,
+    ).toEqual(["TASKS"]);
+  });
+
   it.each(["none", "non_applied"] as const)(
     "keeps an explicit %s acknowledgement out of inferred app work",
     (replyEffectStatus) => {
@@ -420,5 +548,278 @@ describe("budgeted model-selected action surface", () => {
         contexts: ["calendar"],
       }).map((action) => action.name),
     ).toEqual(["VIEWS", "CALENDAR"]);
+  });
+});
+
+describe("answered arithmetic routing", () => {
+  const available = [{ name: "CALCULATE" }];
+  const answered = {
+    shouldRespond: "RESPOND",
+    contexts: ["simple"],
+    intents: [],
+    replyText: "15.",
+    replyEffectStatus: "none",
+    facts: [],
+    relationships: [],
+    addressedTo: [],
+  };
+  it.each([
+    "Hello Eliza, this is a voice development check. What is 7 plus 8? Please answer briefly.",
+    "What is 7 plus 8? Do not use tools.",
+    "Do not ever use tools; what is 7 plus 8?",
+    "Never actually use a calculator; what is 7 plus 8?",
+    "What is 7 plus 8? Don't use a calculator.",
+    "What is 7 plus 8? Do not use the CALCULATE tool.",
+  ])("preserves a complete simple arithmetic answer: %s", (messageText) => {
+    for (const result of [
+      messageHandlerFromFieldResult(answered, undefined, {
+        actions: available,
+        messageText,
+      }),
+      parseMessageHandlerModelOutput(JSON.stringify(answered), {
+        actions: available,
+        messageText,
+      }),
+    ]) {
+      if (!result) throw new Error("Missing parsed response");
+      expect(routeMessageHandlerOutput(result)).toMatchObject({
+        type: "final_reply",
+        reply: "15.",
+      });
+      expect(result.plan.requiresTool).not.toBe(true);
+      expect(result?.plan.contexts).toEqual(["simple"]);
+      expect(result?.plan.candidateActions ?? []).toEqual([]);
+      expect(result?.plan.reply).toBe("15.");
+    }
+  });
+  it.each([
+    { messageText: "Use a calculator for 7 plus 8.", fields: {} },
+    { messageText: "Call CALCULATE for 7 plus 8.", fields: {} },
+    { messageText: "Use a tool to calculate 7 plus 8.", fields: {} },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: { contexts: ["general"], intents: ["Compute the sum"] },
+    },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: { candidateActionNames: ["CALCULATE"] },
+    },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: {
+        replyEffectStatus: "pending",
+        replyText: "Checking the result.",
+      },
+    },
+    {
+      messageText: "What is 7 plus 8?",
+      fields: { replyEffectStatus: "applied" },
+    },
+  ])(
+    "retains explicit or pending tool work: $messageText $fields",
+    ({ messageText, fields }) => {
+      const result = messageHandlerFromFieldResult(
+        { ...answered, ...fields },
+        undefined,
+        { actions: available, messageText },
+      );
+      expect(result.plan.requiresTool).toBe(true);
+      expect(result.plan.candidateActions).toContain("CALCULATE");
+    },
+  );
+});
+
+describe("acknowledgment filesystem recovery", () => {
+  const available = [
+    { name: "FILE", contexts: ["files"] },
+    {
+      name: "TASKS",
+      contexts: ["code"],
+      tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+    },
+  ];
+  const messageText =
+    'Create two files under /tmp/readback: index.html containing exactly "<html><body>CHECK-3562</body></html>", and metadata.json containing exactly "{\\"verificationCode\\":\\"CHECK-3562\\",\\"ready\\":true}". Read both saved files to verify their contents, then report the verification code.';
+  const intents = [
+    "Create index.html at /tmp/readback with exactly <html><body>CHECK-3562</body></html>",
+    'Create metadata.json at /tmp/readback with exactly {"verificationCode":"CHECK-3562","ready":true}',
+    "Read both saved files to verify their contents",
+    "Report the verification code",
+  ];
+  const envelope = {
+    shouldRespond: "RESPOND",
+    contexts: [],
+    intents,
+    replyText: "Working on it.",
+    replyEffectStatus: "pending",
+    facts: [],
+    relationships: [],
+    addressedTo: ["user"],
+  };
+
+  it("retains all four outcomes but selects only FILE for an unresolved exact write/readback", () => {
+    for (const result of [
+      messageHandlerFromFieldResult(envelope, undefined, {
+        actions: available,
+        messageText,
+      }),
+      parseMessageHandlerModelOutput(JSON.stringify(envelope), {
+        actions: available,
+        messageText,
+      }),
+    ]) {
+      expect(result?.plan.candidateActions).toEqual(["FILE"]);
+      expect(result?.plan.intents).toEqual(intents);
+      expect(result?.plan.requiresTool).toBe(true);
+    }
+  });
+
+  it.each([
+    {
+      label: "explicit hint",
+      fields: { candidateActionNames: ["TASKS"] },
+      text: messageText,
+      outcomes: intents,
+    },
+    {
+      label: "explicit code domain",
+      fields: { contexts: ["code"] },
+      text: messageText,
+      outcomes: intents,
+    },
+    {
+      label: "explicit delegation",
+      fields: {},
+      text: `${messageText} Delegate this to a coding agent.`,
+      outcomes: [...intents, "Delegate the work to a coding agent"],
+    },
+    {
+      label: "source implementation repair",
+      fields: {},
+      text: "Edit /tmp/app.ts to fix the runtime bug and add the missing feature.",
+      outcomes: [
+        "Edit /tmp/app.ts to fix the runtime bug and add the missing feature",
+      ],
+    },
+    {
+      label: "source refactor",
+      fields: {},
+      text: "Refactor the source file /tmp/main.ts to remove duplicated code.",
+      outcomes: [
+        "Refactor the source file /tmp/main.ts to remove duplicated code",
+      ],
+    },
+    {
+      label: "mixed file creation and source refactor",
+      fields: {},
+      text: 'Create /tmp/a.txt containing exactly "x". Then refactor the file /tmp/main.ts.',
+      outcomes: [
+        'Create /tmp/a.txt containing exactly "x"',
+        "Refactor the file /tmp/main.ts",
+      ],
+    },
+    {
+      label: "mixed application work",
+      fields: {},
+      text: `${messageText} Then build an app that displays those files.`,
+      outcomes: [...intents, "Build an app that displays the files"],
+    },
+  ])("preserves coding ownership for $label", ({ fields, text, outcomes }) => {
+    const result = messageHandlerFromFieldResult(
+      { ...envelope, ...fields, intents: outcomes },
+      undefined,
+      { actions: available, messageText: text },
+    );
+    expect(result?.plan.candidateActions).toContain("TASKS");
+    expect(result?.plan.intents).toEqual(outcomes);
+  });
+});
+
+describe("explicit filesystem routing", () => {
+  const available = [{ name: "FILE" }];
+  const omitted = {
+    shouldRespond: "RESPOND",
+    contexts: ["simple"],
+    intents: [],
+    replyText:
+      "Got it, I've got your exact text and target path saved in the workspace. I can help you set that up.",
+    replyEffectStatus: "none",
+    facts: [],
+    relationships: [],
+    addressedTo: [],
+  };
+  it.each([
+    "Save the following text exactly, including its final newline, to /tmp/note.txt, then read the file and report its verification code:\nCHECK-3151\nSecond line: blue\nThird line: ready\n",
+    "Please read /tmp/input.json and report its contents.",
+    "Could you write the supplied text to ./note.txt?",
+  ])(
+    "plans a concrete filesystem request despite an omitted model intent: %s",
+    (messageText) => {
+      for (const result of [
+        messageHandlerFromFieldResult(omitted, undefined, {
+          actions: available,
+          messageText,
+        }),
+        parseMessageHandlerModelOutput(JSON.stringify(omitted), {
+          actions: available,
+          messageText,
+        }),
+      ]) {
+        expect(result?.plan.candidateActions).toContain("FILE");
+        expect(result?.plan.requiresTool).toBe(true);
+        expect(
+          routeMessageHandlerOutput(
+            result ??
+              (() => {
+                throw new Error("Missing response");
+              })(),
+          ),
+        ).not.toMatchObject({
+          type: "final_reply",
+        });
+      }
+    },
+  );
+  it.each([
+    "Explain how to save text to /tmp/note.txt.",
+    'What does "Save text to /tmp/note.txt" mean?',
+    "If I asked you to read /tmp/note.txt, what would happen?",
+    "Read /tmp/note.txt hypothetically; do not execute anything.",
+    "Save this to /tmp/note.txt. Do not use tools.",
+    "Save this to /tmp/note.txt. No tools, just discuss it.",
+    "Save this to /tmp/note.txt without executing any actions.",
+    "Do not save anything to /tmp/note.txt.",
+    "Here are the contents of /tmp/note.txt: blue. What color is it?",
+    "Say exactly: Read /tmp/note.txt",
+    "Here is a quoted example; Save text to /tmp/note.txt",
+  ])(
+    "keeps supplied answers and nonexecution requests simple: %s",
+    (messageText) => {
+      const result = messageHandlerFromFieldResult(
+        { ...omitted, replyText: "Blue." },
+        undefined,
+        { actions: available, messageText },
+      );
+      expect(result?.plan.candidateActions ?? []).toEqual([]);
+      expect(
+        routeMessageHandlerOutput(
+          result ??
+            (() => {
+              throw new Error("Missing response");
+            })(),
+        ),
+      ).toMatchObject({
+        type: "final_reply",
+        reply: "Blue.",
+      });
+    },
+  );
+  it("does not invent an unavailable filesystem operation", () => {
+    expect(
+      inferDirectCurrentRequestCandidateInference(
+        [],
+        "Save text to /tmp/note.txt.",
+      ).names,
+    ).toEqual([]);
   });
 });

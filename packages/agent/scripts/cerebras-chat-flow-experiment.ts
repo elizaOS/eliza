@@ -146,10 +146,79 @@ export function requireRealEmbeddingConfig(
   return { endpoint: url.toString(), model, dimensions };
 }
 
+export interface WireSegmentFingerprint {
+  sha256: string;
+  bytes: number;
+}
+
+export interface WireRequestShape {
+  request: WireSegmentFingerprint;
+  system: WireSegmentFingerprint;
+  messages: WireSegmentFingerprint;
+  tools: WireSegmentFingerprint;
+  /** Exact serialized-body prefix; this is not a tokenizer/provider cache-hit claim. */
+  previousRequest: {
+    sha256: string;
+    commonPrefixBytes: number;
+  } | null;
+}
+
+/** Compare complete serialized SDK bodies, counting UTF-8 bytes rather than JS characters. */
+export function fingerprintWireRequest(
+  body: string,
+  previousBody?: string,
+): WireRequestShape {
+  const request = optionsRecord(JSON.parse(body));
+  const messages = request.messages ?? request.input ?? null;
+  const system = {
+    ...(Object.hasOwn(request, "instructions")
+      ? { instructions: request.instructions }
+      : {}),
+    messages: Array.isArray(messages)
+      ? messages.filter(
+          (message) =>
+            message &&
+            typeof message === "object" &&
+            (message.role === "system" || message.role === "developer"),
+        )
+      : [],
+  };
+  const fingerprint = (text: string): WireSegmentFingerprint => ({
+    sha256: createHash("sha256").update(text).digest("hex"),
+    bytes: Buffer.byteLength(text, "utf8"),
+  });
+  const currentBytes = Buffer.from(body, "utf8");
+  const previousBytes =
+    previousBody === undefined ? null : Buffer.from(previousBody, "utf8");
+  let commonPrefixBytes = 0;
+  if (previousBytes) {
+    while (
+      commonPrefixBytes < Math.min(currentBytes.length, previousBytes.length) &&
+      currentBytes[commonPrefixBytes] === previousBytes[commonPrefixBytes]
+    )
+      commonPrefixBytes++;
+  }
+  return {
+    request: fingerprint(body),
+    system: fingerprint(JSON.stringify(system)),
+    messages: fingerprint(JSON.stringify(messages)),
+    tools: fingerprint(
+      JSON.stringify(request.tools ?? request.functions ?? null),
+    ),
+    previousRequest: previousBytes
+      ? {
+          sha256: fingerprint(previousBody as string).sha256,
+          commonPrefixBytes,
+        }
+      : null,
+  };
+}
+
 export interface ProviderWireEvidence {
   kind: "text" | "embedding";
   context: {
     phase: string;
+    stage?: string;
     index?: number;
     proof: string;
     modelInvocationId?: string;
@@ -157,6 +226,11 @@ export interface ProviderWireEvidence {
   } | null;
   /** Serialized SDK request body; credentials/headers are deliberately never captured. */
   request: unknown;
+  /** Exact UTF-8 JSON body, retained separately from its parsed representation. */
+  requestBodyText?: string;
+  requestShape?: WireRequestShape;
+  /** Same model stage comparison, in addition to the immediately preceding text request. */
+  sameStageRequestShape?: WireRequestShape;
   status: number | null;
   requestCaptureMs: number;
   headersMs: number;
@@ -226,6 +300,7 @@ export function measuredProviderFetch(
   const matches = (url: URL, base: URL, suffix: string) =>
     url.origin === base.origin &&
     url.pathname === `${base.pathname.replace(/\/$/, "")}/${suffix}`;
+  const previousBodies = new Map<string, string>();
   const measured = async (
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -239,10 +314,23 @@ export function measuredProviderFetch(
           ? "embedding"
           : null;
     if (!kind) return originalFetch(input, init);
-    const capturedContext = context();
+    const currentContext = context();
+    const capturedContext = currentContext ? { ...currentContext } : null;
     const startedAt = performance.now();
     const request = new Request(input, init);
-    const requestBody: unknown = await request.clone().json();
+    const requestBodyText = await request.clone().text();
+    const requestBody: unknown = JSON.parse(requestBodyText);
+    const stageKey = `${kind}:${capturedContext?.stage ?? "unknown"}`;
+    const requestShape = fingerprintWireRequest(
+      requestBodyText,
+      previousBodies.get(kind),
+    );
+    const sameStageRequestShape = fingerprintWireRequest(
+      requestBodyText,
+      previousBodies.get(stageKey),
+    );
+    previousBodies.set(kind, requestBodyText);
+    previousBodies.set(stageKey, requestBodyText);
     const requestCaptureMs = performance.now() - startedAt;
     const fetchStartedAt = performance.now();
     try {
@@ -256,6 +344,9 @@ export function measuredProviderFetch(
         kind,
         context: capturedContext ? { ...capturedContext } : null,
         request: requestBody,
+        requestBodyText,
+        requestShape,
+        sameStageRequestShape,
         status: response.status,
         requestCaptureMs,
         headersMs: performance.now() - fetchStartedAt,
@@ -268,6 +359,9 @@ export function measuredProviderFetch(
         kind,
         context: capturedContext ? { ...capturedContext } : null,
         request: requestBody,
+        requestBodyText,
+        requestShape,
+        sameStageRequestShape,
         status: null,
         requestCaptureMs,
         headersMs: performance.now() - fetchStartedAt,

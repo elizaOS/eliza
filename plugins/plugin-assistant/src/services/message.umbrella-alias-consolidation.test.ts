@@ -1,7 +1,7 @@
 /**
- * A Stage-1 candidate alias is represented through its complete umbrella
- * instead of a second native tool that repeats the umbrella's parameter
- * schema. Live 2026-09-13 ("move my chiropractor appointment to friday at
+ * A fully admitted family without explicitly selected children represents
+ * generated aliases through its complete umbrella instead of repeating the
+ * umbrella parameter schema. Live 2026-09-13 ("move my chiropractor appointment to friday at
  * 4pm"): CALENDAR 23,471 chars beside CALENDAR_SEARCH_EVENTS 12,786 and
  * CALENDAR_UPDATE_EVENT 13,232 on each of three planner rounds, the same
  * `details` schema rendered three times per round.
@@ -91,7 +91,7 @@ function occurrences(haystack: string, needle: string): number {
 }
 
 describe("umbrella alias consolidation on the planner wire", () => {
-  it("drops a Stage-1 candidate alias whose complete umbrella is exposed beside it", () => {
+  it("represents generated aliases through a fully admitted family when none is explicitly selected", () => {
     const actions = ledgerFamily();
     expect(actions.map((action) => action.name)).toEqual([
       "LEDGER",
@@ -101,14 +101,11 @@ describe("umbrella alias consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(actions), undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "LEDGER",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["LEDGER", "REPLY", "IGNORE", "STOP"].sort(),
+    );
     expect(collectCanonicalPlannerActions(actions)).toEqual([actions[0]]);
-    const umbrella = tools[0];
+    const umbrella = tools.find((tool) => tool.name === "LEDGER");
     expect(JSON.stringify(umbrella?.parameters)).toContain(
       '"enum":["create","delete"]',
     );
@@ -155,13 +152,12 @@ describe("umbrella alias consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(alias), undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "LEDGER_CREATE",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
-    expect(tools[0]?.description).not.toContain(CONTRACTS_MARKER);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["LEDGER_CREATE", "REPLY", "IGNORE", "STOP"].sort(),
+    );
+    expect(
+      tools.find((tool) => tool.name === "LEDGER_CREATE")?.description,
+    ).not.toContain(CONTRACTS_MARKER);
     expect(occurrences(JSON.stringify(tools), ENTRY_TEXT_DESCRIPTION)).toBe(1);
     expect(collectCanonicalPlannerActions(alias)).toEqual(alias);
   });
@@ -171,16 +167,14 @@ describe("umbrella alias consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(actions), undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "LEDGER",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
-    expect(aliasContracts(tools[0]?.description).map((c) => c.name)).toEqual([
-      "LEDGER_CREATE",
-      "LEDGER_DELETE",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["LEDGER", "REPLY", "IGNORE", "STOP"].sort(),
+    );
+    expect(
+      aliasContracts(
+        tools.find((tool) => tool.name === "LEDGER")?.description,
+      ).map((c) => c.name),
+    ).toEqual(["LEDGER_CREATE", "LEDGER_DELETE"]);
     // The wire is a pure function of the authorized surface, so a
     // differently ordered but identical context renders identically.
     const reordered = collectPlannerTools(
@@ -198,13 +192,9 @@ describe("umbrella alias consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(actions), undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "LEDGER",
-      "LEDGER_CREATE",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      ["LEDGER", "LEDGER_CREATE", "REPLY", "IGNORE", "STOP"].sort(),
+    );
     expect(collectCanonicalPlannerActions(actions)).toEqual(actions);
   });
 
@@ -224,7 +214,7 @@ describe("umbrella alias consolidation on the planner wire", () => {
     const tools = collectPlannerTools(contextFor(actions), undefined, {
       canonicalFamilies: true,
     });
-    const umbrella = tools[0];
+    const umbrella = tools.find((tool) => tool.name === "LEDGER");
     const description = umbrella?.description ?? "";
     expect(occurrences(description, preamble)).toBe(1);
     const contracts = aliasContracts(description);
@@ -253,7 +243,7 @@ it("losslessly reconstructs aliases mixing current and prior parent descriptions
   }
   const tool = collectPlannerTools(contextFor(actions), undefined, {
     canonicalFamilies: true,
-  })[0];
+  }).find((tool) => tool.name === "LEDGER");
   const contracts = aliasContracts(tool?.description);
   for (const alias of actions.slice(1)) {
     const contract = contracts.find((entry) => entry.name === alias.name);

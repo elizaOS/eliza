@@ -89,12 +89,14 @@ for (const optimized of [false, true]) {
     () => {
       it.each([
         { names: ["TASKS_MANAGE_ISSUES"] },
+        { names: ["TASKS_LIST_AGENTS"] },
+        { names: ["TERMINAL"] },
         { names: ["GREET_USER", "DISCOVER_ACTIONS"] },
         { names: [] },
       ])("omits unavailable tool policies for $names", async ({ names }) => {
         const instructions = await requestInstructions(names, optimized);
-        expect(instructions).not.toContain("TASKS_SPAWN_AGENT delegates");
-        expect(instructions).not.toContain("SHELL is for filesystem");
+        expect(instructions).not.toContain("Coding delegation is for");
+        expect(instructions).not.toContain("Shell tools are for filesystem");
         expect(instructions).not.toContain(
           "For a single live/current/public lookup",
         );
@@ -102,16 +104,30 @@ for (const optimized of [false, true]) {
           "Never invent SHELL/BROWSER/TASKS workarounds",
         );
       });
-      it.each(["TASKS", "TASKS_SPAWN_AGENT"])(
+      it.each(["TASKS", "TASKS_CREATE", "TASKS_SPAWN_AGENT"])(
         "keeps delegation limits with %s without advertising web tools",
         async (name) => {
           const instructions = await requestInstructions([name], optimized);
-          expect(instructions).toContain("TASKS_SPAWN_AGENT delegates");
+          expect(instructions).toContain("Coding delegation is for");
+          if (name === "TASKS_CREATE")
+            expect(instructions).not.toContain("TASKS_SPAWN_AGENT");
           expect(instructions).toContain(
             "Do not delegate a single live/current/public lookup to a coding agent",
           );
           expect(instructions).not.toContain("WEB_FETCH");
           expect(instructions).not.toContain("WEB_SEARCH");
+        },
+      );
+      it.each(["SHELL", "TERMINAL_SHELL"])(
+        "keeps shell recall limits with canonical %s",
+        async (name) => {
+          const instructions = await requestInstructions([name], optimized);
+          expect(instructions).toContain("Shell tools are for filesystem");
+          expect(instructions).toContain("never chat-message recall");
+          expect(instructions).not.toContain("Coding delegation is for");
+          expect(instructions).not.toContain(
+            "For a single live/current/public lookup",
+          );
         },
       );
       it.each(["WEB_FETCH", "WEB_SEARCH"])(
@@ -125,7 +141,7 @@ for (const optimized of [false, true]) {
           expect(instructions).not.toContain(
             name === "WEB_FETCH" ? "WEB_SEARCH" : "WEB_FETCH",
           );
-          expect(instructions).not.toContain("TASKS_SPAWN_AGENT delegates");
+          expect(instructions).not.toContain("Coding delegation is for");
         },
       );
       it("keeps both lookup alternatives when both are exposed", async () => {
@@ -139,8 +155,8 @@ for (const optimized of [false, true]) {
       });
       it("retains all policies when the caller does not specify a tool surface", async () => {
         const instructions = await requestInstructions(undefined, optimized);
-        expect(instructions).toContain("SHELL is for filesystem");
-        expect(instructions).toContain("TASKS_SPAWN_AGENT delegates");
+        expect(instructions).toContain("Shell tools are for filesystem");
+        expect(instructions).toContain("Coding delegation is for");
         expect(instructions).toContain(
           "WEB_FETCH with a grounded URL or WEB_SEARCH",
         );

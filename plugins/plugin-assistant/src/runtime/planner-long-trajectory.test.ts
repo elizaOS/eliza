@@ -1,16 +1,26 @@
 /** Exercises progressive planner execution and truthful resource settlement with deterministic model and executor boundaries. */
 
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type EffectReceipt,
   ElizaError,
   type PlannerRuntime,
+  type PlannerToolResult,
   type PlannerTrajectory,
+  PROVIDER_CONTEXT_OVERFLOW,
   type RecordedStage,
   runWithStreamingContext,
   type TrajectoryRecorder,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "./planner-loop.ts";
+import { runEvaluator } from "./evaluator.ts";
+import {
+  partitionRedundantSucceededCalls,
+  runPlannerLoop,
+} from "./planner-loop.ts";
 
 const receipt: EffectReceipt = {
   receiptId: "saved-record-receipt",
@@ -85,6 +95,1244 @@ function harness(
 }
 
 describe("long progressive planner trajectories", () => {
+  it("skips an identical settled write while permitting an evidenced corrective write", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "corrective-write-"));
+    const path = join(directory, "literal.txt");
+    const requested = "An exact literal.  \n";
+    const initial = requested.slice(0, -1);
+    let plans = 0;
+    let reads = 0;
+    const writes: string[] = [];
+    const receipts: EffectReceipt[] = [];
+    const feedback: string[] = [];
+    try {
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: {
+          id: "corrective-write",
+          events: [
+            {
+              id: "handler",
+              type: "message_handler",
+              content: `Save this exact text including its final newline, then read it back:\n${requested}`,
+              metadata: {
+                plan: {
+                  intents: [
+                    "save the exact literal",
+                    "read back the saved literal",
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        runtime: {
+          useModel: async (_type, input) => {
+            plans++;
+            if (plans > 5)
+              throw new Error("Planner failed to settle corrected work");
+            if (plans === 4) {
+              expect(writes).toEqual([initial]);
+              const messages = JSON.stringify(input.messages);
+              feedback.push(messages);
+              expect(messages).toContain(
+                "different currently authorized operation or arguments",
+              );
+              expect(messages).not.toContain(
+                "Answer the user now from the results already gathered",
+              );
+            }
+            const reading = plans === 2 || plans === 5;
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: `correction-${plans}`,
+                  name: reading ? "READ" : "WRITE",
+                  arguments: {
+                    path,
+                    ...(!reading
+                      ? { content: plans === 4 ? requested : initial }
+                      : {}),
+                    eliza_turn_scope: reading ? "final" : "more_work_pending",
+                  },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          if (call.name === "WRITE") {
+            const content = call.params.content;
+            if (typeof content !== "string")
+              throw new Error("Expected literal write content");
+            writes.push(content);
+            await writeFile(path, content);
+            const bytes = await readFile(path);
+            const applied: EffectReceipt = {
+              ...receipt,
+              receiptId: `corrective-write-${writes.length}`,
+              operation: "file.write",
+              resource: {
+                kind: "file",
+                id: path,
+                version: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+              },
+            };
+            receipts.push(applied);
+            return {
+              success: true,
+              userFacingText: "Written.",
+              effectReceipts: [applied],
+            };
+          }
+          reads++;
+          return {
+            success: true,
+            text: await readFile(path, "utf8"),
+            data: { readOnlyOperation: true },
+          };
+        },
+        evaluate: async ({ trajectory }) => {
+          const latest = trajectory.steps.at(-1);
+          if (latest?.toolCall?.name === "WRITE") {
+            expect(writes).toEqual(
+              plans === 1 ? [initial] : [initial, requested],
+            );
+            expect(reads).toBe(plans === 1 ? 0 : 1);
+            expect(latest.result?.effectReceipts).toEqual([receipts.at(-1)]);
+            return {
+              decision: "CONTINUE",
+              success: false,
+              thought:
+                "The corrective write committed; read it back before completing.",
+            };
+          }
+          const observed = latest?.result?.text;
+          expect(observed).toBe(reads === 1 ? initial : requested);
+          if (reads === 1)
+            return {
+              decision: "CONTINUE",
+              success: false,
+              thought:
+                "The committed value lacks the requested final newline; correct it and verify.",
+            };
+          return {
+            decision: "FINISH",
+            success: true,
+            thought: "The corrected content was read back exactly.",
+            messageToUser: "Saved and verified the exact requested text.",
+            replyEffectStatus: "applied",
+            effectReceiptIds: [receipts[1].receiptId],
+          };
+        },
+      });
+      expect(plans).toBe(5);
+      expect(writes).toEqual([initial, requested]);
+      expect(reads).toBe(2);
+      expect(feedback).toHaveLength(1);
+      expect(await readFile(path, "utf8")).toBe(requested);
+      expect(result.evaluator?.success).toBe(true);
+      expect(result.finalMessage).toBe(
+        "Saved and verified the exact requested text.",
+      );
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toEqual(receipts);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+  it.each([false, true])(
+    "replans a committed pending write without evaluation and preserves final verification (already complete=%s)",
+    async (alreadyComplete) => {
+      const directory = await mkdtemp(join(tmpdir(), "pending-commit-"));
+      const path = join(directory, "result.txt");
+      const content = "Complete original output";
+      let plans = 0;
+      let writes = 0;
+      let reads = 0;
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: true,
+        thought: "Final evidence and answer verified.",
+        messageToUser: `Saved contents: ${content}`,
+        replyEffectStatus: "applied" as const,
+        effectReceiptIds: [receipt.receiptId],
+      }));
+      try {
+        const result = await runPlannerLoop({
+          codingMode: false,
+          context: {
+            id: "pending-committed-write",
+            events: [
+              {
+                id: "handler",
+                type: "message_handler",
+                metadata: {
+                  plan: {
+                    intents: alreadyComplete
+                      ? ["write the file"]
+                      : ["write the file", "read and report exact contents"],
+                  },
+                },
+              },
+            ],
+          },
+          runtime: {
+            useModel: async () => {
+              plans++;
+              if (plans > 2) throw new Error("Unexpected extra work");
+              expect(evaluate).not.toHaveBeenCalled();
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    id: `step-${plans}`,
+                    name:
+                      plans === 1
+                        ? "WRITE"
+                        : alreadyComplete
+                          ? "REPLY"
+                          : "READ",
+                    arguments: {
+                      ...(plans === 2 && alreadyComplete
+                        ? { text: `Saved contents: ${content}` }
+                        : {}),
+                      eliza_turn_scope:
+                        plans === 1 ? "more_work_pending" : "final",
+                    },
+                  },
+                ],
+              };
+            },
+          },
+          executeToolCall: async (call) => {
+            if (call.name === "WRITE") {
+              writes++;
+              await writeFile(path, content);
+              return {
+                success: true,
+                verifiedUserFacing: true,
+                turnComplete: true,
+                userFacingText: "Written.",
+                effectReceipts: [receipt],
+                userFacingEffectReceiptIds: [receipt.receiptId],
+              };
+            }
+            reads++;
+            return { success: true, text: await readFile(path, "utf8") };
+          },
+          evaluate,
+        });
+        expect(writes).toBe(1);
+        expect(reads).toBe(alreadyComplete ? 0 : 1);
+        expect(plans).toBe(2);
+        expect(evaluate).toHaveBeenCalledTimes(1);
+        expect(result.finalMessage).toContain(content);
+        expect(await readFile(path, "utf8")).toBe(content);
+        expect(result.trajectory.evaluatorOutputs[0]?.thought).toContain(
+          "without repeating the effect",
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+  it.each([
+    "preview",
+    "noop",
+    "rollback",
+    "failed",
+    "evaluation-required",
+    "awaiting-input",
+    "confirmation",
+    "wrapped-awaiting-input",
+    "wrapped-confirmation",
+    "final-scope",
+    "undefined-scope",
+    "failure-provenance",
+    "read-receipt",
+    "prior-rollback",
+    "reply-failure",
+  ])(
+    "retains evaluation at the pending mutation boundary for %s",
+    async (kind) => {
+      const resultReceipt: EffectReceipt =
+        kind === "preview"
+          ? { ...receipt, outcome: "preview" }
+          : kind === "noop"
+            ? { ...receipt, outcome: "noop" }
+            : kind === "rollback"
+              ? {
+                  ...receipt,
+                  outcome: "rolled_back",
+                  rollback: {
+                    receiptId: "undo",
+                    revertedReceiptIds: [receipt.receiptId],
+                    rolledBackAt: receipt.observedAt,
+                  },
+                }
+              : kind === "read-receipt"
+                ? { ...receipt, operation: "record.read" }
+                : receipt;
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: false,
+        thought: "Settled without advancing the effect.",
+        messageToUser: "The requested work remains incomplete.",
+      }));
+      const useModel = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "write",
+            name: "WRITE",
+            arguments:
+              kind === "undefined-scope"
+                ? {}
+                : {
+                    eliza_turn_scope:
+                      kind === "final-scope" ? "final" : "more_work_pending",
+                  },
+          },
+        ],
+      }));
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: { id: `guard-${kind}` },
+        runtime: { useModel },
+        ...(kind === "prior-rollback"
+          ? {
+              resumeState: {
+                trajectory: {
+                  context: { id: "earlier-rollback" },
+                  steps: [],
+                  archivedSteps: [
+                    {
+                      toolCall: { id: "undo", name: "UNDO", params: {} },
+                      result: {
+                        success: true,
+                        effectReceipts: [
+                          {
+                            ...receipt,
+                            receiptId: "undo-receipt",
+                            outcome: "rolled_back" as const,
+                            rollback: {
+                              receiptId: "undo-commit",
+                              revertedReceiptIds: [receipt.receiptId],
+                              rolledBackAt: receipt.observedAt,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                  plannedQueue: [],
+                  evaluatorOutputs: [],
+                },
+                modelUsage: {
+                  promptTokens: 0,
+                  completionTokens: 0,
+                  modelCalls: 0,
+                },
+              },
+            }
+          : {}),
+        evaluate,
+        executeToolCall: async (): Promise<PlannerToolResult> => ({
+          success: kind !== "failed",
+          transcriptVisibility: "internal",
+          turnComplete: kind === "evaluation-required" ? false : undefined,
+          effectReceipts: [resultReceipt],
+          ...(kind === "reply-failure"
+            ? {
+                replyFailure: {
+                  kind: "reply_generation_error" as const,
+                  code: "DELIVERY_FAILED",
+                  message: "Reply failed after commit.",
+                  transient: false as const,
+                },
+              }
+            : {}),
+          ...(kind === "awaiting-input"
+            ? { data: { awaitingUserInput: true } }
+            : {}),
+          ...(kind === "confirmation"
+            ? { data: { requiresConfirmation: true } }
+            : {}),
+          ...(kind === "wrapped-awaiting-input"
+            ? { data: { values: { awaitingUserInput: true } } }
+            : {}),
+          ...(kind === "wrapped-confirmation"
+            ? { data: { values: { requiresConfirmation: true } } }
+            : {}),
+          ...(kind === "failure-provenance"
+            ? {
+                failureProvenance: {
+                  kind: "handler_error",
+                  boundary: "handler",
+                  code: "POST_COMMIT_BOOKKEEPING",
+                  retryable: false,
+                },
+              }
+            : {}),
+        }),
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(kind === "reply-failure" ? 0 : 1);
+      if (kind === "reply-failure")
+        expect(result.terminalFailure?.code).toBe("DELIVERY_FAILED");
+    },
+  );
+
+  it("retains a single verified action-owned reply after evaluator protocol failure", async () => {
+    const result = await runPlannerLoop({
+      context: {
+        id: "single-protocol-relay",
+        events: [
+          {
+            id: "handler",
+            type: "message_handler",
+            metadata: { plan: { intents: ["create the record"] } },
+          },
+        ],
+      },
+      runtime: {
+        useModel: async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "create",
+              name: "CREATE",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async () => ({
+        success: true,
+        userFacingText: "Created the record.",
+        turnComplete: true,
+        verifiedUserFacing: true,
+        effectReceipts: [receipt],
+        userFacingEffectReceiptIds: [receipt.receiptId],
+      }),
+      evaluate: async () => ({
+        success: false,
+        decision: "CONTINUE",
+        thought: "Malformed provider output.",
+        protocolFailure: true,
+      }),
+    });
+    expect(result.finalMessage).toBe("Created the record.");
+    expect(result.trajectory.steps.filter((step) => step.result)).toHaveLength(
+      1,
+    );
+  });
+
+  it("composes readback after a clipboard-only malformed evaluator without replaying the write", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "planner-protocol-readback-"),
+    );
+    const path = join(directory, "index.html");
+    const content = "<html><body>exact readback</body></html>";
+    let writes = 0;
+    let reads = 0;
+    let plans = 0;
+    let evaluations = 0;
+    try {
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: {
+          id: "protocol-readback",
+          events: [
+            {
+              id: "handler",
+              type: "message_handler",
+              metadata: {
+                plan: {
+                  intents: ["write the file", "read and report exact contents"],
+                },
+              },
+            },
+          ],
+        },
+        runtime: {
+          useModel: async () => {
+            if (++plans > 2) throw new Error("Repeated completed work");
+            return {
+              text: "",
+              toolCalls:
+                plans === 1
+                  ? [
+                      {
+                        id: "write",
+                        name: "FILE",
+                        arguments: {
+                          action: "write",
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                      {
+                        id: "read",
+                        name: "FILE",
+                        arguments: {
+                          action: "read",
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ]
+                  : [
+                      {
+                        id: "reply",
+                        name: "REPLY",
+                        arguments: {
+                          text: `Saved contents: ${content}`,
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          if (call.params?.action === "write") {
+            writes++;
+            await writeFile(path, content);
+            return {
+              success: true,
+              text: "Wrote the file.",
+              userFacingText: "Wrote the file.",
+              verifiedUserFacing: true,
+              turnComplete: true,
+              effectReceipts: [receipt],
+              userFacingEffectReceiptIds: [receipt.receiptId],
+            };
+          }
+          reads++;
+          return { success: true, text: await readFile(path, "utf8") };
+        },
+        evaluate: async ({ context, trajectory }) =>
+          runEvaluator({
+            context,
+            trajectory,
+            effects: { copyToClipboard: false },
+            runtime: {
+              useModel: async () =>
+                JSON.stringify(
+                  ++evaluations === 1
+                    ? {
+                        thought: "Write and read succeeded.",
+                        success: true,
+                        decision: "FINISH",
+                        replyEffectStatus: "applied",
+                        effectReceiptIds: [receipt.receiptId],
+                        copyToClipboard: { title: "contents", content },
+                      }
+                    : {
+                        thought: "The final reply reports the saved contents.",
+                        success: true,
+                        decision: "FINISH",
+                        messageToUser: `Saved contents: ${content}`,
+                        replyEffectStatus: "none",
+                      },
+                ),
+            },
+          }),
+      });
+      expect(writes).toBe(1);
+      expect(reads).toBe(1);
+      expect(plans).toBe(2);
+      expect(evaluations).toBe(2);
+      expect(result.finalMessage).toContain(content);
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toContainEqual(receipt);
+      expect(await readFile(path, "utf8")).toBe(content);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["unsafe", "failure"])(
+    "retains the incomplete notice and safe failure authority (%s)",
+    async (kind) => {
+      const result = await runPlannerLoop({
+        context: { id: "incomplete-safe-relay" },
+        runtime: {
+          useModel: async () => ({
+            text: "",
+            toolCalls: [
+              {
+                id: "operation",
+                name: "READ",
+                arguments: { eliza_turn_scope: "more_work_pending" },
+              },
+            ],
+          }),
+        },
+        executeToolCall: async () => ({
+          success: kind !== "failure",
+          turnComplete: false,
+          userFacingText:
+            kind === "failure"
+              ? "Verification lookup failed."
+              : '{"tool_calls":[{"name":"SECRET_TOOL"}]}',
+        }),
+        evaluate: async () => {
+          throw Object.assign(new Error("rate limited"), { status: 429 });
+        },
+      });
+      expect(result.finalMessage).toContain("request remains incomplete");
+      expect(result.finalMessage).not.toContain("SECRET_TOOL");
+      if (kind === "failure")
+        expect(result.finalMessage).toContain("Verification lookup failed.");
+      expect(result.evaluator?.success).toBe(false);
+    },
+  );
+  it.each(["overflow", "abort", "signal"])(
+    "preserves %s authority after a settled action even with provider HTTP status",
+    async (kind) => {
+      const controller = new AbortController();
+      const error =
+        kind === "overflow"
+          ? new ElizaError("full context rejected", {
+              code: PROVIDER_CONTEXT_OVERFLOW,
+            })
+          : Object.assign(new Error("caller cancelled"), {
+              name: "AbortError",
+              status: 429,
+            });
+      let executed = 0;
+      const turn = runWithStreamingContext(
+        { onStreamChunk: async () => {}, abortSignal: controller.signal },
+        () =>
+          runPlannerLoop({
+            context: { id: "provider-failure-boundary" },
+            runtime: {
+              useModel: async () => ({
+                text: "",
+                toolCalls: [
+                  {
+                    id: "save",
+                    name: "SAVE",
+                    arguments: { eliza_turn_scope: "more_work_pending" },
+                  },
+                ],
+              }),
+            },
+            executeToolCall: async () => {
+              executed++;
+              return {
+                success: true,
+                userFacingText: "Saved.",
+                effectReceipts: [receipt],
+              };
+            },
+            evaluate: async () => {
+              if (kind === "signal") controller.abort(error);
+              throw error;
+            },
+          }),
+      );
+      await expect(turn).rejects.toBe(error);
+      expect(executed).toBe(1);
+    },
+  );
+  it.each([false, true])(
+    "preserves verified complete relays and internal effect failure authority (internal=%s)",
+    async (internal) => {
+      let modelCalls = 0;
+      const result = await runPlannerLoop({
+        context: {
+          id: "provider-fallback-authority",
+          events: [
+            {
+              id: "handler",
+              type: "message_handler",
+              metadata: { plan: { intents: ["save the requested record"] } },
+            },
+          ],
+        },
+        runtime: {
+          useModel: async () => {
+            if (++modelCalls > 1)
+              throw Object.assign(new Error("rate limited"), { status: 429 });
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "save",
+                  name: "SAVE",
+                  arguments: {
+                    eliza_turn_scope: internal ? "more_work_pending" : "final",
+                  },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async () => ({
+          success: true,
+          userFacingText: internal
+            ? "PRIVATE INTERNAL RESULT"
+            : "Saved the requested record.",
+          verifiedUserFacing: true,
+          turnComplete: true,
+          ...(internal ? { transcriptVisibility: "internal" as const } : {}),
+          effectReceipts: [receipt],
+        }),
+        evaluate: async () => {
+          throw Object.assign(new Error("rate limited"), { status: 429 });
+        },
+      });
+      if (internal) {
+        expect(result.terminalFailure?.code).toBe(
+          "EVALUATOR_REPLY_GENERATION_FAILED",
+        );
+        expect(result.finalMessage).toBeUndefined();
+        expect(
+          result.trajectory.steps.find((step) => step.result)?.result
+            ?.replyFailure?.code,
+        ).toBe("EVALUATOR_REPLY_GENERATION_FAILED");
+      } else {
+        expect(result.terminalFailure).toBeUndefined();
+        expect(result.finalMessage).toBe("Saved the requested record.");
+      }
+      expect(
+        result.trajectory.steps.filter((step) => step.toolCall),
+      ).toHaveLength(1);
+    },
+  );
+  it.each(["more_work_pending", "final"])(
+    "preserves a real write without claiming unfinished readback completed after next model boundary 429 (%s)",
+    async (scope) => {
+      const directory = await mkdtemp(join(tmpdir(), "planner-incomplete-"));
+      const path = join(directory, "index.html");
+      const content = "<html><body>read me back exactly</body></html>";
+      const version = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+      let mutations = 0;
+      let plannerCalls = 0;
+      const useModel = vi.fn(async () => {
+        if (++plannerCalls > 1)
+          throw Object.assign(new Error("token quota exceeded"), {
+            status: 429,
+          });
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: "write",
+              name: "FILE",
+              arguments: {
+                action: "write",
+                path,
+                content,
+                eliza_turn_scope: scope,
+              },
+            },
+          ],
+        };
+      });
+      const evaluate = vi.fn(async () => {
+        throw Object.assign(new Error("token quota exceeded"), { status: 429 });
+      });
+      try {
+        const result = await runPlannerLoop({
+          context: {
+            id: "incomplete-provider",
+            events: [
+              {
+                id: "handler",
+                type: "message_handler",
+                metadata: {
+                  plan: {
+                    intents: [
+                      "write the HTML file",
+                      "read the saved file and report its exact contents",
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          runtime: { useModel },
+          evaluate,
+          executeToolCall: async () => {
+            mutations++;
+            await writeFile(path, content);
+            expect(await readFile(path, "utf8")).toBe(content);
+            return {
+              success: true,
+              userFacingText: "Wrote the HTML file.",
+              verifiedUserFacing: true,
+              turnComplete: true,
+              effectReceipts: [
+                {
+                  ...receipt,
+                  operation: "filesystem.write",
+                  resource: { kind: "filesystem.file", id: path, version },
+                  commit: {
+                    kind: "durable",
+                    id: `${path}#${version}`,
+                    committedAt: receipt.observedAt,
+                  },
+                },
+              ],
+            };
+          },
+        });
+        expect(mutations).toBe(1);
+        expect(useModel).toHaveBeenCalledTimes(
+          scope === "more_work_pending" ? 2 : 1,
+        );
+        expect(evaluate).toHaveBeenCalledTimes(
+          scope === "more_work_pending" ? 0 : 1,
+        );
+        expect(await readFile(path, "utf8")).toBe(content);
+        expect(result.terminalFailure).toMatchObject({
+          code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
+          kind: "rate_limited",
+          transient: false,
+        });
+        expect(result.evaluator?.success).toBe(false);
+        expect(result.finalMessage).toContain("Wrote the HTML file.");
+        expect(result.finalMessage).toContain("request remains incomplete");
+        expect(
+          result.trajectory.steps.find(
+            (step) => step.result?.effectReceipts?.length,
+          )?.result?.effectReceipts?.[0]?.resource.version,
+        ).toBe(version);
+        expect(result.trajectory.outcomeIntents).toEqual([
+          "write the HTML file",
+          "read the saved file and report its exact contents",
+        ]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+  it("does not replay a committed mutation with nonretryable bookkeeping failure", async () => {
+    const h = harness(2);
+    const result = await runPlannerLoop({
+      ...h,
+      context: { id: "nonretryable-receipt" },
+      codingMode: true,
+    });
+    const call = {
+      id: "write",
+      name: "WRITE",
+      params: { path: "/workspace/file", content: "saved" },
+    };
+    const step = result.trajectory.steps.find((entry) => entry.toolCall);
+    expect(step).toBeDefined();
+    if (!step) throw new Error("Expected an executed step");
+    step.toolCall = call;
+    step.result = {
+      success: false,
+      effectReceipts: [receipt],
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_STATE_TRACKING_FAILED",
+        retryable: false,
+      },
+    };
+    const partition = partitionRedundantSucceededCalls(
+      [call],
+      result.trajectory,
+    );
+    expect(partition.fresh).toEqual([]);
+    expect(partition.nonRetryable).toEqual([call]);
+  });
+  it("keeps native reply schemas identical throughout the trajectory", async () => {
+    const h = harness(4);
+    const schemas: string[] = [];
+    const useModel = h.runtime.useModel;
+    h.runtime.useModel = async (type, input) => {
+      schemas.push(JSON.stringify(input.tools));
+      return useModel(type, input);
+    };
+    await runPlannerLoop({
+      ...h,
+      context: { id: "stable-reply-schema" },
+      codingMode: true,
+      tools: [
+        ...["DISCOVER_ACTIONS", "MEMORY_SEARCH"].map((name) => ({
+          name,
+          description: name,
+          parameters: {
+            type: "object" as const,
+            properties: { query: { type: "string" as const } },
+          },
+        })),
+        {
+          name: "REPLY",
+          description: "Reply",
+          parameters: {
+            type: "object",
+            properties: { text: { type: "string" } },
+            required: ["text"],
+          },
+        },
+      ],
+    });
+    expect(schemas).toHaveLength(4);
+    expect(new Set(schemas).size).toBe(1);
+  });
+  it("settles source-bound outcome coverage without a scope-only planner round", async () => {
+    let rounds = 0;
+    const result = await runPlannerLoop({
+      context: {
+        id: "covered-outcome",
+        events: [
+          {
+            id: "handler",
+            type: "message_handler",
+            metadata: { plan: { intents: ["read the requested file"] } },
+          },
+        ],
+      },
+      runtime: {
+        useModel: async () => {
+          if (++rounds > 1) throw new Error("Unnecessary scope-only round");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "read",
+                name: "READ",
+                arguments: {
+                  path: "/workspace/file",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async () => ({
+        success: true,
+        text: "File contains 42",
+      }),
+      evaluate: async () => ({
+        decision: "FINISH",
+        success: true,
+        thought: "Requested file read",
+        messageToUser: "The file contains 42.",
+        requestFullyCovered: true,
+        outcomeCoverage: [
+          {
+            intentId: "intent:1",
+            status: "completed",
+            evidenceStepIds: ["step:1"],
+          },
+        ],
+      }),
+    });
+    expect(rounds).toBe(1);
+    expect(result.evaluator?.success).toBe(true);
+    expect(result.finalMessage).toBe("The file contains 42.");
+  });
+
+  it("does not dispatch an effect when its durable before-tool checkpoint fails", async () => {
+    const executeToolCall = vi.fn();
+    const checkpointFailure = new Error("Checkpoint storage unavailable");
+    await expect(
+      runPlannerLoop({
+        context: { id: "checkpoint-failure" },
+        runtime: {
+          useModel: async () => ({
+            text: "",
+            toolCalls: [
+              {
+                id: "write",
+                name: "WRITE",
+                arguments: {
+                  path: "/workspace/file",
+                  eliza_turn_scope: "final",
+                },
+              },
+            ],
+          }),
+        },
+        executeToolCall,
+        onCheckpoint: async (_state, phase) => {
+          expect(phase).toBe("before_tool");
+          throw checkpointFailure;
+        },
+      }),
+    ).rejects.toThrow(checkpointFailure);
+    expect(executeToolCall).not.toHaveBeenCalled();
+  });
+
+  it("rehydrates complete execution evidence but replans an unexecuted queue under fresh capabilities", async () => {
+    const history = [
+      { role: "user" as const, content: "Complete original evidence" },
+    ];
+    const seed: PlannerTrajectory = {
+      context: { id: "original-context" },
+      codingMode: false,
+      steps: [
+        {
+          iteration: 3,
+          toolCall: {
+            id: "saved",
+            name: "WRITE",
+            params: { path: "/workspace/output" },
+          },
+          result: { success: true, effectReceipts: [receipt] },
+        },
+      ],
+      archivedSteps: [],
+      plannedQueue: [
+        {
+          id: "stale-write",
+          name: "WRITE",
+          params: { path: "/workspace/unapproved" },
+        },
+      ],
+      evaluatorOutputs: [],
+      modelHistory: history,
+    };
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      context: { id: "fresh-authorized-context" },
+      codingMode: false,
+      resumeState: {
+        trajectory: seed,
+        modelUsage: { promptTokens: 100, completionTokens: 20, modelCalls: 2 },
+      },
+      runtime: {
+        useModel: async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "verify",
+              name: "READ",
+              arguments: {
+                path: "/workspace/output",
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+          usage: { promptTokens: 50, completionTokens: 5, totalTokens: 55 },
+        }),
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return { success: true, continueChain: false, text: "Verified" };
+      },
+    });
+    expect(executed).toEqual(["READ"]);
+    expect(result.trajectory.steps[0]).toEqual(seed.steps[0]);
+    expect(result.trajectory.steps[1]?.iteration).toBe(4);
+    expect(result.trajectory.modelHistory?.[0]).toEqual(history[0]);
+    expect(result.trajectory.context.id).toBe("fresh-authorized-context");
+    expect(result.modelUsage).toMatchObject({
+      promptTokens: 150,
+      completionTokens: 25,
+      modelCalls: 3,
+    });
+    expect(seed.plannedQueue[0]?.id).toBe("stale-write");
+  });
+
+  it("does not reset an exhausted cumulative token budget when resuming", async () => {
+    const useModel = vi.fn();
+    const result = await runPlannerLoop({
+      context: { id: "fresh-context" },
+      resumeState: {
+        trajectory: {
+          context: { id: "original" },
+          steps: [],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+        modelUsage: { promptTokens: 100, completionTokens: 20, modelCalls: 2 },
+      },
+      config: { maxTrajectoryPromptTokens: 100 },
+      runtime: { useModel },
+      executeToolCall: async () => ({ success: true }),
+    });
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.terminalFailure?.kind).toBe("resource_limit");
+    expect(result.modelUsage?.promptTokens).toBe(100);
+  });
+
+  it.each([false, true])(
+    "advances a pending batch after a committed write without a redundant evaluator call (visible=%s)",
+    async (visible) => {
+      let modelCalls = 0;
+      const executed: string[] = [];
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: { id: "pending-write-read" },
+        runtime: {
+          useModel: async () => {
+            if (++modelCalls > 1)
+              throw new Error(
+                "Unexpected evaluator call between committed write and queued verification",
+              );
+            return {
+              text: "",
+              toolCalls: ["WRITE", "READ"].map((name) => ({
+                id: `pending-${name}`,
+                name,
+                arguments: {
+                  path: "/workspace/output",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              })),
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          return call.name === "WRITE"
+            ? {
+                success: true,
+                ...(visible
+                  ? {
+                      verifiedUserFacing: true,
+                      turnComplete: true,
+                      userFacingText: "Written",
+                    }
+                  : { transcriptVisibility: "internal" as const }),
+                effectReceipts: [receipt],
+              }
+            : { success: true, text: "Verified output", continueChain: false };
+        },
+      });
+      expect(executed).toEqual(["WRITE", "READ"]);
+      expect(modelCalls).toBe(1);
+      expect(
+        result.trajectory.steps.find((step) => step.toolCall?.name === "WRITE")
+          ?.result?.effectReceipts,
+      ).toEqual([receipt]);
+    },
+  );
+
+  it("repairs a typed pre-execution rejection before evaluating completion", async () => {
+    let rounds = 0;
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: false,
+      context: { id: "rejected-command" },
+      runtime: {
+        useModel: async () => {
+          if (++rounds > 2)
+            return {
+              text: JSON.stringify({
+                decision: "FINISH",
+                success: false,
+                thought:
+                  "Rejected attempt retained; corrected command completed.",
+                messageToUser: "The corrected command completed.",
+              }),
+            };
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `repair-${rounds}`,
+                name: "TERMINAL_SHELL",
+                arguments: {
+                  command:
+                    rounds === 1
+                      ? "invalid multiline"
+                      : "corrected single line",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        if (executed.length === 1) expect(rounds).toBe(2);
+        executed.push(String(call.params?.command));
+        return rounds === 1
+          ? {
+              success: false,
+              text: "Command must be a single line",
+              failureProvenance: {
+                kind: "handler_error",
+                boundary: "handler",
+                code: "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
+                retryable: true,
+              },
+              data: { acceptance: "rejected", executionStatus: "not_started" },
+            }
+          : {
+              success: true,
+              text: "Created and verified",
+              continueChain: false,
+            };
+      },
+    });
+    expect(executed).toEqual(["invalid multiline", "corrected single line"]);
+    expect(
+      result.trajectory.steps.some(
+        (step) =>
+          step.result?.failureProvenance?.code ===
+          "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
+      ),
+    ).toBe(true);
+  });
+
+  it("replans after a failed prerequisite without running its dependent queued write", async () => {
+    let round = 0;
+    const executed: string[] = [];
+    const result = await runPlannerLoop({
+      codingMode: true,
+      context: { id: "failed-batch-prerequisite" },
+      runtime: {
+        useModel: async () => {
+          round++;
+          if (round > 2) throw new Error("Unexpected planner retry");
+          return {
+            text: "",
+            toolCalls: (round === 1 ? ["READ", "WRITE"] : ["READ"]).map(
+              (name, index) => ({
+                id: `batch-${round}-${index}`,
+                name,
+                arguments: {
+                  path: "/workspace/input",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              }),
+            ),
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return executed.length === 1
+          ? {
+              success: false,
+              text: "Input missing",
+              data: { readOnlyOperation: true },
+            }
+          : { success: true, text: "Input recovered", continueChain: false };
+      },
+    });
+    expect(round).toBe(2);
+    expect(executed).toEqual(["READ", "READ"]);
+    expect(
+      result.trajectory.steps.some((step) => step.toolCall?.name === "WRITE"),
+    ).toBe(false);
+    expect(
+      result.trajectory.steps.find((step) => step.result?.success === false)
+        ?.result?.text,
+    ).toBe("Input missing");
+  });
+
   it("cancels a coding rate-limit wait without another inference", async () => {
     vi.useFakeTimers();
     try {
@@ -319,6 +1567,14 @@ describe("long progressive planner trajectories", () => {
       const result = await runPlannerLoop({
         ...h,
         context: { id: "long-work" },
+        tools: ["DISCOVER_ACTIONS", "MEMORY_SEARCH"].map((name) => ({
+          name,
+          description: "Read requested evidence",
+          parameters: {
+            type: "object",
+            properties: { query: { type: "string" } },
+          },
+        })),
         codingMode,
       });
       expect(h.executed).toHaveLength(40);
@@ -328,6 +1584,7 @@ describe("long progressive planner trajectories", () => {
         providerOptions: {
           eliza: {
             thinking: "off",
+            preferLosslessToolArguments: true,
             ...(codingMode ? { preferToolReasoning: true } : {}),
           },
         },
@@ -379,48 +1636,52 @@ describe("long progressive planner trajectories", () => {
     expect(result.modelUsage?.modelCalls).toBe(3);
     expect(result.finalMessage).toContain("before the request was complete");
   });
-  it("cancels after a settled operation without dispatching the next call", async () => {
-    const h = harness(8);
-    const controller = new AbortController();
-    const stopped = new Error("Caller cancelled");
-    let trajectory: PlannerTrajectory | undefined;
-    const turn = runWithStreamingContext(
-      { onStreamChunk: async () => {}, abortSignal: controller.signal },
-      () =>
-        runPlannerLoop({
-          ...h,
-          context: { id: "cancelled" },
-          codingMode: true,
-          runtime: {
-            useModel: async () => ({
-              text: "",
-              toolCalls: [
-                {
-                  id: "save-before-cancel",
-                  name: "SAVE_RECORD",
-                  arguments: { eliza_turn_scope: "more_work_pending" },
-                },
-              ],
-            }),
-          },
-          executeToolCall: async (call, execution) => {
-            trajectory = execution.trajectory;
-            await h.executeToolCall(call);
-            controller.abort(stopped);
-            return {
-              success: true,
-              effectReceipts: [receipt],
-              data: { recordId: "saved-record" },
-            };
-          },
-        }),
-    );
-    await expect(turn).rejects.toBe(stopped);
-    expect(h.executed).toHaveLength(1);
-    expect(trajectory?.steps).toHaveLength(1);
-    expect(trajectory?.steps[0]?.result?.success).toBe(true);
-    expect(trajectory?.steps[0]?.result?.effectReceipts).toEqual([receipt]);
-  });
+  it.each([false, true])(
+    "cancels after a settled operation without dispatching the next call (coding=%s)",
+    async (codingMode) => {
+      const h = harness(8);
+      const controller = new AbortController();
+      const stopped = new Error("Caller cancelled");
+      let trajectory: PlannerTrajectory | undefined;
+      const turn = runWithStreamingContext(
+        { onStreamChunk: async () => {}, abortSignal: controller.signal },
+        () =>
+          runPlannerLoop({
+            ...h,
+            context: { id: "cancelled" },
+            codingMode,
+            runtime: {
+              useModel: async () => ({
+                text: "",
+                toolCalls: [
+                  {
+                    id: "save-before-cancel",
+                    name: "SAVE_RECORD",
+                    arguments: { eliza_turn_scope: "more_work_pending" },
+                  },
+                ],
+              }),
+            },
+            executeToolCall: async (call, execution) => {
+              trajectory = execution.trajectory;
+              await h.executeToolCall(call);
+              controller.abort(stopped);
+              return {
+                success: true,
+                transcriptVisibility: "internal",
+                effectReceipts: [receipt],
+                data: { recordId: "saved-record" },
+              };
+            },
+          }),
+      );
+      await expect(turn).rejects.toBe(stopped);
+      expect(h.executed).toHaveLength(1);
+      expect(trajectory?.steps).toHaveLength(1);
+      expect(trajectory?.steps[0]?.result?.success).toBe(true);
+      expect(trajectory?.steps[0]?.result?.effectReceipts).toEqual([receipt]);
+    },
+  );
   it("preserves a committed result when the next coding model call times out", async () => {
     const previous = process.env.ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS;
     process.env.ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS = "1000";

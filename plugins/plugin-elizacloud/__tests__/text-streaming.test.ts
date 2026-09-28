@@ -68,6 +68,7 @@ import {
   streamNativeChatCompletion,
 } from "../src/models/text";
 import type { ModelUsageEventPayload } from "../src/utils/events";
+import { buildInferenceSpentPayload } from "../src/utils/waifu-metering";
 
 function fakeRuntime(): IAgentRuntime {
   return {
@@ -1155,6 +1156,74 @@ describe("native MODEL_USED token attribution (#27732)", () => {
     return events.filter((e) => e.source === "elizacloud" && e.type != null);
   }
 
+  const meteringConfig = {
+    webhookUrl: "https://example.com/inference",
+    secret: "test-secret",
+    agentId: "usage-test",
+    usdPer1kInput: 0.003,
+    usdPer1kOutput: 0.015,
+  };
+
+  for (const mode of ["buffered", "sse", "fallback"] as const) {
+    it.each([undefined, 0.25])(
+      `uses real emitted ${mode} counts for downstream billing attribution, gateway cost=%s`,
+      async (costUsd) => {
+        const usage = {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          ...(costUsd === undefined ? {} : { cost_usd: costUsd }),
+        };
+        nextResponse =
+          mode === "sse"
+            ? sseResponse([
+                dataFrame(contentDelta("complete reply")),
+                dataFrame(finishFrame("stop")),
+                dataFrame({ choices: [], usage }),
+                DONE_FRAME,
+              ])
+            : new Response(
+                JSON.stringify({
+                  choices: [
+                    { index: 0, message: { content: "complete reply" }, finish_reason: "stop" },
+                  ],
+                  usage,
+                }),
+                { headers: { "content-type": "application/json" } }
+              );
+        const { runtime, events } = recordingRuntime();
+        const context = { modelName: "gpt-oss-120b", prompt: "hi" };
+        if (mode === "buffered") {
+          await generateNativeChatCompletion(
+            runtime,
+            "TEXT_LARGE" as never,
+            nativeParams(),
+            context
+          );
+        } else {
+          await readStream(
+            await streamNativeChatCompletion(
+              runtime,
+              "TEXT_LARGE" as never,
+              nativeParams(),
+              context
+            )
+          );
+        }
+        const emitted = usageEvents(events);
+        expect(emitted).toHaveLength(1);
+        const spent = buildInferenceSpentPayload(meteringConfig, emitted[0]);
+        expect(spent).toMatchObject({
+          promptTokens: 100,
+          completionTokens: 50,
+          totalTokens: 150,
+          costSource: costUsd === undefined ? "estimate" : "gateway",
+        });
+        expect(spent?.usd).toBeCloseTo(costUsd ?? 0.00105, 9);
+      }
+    );
+  }
+
   for (const usage of [
     undefined,
     {},
@@ -1204,6 +1273,9 @@ describe("native MODEL_USED token attribution (#27732)", () => {
           expect(await result.usage).toBeUndefined();
         }
         expect(usageEvents(events)).toEqual([]);
+        expect(
+          usageEvents(events).map((event) => buildInferenceSpentPayload(meteringConfig, event))
+        ).toEqual([]);
       });
     }
   }

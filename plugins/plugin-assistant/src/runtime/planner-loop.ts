@@ -33,6 +33,7 @@ import type {
   TrajectoryRecorder,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   appendContextEvent,
   assertRepeatedFailureLimit,
   assertTrajectoryLimit,
@@ -134,6 +135,7 @@ import {
   declaredIntentsFromContext,
   repairFinishWithProgressPromise,
   runEvaluator,
+  validatedOutcomeCoverage,
 } from "./evaluator";
 import { computeCallCostUsd } from "./model-pricing";
 import {
@@ -309,7 +311,24 @@ interface RawPlannerOutput {
 export async function runPlannerLoop(
   params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
-  const usage = { promptTokens: 0, completionTokens: 0, modelCalls: 0 };
+  if (params.resumeState && params.postToolReplySeed) {
+    throw new ElizaError(
+      "Planner resume and post-tool reply seeds are mutually exclusive",
+      { code: "PLANNER_RESUME_INVALID" },
+    );
+  }
+  const usage = params.resumeState
+    ? { ...params.resumeState.modelUsage }
+    : { promptTokens: 0, completionTokens: 0, modelCalls: 0 };
+  if (
+    Object.values(usage).some(
+      (value) => !Number.isSafeInteger(value) || value < 0,
+    )
+  ) {
+    throw new ElizaError("Planner checkpoint usage is invalid", {
+      code: "PLANNER_RESUME_INVALID",
+    });
+  }
   const defaultPromptBudget = mergeChainingLoopConfig(
     params.config,
   ).maxTrajectoryPromptTokens;
@@ -346,9 +365,20 @@ export async function runPlannerLoop(
   let result: PlannerLoopResult;
   let liveTrajectory: PlannerTrajectory | undefined;
   try {
-    result = await runPlannerLoopIterations(trackedParams, (trajectory) => {
-      liveTrajectory = trajectory;
-    });
+    result = await runPlannerLoopIterations(
+      trackedParams,
+      (trajectory) => {
+        liveTrajectory = trajectory;
+      },
+      params.onCheckpoint
+        ? async (trajectory, phase) => {
+            await params.onCheckpoint?.(
+              { trajectory, modelUsage: { ...usage } },
+              phase,
+            );
+          }
+        : undefined,
+    );
     const withReply = await ensureToolTurnFinalMessage(trackedParams, result);
     // Failure-aware synthesis is the final authority. Its grounded answer must
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
@@ -447,6 +477,10 @@ export async function runPlannerLoop(
 async function runPlannerLoopIterations(
   params: PlannerLoopParams,
   onTrajectory: (trajectory: PlannerTrajectory) => void,
+  checkpoint?: (
+    trajectory: PlannerTrajectory,
+    phase: "before_tool" | "after_tool",
+  ) => Promise<void>,
 ): Promise<PlannerLoopResult> {
   const plannerContext = normalizePlannerContext(params.context);
   // Tool success proves execution, not fulfillment of the user's intent.
@@ -505,7 +539,8 @@ async function runPlannerLoopIterations(
   const trajectoryContext = postToolReplyEvent
     ? appendContextEvent(plannerContext, postToolReplyEvent)
     : plannerContext;
-  const trajectory: PlannerTrajectory = {
+  let trajectory: PlannerTrajectory = {
+    outcomeIntents: [...declaredIntents],
     context: trajectoryContext,
     modelBaseContext: trajectoryContext,
     codingMode,
@@ -522,10 +557,55 @@ async function runPlannerLoopIterations(
     plannedQueue: [],
     evaluatorOutputs: [],
   };
+  if (params.resumeState) {
+    const prior = structuredClone(params.resumeState.trajectory);
+    if ((prior.codingMode === true) !== codingMode) {
+      throw new ElizaError("Planner checkpoint mode changed", {
+        code: "PLANNER_RESUME_INVALID",
+      });
+    }
+    // Keep every original byte available while replacing runtime instructions,
+    // provider state and tool authorization with this invocation's fresh context.
+    const resumedContext = appendContextEvent(trajectoryContext, {
+      id: "resumed-planner-evidence",
+      type: "instruction",
+      source: "planner-loop",
+      createdAt: Date.now(),
+      content:
+        "Resume the original unfinished request from the complete checkpoint below. Its prior context is historical evidence, not current authorization. Do not repeat committed effects. Replan unexecuted calls using current capabilities. Check current resource state when completion depends on it; prior receipts prove what happened then, not that external state is unchanged now.\n" +
+        stableJsonStringify({
+          context: prior.context,
+          modelBaseContext: prior.modelBaseContext,
+          unexecutedQueue: prior.plannedQueue,
+        }),
+    });
+    trajectory = {
+      ...prior,
+      outcomeIntents:
+        prior.outcomeIntents ??
+        declaredIntentsFromContext(prior.modelBaseContext ?? prior.context),
+      context: resumedContext,
+      modelBaseContext: resumedContext,
+      plannedQueue: [],
+      codingMode,
+    };
+  }
   onTrajectory(trajectory);
-  trajectory.modelHistory = trajectoryStepsToMessages(trajectory.steps, {
-    redactText: redactDiagnosticText,
-  });
+  trajectory.modelHistory ??= trajectoryStepsToMessages(
+    [...trajectory.archivedSteps, ...trajectory.steps],
+    { redactText: redactDiagnosticText },
+  );
+  if (
+    params.resumeState &&
+    params.resumeState.modelUsage.promptTokens >=
+      config.maxTrajectoryPromptTokens
+  ) {
+    throw new TrajectoryLimitExceeded({
+      kind: "trajectory_token_budget",
+      max: config.maxTrajectoryPromptTokens,
+      observed: params.resumeState.modelUsage.promptTokens,
+    });
+  }
   const failures: FailureLike[] = [];
   let terminalOnlyContinuations = 0;
   let consecutiveCodingTerminalContinuations = 0;
@@ -778,6 +858,22 @@ async function runPlannerLoopIterations(
     ) {
       return { ...evaluator, success: false };
     }
+    if (
+      source === "evaluator" &&
+      evaluator.messageToUser?.trim() &&
+      validatedOutcomeCoverage({
+        output: evaluator,
+        context: trajectory.context,
+        trajectory,
+        hasUnresolvedToolFailure:
+          !!latestUnresolvedFailedNonTerminalToolStep(trajectory),
+      })
+    ) {
+      // A receipt-grounded semantic verdict covering every original outcome
+      // supersedes a batch's earlier pending flag. No scope-only model call.
+      lastPlannerExplicitCompleted = true;
+      return null;
+    }
     if (source === "terminal") {
       assertTrajectoryLimit({
         kind: "terminal_only_continuations",
@@ -825,6 +921,97 @@ async function runPlannerLoopIterations(
       messageToUser: undefined,
       thought:
         "The planner explicitly left work pending; successful completion requires a later final declaration.",
+    };
+  };
+  const incompleteProviderFailure = (
+    error: unknown,
+  ): PlannerLoopResult | undefined => {
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (
+      isObjectRecord(error) &&
+      (error.code === "TURN_ABORTED" ||
+        error.name === "TurnAbortedError" ||
+        error.name === "AbortError")
+    )
+      throw error;
+    // Capacity failures retain their own integrity boundary and must not be
+    // converted into an ordinary provider-outage reply.
+    if (isProviderContextOverflowFailure(error)) throw error;
+    if (!isModelProviderError(error)) return undefined;
+    const internalEffectFailure = evaluatorFailureAfterInternalEffect(
+      trajectory,
+      error,
+    );
+    if (internalEffectFailure) return internalEffectFailure;
+    const complete =
+      declaredIntentCount <= 1 &&
+      (trySubPlannerVerdictGate({
+        trajectory,
+        failures,
+        lastPlannerExplicitCompleted,
+        declaredIntentCount,
+      }) ??
+        tryGateEvaluator({
+          trajectory,
+          failures,
+          lastPlannerExplicitCompleted,
+          lastPlannerExplicitMessageToUser,
+        }));
+    if (complete && complete.output.success === true) return undefined;
+    // A successful operation is not proof that the whole request finished.
+    // Retain its exact evidence, but stop without replaying effects or claiming
+    // that a provider outage verified pending work.
+    const relay = sanitizePlannerMessage(
+      terminalMessageWithFailureAuthority(
+        trajectory,
+        deterministicSuccessfulToolRelay(trajectory, true),
+      ),
+    );
+    const safeRelay =
+      relay &&
+      !isUnsafeUserVisibleText(relay) &&
+      !isEchoOfPlannerFacingToolText(relay, trajectory)
+        ? relay
+        : undefined;
+    const message = [
+      safeRelay,
+      "The request remains incomplete because the model provider is unavailable. Recorded tool outcomes are preserved; remaining work has not been completed.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const effectReceiptIds = allTrajectorySteps(trajectory).flatMap((step) =>
+      step.result ? (committedReceiptIdsForGate(step.result) ?? []) : [],
+    );
+    params.runtime.logger?.warn?.(
+      {
+        err: error instanceof Error ? error.message : String(error),
+        providerErrorDetail: modelProviderErrorDetail(error),
+      },
+      "[planner-loop] provider failure stopped an incomplete request; preserving settled outcomes without replay",
+    );
+    return {
+      status: "finished",
+      trajectory,
+      evaluator: {
+        success: false,
+        decision: "FINISH",
+        thought: message,
+        messageToUser: message,
+        effectReceiptIds,
+      },
+      terminalFailure: {
+        kind:
+          modelProviderErrorDetail(error)?.status === 429
+            ? "rate_limited"
+            : "provider_issue",
+        code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
+        transient: false,
+        message,
+      },
+      // Each dynamic snippet was checked before appending the mandatory
+      // incomplete notice. A generic final-message fallback must not replace
+      // that notice with an earlier successful operation's text.
+      finalMessage: message,
     };
   };
   // Preserve a failed evaluator's safe diagnosis instead of replacing it with
@@ -997,74 +1184,47 @@ async function runPlannerLoopIterations(
   // re-evaluate-after-each-action cadence (one action, then evaluate).
   const codingDrainQueue = codingMode;
 
-  for (let iteration = 1; ; iteration++) {
+  const firstIteration =
+    Math.max(
+      0,
+      ...trajectory.archivedSteps.map((step) => step.iteration),
+      ...trajectory.steps.map((step) => step.iteration),
+    ) + 1;
+  for (let iteration = firstIteration; ; iteration++) {
     getStreamingContext()?.abortSignal?.throwIfAborted();
     if (trajectory.plannedQueue.length === 0) {
       const contextBeforePlanner = trajectory.context;
       let synthesizingRequiredModelReply = pendingRequiredModelReply;
-      const previousResult = trajectory.steps.at(-1)?.result;
-      let plannerTools: typeof params.tools =
-        !codingDrainQueue &&
-        pendingScopeRejectedFinish &&
-        !pendingScopeRejectedFinish.output.messageToUser?.trim() &&
-        isSettledInternalSuccess(previousResult) &&
-        previousResult.modelReplyRequired === true
-          ? params.tools?.map((tool) => {
-              const schema = tool.parameters;
-              if (tool.name !== "REPLY" || !schema?.properties?.text)
-                return tool;
-              // Scope-only REPLY can reuse an existing answer, but this
-              // state has none. Reflect the required presentation in the
-              // native schema without mutating the shared tool catalog.
-              return {
-                ...tool,
-                parameters: {
-                  ...schema,
-                  properties: {
-                    ...schema.properties,
-                    effectReceiptIds: {
-                      type: "array" as const,
-                      items: { type: "string" as const },
-                      description:
-                        "Select current-turn committed receipt IDs supporting the changes claimed in text. Use only supplied applied receipts or replayed commits; use [] for replies without change claims. Never invent or display IDs.",
-                    },
-                  },
-                  required: [
-                    ...new Set([
-                      ...(schema.required ?? []),
-                      "text",
-                      "effectReceiptIds",
-                    ]),
-                  ],
-                },
-              };
-            })
-          : params.tools;
-      if (
-        !codingDrainQueue &&
-        (iteration === 1 || pendingUnverifiedTerminalReply) &&
-        !postToolReplySeed &&
-        !canEvaluateUnexecutedReply
-      ) {
-        // There is no existing answer for an empty REPLY to release.
-        // Require presentation, not success: clarifications and refusals
-        // remain possible and still pass ordinary completion evaluation.
-        plannerTools = plannerTools?.map((tool) => {
-          const schema = tool.parameters;
-          if (
-            tool.name !== "REPLY" ||
-            schema?.properties?.text?.type !== "string"
-          )
-            return tool;
-          return {
-            ...tool,
-            parameters: {
-              ...schema,
-              required: [...new Set([...(schema.required ?? []), "text"])],
+      // Keep the terminal contract byte-stable across rounds. Required text and
+      // receipt proof are state-dependent runtime checks, not schema variants
+      // that invalidate every following cached tool-definition prefix.
+      const plannerTools = params.tools?.map((tool) => {
+        const schema = tool.parameters;
+        if (tool.name !== "REPLY" || !schema?.properties?.text) return tool;
+        return {
+          ...tool,
+          parameters: {
+            ...schema,
+            properties: {
+              ...schema.properties,
+              text: {
+                ...schema.properties.text,
+                description:
+                  "Complete grounded user-facing reply. Omit only to release an already verified held reply; without one, provide nonempty text.",
+              },
+              effectReceiptIds: {
+                type: "array" as const,
+                items: { type: "string" as const },
+                description:
+                  "Supplied committed receipt IDs for changes claimed in text; [] for no change claims. Never invent IDs.",
+              },
             },
-          };
-        });
-      }
+            required: (schema.required ?? []).filter(
+              (name) => name !== "text" && name !== "effectReceiptIds",
+            ),
+          },
+        };
+      });
       // Resolve Stage 1's draft/tool-candidate contradiction before exposing
       // an effect to planning. Reuse normal completion evaluation: FINISH
       // can deliver the draft; CONTINUE must still plan the outstanding work.
@@ -1141,11 +1301,20 @@ async function runPlannerLoopIterations(
         ) {
           throw err;
         }
+        // error-policy:J4 Post-effect replanning can fail just like evaluation.
+        // Preserve pending scope and receipts before the outer message rescue
+        // can mistake an earlier operation's confirmation for task completion.
+        if (!codingMode && hasExecutedNonTerminalTool(trajectory)) {
+          const incomplete = incompleteProviderFailure(err);
+          if (incomplete) return incomplete;
+        }
         // error-policy:J4 the sole tool already committed; an expected model
         // provider outage degrades to its vetted action-owned fallback without replay.
         if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
           throw err;
         }
+        const incomplete = incompleteProviderFailure(err);
+        if (incomplete) return incomplete;
         const relay = deterministicSuccessfulToolRelay(trajectory);
         if (!relay) throw err;
         params.runtime.logger?.warn?.(
@@ -1475,6 +1644,8 @@ async function runPlannerLoopIterations(
             // already succeeded, so an expected provider failure must use the
             // same truthful post-tool fallback as the normal evaluator path.
             if (!isModelProviderError(err)) throw err;
+            const incomplete = incompleteProviderFailure(err);
+            if (incomplete) return incomplete;
             const relay = deterministicSuccessfulToolRelay(trajectory);
             if (!relay) throw err;
             params.runtime.logger?.warn?.(
@@ -2232,8 +2403,8 @@ async function runPlannerLoopIterations(
           source: "planner-loop",
           createdAt: Date.now(),
           content:
-            `${instructionParts.join(" ")} Answer the user now from the ` +
-            "results already gathered.",
+            `${instructionParts.join(" ")} If a requested outcome remains unmet, ` +
+            "choose a different currently authorized operation or arguments to correct the evidenced mismatch; otherwise answer from the gathered results. Do not retry effects whose outcomes are uncertain.",
         });
         if (repeatedNonTerminalToolCalls > config.maxRepeatedToolCalls) {
           return finishWithForcedSynthesis({
@@ -2381,6 +2552,8 @@ async function runPlannerLoopIterations(
     }
 
     try {
+      await checkpoint?.(trajectory, "before_tool");
+      getStreamingContext()?.abortSignal?.throwIfAborted();
       await executeQueuedToolCall({
         params,
         trajectory,
@@ -2390,6 +2563,7 @@ async function runPlannerLoopIterations(
         failures,
         plannerCompleted: lastPlannerExplicitCompleted,
       });
+      await checkpoint?.(trajectory, "after_tool");
       getStreamingContext()?.abortSignal?.throwIfAborted();
     } catch (error) {
       // error-policy:J4 the repeated-failure limit is the loop's own stop
@@ -2522,26 +2696,41 @@ async function runPlannerLoopIterations(
       continue;
     }
 
-    // Coding mode: keep executing the rest of this model-emitted tool-call
-    // batch before evaluating/re-planning. Terminal calls already returned
-    // above, so anything still queued is non-terminal build work (more FILE
-    // writes / SHELL runs) that the model asked for in the same response.
-    if (codingDrainQueue && trajectory.plannedQueue.length > 0) {
+    if (
+      latestResult?.success === false &&
+      latestResult.failureProvenance?.retryable === true &&
+      latestResult.data?.acceptance === "rejected" &&
+      latestResult.data?.executionStatus === "not_started" &&
+      !latestResult.effectReceipts?.length &&
+      !hasAwaitingUserInputMarker(latestResult) &&
+      !hasRequiresConfirmationMarker(latestResult)
+    ) {
+      // A typed pre-execution rejection is safe to repair, not proof that an
+      // effect ran. Preserve the error and require the model to choose fresh
+      // arguments; never replay the original command or its dependent batch.
+      trajectory.plannedQueue.length = 0;
       continue;
     }
 
-    // Coding mode: the MODEL — not the chat completion-evaluator — owns
-    // termination. After a tool batch is fully drained, re-plan (give the
-    // model another tools round) so it can run the next step (e.g. SHELL
-    // after writing files) and only ends the turn by emitting a terminal
-    // call (REPLY/STOP), handled at the top of the loop. `maxToolCalls`
-    // bounds runaway loops. This gives the eliza-code sub-agent a real
-    // coding-agent loop instead of chat's evaluate-after-each-action — the
-    // chat evaluator would otherwise prematurely FINISH after the first
-    // file write (before the build's SHELL run / verification).
-    if (codingDrainQueue) {
-      trajectory.plannedQueue.length = 0;
+    // A queued call may depend on the preceding result. A failed prerequisite
+    // invalidates the remainder of the batch; let the model repair it using the
+    // complete recorded result instead of running dependent effects blindly.
+    const awaitingUser =
+      !!latestResult &&
+      (hasAwaitingUserInputMarker(latestResult) ||
+        hasRequiresConfirmationMarker(latestResult));
+    if (codingDrainQueue && !awaitingUser) {
+      if (latestResult?.success !== true) {
+        trajectory.plannedQueue.length = 0;
+      }
+      // Successful batches drain in order. Once empty, the model sees all
+      // results and chooses further work or a verified terminal response.
       continue;
+    }
+    // Human prerequisites go through settlement below, never automatic retry
+    // or another queued action, even when the adapter reports success=true.
+    if (codingDrainQueue && awaitingUser) {
+      trajectory.plannedQueue.length = 0;
     }
 
     const queueAdvance = selectQueueAutoAdvance({
@@ -2562,7 +2751,12 @@ async function runPlannerLoopIterations(
       !latestResult.failureProvenance &&
       (latestResult.effectReceipts?.length ?? 0) === 0 &&
       !latestUnresolvedFailedNonTerminalToolStep(trajectory);
-    if (queueAdvance || pendingReadReplan) {
+    const pendingMutationReplan = canReplanPendingCommittedMutation({
+      trajectory,
+      failures,
+      lastPlannerExplicitCompleted,
+    });
+    if (queueAdvance || pendingReadReplan || pendingMutationReplan) {
       // Live 2026-09-05: two planned creates (or deletes) paid a full
       // evaluator call (0.8–1.3 s) between the steps only to pick the call
       // that was already queued. Receipt-based queue advancement and a
@@ -2579,8 +2773,9 @@ async function runPlannerLoopIterations(
         : {
             success: false,
             decision: "CONTINUE",
-            thought:
-              "The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
+            thought: pendingMutationReplan
+              ? "The mutation is committed. The planner explicitly declared more work pending; use the recorded result to plan remaining work or a grounded final reply without repeating the effect."
+              : "The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
           };
       trajectory.evaluatorOutputs.push(
         projectToolDiagnosticValue(
@@ -2603,7 +2798,11 @@ async function runPlannerLoopIterations(
         startedAt: gateStartedAt,
         endedAt: Date.now(),
         output: gated,
-        reason: queueAdvance ? "queue_auto_advance" : "pending_read_replan",
+        reason: queueAdvance
+          ? "queue_auto_advance"
+          : pendingMutationReplan
+            ? "pending_mutation_replan"
+            : "pending_read_replan",
         logger: params.runtime.logger,
       });
       if (queueAdvance) preferRecommendedToolCall(trajectory, gated);
@@ -2699,6 +2898,8 @@ async function runPlannerLoopIterations(
     try {
       evaluator = await evaluateTrajectory(params, trajectory, iteration);
     } catch (err) {
+      const incomplete = incompleteProviderFailure(err);
+      if (incomplete) return incomplete;
       const unavailable = evaluatorFailureAfterInternalEffect(trajectory, err);
       if (unavailable) return unavailable;
       // error-policy:J4 explicit user-facing degrade - only an EXPECTED
@@ -3119,11 +3320,13 @@ function renderPlannerModelInput(params: {
     { content: `planner_stage:\n${instructions}`, stable: true },
     ...dynamicContextSegments,
   ]);
-  // Planner and evaluator share the same rendered context but have different
-  // stage instructions. Cerebras uses the cache key as a routing hint, so key
-  // the pair by their shared byte-stable context prefix while retaining each
-  // stage's complete annotated wire shape in `promptSegments`.
-  const cacheKeySegments = normalizePromptSegments(stableContextSegments);
+  // Version affinity with the actual stable instructions. Dynamic queue,
+  // history and progressive discovery stay outside the key so later rounds
+  // can reuse their growing prefix within the same conversation.
+  const cacheKeySegments = normalizePromptSegments([
+    ...stableContextSegments,
+    { content: `planner_stage:\n${instructions}`, stable: true },
+  ]);
   // Native tool-call messages: assistant (with toolCalls) + tool (result) per
   // completed step. This grows append-only across planner iterations so the
   // base prefix remains byte-identical and Cerebras's prompt cache can hit.
@@ -3965,6 +4168,13 @@ async function dispatchPlannerModelCall(params: {
       ...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
         .eliza ?? {}),
       thinking: "off",
+      ...(hasTools &&
+      params.allowReplyContextProjection !== true &&
+      params.tools?.some(
+        (tool) => !["REPLY", "IGNORE", "STOP"].includes(tool.name),
+      )
+        ? { preferLosslessToolArguments: true }
+        : {}),
       ...(params.trajectory.codingMode === true
         ? { preferToolReasoning: true }
         : {}),
@@ -6139,6 +6349,18 @@ function latestUnresolvedFailedNonTerminalToolStep(
     ) {
       continue;
     }
+    // Typed retryable validation rejections prove no operation started. Like
+    // read-before-write coaching, they remain full evidence for replanning but
+    // cannot turn a later verified completed outcome into a failed mutation.
+    if (
+      step.result.success === false &&
+      step.result.failureProvenance?.retryable === true &&
+      step.result.data?.acceptance === "rejected" &&
+      step.result.data?.executionStatus === "not_started" &&
+      !step.result.effectReceipts?.length
+    ) {
+      continue;
+    }
     const operationKey = plannerToolOperationKey(step.toolCall, step.result);
     if (step.result.success === false || step.result.error != null) {
       unresolvedByOperation.delete(operationKey);
@@ -7311,7 +7533,10 @@ export function partitionRedundantSucceededCalls(
         succeeded.clear();
       }
       succeeded.add(identity);
-    } else if (step.result.data?.retryable === false) {
+    } else if (
+      step.result.failureProvenance?.retryable === false ||
+      step.result.data?.retryable === false
+    ) {
       failedNonRetryable.add(identity);
     }
   }
@@ -8212,6 +8437,7 @@ function userSafeRescueReply(
  */
 function deterministicSuccessfulToolRelay(
   trajectory: PlannerTrajectory,
+  visibleOnly = false,
 ): string | undefined {
   for (const step of [...trajectory.steps].reverse()) {
     if (!step.toolCall || !step.result || isTerminalToolCall(step.toolCall))
@@ -8219,6 +8445,8 @@ function deterministicSuccessfulToolRelay(
     // A failed later read or write prevents an earlier success from owning
     // the final reply when the provider cannot finish the workflow.
     if (step.result.success !== true) return undefined;
+    if (visibleOnly && step.result.transcriptVisibility === "internal")
+      return undefined;
     const candidate =
       getNonEmptyString(step.result.userFacingText) ??
       (step.result.modelReplyRequired === true
@@ -8252,7 +8480,16 @@ function deterministicEvaluatorProtocolFailureRelay(
       ? groundedFailedToolMessage(unresolvedFailure)
       : undefined;
   }
-  return deterministicSuccessfulToolRelay(trajectory);
+  // A protocol error cannot approve a whole trajectory by replaying an older
+  // operation's confirmation. In particular, a later read may still need its
+  // answer composed even though an earlier write owns a durable receipt.
+  // Preserve the narrow action-owned single-operation reply contract; every
+  // other successful trajectory continues from its complete recorded evidence.
+  if (trajectory.plannedQueue.length > 0) return undefined;
+  if ((trajectory.outcomeIntents?.length ?? 0) > 1) return undefined;
+  const result = singleVerifiedUserFacingToolResult(trajectory);
+  if (result?.turnComplete !== true) return undefined;
+  return result.userFacingText?.trim() || undefined;
 }
 
 /**
@@ -9378,7 +9615,7 @@ function hasDeliveredQueuedNavigation(
  * call when the step just executed settled with at least one committed
  * mutation receipt or a matching delivered navigation. Navigation's required
  * model reply remains owned by the final evaluator. Reads, failures, pauses,
- * non-internal results and terminal queued calls keep per-step evaluation.
+ * unverified visible results and terminal queued calls keep per-step evaluation.
  */
 function selectQueueAutoAdvance(args: {
   trajectory: PlannerTrajectory;
@@ -9395,14 +9632,70 @@ function selectQueueAutoAdvance(args: {
     typeof args.lastPlannerExplicitCompleted === "boolean" &&
     hasDeliveredQueuedNavigation(latestStep);
   if (!deliveredNavigation) {
-    if (args.lastPlannerExplicitCompleted === false) return null;
-    if (!isSettledInternalSuccess(result)) return null;
+    const verifiedSettledResult =
+      result?.success === true &&
+      result.verifiedUserFacing === true &&
+      result.turnComplete === true &&
+      !hasAwaitingUserInputMarker(result) &&
+      !hasRequiresConfirmationMarker(result);
+    if (!isSettledInternalSuccess(result) && !verifiedSettledResult)
+      return null;
+    if (!result) return null;
     const committed = committedReceiptIdsForGate(result);
     if (!committed || committed.length === 0) return null;
   }
   const next = trajectory.plannedQueue[0];
   if (!next || isTerminalToolCall(next)) return null;
   return { nextToolCallId: next.id ?? next.name };
+}
+
+/** Pending scope and a settled commit permit replanning, never completion or replay. */
+function canReplanPendingCommittedMutation(args: {
+  trajectory: PlannerTrajectory;
+  failures: readonly FailureLike[];
+  lastPlannerExplicitCompleted: boolean | undefined;
+}): boolean {
+  const { trajectory } = args;
+  if (
+    args.lastPlannerExplicitCompleted !== false ||
+    trajectory.plannedQueue.length > 0 ||
+    args.failures.length > 0 ||
+    latestUnresolvedFailedNonTerminalToolStep(trajectory)
+  )
+    return false;
+  const step = trajectory.steps.at(-1);
+  const result = step?.result;
+  if (
+    !step?.toolCall ||
+    isTerminalToolCall(step.toolCall) ||
+    !result ||
+    result.success !== true ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    hasAwaitingUserInputMarker(result) ||
+    hasRequiresConfirmationMarker(result)
+  )
+    return false;
+  const verifiedVisible =
+    result.verifiedUserFacing === true && result.turnComplete === true;
+  if (!isSettledInternalSuccess(result) && !verifiedVisible) return false;
+  const committed = committedReceiptIdsForGate(result);
+  if (!committed?.length) return false;
+  const active = new Set(
+    activeCommittedEffectReceipts(
+      allTrajectorySteps(trajectory).flatMap(
+        (item) => item.result?.effectReceipts ?? [],
+      ),
+    ).map((receipt) => receipt.receiptId),
+  );
+  return (
+    committed.every((id) => active.has(id)) &&
+    (result.effectReceipts ?? []).some(
+      (receipt) =>
+        committed.includes(receipt.receiptId) &&
+        !READ_EFFECT_OPERATION_PATTERN.test(receipt.operation),
+    )
+  );
 }
 
 function tryGateEvaluator(args: {
