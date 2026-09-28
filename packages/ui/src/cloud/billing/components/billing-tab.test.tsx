@@ -226,7 +226,7 @@ describe("BillingTab buy-credits accessibility", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.id).toBe("purchase-amount-error");
-    expect(alert.textContent).toMatch(/Minimum amount is \$1/);
+    expect(alert.textContent).toMatch(/Minimum amount is \$5/);
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(input.getAttribute("aria-describedby")).toBe(
       "purchase-amount-hint purchase-amount-error",
@@ -267,7 +267,7 @@ describe("BillingTab buy-credits accessibility", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.id).toBe("purchase-amount-error");
-    expect(alert.textContent).toMatch(/Minimum amount is \$1/);
+    expect(alert.textContent).toMatch(/Minimum amount is \$5/);
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(input.getAttribute("aria-describedby")).toBe(
       "purchase-amount-hint purchase-amount-error",
@@ -339,6 +339,56 @@ describe("BillingTab buy-credits accessibility", () => {
     resolveCheckout({});
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy();
+    });
+  });
+
+  it("offers $10/$25/$50/$100 quick picks that submit a plain top-up amount", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/invoices/list")) {
+        return Promise.resolve({ invoices });
+      }
+      if (url.startsWith("/api/crypto/status")) {
+        return Promise.resolve({ enabled: false });
+      }
+      if (url.startsWith("/api/stripe/create-checkout-session")) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({});
+    });
+    const actor = userEvent.setup();
+    render(<BillingTab user={user} />);
+
+    await screen.findAllByTestId("invoice-row");
+    const quickAmounts = screen.getByRole("group", { name: "Quick amounts" });
+    const presets = Array.from(quickAmounts.querySelectorAll("button")).map(
+      (button) => button.textContent,
+    );
+    expect(presets).toEqual(["$10", "$25", "$50", "$100"]);
+    expect(
+      screen.getByText("Enter the amount you want to add. Min: $5, Max: $1000"),
+    ).toBeTruthy();
+
+    await actor.click(screen.getByRole("button", { name: "$50" }));
+    expect(
+      (screen.getByLabelText("Amount (USD)") as HTMLInputElement).value,
+    ).toBe("50");
+    expect(
+      screen.getByRole("button", { name: "$50" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    await actor.click(screen.getByRole("button", { name: /Buy credits/i }));
+
+    await waitFor(() => {
+      const checkoutCall = apiMock.mock.calls.find((call) =>
+        String(call[0]).startsWith("/api/stripe/create-checkout-session"),
+      );
+      expect(
+        (checkoutCall?.[1] as { json?: unknown } | undefined)?.json,
+      ).toEqual({
+        amount: 50,
+        expectedOrganizationId: "org-1",
+        expectedUserId: "user-1",
+        returnUrl: "settings",
+      });
     });
   });
 });

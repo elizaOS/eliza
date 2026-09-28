@@ -54,11 +54,32 @@ export const ORGANIZATION_CREDIT_PRICING = Object.freeze({
   usdPerCredit: USD_PER_ORGANIZATION_CREDIT,
 });
 
-/** Shared bounds for custom one-off top-ups; auto-top-up has its own policy. */
+/**
+ * Pay-as-you-go top-up bounds (#22963): any whole-cent amount from $5 to
+ * $1,000 per checkout, on every one-off rail (card, crypto). One credit is
+ * one dollar and there is no bonus credit. Auto-top-up has its own policy.
+ */
 export const ORGANIZATION_CREDIT_CHECKOUT_LIMITS = Object.freeze({
-  minAmountUsd: 1,
+  minAmountUsd: 5,
   maxAmountUsd: 1000,
 });
+
+/**
+ * Quick-pick amounts shown by top-up UIs. They are presets of the same
+ * pay-as-you-go checkout, not priced packs: each grants exactly its amount.
+ */
+export const ORGANIZATION_CREDIT_TOP_UP_PRESETS_USD = Object.freeze([
+  10, 25, 50, 100,
+] as const);
+
+/** True when `amountUsd` is a whole-cent amount inside the checkout bounds. */
+export function isOrganizationCreditTopUpAmount(amountUsd: number): boolean {
+  return (
+    checkoutAmountUsdToCents(amountUsd) !== null &&
+    amountUsd >= ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd &&
+    amountUsd <= ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd
+  );
+}
 
 /** Accept decimal whole cents without rejecting values such as 1.15 due to floating point. */
 export function checkoutAmountUsdToCents(amountUsd: number): number | null {

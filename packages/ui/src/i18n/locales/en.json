@@ -8331,6 +8331,8 @@
   "cloud.billingSuccess.goToDashboard": "Go to Dashboard",
   "cloud.billingSuccess.viewBilling": "View Billing",
   "cloud.billingTab.amountLabel": "Amount (USD)",
+  "cloud.billingTab.quickAmounts": "Quick amounts",
+  "cloud.billingTab.presetAmount": "${{amount}}",
   "cloud.billingTab.invoiceLoadFailed": "Invoice history could not be loaded",
   "cloud.billingTab.invalidPaymentLink": "Payment link is not a valid URL",
   "cloud.billingTab.invalidCheckoutUrl": "Checkout URL is not valid",

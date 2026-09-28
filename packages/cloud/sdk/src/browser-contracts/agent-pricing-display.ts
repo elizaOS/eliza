@@ -64,15 +64,3 @@ export function formatDuration(hours: number): string {
   }
   return `${hours}h`;
 }
-
-/**
- * Calculate credit pack savings percentage.
- */
-export function packSavingsPercent(
-  priceCents: number,
-  credits: number,
-): number {
-  const price = priceCents / 100;
-  if (credits <= 0 || price >= credits) return 0;
-  return Math.round(((credits - price) / credits) * 100);
-}

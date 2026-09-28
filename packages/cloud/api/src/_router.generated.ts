@@ -1042,11 +1042,6 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../stripe/create-checkout-session/route"),
   },
   {
-    path: "/api/stripe/credit-packs",
-    shard: "stripe",
-    load: () => import("../stripe/credit-packs/route"),
-  },
-  {
     path: "/api/stripe/webhook",
     shard: "stripe",
     load: () => import("../stripe/webhook/route"),

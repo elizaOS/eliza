@@ -93,7 +93,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "Billing & Credits",
       description:
-        "Manage your credits, view usage, and buy credit packs. Transparent pricing across every AI operation.",
+        "Manage your credits, view usage, and top up with pay-as-you-go credits. Transparent pricing across every AI operation.",
     },
     apiKeys: {
       title: "API Keys",
