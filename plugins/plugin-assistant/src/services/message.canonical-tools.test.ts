@@ -8,6 +8,7 @@ import type { Action } from "@elizaos/core";
 import {
   AgentRuntime,
   actionToJsonSchema,
+  composedPromotedSubactionDescription,
   createContextObject,
   type JsonSchema,
   promoteSubactionsToActions,
@@ -217,7 +218,9 @@ describe("canonical promoted-family planner surface", () => {
       expect(contract.description).toBeUndefined();
       const pin = Object.values(contract.pins ?? {})[0];
       const suffix = contract.descriptionSuffix ?? ` — subaction = ${pin}`;
-      expect(`${actions[0].description}${suffix}`).toBe(original.description);
+      expect(`${actions[0].description}${suffix}`).toBe(
+        composedPromotedSubactionDescription(original),
+      );
       const {
         parentParameterNames,
         propertyOverrides = {},

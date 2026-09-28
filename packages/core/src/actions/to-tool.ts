@@ -20,6 +20,7 @@ import {
 	type JsonSchema,
 	normalizeActionJsonSchema,
 } from "./action-schema";
+import { promotedSubactionDescription } from "./promote-subactions";
 
 export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -349,7 +350,48 @@ export function buildPlannerToolsFromActions(
 	for (const action of actions) {
 		tools.push(actionToPlannerTool(action));
 	}
-	return tools;
+	return statePromotedFamilyDescriptionsOnce(actions, tools);
+}
+
+/**
+ * A promoted operation's own description names only its operation
+ * (`promoteSubactionsToActions`), so exposing a family does not repeat the
+ * umbrella description per operation (#31017: nine MESSAGE_* tools each
+ * restated it). Within one tool list the umbrella description is stated once,
+ * on the family's first emitted operation, unless the umbrella's own tool in
+ * the same list already carries it; later operations reference that tool.
+ * `actions[i]` is the action rendered as `tools[i]`.
+ */
+function statePromotedFamilyDescriptionsOnce(
+	actions: ReadonlyArray<PlannerToolActionShape>,
+	tools: ToolDefinition[],
+): ToolDefinition[] {
+	const wireDescriptions = new Map(
+		tools.map((tool) => [tool.name, tool.description ?? ""]),
+	);
+	const statedOn = new Map<string, string>();
+	return tools.map((tool, index) => {
+		const action = actions[index];
+		const promoted = action
+			? promotedSubactionDescription(action as Action)
+			: undefined;
+		const familyDescription = promoted?.parentDescription.trim();
+		if (!promoted || !familyDescription) return tool;
+		if (wireDescriptions.get(promoted.parent)?.includes(familyDescription))
+			return tool;
+		const carrier = statedOn.get(promoted.parent);
+		if (carrier !== undefined) {
+			return {
+				...tool,
+				description: `${tool.description} ${promoted.parent} family description: see ${carrier}.`,
+			};
+		}
+		statedOn.set(promoted.parent, tool.name);
+		return {
+			...tool,
+			description: `${tool.description}\n${promoted.parent} family: ${familyDescription}`,
+		};
+	});
 }
 
 /**
@@ -527,6 +569,7 @@ export function buildPlannerToolsFromTieredActions(
 	}
 
 	const tools: ToolDefinition[] = [];
+	const emittedActions: PlannerToolActionShape[] = [];
 	const emittedNames = new Set<string>();
 
 	const emit = (action: PlannerToolActionShape): void => {
@@ -539,6 +582,7 @@ export function buildPlannerToolsFromTieredActions(
 		}
 		emittedNames.add(key);
 		tools.push(actionToPlannerTool(action));
+		emittedActions.push(action);
 	};
 
 	const onUnresolved = options.onUnresolvedSubAction ?? ((): void => undefined);
@@ -586,7 +630,7 @@ export function buildPlannerToolsFromTieredActions(
 		}
 	}
 
-	return tools;
+	return statePromotedFamilyDescriptionsOnce(emittedActions, tools);
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   buildPlannerToolsFromTieredActions,
   CORE_PLANNER_TERMINALS,
   completionContextSources,
+  composedPromotedSubactionDescription,
   composeToolDiagnosticRedactor,
   ElizaError,
   type ExecutePlannedToolCallContext,
@@ -741,6 +742,10 @@ export function collectPlannerTools(
       const parentSchema = normalizeActionJsonSchema(parent);
       const parentPropertyNames = Object.keys(parentSchema.properties ?? {});
       const parentStrict = parent.toolSchemaStrict ?? true;
+      // A generated alias states only its operation; its complete contract is
+      // the umbrella description it was promoted from plus that operation.
+      const aliasDescription = (alias: Action): string =>
+        composedPromotedSubactionDescription(alias) ?? alias.description;
       // Aliases promoted from an earlier umbrella description keep it as
       // their common lead after the umbrella's own description changed
       // (MESSAGE, live 2026-09-14: 27 aliases each restated the same
@@ -751,8 +756,8 @@ export function collectPlannerTools(
       // blurb.
       const sharedAliasPreamble = sharedDescriptionPreamble(
         aliases
-          .filter((alias) => !alias.description.startsWith(parent.description))
-          .map((alias) => alias.description),
+          .map(aliasDescription)
+          .filter((description) => !description.startsWith(parent.description)),
       );
       const aliasContracts = aliases.map((alias) => {
         const {
@@ -762,6 +767,7 @@ export function collectPlannerTools(
           additionalProperties,
           ...schema
         } = normalizeActionJsonSchema(alias);
+        const description = aliasDescription(alias);
         const propertyNames = Object.keys(properties);
         // A generated alias composes `${parent.description} — ${blurb}`
         // (promoteSubactionsToActions), so a complete alias description
@@ -770,13 +776,13 @@ export function collectPlannerTools(
         // block was the 1,977-char umbrella description repeated 14 times;
         // CALENDAR 3,702 of 8,270). The suffix appends verbatim to this
         // tool's description.
-        const extendsParentDescription = alias.description.startsWith(
+        const extendsParentDescription = description.startsWith(
           parent.description,
         );
         const extendsSharedPreamble =
           !extendsParentDescription &&
           sharedAliasPreamble !== undefined &&
-          alias.description.startsWith(sharedAliasPreamble);
+          description.startsWith(sharedAliasPreamble);
         // An alias accepting every umbrella property in order (no
         // `subactions` applicability lists: TASKS, CONTACT, DATABASE)
         // repeated the complete name list per alias (TASKS: 56 names × 14
@@ -811,11 +817,11 @@ export function collectPlannerTools(
         const defaultSuffix =
           pinValues.length === 1 ? ` — subaction = ${pinValues[0]}` : undefined;
         const suffix = extendsParentDescription
-          ? alias.description.slice(parent.description.length)
+          ? description.slice(parent.description.length)
           : undefined;
         const tail =
           extendsSharedPreamble && sharedAliasPreamble !== undefined
-            ? alias.description.slice(sharedAliasPreamble.length)
+            ? description.slice(sharedAliasPreamble.length)
             : undefined;
         const parameters = {
           ...schema,
@@ -842,7 +848,7 @@ export function collectPlannerTools(
               ? tail === defaultSuffix
                 ? {}
                 : { descriptionTail: tail }
-              : { description: alias.description }),
+              : { description }),
           routingHint: alias.routingHint,
           ...((alias.toolSchemaStrict ?? true) === parentStrict
             ? {}
