@@ -468,6 +468,27 @@ describe("BillingTab navigation guards", () => {
     );
   });
 
+  it("states that crypto refunds are issued only as Cloud credits (#22968)", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/invoices/list")) {
+        return Promise.resolve({ invoices });
+      }
+      if (url.startsWith("/api/crypto/status")) {
+        return Promise.resolve({ enabled: true });
+      }
+      return Promise.resolve({});
+    });
+    const actor = userEvent.setup();
+    render(<BillingTab user={user} />);
+
+    await screen.findAllByTestId("invoice-row");
+    expect(screen.queryByTestId("crypto-refund-policy")).toBeNull();
+    await actor.click(screen.getByRole("button", { name: /Crypto/i }));
+    expect(screen.getByTestId("crypto-refund-policy").textContent).toMatch(
+      /issued as Eliza Cloud credits, never back to your wallet, a card or a bank account/,
+    );
+  });
+
   it("refreshes the canonical snapshot after direct crypto confirmation", async () => {
     apiMock.mockImplementation((url: string) => {
       if (url.startsWith("/api/invoices/list")) {

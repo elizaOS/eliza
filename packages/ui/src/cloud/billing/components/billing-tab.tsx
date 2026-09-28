@@ -802,6 +802,18 @@ export function BillingTab({
                   </div>
                 )}
 
+                {paymentMethod === "crypto" && cryptoStatus?.enabled ? (
+                  <p
+                    className="text-sm text-muted-strong"
+                    data-testid="crypto-refund-policy"
+                  >
+                    {t("cloud.billingTab.cryptoRefundPolicy", {
+                      defaultValue:
+                        "Crypto payments can't be reversed on-chain. If a refund is due, it is issued as Eliza Cloud credits, never back to your wallet, a card or a bank account.",
+                    })}
+                  </p>
+                ) : null}
+
                 <fieldset
                   className="flex flex-wrap gap-2"
                   aria-label={t("cloud.billingTab.quickAmounts", {
