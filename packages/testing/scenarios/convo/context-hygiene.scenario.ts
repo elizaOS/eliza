@@ -195,22 +195,30 @@ export default scenario({
         );
         if (!evaluator) return "planner-loop evaluator call was not captured";
         const text = modelText(evaluator);
-        if (
-          text.includes("RESTORE_HISTORY") ||
-          text.includes("RESTORE_PROVIDERS")
-        ) {
+        // The reusable protocol and response schema keep the full decision
+        // superset for a stable prefix; eligibility lives in the per-call
+        // decision state, and the runtime rejects unavailable restoration.
+        const decisionState = text.slice(
+          text.lastIndexOf("# Current decision state"),
+        );
+        if (!decisionState.startsWith("# Current decision state")) {
+          return "evaluator omitted its current decision state";
+        }
+        if (!decisionState.includes("Available restoration routes: none")) {
           return "evaluator advertised context restoration with nothing deferred";
+        }
+        if (
+          /Choose (?:one restoration decision|RESTORE_)/.test(decisionState)
+        ) {
+          return "evaluator carried restoration guidance with nothing deferred";
         }
         const decision = (
           evaluator.params.responseSchema as {
             properties?: { decision?: { enum?: string[] } };
           }
         )?.properties?.decision?.enum;
-        if (
-          !decision ||
-          decision.some((route) => route.startsWith("RESTORE_"))
-        ) {
-          return `evaluator decision enum ${JSON.stringify(decision)} offers unavailable restoration`;
+        if (!decision?.includes("FINISH")) {
+          return `evaluator decision enum ${JSON.stringify(decision)} lost FINISH`;
         }
         if (
           !text.includes("success=true needs completed tool result evidence")
