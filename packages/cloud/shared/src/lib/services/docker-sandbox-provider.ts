@@ -524,7 +524,9 @@ try {
         attached,
         running,
         pidOneProbe,
-        `docker exec -d ${quoted} /usr/local/bin/node ${EXACT_RESTORE_AGENT_DIST}/agent-backup-restore-v3-restored-runtime.js ${shellQuote(exact.restoreAttemptId)}`,
+        // The runtime loads plugins exactly as the image's ordinary start does
+        // (APP_CMD_START), so it uses the same pinned tsx loader.
+        `docker exec -d ${quoted} /usr/local/bin/node --import /opt/tsx/node_modules/tsx/dist/loader.mjs ${EXACT_RESTORE_AGENT_DIST}/agent-backup-restore-v3-restored-runtime.js ${shellQuote(exact.restoreAttemptId)}`,
         `printf '%s' ${shellQuote(receiptDigest)}`,
       );
       break;

@@ -151,10 +151,14 @@ export function createDockerAgentBackupRestoreContainerTransport(
       const payload = frame(request);
       try {
         const raw = await withSsh((ssh) =>
-          ssh.execStdin(
+          // The controller treats stdin EOF as cancellation, so stdin stays
+          // open until it answers.
+          ssh.execStdinForResponse(
             buildExactRestoreControllerCommand(input, phase),
             payload,
+            new AbortController().signal,
             CONTROLLER_TIMEOUT_MS,
+            AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS.responseBytes,
           ),
         );
         const response = AgentBackupRestoreV3ControllerResponseSchema.parse(singleJsonLine(raw));
@@ -188,10 +192,12 @@ export function createDockerAgentBackupRestoreContainerTransport(
     },
     async probe(request) {
       const raw = await withSsh((ssh) =>
-        ssh.execStdin(
+        ssh.execStdinForResponse(
           buildExactRestoreServingProbeCommand(input),
           frame(request),
+          new AbortController().signal,
           PROBE_TIMEOUT_MS,
+          AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS.responseBytes,
         ),
       );
       return AgentBackupRestoreV3AttestationSchema.parse(singleJsonLine(raw));
