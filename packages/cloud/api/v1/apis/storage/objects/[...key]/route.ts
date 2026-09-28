@@ -29,11 +29,8 @@ import {
   StorageQuotaExceededError,
 } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@/lib/constants/pricing";
 import { InsufficientCreditsError } from "@/lib/services/credits";
-import {
-  PricingNotFoundError,
-  requireServiceMethodCost,
-} from "@/lib/services/proxy/pricing";
 import {
   calculateStoragePutPrice,
   executeNativeStorageDelete,
@@ -52,38 +49,11 @@ import {
   parseTrustworthyDecimalInteger,
 } from "./put-body-budget";
 
-const STORAGE_SERVICE_ID = "storage";
 const MAX_OBJECT_KEY_LENGTH = 1024;
 const R2_NOT_CONFIGURED_BODY = {
   error:
     "Attachment storage proxy not available — server misconfigured (R2_* env vars unset)",
 };
-
-/**
- * Maps a fail-closed storage-pricing fault (#22956) to a retryable 503.
- * Storage catalogue rows carry mixed units (flat per-request plus per-byte,
- * and a seeded-free DELETE row), so an absent or partial catalogue must never
- * bill through the per-call $0.001 fallback; the operation is refused before
- * any debit or provider effect.
- */
-function pricingUnavailable(
-  c: Context<AppEnv>,
-  error: PricingNotFoundError,
-): Response {
-  logger.error("[storage objects] pricing catalogue unavailable", {
-    serviceId: error.serviceId,
-    method: error.method,
-  });
-  return c.json(
-    {
-      error:
-        "Storage pricing is unavailable; the operation was not billed or executed",
-      code: "pricing_unavailable",
-    },
-    503,
-    { "Retry-After": "30" },
-  );
-}
 
 const app = new Hono<AppEnv>();
 
@@ -204,11 +174,8 @@ app.put("/*", async (c) => {
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "Request body is required" }, 400);
 
-    const flatCost = await requireServiceMethodCost(STORAGE_SERVICE_ID, "put");
-    const perByteCost = await requireServiceMethodCost(
-      STORAGE_SERVICE_ID,
-      "put_per_byte",
-    );
+    const flatCost = storageOperationPriceUsd("put");
+    const perByteCost = storageOperationPriceUsd("put_per_byte");
     const totalCost = calculateStoragePutPrice(flatCost, perByteCost, bytes);
     const response = await executeNativeStoragePut({
       bucket: c.env.BLOB,
@@ -224,9 +191,6 @@ app.put("/*", async (c) => {
     return c.json(response, 201);
   } catch (error) {
     // error-policy:J1 transport boundary maps typed write failures to HTTP status.
-    if (error instanceof PricingNotFoundError) {
-      return pricingUnavailable(c, error);
-    }
     if (error instanceof InsufficientCreditsError) {
       return c.json(
         {
@@ -279,7 +243,7 @@ async function handleStorageGet(c: Context<AppEnv>) {
     }
 
     if (!c.env.BLOB) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const priceUsd = await requireServiceMethodCost(STORAGE_SERVICE_ID, "get");
+    const priceUsd = storageOperationPriceUsd("get");
     const result = await executeNativeStorageGetOrHead({
       bucket: c.env.BLOB,
       organizationId: organization_id,
@@ -309,9 +273,6 @@ async function handleStorageGet(c: Context<AppEnv>) {
     });
   } catch (error) {
     // error-policy:J1 transport boundary maps typed read failures to HTTP status.
-    if (error instanceof PricingNotFoundError) {
-      return pricingUnavailable(c, error);
-    }
     const readFailure = storageReadFailure(c, error);
     if (readFailure) return readFailure;
     return failureResponse(c, error);
@@ -334,7 +295,7 @@ async function handleStorageHead(c: Context<AppEnv>) {
     }
 
     if (!c.env.BLOB?.head) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const priceUsd = await requireServiceMethodCost(STORAGE_SERVICE_ID, "head");
+    const priceUsd = storageOperationPriceUsd("head");
     const result = await executeNativeStorageGetOrHead({
       bucket: c.env.BLOB,
       organizationId: organization_id,
@@ -359,9 +320,6 @@ async function handleStorageHead(c: Context<AppEnv>) {
     });
   } catch (error) {
     // error-policy:J1 transport boundary maps typed read failures to HTTP status.
-    if (error instanceof PricingNotFoundError) {
-      return pricingUnavailable(c, error);
-    }
     const readFailure = storageReadFailure(c, error);
     if (readFailure) return readFailure;
     return failureResponse(c, error);
@@ -417,10 +375,7 @@ app.delete("/*", async (c) => {
     );
     if (nativeObject?.deleted_at) return new Response(null, { status: 204 });
     if (nativeObject?.provider_key) {
-      const deleteCost = await requireServiceMethodCost(
-        STORAGE_SERVICE_ID,
-        "delete",
-      );
+      const deleteCost = storageOperationPriceUsd("delete");
       await executeNativeStorageDelete({
         bucket: c.env.BLOB,
         organizationId: organization_id,
@@ -434,9 +389,6 @@ app.delete("/*", async (c) => {
     return new Response(null, { status: 204 });
   } catch (error) {
     // error-policy:J1 transport boundary maps typed delete failures to HTTP status.
-    if (error instanceof PricingNotFoundError) {
-      return pricingUnavailable(c, error);
-    }
     if (error instanceof StoragePutConflictError) {
       return c.json({ error: error.message, reason: error.reason }, 409);
     }

@@ -17,15 +17,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  PricingNotFoundError,
-  requireServiceMethodCost,
-} from "@/lib/services/proxy/pricing";
+import { storageOperationPriceUsd } from "@/lib/constants/pricing";
 import {
   executeNativeStorageList,
   NativeStorageReadError,
 } from "@/lib/services/storage/native-storage-read";
-import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_LIST_RESULTS = 1000;
@@ -80,7 +76,7 @@ app.get("/", async (c) => {
     const { prefix, recursive } = parsed.data;
 
     const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
-    const priceUsd = await requireServiceMethodCost("storage", "list");
+    const priceUsd = storageOperationPriceUsd("list");
     const result = await executeNativeStorageList({
       bucket,
       organizationId: organization_id,
@@ -94,23 +90,7 @@ app.get("/", async (c) => {
     c.header("X-Storage-Receipt-Id", result.operation.id);
     return c.json(result.body);
   } catch (error) {
-    if (error instanceof PricingNotFoundError) {
-      // error-policy:J1 fail-closed pricing fault (#22956): mixed-unit storage
-      // catalogue is absent/partial, so refuse before any debit or provider list.
-      logger.error("[storage list] pricing catalogue unavailable", {
-        serviceId: error.serviceId,
-        method: error.method,
-      });
-      return c.json(
-        {
-          error:
-            "Storage pricing is unavailable; the operation was not billed or executed",
-          code: "pricing_unavailable",
-        },
-        503,
-        { "Retry-After": "30" },
-      );
-    }
+    // error-policy:J1 transport boundary maps typed read failures to HTTP status.
     if (error instanceof NativeStorageReadError) {
       if (error.code === "INSUFFICIENT_CREDITS") {
         return c.json(

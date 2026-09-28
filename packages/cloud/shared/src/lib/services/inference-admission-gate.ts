@@ -651,6 +651,8 @@ export async function consumeInferenceRateLimit(params: {
   endpointType: EndpointType;
   windowMs: number;
   maxRequests: number;
+  /** Per-key cap (`api_keys.rate_limit`) checked in the same decision. */
+  apiKey?: { id: string; maxRequests: number };
 }): Promise<InferenceRateLimitDecision> {
   if (
     !params.organizationId ||
@@ -675,6 +677,7 @@ export async function consumeInferenceRateLimit(params: {
     windowMs: params.windowMs,
     maxRequests: params.maxRequests,
     windowStartedAt: activeGate.windowStartedAt,
+    ...(params.apiKey && { apiKey: params.apiKey }),
   };
   let response: Response | undefined;
   for (let attempt = 1; attempt <= RATE_LIMIT_GATE_MAX_ATTEMPTS; attempt += 1) {

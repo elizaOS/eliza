@@ -1,7 +1,9 @@
 /**
  * POST /api/stripe/create-checkout-session
  *
- * Creates a Stripe Checkout session for a credit pack or custom-amount top-up.
+ * Creates a Stripe Checkout session for a pay-as-you-go top-up (any whole-cent
+ * amount inside ORGANIZATION_CREDIT_CHECKOUT_LIMITS) or a hardware preorder.
+ * Fixed credit packs are retired (#22963); UI quick picks are plain amounts.
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
@@ -25,7 +27,6 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { creditsService } from "@/lib/services/credits";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
 import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
@@ -42,7 +43,8 @@ const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
 const checkoutRequestSchema = z
   .object({
-    creditPackId: z.string().uuid().optional(),
+    /** Retired (#22963): rejected with a typed error instead of ignored. */
+    creditPackId: z.unknown().optional(),
     amount: z
       .number()
       .min(
@@ -62,6 +64,14 @@ const checkoutRequestSchema = z
     returnUrl: z.enum(["settings", "billing"]).optional().default("settings"),
   })
   .superRefine((data, context) => {
+    if (data.creditPackId !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["creditPackId"],
+        message:
+          "Credit packs are retired; send the top-up amount in USD instead",
+      });
+    }
     const hasExpectedUser = data.expectedUserId !== undefined;
     const hasExpectedOrganization = data.expectedOrganizationId !== undefined;
     if (hasExpectedUser !== hasExpectedOrganization) {
@@ -72,8 +82,8 @@ const checkoutRequestSchema = z
       });
     }
   })
-  .refine((data) => data.creditPackId || data.amount || data.hardwareSku, {
-    message: "Either creditPackId, amount, or hardwareSku must be provided",
+  .refine((data) => data.amount || data.hardwareSku, {
+    message: "Either amount or hardwareSku must be provided",
   });
 
 const app = new Hono<AppEnv>();
@@ -92,7 +102,6 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     }
 
     const {
-      creditPackId,
       amount,
       expectedOrganizationId,
       expectedUserId,
@@ -167,8 +176,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     let lineItems: LineItem[];
     let sessionMetadata: Record<string, string>;
     let creditQuote: {
-      purchaseType: "credit_pack" | "custom_amount";
-      creditPackId: string | null;
+      purchaseType: "custom_amount";
+      creditPackId: null;
       creditsToGrant: string;
       chargeAmountCents: number;
     } | null = null;
@@ -200,43 +209,6 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
         hardware_color: hardwareColor ?? "unspecified",
         preorder_amount: hardware.priceUsd.toFixed(2),
         type: "hardware_preorder",
-      };
-    } else if (creditPackId) {
-      if (stripeCurrency !== "usd") {
-        return c.json({ error: "Credit purchases require USD billing" }, 503);
-      }
-      const creditPack = await creditsService.getCreditPackById(creditPackId);
-      if (!creditPack?.is_active) {
-        return c.json({ error: "Invalid or inactive credit pack" }, 404);
-      }
-
-      const stripePrice = await requireStripe().prices.retrieve(
-        creditPack.stripe_price_id,
-      );
-      if (
-        !stripePrice.active ||
-        stripePrice.currency.toLowerCase() !== "usd" ||
-        stripePrice.unit_amount !== creditPack.price_cents ||
-        stripePrice.recurring
-      ) {
-        return c.json(
-          { error: "Credit pack price is unavailable or out of sync" },
-          503,
-        );
-      }
-      lineItems = [{ price: stripePrice.id, quantity: 1 }];
-      sessionMetadata = {
-        organization_id: organizationId,
-        user_id: user.id,
-        credit_pack_id: creditPackId,
-        credits: creditPack.credits.toString(),
-        type: "credit_pack",
-      };
-      creditQuote = {
-        purchaseType: "credit_pack",
-        creditPackId,
-        creditsToGrant: canonicalCredits(creditPack.credits),
-        chargeAmountCents: creditPack.price_cents,
       };
     } else if (amount) {
       if (stripeCurrency !== "usd") {
@@ -274,7 +246,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     } else {
       return c.json(
         {
-          error: "Either creditPackId, amount, or hardwareSku must be provided",
+          error: "Either amount or hardwareSku must be provided",
         },
         400,
       );
@@ -488,12 +460,6 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-}
-
-function canonicalCredits(value: string | number): string {
-  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(String(value));
-  if (!match?.[1]) throw new Error("Credit pack grant is invalid");
-  return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
 }
 
 export async function findCheckoutSessionForOrder(
