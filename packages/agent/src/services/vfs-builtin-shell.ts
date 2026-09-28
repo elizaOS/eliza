@@ -12,7 +12,10 @@
  */
 import path from "node:path";
 import { runVfsSearchPattern } from "./vfs-search-pattern.ts";
-import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
+import {
+  createVirtualFilesystemService,
+  VirtualFilesystemError,
+} from "./virtual-filesystem.ts";
 
 interface VfsBuiltinShellRequest {
   cwdUri?: string;
@@ -172,12 +175,31 @@ async function runScriptSegment(
     const result = await runCommandLine(vfs, cwd, before.trim());
     if (result.exitCode !== 0) return result;
     const targetPath = resolveVirtualPath(cwd, stripQuotes(target));
-    const existing =
-      op === ">>" ? await vfs.readFile(targetPath).catch(() => "") : "";
+    const existing = op === ">>" ? await readAppendBase(vfs, targetPath) : "";
     await vfs.writeFile(targetPath, existing + result.stdout);
     return { exitCode: 0, stdout: "", stderr: result.stderr };
   }
   return runCommandLine(vfs, cwd, segment);
+}
+
+/**
+ * Returns the current contents of an append target. Only a missing file is an
+ * empty base; any other read failure propagates so `>>` never overwrites
+ * content it could not read.
+ */
+async function readAppendBase(
+  vfs: VfsService,
+  targetPath: string,
+): Promise<string> {
+  try {
+    return await vfs.readFile(targetPath);
+  } catch (error) {
+    // error-policy:J2 Absence is the only condition equivalent to empty content.
+    if (error instanceof VirtualFilesystemError && error.code === "NOT_FOUND") {
+      return "";
+    }
+    throw error;
+  }
 }
 
 async function runCommandLine(
