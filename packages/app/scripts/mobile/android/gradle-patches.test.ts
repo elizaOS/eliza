@@ -74,6 +74,19 @@ describe("injectAndroidSmsGatewayBuildConfigFields", () => {
     );
   });
 
+  it("escapes backslash, quote and control characters for the Java literal", () => {
+    // A newline or other control character in an env value must become a Java
+    // octal escape; escaping only `\` and `"` emits an unterminated literal.
+    const escapeExpr = String.raw`.collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')`;
+    for (const name of STRING_FIELDS) {
+      const line = androidSmsGatewayBuildConfigFieldLines().find((l) =>
+        l.includes(`"${name}"`),
+      );
+      expect(line, name).toContain(escapeExpr);
+      expect(line, name).not.toContain(".replace(");
+    }
+  });
+
   it("is output-independent of the build env and idempotent", () => {
     const withEnv = injectAndroidSmsGatewayBuildConfigFields(MINIMAL_GRADLE);
     for (const name of STRING_FIELDS) delete process.env[name];

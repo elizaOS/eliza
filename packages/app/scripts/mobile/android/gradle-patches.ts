@@ -70,11 +70,14 @@ function groovySingleQuoted(value) {
  * the build runs. The value never lands in build.gradle, which is git-tracked
  * for the in-tree `platforms/android` build — writing the resolved env value
  * here would leak secrets such as ELIZA_ANDROID_SMS_GATEWAY_SECRET into the
- * working tree. The Groovy expression escapes `\` and `"` so the emitted Java
- * string literal stays valid for any env value.
+ * working tree. The Groovy expression escapes `\\`, `"` and every control
+ * character (as a Java octal escape) so the emitted Java string literal stays
+ * valid for any env value, including one with a newline.
  */
 function envStringBuildConfigFieldLine(name, fallback) {
-  return `        buildConfigField "String", "${name}", "\\"\${(System.getenv('${name}') ?: ${groovySingleQuoted(fallback)}).replace('\\\\', '\\\\\\\\').replace('"', '\\\\"')}\\""`;
+  const value = `(System.getenv('${name}') ?: ${groovySingleQuoted(fallback)})`;
+  const escapeForJava = String.raw`.collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')`;
+  return `        buildConfigField "String", "${name}", "\\"\${${value}${escapeForJava}}\\""`;
 }
 
 export function androidSmsGatewayBuildConfigFieldLines() {
