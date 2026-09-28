@@ -192,6 +192,24 @@ describe("llmTrajectoryService.logCall", () => {
     });
   });
 
+  test("missing payloads fail listing and export instead of returning incomplete training data", async () => {
+    await withPrivateStore(() => llmTrajectoryService.logCall(CALL));
+    const [row] = await rows();
+    privateBlob.objects.delete(row.trajectory_payload_key as string);
+    await expect(
+      withPrivateStore(() => llmTrajectoryService.listByOrganization(ORG_ID)),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_PAYLOAD_MISSING" });
+    await expect(
+      withPrivateStore(() => llmTrajectoryService.exportAsTrainingJSONL(ORG_ID)),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_PAYLOAD_MISSING" });
+    await getPgliteClientForTests().exec(
+      "UPDATE llm_trajectories SET trajectory_payload_key = NULL",
+    );
+    await expect(
+      withPrivateStore(() => llmTrajectoryService.exportAsTrainingJSONL(ORG_ID)),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_PAYLOAD_INVALID" });
+  });
+
   test("a ciphertext moved to another column does not decrypt", async () => {
     await llmTrajectoryService.logCall(CALL);
     await getPgliteClientForTests().exec("UPDATE llm_trajectories SET response_text = user_prompt");

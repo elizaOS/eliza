@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
@@ -132,16 +133,21 @@ function isObjectStorage(storage: string): storage is Exclude<TrajectoryPayloadS
 
 async function hydrateTrajectory(row: LlmTrajectory): Promise<LlmTrajectory> {
   const storage = row.trajectory_payload_storage;
-  if (!isObjectStorage(storage) || !row.trajectory_payload_key) {
+  if (storage === "inline") {
     return { ...row, ...(await decodeBodies(row.id, row)) };
+  }
+  if (!isObjectStorage(storage) || !row.trajectory_payload_key) {
+    throw new ElizaError("Trajectory payload reference is invalid", {
+      code: "TRAJECTORY_PAYLOAD_INVALID",
+      context: { trajectoryId: row.id, storage },
+    });
   }
   const payload = await getTrajectoryPayload(storage, row.trajectory_payload_key);
   if (!payload) {
-    logger.warn("[llm-trajectory] Missing trajectory payload object", {
-      key: row.trajectory_payload_key,
-      storage,
+    throw new ElizaError("Trajectory payload object is missing", {
+      code: "TRAJECTORY_PAYLOAD_MISSING",
+      context: { trajectoryId: row.id, storage },
     });
-    return row;
   }
   return { ...row, ...(await decodeBodies(row.id, payload)) };
 }

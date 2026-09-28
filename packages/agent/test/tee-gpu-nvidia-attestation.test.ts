@@ -370,6 +370,20 @@ describe("NvidiaGpuAttestationVerifier", () => {
     ).toThrow(/locally verified/);
   });
 
+  it("accepts the documented false attestation-warning value", async () => {
+    responder = ({ nonce: n }) =>
+      bundle(n, {
+        gpu: (claims) => {
+          claims["x-nvidia-attestation-warning"] = false;
+        },
+      });
+    const verified = await new NvidiaGpuAttestationVerifier(config()).attest(
+      nonce(),
+      { evidence: EVIDENCE },
+    );
+    expect(verified.gpuProtected).toBe(true);
+  });
+
   it("collects evidence through the pinned collector and rejects a digest mismatch", async () => {
     const challenge = nonce();
     const verified = await new NvidiaGpuAttestationVerifier(

@@ -598,6 +598,7 @@ function appraiseGpu(
   if (
     payload["x-nvidia-attestation-warning"] !== undefined &&
     payload["x-nvidia-attestation-warning"] !== null &&
+    payload["x-nvidia-attestation-warning"] !== false &&
     !config.policy.allowAttestationWarnings
   )
     throw failure("policy", "NRAS reported an attestation warning");
