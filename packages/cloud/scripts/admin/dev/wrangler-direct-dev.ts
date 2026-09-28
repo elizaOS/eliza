@@ -275,7 +275,12 @@ async function main() {
     server.listen(options.port, options.ip, resolve);
   });
   console.log(
-    `[wrangler-direct-dev] Ready on http://${options.ip}:${options.port} (UserWorker ${proxyData.userWorkerUrl.hostname}:${proxyData.userWorkerUrl.port})`,
+    `[wrangler-direct-dev] UserWorker ${proxyData.userWorkerUrl.hostname}:${proxyData.userWorkerUrl.port}`,
+  );
+  // Owned-readiness probes match a line ending in `Ready on <url>`, exactly
+  // as stock `wrangler dev` announces its public port.
+  console.log(
+    `[wrangler-direct-dev] Ready on http://${options.ip}:${options.port}`,
   );
 }
 
