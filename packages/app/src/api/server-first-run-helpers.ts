@@ -117,6 +117,7 @@ export async function extractAndPersistFirstRunApiKey(
     serviceRouting: explicitServiceRouting,
   });
   let effectiveCredentialInputs = credentialInputs;
+  let effectiveServiceRouting = explicitServiceRouting;
   const llmSelection = initialPlan.llmSelection;
   if (!llmSelection && !initialPlan.cloudApiKey) {
     logger.warn(
@@ -150,16 +151,32 @@ export async function extractAndPersistFirstRunApiKey(
       ...(effectiveCredentialInputs ?? {}),
       llmApiKey: resolved.apiKey,
     };
-    logger.info(
-      `[first-run] Resolved real key for ${llmSelection.backend} via credential-resolver`,
-    );
+    if (resolved.authType === "subscription") {
+      // A subscription credential belongs to its own provider, so route the
+      // LLM backend to that provider rather than the originally selected one.
+      effectiveServiceRouting = normalizeServiceRoutingConfig({
+        ...(effectiveServiceRouting ?? {}),
+        llmText: {
+          ...(effectiveServiceRouting?.llmText ?? {}),
+          backend: resolved.providerId,
+          transport: "direct",
+        },
+      });
+      logger.info(
+        `[first-run] Using subscription auth for ${resolved.providerId}`,
+      );
+    } else {
+      logger.info(
+        `[first-run] Resolved real key for ${llmSelection.backend} via credential-resolver`,
+      );
+    }
   }
   const config = loadElizaConfig();
   const before = structuredClone(config);
   const result = await applyFirstRunCredentialPersistence(config, {
     credentialInputs: effectiveCredentialInputs,
     deploymentTarget: explicitDeploymentTarget,
-    serviceRouting: explicitServiceRouting,
+    serviceRouting: effectiveServiceRouting,
     observeEnvironmentMutation,
   });
   saveElizaConfig(config);

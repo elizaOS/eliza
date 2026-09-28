@@ -18,6 +18,24 @@ const agentMocks = vi.hoisted(() => ({
 
 vi.mock("@elizaos/agent", () => agentMocks);
 
+const resolverOverride = vi.hoisted(() => ({
+  next: null as null | {
+    providerId: string;
+    envVar: string;
+    apiKey: string;
+    authType: "api-key" | "subscription";
+  },
+}));
+
+vi.mock("./credential-resolver", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./credential-resolver")>();
+  return {
+    ...actual,
+    resolveProviderCredential: (providerId: string) =>
+      resolverOverride.next ?? actual.resolveProviderCredential(providerId),
+  };
+});
+
 import { extractAndPersistFirstRunApiKey } from "./server-first-run-helpers";
 
 const directOpenAiBody = (llmApiKey: string) => ({
@@ -32,6 +50,7 @@ describe("extractAndPersistFirstRunApiKey", () => {
     previousOpenAiKey = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "sk-stale-shell-key";
     agentMocks.applyFirstRunCredentialPersistence.mockClear();
+    resolverOverride.next = null;
   });
 
   afterEach(() => {
@@ -63,5 +82,22 @@ describe("extractAndPersistFirstRunApiKey", () => {
     expect(
       agentMocks.applyFirstRunCredentialPersistence,
     ).not.toHaveBeenCalled();
+  });
+
+  it("routes the LLM backend to a resolved subscription provider", async () => {
+    resolverOverride.next = {
+      providerId: "anthropic",
+      envVar: "ANTHROPIC_SUBSCRIPTION_TOKEN",
+      apiKey: "sub-token",
+      authType: "subscription",
+    };
+    await extractAndPersistFirstRunApiKey(directOpenAiBody("****-key"));
+    const [, args] =
+      agentMocks.applyFirstRunCredentialPersistence.mock.calls[0] ?? [];
+    expect(args?.credentialInputs?.llmApiKey).toBe("sub-token");
+    expect(
+      (args as { serviceRouting?: { llmText?: unknown } } | undefined)
+        ?.serviceRouting?.llmText,
+    ).toMatchObject({ backend: "anthropic", transport: "direct" });
   });
 });
