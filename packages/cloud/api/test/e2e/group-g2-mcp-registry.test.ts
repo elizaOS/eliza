@@ -76,8 +76,8 @@ async function createMcp(
           description: "Echo back the input",
         },
       ],
-      pricingType: "credits",
-      creditsPerRequest: 1,
+      // Paid MCP listings are retired (#22961): listings are free.
+      pricingType: "free",
       ...overrides,
     },
     { headers: bearerHeaders() },

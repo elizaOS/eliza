@@ -5,8 +5,8 @@ import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appCreditsService } from "@/lib/services/app-credits";
-import { isAppMonetizationApproved } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
+import { CreatorMonetizationRetiredError } from "@/lib/services/creator-monetization-retirement";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -140,21 +140,11 @@ async function __hono_PUT(
       );
     }
 
-    // Compliance gate (#10732): monetization can only be *enabled* once the
-    // automated review has approved the app. Disabling is always allowed.
-    if (
-      validationResult.data.monetizationEnabled === true &&
-      !isAppMonetizationApproved(app)
-    ) {
-      return Response.json(
-        {
-          success: false,
-          error:
-            "App must pass compliance review before monetization can be enabled. Submit it for review and reach 'approved' status first.",
-          review_status: app.review_status,
-        },
-        { status: 403 },
-      );
+    // Creator monetization is retired (#22961 / #23022). Disabling stays
+    // allowed so an owner can clear a legacy setting.
+    if (validationResult.data.monetizationEnabled === true) {
+      const retired = new CreatorMonetizationRetiredError("app_monetization");
+      return Response.json(retired.toJSON(), { status: 410 });
     }
 
     await appCreditsService.updateMonetizationSettings(

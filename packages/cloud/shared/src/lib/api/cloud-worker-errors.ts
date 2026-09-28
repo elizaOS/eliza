@@ -25,6 +25,8 @@ export type ApiErrorCode =
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"
   | "billing_state_conflict"
+  | "creator_monetization_retired"
+  | "affiliate_payout_exceeds_payable"
   | "service_unavailable"
   | "internal_error";
 
@@ -55,7 +57,7 @@ export class ApiError extends HTTPException {
           }
         : statusOrOptions;
 
-    super(options.status as 400 | 401 | 402 | 403 | 404 | 409 | 422 | 429 | 500 | 503, {
+    super(options.status as 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 500 | 503, {
       message: options.message,
     });
     this.name = "ApiError";

@@ -48,6 +48,9 @@ export const emailMessages: EmailMessages = {
   containerShutdownWarning: {
     subject: '🚨 緊急：コンテナ "{{containerName}}" は 48 時間以内に停止されます',
   },
+  agentRetentionDeletionNotice: {
+    subject: 'エージェント "{{agentName}}" は {{daysRemaining}} 日後に削除されます',
+  },
   footer: {
     copyright: "© {{year}} Eliza Cloud. All rights reserved.",
   },

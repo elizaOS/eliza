@@ -3291,6 +3291,27 @@
       "when": 1796083200117,
       "tag": "0495_agent_backup_restore_serving_state",
       "breakpoints": true
+    },
+    {
+      "idx": 470,
+      "version": "7",
+      "when": 1796083200118,
+      "tag": "0500_retire_creator_monetization",
+      "breakpoints": true
+    },
+    {
+      "idx": 471,
+      "version": "7",
+      "when": 1796083200119,
+      "tag": "0501_agent_funding_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 472,
+      "version": "7",
+      "when": 1796083200120,
+      "tag": "0502_free_mcp_listings",
+      "breakpoints": true
     }
   ]
 }
