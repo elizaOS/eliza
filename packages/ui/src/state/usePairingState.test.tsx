@@ -88,6 +88,20 @@ it("uses a new pairing code after a previously paired same-base token is revoked
   expect(mocks.setToken).toHaveBeenLastCalledWith("replacement-session");
 });
 
+it("uses a fresh code when a server at the same address replaces the prior pairing", async () => {
+  mocks.resume.mockResolvedValue(undefined);
+  const { result } = renderHook(() => usePairingState(vi.fn()));
+  act(() => result.current.setPairingCodeInput("FIRST-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  // The old bearer can still be cached during startup against a replaced
+  // server. A different entered code is explicit new pairing intent.
+  mocks.pair.mockResolvedValue({ token: "replacement-session" });
+  act(() => result.current.setPairingCodeInput("NEW-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.pair).toHaveBeenNthCalledWith(2, "NEW-CODE");
+  expect(mocks.setToken).toHaveBeenLastCalledWith("replacement-session");
+});
+
 it("pairs again after authenticated setup rejects the issued session", async () => {
   mocks.resume.mockRejectedValueOnce({ status: 401 });
   const { result } = renderHook(() => usePairingState(vi.fn()));

@@ -64,26 +64,36 @@ export function usePairingState(onPaired: () => void) {
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [pairingBusy, setPairingBusy] = useState(false);
   const pairingBusyRef = useRef(false);
-  const pairedApiBaseRef = useRef<string | null>(null);
+  const pairedAttemptRef = useRef<{ apiBase: string; code: string } | null>(
+    null,
+  );
   const pendingCredentialRef = useRef<{
     apiBase: string;
+    code: string;
     token: string;
   } | null>(null);
 
   const handlePairingSubmit = useCallback(async () => {
     if (pairingBusyRef.current || pairingBusy) return;
     const apiBase = client.getBaseUrl();
-    if (pairedApiBaseRef.current !== apiBase) pairedApiBaseRef.current = null;
-    if (pendingCredentialRef.current?.apiBase !== apiBase)
+    const code = pairingCodeInput.trim();
+    if (
+      pairedAttemptRef.current?.apiBase !== apiBase ||
+      pairedAttemptRef.current.code !== code
+    )
+      pairedAttemptRef.current = null;
+    if (
+      pendingCredentialRef.current?.apiBase !== apiBase ||
+      pendingCredentialRef.current.code !== code
+    )
       pendingCredentialRef.current = null;
     // A prior successful pair can be revoked while this hook remains mounted.
     // Its same-base retry marker must not skip a fresh one-time code.
-    if (pairedApiBaseRef.current && !client.getRestAuthToken()) {
-      pairedApiBaseRef.current = null;
+    if (pairedAttemptRef.current && !client.getRestAuthToken()) {
+      pairedAttemptRef.current = null;
       pendingCredentialRef.current = null;
     }
-    const code = pairingCodeInput.trim();
-    if (!code && !pairedApiBaseRef.current && !pendingCredentialRef.current) {
+    if (!code && !pairedAttemptRef.current && !pendingCredentialRef.current) {
       setPairingError("Enter the pairing code from your server.");
       return;
     }
@@ -91,10 +101,10 @@ export function usePairingState(onPaired: () => void) {
     pairingBusyRef.current = true;
     setPairingBusy(true);
     try {
-      if (!pairedApiBaseRef.current) {
+      if (!pairedAttemptRef.current) {
         if (!pendingCredentialRef.current) {
           const { token } = await client.pair(code);
-          pendingCredentialRef.current = { apiBase, token };
+          pendingCredentialRef.current = { apiBase, code, token };
         }
         const { token } = pendingCredentialRef.current;
         if (client.getBaseUrl() !== apiBase) {
@@ -117,7 +127,7 @@ export function usePairingState(onPaired: () => void) {
           );
         }
         client.setToken(token);
-        pairedApiBaseRef.current = apiBase;
+        pairedAttemptRef.current = { apiBase, code };
       }
       await resumeRemoteFirstRunAfterPairing(client, apiBase);
       // Re-evaluate the authenticated session without replaying Capacitor's
@@ -125,11 +135,11 @@ export function usePairingState(onPaired: () => void) {
       onPaired();
     } catch (err) {
       if (
-        pairedApiBaseRef.current === apiBase &&
+        pairedAttemptRef.current?.apiBase === apiBase &&
         (err as { status?: number })?.status === 401
       ) {
         const rejected = pendingCredentialRef.current;
-        pairedApiBaseRef.current = null;
+        pairedAttemptRef.current = null;
         pendingCredentialRef.current = null;
         if (rejected) scrubRejectedActiveServerCredential(rejected.token);
         setPairingCodeInput("");
@@ -139,7 +149,7 @@ export function usePairingState(onPaired: () => void) {
         return;
       }
       setPairingError(
-        pairedApiBaseRef.current
+        pairedAttemptRef.current
           ? `Paired, but remote setup failed: ${err instanceof Error ? err.message : String(err)}`
           : pairingFailureMessage(err),
       );
