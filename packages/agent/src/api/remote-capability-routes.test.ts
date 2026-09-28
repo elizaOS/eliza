@@ -269,6 +269,70 @@ describe("capability-router connect persistence", () => {
     expect(harness.vars).toEqual(before);
   });
 
+  it.each([
+    "requireSignedProvenance",
+    "allowedProvenanceIssuers",
+    "trustedProvenancePublicKeys",
+  ])(
+    "rejects reserved endpoint id %s with a 400 before connecting",
+    async (id) => {
+      const harness = createHarness({});
+      harness.ctx.readJsonBody = vi.fn(async () => ({
+        endpoint: { id, baseUrl: "https://fresh.example.com" },
+        trustPolicy: { requireSignedProvenance: true },
+      })) as unknown as RemoteCapabilityRouteContext["readJsonBody"];
+
+      await handleRemoteCapabilityRoutes(harness.ctx);
+
+      expect(harness.error).toHaveBeenCalledTimes(1);
+      const [, message, status] = harness.error.mock.calls[0];
+      expect(status).toBe(400);
+      expect(message).toContain(id);
+      expect(harness.connectEndpointProvider).not.toHaveBeenCalled();
+      expect(harness.persistConfigEnv).not.toHaveBeenCalled();
+      expect(harness.saveConfig).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a reserved cloud endpointId with a 400 before connecting", async () => {
+    const harness = createHarness({});
+    const connectCloudSandbox = vi.fn();
+    harness.ctx.connectCloudSandbox =
+      connectCloudSandbox as unknown as RemoteCapabilityRouteContext["connectCloudSandbox"];
+    harness.ctx.readJsonBody = vi.fn(async () => ({
+      cloud: {
+        cloudApiBase: "https://cloud.example.com",
+        authToken: "token",
+        name: "sandbox",
+        endpointId: "requireVerifiedProvenance",
+      },
+    })) as unknown as RemoteCapabilityRouteContext["readJsonBody"];
+
+    await handleRemoteCapabilityRoutes(harness.ctx);
+
+    expect(harness.error.mock.calls[0]?.[2]).toBe(400);
+    expect(connectCloudSandbox).not.toHaveBeenCalled();
+    expect(harness.saveConfig).not.toHaveBeenCalled();
+  });
+
+  it("refuses to persist a provider-assigned reserved endpoint id", async () => {
+    const harness = createHarness({});
+    harness.connectEndpointProvider.mockResolvedValueOnce({
+      providerId: "direct",
+      endpoint: {
+        id: "requireSignedProvenance",
+        baseUrl: "https://fresh.example.com",
+      },
+      sync: { registered: [], unloaded: [], skipped: [], trustDecisions: [] },
+    });
+
+    await handleRemoteCapabilityRoutes(harness.ctx);
+
+    expect(harness.error.mock.calls[0]?.[2]).toBe(400);
+    expect(harness.persistConfigEnv).not.toHaveBeenCalled();
+    expect(harness.saveConfig).not.toHaveBeenCalled();
+  });
+
   it("refuses to overwrite a corrupt value supplied through process.env", async () => {
     process.env.ELIZA_CAPABILITY_ROUTER_URLS = "[not json";
     const harness = createHarness({});

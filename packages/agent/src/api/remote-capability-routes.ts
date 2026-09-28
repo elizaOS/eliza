@@ -44,10 +44,12 @@ import {
 } from "../services/remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
+  assertCapabilityRouterEndpointIdAllowed,
   CAPABILITY_ROUTER_ALLOWED_MODULES_SETTING,
   CAPABILITY_ROUTER_TRUST_POLICY_SETTING,
   CAPABILITY_ROUTER_URLS_SETTING,
   type CapabilityRouterModuleAllowlistSetting,
+  CapabilityRouterReservedEndpointIdError,
   CapabilityRouterSettingError,
   type CapabilityRouterTrustPolicySetting,
   parseCapabilityRouterEndpointsSetting,
@@ -354,6 +356,10 @@ export async function handleRemoteCapabilityRoutes(
     error(res, "Request body must include either 'endpoint' or 'cloud'.", 400);
     return true;
   } catch (err) {
+    if (err instanceof CapabilityRouterReservedEndpointIdError) {
+      error(res, err.message, 400);
+      return true;
+    }
     if (err instanceof CapabilityRouterPersistedStateError) {
       logger.error(
         {
@@ -511,6 +517,9 @@ async function persistEndpointInner(
   trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions,
   audit?: CapabilityRouterTrustAuditInput,
 ): Promise<void> {
+  // A provider may assign its own id; never persist one that would be read
+  // back as a global trust-policy option.
+  assertCapabilityRouterEndpointIdAllowed(endpoint.id, "endpoint.id");
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
   // Read (and validate) every persisted value before the first write so a
@@ -770,8 +779,10 @@ function mergePersistedEndpoints(
 }
 function parseDirectEndpoint(value: unknown): RemoteCapabilityEndpointConfig {
   const body = requireObject(value, "endpoint") as DirectEndpointBody;
+  const id = optionalNonEmptyString(body.id, "endpoint.id") ?? "default";
+  assertCapabilityRouterEndpointIdAllowed(id, "endpoint.id");
   return {
-    id: optionalNonEmptyString(body.id, "endpoint.id") ?? "default",
+    id,
     baseUrl: requireHttpUrl(body.baseUrl, "endpoint.baseUrl"),
     ...optionalToken(body.token, "endpoint.token"),
   };
@@ -843,6 +854,9 @@ function parseCloudOptions(
     body.endpointId,
     "cloud.endpointId",
   );
+  if (endpointId !== undefined) {
+    assertCapabilityRouterEndpointIdAllowed(endpointId, "cloud.endpointId");
+  }
   const timeoutMs = optionalPositiveInteger(body.timeoutMs, "cloud.timeoutMs");
   if (timeoutMs instanceof Error) throw timeoutMs;
   const pollIntervalMs = optionalPositiveInteger(

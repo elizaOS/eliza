@@ -6,7 +6,19 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveRemoteCapabilityRouterConfig } from "./remote-capability-router.ts";
-import { CapabilityRouterSettingError } from "./remote-capability-router-settings.ts";
+import {
+  CapabilityRouterSettingError,
+  parseCapabilityRouterEndpointsSetting,
+  serializeCapabilityRouterTrustPolicySetting,
+} from "./remote-capability-router-settings.ts";
+
+const TRUST_POLICY_FIELD_NAMES = [
+  "allowedProvenanceIssuers",
+  "trustedProvenancePublicKeys",
+  "requireSignedProvenance",
+  "requireVerifiedProvenance",
+  "requireProvenanceDigestMatch",
+] as const;
 
 const ENV_KEYS = [
   "ELIZA_CAPABILITY_ROUTER_URLS",
@@ -81,4 +93,30 @@ describe("resolveRemoteCapabilityRouterConfig endpoint list", () => {
     expect(run).toThrow(CapabilityRouterSettingError);
     expect(run).toThrow(/ELIZA_CAPABILITY_ROUTER_URLS/);
   });
+});
+
+describe("reserved trust-policy field names as endpoint ids", () => {
+  it.each(TRUST_POLICY_FIELD_NAMES)(
+    "rejects endpoint id %s in the endpoint list",
+    (id) => {
+      const run = () =>
+        parseCapabilityRouterEndpointsSetting(
+          JSON.stringify([{ id: ` ${id} `, baseUrl: "https://a.example.com" }]),
+        );
+      expect(run).toThrow(CapabilityRouterSettingError);
+      expect(run).toThrow(/reserved/);
+    },
+  );
+
+  it.each(TRUST_POLICY_FIELD_NAMES)(
+    "refuses to serialize a per-endpoint trust policy keyed %s",
+    (id) => {
+      expect(() =>
+        serializeCapabilityRouterTrustPolicySetting({
+          global: {},
+          endpoints: { [id]: { requireSignedProvenance: true } },
+        }),
+      ).toThrow(CapabilityRouterSettingError);
+    },
+  );
 });

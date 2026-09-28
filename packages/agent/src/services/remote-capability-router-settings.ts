@@ -68,6 +68,45 @@ const TRUST_POLICY_FIELD_SET: ReadonlySet<string> = new Set(
 );
 
 /**
+ * An endpoint id collides with a trust-policy option name. The trust-policy
+ * setting stores global options and per-endpoint policies in one object, so
+ * such an id would be read back as a global option and corrupt the setting.
+ */
+export class CapabilityRouterReservedEndpointIdError extends ElizaError {
+  override readonly name = "CapabilityRouterReservedEndpointIdError";
+  readonly endpointId: string;
+
+  constructor(endpointId: string, field: string) {
+    super(
+      `${field} "${endpointId}" is reserved: it names a trust policy option (${TRUST_POLICY_FIELDS.join(", ")}). Choose a different endpoint id.`,
+      {
+        code: "CAPABILITY_ROUTER_ENDPOINT_ID_RESERVED",
+        context: { endpointId, field },
+      },
+    );
+    this.endpointId = endpointId;
+  }
+}
+
+/** True when an endpoint id would collide with a trust-policy option key. */
+export function isReservedCapabilityRouterEndpointId(id: string): boolean {
+  return TRUST_POLICY_FIELD_SET.has(id.trim());
+}
+
+/**
+ * Throws {@link CapabilityRouterReservedEndpointIdError} when `id` names a
+ * trust-policy option; `field` labels the offending input in the message.
+ */
+export function assertCapabilityRouterEndpointIdAllowed(
+  id: string,
+  field: string,
+): void {
+  if (isReservedCapabilityRouterEndpointId(id)) {
+    throw new CapabilityRouterReservedEndpointIdError(id.trim(), field);
+  }
+}
+
+/**
  * ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES is either a global JSON array (the
  * allowlist for every endpoint) or an object keyed by endpoint id; never both.
  */
@@ -155,6 +194,12 @@ export function parseCapabilityRouterEndpointsSetting(
       );
     }
     const id = item.id?.trim();
+    if (id && isReservedCapabilityRouterEndpointId(id)) {
+      throw new CapabilityRouterSettingError(
+        CAPABILITY_ROUTER_URLS_SETTING,
+        `entry ${index} id "${id}" is reserved (it names a trust policy option)`,
+      );
+    }
     const token = item.token?.trim();
     return {
       id: id ? id : fallbackId,
@@ -259,6 +304,14 @@ export function serializeCapabilityRouterModuleAllowlistSetting(
 export function serializeCapabilityRouterTrustPolicySetting(
   setting: CapabilityRouterTrustPolicySetting,
 ): string | undefined {
+  for (const endpointId of Object.keys(setting.endpoints)) {
+    if (isReservedCapabilityRouterEndpointId(endpointId)) {
+      throw new CapabilityRouterSettingError(
+        CAPABILITY_ROUTER_TRUST_POLICY_SETTING,
+        `endpoint id "${endpointId}" is reserved (it names a trust policy option)`,
+      );
+    }
+  }
   const combined = { ...setting.global, ...setting.endpoints };
   return Object.keys(combined).length === 0
     ? undefined
