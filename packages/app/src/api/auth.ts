@@ -25,6 +25,7 @@ import {
   denyOnAuthStoreError,
   findActiveSession,
   readCookie,
+  readLastActivityHeader,
   SESSION_COOKIE_NAME,
   verifyCsrfToken,
 } from "./auth/sessions.js";
@@ -470,11 +471,9 @@ export async function resolveAuthorizedRouteRole(
       ? null
       : readCookie(req, SESSION_COOKIE_NAME);
   if (store && sessionCookie) {
-    const session = await findActiveSession(
-      store,
-      sessionCookie,
-      options.now,
-    ).catch(denyOnAuthStoreError("resolveAuthorizedRouteRole/cookieSession"));
+    const session = await findActiveSession(store, sessionCookie, options.now, {
+      lastActivityAt: readLastActivityHeader(req),
+    }).catch(denyOnAuthStoreError("resolveAuthorizedRouteRole/cookieSession"));
     if (session) {
       if (csrfRequired) {
         const csrfHeader = extractHeaderValue(

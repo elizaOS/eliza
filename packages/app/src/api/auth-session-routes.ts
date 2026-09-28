@@ -18,8 +18,10 @@ import {
   ensureSessionForRequest,
   getSensitiveLimiter,
   hashPassword,
+  revokeAllSessionsForIdentity,
   revokeSession,
   SESSION_COOKIE_NAME,
+  type SessionCookieSource,
   serializeCsrfCookie,
   serializeCsrfExpiryCookie,
   serializeSessionCookie,
@@ -100,7 +102,7 @@ export function _resetAuthSessionRoutesLimiter(): void {
 
 function setSessionCookies(
   res: http.ServerResponse,
-  session: { id: string; csrfSecret: string; expiresAt: number },
+  session: SessionCookieSource & { csrfSecret: string },
 ): void {
   res.setHeader("set-cookie", [
     serializeSessionCookie(session),
@@ -657,6 +659,17 @@ async function handleChangePassword(
 
   const passwordHash = await hashPassword(newPassword);
   await store.updateIdentityPassword(identity.id, passwordHash);
+  // A changed password ends every other session of this identity (and their
+  // open WebSockets); the caller's own session, when there is one, survives.
+  const currentSessionId = ctx?.session?.id;
+  const sessionsRevoked = await revokeAllSessionsForIdentity({
+    store,
+    identityId: identity.id,
+    ...(currentSessionId ? { exceptSessionId: currentSessionId } : {}),
+    reason: "password_change",
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
   await appendAuditEvent(
     {
       actorIdentityId: identity.id,
@@ -664,12 +677,12 @@ async function handleChangePassword(
       userAgent: meta.userAgent,
       action: "auth.password.change",
       outcome: "success",
-      metadata: { localAccess },
+      metadata: { localAccess, sessionsRevoked },
     },
     { store },
   );
 
-  sendJsonResponse(res, 200, { ok: true });
+  sendJsonResponse(res, 200, { ok: true, sessionsRevoked });
   return true;
 }
 

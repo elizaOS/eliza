@@ -1,9 +1,9 @@
 /**
  * Privacy controls + data-subject rights, all server-authoritative:
  *   - vision / screen-capture consent (`/api/v1/me/consents`, default off)
- *   - model-call training consent (`/api/v1/me/consents`; with no recorded
- *     choice the server-reported deployment default applies, and the copy
- *     says which default that is)
+ *   - a read-only disclosure of the deployment's model-call recording policy
+ *     (reported by the same endpoint; recording is deployment configuration,
+ *     not a per-user choice)
  *   - live-account data export (`/api/v1/me/data-export`, digest-verified)
  *   - account deletion via the Worker's lifecycle admission state
  *
@@ -58,13 +58,12 @@ export function PrivacyPanel() {
   });
 
   const loaded = consents.isSuccess;
-  // Both switches render the policy the server enforces: the recorded choice,
+  // The switch renders the policy the server enforces: the recorded choice,
   // or the deployment default when none is recorded. Until the policy loads
-  // they stay off and disabled rather than guessing.
+  // it stays off and disabled rather than guessing.
   const vision = consents.data?.effective.vision_capture;
-  const trajectory = consents.data?.effective.trajectory_training;
   const visionChecked = vision?.granted ?? false;
-  const trajectoryChecked = trajectory?.granted ?? false;
+  const recording = consents.data?.capture.modelCallRecording;
 
   const onConsentChange = (purpose: ConsentPurpose, granted: boolean) => {
     setPendingPurpose(purpose);
@@ -115,28 +114,31 @@ export function PrivacyPanel() {
     />
   ) : null;
 
-  const trajectoryDescription = (
-    <>
-      {t("cloud.privacyPanel.trainingDescription", {
-        defaultValue:
-          "Eliza Cloud keeps the prompts and responses of model calls billed to your account and may use them to improve models. Turn off to opt out of that capture.",
+  const recordingRow = recording ? (
+    <SettingsRow
+      icon={ScrollText}
+      label={t("cloud.privacyPanel.recordingTitle", {
+        defaultValue: "Model-call recording",
       })}
-      {trajectory?.basis === "default" ? (
-        <>
-          {" "}
-          {trajectory.defaultGranted
-            ? t("cloud.privacyPanel.trainingNoChoice", {
+      description={
+        <span
+          data-testid="model-call-recording-status"
+          data-state={recording.enabled ? "on" : "off"}
+        >
+          {recording.enabled
+            ? t("cloud.privacyPanel.recordingOn", {
                 defaultValue:
-                  "You haven't chosen yet, so the Cloud default (on) applies.",
+                  "This deployment records model calls to improve Eliza. Recordings are encrypted and deleted after {{days}} days.",
+                days: recording.retentionDays,
               })
-            : t("cloud.privacyPanel.trainingNoChoiceOff", {
+            : t("cloud.privacyPanel.recordingOff", {
                 defaultValue:
-                  "You haven't chosen yet, so the Cloud default (off) applies. Nothing is captured until you turn this on.",
+                  "Model-call recording is off on this deployment. Nothing you send is kept for training.",
               })}
-        </>
-      ) : null}
-    </>
-  );
+        </span>
+      }
+    />
+  ) : null;
 
   return (
     <SettingsStack data-testid="cloud-privacy-panel">
@@ -164,21 +166,7 @@ export function PrivacyPanel() {
           disabled={!loaded || pendingPurpose !== null}
           onCheckedChange={(next) => onConsentChange("vision_capture", next)}
         />
-        <SettingsSwitchRow
-          agentId="cloud-privacy-trajectory"
-          group="cloud-privacy"
-          icon={ScrollText}
-          testId="trajectory-toggle"
-          label={t("cloud.privacyPanel.trainingTitle", {
-            defaultValue: "Use my model calls for training",
-          })}
-          description={trajectoryDescription}
-          checked={trajectoryChecked}
-          disabled={!loaded || pendingPurpose !== null}
-          onCheckedChange={(next) =>
-            onConsentChange("trajectory_training", next)
-          }
-        />
+        {recordingRow}
         {recordConsent.isError ? (
           <p
             role="alert"

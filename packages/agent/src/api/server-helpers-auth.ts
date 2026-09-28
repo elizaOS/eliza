@@ -52,6 +52,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Eliza-UI-Language",
   "X-ElizaOS-UI-Language",
   "X-Eliza-CSRF",
+  "X-Eliza-Last-Activity",
   "X-ElizaOS-Turn-Correlation",
   "X-ElizaOS-Turn-Attempt",
   "X-Eliza-Trace-Id",

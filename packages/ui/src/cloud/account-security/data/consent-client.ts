@@ -5,6 +5,10 @@
  * policy version, source, time) and emits the audit event for each change, so
  * the browser never owns consent state. Responses are validated at this
  * boundary; a malformed payload is an error, never "not consented".
+ *
+ * The response also carries the deployment's model-call recording policy
+ * (`capture.modelCallRecording`). That is read-only deployment configuration,
+ * not a consent purpose, and the panel only discloses it.
  */
 
 import { ElizaError } from "@elizaos/core/errors";
@@ -15,7 +19,7 @@ import {
   useAuthenticatedQueryGate,
 } from "../../lib/auth-query";
 
-export type ConsentPurpose = "vision_capture" | "trajectory_training";
+export type ConsentPurpose = "vision_capture";
 
 /** Version of the privacy copy the user is agreeing to in this panel. */
 export const PRIVACY_CONSENT_POLICY_VERSION = "2026-09-privacy-panel-v1";
@@ -39,18 +43,26 @@ export interface EffectiveConsent {
   defaultGranted: boolean;
 }
 
+/** Deployment policy for recording model calls (read-only). */
+export interface ModelCallRecordingPolicy {
+  enabled: boolean;
+  source: "explicit" | "deployment-default";
+  retentionDays: number;
+}
+
 /**
- * Latest record per purpose (an absent purpose means no choice is recorded)
- * and the server-enforced policy for every purpose.
+ * Latest record per purpose (an absent purpose means no choice is recorded),
+ * the server-enforced policy for every purpose, and the deployment's
+ * model-call recording policy.
  */
 export interface ConsentState {
   recorded: Partial<Record<ConsentPurpose, ConsentRecord>>;
   effective: Record<ConsentPurpose, EffectiveConsent>;
+  capture: { modelCallRecording: ModelCallRecordingPolicy };
 }
 
 const CONSENT_PURPOSES: ReadonlySet<string> = new Set<ConsentPurpose>([
   "vision_capture",
-  "trajectory_training",
 ]);
 
 /** Typed boundary failure for a consent payload the client cannot trust. */
@@ -116,10 +128,40 @@ function parseEffectiveConsent(value: unknown): EffectiveConsent {
   };
 }
 
+function parseModelCallRecording(value: unknown): ModelCallRecordingPolicy {
+  const recording =
+    typeof value === "object" && value !== null
+      ? (value as { modelCallRecording?: unknown }).modelCallRecording
+      : undefined;
+  if (typeof recording !== "object" || recording === null) {
+    throw new ConsentResponseError(
+      "Consent list response is missing the model-call recording policy",
+    );
+  }
+  const { enabled, source, retentionDays } = recording as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof enabled !== "boolean" ||
+    (source !== "explicit" && source !== "deployment-default") ||
+    typeof retentionDays !== "number" ||
+    !Number.isSafeInteger(retentionDays) ||
+    retentionDays < 1
+  ) {
+    throw new ConsentResponseError("Model-call recording policy is malformed");
+  }
+  return { enabled, source, retentionDays };
+}
+
 export function parseConsentList(payload: unknown): ConsentState {
   const body =
     typeof payload === "object" && payload !== null
-      ? (payload as { consents?: unknown; effective?: unknown })
+      ? (payload as {
+          consents?: unknown;
+          effective?: unknown;
+          capture?: unknown;
+        })
       : undefined;
   if (!Array.isArray(body?.consents) || !Array.isArray(body.effective)) {
     throw new ConsentResponseError("Consent list response is malformed");
@@ -141,15 +183,15 @@ export function parseConsentList(payload: unknown): ConsentState {
     effective[entry.purpose] = entry;
   }
   const vision = effective.vision_capture;
-  const trajectory = effective.trajectory_training;
-  if (!vision || !trajectory) {
+  if (!vision) {
     throw new ConsentResponseError(
       "Consent list response is missing an effective policy",
     );
   }
   return {
     recorded,
-    effective: { vision_capture: vision, trajectory_training: trajectory },
+    effective: { vision_capture: vision },
+    capture: { modelCallRecording: parseModelCallRecording(body.capture) },
   };
 }
 
@@ -195,6 +237,7 @@ export function useRecordConsent() {
         (previous) =>
           previous
             ? {
+                ...previous,
                 recorded: { ...previous.recorded, [record.purpose]: record },
                 effective: {
                   ...previous.effective,

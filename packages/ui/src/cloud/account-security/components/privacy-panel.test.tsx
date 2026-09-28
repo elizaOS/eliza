@@ -48,12 +48,11 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
     () =>
     (
       key: string,
-      options?: { defaultValue?: string; message?: string },
+      options?: { defaultValue?: string; message?: string; days?: number },
     ): string =>
-      (options?.defaultValue ?? key).replace(
-        "{{message}}",
-        options?.message ?? "",
-      ),
+      (options?.defaultValue ?? key)
+        .replace("{{message}}", options?.message ?? "")
+        .replace("{{days}}", String(options?.days ?? "")),
 }));
 
 vi.mock("../data/audit-client", () => ({
@@ -83,12 +82,21 @@ const visionRecord = (granted: boolean) => ({
 type TestRecord = ReturnType<typeof visionRecord>;
 
 /** A `GET /api/v1/me/consents` body as the server builds it. */
-function consentList(records: TestRecord[], trainingDefault = true) {
-  const defaults: Record<string, boolean> = {
-    vision_capture: false,
-    trajectory_training: trainingDefault,
-  };
+function consentList(
+  records: TestRecord[],
+  recording: { enabled: boolean; source?: string; retentionDays?: number } = {
+    enabled: false,
+  },
+) {
+  const defaults: Record<string, boolean> = { vision_capture: false };
   return {
+    capture: {
+      modelCallRecording: {
+        enabled: recording.enabled,
+        source: recording.source ?? "deployment-default",
+        retentionDays: recording.retentionDays ?? 90,
+      },
+    },
     consents: records,
     effective: Object.entries(defaults).map(([purpose, defaultGranted]) => {
       const recorded = records.find((record) => record.purpose === purpose);
@@ -135,7 +143,7 @@ afterEach(() => {
 });
 
 describe("PrivacyPanel", () => {
-  it("renders server consent, with the training default stated when unset", async () => {
+  it("renders server consent and discloses that recording is off", async () => {
     apiMock.mockResolvedValueOnce(consentList([visionRecord(false)]));
     renderPanel();
     const vision = screen.getByTestId("vision-toggle");
@@ -143,41 +151,41 @@ describe("PrivacyPanel", () => {
     expect(vision.getAttribute("data-agent-id")).toBe("cloud-privacy-vision");
     expect(screen.getByText("Loading your privacy choices…")).toBeTruthy();
     expect(vision.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByTestId("model-call-recording-status")).toBeNull();
 
     await waitFor(() => expect(vision.hasAttribute("disabled")).toBe(false));
     expect(apiMock).toHaveBeenCalledWith("/api/v1/me/consents");
     expect(vision.getAttribute("aria-checked")).toBe("false");
-    const trajectory = screen.getByTestId("trajectory-toggle");
-    expect(trajectory.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText(/the Cloud default \(on\) applies/)).toBeTruthy();
-  });
-
-  it("renders the opt-in server default when training consent is required", async () => {
-    apiMock.mockResolvedValueOnce(consentList([], false));
-    renderPanel();
-    const trajectory = screen.getByTestId("trajectory-toggle");
-    await waitFor(() =>
-      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    const status = screen.getByTestId("model-call-recording-status");
+    expect(status.getAttribute("data-state")).toBe("off");
+    expect(status.textContent).toBe(
+      "Model-call recording is off on this deployment. Nothing you send is kept for training.",
     );
-    expect(trajectory.getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByText(/the Cloud default \(off\) applies/)).toBeTruthy();
-    expect(screen.queryByText(/the Cloud default \(on\) applies/)).toBeNull();
+    // Recording is deployment policy, never a per-user switch.
+    expect(screen.queryByTestId("trajectory-toggle")).toBeNull();
   });
 
-  it("renders an explicit grant without the default note", async () => {
+  it("discloses recording with its retention window when the deployment records", async () => {
     apiMock.mockResolvedValueOnce(
-      consentList(
-        [{ ...visionRecord(true), purpose: "trajectory_training" }],
-        false,
-      ),
+      consentList([], { enabled: true, retentionDays: 30 }),
     );
     renderPanel();
-    const trajectory = screen.getByTestId("trajectory-toggle");
-    await waitFor(() =>
-      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    const status = await screen.findByTestId("model-call-recording-status");
+    expect(status.getAttribute("data-state")).toBe("on");
+    expect(status.textContent).toBe(
+      "This deployment records model calls to improve Eliza. Recordings are encrypted and deleted after 30 days.",
     );
-    expect(trajectory.getAttribute("aria-checked")).toBe("true");
-    expect(screen.queryByText(/the Cloud default/)).toBeNull();
+  });
+
+  it("rejects a consent list without the recording policy", async () => {
+    const { capture: _capture, ...withoutCapture } = consentList([]);
+    apiMock.mockResolvedValueOnce(withoutCapture);
+    renderPanel();
+    expect(
+      await screen.findByText(
+        "Consent list response is missing the model-call recording policy",
+      ),
+    ).toBeTruthy();
   });
 
   it("rejects a consent list without the server's effective policy", async () => {
