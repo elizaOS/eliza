@@ -362,6 +362,12 @@ export function AutoTopUpCard() {
   const parsedAmount = parseFloat(amount);
   const parsedThreshold = parseFloat(threshold);
 
+  const currentChargePreview =
+    chargePreview &&
+    Number(chargePreview.breakdown.creditedBaseUsd) === parsedAmount
+      ? chargePreview
+      : null;
+
   // Re-quote the server-computed charge lines while the amount is edited so
   // the surcharge is disclosed before the customer saves (#23020).
   useEffect(() => {
@@ -371,12 +377,14 @@ export function AutoTopUpCard() {
       parsedAmount < limits.minAmount ||
       parsedAmount > limits.maxAmount
     ) {
+      setChargePreview(null);
       return;
     }
     if (parsedAmount === settings.amount) {
       setChargePreview(settings.chargePreview);
       return;
     }
+    setChargePreview(null);
     let cancelled = false;
     const timer = setTimeout(() => {
       void api<unknown>(
@@ -453,6 +461,8 @@ export function AutoTopUpCard() {
       document.getElementById("cloud-billing-auto-top-up-threshold")?.focus();
       return;
     }
+
+    if (enabled && !amountError && !currentChargePreview) return;
 
     saveInFlightRef.current = true;
     const generation = ++saveGenerationRef.current;
@@ -634,7 +644,11 @@ export function AutoTopUpCard() {
               "When on, your saved card is charged automatically when credits dip below the threshold. When off, the card is not charged automatically.",
           })}
           checked={enabled}
-          disabled={saving || !!noPaymentMethod}
+          disabled={
+            saving ||
+            !!noPaymentMethod ||
+            (enabled && !amountError && !currentChargePreview)
+          }
           onCheckedChange={setEnabled}
           testId="cloud-billing-auto-top-up"
         />
@@ -673,7 +687,7 @@ export function AutoTopUpCard() {
               defaultValue: "Top-up amount",
             })}
             description={t("cloud.autoTopUp.amountDescription", {
-              defaultValue: "Charged to the saved card each cycle, in USD.",
+              defaultValue: "Credits added each cycle. Fees are shown below.",
             })}
             value={amount}
             onValueChange={setAmount}
@@ -706,8 +720,17 @@ export function AutoTopUpCard() {
           />
         </div>
 
-        {enabled && chargePreview && !amountError ? (
-          <AutoTopUpChargeBreakdown preview={chargePreview} />
+        {enabled && !amountError ? (
+          currentChargePreview ? (
+            <AutoTopUpChargeBreakdown preview={currentChargePreview} />
+          ) : (
+            <p role="status" className="text-xs text-muted">
+              {t("cloud.autoTopUp.previewPending", {
+                defaultValue:
+                  "A current charge preview is required before saving. If it does not load, change the amount to retry.",
+              })}
+            </p>
+          )
         ) : null}
 
         <Card asChild variant="billingTopDivider">
@@ -715,7 +738,11 @@ export function AutoTopUpCard() {
             <Button
               type="button"
               onClick={handleSave}
-              disabled={saving || !!noPaymentMethod}
+              disabled={
+                saving ||
+                !!noPaymentMethod ||
+                (enabled && !amountError && !currentChargePreview)
+              }
               aria-busy={saving}
             >
               {saving ? (

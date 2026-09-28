@@ -73,6 +73,16 @@ const loadedSettings: BillingSettingsPayload = {
       amount: 25,
       threshold: 10,
       hasPaymentMethod: true,
+      chargePreview: {
+        attribution: "none",
+        breakdown: {
+          creditedBaseUsd: "25.00",
+          affiliateMarkupUsd: "0.00",
+          platformFeeUsd: "0.00",
+          totalChargeUsd: "25.00",
+          surchargeApplies: false,
+        },
+      },
     },
     limits: {
       minAmount: 5,
@@ -489,6 +499,21 @@ describe("AutoTopUpCard", () => {
     const firstSave = deferred<ReturnType<typeof savedSettings>>();
     apiMock
       .mockResolvedValueOnce(settings(false))
+      .mockResolvedValueOnce(
+        settings({
+          amount: 30,
+          chargePreview: {
+            attribution: "none",
+            breakdown: {
+              creditedBaseUsd: "30.00",
+              affiliateMarkupUsd: "0.00",
+              platformFeeUsd: "0.00",
+              totalChargeUsd: "30.00",
+              surchargeApplies: false,
+            },
+          },
+        }),
+      )
       .mockImplementationOnce(() => firstSave.promise)
       .mockResolvedValueOnce(
         savedSettings({ enabled: true, amount: 30, threshold: 12 }),
@@ -501,6 +526,7 @@ describe("AutoTopUpCard", () => {
     fireEvent.change(amount, { target: { value: "30" } });
     fireEvent.change(threshold, { target: { value: "12" } });
     const save = screen.getByRole("button", { name: "Save auto top-up" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
     fireEvent.click(save);
 
     await act(async () => {
@@ -515,7 +541,7 @@ describe("AutoTopUpCard", () => {
     expect(save).toHaveProperty("disabled", false);
 
     fireEvent.click(save);
-    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(4));
     expect(apiMock).toHaveBeenLastCalledWith("/api/v1/billing/settings", {
       method: "PUT",
       json: {
@@ -603,6 +629,33 @@ describe("AutoTopUpCard", () => {
       expect(breakdown.textContent).not.toContain("Affiliate markup");
       expect(breakdown.textContent).not.toContain("Platform fee");
       expect(breakdown.textContent).toContain("Total card charge");
+    });
+
+    it("blocks saving while a replacement quote is pending or fails", async () => {
+      const quote = deferred<BillingSettingsPayload>();
+      apiMock
+        .mockResolvedValueOnce(
+          settings({ enabled: true, chargePreview: affiliatePreview }),
+        )
+        .mockImplementationOnce(() => quote.promise);
+      render(<AutoTopUpCard />);
+      await screen.findByTestId("cloud-billing-auto-top-up-breakdown");
+      fireEvent.change(screen.getByTestId("cloud-billing-auto-top-up-amount"), {
+        target: { value: "50" },
+      });
+      expect(
+        screen.queryByTestId("cloud-billing-auto-top-up-breakdown"),
+      ).toBeNull();
+      const save = screen.getByRole("button", { name: "Save auto top-up" });
+      expect(save).toHaveProperty("disabled", true);
+      await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        quote.reject(new Error("quote unavailable"));
+        await expect(quote.promise).rejects.toThrow();
+      });
+      expect(save).toHaveProperty("disabled", true);
+      fireEvent.click(save);
+      expect(apiMock).toHaveBeenCalledTimes(2);
     });
 
     it("re-quotes an edited amount on the server before it is saved", async () => {
