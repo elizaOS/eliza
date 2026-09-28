@@ -215,6 +215,30 @@ describe("compile-libllama Android assets dir resolution", () => {
     expect(fs.existsSync(androidProject)).toBe(true);
   });
 
+  test("targets a host apps/app shell's own android/ before cap add android, not the nested template", () => {
+    const root = makeTmpDir();
+    fs.mkdirSync(path.join(root, "apps", "app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "apps", "app", "package.json"), "{}");
+    fs.mkdirSync(
+      path.join(root, "eliza", "packages", "app", "platforms", "android"),
+      { recursive: true },
+    );
+
+    expect(resolveDefaultAndroidAssetsDir({ root })).toBe(
+      path.join(
+        root,
+        "apps",
+        "app",
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      ),
+    );
+  });
+
   test("falls back to nested eliza/packages/app shell", () => {
     const root = makeTmpDir();
     fs.mkdirSync(path.join(root, "eliza", "packages", "app", "android"), {

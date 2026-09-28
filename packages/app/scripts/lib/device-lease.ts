@@ -13,6 +13,9 @@
  *   the file is still the exact one (same inode and bytes) that was judged
  *   stale or owned. A contender can therefore never delete a lease that was
  *   re-created by someone else after it looked.
+ * - The mutation lock itself is only ever removed after an atomic rename to a
+ *   private tombstone proves it is the exact lock (inode and bytes) that was
+ *   judged stale or owned; a newer lock moved by mistake is linked back.
  * - A lease file that cannot be parsed is never reclaimed until it is older
  *   than `unparsableGraceMs`.
  */
@@ -28,6 +31,9 @@ const DEFAULT_UNPARSABLE_GRACE_MS = 60 * 1000;
 const MUTATION_LOCK_WAIT_MS = 5_000;
 const MUTATION_LOCK_STALE_MS = 30 * 1000;
 const MUTATION_LOCK_POLL_MS = 10;
+// A lock left empty/unparsable by a holder that crashed between create and
+// write is reclaimable after this grace, which must stay under the lock wait.
+const MUTATION_LOCK_UNPARSABLE_GRACE_MS = 1_000;
 
 export class DeviceLeaseLockTimeoutError extends Error {
   constructor(lockPath, waitedMs) {
@@ -35,6 +41,20 @@ export class DeviceLeaseLockTimeoutError extends Error {
       `timed out after ${waitedMs}ms waiting for device lease mutation lock ${lockPath}`,
     );
     this.name = "DeviceLeaseLockTimeoutError";
+    this.lockPath = lockPath;
+  }
+}
+
+/**
+ * The per-device mutation lock this process relied on was replaced by another
+ * holder while it was held, so exclusion was not guaranteed.
+ */
+export class DeviceLeaseLockConflictError extends Error {
+  constructor(lockPath) {
+    super(
+      `device lease mutation lock ${lockPath} was taken by another holder while held`,
+    );
+    this.name = "DeviceLeaseLockConflictError";
     this.lockPath = lockPath;
   }
 }
@@ -182,17 +202,86 @@ function sameLeaseFile(a, b) {
   );
 }
 
-function mutationLockIsStale(lockPath) {
+/**
+ * Read the mutation lock's identity (inode + bytes) through one descriptor, so
+ * a later reclaim or release can prove it is removing that exact file.
+ */
+function readMutationLockSnapshot(lockPath) {
+  const fd = openLeaseForRead(lockPath);
+  if (fd === null) return null;
   try {
-    const stat = fs.statSync(lockPath);
-    if (Date.now() - stat.mtimeMs > MUTATION_LOCK_STALE_MS) return true;
-    const holder = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-    // The lock records the real OS pid of its holder, so probe it for real.
-    return !processIsAlive(Number(holder?.pid));
+    const stat = fs.fstatSync(fd);
+    const raw = fs.readFileSync(fd, "utf8");
+    return { ino: stat.ino, dev: stat.dev, raw, mtimeMs: stat.mtimeMs };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function sameMutationLock(a, b) {
+  return (
+    a !== null &&
+    b !== null &&
+    a.ino === b.ino &&
+    a.dev === b.dev &&
+    a.raw === b.raw
+  );
+}
+
+/**
+ * Returns the snapshot of the lock when it is stale (holder dead, lock too old,
+ * or left empty/unparsable by a crash past a short grace), otherwise null.
+ */
+function staleMutationLockSnapshot(lockPath) {
+  const snapshot = readMutationLockSnapshot(lockPath);
+  // A vanished lock was released; the caller simply retries the create.
+  if (snapshot === null) return null;
+  const ageMs = Date.now() - snapshot.mtimeMs;
+  if (ageMs > MUTATION_LOCK_STALE_MS) return snapshot;
+  let holder: { pid?: unknown } | null;
+  try {
+    holder = JSON.parse(snapshot.raw);
   } catch (error) {
-    // error-policy:J3 lock vanished (released) or is mid-write; retry later.
-    if (error?.code === "ENOENT" || error instanceof SyntaxError) return false;
+    // error-policy:J3 an empty/unparsable lock is either mid-write (fresh) or
+    // left behind by a holder that crashed between create and write. Only the
+    // latter outlives the short grace, which is well under the lock wait.
+    if (!(error instanceof SyntaxError)) throw error;
+    return ageMs > MUTATION_LOCK_UNPARSABLE_GRACE_MS ? snapshot : null;
+  }
+  // The lock records the real OS pid of its holder, so probe it for real.
+  return processIsAlive(Number(holder?.pid)) ? null : snapshot;
+}
+
+/**
+ * Remove the mutation lock only if it is still exactly `expected`. The lock is
+ * atomically renamed to a private tombstone first; if the tombstone turns out
+ * to be a different (newer) lock, it is linked back into place untouched.
+ * Returns whether `expected` was removed.
+ */
+function removeMutationLockIfUnchanged(lockPath, expected) {
+  const tombstonePath = `${lockPath}.${process.pid}.${randomUUID()}.stale`;
+  try {
+    fs.renameSync(lockPath, tombstonePath);
+  } catch (error) {
+    // error-policy:J3 the lock is already gone (released or reclaimed).
+    if (error?.code === "ENOENT") return false;
     throw error;
+  }
+  try {
+    if (sameMutationLock(readMutationLockSnapshot(tombstonePath), expected)) {
+      return true;
+    }
+    try {
+      fs.linkSync(tombstonePath, lockPath);
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        throw new DeviceLeaseLockConflictError(lockPath);
+      }
+      throw error;
+    }
+    return false;
+  } finally {
+    fs.rmSync(tombstonePath, { force: true });
   }
 }
 
@@ -200,14 +289,19 @@ function mutationLockIsStale(lockPath) {
  * Run `fn` while holding the per-device mutation lock. The lock is held only
  * for a re-read and an unlink, so a short synchronous wait is sufficient.
  */
-function withLeaseMutationLock(leasePath, fn) {
+function withLeaseMutationLock<T>(leasePath: string, fn: () => T): T {
   const lockPath = `${leasePath}.lock`;
   const startedAt = Date.now();
+  let ownLock: { ino: number; dev: number; raw: string } | null = null;
   while (true) {
     try {
       const fd = fs.openSync(lockPath, "wx");
       try {
-        fs.writeFileSync(fd, JSON.stringify({ pid: process.pid }));
+        // The token makes the lock's bytes unique even if an inode is reused.
+        const raw = JSON.stringify({ pid: process.pid, token: randomUUID() });
+        fs.writeFileSync(fd, raw);
+        const stat = fs.fstatSync(fd);
+        ownLock = { ino: stat.ino, dev: stat.dev, raw };
       } finally {
         fs.closeSync(fd);
       }
@@ -215,8 +309,9 @@ function withLeaseMutationLock(leasePath, fn) {
     } catch (error) {
       // error-policy:J3 EEXIST is lock contention; anything else is real.
       if (error?.code !== "EEXIST") throw error;
-      if (mutationLockIsStale(lockPath)) {
-        fs.rmSync(lockPath, { force: true });
+      const stale = staleMutationLockSnapshot(lockPath);
+      if (stale !== null) {
+        removeMutationLockIfUnchanged(lockPath, stale);
         continue;
       }
       const waited = Date.now() - startedAt;
@@ -226,11 +321,20 @@ function withLeaseMutationLock(leasePath, fn) {
       sleepSync(MUTATION_LOCK_POLL_MS);
     }
   }
+  let result: T;
   try {
-    return fn();
-  } finally {
-    fs.rmSync(lockPath, { force: true });
+    result = fn();
+  } catch (error) {
+    // Release before surfacing the original failure; it is the primary error.
+    removeMutationLockIfUnchanged(lockPath, ownLock);
+    throw error;
   }
+  // Only ever remove our own lock. If it is no longer ours, another process
+  // judged it stale mid-section and exclusion did not hold: surface that.
+  if (!removeMutationLockIfUnchanged(lockPath, ownLock)) {
+    throw new DeviceLeaseLockConflictError(lockPath);
+  }
+  return result;
 }
 
 /**

@@ -6,7 +6,7 @@
  * prove the atomic `wx` create admits exactly one winner.
  */
 import { spawn } from "node:child_process";
-import {
+import fs, {
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -324,6 +324,91 @@ describe("device leases", () => {
       pid: 702,
       sessionId: "other-reclaimer",
     });
+  });
+
+  it("reclaims a mutation lock left empty by a crash well before the lock wait expires", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:empty-lock", {
+      stateDir,
+      sessionId: "holder",
+      pid: 901,
+      isProcessAlive: () => true,
+    });
+    // A holder that crashed between creating and writing the lock leaves an
+    // empty file; it must not block release() into a lock-wait timeout.
+    const lockPath = `${handle.path}.lock`;
+    writeFileSync(lockPath, "");
+    const old = new Date(Date.now() - 2_000);
+    utimesSync(lockPath, old, old);
+
+    const startedAt = Date.now();
+    handle.release();
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(readdirSync(stateDir)).toEqual([]);
+  });
+
+  it("never removes a mutation lock re-created after the stale one was judged", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:lock-swap", {
+      stateDir,
+      sessionId: "holder",
+      pid: 902,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    const deadPid = 2_147_000_001;
+    writeFileSync(lockPath, JSON.stringify({ pid: deadPid }));
+    const otherLock = JSON.stringify({ pid: process.pid, holder: "other" });
+    let otherHolds = false;
+    let otherReleased = false;
+    const violations = [];
+
+    const realKill = process.kill.bind(process);
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid === deadPid) {
+        // Another contender reclaims the dead holder's lock and takes its own
+        // right after we judged the dead lock stale.
+        unlinkSync(lockPath);
+        writeFileSync(lockPath, otherLock);
+        otherHolds = true;
+        const error = new Error("no such process");
+        error.code = "ESRCH";
+        throw error;
+      }
+      if (pid === process.pid && signal === 0 && otherHolds) {
+        // While we wait on the other holder, it finishes and releases.
+        unlinkSync(lockPath);
+        otherHolds = false;
+        otherReleased = true;
+        return true;
+      }
+      return realKill(pid, signal);
+    });
+    const realOpen = fs.openSync;
+    const open = vi
+      .spyOn(fs, "openSync")
+      .mockImplementation((p, flags, ...rest) => {
+        if (p === lockPath && flags === "wx" && otherHolds) {
+          let current = null;
+          try {
+            current = fs.readFileSync(lockPath, "utf8");
+          } catch {
+            current = null;
+          }
+          if (current !== otherLock) violations.push(current);
+        }
+        return realOpen(p, flags, ...rest);
+      });
+    try {
+      handle.release();
+    } finally {
+      kill.mockRestore();
+      open.mockRestore();
+    }
+
+    expect(violations).toEqual([]);
+    expect(otherReleased).toBe(true);
+    expect(readdirSync(stateDir)).toEqual([]);
   });
 
   it("publishes leases without leaving temp or lock files behind", async () => {
