@@ -196,6 +196,32 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
   }
 
+  /**
+   * Run `operation` while no query can execute and close cannot begin, so the
+   * physical data directory is a quiescent, crash-consistent image. Callers copy
+   * files from disk themselves (bounded memory) instead of materializing a tar.
+   */
+  public async withQuiescedDataDir<T>(operation: (dataDir: string) => Promise<T>): Promise<T> {
+    if (this.shuttingDown) {
+      throw new Error("PGlite is closing");
+    }
+    const dataDir = this.getDataDir();
+    if (!dataDir || dataDir === ":memory:" || dataDir.includes("://")) {
+      throw this.createDataDirExportError(
+        PGLITE_DATA_DIR_EXPORT_UNBOUNDED_CODE,
+        "PGlite is not backed by a filesystem data directory"
+      );
+    }
+    const lease = this.acquireDataDirExportLease();
+    try {
+      return await this.withLifecycleLock(
+        async () => await this.client.runExclusive(async () => await operation(dataDir))
+      );
+    } finally {
+      lease.release();
+    }
+  }
+
   private acquireDataDirExportLease(): { release: () => void } {
     if (this.activeDataDirExport) {
       throw this.createDataDirExportError(
