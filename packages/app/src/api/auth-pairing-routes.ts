@@ -38,10 +38,7 @@ import {
   isTrustedLocalRequest,
   readCompatJsonBody,
 } from "./compat-route-shared";
-import {
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-} from "./response";
+import { sendJson as sendJsonResponse } from "./response";
 import { isCloudProvisioned } from "./server-first-run-helpers";
 
 // ---------------------------------------------------------------------------
