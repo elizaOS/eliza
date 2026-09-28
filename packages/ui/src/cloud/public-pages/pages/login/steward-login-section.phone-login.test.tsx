@@ -372,10 +372,25 @@ describe("StewardLoginSection phone login", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
 
-    expect(await screen.findByText(/Enter a valid phone number/)).toBeTruthy();
+    const message = await screen.findByText(/Enter a valid phone number/);
     expect(authSpies.sendSmsOtp).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Magic Link" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();
+
+    // #27241: the message is anchored to the phone field, announced, linked
+    // to the invalid input, and focus returns to that input.
+    const phoneInput = screen.getByLabelText("Phone number");
+    expect(message.getAttribute("role")).toBe("alert");
+    expect(phoneInput.getAttribute("aria-invalid")).toBe("true");
+    expect(phoneInput.getAttribute("aria-describedby")).toBe(message.id);
+    expect(document.activeElement).toBe(phoneInput);
+    expect(phoneInput.parentElement?.parentElement?.contains(message)).toBe(
+      true,
+    );
+
+    fireEvent.change(phoneInput, { target: { value: "5551" } });
+    expect(phoneInput.getAttribute("aria-invalid")).toBeNull();
+    expect(screen.queryByText(/Enter a valid phone number/)).toBeNull();
   });
 
   it("holds the send state while Steward is pending and surfaces its failure", async () => {

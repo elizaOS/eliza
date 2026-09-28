@@ -279,11 +279,11 @@ describe("useHomeModelStatus", () => {
     await waitFor(
       () => {
         expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+        expect(result.current.kind).toBe("not-required");
+        expect(result.current.blocksSend).toBe(false);
       },
       { timeout: 2500 },
     );
-    expect(result.current.kind).toBe("not-required");
-    expect(result.current.blocksSend).toBe(false);
     const stream = eventSourceMock.openEventSource.mock.results[0]?.value;
     expect(stream?.close).toHaveBeenCalledTimes(1);
   });
