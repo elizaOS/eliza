@@ -16,6 +16,7 @@ export type {
   DeleteAuthorization,
 } from "./eliza-sandbox/lifecycle/deletion-contracts.js";
 
+import { admitCoordinatedAgentBackupRestore } from "./eliza-sandbox/lifecycle/coordinated-restore.js";
 import { SandboxPower } from "./eliza-sandbox/lifecycle/power.js";
 
 export type { AgentSuspendExecutionResult } from "./eliza-sandbox/lifecycle/power-contracts.js";
@@ -2298,6 +2299,12 @@ export class ElizaSandboxService {
         };
       }
     }
+
+    // Catalogued manifest-v3 backups restore through the exact coordinator
+    // (quarantined create, verified generation, signed boot, route CAS) when
+    // it is enabled. Legacy snapshot rows keep the push/re-provision path.
+    const coordinated = await admitCoordinatedAgentBackupRestore(rec, storedBackup);
+    if (coordinated) return coordinated;
 
     if (!restoringRunningGeneration) {
       // Pin the restore point selected above. `from-backup` also makes

@@ -137,6 +137,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return await this.manager.dumpDataDir(compression);
   }
 
+  async withPgliteDataDirQuiesced<T>(operation: (dataDir: string) => Promise<T>): Promise<T> {
+    return await this.manager.withQuiescedDataDir(operation);
+  }
+
   async dumpPgliteDataDirAfterPreflight<T>(
     preflight: () => Promise<T>,
     compression: "gzip" = "gzip"

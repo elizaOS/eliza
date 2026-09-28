@@ -430,12 +430,31 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       content: "Other user, same room",
     });
 
-    const result = await invokeTodoAction(
+    const preview = await invokeTodoAction(
       {
         id: crypto.randomUUID() as UUID,
         entityId,
         roomId: roomB,
         content: { text: "clear my todos" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(preview.data).toMatchObject({
+      action: "clear",
+      count: 0,
+      requiresConfirmation: true,
+    });
+    expect(
+      ((preview.data?.preview ?? []) as Array<{ roomId: string }>).map(
+        (todo) => todo.roomId,
+      ),
+    ).toEqual([roomA, roomB]);
+    const result = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId: roomB,
+        content: { text: "yes" },
       } as Memory,
       { action: "clear" },
     );

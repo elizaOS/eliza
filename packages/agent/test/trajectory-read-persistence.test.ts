@@ -10,8 +10,12 @@ import {
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
+  createBaseTrajectory,
+  ensureStep,
   executeRawSql,
   extractRequiredRows,
+  loadTrajectoryById,
+  saveTrajectory,
   sqlQuote,
 } from "../src/runtime/trajectory-internals.ts";
 import {
@@ -362,3 +366,224 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
   expect(rows).toHaveLength(10003);
   expect(new Set(rows.map((row) => row.trajectoryId)).size).toBe(10003);
 }, 120_000);
+
+async function createStepWriteTrajectory() {
+  const trajectory = createBaseTrajectory(
+    randomUUID(),
+    Date.now(),
+    fixture.runtime.agentId,
+    "step-write-confirmation",
+  );
+  trajectory.steps = [];
+  await saveTrajectory(fixture.runtime, trajectory, {
+    createOnly: true,
+    changedStepIds: [],
+  });
+  return trajectory;
+}
+
+it("confirms owned step inserts and updates with same-batch and existing parents", async () => {
+  const trajectory = await createStepWriteTrajectory();
+  const expectedUpdatedAt = trajectory.updatedAt;
+  const parent = ensureStep(trajectory, randomUUID(), Date.now());
+  parent.script = "parent original";
+  const child = ensureStep(trajectory, randomUUID(), Date.now());
+  child.parentStepId = parent.stepId;
+  child.script = "child original";
+  const sibling = ensureStep(trajectory, randomUUID(), Date.now());
+  sibling.parentStepId = parent.stepId;
+  trajectory.updatedAt = new Date(
+    Date.parse(expectedUpdatedAt) + 1,
+  ).toISOString();
+
+  await expect(
+    saveTrajectory(fixture.runtime, trajectory, {
+      changedStepIds: [parent.stepId, child.stepId, sibling.stepId],
+      requireActiveExisting: true,
+      expectedUpdatedAt,
+    }),
+  ).resolves.toBe(true);
+  const inserted = await loadTrajectoryById(fixture.runtime, trajectory.id);
+  expect(inserted?.steps).toHaveLength(3);
+  expect(
+    inserted?.steps.find((step) => step.stepId === child.stepId),
+  ).toMatchObject({
+    parentStepId: parent.stepId,
+    script: "child original",
+  });
+
+  const updateRevision = trajectory.updatedAt;
+  child.script = "child changed";
+  trajectory.updatedAt = new Date(Date.parse(updateRevision) + 1).toISOString();
+  await expect(
+    saveTrajectory(fixture.runtime, trajectory, {
+      changedStepIds: [child.stepId],
+      requireActiveExisting: true,
+      expectedUpdatedAt: updateRevision,
+    }),
+  ).resolves.toBe(true);
+  const updated = await loadTrajectoryById(fixture.runtime, trajectory.id);
+  expect(
+    updated?.steps.find((step) => step.stepId === child.stepId)?.script,
+  ).toBe("child changed");
+  expect(
+    updated?.steps.find((step) => step.stepId === parent.stepId)?.script,
+  ).toBe("parent original");
+  expect(updated?.steps).toHaveLength(3);
+});
+
+it("rolls back the parent and earlier child when a guarded write finds a foreign step", async () => {
+  const trajectory = await createStepWriteTrajectory();
+  const foreign = await createStepWriteTrajectory();
+  const shared = ensureStep(foreign, randomUUID(), Date.now());
+  shared.script = "foreign unchanged";
+  await saveTrajectory(fixture.runtime, foreign, {
+    changedStepIds: [shared.stepId],
+  });
+  const before = await loadTrajectoryById(fixture.runtime, trajectory.id);
+  const foreignBefore = await loadTrajectoryById(fixture.runtime, foreign.id);
+  if (!before) throw new Error("Fixture trajectory missing");
+  const good = ensureStep(trajectory, randomUUID(), Date.now());
+  const conflicting = ensureStep(trajectory, shared.stepId, Date.now());
+  conflicting.script = "must not overwrite";
+  trajectory.metadata = { mustRollback: true };
+  trajectory.updatedAt = new Date(
+    Date.parse(trajectory.updatedAt) + 1,
+  ).toISOString();
+
+  await expect(
+    saveTrajectory(fixture.runtime, trajectory, {
+      changedStepIds: [good.stepId, conflicting.stepId],
+      requireActiveExisting: true,
+      expectedUpdatedAt: before.updatedAt,
+    }),
+  ).rejects.toMatchObject({ code: "TRAJECTORY_STEP_OWNERSHIP_CONFLICT" });
+  expect(await loadTrajectoryById(fixture.runtime, trajectory.id)).toEqual(
+    before,
+  );
+  expect(await loadTrajectoryById(fixture.runtime, foreign.id)).toEqual(
+    foreignBefore,
+  );
+  expect(
+    extractRequiredRows(
+      await executeRawSql(
+        fixture.runtime,
+        `SELECT id FROM trajectory_steps WHERE id = ${sqlQuote(good.stepId)}`,
+      ),
+    ),
+  ).toEqual([]);
+});
+
+it("rejects a real trigger-suppressed step write and rolls back its parent", async () => {
+  const trajectory = await createStepWriteTrajectory();
+  const before = await loadTrajectoryById(fixture.runtime, trajectory.id);
+  if (!before) throw new Error("Fixture trajectory missing");
+  const step = ensureStep(trajectory, randomUUID(), Date.now());
+  trajectory.metadata = { mustRollback: true };
+  trajectory.updatedAt = new Date(
+    Date.parse(trajectory.updatedAt) + 1,
+  ).toISOString();
+  await executeRawSql(
+    fixture.runtime,
+    `
+    CREATE FUNCTION suppress_fixture_trajectory_step() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.id = ${sqlQuote(step.stepId)} THEN RETURN NULL; END IF;
+      RETURN NEW;
+    END $$`,
+  );
+  await executeRawSql(
+    fixture.runtime,
+    `
+    CREATE TRIGGER suppress_fixture_trajectory_step
+    BEFORE INSERT ON trajectory_steps FOR EACH ROW
+    EXECUTE FUNCTION suppress_fixture_trajectory_step()`,
+  );
+  try {
+    await expect(
+      saveTrajectory(fixture.runtime, trajectory, {
+        changedStepIds: [step.stepId],
+        requireActiveExisting: true,
+        expectedUpdatedAt: before.updatedAt,
+      }),
+    ).rejects.toMatchObject({
+      code: "TRAJECTORY_STEPS_SAVE_FAILED",
+      cause: { code: "TRAJECTORY_STEP_WRITE_UNCONFIRMED" },
+    });
+    expect(await loadTrajectoryById(fixture.runtime, trajectory.id)).toEqual(
+      before,
+    );
+  } finally {
+    await executeRawSql(
+      fixture.runtime,
+      "DROP TRIGGER suppress_fixture_trajectory_step ON trajectory_steps",
+    );
+    await executeRawSql(
+      fixture.runtime,
+      "DROP FUNCTION suppress_fixture_trajectory_step()",
+    );
+  }
+});
+
+it.each(["missing", "foreign", "self"] as const)(
+  "preserves %s parent-step rejection and full transaction rollback",
+  async (parentKind) => {
+    const trajectory = await createStepWriteTrajectory();
+    const foreign = await createStepWriteTrajectory();
+    const foreignParent = ensureStep(foreign, randomUUID(), Date.now());
+    await saveTrajectory(fixture.runtime, foreign, {
+      changedStepIds: [foreignParent.stepId],
+    });
+    const before = await loadTrajectoryById(fixture.runtime, trajectory.id);
+    if (!before) throw new Error("Fixture trajectory missing");
+    const earlier = ensureStep(trajectory, randomUUID(), Date.now());
+    const child = ensureStep(trajectory, randomUUID(), Date.now());
+    child.parentStepId =
+      parentKind === "self"
+        ? child.stepId
+        : parentKind === "foreign"
+          ? foreignParent.stepId
+          : randomUUID();
+    await expect(
+      saveTrajectory(fixture.runtime, trajectory, {
+        changedStepIds: [earlier.stepId, child.stepId],
+        requireActiveExisting: true,
+        expectedUpdatedAt: before.updatedAt,
+      }),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_STEP_PARENT_INVALID" });
+    expect(await loadTrajectoryById(fixture.runtime, trajectory.id)).toEqual(
+      before,
+    );
+    expect(
+      extractRequiredRows(
+        await executeRawSql(
+          fixture.runtime,
+          `SELECT id FROM trajectory_steps WHERE id = ${sqlQuote(earlier.stepId)}`,
+        ),
+      ),
+    ).toEqual([]);
+  },
+);
+
+it("retains the parent revision conflict before any child can be written", async () => {
+  const trajectory = await createStepWriteTrajectory();
+  const expectedUpdatedAt = trajectory.updatedAt;
+  const changedAt = new Date(Date.parse(expectedUpdatedAt) + 1).toISOString();
+  await executeRawSql(
+    fixture.runtime,
+    `UPDATE trajectories SET updated_at = ${sqlQuote(changedAt)}
+    WHERE id = ${sqlQuote(trajectory.id)}`,
+  );
+  const before = await loadTrajectoryById(fixture.runtime, trajectory.id);
+  const child = ensureStep(trajectory, randomUUID(), Date.now());
+  await expect(
+    saveTrajectory(fixture.runtime, trajectory, {
+      changedStepIds: [child.stepId],
+      requireActiveExisting: true,
+      expectedUpdatedAt,
+    }),
+  ).rejects.toMatchObject({ code: "TRAJECTORY_WRITE_CONFLICT" });
+  expect(await loadTrajectoryById(fixture.runtime, trajectory.id)).toEqual(
+    before,
+  );
+});

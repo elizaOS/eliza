@@ -965,6 +965,7 @@ export {
 	serializeAgentBackupRecordStreamV1Magic,
 	serializeAgentBackupRecordStreamV1Record,
 } from "./contracts/agent-backup-record-stream-v1.js";
+export * from "./contracts/agent-backup-restore-v3-materializer.js";
 export {
 	AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
 	AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
@@ -3631,6 +3632,7 @@ export type {
 export {
 	clearPendingConfirmation,
 	gateDestructiveConfirmation,
+	isAffirmativeConfirmationReply,
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";

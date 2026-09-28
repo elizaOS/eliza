@@ -1,6 +1,6 @@
 /** Storage-neutral todo contract shared by Node and edge runtime hosts. */
-import { type SharedTodoMutationCutoverRecord } from "@elizaos/core/todo-cutover";
-import { type Todo, type TodoStatus } from "./types.js";
+import type { SharedTodoMutationCutoverRecord } from "@elizaos/core/todo-cutover";
+import type { Todo, TodoStatus } from "./types.js";
 export interface TodoFilter {
   entityId: string;
   agentId: string;
@@ -46,24 +46,37 @@ export interface WriteTodoListInput {
     parentTodoId?: string | null;
   }>;
 }
+/**
+ * How a mutation addresses one existing todo. `id` is the storage id (host and
+ * legacy callers); `match` is user-visible content or a close paraphrase; `ref`
+ * is the stable handle returned with an ambiguity clarification.
+ */
+export type TodoLocator =
+  | { id: string; match?: undefined; ref?: undefined }
+  | { match: string; id?: undefined; ref?: undefined }
+  | { ref: string; id?: undefined; match?: undefined };
+/**
+ * Classification of the user's own message that triggered a gated mutation.
+ * Computed by the action from the actual reply text, never from model output.
+ */
+export type TodoReplyClassification = "affirmative" | "other";
 export type TodoMutation =
   | {
       action: "create";
       input: Omit<CreateTodoInput, "agentId" | "entityId">;
+      /** Planner creates carry it; an affirmative reply confirms a duplicate. */
+      reply?: TodoReplyClassification;
     }
-  | {
+  | ({
       action: "update";
-      id: string;
       patch: UpdateTodoInput;
-    }
-  | {
+    } & TodoLocator)
+  | ({
       action: "complete" | "cancel";
-      id: string;
-    }
-  | {
+    } & TodoLocator)
+  | ({
       action: "delete";
-      id: string;
-    }
+    } & TodoLocator)
   | {
       action: "write";
       input: Omit<WriteTodoListInput, "agentId" | "entityId">;
@@ -71,19 +84,35 @@ export type TodoMutation =
   | {
       action: "clear";
       roomId?: string | null;
+      /**
+       * Planner clears carry it: the first call records a durable preview, and
+       * only an affirmative reply to that preview removes the previewed rows.
+       * Trusted host calls omit it and clear immediately.
+       */
+      reply?: TodoReplyClassification;
     };
+/** Why a locator did not resolve to exactly one todo; nothing was mutated. */
+export type TodoTargetMiss =
+  | { kind: "not_found" }
+  | { kind: "ambiguous"; candidates: Todo[] };
+/** Confirmation phase of a gated clear. Absent on immediate host clears. */
+export type TodoClearGate = "preview" | "confirmed" | "cancelled";
 export type TodoMutationResult =
   | {
       action: "create";
       todo: Todo;
+      /** `todo` is the open row that already has this content; none was created. */
+      duplicate?: boolean;
     }
   | {
       action: "update" | "complete" | "cancel";
       todo: Todo | null;
+      miss?: TodoTargetMiss;
     }
   | {
       action: "delete";
       deleted: Todo | null;
+      miss?: TodoTargetMiss;
     }
   | {
       action: "write";
@@ -93,6 +122,9 @@ export type TodoMutationResult =
   | {
       action: "clear";
       count: number;
+      gate?: TodoClearGate;
+      /** Rows a preview offers to remove (preview and cancelled phases). */
+      preview?: Todo[];
     };
 export interface TodoMutationInput {
   scope: TodoScope;
@@ -183,6 +215,8 @@ export function isTodoStore(value: unknown): value is TodoStore {
     "clear",
   ].every((method) => typeof candidate[method] === "function");
 }
+/** Lifetime of a clear preview or duplicate-create question awaiting a reply. */
+export const TODO_CONFIRMATION_TTL_MS = 5 * 60_000;
 export const TODO_LIST_LIMIT_ERROR_CODE = "TODO_INVALID_LIST_LIMIT";
 export const TODO_DUPLICATE_ID_ERROR_CODE = "TODO_DUPLICATE_ID";
 export const TODO_INVALID_PARENT_ERROR_CODE = "TODO_INVALID_PARENT";

@@ -357,10 +357,18 @@ async function main() {
         ];
 
   const useNodeWrangler = env.CLOUD_E2E === "1" && env.NODE_ENV === "test";
+  // Test lanes serve the Worker without Wrangler's pooled ProxyWorker hop,
+  // which intermittently drops requests (see wrangler-direct-dev.ts).
+  const useDirectDev = useNodeWrangler && args.length === 0;
   const wranglerCmd = useNodeWrangler ? nodeExecutable() : bun;
-  const wranglerSpawnArgs = useNodeWrangler
-    ? [wranglerScript(), ...wranglerArgs]
-    : ["run", "wrangler", ...wranglerArgs];
+  const wranglerSpawnArgs = useDirectDev
+    ? [
+        path.join(import.meta.dirname, "wrangler-direct-dev.ts"),
+        ...wranglerArgs,
+      ]
+    : useNodeWrangler
+      ? [wranglerScript(), ...wranglerArgs]
+      : ["run", "wrangler", ...wranglerArgs];
   const wrangler = spawn(wranglerCmd, wranglerSpawnArgs, {
     cwd: cloudApiDir,
     env,

@@ -45,7 +45,11 @@ import {
   createAgentBackupObjectStoreRegistry,
 } from "../storage/agent-backup-object-store";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
-import { isTrustedAgentBackupCaptureV2TerminalDisposition } from "./agent-backup-capture-v2-failure-disposition";
+import { logger } from "../utils/logger";
+import {
+  AGENT_BACKUP_CAPTURE_V2_ESCALATED_CODE,
+  isTrustedAgentBackupCaptureV2TerminalDisposition,
+} from "./agent-backup-capture-v2-failure-disposition";
 import { isResolvedAgentBackupCaptureV3RuntimeAuthorityStale } from "./agent-backup-capture-v3-runtime-context";
 import type {
   AgentBackupCaptureV3SpoolCleanupJanitor,
@@ -82,6 +86,8 @@ const SCHEDULE_RPO_OVERDUE_CODE = "BACKUP_SCHEDULE_RPO_OVERDUE";
 const OPERATION_CAPTURE_RETRY_CODE = "BACKUP_CAPTURE_V2_RETRY_SCHEDULED";
 const OPERATION_CAPTURE_STALE_AUTHORITY_CODE = "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE";
 const OPERATION_CAPTURE_TERMINAL_CODE = "BACKUP_CAPTURE_V2_TERMINAL";
+/** Repeated retryable capture failure escalated to terminal for operator action (#23235). */
+const OPERATION_CAPTURE_ESCALATED_CODE = "BACKUP_CAPTURE_V2_ESCALATED";
 const OPERATION_PUBLICATION_RETRY_CODE = "BACKUP_PUBLICATION_RETRY_SCHEDULED";
 const OPERATION_RECONCILE_CODE = "BACKUP_OPERATION_RECONCILE_REQUIRED";
 const GC_RETRY_CODE = "BACKUP_GC_RETRY_SCHEDULED";
@@ -563,6 +569,7 @@ function isCaptureOperationClaim(claim: Readonly<AgentBackupOperationClaim>): bo
 
 interface CaptureFailureDisposition {
   terminal: boolean;
+  escalated?: true;
   retryErrorCode?: typeof OPERATION_CAPTURE_STALE_AUTHORITY_CODE;
   terminalSpoolCleanup?: Parameters<
     AgentBackupCaptureV3SpoolCleanupJanitor["stageTerminalFailure"]
@@ -586,6 +593,7 @@ function classifyCaptureFailure(error: unknown): CaptureFailureDisposition {
   }
   return {
     terminal: true,
+    ...(error.code === AGENT_BACKUP_CAPTURE_V2_ESCALATED_CODE ? { escalated: true as const } : {}),
     terminalSpoolCleanup: error.terminalSpoolCleanup,
   };
 }
@@ -891,9 +899,11 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         }
         const disposition = classifyCaptureFailure(error);
         const terminal = disposition.terminal;
-        const failureCode = terminal
-          ? OPERATION_CAPTURE_TERMINAL_CODE
-          : (disposition.retryErrorCode ?? OPERATION_CAPTURE_RETRY_CODE);
+        const failureCode = disposition.escalated
+          ? OPERATION_CAPTURE_ESCALATED_CODE
+          : terminal
+            ? OPERATION_CAPTURE_TERMINAL_CODE
+            : (disposition.retryErrorCode ?? OPERATION_CAPTURE_RETRY_CODE);
         if (terminal && disposition.terminalSpoolCleanup) {
           if (!params.spoolCleanupJanitor) {
             summary.operationIndeterminate += 1;
@@ -928,11 +938,13 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             terminal,
             error: {
               code: failureCode,
-              message: terminal
-                ? "Capture-v2 returned deterministic authority, format, or replay-conflict evidence"
-                : disposition.retryErrorCode
-                  ? "Reserved capture runtime authority is stale; retry requires exact-source reconciliation"
-                  : "Capture-v2 did not reach a confirmed recordCaptured boundary; retry remains safe",
+              message: disposition.escalated
+                ? "Capture-v2 kept failing retryably on this operation and was escalated for operator action"
+                : terminal
+                  ? "Capture-v2 returned deterministic authority, format, or replay-conflict evidence"
+                  : disposition.retryErrorCode
+                    ? "Reserved capture runtime authority is stale; retry requires exact-source reconciliation"
+                    : "Capture-v2 did not reach a confirmed recordCaptured boundary; retry remains safe",
             },
             ...(terminal
               ? {}
@@ -952,6 +964,17 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
           if (terminal) {
             summary.operationCaptureTerminal += 1;
             alertCodes.add(OPERATION_CAPTURE_TERMINAL_CODE);
+            if (disposition.escalated) {
+              alertCodes.add(OPERATION_CAPTURE_ESCALATED_CODE);
+              logger.error(
+                "[AgentBackupCatalogRuntime] Capture escalated after repeated failures",
+                {
+                  organizationId: identity.organizationId,
+                  backupId: identity.backupId,
+                  attempts: normalized.backup.catalog_attempts,
+                },
+              );
+            }
           } else {
             summary.operationCaptureRetryScheduled += 1;
             alertCodes.add(failureCode);

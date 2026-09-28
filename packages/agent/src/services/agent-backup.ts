@@ -7,14 +7,17 @@
  * sha256, then restores each component verifying those hashes and refusing
  * tampered bytes. Also writes, lists, and prunes KMS-encrypted local backup
  * envelope files (`*.agent-backup.json`, AES-256-GCM via `@elizaos/auth/kms`)
- * under the state dir, keeping only the most recent few. Restore is destructive
+ * under the state dir, keeping only the most recent few. Agents above the
+ * in-memory ceiling are written as streamed, segment-encrypted capture-v2
+ * archives (`*.agent-backup-v2`) and restored by staged, journaled swap; listing,
+ * pruning and retired-archive review handle both formats. Restore is destructive
  * and returns `requiresRestart`. Capture-v2 streams complete binary frames with
  * backpressure and cancellation; both formats share PGlite preflight and file
  * classification helpers without converting streaming payloads to JSON snapshots.
  */
 import crypto from "node:crypto";
 import nodeFs, { type BigIntStats, constants, type Dirent } from "node:fs";
-import fs from "node:fs/promises";
+import fs, { type FileHandle } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createKmsClient, systemKey } from "@elizaos/auth/kms";
@@ -22,6 +25,7 @@ import {
   AGENT_BACKUP_CANONICAL_JSON,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
+  AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
   type AgentBackupCaptureV2ComponentDescriptor,
   AgentBackupCaptureV2ComponentDescriptorSchema,
@@ -34,6 +38,7 @@ import {
   type IAgentRuntime,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  parseAgentBackupCaptureV2Frames,
   parseAgentBackupCaptureV2Request,
   readAgentBackupCaptureV2FrameDigest,
   serializeAgentBackupCaptureV2Frame,
@@ -48,12 +53,16 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
+import { maybeInjectFault } from "../runtime/crash-injection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   AGENT_BACKUP_AUTHORITY_DIRECTORY,
   INITIAL_AGENT_BACKUP_GENERATION,
   isBackupAuthorityPath,
+  isProcessAlive,
+  readAgentBackupAuthorityClaim,
+  releaseAbandonedAgentBackupAuthorityClaim,
   withAgentBackupAuthority,
 } from "./agent-backup-authority.ts";
 
@@ -165,10 +174,15 @@ export class AgentSnapshotBudgetExceededError extends ElizaError {
     readonly stage: string,
     readonly observedBytes: number,
     readonly limitBytes: number,
+    /**
+     * Set when the streamed (v2) local format that takes over above the
+     * in-memory ceiling cannot capture this agent: it supports PGlite only.
+     */
+    readonly streamedBackupUnsupported?: "postgres",
   ) {
     super(`Snapshot refused during ${stage}: source budget exceeded`, {
       code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
-      context: { stage, observedBytes, limitBytes },
+      context: { stage, observedBytes, limitBytes, streamedBackupUnsupported },
       severity: "fatal",
     });
   }
@@ -316,6 +330,8 @@ const TOOL_CACHE_DIR_NAME = "tool-cache";
  */
 const CACHE_DIR_NAME = "cache";
 const LOCAL_BACKUP_EXTENSION = ".agent-backup.json";
+/** Streamed, segment-encrypted capture-v2 frames (see the format-2 section). */
+const LOCAL_BACKUP_V2_EXTENSION = ".agent-backup-v2";
 const LOCAL_BACKUP_FORMAT = "elizaos.agent-backup-file";
 const LOCAL_BACKUP_RETENTION = 10;
 const DEFAULT_PGLITE_DIR_NAME = ".elizadb";
@@ -410,11 +426,20 @@ function safeBackupFileName(createdAt: string, agentId: string): string {
   const timestamp = createdAt.replace(/[:.]/g, "-");
   return `${timestamp}-${agentId}${LOCAL_BACKUP_EXTENSION}`;
 }
+function isLocalBackupV2FileName(fileName: string): boolean {
+  return fileName.endsWith(LOCAL_BACKUP_V2_EXTENSION);
+}
+function isLocalBackupFileName(fileName: string): boolean {
+  return (
+    fileName.endsWith(LOCAL_BACKUP_EXTENSION) ||
+    isLocalBackupV2FileName(fileName)
+  );
+}
 function resolveLocalBackupPath(fileName: string): string {
   if (
     path.basename(fileName) !== fileName ||
-    !fileName.endsWith(LOCAL_BACKUP_EXTENSION) ||
-    !/^[A-Za-z0-9_.=-]+\.agent-backup\.json$/.test(fileName)
+    !isLocalBackupFileName(fileName) ||
+    !/^[A-Za-z0-9_.=-]+\.agent-backup(?:\.json|-v2)$/.test(fileName)
   ) {
     throw new Error(`Invalid backup file name: ${fileName}`);
   }
@@ -1405,11 +1430,42 @@ export async function createLocalAgentBackup(
   config: ElizaConfig,
 ): Promise<LocalAgentBackupMetadata> {
   return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
-    const snapshot = await captureAgentSnapshot(
-      runtime,
-      config,
-      await authority.generation(runtime.agentId),
-    );
+    const restoreGeneration = await authority.generation(runtime.agentId);
+    let snapshot: AgentBackupStateData;
+    try {
+      snapshot = await captureAgentSnapshot(runtime, config, restoreGeneration);
+    } catch (error) {
+      // error-policy:J2 only the deterministic in-memory ceiling falls through
+      // to the streamed format; every other failure (and a runtime the streamed
+      // format cannot capture) keeps its original typed error.
+      const adapter =
+        error instanceof AgentSnapshotBudgetExceededError
+          ? localBackupV2Adapter(runtime)
+          : null;
+      if (!(error instanceof AgentSnapshotBudgetExceededError)) throw error;
+      if (!adapter) {
+        // error-policy:J2 keep the typed refusal, naming why the streamed
+        // format cannot take over for a Postgres-backed agent.
+        if (hasPostgresUrl(runtime))
+          throw new AgentSnapshotBudgetExceededError(
+            error.stage,
+            error.observedBytes,
+            error.limitBytes,
+            "postgres",
+          );
+        throw error;
+      }
+      logger.info(
+        {
+          agentId: runtime.agentId,
+          stage: error.stage,
+          observedBytes: error.observedBytes,
+          limitBytes: error.limitBytes,
+        },
+        "[agent-backup] Agent state exceeds the in-memory snapshot ceiling; writing a streamed local backup",
+      );
+      return captureLocalAgentBackupV2(runtime, adapter, restoreGeneration);
+    }
     return persistLocalAgentBackup(snapshot);
   });
 }
@@ -1445,6 +1501,7 @@ async function pruneLocalBackups(
   agentId: string,
   keepFileName: string,
 ): Promise<void> {
+  await removeStaleLocalBackupV2CaptureWork(agentId);
   const backups = await listLocalAgentBackups(agentId);
   const stale = backups
     .filter((backup) => backup.fileName !== keepFileName)
@@ -1514,8 +1571,7 @@ export async function listLocalAgentBackups(
   }
   const backups: LocalAgentBackupMetadata[] = [];
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(LOCAL_BACKUP_EXTENSION))
-      continue;
+    if (!entry.isFile() || !isLocalBackupFileName(entry.name)) continue;
     try {
       const filePath = resolveLocalBackupPath(entry.name);
       const stat = await fs.stat(filePath, { bigint: true });
@@ -1527,14 +1583,14 @@ export async function listLocalAgentBackups(
         continue;
       }
       localBackupMetadataCache.delete(filePath);
-      const envelope = JSON.parse(
-        await fs.readFile(filePath, "utf8"),
-      ) as AgentBackupFileEnvelope;
-      if (
-        envelope.format !== LOCAL_BACKUP_FORMAT ||
-        envelope.schemaVersion !== 1
-      )
-        continue;
+      const identity = isLocalBackupV2FileName(entry.name)
+        ? await readLocalBackupV2Identity(filePath)
+        : readLocalBackupV1Identity(
+            JSON.parse(
+              await fs.readFile(filePath, "utf8"),
+            ) as AgentBackupFileEnvelope,
+          );
+      if (!identity) continue;
       // Do not associate bytes read during a concurrent write with the older
       // stat identity. A later listing can retry the changed file.
       if (
@@ -1545,9 +1601,7 @@ export async function listLocalAgentBackups(
       const metadata: LocalAgentBackupMetadata = {
         fileName: entry.name,
         path: filePath,
-        createdAt: envelope.createdAt,
-        agentId: envelope.agentId,
-        stateSha256: envelope.stateSha256,
+        ...identity,
         sizeBytes: Number(stat.size),
       };
       if (localBackupMetadataCache.size >= LOCAL_BACKUP_METADATA_CACHE_SIZE) {
@@ -1571,6 +1625,36 @@ export async function listLocalAgentBackups(
   return backups.sort((left, right) =>
     right.createdAt.localeCompare(left.createdAt),
   );
+}
+type LocalBackupIdentity = Pick<
+  LocalAgentBackupMetadata,
+  "createdAt" | "agentId" | "stateSha256"
+>;
+function readLocalBackupV1Identity(
+  envelope: AgentBackupFileEnvelope,
+): LocalBackupIdentity | null {
+  if (envelope.format !== LOCAL_BACKUP_FORMAT || envelope.schemaVersion !== 1)
+    return null;
+  return {
+    createdAt: envelope.createdAt,
+    agentId: envelope.agentId,
+    stateSha256: envelope.stateSha256,
+  };
+}
+/** Listing reads only the plaintext header and trailer, never the body. */
+async function readLocalBackupV2Identity(
+  filePath: string,
+): Promise<LocalBackupIdentity> {
+  const archive = await openLocalBackupV2Archive(filePath);
+  try {
+    return {
+      createdAt: archive.header.createdAt,
+      agentId: archive.header.agentId,
+      stateSha256: archive.trailer.stateSha256,
+    };
+  } finally {
+    await archive.handle.close();
+  }
 }
 /** Whole-agent archive identities requiring separate owner review before removal. */
 export interface RetiredLocalAgentBackup {
@@ -1656,10 +1740,19 @@ async function readRetiredLocalAgentBackups(
   const archives: RetiredLocalAgentBackup[] = [];
   const entries = await fs.readdir(root, { withFileTypes: true });
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!entry.name.endsWith(LOCAL_BACKUP_EXTENSION)) continue;
+    if (!isLocalBackupFileName(entry.name)) continue;
     try {
       if (!entry.isFile() || entry.isSymbolicLink())
         throw new Error("Archive is not a regular file");
+      if (isLocalBackupV2FileName(entry.name)) {
+        const archive = await reviewLocalBackupV2Archive(entry.name);
+        if (
+          archive.agentId === agentId &&
+          archive.retired.restoreGeneration !== generation
+        )
+          archives.push(archive.retired);
+        continue;
+      }
       const handle = await fs.open(
         resolveLocalBackupPath(entry.name),
         constants.O_RDONLY | constants.O_NOFOLLOW,
@@ -1813,7 +1906,7 @@ export async function purgeAdmittedRetiredLocalAgentBackups(
         if (
           !(await handle.stat()).isFile() ||
           !review.archives.some((item) => item.fileName === archive.fileName) ||
-          sha256Bytes(await handle.readFile()) !== archive.archiveSha256
+          (await sha256OfFileHandle(handle)) !== archive.archiveSha256
         )
           throw new ElizaError("[AgentBackup] Admitted archive was replaced", {
             code: "AGENT_BACKUP_CLEANUP_STALE",
@@ -1852,6 +1945,9 @@ export async function restoreLocalAgentBackup(
   restored: true;
   requiresRestart: true;
 }> {
+  if (isLocalBackupV2FileName(fileName)) {
+    return restoreLocalAgentBackupV2(runtime, fileName);
+  }
   const snapshot = await decryptLocalBackupEnvelope(
     await readLocalBackupEnvelope(fileName),
   );
@@ -1924,55 +2020,70 @@ async function prepareVaultRestoreDirectories(
     (file) => file.path === `${VAULT_PGLITE_DIR_NAME}/PG_VERSION`,
   );
   if (!version) return [];
+  const layout = await readPgliteDirectoryLayout();
+  if (!layout.pgVersion.equals(verifyFileEntry(version))) {
+    throw new ElizaError(
+      "[AgentBackup] Vault database version does not match the installed PGlite version",
+      {
+        code: "AGENT_BACKUP_VAULT_VERSION_MISMATCH",
+      },
+    );
+  }
+  const directories = [
+    VAULT_PGLITE_DIR_NAME,
+    ...layout.directories.map(
+      (directory) => `${VAULT_PGLITE_DIR_NAME}/${directory}`,
+    ),
+  ];
+  const files = new Set(
+    vault.files.map((file) => normalizeRelativePath(file.path)),
+  );
+  for (const directory of directories) {
+    if (files.has(directory)) {
+      throw new ElizaError(
+        "[AgentBackup] Vault archive replaces a required database directory with a file",
+        {
+          code: "AGENT_BACKUP_VAULT_DIRECTORY_CONFLICT",
+          context: { directory },
+        },
+      );
+    }
+  }
+  return directories.sort();
+}
+/**
+ * File-set archives omit empty directories, but PostgreSQL requires its empty
+ * layout directories. Derive them (and PG_VERSION) from this PGlite version.
+ */
+async function readPgliteDirectoryLayout(): Promise<{
+  pgVersion: Buffer;
+  directories: string[];
+}> {
   const { PGlite } = await import("@electric-sql/pglite");
   const template = await fs.mkdtemp(
-    path.join(os.tmpdir(), "eliza-vault-restore-layout-"),
+    path.join(os.tmpdir(), "eliza-pglite-restore-layout-"),
   );
   try {
     const database = await PGlite.create(template);
     await database.close();
-    if (
-      !(await fs.readFile(path.join(template, "PG_VERSION"))).equals(
-        verifyFileEntry(version),
-      )
-    ) {
-      throw new ElizaError(
-        "[AgentBackup] Vault database version does not match the installed PGlite version",
-        {
-          code: "AGENT_BACKUP_VAULT_VERSION_MISMATCH",
-        },
-      );
-    }
-    const directories = [VAULT_PGLITE_DIR_NAME];
+    const directories: string[] = [];
     const visit = async (directory: string): Promise<void> => {
       for (const entry of await fs.readdir(directory, {
         withFileTypes: true,
       })) {
         if (!entry.isDirectory()) continue;
         const absolute = path.join(directory, entry.name);
-        const relative = normalizeRelativePath(
-          path.relative(template, absolute),
+        directories.push(
+          normalizeRelativePath(path.relative(template, absolute)),
         );
-        directories.push(`${VAULT_PGLITE_DIR_NAME}/${relative}`);
         await visit(absolute);
       }
     };
     await visit(template);
-    const files = new Set(
-      vault.files.map((file) => normalizeRelativePath(file.path)),
-    );
-    for (const directory of directories) {
-      if (files.has(directory)) {
-        throw new ElizaError(
-          "[AgentBackup] Vault archive replaces a required database directory with a file",
-          {
-            code: "AGENT_BACKUP_VAULT_DIRECTORY_CONFLICT",
-            context: { directory },
-          },
-        );
-      }
-    }
-    return directories.sort();
+    return {
+      pgVersion: await fs.readFile(path.join(template, "PG_VERSION")),
+      directories: directories.sort(),
+    };
   } finally {
     await fs.rm(template, { recursive: true, force: true });
   }
@@ -3817,4 +3928,1793 @@ export function createAgentBackupV2Capture(
 /** Utility for callers/tests that need the payload digest of one bounded chunk. */
 export function sha256AgentBackupV2CaptureChunk(bytes: Uint8Array): string {
   return sha256Hex(bytes);
+}
+
+// ---------------------------------------------------------------------------
+// Local backup format 2: streamed capture-v2 frames on disk (#30825).
+//
+// An agent above the in-memory v1 ceiling is written as the capture-v2 frame
+// stream (per-frame sha256, per-component payload digests and a frame-digest
+// chain), sealed with KMS envelope encryption: a fresh AES-256-GCM data key is
+// wrapped by the same `agent-backup` system key v1 uses, and the frame stream
+// is encrypted in fixed 1 MiB segments whose nonce is the segment index and
+// whose AAD binds the plaintext header, the index, the final flag and (for the
+// final segment) the trailer. Reordering, truncation, header or trailer edits
+// therefore all fail authentication.
+//
+// File layout:
+//   "ELZLBK02" | u32 headerLength | header JSON
+//   { u8 flags | u32 ciphertextLength | ciphertext | 16-byte tag }*  (last has flags=1)
+//   trailer JSON | u32 trailerLength | "ELZLBEND"
+//
+// Memory stays bounded by one segment plus one frame in both directions. The
+// PGlite data directory is copied (clone-on-write where the filesystem allows)
+// while the adapter holds its query and lifecycle fences, then streamed from
+// that quiescent copy. Restore authenticates and stages everything before the
+// runtime stops, then swaps each target by rename with a journal that is
+// replayed in reverse when any swap step fails.
+// ---------------------------------------------------------------------------
+
+const LOCAL_BACKUP_V2_MAGIC = Buffer.from("ELZLBK02", "ascii");
+const LOCAL_BACKUP_V2_TRAILER_MAGIC = Buffer.from("ELZLBEND", "ascii");
+const LOCAL_BACKUP_V2_ALGORITHM = "kms-envelope-aes-256-gcm-stream";
+const LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES = MIB;
+const LOCAL_BACKUP_V2_MAX_HEADER_BYTES = 64 * 1024;
+const LOCAL_BACKUP_V2_MAX_TRAILER_BYTES = 4 * 1024;
+const LOCAL_BACKUP_V2_SEGMENT_PREFIX_BYTES = 5;
+const LOCAL_BACKUP_V2_TAG_BYTES = 16;
+const LOCAL_BACKUP_V2_KEY_BYTES = 32;
+const LOCAL_BACKUP_V2_PARTIAL_SUFFIX = ".partial";
+const LOCAL_BACKUP_V2_CAPTURE_WORK_PREFIX = ".capture-";
+const LOCAL_BACKUP_V2_RESTORE_WORK_PREFIX = ".restore-";
+const LOCAL_BACKUP_V2_DEADLINE_MARGIN_MS = 5_000;
+const LOCAL_BACKUP_V2_ZERO_DIGEST = Buffer.alloc(32);
+const LOCAL_BACKUP_V2_FILE_SET = {
+  format: "file-set-v1",
+  compression: "none",
+  contentKind: "file-set",
+  consistency: "best-effort",
+} as const;
+const LOCAL_BACKUP_V2_DESCRIPTORS = Object.freeze({
+  character: {
+    name: "character",
+    format: "runtime-character-json-v1",
+    compression: "none",
+    contentKind: "opaque",
+    consistency: "best-effort",
+  },
+  config: { name: "config", ...LOCAL_BACKUP_V2_FILE_SET },
+  database: {
+    name: "database",
+    format: "pglite-data-dir-files-v1",
+    compression: "none",
+    contentKind: "file-set",
+    consistency: "crash-consistent",
+  },
+  media: { name: "media", ...LOCAL_BACKUP_V2_FILE_SET },
+  "state-files": { name: "state-files", ...LOCAL_BACKUP_V2_FILE_SET },
+  vault: { name: "vault", ...LOCAL_BACKUP_V2_FILE_SET },
+} satisfies Record<string, AgentBackupCaptureV2ComponentDescriptor>);
+type LocalBackupV2ComponentName = keyof typeof LOCAL_BACKUP_V2_DESCRIPTORS;
+const LOCAL_BACKUP_V2_CAPTURE_LIMIT_CODES = new Set([
+  "AGENT_BACKUP_V2_PLAIN_BYTES_LIMIT",
+  "AGENT_BACKUP_V2_DATA_FRAME_LIMIT",
+  "AGENT_BACKUP_V2_FILE_LIMIT",
+]);
+
+/** A local format-2 archive, staging, or swap failure. */
+export class LocalAgentBackupV2Error extends ElizaError {
+  override readonly name = "LocalAgentBackupV2Error";
+  constructor(
+    message: string,
+    code: string,
+    context?: Record<string, unknown>,
+    cause?: unknown,
+  ) {
+    super(message, { code, context, cause, severity: "fatal" });
+  }
+}
+function localBackupV2Error(
+  message: string,
+  code: string,
+  context?: Record<string, unknown>,
+  cause?: unknown,
+): never {
+  throw new LocalAgentBackupV2Error(message, code, context, cause);
+}
+
+const localBackupV2Base64Schema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9+/]+={0,2}$/);
+const localBackupV2HeaderSchema = z.strictObject({
+  format: z.literal(LOCAL_BACKUP_FORMAT),
+  schemaVersion: z.literal(2),
+  backupId: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  agentId: z.string().min(1),
+  restoreGeneration: z.union([
+    z.literal(INITIAL_AGENT_BACKUP_GENERATION),
+    z.string().uuid(),
+  ]),
+  payloadFormat: z.literal(AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT),
+  encryption: z.strictObject({
+    algorithm: z.literal(LOCAL_BACKUP_V2_ALGORITHM),
+    segmentPlainBytes: z.literal(LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES),
+    wrappedKey: z.strictObject({
+      ciphertext: localBackupV2Base64Schema,
+      nonce: localBackupV2Base64Schema,
+      authTag: localBackupV2Base64Schema,
+      kmsKeyId: z.string().min(1),
+      kmsKeyVersion: z.number().int().nonnegative(),
+    }),
+  }),
+});
+type LocalBackupV2Header = z.infer<typeof localBackupV2HeaderSchema>;
+const localBackupV2TrailerSchema = z.strictObject({
+  stateSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  streamBytes: z.number().int().nonnegative(),
+  segmentCount: z.number().int().positive(),
+});
+type LocalBackupV2Trailer = z.infer<typeof localBackupV2TrailerSchema>;
+
+interface LocalBackupV2Archive {
+  handle: FileHandle;
+  header: LocalBackupV2Header;
+  headerDigest: Buffer;
+  trailer: LocalBackupV2Trailer;
+  trailerDigest: Buffer;
+  bodyStart: number;
+  bodyEnd: number;
+  sizeBytes: number;
+}
+
+function localBackupV2FileName(createdAt: string, agentId: string): string {
+  return `${createdAt.replace(/[:.]/g, "-")}-${agentId}${LOCAL_BACKUP_V2_EXTENSION}`;
+}
+function localBackupV2KeyAad(
+  identity: Pick<
+    LocalBackupV2Header,
+    "agentId" | "backupId" | "restoreGeneration" | "createdAt"
+  >,
+): Uint8Array {
+  return textEncoder.encode(
+    `agent-backup-file-v2|${identity.agentId}|${identity.backupId}|${identity.restoreGeneration}|${identity.createdAt}`,
+  );
+}
+function localBackupV2SegmentNonce(index: number): Buffer {
+  const nonce = Buffer.alloc(12);
+  nonce.writeBigUInt64BE(BigInt(index), 4);
+  return nonce;
+}
+function localBackupV2SegmentAad(
+  headerDigest: Buffer,
+  index: number,
+  final: boolean,
+  trailerDigest: Buffer,
+): Buffer {
+  const aad = Buffer.alloc(32 + 8 + 1 + 32);
+  headerDigest.copy(aad, 0);
+  aad.writeBigUInt64BE(BigInt(index), 32);
+  aad[40] = final ? 1 : 0;
+  (final ? trailerDigest : LOCAL_BACKUP_V2_ZERO_DIGEST).copy(aad, 41);
+  return aad;
+}
+function sha256Digest(bytes: Uint8Array): Buffer {
+  return crypto.createHash("sha256").update(bytes).digest();
+}
+function uint32BE(value: number): Buffer {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32BE(value, 0);
+  return bytes;
+}
+async function writeAllAt(
+  handle: FileHandle,
+  bytes: Uint8Array,
+  position: number | null,
+): Promise<void> {
+  let offset = 0;
+  while (offset < bytes.length) {
+    const { bytesWritten } = await handle.write(
+      bytes,
+      offset,
+      bytes.length - offset,
+      position === null ? null : position + offset,
+    );
+    if (bytesWritten === 0) {
+      localBackupV2Error(
+        "Local backup write made no progress",
+        "AGENT_BACKUP_V2_WRITE_STALLED",
+      );
+    }
+    offset += bytesWritten;
+  }
+}
+async function readExactAt(
+  handle: FileHandle,
+  length: number,
+  position: number,
+): Promise<Buffer> {
+  const buffer = Buffer.alloc(length);
+  let offset = 0;
+  while (offset < length) {
+    const { bytesRead } = await handle.read(
+      buffer,
+      offset,
+      length - offset,
+      position + offset,
+    );
+    if (bytesRead === 0) {
+      localBackupV2Error(
+        "Local backup file is truncated",
+        "AGENT_BACKUP_V2_ARCHIVE_TRUNCATED",
+      );
+    }
+    offset += bytesRead;
+  }
+  return buffer;
+}
+async function sha256OfFileHandle(handle: FileHandle): Promise<string> {
+  const hash = crypto.createHash("sha256");
+  const buffer = Buffer.alloc(MIB);
+  let position = 0;
+  for (;;) {
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+    if (bytesRead === 0) break;
+    hash.update(buffer.subarray(0, bytesRead));
+    position += bytesRead;
+  }
+  return hash.digest("hex");
+}
+async function syncDirectory(directory: string): Promise<void> {
+  const handle = await fs.open(directory, constants.O_RDONLY);
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+function parseLocalBackupV2Json<T>(
+  schema: z.ZodType<T>,
+  bytes: Buffer,
+  part: "header" | "trailer" | "journal",
+): T {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(bytes.toString("utf8"));
+  } catch (cause) {
+    // error-policy:J3 archive bytes are untrusted input; malformed JSON is one
+    // explicit, typed archive rejection.
+    localBackupV2Error(
+      `Local backup ${part} is not valid JSON`,
+      "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+      { part },
+      cause,
+    );
+  }
+  const parsed = schema.safeParse(decoded);
+  if (!parsed.success) {
+    localBackupV2Error(
+      `Local backup ${part} is invalid`,
+      "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+      { part, issue: parsed.error.issues[0]?.message },
+    );
+  }
+  return parsed.data;
+}
+
+/** Open a format-2 archive and parse its plaintext header and trailer. */
+async function openLocalBackupV2Archive(
+  filePath: string,
+): Promise<LocalBackupV2Archive> {
+  const handle = await fs.open(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      localBackupV2Error(
+        "Local backup is not a regular file",
+        "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+      );
+    }
+    const leadBytes = LOCAL_BACKUP_V2_MAGIC.length + 4;
+    const tailBytes = 4 + LOCAL_BACKUP_V2_TRAILER_MAGIC.length;
+    if (stat.size < leadBytes + tailBytes) {
+      localBackupV2Error(
+        "Local backup file is truncated",
+        "AGENT_BACKUP_V2_ARCHIVE_TRUNCATED",
+      );
+    }
+    const lead = await readExactAt(handle, leadBytes, 0);
+    if (
+      !lead
+        .subarray(0, LOCAL_BACKUP_V2_MAGIC.length)
+        .equals(LOCAL_BACKUP_V2_MAGIC)
+    ) {
+      localBackupV2Error(
+        "Local backup file has an unknown format",
+        "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+      );
+    }
+    const headerLength = lead.readUInt32BE(LOCAL_BACKUP_V2_MAGIC.length);
+    const tail = await readExactAt(handle, tailBytes, stat.size - tailBytes);
+    if (!tail.subarray(4).equals(LOCAL_BACKUP_V2_TRAILER_MAGIC)) {
+      localBackupV2Error(
+        "Local backup file is incomplete",
+        "AGENT_BACKUP_V2_ARCHIVE_TRUNCATED",
+      );
+    }
+    const trailerLength = tail.readUInt32BE(0);
+    const bodyStart = leadBytes + headerLength;
+    const bodyEnd = stat.size - tailBytes - trailerLength;
+    if (
+      headerLength === 0 ||
+      headerLength > LOCAL_BACKUP_V2_MAX_HEADER_BYTES ||
+      trailerLength === 0 ||
+      trailerLength > LOCAL_BACKUP_V2_MAX_TRAILER_BYTES ||
+      bodyEnd < bodyStart
+    ) {
+      localBackupV2Error(
+        "Local backup framing is invalid",
+        "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+      );
+    }
+    const headerBytes = await readExactAt(handle, headerLength, leadBytes);
+    const trailerBytes = await readExactAt(handle, trailerLength, bodyEnd);
+    return {
+      handle,
+      header: parseLocalBackupV2Json(
+        localBackupV2HeaderSchema,
+        headerBytes,
+        "header",
+      ),
+      headerDigest: sha256Digest(headerBytes),
+      trailer: parseLocalBackupV2Json(
+        localBackupV2TrailerSchema,
+        trailerBytes,
+        "trailer",
+      ),
+      trailerDigest: sha256Digest(trailerBytes),
+      bodyStart,
+      bodyEnd,
+      sizeBytes: stat.size,
+    };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+async function unwrapLocalBackupV2Key(
+  header: LocalBackupV2Header,
+): Promise<Buffer> {
+  const wrapped = header.encryption.wrappedKey;
+  const key = await getLocalBackupKmsClient().decrypt(
+    wrapped.kmsKeyId,
+    b64decode(wrapped.ciphertext),
+    b64decode(wrapped.nonce),
+    b64decode(wrapped.authTag),
+    localBackupV2KeyAad(header),
+    wrapped.kmsKeyVersion,
+  );
+  if (key.length !== LOCAL_BACKUP_V2_KEY_BYTES) {
+    localBackupV2Error(
+      "Local backup data key has an invalid length",
+      "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+    );
+  }
+  return Buffer.from(key);
+}
+
+/**
+ * Authenticate and decrypt the body one segment at a time. A segment's bytes
+ * are released only after its GCM tag verifies; the final flag and segment
+ * count are authenticated, so truncation and reordering are rejected.
+ */
+async function* decryptLocalBackupV2Segments(
+  archive: LocalBackupV2Archive,
+  key: Buffer,
+): AsyncGenerator<Uint8Array> {
+  const chunkBytes = AGENT_BACKUP_CAPTURE_V2_LIMITS.maxFramePayloadBytes;
+  let position = archive.bodyStart;
+  let streamBytes = 0;
+  for (let index = 0; ; index += 1) {
+    if (
+      index >= archive.trailer.segmentCount ||
+      position +
+        LOCAL_BACKUP_V2_SEGMENT_PREFIX_BYTES +
+        LOCAL_BACKUP_V2_TAG_BYTES >
+        archive.bodyEnd
+    ) {
+      localBackupV2Error(
+        "Local backup ended before its final segment",
+        "AGENT_BACKUP_V2_ARCHIVE_TRUNCATED",
+      );
+    }
+    const prefix = await readExactAt(
+      archive.handle,
+      LOCAL_BACKUP_V2_SEGMENT_PREFIX_BYTES,
+      position,
+    );
+    position += LOCAL_BACKUP_V2_SEGMENT_PREFIX_BYTES;
+    const flags = prefix[0];
+    const length = prefix.readUInt32BE(1);
+    const final = flags === 1;
+    if (
+      (flags !== 0 && flags !== 1) ||
+      length > LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES ||
+      (!final && length !== LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES) ||
+      position + length + LOCAL_BACKUP_V2_TAG_BYTES > archive.bodyEnd
+    ) {
+      localBackupV2Error(
+        "Local backup segment framing is invalid",
+        "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+        { segment: index },
+      );
+    }
+    const ciphertext = await readExactAt(archive.handle, length, position);
+    position += length;
+    const tag = await readExactAt(
+      archive.handle,
+      LOCAL_BACKUP_V2_TAG_BYTES,
+      position,
+    );
+    position += LOCAL_BACKUP_V2_TAG_BYTES;
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      key,
+      localBackupV2SegmentNonce(index),
+      { authTagLength: LOCAL_BACKUP_V2_TAG_BYTES },
+    );
+    decipher.setAAD(
+      localBackupV2SegmentAad(
+        archive.headerDigest,
+        index,
+        final,
+        archive.trailerDigest,
+      ),
+    );
+    decipher.setAuthTag(tag);
+    let plaintext: Buffer;
+    try {
+      plaintext = Buffer.concat([
+        decipher.update(ciphertext),
+        decipher.final(),
+      ]);
+    } catch (cause) {
+      // error-policy:J2 GCM failure is the tamper signal; surface it typed.
+      localBackupV2Error(
+        "Local backup failed authentication",
+        "AGENT_BACKUP_V2_ARCHIVE_TAMPERED",
+        { segment: index },
+        cause,
+      );
+    }
+    streamBytes += plaintext.length;
+    for (let offset = 0; offset < plaintext.length; offset += chunkBytes) {
+      yield plaintext.subarray(
+        offset,
+        Math.min(plaintext.length, offset + chunkBytes),
+      );
+    }
+    if (final) {
+      if (
+        index + 1 !== archive.trailer.segmentCount ||
+        position !== archive.bodyEnd ||
+        streamBytes !== archive.trailer.streamBytes
+      ) {
+        localBackupV2Error(
+          "Local backup totals do not match its trailer",
+          "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+        );
+      }
+      return;
+    }
+  }
+}
+
+/** Buffers the frame stream into fixed segments and seals each one. */
+class LocalBackupV2SegmentWriter {
+  private pending: Buffer[] = [];
+  private pendingBytes = 0;
+  private index = 0;
+  streamBytes = 0;
+  constructor(
+    private readonly handle: FileHandle,
+    private readonly key: Buffer,
+    private readonly headerDigest: Buffer,
+  ) {}
+  async write(bytes: Uint8Array): Promise<void> {
+    this.pending.push(
+      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    );
+    this.pendingBytes += bytes.byteLength;
+    this.streamBytes += bytes.byteLength;
+    while (this.pendingBytes >= LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES) {
+      const joined = Buffer.concat(this.pending, this.pendingBytes);
+      await this.seal(
+        joined.subarray(0, LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES),
+        false,
+        LOCAL_BACKUP_V2_ZERO_DIGEST,
+      );
+      const rest = joined.subarray(LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES);
+      this.pending = rest.length > 0 ? [rest] : [];
+      this.pendingBytes = rest.length;
+    }
+  }
+  /** Seal the final segment, bound to the trailer, then write the trailer. */
+  async finish(trailerFor: (segmentCount: number) => Buffer): Promise<void> {
+    const trailer = trailerFor(this.index + 1);
+    await this.seal(
+      Buffer.concat(this.pending, this.pendingBytes),
+      true,
+      sha256Digest(trailer),
+    );
+    this.pending = [];
+    this.pendingBytes = 0;
+    await writeAllAt(
+      this.handle,
+      Buffer.concat([
+        trailer,
+        uint32BE(trailer.length),
+        LOCAL_BACKUP_V2_TRAILER_MAGIC,
+      ]),
+      null,
+    );
+  }
+  private async seal(
+    plaintext: Buffer,
+    final: boolean,
+    trailerDigest: Buffer,
+  ): Promise<void> {
+    const cipher = crypto.createCipheriv(
+      "aes-256-gcm",
+      this.key,
+      localBackupV2SegmentNonce(this.index),
+      { authTagLength: LOCAL_BACKUP_V2_TAG_BYTES },
+    );
+    cipher.setAAD(
+      localBackupV2SegmentAad(
+        this.headerDigest,
+        this.index,
+        final,
+        trailerDigest,
+      ),
+    );
+    const ciphertext = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+    ]);
+    const prefix = Buffer.alloc(LOCAL_BACKUP_V2_SEGMENT_PREFIX_BYTES);
+    prefix[0] = final ? 1 : 0;
+    prefix.writeUInt32BE(ciphertext.length, 1);
+    await writeAllAt(
+      this.handle,
+      Buffer.concat([prefix, ciphertext, cipher.getAuthTag()]),
+      null,
+    );
+    this.index += 1;
+  }
+}
+
+interface PgliteQuiescedAdapter {
+  withPgliteDataDirQuiesced<T>(
+    operation: (dataDir: string) => Promise<T>,
+  ): Promise<T>;
+  getPgliteDataDir(): unknown;
+  close?(): Promise<void>;
+}
+/** The fenced PGlite adapter format 2 needs, or null when it cannot apply. */
+function localBackupV2Adapter(
+  runtime: IAgentRuntime | AgentRuntime,
+): PgliteQuiescedAdapter | null {
+  if (hasPostgresUrl(runtime)) return null;
+  const adapter = runtime.adapter as Partial<PgliteQuiescedAdapter> | undefined;
+  if (
+    typeof adapter?.withPgliteDataDirQuiesced !== "function" ||
+    typeof adapter.getPgliteDataDir !== "function"
+  )
+    return null;
+  const dataDir = adapter.getPgliteDataDir();
+  if (
+    typeof dataDir !== "string" ||
+    dataDir.length === 0 ||
+    dataDir === ":memory:" ||
+    dataDir.includes("://")
+  )
+    return null;
+  return adapter as PgliteQuiescedAdapter;
+}
+function attestedPgliteDir(adapter: PgliteQuiescedAdapter): string {
+  return path.resolve(resolveUserPath(String(adapter.getPgliteDataDir())));
+}
+function localStateFileInclude(
+  relativePath: string,
+  pgliteRelativePath: string | null,
+): boolean {
+  return (
+    !isBackupAuthorityPath(relativePath) &&
+    captureStateFileInclude(relativePath, pgliteRelativePath)
+  );
+}
+/**
+ * Everything restore swaps file-by-file under the state dir: state files plus
+ * the vault's plain files. `.vault-pglite` is swapped as one directory.
+ */
+function localStateTreeInclude(
+  relativePath: string,
+  pgliteRelativePath: string | null,
+): boolean {
+  if (
+    relativePath === VAULT_PGLITE_DIR_NAME ||
+    relativePath.startsWith(`${VAULT_PGLITE_DIR_NAME}/`)
+  )
+    return false;
+  return (
+    relativePath === VAULT_JSON_PATH ||
+    relativePath === VAULT_AUDIT_DIR_NAME ||
+    relativePath === VAULT_AUDIT_PATH ||
+    localStateFileInclude(relativePath, pgliteRelativePath)
+  );
+}
+
+interface LocalBackupV2Measure {
+  bytes: number;
+  frames: number;
+  files: number;
+}
+async function measureLocalBackupV2FileSet(
+  root: string,
+  include?: (relativePath: string) => boolean,
+): Promise<LocalBackupV2Measure> {
+  const measure = { bytes: 0, frames: 0, files: 0 };
+  for await (const file of walkFiles(
+    root,
+    include,
+    new AbortController().signal,
+  )) {
+    const { size } = await fs.stat(file.absolutePath);
+    measure.files += 1;
+    measure.bytes += size;
+    measure.frames += Math.max(
+      1,
+      Math.ceil(size / AGENT_BACKUP_CAPTURE_V2_LIMITS.maxFramePayloadBytes),
+    );
+  }
+  return measure;
+}
+/** Refuse from stat sizes, before any byte is streamed or encrypted. */
+function assertLocalBackupV2Fits(
+  measures: readonly LocalBackupV2Measure[],
+): void {
+  const limits = AGENT_BACKUP_CAPTURE_V2_LIMITS;
+  let bytes = 0;
+  let frames = 0;
+  for (const measure of measures) {
+    if (measure.files > limits.maxFiles) {
+      throw new AgentSnapshotBudgetExceededError(
+        "file count",
+        measure.files,
+        limits.maxFiles,
+      );
+    }
+    bytes += measure.bytes;
+    frames += measure.frames;
+  }
+  if (bytes > limits.maxPlainBytes) {
+    throw new AgentSnapshotBudgetExceededError(
+      "streaming capture",
+      bytes,
+      limits.maxPlainBytes,
+    );
+  }
+  if (frames > limits.maxDataFrames) {
+    throw new AgentSnapshotBudgetExceededError(
+      "file count",
+      frames,
+      limits.maxDataFrames,
+    );
+  }
+}
+/** Translate a capture-limit refusal into the same typed size error as v1. */
+function localBackupV2BudgetError(
+  error: unknown,
+): AgentSnapshotBudgetExceededError | null {
+  if (
+    !(error instanceof AgentBackupV2CaptureError) ||
+    !LOCAL_BACKUP_V2_CAPTURE_LIMIT_CODES.has(error.code)
+  )
+    return null;
+  const limits = AGENT_BACKUP_CAPTURE_V2_LIMITS;
+  const context = (error.context ?? {}) as Record<string, unknown>;
+  const observed = (key: string): number => {
+    const value = context[key];
+    return typeof value === "number" ? value : 0;
+  };
+  if (error.code === "AGENT_BACKUP_V2_PLAIN_BYTES_LIMIT")
+    return new AgentSnapshotBudgetExceededError(
+      "streaming capture",
+      observed("observedBytes"),
+      limits.maxPlainBytes,
+    );
+  if (error.code === "AGENT_BACKUP_V2_DATA_FRAME_LIMIT")
+    return new AgentSnapshotBudgetExceededError(
+      "file count",
+      observed("observedFrames"),
+      limits.maxDataFrames,
+    );
+  return new AgentSnapshotBudgetExceededError(
+    "file count",
+    observed("fileCount"),
+    limits.maxFiles,
+  );
+}
+
+/** Copy the fenced PGlite directory, cloning file extents where supported. */
+async function copyQuiescedPgliteDirectory(
+  source: string,
+  destination: string,
+): Promise<void> {
+  await fs.mkdir(destination, { recursive: true, mode: 0o700 });
+  const visit = async (
+    from: string,
+    to: string,
+    prefix: string,
+  ): Promise<void> => {
+    for (const entry of await fs.readdir(from, { withFileTypes: true })) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (!pgliteFileInclude(relative)) continue;
+      const sourcePath = path.join(from, entry.name);
+      const destinationPath = path.join(to, entry.name);
+      if (entry.isDirectory()) {
+        await fs.mkdir(destinationPath, { mode: 0o700 });
+        await visit(sourcePath, destinationPath, relative);
+      } else if (entry.isFile()) {
+        await fs.copyFile(
+          sourcePath,
+          destinationPath,
+          constants.COPYFILE_FICLONE,
+        );
+        const stat = await fs.stat(sourcePath);
+        await fs.chmod(destinationPath, stat.mode & 0o777);
+        await fs.utimes(destinationPath, stat.atime, stat.mtime);
+      } else {
+        localBackupV2Error(
+          "PGlite data directory contains an unsupported entry",
+          "AGENT_BACKUP_V2_PGLITE_ENTRY_UNSUPPORTED",
+          { path: relative },
+        );
+      }
+    }
+  };
+  await visit(source, destination, "");
+}
+
+/**
+ * Capture work is serialized by the backup authority, so an unfinished archive
+ * or capture copy found while holding it belongs to an interrupted capture.
+ * Restore work directories are never removed here: after an interrupted swap
+ * they may hold the only copy of the previous data.
+ */
+async function removeStaleLocalBackupV2CaptureWork(
+  agentId: string,
+): Promise<void> {
+  const root = localBackupsDir();
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (error) {
+    // error-policy:J4 no backups directory means no stale capture work.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  for (const entry of entries) {
+    if (
+      entry.isFile() &&
+      entry.name.endsWith(
+        `-${agentId}${LOCAL_BACKUP_V2_EXTENSION}${LOCAL_BACKUP_V2_PARTIAL_SUFFIX}`,
+      )
+    ) {
+      await fs.rm(path.join(root, entry.name), { force: true });
+    } else if (
+      entry.isDirectory() &&
+      entry.name.startsWith(LOCAL_BACKUP_V2_CAPTURE_WORK_PREFIX)
+    ) {
+      await fs.rm(path.join(root, entry.name), {
+        recursive: true,
+        force: true,
+      });
+    }
+  }
+}
+
+/**
+ * Write a format-2 local backup. Caller holds the backup authority. Memory is
+ * bounded by one encryption segment plus one capture frame.
+ */
+async function captureLocalAgentBackupV2(
+  runtime: IAgentRuntime | AgentRuntime,
+  adapter: PgliteQuiescedAdapter,
+  restoreGeneration: string,
+): Promise<LocalAgentBackupMetadata> {
+  const agentId = runtime.agentId;
+  const stateDir = path.resolve(resolveStateDir());
+  const pgliteDir = attestedPgliteDir(adapter);
+  const pgliteExclusion = resolveStateFilesPgliteExclusion(stateDir, pgliteDir);
+  const stateInclude = (relativePath: string) =>
+    localStateFileInclude(relativePath, pgliteExclusion);
+  const configPath = path.resolve(resolveConfigPath());
+  const configDir = path.dirname(configPath);
+  const configName = path.basename(configPath);
+  const configInclude = (relativePath: string) => relativePath === configName;
+  const mediaDir = path.join(stateDir, MEDIA_DIR_NAME);
+  const characterBytes = Buffer.byteLength(
+    JSON.stringify(runtime.character ?? null),
+    "utf8",
+  );
+  const measures: LocalBackupV2Measure[] = [
+    {
+      bytes: characterBytes,
+      frames: Math.max(
+        1,
+        Math.ceil(
+          characterBytes / AGENT_BACKUP_CAPTURE_V2_LIMITS.maxFramePayloadBytes,
+        ),
+      ),
+      files: 0,
+    },
+    await measureLocalBackupV2FileSet(configDir, configInclude),
+    await measureLocalBackupV2FileSet(mediaDir),
+    await measureLocalBackupV2FileSet(stateDir, stateInclude),
+    await measureLocalBackupV2FileSet(stateDir, vaultFileInclude),
+  ];
+  assertLocalBackupV2Fits(measures);
+
+  const backupsDir = localBackupsDir();
+  await fs.mkdir(backupsDir, { recursive: true, mode: 0o700 });
+  const backupId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const fileName = localBackupV2FileName(createdAt, agentId);
+  const filePath = resolveLocalBackupPath(fileName);
+  const partialPath = `${filePath}${LOCAL_BACKUP_V2_PARTIAL_SUFFIX}`;
+  const workDir = path.join(
+    backupsDir,
+    `${LOCAL_BACKUP_V2_CAPTURE_WORK_PREFIX}${backupId}`,
+  );
+  const databaseDir = path.join(workDir, "database");
+  const key = crypto.randomBytes(LOCAL_BACKUP_V2_KEY_BYTES);
+  let handle: FileHandle | undefined;
+  let completed = false;
+  try {
+    await fs.mkdir(workDir, { recursive: true, mode: 0o700 });
+    await adapter.withPgliteDataDirQuiesced(async (dataDir) => {
+      if (path.resolve(resolveUserPath(dataDir)) !== pgliteDir) {
+        localBackupV2Error(
+          "The PGlite data directory changed during capture",
+          "AGENT_BACKUP_V2_PGLITE_DIRECTORY_MISMATCH",
+        );
+      }
+      await copyQuiescedPgliteDirectory(pgliteDir, databaseDir);
+    });
+    measures.push(
+      await measureLocalBackupV2FileSet(databaseDir, pgliteFileInclude),
+    );
+    assertLocalBackupV2Fits(measures);
+
+    const kms = getLocalBackupKmsClient();
+    const keyId = systemKey("agent-backup");
+    await kms.getOrCreateKey(keyId);
+    const identity = { agentId, backupId, restoreGeneration, createdAt };
+    const wrapped = await kms.encrypt(
+      keyId,
+      key,
+      localBackupV2KeyAad(identity),
+    );
+    const header: LocalBackupV2Header = {
+      format: LOCAL_BACKUP_FORMAT,
+      schemaVersion: 2,
+      ...identity,
+      payloadFormat: AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
+      encryption: {
+        algorithm: LOCAL_BACKUP_V2_ALGORITHM,
+        segmentPlainBytes: LOCAL_BACKUP_V2_SEGMENT_PLAIN_BYTES,
+        wrappedKey: {
+          ciphertext: b64encode(wrapped.ciphertext),
+          nonce: b64encode(wrapped.nonce),
+          authTag: b64encode(wrapped.authTag),
+          kmsKeyId: wrapped.keyId,
+          kmsKeyVersion: wrapped.keyVersion,
+        },
+      },
+    };
+    const headerBytes = Buffer.from(JSON.stringify(header), "utf8");
+    handle = await fs.open(partialPath, "wx", 0o600);
+    await writeAllAt(
+      handle,
+      Buffer.concat([
+        LOCAL_BACKUP_V2_MAGIC,
+        uint32BE(headerBytes.length),
+        headerBytes,
+      ]),
+      null,
+    );
+    const writer = new LocalBackupV2SegmentWriter(
+      handle,
+      key,
+      sha256Digest(headerBytes),
+    );
+    // The capture-end frame's chain covers every earlier frame digest.
+    const chain = crypto.createHash("sha256");
+    let previousDigest: Uint8Array | undefined;
+    const components: AgentBackupV2CaptureComponentSource[] = [
+      jsonSource(
+        LOCAL_BACKUP_V2_DESCRIPTORS.character,
+        runtime.character ?? null,
+      ),
+      fileSetSource(
+        LOCAL_BACKUP_V2_DESCRIPTORS.config,
+        configDir,
+        configInclude,
+      ),
+      fileSetSource(
+        LOCAL_BACKUP_V2_DESCRIPTORS.database,
+        databaseDir,
+        pgliteFileInclude,
+      ),
+      fileSetSource(LOCAL_BACKUP_V2_DESCRIPTORS.media, mediaDir),
+      fileSetSource(
+        LOCAL_BACKUP_V2_DESCRIPTORS["state-files"],
+        stateDir,
+        stateInclude,
+      ),
+      fileSetSource(
+        LOCAL_BACKUP_V2_DESCRIPTORS.vault,
+        stateDir,
+        vaultFileInclude,
+      ),
+    ];
+    for await (const wire of streamAgentBackupV2Capture({
+      request: {
+        format: AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
+        schemaVersion: AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
+        operationId: backupId,
+        agentId,
+        // Local captures have no Cloud activation; the backup id stands in.
+        activationGeneration: backupId,
+        lifecycleRevision: "0",
+        deadlineEpochMs:
+          Date.now() +
+          AGENT_BACKUP_CAPTURE_V2_LIMITS.maxDeadlineAheadMs -
+          LOCAL_BACKUP_V2_DEADLINE_MARGIN_MS,
+      },
+      agentId,
+      components,
+    })) {
+      if (previousDigest) chain.update(previousDigest);
+      previousDigest = readAgentBackupCaptureV2FrameDigest(wire);
+      await writer.write(wire);
+    }
+    const stateSha256 = chain.digest("hex");
+    await writer.finish((segmentCount) =>
+      Buffer.from(
+        JSON.stringify({
+          stateSha256,
+          streamBytes: writer.streamBytes,
+          segmentCount,
+        } satisfies LocalBackupV2Trailer),
+        "utf8",
+      ),
+    );
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await fs.rename(partialPath, filePath);
+    await syncDirectory(backupsDir);
+    completed = true;
+    const { size: sizeBytes } = await fs.stat(filePath);
+    await pruneLocalBackups(agentId, fileName);
+    logger.info(
+      { agentId, fileName, stateSha256, sizeBytes },
+      "[agent-backup] Streamed local backup file written",
+    );
+    return {
+      fileName,
+      path: filePath,
+      createdAt,
+      agentId,
+      stateSha256,
+      sizeBytes,
+    };
+  } catch (error) {
+    throw localBackupV2BudgetError(error) ?? error;
+  } finally {
+    key.fill(0);
+    if (handle) {
+      await handle.close().catch((error: unknown) => {
+        // error-policy:J6 the capture failure is authoritative; a descriptor
+        // close failure is diagnostic only.
+        logger.warn(
+          { err: error instanceof Error ? error.message : String(error) },
+          "[agent-backup] Closing an unfinished local backup failed",
+        );
+      });
+    }
+    if (!completed) await fs.rm(partialPath, { force: true });
+    await fs.rm(workDir, { recursive: true, force: true });
+  }
+}
+
+/** Authenticate a whole format-2 archive for retired-archive review. */
+async function reviewLocalBackupV2Archive(fileName: string): Promise<{
+  agentId: string;
+  retired: RetiredLocalAgentBackup;
+}> {
+  const archive = await openLocalBackupV2Archive(
+    resolveLocalBackupPath(fileName),
+  );
+  try {
+    const before = await archive.handle.stat();
+    const key = await unwrapLocalBackupV2Key(archive.header);
+    let authenticatedBytes = 0;
+    try {
+      for await (const chunk of decryptLocalBackupV2Segments(archive, key))
+        authenticatedBytes += chunk.length;
+    } finally {
+      key.fill(0);
+    }
+    const archiveSha256 = await sha256OfFileHandle(archive.handle);
+    const after = await archive.handle.stat();
+    if (
+      before.size !== after.size ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.ctimeMs !== after.ctimeMs ||
+      authenticatedBytes !== archive.trailer.streamBytes
+    )
+      throw new Error("Archive changed during review");
+    return {
+      agentId: archive.header.agentId,
+      retired: {
+        fileName,
+        archiveSha256,
+        stateSha256: archive.trailer.stateSha256,
+        restoreGeneration: archive.header.restoreGeneration,
+        createdAt: archive.header.createdAt,
+        sizeBytes: after.size,
+      },
+    };
+  } finally {
+    await archive.handle.close();
+  }
+}
+
+interface LocalBackupV2RestorePlan {
+  stateDir: string;
+  pgliteDir: string;
+  mediaDir: string;
+  vaultPgliteDir: string;
+  configPath: string;
+  /** True when the config file is an ordinary state-tree file. */
+  configInStateTree: boolean;
+  stateTreeInclude: (relativePath: string) => boolean;
+  stateInclude: (relativePath: string) => boolean;
+  restoreDir: string;
+  staged: {
+    database: string;
+    media: string;
+    state: string;
+    vaultPglite: string;
+    config: string;
+  };
+  previous: {
+    database: string;
+    media: string;
+    state: string;
+    vaultPglite: string;
+    config: string;
+  };
+  /** Work paths outside `restoreDir` (a PGlite dir on another device). */
+  externalWork: string[];
+}
+interface LocalBackupV2StagedContent {
+  stateFiles: string[];
+  configFile: string | null;
+  vaultPglite: boolean;
+}
+
+async function planLocalBackupV2Restore(
+  adapter: PgliteQuiescedAdapter,
+): Promise<LocalBackupV2RestorePlan> {
+  const stateDir = path.resolve(resolveStateDir());
+  const pgliteDir = attestedPgliteDir(adapter);
+  const configPath = path.resolve(resolveConfigPath());
+  const authorityRoot = path.join(stateDir, AGENT_BACKUP_AUTHORITY_DIRECTORY);
+  if (
+    isWithin(pgliteDir, authorityRoot) ||
+    isWithin(authorityRoot, pgliteDir) ||
+    isWithin(authorityRoot, configPath)
+  )
+    throw new ElizaError(
+      "[AgentBackup] Restore targets overlap backup authority; configure independent database and configuration paths",
+      { code: "AGENT_BACKUP_AUTHORITY_INVALID" },
+    );
+  const pgliteExclusion = resolveStateFilesPgliteExclusion(stateDir, pgliteDir);
+  const stateTreeInclude = (relativePath: string) =>
+    localStateTreeInclude(relativePath, pgliteExclusion);
+  const configRelative = relativeRootWithin(stateDir, configPath);
+  const id = crypto.randomUUID();
+  const restoreDir = path.join(
+    localBackupsDir(),
+    `${LOCAL_BACKUP_V2_RESTORE_WORK_PREFIX}${id}`,
+  );
+  await fs.mkdir(restoreDir, { recursive: true, mode: 0o700 });
+  const pgliteParent = path.dirname(pgliteDir);
+  await fs.mkdir(pgliteParent, { recursive: true });
+  // A rename cannot cross devices, so stage the database beside its target
+  // when the backups directory lives on another filesystem.
+  const sameDevice =
+    (await fs.stat(pgliteParent)).dev === (await fs.stat(restoreDir)).dev;
+  const pgliteBase = path.basename(pgliteDir);
+  const database = sameDevice
+    ? {
+        staged: path.join(restoreDir, "staged", "database"),
+        previous: path.join(restoreDir, "previous", "database"),
+      }
+    : {
+        staged: path.join(pgliteParent, `.${pgliteBase}.restore-${id}`),
+        previous: path.join(pgliteParent, `.${pgliteBase}.previous-${id}`),
+      };
+  return {
+    stateDir,
+    pgliteDir,
+    mediaDir: path.join(stateDir, MEDIA_DIR_NAME),
+    vaultPgliteDir: path.join(stateDir, VAULT_PGLITE_DIR_NAME),
+    configPath,
+    configInStateTree:
+      configRelative !== null && stateTreeInclude(configRelative),
+    stateTreeInclude,
+    stateInclude: (relativePath) =>
+      localStateFileInclude(relativePath, pgliteExclusion),
+    restoreDir,
+    staged: {
+      database: database.staged,
+      media: path.join(restoreDir, "staged", "media"),
+      state: path.join(restoreDir, "staged", "state"),
+      vaultPglite: path.join(restoreDir, "staged", "vault-pglite"),
+      config: path.join(restoreDir, "staged", "config"),
+    },
+    previous: {
+      database: database.previous,
+      media: path.join(restoreDir, "previous", "media"),
+      state: path.join(restoreDir, "previous", "state"),
+      vaultPglite: path.join(restoreDir, "previous", "vault-pglite"),
+      config: path.join(restoreDir, "previous", "config"),
+    },
+    externalWork: sameDevice ? [] : [database.staged, database.previous],
+  };
+}
+
+function localBackupV2StagedPath(
+  plan: LocalBackupV2RestorePlan,
+  component: LocalBackupV2ComponentName,
+  relativePath: string,
+  content: LocalBackupV2StagedContent,
+): string {
+  const reject = (): never =>
+    localBackupV2Error(
+      "Local backup contains a path outside its component",
+      "AGENT_BACKUP_V2_RESTORE_PATH_REJECTED",
+      { component, path: relativePath },
+    );
+  const within = (root: string, relative: string): string => {
+    const target = path.resolve(root, normalizeRelativePath(relative));
+    if (!isWithin(root, target) || target === root) reject();
+    return target;
+  };
+  switch (component) {
+    case "database":
+      if (!pgliteFileInclude(relativePath)) reject();
+      return within(plan.staged.database, relativePath);
+    case "media":
+      return within(plan.staged.media, relativePath);
+    case "state-files":
+      if (!plan.stateInclude(relativePath)) reject();
+      content.stateFiles.push(relativePath);
+      return within(plan.staged.state, relativePath);
+    case "vault":
+      if (
+        !vaultFileInclude(relativePath) ||
+        relativePath === VAULT_PGLITE_DIR_NAME ||
+        relativePath === VAULT_AUDIT_DIR_NAME
+      )
+        reject();
+      if (relativePath.startsWith(`${VAULT_PGLITE_DIR_NAME}/`)) {
+        content.vaultPglite = true;
+        return within(
+          plan.staged.vaultPglite,
+          relativePath.slice(VAULT_PGLITE_DIR_NAME.length + 1),
+        );
+      }
+      content.stateFiles.push(relativePath);
+      return within(plan.staged.state, relativePath);
+    case "config":
+      if (relativePath.includes("/") || content.configFile !== null) reject();
+      content.configFile = within(plan.staged.config, relativePath);
+      return content.configFile;
+    default:
+      return reject();
+  }
+}
+
+/** Authenticate and parse the whole archive into staging directories. */
+async function stageLocalBackupV2(
+  archive: LocalBackupV2Archive,
+  key: Buffer,
+  plan: LocalBackupV2RestorePlan,
+): Promise<LocalBackupV2StagedContent> {
+  for (const directory of [
+    plan.staged.database,
+    plan.staged.media,
+    plan.staged.state,
+    plan.staged.vaultPglite,
+    plan.staged.config,
+  ])
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  const content: LocalBackupV2StagedContent = {
+    stateFiles: [],
+    configFile: null,
+    vaultPglite: false,
+  };
+  const seen = new Set<string>();
+  let component: LocalBackupV2ComponentName | undefined;
+  let captureChain: string | undefined;
+  let open:
+    | {
+        handle: FileHandle;
+        absolute: string;
+        entry: AgentBackupCaptureV2FileEntry;
+        written: number;
+      }
+    | undefined;
+  const closeOpen = async (): Promise<void> => {
+    if (!open) return;
+    const file = open;
+    open = undefined;
+    await file.handle.close();
+    if (file.written !== file.entry.fileSizeBytes) {
+      localBackupV2Error(
+        "Local backup file ended before its declared size",
+        "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+      );
+    }
+    await fs.chmod(file.absolute, file.entry.mode);
+    const mtime = new Date(file.entry.mtimeMs);
+    await fs.utimes(file.absolute, mtime, mtime);
+  };
+  try {
+    for await (const frame of parseAgentBackupCaptureV2Frames(
+      decryptLocalBackupV2Segments(archive, key),
+      {
+        sha256StreamFactory: () => {
+          const hash = crypto.createHash("sha256");
+          return {
+            update: (bytes) => {
+              hash.update(bytes);
+            },
+            digestHex: () => hash.digest("hex"),
+          };
+        },
+      },
+    )) {
+      const header = frame.header;
+      if (header.kind === "capture-start") {
+        if (
+          header.agentId !== archive.header.agentId ||
+          header.operationId !== archive.header.backupId
+        ) {
+          localBackupV2Error(
+            "Local backup frames do not belong to this archive",
+            "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+          );
+        }
+      } else if (header.kind === "component-start") {
+        const name = header.component.name as LocalBackupV2ComponentName;
+        const expected = Object.hasOwn(LOCAL_BACKUP_V2_DESCRIPTORS, name)
+          ? LOCAL_BACKUP_V2_DESCRIPTORS[name]
+          : undefined;
+        if (!expected || stableJson(expected) !== stableJson(header.component))
+          localBackupV2Error(
+            "Local backup contains an unsupported component",
+            "AGENT_BACKUP_V2_COMPONENT_UNSUPPORTED",
+            { component: header.component.name },
+          );
+        seen.add(name);
+        component = name;
+      } else if (header.kind === "data") {
+        if (!component || !header.entry) continue;
+        const entry = header.entry;
+        if (!open || open.entry.path !== entry.path) {
+          await closeOpen();
+          const absolute = localBackupV2StagedPath(
+            plan,
+            component,
+            entry.path,
+            content,
+          );
+          await fs.mkdir(path.dirname(absolute), {
+            recursive: true,
+            mode: 0o700,
+          });
+          open = {
+            handle: await fs.open(absolute, "wx", 0o600),
+            absolute,
+            entry,
+            written: 0,
+          };
+        }
+        await writeAllAt(open.handle, frame.payload, entry.fileOffsetBytes);
+        open.written += frame.payload.length;
+      } else if (header.kind === "component-end") {
+        await closeOpen();
+        component = undefined;
+      } else {
+        captureChain = header.frameDigestChainSha256;
+      }
+    }
+  } finally {
+    if (open) await open.handle.close();
+  }
+  if (
+    seen.size !== Object.keys(LOCAL_BACKUP_V2_DESCRIPTORS).length ||
+    captureChain !== archive.trailer.stateSha256
+  ) {
+    localBackupV2Error(
+      "Local backup is incomplete or its digest chain does not match",
+      "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+    );
+  }
+  return content;
+}
+
+/** Recreate empty PostgreSQL directories and prove the staged database opens. */
+async function verifyStagedLocalBackupV2(
+  plan: LocalBackupV2RestorePlan,
+  content: LocalBackupV2StagedContent,
+): Promise<void> {
+  const layout = await readPgliteDirectoryLayout();
+  const databases = [
+    {
+      root: plan.staged.database,
+      code: "AGENT_BACKUP_V2_PGLITE_VERSION_MISMATCH",
+    },
+    ...(content.vaultPglite
+      ? [
+          {
+            root: plan.staged.vaultPglite,
+            code: "AGENT_BACKUP_VAULT_VERSION_MISMATCH",
+          },
+        ]
+      : []),
+  ];
+  for (const { root, code } of databases) {
+    let version: Buffer;
+    try {
+      version = await fs.readFile(path.join(root, "PG_VERSION"));
+    } catch (cause) {
+      // error-policy:J2 a database without PG_VERSION cannot be restored.
+      localBackupV2Error(
+        "Local backup database is missing PG_VERSION",
+        "AGENT_BACKUP_V2_ARCHIVE_INVALID",
+        undefined,
+        cause,
+      );
+    }
+    if (!version.equals(layout.pgVersion)) {
+      localBackupV2Error(
+        "Backup database version does not match the installed PGlite version",
+        code,
+      );
+    }
+    for (const directory of layout.directories) {
+      const target = path.join(root, directory);
+      const existing = await fs.lstat(target).catch((error: unknown) => {
+        // error-policy:J4 a missing layout directory is recreated below.
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+      if (existing && !existing.isDirectory()) {
+        localBackupV2Error(
+          "Backup replaces a required database directory with a file",
+          "AGENT_BACKUP_V2_DIRECTORY_CONFLICT",
+          { directory },
+        );
+      }
+      if (!existing) await fs.mkdir(target, { recursive: true, mode: 0o700 });
+    }
+  }
+  const { PGlite } = await import("@electric-sql/pglite");
+  const database = await PGlite.create({ dataDir: plan.staged.database });
+  try {
+    await database.query("SELECT 1");
+  } finally {
+    await database.close();
+  }
+  await removePgliteVolatileFiles(plan.staged.database);
+}
+
+const LOCAL_BACKUP_V2_JOURNAL_FILE = "journal.json";
+const localBackupV2JournalSchema = z.strictObject({
+  format: z.literal("elizaos.agent-backup-restore-journal"),
+  schemaVersion: z.literal(1),
+  agentId: z.string().min(1),
+  fileName: z.string().min(1),
+  authorityOperationId: z.string().uuid(),
+  phase: z.enum(["staging", "swapping", "committed"]),
+  moves: z.array(z.strictObject({ from: z.string(), to: z.string() })),
+  externalWork: z.array(z.string()),
+});
+type LocalBackupV2Journal = z.infer<typeof localBackupV2JournalSchema>;
+
+/** Durably replace the journal so a crash observes either version whole. */
+async function writeLocalBackupV2Journal(
+  restoreDir: string,
+  journal: LocalBackupV2Journal,
+): Promise<void> {
+  const target = path.join(restoreDir, LOCAL_BACKUP_V2_JOURNAL_FILE);
+  const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+  const handle = await fs.open(temporary, "wx", 0o600);
+  try {
+    await writeAllAt(handle, Buffer.from(JSON.stringify(journal)), null);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await fs.rename(temporary, target);
+  await syncDirectory(restoreDir);
+}
+
+/** Every rename the swap will perform, fixed before the first one runs. */
+async function planLocalBackupV2Moves(
+  plan: LocalBackupV2RestorePlan,
+  content: LocalBackupV2StagedContent,
+): Promise<Array<{ from: string; to: string }>> {
+  const moves: Array<{ from: string; to: string }> = [];
+  const replace = async (
+    target: string,
+    staged: string | null,
+    previous: string,
+  ): Promise<void> => {
+    if (await pathExists(target)) moves.push({ from: target, to: previous });
+    if (staged) moves.push({ from: staged, to: target });
+  };
+  await replace(plan.pgliteDir, plan.staged.database, plan.previous.database);
+  await replace(plan.mediaDir, plan.staged.media, plan.previous.media);
+  await replace(
+    plan.vaultPgliteDir,
+    content.vaultPglite ? plan.staged.vaultPglite : null,
+    plan.previous.vaultPglite,
+  );
+  for await (const file of walkFiles(
+    plan.stateDir,
+    plan.stateTreeInclude,
+    new AbortController().signal,
+  ))
+    moves.push({
+      from: path.join(plan.stateDir, file.relativePath),
+      to: path.join(plan.previous.state, file.relativePath),
+    });
+  for (const relativePath of content.stateFiles)
+    moves.push({
+      from: path.join(plan.staged.state, relativePath),
+      to: path.join(plan.stateDir, relativePath),
+    });
+  if (!plan.configInStateTree)
+    await replace(plan.configPath, content.configFile, plan.previous.config);
+  return moves;
+}
+
+/**
+ * Undo journaled moves in reverse, whether they ran in this process or in one
+ * that crashed. Walking backwards, every later move that reused a path has
+ * already been undone, so a move ran exactly when its destination is present
+ * and its source is absent. A present source means it never ran (for example
+ * the replacement of a live file whose own move-out had not happened yet).
+ */
+async function rollBackLocalBackupV2Moves(
+  moves: readonly { from: string; to: string }[],
+): Promise<number> {
+  let undone = 0;
+  for (const move of [...moves].reverse()) {
+    const [toPresent, fromPresent] = await Promise.all([
+      pathExists(move.to),
+      pathExists(move.from),
+    ]);
+    if (!toPresent || fromPresent) continue;
+    await fs.mkdir(path.dirname(move.from), { recursive: true });
+    await fs.rename(move.to, move.from);
+    undone += 1;
+  }
+  return undone;
+}
+
+/**
+ * Replace every target by rename under a durable journal. The journal and its
+ * committed phase are fsynced, so a crash at any point is reconciled at the
+ * next startup by {@link recoverInterruptedLocalBackupRestores}; an in-process
+ * failure is rolled back here with the same algorithm.
+ */
+async function swapLocalBackupV2(
+  plan: LocalBackupV2RestorePlan,
+  content: LocalBackupV2StagedContent,
+  journal: LocalBackupV2Journal,
+): Promise<void> {
+  const moves = await planLocalBackupV2Moves(plan, content);
+  const swapping: LocalBackupV2Journal = {
+    ...journal,
+    phase: "swapping",
+    moves,
+  };
+  await writeLocalBackupV2Journal(plan.restoreDir, swapping);
+  try {
+    let index = 0;
+    for (const move of moves) {
+      await fs.mkdir(path.dirname(move.to), { recursive: true });
+      await fs.rename(move.from, move.to);
+      index += 1;
+      // Crash-test seam (disarmed unless ELIZA_CRASH_INJECT names it): the
+      // database and media directories have been exchanged, state has not.
+      if (index === Math.min(moves.length, 4))
+        await maybeInjectFault("backup-restore-swap");
+    }
+  } catch (cause) {
+    let undone: number;
+    try {
+      undone = await rollBackLocalBackupV2Moves(moves);
+    } catch (rollbackError) {
+      // error-policy:J2 the journal stays on disk for startup reconciliation.
+      localBackupV2Error(
+        "Local backup restore failed and could not fully roll back; the journal is retained for startup recovery",
+        "AGENT_BACKUP_V2_ROLLBACK_FAILED",
+        { restoreDir: plan.restoreDir },
+        new AggregateError([cause, rollbackError]),
+      );
+    }
+    localBackupV2Error(
+      "Local backup restore could not replace agent data; the previous data was put back",
+      "AGENT_BACKUP_V2_RESTORE_ROLLED_BACK",
+      { movesUndone: undone },
+      cause,
+    );
+  }
+  await writeLocalBackupV2Journal(plan.restoreDir, {
+    ...swapping,
+    phase: "committed",
+  });
+  await maybeInjectFault("backup-restore-commit");
+}
+
+async function removeLocalBackupV2RestoreWork(
+  restoreDir: string,
+  externalWork: readonly string[],
+): Promise<void> {
+  for (const work of externalWork)
+    await fs.rm(work, { recursive: true, force: true });
+  await fs.rm(restoreDir, { recursive: true, force: true });
+}
+
+async function restoreLocalAgentBackupV2(
+  runtime: IAgentRuntime | AgentRuntime,
+  fileName: string,
+): Promise<{
+  restored: true;
+  requiresRestart: true;
+}> {
+  const filePath = resolveLocalBackupPath(fileName);
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const archive = await openLocalBackupV2Archive(filePath);
+    try {
+      const { header } = archive;
+      if (header.agentId !== runtime.agentId) {
+        localBackupV2Error(
+          "Backup belongs to a different agent",
+          "AGENT_BACKUP_V2_AGENT_MISMATCH",
+        );
+      }
+      if (
+        header.restoreGeneration !==
+        (await authority.generation(runtime.agentId))
+      )
+        throw new ElizaError(
+          "[AgentBackup] This snapshot predates a data-deletion boundary and cannot be restored",
+          { code: "AGENT_BACKUP_GENERATION_RETIRED" },
+        );
+      const adapter = localBackupV2Adapter(runtime);
+      if (!adapter) {
+        localBackupV2Error(
+          "Streamed local backups restore only into a filesystem-backed PGlite database",
+          "AGENT_BACKUP_V2_RESTORE_UNSUPPORTED",
+        );
+      }
+      const plan = await planLocalBackupV2Restore(adapter);
+      const journal: LocalBackupV2Journal = {
+        format: "elizaos.agent-backup-restore-journal",
+        schemaVersion: 1,
+        agentId: runtime.agentId,
+        fileName,
+        authorityOperationId: authority.operationId,
+        phase: "staging",
+        moves: [],
+        externalWork: plan.externalWork,
+      };
+      let retainWork = false;
+      const key = await unwrapLocalBackupV2Key(header);
+      try {
+        // Written first so a crash at any later point leaves a recognizable
+        // work directory for startup recovery.
+        await writeLocalBackupV2Journal(plan.restoreDir, journal);
+        const content = await stageLocalBackupV2(archive, key, plan);
+        key.fill(0);
+        await verifyStagedLocalBackupV2(plan, content);
+        // Nothing live has been touched until here.
+        await stopRuntimeBeforeDatabaseRestore(runtime);
+        await adapter.close?.();
+        try {
+          await swapLocalBackupV2(plan, content, journal);
+        } catch (error) {
+          retainWork =
+            error instanceof LocalAgentBackupV2Error &&
+            error.code === "AGENT_BACKUP_V2_ROLLBACK_FAILED";
+          throw error;
+        }
+        logger.info(
+          {
+            agentId: runtime.agentId,
+            fileName,
+            stateSha256: archive.trailer.stateSha256,
+            stateFiles: content.stateFiles.length,
+          },
+          "[agent-backup] Streamed local backup restored",
+        );
+        return { restored: true as const, requiresRestart: true as const };
+      } finally {
+        key.fill(0);
+        if (!retainWork)
+          await removeLocalBackupV2RestoreWork(
+            plan.restoreDir,
+            plan.externalWork,
+          );
+      }
+    } finally {
+      await archive.handle.close();
+    }
+  });
+}
+
+async function readLocalBackupV2Journal(
+  restoreDir: string,
+): Promise<LocalBackupV2Journal | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(
+      path.join(restoreDir, LOCAL_BACKUP_V2_JOURNAL_FILE),
+      "utf8",
+    );
+  } catch (error) {
+    // error-policy:J4 no journal: the directory predates any live change.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  return parseLocalBackupV2Json(
+    localBackupV2JournalSchema as z.ZodType<LocalBackupV2Journal>,
+    Buffer.from(raw),
+    "journal",
+  );
+}
+
+async function reconcileLocalBackupV2RestoreDir(
+  restoreDir: string,
+  journal: LocalBackupV2Journal | null,
+): Promise<"rolled-back" | "rolled-forward" | "discarded"> {
+  if (!journal || journal.phase === "staging") {
+    await removeLocalBackupV2RestoreWork(
+      restoreDir,
+      journal?.externalWork ?? [],
+    );
+    return "discarded";
+  }
+  if (journal.phase === "committed") {
+    await removeLocalBackupV2RestoreWork(restoreDir, journal.externalWork);
+    return "rolled-forward";
+  }
+  await rollBackLocalBackupV2Moves(journal.moves);
+  await removeLocalBackupV2RestoreWork(restoreDir, journal.externalWork);
+  return "rolled-back";
+}
+
+/**
+ * Startup reconciliation for local format-2 restores interrupted by a crash.
+ * Must run before PGlite or the configuration is opened. A journal in the
+ * `swapping` phase is rolled back to the previous data; a `committed` journal
+ * is rolled forward (only work files remain to remove); staging-only work is
+ * discarded because it never touched live data. The backup claim left by the
+ * crashed restore is released only when the journal names it and its process
+ * is gone; any other held claim is reported instead of guessed stale.
+ */
+export async function recoverInterruptedLocalBackupRestores(): Promise<{
+  rolledBack: number;
+  rolledForward: number;
+  discarded: number;
+}> {
+  const result = { rolledBack: 0, rolledForward: 0, discarded: 0 };
+  const stateDir = resolveStateDir();
+  const backupsDir = localBackupsDir();
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(backupsDir, { withFileTypes: true });
+  } catch (error) {
+    // error-policy:J4 no backups directory means nothing to recover.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return result;
+    throw error;
+  }
+  const restoreDirs = entries
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        entry.name.startsWith(LOCAL_BACKUP_V2_RESTORE_WORK_PREFIX),
+    )
+    .map((entry) => path.join(backupsDir, entry.name))
+    .sort();
+  if (restoreDirs.length === 0) return result;
+  const journals = await Promise.all(
+    restoreDirs.map(async (restoreDir) => ({
+      restoreDir,
+      journal: await readLocalBackupV2Journal(restoreDir),
+    })),
+  );
+  const reconcileAll = async (): Promise<void> => {
+    for (const { restoreDir, journal } of journals) {
+      const outcome = await reconcileLocalBackupV2RestoreDir(
+        restoreDir,
+        journal,
+      );
+      if (outcome === "rolled-back") result.rolledBack += 1;
+      else if (outcome === "rolled-forward") result.rolledForward += 1;
+      else result.discarded += 1;
+      logger.warn(
+        {
+          agentId: journal?.agentId,
+          fileName: journal?.fileName,
+          phase: journal?.phase ?? "none",
+          moves: journal?.moves.length ?? 0,
+          outcome,
+        },
+        "[agent-backup] Reconciled an interrupted local backup restore",
+      );
+    }
+  };
+  const claim = await readAgentBackupAuthorityClaim(stateDir);
+  if (!claim) {
+    await withAgentBackupAuthority(stateDir, async () => reconcileAll());
+    return result;
+  }
+  if (isProcessAlive(claim.pid)) {
+    logger.warn(
+      { pid: claim.pid },
+      "[agent-backup] Interrupted restore work is present but another live process holds the backup claim; skipping reconciliation",
+    );
+    return result;
+  }
+  if (
+    !journals.some(
+      ({ journal }) => journal?.authorityOperationId === claim.operationId,
+    )
+  )
+    throw new ElizaError(
+      "[AgentBackup] Interrupted restore work is present but the held backup claim belongs to no journal; reconcile offline",
+      { code: "AGENT_BACKUP_RESTORE_RECOVERY_BLOCKED" },
+    );
+  await reconcileAll();
+  await releaseAbandonedAgentBackupAuthorityClaim(stateDir, claim.operationId);
+  return result;
 }

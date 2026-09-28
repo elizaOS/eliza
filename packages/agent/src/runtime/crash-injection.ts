@@ -36,6 +36,10 @@ export const CRASH_INJECTION_POINTS = [
   "native-bridge",
   "message",
   "voice",
+  /** Mid-swap of a local backup restore (database and media exchanged). */
+  "backup-restore-swap",
+  /** After a local backup restore commits, before its work is removed. */
+  "backup-restore-commit",
 ] as const;
 export type CrashInjectionPoint = (typeof CRASH_INJECTION_POINTS)[number];
 /** How an injected fault manifests. */
