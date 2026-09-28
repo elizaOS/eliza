@@ -1,6 +1,6 @@
 // Persists generations records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, isNotNull, sql, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, ne, sql, sum } from "drizzle-orm";
 import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
@@ -505,6 +505,19 @@ export class GenerationsRepository {
       .where(eq(generations.id, id))
       .returning();
     return updated ? await hydrateGeneration(updated) : undefined;
+  }
+
+  /**
+   * Marks a generation deleted exactly once. Returns false when it was already
+   * deleted, so a replayed delete cannot release its storage twice.
+   */
+  async markDeletedOnce(id: string): Promise<boolean> {
+    const updated = await dbWrite
+      .update(generations)
+      .set({ status: "deleted", updated_at: new Date() })
+      .where(and(eq(generations.id, id), ne(generations.status, "deleted")))
+      .returning({ id: generations.id });
+    return updated.length > 0;
   }
 
   /**

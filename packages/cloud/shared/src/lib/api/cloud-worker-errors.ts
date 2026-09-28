@@ -25,6 +25,7 @@ export type ApiErrorCode =
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"
   | "billing_state_conflict"
+  | "storage_quota_exceeded"
   | "service_unavailable"
   | "internal_error";
 
