@@ -78,38 +78,32 @@ export function resolveHomebrewFormulaIncludeDirs(
   return includeDirs;
 }
 
+/**
+ * Default `--assets-dir` for the Android agent runtime: `<android>/app/src/main/
+ * assets/agent`, where `<android>` is the Android project the mobile build
+ * actually uses. A host app's own `android/` dir (whitelabel
+ * `ELIZA_ANDROID_USE_APP_DIR=1` builds) wins; otherwise the canonical
+ * `platforms/android` tree. Candidates are checked in order across the flat
+ * elizaOS layout, a host `apps/app` shell, and a nested `eliza/` checkout.
+ */
 export function resolveDefaultAndroidAssetsDir({ root = process.cwd() } = {}) {
   const appRelativeCandidates = [
     path.join("packages", "app"),
     path.join("apps", "app"),
     path.join("eliza", "packages", "app"),
   ];
+  const assetsAgentDir = (androidDir) =>
+    path.join(androidDir, "app", "src", "main", "assets", "agent");
   for (const appRelative of appRelativeCandidates) {
     const appRoot = path.join(root, appRelative);
-    if (
-      fs.existsSync(path.join(appRoot, "android")) ||
-      fs.existsSync(path.join(appRoot, "package.json"))
-    ) {
-      return path.join(
-        appRoot,
-        "android",
-        "app",
-        "src",
-        "main",
-        "assets",
-        "agent",
-      );
+    for (const androidDir of [
+      path.join(appRoot, "android"),
+      path.join(appRoot, "platforms", "android"),
+    ]) {
+      if (fs.existsSync(androidDir)) return assetsAgentDir(androidDir);
     }
   }
-  return path.join(
-    root,
-    "packages",
-    "app",
-    "android",
-    "app",
-    "src",
-    "main",
-    "assets",
-    "agent",
+  return assetsAgentDir(
+    path.join(root, "packages", "app", "platforms", "android"),
   );
 }

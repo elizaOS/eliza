@@ -2,6 +2,8 @@
  * Unit tests for the Patch Ios Plist app packaging script behavior and
  * platform guardrails.
  */
+import { spawnSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.ts";
@@ -142,5 +144,27 @@ describe("patch-ios-plist", () => {
     expect(() => ensurePlistUrlScheme("<plist></plist>", "elizaos")).toThrow(
       /could not locate top-level/,
     );
+  });
+});
+
+describe("patch-ios-plist module import", () => {
+  it("does not run the CLI (read, write, or exit) when imported", () => {
+    const moduleUrl = pathToFileURL(
+      fileURLToPath(new URL("./patch-ios-plist.ts", import.meta.url)),
+    ).href;
+    // `--check` in argv used to make the import-time CLI call process.exit.
+    const child = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `await import(${JSON.stringify(moduleUrl)}); console.log("IMPORTED");`,
+        "--check",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(child.status).toBe(0);
+    expect(child.stdout.trim()).toBe("IMPORTED");
+    expect(child.stderr).not.toContain("[patch-ios-plist]");
   });
 });

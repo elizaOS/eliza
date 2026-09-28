@@ -8,7 +8,7 @@
  * before device or API work. Timer knobs are bounded by Node's 32-bit
  * `setTimeout` ceiling so an overflow cannot clamp to 1 ms.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -415,17 +415,6 @@ Notes:
 if (process.argv.includes("--help")) {
   printHelp();
   process.exit(0);
-}
-
-function run(command, args, options = {}) {
-  const invocation = resolveSmokeCommand(command, args);
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: options.cwd ?? repoRoot,
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed`);
-  }
 }
 
 function appId() {
@@ -2910,20 +2899,6 @@ async function main() {
 
     if (iosFullBunSmoke && (platform === "ios" || platform === "both")) {
       await verifyIosFullBunSmoke(iosContext);
-    }
-
-    if (platform === "ios" || platform === "both") {
-      run(
-        "bunx",
-        [
-          "vitest",
-          "run",
-          "--config",
-          "vitest.config.ts",
-          "src/first-run/auto-download-recommended.test.ts",
-        ],
-        { cwd: path.join(repoRoot, "packages/ui") },
-      );
     }
   } finally {
     await hostAgent?.stop();
