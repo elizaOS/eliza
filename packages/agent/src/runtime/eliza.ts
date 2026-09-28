@@ -3568,6 +3568,8 @@ export interface StartElizaOptions {
   onCloudProxyCreated?: (proxy: CloudRuntimeProxyLike) => void;
   /** Publishes idempotent teardown without installing process handlers. */
   onLifecycleReady?: (lifecycle: AgentProcessLifecycle) => void;
+  /** Receives the TCP port the API server actually bound; never called without a listener. */
+  onApiServerListening?: (port: number) => void;
   /**
    * When true, skip the interactive CLI chat loop and return the
    * initialised {@link AgentRuntime} so it can be wired into the API
@@ -6008,6 +6010,7 @@ export async function startEliza(
         "[eliza] Local-agent IPC mode — API route kernel ready in-process, no TCP listener bound",
       );
     } else {
+      opts?.onApiServerListening?.(actualApiPort);
       const dashboardUrl = `http://localhost:${actualApiPort}`;
       logger.info(`[eliza] Control UI: ${dashboardUrl}`);
     }
