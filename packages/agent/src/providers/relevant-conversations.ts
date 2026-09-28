@@ -133,7 +133,6 @@ export const relevantConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  alwaysInResponseState: true,
   roleGate: { minRole: "USER" },
 
   async get(

@@ -1198,6 +1198,9 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
                 hook.result.current.loaders.loadedConversationIdRef,
               claimConversationMessagesOwnership:
                 hook.result.current.loaders.claimConversationMessagesOwnership,
+              reconcileRestoredConversationMessages:
+                hook.result.current.loaders
+                  .reconcileRestoredConversationMessages,
               setConversations: harness.sendDepsBase.setConversations,
               setActiveConversationId:
                 harness.sendDepsBase.setActiveConversationId,
@@ -1462,5 +1465,194 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
     expect(harness.conversationMessagesRef.current[1]?.text).toContain(
       'Saved memory note: "ownership note"',
     );
+  });
+
+  it("keeps a warming-recovered turn anchored across a lagging same-conversation restore (#27685)", async () => {
+    const text = "Warming anchor 5f1c2e: say hello.";
+    const reply = "Hello after the caches warmed.";
+    const olderHistory: ConversationMessage[] = [
+      {
+        id: "older-user",
+        role: "user",
+        text: "Earlier question",
+        timestamp: Date.now() - 60_000,
+      },
+      {
+        id: "older-assistant",
+        role: "assistant",
+        text: "Earlier answer",
+        timestamp: Date.now() - 59_000,
+      },
+    ];
+    const serverMessages = [...olderHistory];
+    mocks.client.listConversations.mockResolvedValue({
+      conversations: [conversation("conv-a")],
+    });
+    mocks.client.getConversationMessages.mockImplementation(async () => ({
+      messages: [...serverMessages],
+    }));
+    const stream: {
+      status?: (status: { kind: "waking" }) => void;
+      finish?: (value: {
+        text: string;
+        agentName: string;
+        completed: boolean;
+        userMessageId: string;
+        messageId: string;
+        historyRefreshRequired: boolean;
+      }) => void;
+    } = {};
+    const clientMessageIds: unknown[] = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (...args: unknown[]) => {
+        clientMessageIds.push(args[9]);
+        stream.status = args[7] as typeof stream.status;
+        return new Promise((resolve) => {
+          stream.finish = resolve;
+        });
+      },
+    );
+    const harness = makeHarness();
+    const hook = mountComposed(harness);
+    const hydrate = () =>
+      hydrateInitialConversation({
+        client: mocks.client,
+        conversationHydrationEpochRef:
+          harness.sendDepsBase.conversationHydrationEpochRef,
+        activeConversationIdRef: harness.activeConversationIdRef,
+        greetingFiredRef: harness.loaderDeps.greetingFiredRef,
+        conversationMessagesRef: harness.conversationMessagesRef,
+        loadedConversationIdRef:
+          hook.result.current.loaders.loadedConversationIdRef,
+        claimConversationMessagesOwnership:
+          hook.result.current.loaders.claimConversationMessagesOwnership,
+        reconcileRestoredConversationMessages:
+          hook.result.current.loaders.reconcileRestoredConversationMessages,
+        setConversations: harness.sendDepsBase.setConversations,
+        setActiveConversationId: harness.sendDepsBase.setActiveConversationId,
+        setConversationMessages: harness.setConversationMessages,
+        uiLanguage: "en",
+        seedSyntheticGreeting: false,
+      });
+    const turnRows = () =>
+      harness.conversationMessagesRef.current.filter(
+        (message) =>
+          (message.role === "user" && message.text === text) ||
+          (message.role === "assistant" && message.text === reply),
+      );
+    let send: Promise<void> | undefined;
+    try {
+      await act(async () => {
+        await hydrate();
+      });
+      expect(harness.conversationMessagesRef.current.map((m) => m.id)).toEqual([
+        "older-user",
+        "older-assistant",
+      ]);
+
+      act(() => {
+        send = hook.result.current.send.sendChatText(text, {
+          conversationId: "conv-a",
+          clientMessageId: "warming-turn",
+        });
+      });
+      await flushPendingWork();
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+      // rawRequest absorbs both named warming 503s inside this one logical
+      // send and surfaces them only as `waking` status.
+      act(() => {
+        stream.status?.({ kind: "waking" });
+        stream.status?.({ kind: "waking" });
+      });
+
+      // A restore pass lands while the send is still warming. Its history is
+      // authoritative for older rows but has not yet seen the new turn.
+      await act(async () => {
+        await hydrate();
+      });
+      expect(harness.conversationMessagesRef.current.map((m) => m.id)).toEqual([
+        "older-user",
+        "older-assistant",
+        "temp-warming-turn",
+        "temp-resp-warming-turn",
+      ]);
+
+      // Third attempt succeeds with durable receipts; the required history
+      // refresh still lags and omits the turn.
+      await act(async () => {
+        stream.finish?.({
+          text: reply,
+          agentName: "Eliza",
+          completed: true,
+          userMessageId: "durable-user",
+          messageId: "durable-assistant",
+          historyRefreshRequired: true,
+        });
+        await send;
+      });
+      expect(clientMessageIds).toEqual(["warming-turn"]);
+      expect(
+        harness.conversationMessagesRef.current.map(({ id, role }) => ({
+          id,
+          role,
+        })),
+      ).toEqual([
+        { id: "older-user", role: "user" },
+        { id: "older-assistant", role: "assistant" },
+        { id: "durable-user", role: "user" },
+        { id: "durable-assistant", role: "assistant" },
+      ]);
+      expect(turnRows().map((message) => message.text)).toEqual([text, reply]);
+
+      // Another lagging restore after completion still keeps the anchor.
+      await act(async () => {
+        await hydrate();
+      });
+      expect(turnRows().map((message) => message.id)).toEqual([
+        "durable-user",
+        "durable-assistant",
+      ]);
+
+      // History catches up: exactly one copy of each receipt-backed row.
+      serverMessages.push(
+        {
+          id: "durable-user",
+          role: "user",
+          text,
+          timestamp: Date.now(),
+        },
+        {
+          id: "durable-assistant",
+          role: "assistant",
+          text: reply,
+          timestamp: Date.now() + 1,
+        },
+      );
+      await act(async () => {
+        await hydrate();
+      });
+      await act(async () => {
+        await hook.result.current.loaders.loadConversationMessages("conv-a");
+      });
+      expect(harness.conversationMessagesRef.current.map((m) => m.id)).toEqual([
+        "older-user",
+        "older-assistant",
+        "durable-user",
+        "durable-assistant",
+      ]);
+    } finally {
+      stream.finish?.({
+        text: reply,
+        agentName: "Eliza",
+        completed: true,
+        userMessageId: "durable-user",
+        messageId: "durable-assistant",
+        historyRefreshRequired: true,
+      });
+      await send;
+      hook.unmount();
+    }
   });
 });

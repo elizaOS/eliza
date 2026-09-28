@@ -165,6 +165,7 @@ const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
 const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/agent/scripts/cerebras-chat-flow-latency.ts",
   "packages/agent/scripts/cerebras-chat-flow-experiment.ts",
+  "packages/agent/scripts/cerebras-cache-wire-replay.ts",
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
@@ -227,6 +228,7 @@ export interface PromptCacheTelemetry {
 
 export interface ModelInputContext {
   phase: "warmup" | "sample" | "cancellation" | "isolation";
+  stage?: string;
   index?: number;
   proof: string;
   roomId?: string;
@@ -983,6 +985,7 @@ async function main(): Promise<void> {
         ? {
             ...activeModelInputContext,
             modelInvocationId: randomUUID(),
+            stage: String(modelType),
             expectedCacheKey: null as string | null,
           }
         : null;

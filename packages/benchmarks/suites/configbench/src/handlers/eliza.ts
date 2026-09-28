@@ -612,10 +612,9 @@ export async function loadModelProviderPlugin(): Promise<Plugin | null> {
     if (provider === "openai" && !hasOpenAI) continue;
     try {
       if (provider === "groq") {
-        const mod = (await import("@elizaos/plugin-groq")) as Record<
-          string,
-          unknown
-        >;
+        // Groq is an optional runtime installation, absent from the workspace.
+        const moduleName: string = "@elizaos/plugin-groq";
+        const mod = (await import(moduleName)) as Record<string, unknown>;
         const plugin = (mod.groqPlugin ?? mod.default ?? null) as Plugin | null;
         if (plugin) {
           console.log("[ElizaHandler] Loaded model provider plugin: groq");

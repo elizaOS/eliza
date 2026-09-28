@@ -29,6 +29,7 @@ import {
 	resolveDesktopRuntimeModeWithDeployment,
 	resolveInitialApiBase,
 	resolveRendererFacingApiBase,
+	setBootedDesktopRuntimeMode,
 } from "./api-base";
 import {
 	buildApplicationMenu,
@@ -111,8 +112,10 @@ import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
 	disableBackForwardNavigationGestures,
+	installMediaCapturePermissionPolicy,
 	setNativeDragRegion,
 	setTrafficLightsPosition,
+	setTrustedMediaCaptureOrigins,
 	setWindowShadow,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
@@ -451,6 +454,57 @@ const MAC_NATIVE_DRAG_REGION_X = 92;
  * titlebar buttons continue to receive clicks.
  */
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
+const MEDIA_CAPTURE_POLICY_RETRY_DELAYS_MS = [0, 120, 500, 1500, 4000];
+/**
+ * Make the renderer's WKWebView microphone/camera decision follow the signed
+ * app's macOS grant (#30676): chat Talk then triggers the system prompt from
+ * the capture path, and a grant made in Settings applies to the next capture
+ * instead of Electrobun's cached per-origin answer. The policy patches the
+ * shared WKUIDelegate class, so detached Settings/surface windows are covered
+ * too. WKWebView can be inserted after the first layout pass, so installation
+ * retries until the delegate is found.
+ */
+function pinMediaCapturePermissionPolicy(
+	win: BrowserWindow,
+	rendererUrl: string | null | undefined,
+): void {
+	if (process.platform !== "darwin") return;
+	const ptr = (win as { ptr?: unknown }).ptr;
+	if (!ptr) return;
+	const origins: string[] = [];
+	if (rendererUrl) {
+		try {
+			const origin = new URL(rendererUrl).origin;
+			if (origin && origin !== "null") origins.push(origin);
+		} catch {
+			// error-policy:J3 a non-URL renderer target has no web origin to trust.
+		}
+	}
+	setTrustedMediaCaptureOrigins(origins);
+	let attempt = 0;
+	const tryInstall = () => {
+		if (
+			installMediaCapturePermissionPolicy(
+				ptr as Parameters<typeof installMediaCapturePermissionPolicy>[0],
+			)
+		) {
+			logger.info(
+				`[MacEffects] media-capture permission policy installed (trusted origins: ${origins.join(", ") || "views:// only"})`,
+			);
+			return;
+		}
+		attempt += 1;
+		const delay = MEDIA_CAPTURE_POLICY_RETRY_DELAYS_MS[attempt];
+		if (delay === undefined) {
+			logger.warn(
+				"[MacEffects] media-capture permission policy not installed: no WKWebView delegate found (CEF renderer or native effects unavailable)",
+			);
+			return;
+		}
+		setTimeout(tryInstall, delay);
+	};
+	tryInstall();
+}
 /**
  * Shadow, traffic lights, drag region, and native chrome layout. Re-calls
  * native layout whenever the window or webview subtree may have reordered so
@@ -1188,6 +1242,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 			...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
 		});
 	}
+	pinMediaCapturePermissionPolicy(win, rendererUrl);
 	// Kiosk mode: the app IS the GUI. Go fullscreen and skip the bounds
 	// persistence + maximize ergonomics — the window is fixed fullscreen and
 	// must never restore to a smaller frame.
@@ -2541,6 +2596,7 @@ async function main(): Promise<void> {
 		env: desktopEnv,
 		deployment: persistedDeployment,
 	});
+	setBootedDesktopRuntimeMode(preparedDesktopRuntime);
 	if (
 		unverifiedDesktopRuntime.mode === "external" &&
 		preparedDesktopRuntime.mode === "local" &&

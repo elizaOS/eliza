@@ -1,6 +1,10 @@
 # @elizaos/os
 
 Linux disk images, Android vendor overlays, and desktop USB/device installers.
+The built-in Chromium component and Linux native-message relay live in `browser/`.
+Build it with `bun run --cwd packages/os build:browser`; run its protocol and
+Chromium patch tests with `bun run --cwd packages/os test:browser`.
+
 Application and native-runtime sources belong to `packages/app` and its plugins.
 Builders use the enclosing Eliza checkout, or `ELIZAOS_ELIZA_ROOT` when explicitly
 set. Standalone OS checkouts use `.eliza-source` by default.
@@ -35,7 +39,7 @@ python3 packages/os/scripts/linux/assemble-browser-payload.py \
   --build-root "$LINUX_BUILD" --runtime-deps "$LINUX_RUNTIME_DEPS" \
   --component "$LINUX_COMPONENT_ASSETS" --overlay "$LINUX_COMPONENT_OVERLAY" \
   --node-archive "$NODE_ARCHIVE" \
-  --native-host packages/browser-bridge-extension/scripts/native-host.mjs \
+  --native-host packages/os/browser/scripts/native-host.mjs \
   --source-commit "$SOURCE_COMMIT" --architecture x86_64 \
   --chromium-revision "$CHROMIUM_REVISION" --chromium-version "$CHROMIUM_VERSION" \
   --output "$STAGE/browser"

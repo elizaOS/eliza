@@ -8,7 +8,13 @@
  *     --run-sha "$GITHUB_SHA" \
  *     --served-url "https://staging.eliza.app" \
  *     [--served-path "/api/health"] \
+ *     --canonical-ref refs/heads/staging \
  *     [--force]
+ *
+ * `--canonical-ref` names the branch whose head attests a served commit. A
+ * newer served commit that is not reachable from that head is an unattested
+ * upload and never suppresses the deploy (#27229). Omitting the ref leaves the
+ * served commit unattested, so the guard deploys rather than skips.
  *
  * Emits `should_deploy=true|false` to $GITHUB_OUTPUT (and reason/detail), so the
  * deploy step can gate on `if: steps.freshness.outputs.should_deploy == 'true'`.
@@ -24,6 +30,7 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "../../scripts/lib/spawn-sync-captured.ts";
 
+import { resolveCanonicalHead } from "./canonical-deploy-source-guard.ts";
 import {
   decideDeployFreshness,
   fetchServedCommit,
@@ -35,12 +42,18 @@ function parseArgs(argv) {
     servedUrl: null,
     servedPath: null,
     servedCommit: null,
+    canonicalRef: null,
     force: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--force") {
       out.force = true;
+    } else if (arg === "--canonical-ref") {
+      i += 1;
+      out.canonicalRef = argv[i];
+    } else if (arg.startsWith("--canonical-ref=")) {
+      out.canonicalRef = arg.slice("--canonical-ref=".length);
     } else if (arg === "--run-sha") {
       i += 1;
       out.runSha = argv[i];
@@ -237,6 +250,32 @@ function isAncestor(runSha, servedCommit) {
   return checkAncestry(runSha, servedCommit);
 }
 
+/**
+ * True when the served commit is reachable from the canonical branch head,
+ * false when it provably is not, and null when the head or ancestry cannot be
+ * resolved. Only `true` lets the guard treat a newer served build as released.
+ * @param {string} servedCommit
+ * @param {string} canonicalRef
+ * @param {(ref: string) => string} [resolveHead]
+ * @returns {boolean|null}
+ */
+function isServedCommitOnCanonicalRef(
+  servedCommit,
+  canonicalRef,
+  resolveHead = resolveCanonicalHead,
+) {
+  let head = "";
+  try {
+    head = resolveHead(canonicalRef);
+  } catch {
+    // error-policy:J3 an unresolved canonical head is indeterminate; the
+    // decision reports served_attestation_unknown and deploys.
+    return null;
+  }
+  if (head === servedCommit) return true;
+  return isAncestor(servedCommit, head);
+}
+
 function emitOutput(result) {
   // biome-ignore lint/suspicious/noUndeclaredEnvVars: GitHub Actions provides this path for step outputs.
   const outFile = process.env.GITHUB_OUTPUT;
@@ -250,6 +289,13 @@ function emitOutput(result) {
     fs.appendFileSync(outFile, `${lines.join("\n")}\n`);
   }
   const emoji = shouldDeploy ? "✅" : "⛔";
+  if (result.reason === "served_commit_unattested") {
+    // Surfaces the authority failure on the run page as well as in the log;
+    // the protected release still deploys over the unattested build.
+    console.log(
+      "::warning::deploy-freshness-guard: served build is newer than this release but absent from the canonical branch (unattested upload); redeploying the protected release",
+    );
+  }
   console.log(
     `${emoji} deploy-freshness-guard: ${result.decision} (${result.reason})`,
   );
@@ -265,6 +311,7 @@ async function main() {
     servedUrl,
     servedPath,
     servedCommit: servedCommitArg,
+    canonicalRef,
     force,
   } = parseArgs(process.argv.slice(2));
 
@@ -279,6 +326,9 @@ async function main() {
     servedCommit,
     force,
     isAncestor,
+    isServedCommitOnCanonical: canonicalRef
+      ? (commit) => isServedCommitOnCanonicalRef(commit, canonicalRef)
+      : undefined,
   });
 
   emitOutput(result);
@@ -309,4 +359,4 @@ if (
   });
 }
 
-export { isAncestor, parseArgs };
+export { isAncestor, isServedCommitOnCanonicalRef, parseArgs };

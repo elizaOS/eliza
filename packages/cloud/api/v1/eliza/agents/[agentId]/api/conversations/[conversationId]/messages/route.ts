@@ -6,6 +6,10 @@
  */
 import { Hono } from "hono";
 import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@/lib/services/personal-direct-chat-route";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   resolveSharedAgent,
@@ -81,10 +85,29 @@ app.get("/", async (c) => {
     );
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
+  // The personal identity follows its entitlement route (#25146): a withdrawn
+  // Dedicated reads the scoped fallback journal, never the canonical room.
+  const target = await resolveSharedSurfaceTarget({
+    agent: r.agent,
+    personal: "agentKind" in r,
+    conversationId,
+    namespace: worker.namespace,
+  });
+  if (!target.ok) {
+    const refusal = personalDirectChatRefusalResponse(target.refusal);
+    return applyCorsHeaders(
+      Response.json(refusal.body, {
+        status: refusal.status,
+        headers: refusal.headers,
+      }),
+      CORS_METHODS,
+      origin,
+    );
+  }
   try {
     const body = await sharedRestMessagesGet(
       r.agentId,
-      conversationId,
+      target.roomId,
       worker.namespace,
     );
     return applyCorsHeaders(Response.json(body), CORS_METHODS, origin);
@@ -173,11 +196,28 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  const target = await resolveSharedSurfaceTarget({
+    agent: r.agent,
+    personal: "agentKind" in r,
+    conversationId,
+    namespace: worker.namespace,
+  });
+  if (!target.ok) {
+    const refusal = personalDirectChatRefusalResponse(target.refusal);
+    return applyCorsHeaders(
+      Response.json(refusal.body, {
+        status: refusal.status,
+        headers: refusal.headers,
+      }),
+      CORS_METHODS,
+      origin,
+    );
+  }
   let result: { text: string; agentName: string };
   try {
     result = await sharedRestMessageSend(
       r.agent,
-      conversationId,
+      target.roomId,
       text,
       r.agentName,
       worker.executionCtx,
@@ -186,6 +226,8 @@ app.post("/", async (c) => {
       "agentKind" in r ? "platform" : "organization-credits",
       undefined,
       text,
+      undefined,
+      target.accountState,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

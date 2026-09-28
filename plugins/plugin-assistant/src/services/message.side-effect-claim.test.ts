@@ -1977,3 +1977,31 @@ describe("escaped quote boundaries for empty-state egress", () => {
     ).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
   });
 });
+
+describe("simple arithmetic evaluator parity", () => {
+  it.each(["DM", "VOICE_DM"])(
+    "does not re-promote an answered %s turn",
+    async (channelType) => {
+      testRuntime.runtime.registerAction({
+        name: "CALCULATE",
+        description: "Compute arithmetic",
+      });
+      const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+        (item) => item.name === "core.simple_registered_action_request",
+      );
+      if (!evaluator) throw new Error("Missing registered-action evaluator");
+      const handler = simpleReplyHandler("15.");
+      handler.plan.replyEffectStatus = "none";
+      handler.plan.intents = [];
+      const context = makeContext(handler, {
+        userText:
+          "Hello Eliza, this is a voice development check. What is 7 plus 8? Please answer briefly.",
+      });
+      context.message.content.channelType = channelType;
+      expect(await evaluator.shouldRun?.(context)).toBe(false);
+      expect(await evaluator.evaluate(context)).toBeUndefined();
+      expect(handler.plan.reply).toBe("15.");
+      expect(handler.plan.contexts).toEqual(["simple"]);
+    },
+  );
+});

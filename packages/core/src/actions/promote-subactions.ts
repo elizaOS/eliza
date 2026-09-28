@@ -37,7 +37,9 @@ export interface SubactionPromotionOverrides {
 	/** Complete authored parameters for this operation, before discriminator
 	 * pinning. The parent and other operations keep their original contracts. */
 	parameters?: readonly ActionParameter[];
-	/** Override the virtual action's description. */
+	/** Operation-specific description for the virtual. The umbrella
+	 * description is not repeated in it; planner tool rendering states it once
+	 * per exposed family. */
 	description?: string;
 	/**
 	 * Set the virtual action's compressed description — the short one-line
@@ -83,7 +85,51 @@ interface PromotedAction extends Action {
 		parent: string;
 		virtuals: readonly string[];
 		parentRoutingHint?: string;
+		/** The umbrella description at promotion time, stated once per family. */
+		parentDescription: string;
+		subaction: string;
+		/** Operation-specific text from `overrides[subaction].description`. */
+		operationDescription?: string;
 	};
+}
+
+/**
+ * The family context a promoted virtual's own description deliberately omits.
+ * A virtual's `description` carries only its operation-specific text; the
+ * umbrella description is stated once per tool list by planner tool rendering
+ * (and composed back by canonical alias contracts) instead of once per virtual.
+ */
+export function promotedSubactionDescription(action: Action):
+	| {
+			parent: string;
+			parentDescription: string;
+			subaction: string;
+			operationDescription?: string;
+	  }
+	| undefined {
+	const marker = (action as PromotedAction)[PROMOTED_MARKER];
+	return marker
+		? {
+				parent: marker.parent,
+				parentDescription: marker.parentDescription,
+				subaction: marker.subaction,
+				...(marker.operationDescription
+					? { operationDescription: marker.operationDescription }
+					: {}),
+			}
+		: undefined;
+}
+
+/** The pre-split composed text `${parentDescription} — ${blurb}` for a virtual. */
+export function composedPromotedSubactionDescription(
+	action: Action,
+): string | undefined {
+	const promoted = promotedSubactionDescription(action);
+	return promoted
+		? `${promoted.parentDescription} — ${
+				promoted.operationDescription ?? `subaction = ${promoted.subaction}`
+			}`
+		: undefined;
 }
 
 /**
@@ -429,10 +475,15 @@ export function promoteSubactionsToActions(
 		const subKey = sub.toLowerCase();
 		const override = overrides[subKey] ?? {};
 		const virtualName = `${toUpperSnake(namePrefix)}_${toUpperSnake(sub)}`;
-		const subBlurb = override.description
-			? override.description
-			: `subaction = ${subKey}`;
-		const description = `${parent.description} — ${subBlurb}`;
+		// The umbrella description is not repeated per virtual: an exposed
+		// family repeated it once per operation (live #31017: nine MESSAGE_*
+		// tools each restating the MESSAGE description, ~5K planner tokens).
+		// Consumers state it once per family through
+		// `promotedSubactionDescription`.
+		const operationDescription = override.description?.trim() || undefined;
+		const description = operationDescription
+			? `${parent.name} operation "${subKey}": ${operationDescription}`
+			: `${parent.name} operation "${subKey}".`;
 		const similes = Array.from(
 			new Set([
 				// Parent's name is first so simile-based search/routing can still
@@ -501,6 +552,9 @@ export function promoteSubactionsToActions(
 				parent: parent.name,
 				virtuals: [virtualName],
 				parentRoutingHint: parent.routingHint,
+				parentDescription: parent.description,
+				subaction: subKey,
+				...(operationDescription ? { operationDescription } : {}),
 			},
 			enumerable: true,
 			configurable: false,

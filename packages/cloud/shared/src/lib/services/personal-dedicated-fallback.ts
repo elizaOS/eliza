@@ -55,6 +55,7 @@ import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-d
 import { ApiError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { checkAgentCreditGate } from "./agent-billing-gate";
+import { withPersonalFallbackRecoveryLink } from "./personal-fallback-recovery-link";
 import type { PersonalSharedFallbackAccountState } from "./shared-runtime/personal-fallback-account-state";
 
 export type { PersonalDedicatedFallback } from "../../db/schemas/personal-dedicated-fallbacks";
@@ -698,13 +699,122 @@ export async function resolvePersonalDedicatedRoute(
       (input.dedicated.status !== "running" || (await jobInFlight(row, row.suspend_job_id)));
     if (!restarting) return { route: "dedicated", reconcile: row };
   }
+  // The pay action carries a signed, expiring link to the billing surface.
+  const state = await withPersonalFallbackRecoveryLink(accountState(row), row, (error) =>
+    logger.error("[personal-dedicated-fallback] Recovery link signing is unavailable", {
+      organizationId: row.organization_id,
+      fallbackId: row.id,
+      code: error.code,
+    }),
+  );
   return {
     route: "shared_fallback",
     delivery: {
       fallback: row,
       journalRoomId: row.journal_room_id,
-      accountState: accountState(row),
+      accountState: state,
     },
+  };
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type PersonalDedicatedTrafficAccess =
+  /** Not a withdrawn personal Dedicated: the caller's normal Dedicated contract applies. */
+  | { access: "dedicated" }
+  | {
+      access: "withdrawn";
+      /** 409 while Shared owns the owner's direct conversation; 503 while switching. */
+      status: 409 | 503;
+      code:
+        | "personal_dedicated_access_withdrawn"
+        | "dedicated_fallback_pending"
+        | "dedicated_reconciling";
+      error: string;
+      retryable: boolean;
+      retryAfterSeconds?: number;
+      /** Owner-only account state. Never render it into group or shared-gateway replies. */
+      accountState?: PersonalSharedFallbackAccountState;
+    };
+
+/**
+ * The route decision for traffic that addresses a Dedicated agent directly
+ * rather than through its owner's personal identity: group rooms, the shared
+ * connector gateway and the Dedicated bridge. Such traffic never has a Shared
+ * fallback of its own (the fallback journal is scoped to the owner's direct
+ * conversation), so while the owner's Dedicated access is withdrawn it is
+ * refused with the same typed state and never reaches Dedicated memory. An
+ * agent that is not a cut-over personal Dedicated is unaffected.
+ */
+export async function resolvePersonalDedicatedTrafficAccess(input: {
+  dedicatedAgentId: string;
+  organizationId: string;
+  effects?: PersonalDedicatedFallbackEffects;
+}): Promise<PersonalDedicatedTrafficAccess> {
+  // Only uuid-keyed agent rows can hold a personal Dedicated authority.
+  if (!UUID_PATTERN.test(input.dedicatedAgentId)) return { access: "dedicated" };
+  const [authority] = await dbWrite
+    .select({
+      userId: personalDedicatedUpgradeAuthorities.user_id,
+      sourceAgentId: personalDedicatedUpgradeAuthorities.source_agent_id,
+    })
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, input.dedicatedAgentId),
+        eq(personalDedicatedUpgradeAuthorities.organization_id, input.organizationId),
+        isNotNull(personalDedicatedUpgradeAuthorities.cutover_token),
+      ),
+    )
+    .limit(1);
+  if (!authority) return { access: "dedicated" };
+  const { findActivePersonalDedicatedTarget } = await import("./agent-tier-upgrade-target");
+  const dedicated = await findActivePersonalDedicatedTarget(
+    input.organizationId,
+    authority.userId,
+    authority.sourceAgentId,
+  );
+  if (!dedicated || dedicated.id !== input.dedicatedAgentId) return { access: "dedicated" };
+  const route = await resolvePersonalDedicatedRoute({
+    dedicated,
+    organizationId: input.organizationId,
+    userId: authority.userId,
+    sourceAgentId: authority.sourceAgentId,
+    ...(input.effects ? { effects: input.effects } : {}),
+  });
+  if (route.route === "dedicated") {
+    if (route.reconcile) {
+      // These callers have no conversation coordinator. The owner-facing
+      // direct or connector path must finish the canonical journal import
+      // before a cached Dedicated destination can accept another turn.
+      return {
+        access: "withdrawn",
+        status: 503,
+        code: "dedicated_reconciling",
+        error: "Dedicated Eliza is restoring your recent conversation. Try again shortly.",
+        retryable: true,
+        retryAfterSeconds: 5,
+      };
+    }
+    return { access: "dedicated" };
+  }
+  if (route.route === "unavailable") {
+    return {
+      access: "withdrawn",
+      status: 503,
+      code: route.code,
+      error: route.error,
+      retryable: true,
+      retryAfterSeconds: route.retryAfterSeconds,
+    };
+  }
+  return {
+    access: "withdrawn",
+    status: 409,
+    code: "personal_dedicated_access_withdrawn",
+    error: "This Dedicated Eliza is paused until the owner restores billing.",
+    retryable: false,
+    accountState: route.delivery.accountState,
   };
 }
 

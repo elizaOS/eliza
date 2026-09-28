@@ -21,6 +21,7 @@ import { apiKeys } from "../../schemas/api-keys";
 import { computeBillingRateSegments } from "../../schemas/compute-billing-rate-segments";
 import { containerBillingRecords, containers } from "../../schemas/containers";
 import { creditTransactions } from "../../schemas/credit-transactions";
+import { organizationPaymentReversalHolds } from "../../schemas/organization-payment-reversal-holds";
 import { organizations } from "../../schemas/organizations";
 import {
   earningsSourceEnum,
@@ -60,6 +61,7 @@ beforeAll(async () => {
       agentSandboxes,
       apiKeys,
       creditTransactions,
+      organizationPaymentReversalHolds,
       computeBillingRateSegments,
       containers,
       containerBillingRecords,

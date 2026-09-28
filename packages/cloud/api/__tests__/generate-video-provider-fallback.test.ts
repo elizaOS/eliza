@@ -15,21 +15,28 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { billingHoldService } from "@/lib/services/billing-hold";
 import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
 import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
 
-// These route billing fixtures model purchased-credit funding with no subscription.
-// The primary policy reader is the external boundary; reservation, provider health,
-// settlement and reconciliation below remain the real implementations.
+// These route billing fixtures model purchased-credit funding with no subscription
+// and no payment-reversal hold. The primary policy and hold readers are the external
+// boundaries; reservation, provider health, settlement and reconciliation below
+// remain the real implementations.
 let policyLookup: ReturnType<typeof spyOn>;
+let holdLookup: ReturnType<typeof spyOn>;
 beforeEach(() => {
   policyLookup = spyOn(
     quotaPolicyActual,
     "readOrganizationQuotaPolicy",
   ).mockResolvedValue(purchasedCreditPolicyFixture());
+  holdLookup = spyOn(billingHoldService, "assertNoHold").mockResolvedValue(
+    undefined,
+  );
 });
 afterEach(() => {
   policyLookup.mockRestore();
+  holdLookup.mockRestore();
 });
 
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";

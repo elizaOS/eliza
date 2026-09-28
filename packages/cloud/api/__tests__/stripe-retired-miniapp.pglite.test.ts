@@ -21,6 +21,9 @@ const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
 const { organizations } = await import("@/db/schemas/organizations");
 const { users } = await import("@/db/schemas/users");
 const { creditTransactions } = await import("@/db/schemas/credit-transactions");
+const { organizationPaymentReversalHolds } = await import(
+  "@/db/schemas/organization-payment-reversal-holds"
+);
 const { invoices } = await import("@/db/schemas/invoices");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
@@ -32,7 +35,13 @@ beforeAll(async () => {
   for (const statement of await generateMigration(
     empty,
     generateDrizzleJson(
-      { organizations, users, creditTransactions, invoices },
+      {
+        organizations,
+        users,
+        creditTransactions,
+        invoices,
+        organizationPaymentReversalHolds,
+      },
       empty.id,
     ),
   ))

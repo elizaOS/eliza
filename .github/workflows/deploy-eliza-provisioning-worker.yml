@@ -1287,6 +1287,15 @@ jobs:
                   "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" "$name" "$val"
                 unset val
               done
+              # The deletion-only authority opens the same Cloud DB connection
+              # as the provisioning daemon, so it must inherit the same TLS
+              # verification policy; without it a self-signed managed proxy
+              # fails the first authority query.
+              if [ -n "${DATABASE_SSL_NO_VERIFY:-}" ]; then
+                append_environment_setting \
+                  "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+                  DATABASE_SSL_NO_VERIFY "$DATABASE_SSL_NO_VERIFY"
+              fi
             fi
             if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
               runtime_backup_names=(
@@ -1314,7 +1323,6 @@ jobs:
                 unset val
               done
               optional_enabled_backup_names=(
-                DATABASE_SSL_NO_VERIFY
                 AGENT_BACKUP_SCHEDULE_BATCH_SIZE
                 AGENT_BACKUP_SCHEDULE_LEASE_MS
                 AGENT_BACKUP_SCHEDULE_RETRY_MS

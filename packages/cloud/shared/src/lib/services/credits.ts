@@ -198,6 +198,31 @@ export class InsufficientCreditsError extends Error {
   }
 }
 
+export const BILLING_HOLD_ACTIVE_CODE = "billing_hold_active";
+
+/**
+ * Thrown at paid admission while an underfunding payment reversal holds the
+ * organization (#22930; see `billing-hold.ts`). It extends
+ * {@link InsufficientCreditsError} so every paid route that already maps a
+ * funding denial to HTTP 402 fails closed the same way.
+ */
+export class BillingHoldActiveError extends InsufficientCreditsError {
+  readonly code = BILLING_HOLD_ACTIVE_CODE;
+  readonly organizationId: string;
+  readonly outstandingUsd: string;
+
+  constructor(organizationId: string, outstandingUsd: string) {
+    super(Number(outstandingUsd), 0, BILLING_HOLD_ACTIVE_CODE);
+    this.name = "BillingHoldActiveError";
+    this.message =
+      outstandingUsd === "0.000000"
+        ? "Paid usage is on hold because of a reversed payment. Contact support to restore it."
+        : `Paid usage is on hold because a refunded or disputed payment left $${new Decimal(outstandingUsd).toFixed(2)} unpaid. Add funds at /cloud/billing to repay it and restore paid usage.`;
+    this.organizationId = organizationId;
+    this.outstandingUsd = outstandingUsd;
+  }
+}
+
 export interface CreditReservation {
   reservedAmount: number;
   reservationTransactionId?: string | null;
@@ -1263,7 +1288,9 @@ export class CreditsService {
    * Claw back credits after a Stripe refund / chargeback (#10920). The live
    * organizations table forbids negative credit balances, so this applies as much
    * of the clawback as the current balance can cover, floors the balance at zero,
-   * and records any unrecovered shortfall in transaction metadata for follow-up.
+   * and records any unrecovered shortfall in transaction metadata plus an
+   * organization billing hold that fails paid admission closed until the
+   * shortfall is repaid or the dispute is reinstated (#22930).
    * Idempotent on `stripePaymentIntentId` (key it on the refund/dispute so a
    * re-delivered webhook doesn't double-claw).
    */
@@ -1404,6 +1431,30 @@ export class CreditsService {
             metadata,
             stripe_payment_intent_id,
             created_at
+        ),
+        -- An unrecovered shortfall places the organization billing hold in the
+        -- same statement as the clawback, so no committed shortfall can exist
+        -- without its hold (#22930).
+        shortfall_hold AS (
+          INSERT INTO organization_payment_reversal_holds (
+            organization_id,
+            reason,
+            clawback_transaction_id,
+            shortfall_usd,
+            outstanding_usd,
+            stripe_payment_intent_id
+          )
+          SELECT
+            inserted.organization_id,
+            'reversal_shortfall',
+            inserted.id,
+            candidate.shortfall_amount,
+            candidate.shortfall_amount,
+            ${originalPaymentIntentId}
+          FROM inserted
+          CROSS JOIN candidate
+          WHERE candidate.shortfall_amount > 0
+          RETURNING id
         ),
         updated AS (
           UPDATE organizations AS o

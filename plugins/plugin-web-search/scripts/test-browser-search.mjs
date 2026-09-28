@@ -12,7 +12,7 @@ import { searchBrowserFirstWeb } from "../src/browser-web-search.ts";
 
 const require = createRequire(new URL("../../plugin-browser/package.json", import.meta.url));
 const { default: puppeteer } = require("puppeteer-core");
-const root = resolve(import.meta.dirname, "../../../packages/browser-bridge-extension");
+const root = resolve(import.meta.dirname, "../../../packages/os/browser");
 const temporary = await mkdtemp(join(tmpdir(), "eliza-native-browser-"));
 const profile = join(temporary, "profile");
 await mkdir(profile, { mode: 0o700 });

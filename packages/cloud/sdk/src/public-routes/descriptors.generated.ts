@@ -1180,6 +1180,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/billing/application-slots/[slotKey]/route.ts",
   },
+  "GET /api/v1/billing/hold": {
+    method: "GET",
+    path: "/api/v1/billing/hold",
+    methodName: "getApiV1BillingHold",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/billing/hold/route.ts",
+  },
   "GET /api/v1/billing/ledger": {
     method: "GET",
     path: "/api/v1/billing/ledger",
@@ -3729,6 +3738,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/ballots/[id]/vote/route.ts",
+  },
+  "POST /api/v1/billing/hold": {
+    method: "POST",
+    path: "/api/v1/billing/hold",
+    methodName: "postApiV1BillingHold",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/billing/hold/route.ts",
   },
   "POST /api/v1/billing/resources/{id}/cancel": {
     method: "POST",

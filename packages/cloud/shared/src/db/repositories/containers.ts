@@ -21,6 +21,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { fundAllowanceEligibleChargeInTransaction } from "../../lib/services/allowance-first-credits";
+import { billingHoldService } from "../../lib/services/billing-hold";
 import { creditsService } from "../../lib/services/credits";
 import {
   readOrganizationQuotaPolicyInTransaction,
@@ -859,6 +860,10 @@ export class ContainersRepository {
           };
         }
       }
+
+      // A new container is new paid admission: fail closed while an
+      // underfunding payment reversal holds the organization (#22930).
+      await billingHoldService.assertNoHold(data.organization_id, tx);
 
       // 2. Count active containers (excluding deleting/deleted status)
       const [{ count }] = await tx

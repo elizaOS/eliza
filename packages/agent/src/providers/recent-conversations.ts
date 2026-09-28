@@ -61,9 +61,8 @@ export const recentConversationsProvider: Provider = {
   descriptionCompressed:
     "authorized cross platform conversation history room index stored recall",
   dynamic: true,
-  // The response router needs the recall contract before it chooses contexts,
-  // including for implicit follow-ups that do not contain a recall keyword.
-  alwaysInResponseState: true,
+  // Cross-room originals load for selected recall contexts; current-room
+  // dialogue remains available independently through RECENT_MESSAGES.
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(
     "provider.recentConversations.relevance",

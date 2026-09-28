@@ -16,7 +16,7 @@
  * Extraction is heuristic (regex over natural utterances); a model-driven pass
  * is out of scope here (tracked by #14870 for ASR that these rules miss).
  *
- * Relative due dates ("tomorrow", "by Friday") resolve on the meeting's local
+ * Relative due dates ("tomorrow", "by Friday") resolve on the utterance's local
  * calendar day, and the 17:00 ledger `dueAt` and 09:00 calendar deadline are
  * wall times in that zone. Zone precedence: `MeetingGhostTranscript.timeZone`
  * when the transcript carries one; otherwise the runtime's owner-configured
@@ -32,7 +32,10 @@ import type {
   ApprovalPayload,
 } from "../approval-queue.types.js";
 import type { LifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
-import { createLifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
+import {
+  createLifeOpsCommitmentLedgerRecord,
+  hasFirmCommitmentSentence,
+} from "../commitments/index.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -452,7 +455,13 @@ function parseCommitment(
   const parsed = parseCommitmentBody(text);
   if (!parsed) return null;
   const who = parsed.who ?? speakerOf(segment);
-  const dueDate = parseDueDate(parsed.dueText, transcript.startedAt, timeZone);
+  // Relative days count from the utterance, not the meeting start, matching
+  // the transcript commitment projection's `observedAt` for the same segment.
+  const startedAtMs = Date.parse(transcript.startedAt);
+  const spokenAt = Number.isNaN(startedAtMs)
+    ? transcript.startedAt
+    : new Date(startedAtMs + segment.startMs).toISOString();
+  const dueDate = parseDueDate(parsed.dueText, spokenAt, timeZone);
   return {
     id: stableId(["commitment", String(index), who, parsed.what]),
     who,
@@ -585,6 +594,24 @@ export function createMeetingGhostCommitmentLedgerRecord(input: {
   });
 }
 
+/**
+ * True when the segment is the owner's own first-person promise that the
+ * transcript commitment projection (`projectFinalizedTranscriptCommitments`)
+ * persists for the same finalized event, keyed by transcript segment. The
+ * ghost analyzer leaves that ledger row to the projection so one spoken
+ * commitment never lands as two rows with different source keys.
+ */
+function isProjectedOwnerPromise(
+  segment: TranscriptSegment,
+  owner: MeetingGhostOwnerContext,
+): boolean {
+  if (segment.speakerEntityId !== owner.ownerUserId) return false;
+  const text = compact(segment.text);
+  return (
+    parseCommitmentBody(text)?.who === null && hasFirmCommitmentSentence(text)
+  );
+}
+
 export function analyzeMeetingGhostTranscript(input: {
   readonly agentId?: string;
   readonly transcript: MeetingGhostTranscript;
@@ -592,6 +619,7 @@ export function analyzeMeetingGhostTranscript(input: {
 }): MeetingGhostAnalysis {
   const decisions: MeetingGhostDecision[] = [];
   const commitments: MeetingGhostCommitment[] = [];
+  const ownerSpokenCommitmentIds = new Set<string>();
   const careHits: MeetingGhostCareHit[] = [];
   const timeZone = resolveTranscriptTimeZone(input.transcript);
 
@@ -605,7 +633,12 @@ export function analyzeMeetingGhostTranscript(input: {
     const commitment = decision
       ? null
       : parseCommitment(input.transcript, timeZone, segment, index);
-    if (commitment) commitments.push(commitment);
+    if (commitment) {
+      commitments.push(commitment);
+      if (isProjectedOwnerPromise(segment, input.owner)) {
+        ownerSpokenCommitmentIds.add(commitment.id);
+      }
+    }
 
     for (const careAbout of input.owner.careAbouts) {
       if (careAboutMatches(segment.text, careAbout)) {
@@ -633,6 +666,7 @@ export function analyzeMeetingGhostTranscript(input: {
   const commitmentLedgerRecords: LifeOpsCommitmentLedgerRecord[] = [];
   if (input.agentId) {
     for (const commitment of commitments) {
+      if (ownerSpokenCommitmentIds.has(commitment.id)) continue;
       commitmentLedgerRecords.push(
         createMeetingGhostCommitmentLedgerRecord({
           agentId: input.agentId,

@@ -10,6 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { readFileHandler } from "./read.js";
+import { writeFileHandler } from "./write.js";
 
 describe("READ", () => {
   let env: TestEnv;
@@ -20,6 +21,39 @@ describe("READ", () => {
 
   afterEach(async () => {
     await env.cleanup();
+  });
+
+  it("keeps content bytes distinct from write hashes and read continuation revisions", async () => {
+    const file = path.join(env.tmpDir, "literal.txt");
+    const source = "  reference: opaque-user-value\r\nlast line  \n";
+    const write = await writeFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, content: source },
+    });
+    expect(write.success).toBe(true);
+    const version = write.effectReceipts?.[0].resource?.version;
+    expect(version).toMatch(/^sha256:/);
+    const wrongNamespace = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, expectedRevision: version },
+      },
+    );
+    expect(wrongNamespace.success).toBe(false);
+    expect(wrongNamespace.text).toContain("stale_read");
+    const fresh = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file },
+    });
+    expect(fresh.success).toBe(true);
+    expect(fresh.text).toBe(source);
+    expect(await fs.readFile(file, "utf8")).toBe(source);
+    const view = fresh.promptData?.readView as {
+      reference: { revision: string };
+      slice: { sourceSha256: string };
+    };
+    expect(view.reference.revision).not.toBe(version);
+    expect(`sha256:${view.slice.sourceSha256}`).toBe(version);
   });
 
   it("reads a small file as an exact page with a complete ReadView", async () => {

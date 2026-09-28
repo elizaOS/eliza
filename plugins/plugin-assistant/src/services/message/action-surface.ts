@@ -77,13 +77,31 @@ function plannerDomainOwnership(action: Action, domain: string): number {
 
 export const DEFAULT_PLANNER_QUERY_TOOL_LIMIT = 10;
 
+/** Domain phrases are natural words, not subwords of identifiers or paths. */
+function containsDomainPhrase(query: string, name: string): boolean {
+  const variants = new Set([name, name.replace(/_/g, " ")]);
+  return [...variants].some((variant) => {
+    const phrase = variant
+      .trim()
+      .split(/\s+/u)
+      .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    if (!phrase) return false;
+    // A final period/colon is sentence punctuation; punctuation joining a
+    // following identifier is part of a filename, path or compound key.
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}_./:\\\\-])${phrase}(?![\\p{L}\\p{N}_/\\\\]|[.:-]+[\\p{L}\\p{N}_])`,
+      "iu",
+    ).test(query);
+  });
+}
+
 /** Shared domain matching for explicit discovery and pending-intent bootstrap. */
 export function inferActionSearchContexts(
   actions: readonly Action[],
   query: string,
   aliases?: (context: string) => readonly string[] | undefined,
 ): string[] {
-  const words = ` ${tokenizeActionSearchText(query).join(" ")} `;
   return [
     ...new Set(actions.flatMap((action) => actionDiscoveryContexts(action))),
   ].filter((context) => {
@@ -91,43 +109,130 @@ export function inferActionSearchContexts(
     return (
       normalized !== "general" &&
       normalized !== "simple" &&
-      [normalized, ...(aliases?.(normalized) ?? [])].some((name) => {
-        const phrase = tokenizeActionSearchText(name).join(" ");
-        return phrase.length > 0 && words.includes(` ${phrase} `);
-      })
+      [normalized, ...(aliases?.(normalized) ?? [])].some((name) =>
+        containsDomainPhrase(query, name),
+      )
     );
   });
 }
+
+/** Generic operation verbs name no specific capability on their own. */
+const GENERIC_OPERATION_WORDS = new Set([
+  "list",
+  "search",
+  "find",
+  "lookup",
+  "create",
+  "add",
+  "write",
+  "save",
+  "update",
+  "edit",
+  "change",
+  "modify",
+  "replace",
+  "patch",
+  "delete",
+  "remove",
+  "erase",
+  "get",
+  "read",
+  "retrieve",
+  "next",
+  "upcoming",
+  "open",
+  "navigate",
+  "show",
+  "close",
+  "send",
+  "set",
+  "run",
+]);
 
 function pendingActionContexts(
   actions: readonly Action[],
   intents: readonly string[] | undefined,
   aliases?: (context: string) => readonly string[] | undefined,
+  selectedActions?: readonly Action[],
 ): string[] {
   // These are exposure hints only. Ambiguous/negated clauses and navigation
   // destinations remain discoverable instead of loading their record tools.
-  const domainIntents = (intents ?? [])
-    .map(positiveIntentText)
-    .filter((intent) => {
-      const words = tokenizeActionSearchText(intent);
-      return (
-        words.length > 0 &&
-        ![
-          "open",
-          "navigate",
-          "switch",
-          "go",
-          "show",
-          "close",
-          "return",
-        ].includes(words[0])
-      );
-    });
-  return inferActionSearchContexts(
-    actions,
-    domainIntents.join("\n"),
-    aliases,
-  ).map(normalizeContextId);
+  // A clause whose verb already names a Stage-1 selected action ("echo this
+  // message back to me: hello world" -> ECHO_TEST) is claimed by that action.
+  // An incidental domain word in it (MESSAGE's `world` context) is not a
+  // second domain intent unless the clause also names one of that domain's
+  // operations; otherwise the family stays behind DISCOVER_ACTIONS (#31017).
+  const claimWords = new Set(
+    (selectedActions ?? []).flatMap((action) =>
+      tokenizeActionSearchText(action.name).filter(
+        (word) => word.length > 2 && !GENERIC_OPERATION_WORDS.has(word),
+      ),
+    ),
+  );
+  const domains = new Set<string>();
+  for (const intent of (intents ?? []).map(positiveIntentText)) {
+    const words = tokenizeActionSearchText(intent);
+    const claimed = words.some((word) => claimWords.has(word));
+    if (
+      words.length === 0 ||
+      ["open", "navigate", "switch", "go", "show", "close", "return"].includes(
+        words[0],
+      )
+    )
+      continue;
+    // Readback identifiers are data, not programming work. This affects only
+    // inferred extra domains; explicit contexts, action names and discovery
+    // queries retain their ordinary meaning and complete source text.
+    const programmingText = intent.replace(
+      /\b(?:verification|reference)\s+codes?\b/giu,
+      " ",
+    );
+    for (const context of inferActionSearchContexts(actions, intent, aliases)) {
+      const domain = normalizeContextId(context);
+      if (domains.has(domain)) continue;
+      if (
+        domain === "code" &&
+        !["code", ...(aliases?.("code") ?? [])].some((name) =>
+          containsDomainPhrase(programmingText, name),
+        )
+      )
+        continue;
+      if (!claimed) {
+        domains.add(domain);
+        continue;
+      }
+      const operations = actions
+        .filter((action) =>
+          actionDiscoveryContexts(action).some(
+            (candidate) => normalizeContextId(candidate) === domain,
+          ),
+        )
+        .map((action) => action.name);
+      if (preferredOperationNames(intent, operations).size > 0)
+        domains.add(domain);
+    }
+  }
+  return [...domains];
+}
+
+const OPERATION_CONNECTORS = new Set([
+  "with",
+  "to",
+  "from",
+  "of",
+  "in",
+  "by",
+  "for",
+  "and",
+]);
+
+function operationWords(
+  name: string,
+  parentWords: ReadonlySet<string>,
+): string[] {
+  return tokenizeActionSearchText(name).filter(
+    (word) => !parentWords.has(word) && !OPERATION_CONNECTORS.has(word),
+  );
 }
 
 function positiveIntentText(intent: string): string {
@@ -155,6 +260,8 @@ export function retrieveContextualPlannerActions(args: {
   /** Preserve exact hints while filling only domains they do not own. */
   selectedActions?: readonly Action[];
   contextAliases?: (context: string) => readonly string[] | undefined;
+  /** Initial routing may defer ambiguous domains; explicit discovery stays global. */
+  deferUnscopedBootstrap?: boolean;
 }): {
   actions: Action[];
   matchCount: number;
@@ -167,6 +274,7 @@ export function retrieveContextualPlannerActions(args: {
           args.actions.map((action) => ({ ...action, subActions: undefined })),
         ),
         messageText: args.query,
+        intents: args.intents,
         selectedContexts: args.contexts,
       })
     : undefined;
@@ -189,8 +297,28 @@ export function retrieveContextualPlannerActions(args: {
   );
   const domains = new Set([
     ...declaredDomains,
-    ...pendingActionContexts(args.actions, args.intents, args.contextAliases),
+    ...pendingActionContexts(
+      args.actions,
+      args.intents,
+      args.contextAliases,
+      args.selectedActions,
+    ),
   ]);
+  if (args.deferUnscopedBootstrap && domains.size === 0) {
+    const required = [
+      ...new Map(
+        (args.selectedActions ?? []).map((action) => [action.name, action]),
+      ).values(),
+    ];
+    const requiredNames = new Set(required.map((action) => action.name));
+    return {
+      actions: required,
+      matchCount: matches.length,
+      selectedCount: required.length,
+      deferredCount: matches.filter((action) => !requiredNames.has(action.name))
+        .length,
+    };
+  }
   const selectMatches = (ranked: readonly Action[]) => {
     const required = [
       ...new Map(
@@ -276,6 +404,66 @@ export function retrieveContextualPlannerActions(args: {
               (context) => normalizeContextId(context) === domain,
             ),
           );
+    // Navigation changes the view, not its domain records. Retain an already
+    // selected navigation operation only when every declared intent resolves
+    // to it; a read/update intent must still load its resource owner.
+    const selectedNames = new Set(
+      args.selectedActions?.map((action) => action.name),
+    );
+    const navigationNames = new Set(
+      [...selectedNames].filter(
+        (name) => name === "VIEWS" || name === "VIEWS_SHOW",
+      ),
+    );
+    // VIEWS is the authorized umbrella for the same show operation; using its
+    // operation name here does not expose or authorize a separate child tool.
+    if (navigationNames.has("VIEWS")) navigationNames.add("VIEWS_SHOW");
+    const operationCandidates = [
+      ...new Set([
+        ...candidates.map((action) => action.name),
+        ...navigationNames,
+      ]),
+    ];
+    const intents = args.intents?.filter((intent) => intent.trim()) ?? [];
+    const navigationOnly = (
+      intents.length > 0 ? intents : [operationQuery]
+    ).every((intent) => {
+      const operations = preferredOperationNames(intent, operationCandidates);
+      return (
+        operations.size > 0 &&
+        [...operations].every(
+          (name) =>
+            (name === "VIEWS" || name === "VIEWS_SHOW") &&
+            navigationNames.has(name),
+        )
+      );
+    });
+    if (navigationOnly) {
+      for (const action of candidates)
+        if (
+          selectedNames.has(action.name) &&
+          (action.name === "VIEWS" || action.name === "VIEWS_SHOW")
+        )
+          selected.add(action);
+      continue;
+    }
+    // Resolve domain ownership before operation verbs: a cross-domain helper
+    // named *_READ must not eliminate the actual FILE/NOTES owner umbrella.
+    const strongest =
+      domain === undefined
+        ? 0
+        : Math.max(
+            0,
+            ...candidates.map((action) =>
+              plannerDomainOwnership(action, domain),
+            ),
+          );
+    const owners = candidates.filter(
+      (action) =>
+        domain === undefined ||
+        strongest === 0 ||
+        plannerDomainOwnership(action, domain) === strongest,
+    );
     const operationNames = preferredOperationNames(
       domain !== undefined && !declaredDomains.has(domain)
         ? (args.intents ?? [])
@@ -283,27 +471,125 @@ export function retrieveContextualPlannerActions(args: {
             .filter(Boolean)
             .join("\n")
         : operationQuery,
-      candidates.map((action) => action.name),
+      owners.map((action) => action.name),
     );
-    const operations = candidates.filter(
-      (action) => operationNames.size === 0 || operationNames.has(action.name),
-    );
-    const strongest =
-      domain === undefined
-        ? 0
-        : Math.max(
-            0,
-            ...operations.map((action) =>
-              plannerDomainOwnership(action, domain),
-            ),
+    if (operationNames.size > 0) {
+      const wanted = new Set(operationNames);
+      const clauses = args.intents?.length ? args.intents : [operationQuery];
+      for (const parent of owners) {
+        const childNames = new Set(
+          parent.subActions?.map((child) =>
+            typeof child === "string" ? child : child.name,
+          ),
+        );
+        const children = owners.filter(
+          (action) => childNames.has(action.name) && wanted.has(action.name),
+        );
+        if (children.length < 2) continue;
+        const parentWords = new Set(tokenizeActionSearchText(parent.name));
+        const wordsFor = (action: Action) =>
+          operationWords(action.name, parentWords);
+        const retained = new Set<string>();
+        for (const clause of clauses) {
+          const unquoted = clause.replace(
+            /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
+            " ",
           );
-    for (const action of operations)
-      if (
-        domain === undefined ||
-        strongest === 0 ||
-        plannerDomainOwnership(action, domain) === strongest
-      )
+          const clauseWords = new Set(tokenizeActionSearchText(unquoted));
+          const mentions = (word: string) =>
+            clauseWords.has(word) ||
+            clauseWords.has(`${word}s`) ||
+            clauseWords.has(`${word}ed`) ||
+            (word.endsWith("e") && clauseWords.has(`${word}d`));
+          const preferred = preferredOperationNames(
+            unquoted,
+            children.map((action) => action.name),
+          );
+          const candidates = children.filter((action) =>
+            preferred.has(action.name),
+          );
+          // Unstructured compound wording is ambiguous. Keep its alternatives;
+          // model-selected intents provide independent outcome boundaries.
+          if (/\band\b|[;,]/iu.test(unquoted)) {
+            for (const action of candidates) retained.add(action.name);
+            continue;
+          }
+          for (const action of candidates) {
+            const words = wordsFor(action);
+            const superseded = candidates.some((other) => {
+              if (other === action) return false;
+              const otherWords = wordsFor(other);
+              const extra = words.filter((word) => !otherWords.includes(word));
+              const otherExtra = otherWords.filter(
+                (word) => !words.includes(word),
+              );
+              // Prefer the more specific operation only when its qualifier was
+              // requested; otherwise use the complete base operation. Evaluate
+              // each requested outcome independently before taking the union.
+              if (extra.length > 0 && otherExtra.length === 0)
+                return !extra.every(mentions);
+              if (extra.length === 0 && otherExtra.length > 0)
+                return otherExtra.every(mentions);
+              if (
+                words.some((word) => otherWords.includes(word)) &&
+                otherExtra.length > 0 &&
+                otherExtra.every(mentions) &&
+                extra.every((word) => !mentions(word))
+              )
+                return true;
+              // Search supports list as a fallback, not every list sibling
+              // alongside an available search operation in the same family.
+              return (
+                words.includes("list") &&
+                otherWords.includes("search") &&
+                !clauseWords.has("list") &&
+                ["search", "find", "lookup"].some((word) =>
+                  clauseWords.has(word),
+                )
+              );
+            });
+            if (!superseded) retained.add(action.name);
+          }
+        }
+        if (retained.size > 0)
+          for (const child of children)
+            if (!retained.has(child.name)) wanted.delete(child.name);
+      }
+      for (const action of owners)
+        if (wanted.has(action.name)) selected.add(action);
+      continue;
+    }
+    // A family word ("message") is not a request for every sibling operation.
+    // Keep its authorized umbrella when the operation is unresolved. Explicit
+    // child words ("inbox", "triage") still select their complete definitions,
+    // including operations outside the generic verb vocabulary above.
+    const queryWords = new Set(tokenizeActionSearchText(operationQuery));
+    const deferredFamilyNames = new Set<string>();
+    for (const parent of owners) {
+      const childNames = new Set(
+        parent.subActions?.map((child) =>
+          typeof child === "string" ? child : child.name,
+        ),
+      );
+      const children = owners.filter((action) => childNames.has(action.name));
+      if (children.length === 0) continue;
+      const parentWords = new Set(tokenizeActionSearchText(parent.name));
+      const explicitChildren = children.filter((action) =>
+        operationWords(action.name, parentWords).some((word) =>
+          queryWords.has(word),
+        ),
+      );
+      if (explicitChildren.length === 0 && typeof parent.handler !== "function")
+        continue;
+      for (const child of children) deferredFamilyNames.add(child.name);
+      deferredFamilyNames.add(parent.name);
+      for (const action of explicitChildren.length > 0
+        ? explicitChildren
+        : [parent])
         selected.add(action);
+    }
+    for (const action of owners)
+      if (!deferredFamilyNames.has(action.name)) selected.add(action);
   }
   // A selected context with no registry matches must still permit global lookup.
   const relevant =
@@ -1075,6 +1361,7 @@ export function buildV5PlannerActionSurface(params: {
   const retrieval = retrieveActions({
     catalog,
     messageText: retrievalMessageText,
+    intents: params.messageHandler.plan.intents,
     recentConversationText: getRecentConversationSearchText(
       params.state,
       params.message,

@@ -47,6 +47,12 @@ export function hasNavigationWithoutPendingIntent(
 export function getStage1RoutingRepair(
   parsed: Record<string, unknown> | null,
 ): string | undefined {
+  // Native context-only decisions omit this optional legacy hint field.
+  // A malformed present value still fails its normal contract checks.
+  const candidateActionNames =
+    parsed?.candidateActionNames === undefined
+      ? []
+      : parsed.candidateActionNames;
   const visualDecision = parsed?.visualContinuation;
   if (
     parsed?.shouldRespond === "RESPOND" &&
@@ -101,8 +107,8 @@ export function getStage1RoutingRepair(
     parsed.replyText.trim().length === 0 ||
     !Array.isArray(parsed.contexts) ||
     parsed.contexts.some((context) => typeof context !== "string") ||
-    !Array.isArray(parsed.candidateActionNames) ||
-    parsed.candidateActionNames.some((name) => typeof name !== "string") ||
+    !Array.isArray(candidateActionNames) ||
+    candidateActionNames.some((name) => typeof name !== "string") ||
     !Array.isArray(parsed.intents) ||
     parsed.intents.some((intent) => typeof intent !== "string") ||
     !parsed.intents.some((intent) => intent.trim().length > 0)
@@ -117,7 +123,7 @@ export function getStage1RoutingRepair(
     parsed.contexts.every(
       (context) => context === "general" || context === "simple",
     ) &&
-    parsed.candidateActionNames.length === 0 &&
+    candidateActionNames.length === 0 &&
     typeof visual === "object" &&
     visual !== null &&
     !Array.isArray(visual) &&
@@ -128,7 +134,7 @@ export function getStage1RoutingRepair(
   return [
     "response_contract_repair:",
     "Your previous HANDLE_RESPONSE conflicts: a non_applied preview ends the turn even when a domain context or action candidate is named; a reply with replyEffectStatus=none and no actionable route also ends it. Nonempty intents instead declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-    'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. Historical errors are past outcomes, not a fresh failed attempt or proof that user details are missing; distinguish missing user information from malformed arguments you generated. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark pending work pending. For disposition=direct, preserve a nonempty destination-is-open confirmation held until delivery succeeds; its future wording does not make the action already applied. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
+    'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. Historical errors are past outcomes, not a fresh failed attempt or proof that user details are missing; distinguish missing user information from malformed arguments you generated. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts; mark pending work pending. For disposition=direct, preserve a nonempty destination-is-open confirmation held until delivery succeeds; its future wording does not make the action already applied. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
     "previous_model_response:",
     JSON.stringify(parsed),
   ].join("\n");
@@ -179,7 +185,7 @@ export function getStage1UnusableDecisionRepair(
     terminalReask
       ? `Your previous HANDLE_RESPONSE ended a directly addressed turn with ${String(shouldRespond)}. Reconsider the complete original request, standing instructions and context. Preserve STOP for explicit disengagement and IGNORE when silence is appropriate; otherwise provide an answer or actionable route. This is review of the original response, not a new user request. Nothing has been delivered or executed.`
       : "Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-    'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
+    'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
     "previous_model_response:",
     JSON.stringify(parsed),
   ].join("\n");

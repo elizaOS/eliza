@@ -7277,5 +7277,19 @@
   "desktop.tray.hideWindow": "Ocultar janela",
   "desktop.tray.quit": "Sair",
   "desktop.tray.testNotification.title": "Desktop",
-  "desktop.tray.testNotification.body": "As ações da bandeja do renderizador estão conectadas e respondendo."
+  "desktop.tray.testNotification.body": "As ações da bandeja do renderizador estão conectadas e respondendo.",
+  "chat.personalRoute.retryNotice": "Sua Eliza está trocando de ambiente. Sua mensagem voltou para o editor; envie de novo em instantes.",
+  "chat.personalRoute.switchedNotice": "Esta conversa agora está na sua Eliza Dedicada. Sua mensagem voltou para o editor; envie de novo.",
+  "chat.personalRoute.switchFailedNotice": "Esta conversa foi para a sua Eliza Dedicada, mas o app não conseguiu se conectar. Sua mensagem voltou para o editor; tente de novo.",
+  "chat.personalFallback.reason.billingSuspended": "Sua Eliza Dedicada está pausada porque sua conta ficou sem créditos.",
+  "chat.personalFallback.reason.paymentFailed": "Sua Eliza Dedicada está pausada porque um pagamento da assinatura falhou.",
+  "chat.personalFallback.reason.subscriptionEnded": "Sua Eliza Dedicada está pausada porque sua assinatura terminou.",
+  "chat.personalFallback.recoveryPending": "O faturamento foi restaurado e sua Eliza Dedicada está reiniciando. A Eliza Compartilhada continua respondendo até ela voltar.",
+  "chat.personalFallback.addCredits": "Adicionar créditos",
+  "chat.personalFallback.restoreSubscription": "Restaurar assinatura",
+  "chat.personalFallback.sharedActive": "Você está conversando com a Eliza Compartilhada. A memória da sua Eliza Dedicada fica indisponível até o faturamento ser restaurado.",
+  "chat.personalFallback.retainedUntil": "Sua Eliza Dedicada será mantida até {{date}}.",
+  "chat.personalFallback.retry": "Tentar novamente",
+  "chat.personalFallback.reconciling": "Sua Eliza Dedicada está restaurando sua conversa recente. Isso costuma levar alguns segundos.",
+  "chat.personalFallback.fallbackPending": "Sua Eliza está mudando para a Compartilhada. Isso costuma levar alguns segundos."
 }

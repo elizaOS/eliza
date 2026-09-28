@@ -80,6 +80,26 @@ export function resolveDesktopRuntimeMode(
 	return { mode: "local", externalApi };
 }
 /**
+ * The runtime mode the main process actually booted with (env + persisted
+ * deployment + external reachability, see `resolveDesktopRuntimeForBoot`).
+ * The renderer classifies its restored startup target against this, so the
+ * `desktopGetRuntimeMode` RPC must report the booted mode rather than the
+ * env-only resolution: a verified persisted external deployment boots in
+ * `external` mode even when the env says `local`, and reporting `local` there
+ * would make the renderer treat the external agent as the embedded one.
+ */
+let bootedDesktopRuntimeMode: DesktopRuntimeModeResolution | null = null;
+export function setBootedDesktopRuntimeMode(
+	resolution: DesktopRuntimeModeResolution,
+): void {
+	bootedDesktopRuntimeMode = resolution;
+}
+export function resolveBootedDesktopRuntimeMode(
+	env: Record<string, string | undefined>,
+): DesktopRuntimeModeResolution {
+	return bootedDesktopRuntimeMode ?? resolveDesktopRuntimeMode(env);
+}
+/**
  * The persisted deployment runtime the desktop main process reads from
  * `eliza.json` (`deploymentTarget.runtime`). `"cloud"` is a cloud-hosted agent
  * (topology 3) and `"remote"` is an external agent the device connects to;

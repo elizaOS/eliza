@@ -111,6 +111,7 @@ interface Harness {
     | "isConversationMessagesOwnershipCurrent"
     | "getConversationMessagesOwnershipGeneration"
     | "registerConversationMessageOverlay"
+    | "reconcileRestoredConversationMessages"
     | "applyConversationMessageOverlayModification"
     | "discardConversationMessageState"
     | "loadedConversationIdRef"
@@ -344,6 +345,8 @@ function mountChat(h: Harness) {
         loaders.getConversationMessagesOwnershipGeneration,
       registerConversationMessageOverlay:
         loaders.registerConversationMessageOverlay,
+      reconcileRestoredConversationMessages:
+        loaders.reconcileRestoredConversationMessages,
       applyConversationMessageOverlayModification:
         loaders.applyConversationMessageOverlayModification,
       discardConversationMessageState: loaders.discardConversationMessageState,

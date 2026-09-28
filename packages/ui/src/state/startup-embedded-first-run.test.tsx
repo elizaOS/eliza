@@ -17,6 +17,9 @@ const clientMock = vi.hoisted(() => ({
   getFirstRunOptions: vi.fn(),
   getConfig: vi.fn(),
   getStatus: vi.fn(),
+  getLaunchProgress: vi.fn(),
+  getBootProgress: vi.fn(),
+  startAgent: vi.fn(),
   hasToken: vi.fn(() => false),
   getBaseUrl: vi.fn(() => "http://127.0.0.1:31338"),
   setBaseUrl: vi.fn(),
@@ -38,6 +41,7 @@ vi.mock("../platform", async (importOriginal) => ({
   isIOS: false,
 }));
 
+import { getAgentReadyTimeoutMs } from "./agent-startup-timing";
 import type { PersistedActiveServer } from "./persistence";
 import {
   createDesktopPolicy,
@@ -54,6 +58,10 @@ import {
   type RestoringSessionCtx,
   resolveDesktopRestoredTarget,
 } from "./startup-phase-restore";
+import {
+  runStartingRuntime,
+  type StartingRuntimeDeps,
+} from "./startup-phase-runtime";
 
 const EMBEDDED_BASE = "http://127.0.0.1:31338";
 
@@ -245,5 +253,133 @@ describe("desktop embedded first-run startup gating (#30744)", () => {
         shellRuntimeMode: "external",
       }),
     ).toBe("remote-backend");
+  });
+
+  describe("starting-runtime for a remote-backend target", () => {
+    function createRuntimeDeps(): StartingRuntimeDeps {
+      return {
+        setAgentStatus: vi.fn(),
+        setConnected: vi.fn(),
+        setStartupError: vi.fn(),
+        setFirstRunLoading: vi.fn(),
+        setFirstRunComplete: vi.fn(),
+        setAuthRequired: vi.fn(),
+        setPairingEnabled: vi.fn(),
+        setPairingExpiresAt: vi.fn(),
+        setPendingRestart: vi.fn(),
+        setPendingRestartReasons: vi.fn(),
+      };
+    }
+
+    async function runRemoteRuntime(
+      deps: StartingRuntimeDeps,
+    ): Promise<StartupEvent[]> {
+      const events: StartupEvent[] = [];
+      await runStartingRuntime(
+        deps,
+        (event) => events.push(event),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        "remote-backend",
+      );
+      return events;
+    }
+
+    beforeEach(() => {
+      clientMock.getLaunchProgress.mockResolvedValue(null);
+      clientMock.getBootProgress.mockResolvedValue(null);
+    });
+
+    it("waits for a not-yet-booted backend runtime instead of declaring ready", async () => {
+      clientMock.getStatus.mockResolvedValue({ state: "not_started" });
+      clientMock.startAgent.mockResolvedValue({ state: "running" });
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(clientMock.startAgent).toHaveBeenCalledTimes(1);
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+    });
+
+    it("surfaces a backend runtime boot failure instead of declaring ready", async () => {
+      clientMock.getStatus.mockResolvedValue({
+        state: "error",
+        startup: { phase: "failed", attempt: 0, lastError: "db_unavailable" },
+      });
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(events).toEqual([
+        { type: "AGENT_ERROR", message: "db_unavailable" },
+      ]);
+      expect(deps.setStartupError).toHaveBeenCalled();
+    });
+
+    it("retries a failed status probe before declaring a remote backend ready", async () => {
+      clientMock.getStatus
+        .mockRejectedValueOnce(new Error("Backend transport unavailable"))
+        .mockResolvedValue({ state: "running" });
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(clientMock.getStatus).toHaveBeenCalledTimes(2);
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+      expect(deps.setAgentStatus).toHaveBeenCalledWith({ state: "running" });
+    });
+
+    it("keeps the ready path for a backend without a status endpoint", async () => {
+      clientMock.getStatus.mockRejectedValue(
+        Object.assign(new Error("Not Found"), {
+          kind: "http",
+          status: 404,
+          path: "/api/status",
+        }),
+      );
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(clientMock.getLaunchProgress).not.toHaveBeenCalled();
+      expect(clientMock.startAgent).not.toHaveBeenCalled();
+      expect(deps.setConnected).toHaveBeenCalledWith(true);
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+    });
+
+    it("times out an unavailable remote backend without presenting ready", async () => {
+      vi.useFakeTimers();
+      try {
+        clientMock.getStatus.mockRejectedValue(
+          new Error("Backend transport unavailable"),
+        );
+        const deps = createRuntimeDeps();
+        const pending = runRemoteRuntime(deps);
+
+        await vi.advanceTimersByTimeAsync(getAgentReadyTimeoutMs() + 1_000);
+        const events = await pending;
+
+        expect(events).toEqual([{ type: "AGENT_TIMEOUT" }]);
+        expect(deps.setConnected).not.toHaveBeenCalledWith(true);
+        expect(deps.setStartupError).toHaveBeenCalledWith(
+          expect.objectContaining({ reason: "agent-timeout" }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps the immediate ready path for an already-running remote agent", async () => {
+      clientMock.getStatus.mockResolvedValue({ state: "running" });
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(clientMock.startAgent).not.toHaveBeenCalled();
+      expect(clientMock.getLaunchProgress).not.toHaveBeenCalled();
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+    });
   });
 });

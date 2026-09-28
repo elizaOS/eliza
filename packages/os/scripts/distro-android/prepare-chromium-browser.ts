@@ -3,8 +3,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { resolveElizaSourceRoot } from "../eliza-source.ts";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const ELIZA_BROWSER_EXTENSION_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 
@@ -64,9 +63,8 @@ export async function prepareChromiumBrowser({
     throw new Error("Component output must be outside the Chromium checkout.");
   if (fs.existsSync(outputRoot))
     throw new Error("Component output directory must be new.");
-  const script = path.join(
-    resolveElizaSourceRoot(),
-    "packages/browser-bridge-extension/scripts/chromium-component.mjs",
+  const script = fileURLToPath(
+    new URL("../../browser/scripts/chromium-component.mjs", import.meta.url),
   );
   const generator = await import(pathToFileURL(script).href);
   if (revision !== undefined && revision !== generator.pin.revision)
