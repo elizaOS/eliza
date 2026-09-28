@@ -4030,7 +4030,6 @@ async function replaceStepsForTrajectoryInternal(
   const writtenStepIds = new Set<string>();
   const verifiedWrittenParents = new Set<string>();
   for (const step of orderedSteps) {
-    await assertTrajectoryStepOwnership(execute, trajectoryId, step.stepId);
     const parentStepId = step.parentStepId?.trim();
     if (
       !parentStepId ||
@@ -4046,7 +4045,26 @@ async function replaceStepsForTrajectoryInternal(
         verifiedWrittenParents.add(parentStepId);
       }
     }
-    await execute(buildTrajectoryStepUpsertSql(trajectoryId, step));
+    // The guarded upsert is the ownership boundary. A pre-read can miss a
+    // concurrent foreign insert; require the exact row before counting a write.
+    const written = extractRequiredRows(
+      await execute(
+        `${buildTrajectoryStepUpsertSql(trajectoryId, step)} RETURNING id`,
+      ),
+      { operation: "write trajectory step", trajectoryId, stepId: step.stepId },
+    );
+    if (written.length !== 1 || asRecord(written[0])?.id !== step.stepId) {
+      // Cost: no ownership SELECT on successful writes; diagnose only failures.
+      await assertTrajectoryStepOwnership(execute, trajectoryId, step.stepId);
+      throw new ElizaError("Trajectory step write did not confirm its row", {
+        code: "TRAJECTORY_STEP_WRITE_UNCONFIRMED",
+        context: {
+          trajectoryId,
+          stepId: step.stepId,
+          returnedRows: written.length,
+        },
+      });
+    }
     writtenStepIds.add(step.stepId);
   }
 }
