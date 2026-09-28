@@ -3,11 +3,11 @@
  * personal logical identity when the runtime is its Dedicated target.
  */
 import { client } from "../../api";
+import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
 import {
   createPersistedActiveServer,
   savePersistedActiveServer,
-  upsertAndActivateAgentProfile,
-} from "../../state";
+} from "../../state/persistence";
 import { clearPendingCloudHandoff } from "./pending-handoff-store";
 
 /**
