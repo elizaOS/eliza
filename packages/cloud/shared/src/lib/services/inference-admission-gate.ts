@@ -169,6 +169,34 @@ export function isInferenceAdmissionDispatchMarkError(error: unknown): boolean {
   return false;
 }
 
+/** Durable Object code for an admission decided under a superseded policy. */
+const POLICY_STALE_CODE = "inference_admission_policy_stale";
+
+/**
+ * The organization gate has observed a newer policy generation than the one
+ * this admission was decided under. The request fails closed; the caller
+ * repairs its projection and the client retries.
+ */
+export class InferenceAdmissionPolicyStaleError extends InferenceAdmissionGateUnavailableError {
+  constructor(message = "Inference admission policy generation is stale") {
+    super(message);
+    this.name = "InferenceAdmissionPolicyStaleError";
+  }
+}
+
+/** Recognize a stale-policy gate refusal through context-adding wrappers. */
+export function isInferenceAdmissionPolicyStaleError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 12 && current !== undefined; depth += 1) {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    if (current instanceof InferenceAdmissionPolicyStaleError) return true;
+    current = current instanceof Error && "cause" in current ? current.cause : undefined;
+  }
+  return false;
+}
+
 export class InferenceAdmissionLeaseRejectedError extends Error {
   constructor(
     readonly requiredUsd: number,
@@ -495,6 +523,49 @@ export async function warmInferenceAdmissionGate(organizationId: string): Promis
   await hydrateInferenceAdmissionGate(organizationId, gateStub(organizationId));
 }
 
+/**
+ * Publish one authoritative policy observation to the organization gate before
+ * its cache projection becomes visible. The gate adopts the newer policy
+ * generation, so a cache-served admission still carrying an older generation
+ * fails closed instead of dispatching under a superseded policy.
+ */
+export async function publishInferenceAdmissionPolicy(params: {
+  organizationId: string;
+  policyGeneration: string;
+  balanceUsd: number;
+  balanceRevision: string;
+  /** "funding" when the balance is subscriber funding capacity. */
+  balanceView?: "funding";
+}): Promise<void> {
+  const balanceUsd = finiteNonNegative(params.balanceUsd, "balanceUsd");
+  if (
+    !/^(0|[1-9]\d*)$/.test(params.balanceRevision) ||
+    !/^(0|[1-9]\d*)$/.test(params.policyGeneration)
+  ) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission policy publication revision is invalid",
+    );
+  }
+  const response = await gateFetch(
+    params.organizationId,
+    "/hydrate",
+    {
+      balanceUsd,
+      balanceRevision: params.balanceRevision,
+      ...(params.balanceView && { balanceView: params.balanceView }),
+      policyGeneration: params.policyGeneration,
+    },
+    gateStub(params.organizationId),
+    AbortSignal.timeout(HYDRATION_GATE_TIMEOUT_MS),
+  );
+  if (!response.ok) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission policy publication failed with status ${response.status}`,
+    );
+  }
+  await parseHydrateResponse(response);
+}
+
 const rateLimitWarms = new Map<string, { expiresAt: number; promise: Promise<void> }>();
 
 function activeRateLimitGate(
@@ -665,6 +736,11 @@ export async function acquireInferenceAdmissionLease(params: {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   /** Commit the balance lease atomically with dispatch at an audited provider boundary. */
   deferCommitUntilDispatch?: boolean;
+  /**
+   * Policy generation the admission was decided under. The gate adopts newer
+   * generations and refuses a new lease carrying an older one.
+   */
+  policyGeneration?: string;
 }): Promise<InferenceAdmissionLease> {
   const balanceUsd = finiteNonNegative(params.balanceUsd, "balanceUsd");
   const estimatedCostUsd = finiteNonNegative(params.estimatedCostUsd, "estimatedCostUsd");
@@ -672,6 +748,7 @@ export async function acquireInferenceAdmissionLease(params: {
     !params.organizationId ||
     !params.requestId ||
     !/^(0|[1-9]\d*)$/.test(params.balanceRevision) ||
+    (params.policyGeneration !== undefined && !/^(0|[1-9]\d*)$/.test(params.policyGeneration)) ||
     estimatedCostUsd === 0
   ) {
     throw new InferenceAdmissionGateUnavailableError(
@@ -689,6 +766,7 @@ export async function acquireInferenceAdmissionLease(params: {
     ...(params.balanceView && { balanceView: params.balanceView }),
     estimatedCostUsd,
     recovery: params.recovery,
+    ...(params.policyGeneration !== undefined && { policyGeneration: params.policyGeneration }),
     ...(params.credential
       ? {
           credential: {
@@ -755,6 +833,12 @@ export async function acquireInferenceAdmissionLease(params: {
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate lease failed with status ${response.status}`,
     );
+  }
+  if (
+    response.status === 409 &&
+    (await readGateErrorCode(response.clone())) === POLICY_STALE_CODE
+  ) {
+    throw new InferenceAdmissionPolicyStaleError();
   }
   const payload = await parseLeaseResponse(response);
   if (response.status === 402) {
@@ -944,6 +1028,17 @@ export async function markInferenceAdmissionLeaseDispatched(
     if (!response.ok) {
       if (prepared && response.status < 500 && !mayHaveCommitted) {
         prepared.state = "rejected";
+      }
+      if (
+        response.status === 409 &&
+        (await readGateErrorCode(response.clone())) === POLICY_STALE_CODE
+      ) {
+        // The gate refused this dispatch before recording it; the lease stays
+        // undispatched and zero settlement releases it.
+        throw new InferenceAdmissionDispatchMarkError(
+          "Inference admission policy generation is stale",
+          { cause: new InferenceAdmissionPolicyStaleError(), reason: "ambiguous" },
+        );
       }
       const error = new InferenceAdmissionDispatchMarkError(
         `Inference admission gate dispatch failed with status ${response.status}`,

@@ -9,6 +9,10 @@
  * under the request's retry-stable funding key, then reads the post-accounting
  * capacity in that same transaction for the gate settlement. Live settlement and
  * alarm recovery share the key, so a replay never funds a request twice.
+ *
+ * Affiliate-marked requests pin their payout contract at admission. The same
+ * funding transaction enqueues the collected affiliate markup, so the payout
+ * commits atomically with the debit and a replay never pays twice.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -21,6 +25,8 @@ import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscri
 import { billingFundingReservations } from "../../db/schemas/billing-funding-reservations";
 import { organizations } from "../../db/schemas/organizations";
 import { logger } from "../utils/logger";
+import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
+import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import { canonicalFundingAmount, subscriptionFundingOperationKey } from "./allowance-first-credits";
 import {
   type CreditReconciliationResult,
@@ -48,7 +54,13 @@ export interface SubscriberInferenceCharge {
   billingSource: string;
   description: string;
   metadata?: Record<string, unknown>;
+  /** Marked-up charge (affiliate markup included when `affiliatePayout` is set). */
   amountUsd: number;
+  /** Payout contract pinned before provider dispatch. */
+  affiliatePayout?: {
+    attribution: AffiliateBillingAttribution;
+    sourceId: string;
+  };
 }
 
 export interface SubscriberInferenceFundingResult {
@@ -155,7 +167,18 @@ export async function fundSubscriberInferenceCharge(
     provider: input.provider,
     billingSource: input.billingSource,
     admission: "durable_object_subscription_funding",
+    ...(input.affiliatePayout && {
+      affiliatePayout: {
+        version: AFFILIATE_PAYOUT_CONTRACT_VERSION,
+        sourceId: input.affiliatePayout.sourceId,
+        attribution: input.affiliatePayout.attribution,
+        model: input.model,
+      },
+    }),
   };
+  // Settlement may be capped to the funded amount; the payout is computed
+  // against the full marked-up charge so uncollected markup is never paid.
+  const payoutActualAmount = requested.toFixed(6);
   const outcome = await writeTransaction(async (tx) => {
     const [org] = await tx
       .select({ credit_balance: organizations.credit_balance })
@@ -193,6 +216,7 @@ export async function fundSubscriberInferenceCharge(
           actualAmount: existing.requested_amount,
           occurredAt: existing.created_at,
           metadata,
+          payoutActualAmount,
         });
         purchasedCreditRefunded = settled.purchasedCreditRefunded;
         collected = new Decimal(settled.collectedAmount);
@@ -230,6 +254,7 @@ export async function fundSubscriberInferenceCharge(
           actualAmount: reserved.reservation.requested_amount,
           occurredAt: reserved.reservation.created_at,
           metadata,
+          payoutActualAmount,
         });
         reservationId = reserved.reservation.id;
         purchasedCreditDebited = reserved.purchasedCreditDebited;
