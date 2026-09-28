@@ -19,6 +19,7 @@ import type {
 } from "@elizaos/core";
 import {
   actionToJsonSchema,
+  composedPromotedSubactionDescription,
   createContextObject,
   dispatchSubaction,
   type JsonSchema,
@@ -470,7 +471,7 @@ describe("umbrella children consolidation on the planner wire", () => {
       const alias = actions.find((action) => action.name === contract.name);
       if (!alias) throw new Error(`${contract.name} missing from the context`);
       expect(reconstructAliasDescription(actions[0], contract)).toBe(
-        alias.description,
+        composedPromotedSubactionDescription(alias),
       );
       expect(reconstructAliasSchema(parentSchema, contract)).toEqual(
         actionToJsonSchema(alias),
