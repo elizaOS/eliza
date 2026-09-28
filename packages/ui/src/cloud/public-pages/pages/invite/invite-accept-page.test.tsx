@@ -1,9 +1,9 @@
 /** Session-readiness regression coverage for the public invite acceptance page. */
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const apiMock = vi.hoisted(() => vi.fn());
@@ -78,6 +78,11 @@ beforeEach(() => {
     },
   });
 });
+
+// globals are off, so Testing Library does not auto-unmount; unmount before
+// the jsdom environment is torn down so the pending invite load cannot
+// schedule React work against a missing window.
+afterEach(cleanup);
 
 describe("InviteAcceptPage", () => {
   it("does not offer a sign-in action until session identity is ready", async () => {
