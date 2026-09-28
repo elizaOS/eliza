@@ -32,6 +32,8 @@ export interface BuildTarget {
   runtimeImportMetaUrl?: boolean;
   /** Passed through to Bun.build (e.g. `{ entry: "index.node.js" }`). */
   naming?: { entry?: string; chunk?: string; asset?: string };
+  /** Bun bundler plugins for this target (e.g. module-identity externals). */
+  plugins?: Bun.BunPlugin[];
   /**
    * Rename emitted files after the build, e.g.
    * `[["index.node.js", "index.node.cjs"]]` or both the bundle and its map.
@@ -196,6 +198,7 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
           }
         : {}),
       ...(t.naming ? { naming: t.naming } : {}),
+      ...(t.plugins ? { plugins: t.plugins } : {}),
     });
     if (!result.success) {
       console.error(`${t.label} build failed:`, result.logs);
