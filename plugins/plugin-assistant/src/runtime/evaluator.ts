@@ -58,6 +58,8 @@ import {
 } from "@elizaos/core";
 import {
   EVALUATOR_CONTEXT_ROUTES,
+  type EvaluatorRestorableContext,
+  evaluatorContextRouteNames,
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
@@ -340,6 +342,8 @@ function finalizeEvaluatorOutput(
 
 type EvaluatorDecisionState = {
   queuedCallIds: string[];
+  /** Restoration decisions the runtime can honor for this call. */
+  restorationDecisions: string[];
   availableReceiptIds: string[];
   clipboardAvailable: boolean;
   requiresReplyField: boolean;
@@ -352,6 +356,7 @@ function renderEvaluatorDecisionState(state: EvaluatorDecisionState): string {
   return [
     "# Current decision state",
     `Queued call IDs: ${JSON.stringify(state.queuedCallIds)}`,
+    `Available restoration decisions: ${JSON.stringify(state.restorationDecisions)}`,
     `Committed effect receipt IDs: ${JSON.stringify(state.availableReceiptIds)}`,
     `clipboardAvailable: ${state.clipboardAvailable}`,
     `requiresReplyField: ${state.requiresReplyField}`,
@@ -498,6 +503,11 @@ async function runEvaluatorWithSelectedModel(
   // schema or system instructions. The same checks are enforced after decoding.
   const decisionState: EvaluatorDecisionState = {
     queuedCallIds,
+    restorationDecisions: evaluatorContextRouteNames(
+      evaluatorRestorableContext(
+        params.trajectory.modelBaseContext ?? params.context,
+      ),
+    ),
     availableReceiptIds,
     clipboardAvailable,
     requiresReplyField,
@@ -841,11 +851,10 @@ async function runEvaluatorWithSelectedModel(
       contextRequest === "history" || contextRequest === "full";
     const readProviders =
       contextRequest === "providers" || contextRequest === "full";
+    const restorableNow = evaluatorRestorableContext(original);
     if (
-      (readHistory &&
-        (selectCompletionContext(original).applied ||
-          projectBackgroundHistory(original).applied)) ||
-      (readProviders && projectDeferredProviders(original).available.length)
+      (readHistory && restorableNow.history) ||
+      (readProviders && restorableNow.providers)
     ) {
       // A context read takes precedence over a conflicting verdict. Record
       // the invalid draft, but never deliver it or replay a completed action.
@@ -1067,6 +1076,18 @@ function reportEvaluatorUsage(
       completionTokens: usage.completionTokens,
     });
   }
+}
+
+/** The deferred sources a restoration decision can actually bring back. */
+function evaluatorRestorableContext(
+  original: ContextObject,
+): EvaluatorRestorableContext {
+  return {
+    history:
+      selectCompletionContext(original).applied ||
+      projectBackgroundHistory(original).applied,
+    providers: projectDeferredProviders(original).available.length > 0,
+  };
 }
 
 function renderEvaluatorModelInput(params: {

@@ -1,6 +1,7 @@
 /** Stable evaluator wire contracts; dynamic eligibility is validated against real trajectory evidence. */
 import type {
   ChatMessage,
+  ContextObject,
   EffectReceipt,
   JSONSchema,
   PlannerToolCall,
@@ -8,6 +9,7 @@ import type {
   RunEvaluatorParams,
 } from "@elizaos/core";
 import {
+  completionContextSources,
   computePrefixHashes,
   ModelType,
   normalizePromptSegments,
@@ -403,6 +405,59 @@ describe("stable evaluator schema with authoritative decision state", () => {
       protocolFailure: true,
       parseError: "Clipboard output is unavailable in this host",
     });
+  });
+
+  it("states only honorable restoration decisions in the dynamic tail", async () => {
+    const context: ContextObject = {
+      id: "deferred-history",
+      events: [1, 2].map((id) => ({
+        id: `history:${id}`,
+        type: "segment" as const,
+        source: "prior-dialogue",
+        createdAt: id,
+        segment: {
+          id: `history:${id}`,
+          label: "prior_message:user",
+          content: `Original ${id}`,
+          stable: false,
+        },
+      })),
+    };
+    context.metadata = {
+      completionContext: {
+        mode: "selected",
+        complete: true,
+        sourceSetId: completionContextSources(context).sourceSetId,
+        relevantSourceIds: ["h1"],
+        constraintSourceIds: [],
+        referentSourceIds: [],
+        pendingIntentSourceIds: [],
+      },
+    };
+    const empty = await captureSchema([]);
+    const deferred = await captureSchema([], { trajectory: { context } });
+    expect(empty.messages.at(-1)?.content).toContain(
+      "Available restoration decisions: []",
+    );
+    expect(deferred.messages.at(-1)?.content).toContain(
+      'Available restoration decisions: ["RESTORE_HISTORY"]',
+    );
+    // Eligibility stays out of the reusable prefix and schema.
+    expect(deferred.schema).toEqual(evaluatorSchema);
+    expect(deferred.prefixHash).toBe(empty.prefixHash);
+  });
+
+  it("rejects a restoration decision when nothing was deferred", async () => {
+    const { output } = await captureSchema([], {
+      output: {
+        thought: "Need provider bodies.",
+        success: false,
+        decision: "RESTORE_PROVIDERS",
+        replyEffectStatus: "none",
+      },
+    });
+    expect(output.protocolFailure).toBe(true);
+    expect(output.messageToUser).toBeUndefined();
   });
 
   it("never mutates the reusable canonical schema", async () => {

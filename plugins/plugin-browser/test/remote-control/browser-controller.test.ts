@@ -1,3 +1,4 @@
+/** Exercises remote browser authority and encrypted runtime persistence through the existing host contract. */
 import { describe, expect, it } from "bun:test";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -6,20 +7,20 @@ import {
   type RemoteControllerPublicIdentity,
   type SignedRemoteCommand,
 } from "@elizaos/core/contracts/remote-control";
-import type { BrowserTarget } from "../../../plugins/plugin-browser/src/browser-service";
+import type { BrowserTarget } from "../../src/browser-service";
 import {
   AgentRemoteBrowserController,
   remoteBrowserControllerPlugin,
-} from "../src/browser-controller";
-import { RemoteControlCloudClient } from "../src/cloud-client";
+} from "../../src/remote-control/browser-controller";
+import { RemoteControlCloudClient } from "../../src/remote-control/cloud-client";
 import {
   digestRemoteCommand,
   digestRemoteResultValue,
   openRemoteControlMessage,
   sealRemoteControlMessage,
   signRemoteCommandResult,
-} from "../src/crypto";
-import type { PlatformSecureStore } from "../src/secure-store-contract";
+} from "../../src/remote-control/crypto";
+import type { PlatformSecureStore } from "../../src/remote-control/secure-store-contract";
 
 function fixture() {
   const ownerId = randomUUID(),

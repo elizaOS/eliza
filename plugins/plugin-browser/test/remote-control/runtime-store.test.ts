@@ -1,8 +1,9 @@
+/** Exercises remote browser authority and encrypted runtime persistence through the existing host contract. */
 import { expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Component, type IAgentRuntime } from "@elizaos/core";
-import { SecretsService } from "../../../plugins/plugin-assistant/src/features/secrets/services/secrets";
-import { createRuntimePlatformSecureStore } from "../src/runtime-store";
+import { SecretsService } from "../../../plugin-assistant/src/features/secrets/services/secrets";
+import { createRuntimePlatformSecureStore } from "../../src/remote-control/runtime-store";
 
 it("persists encrypted controller credentials in components and isolates agents", async () => {
   const components = new Map<string, Component>();

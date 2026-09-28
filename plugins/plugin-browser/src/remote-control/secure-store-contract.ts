@@ -1,8 +1,6 @@
 /**
  * Cross-platform OS secret store — **contract only** (no native bindings here).
  *
- * **Spec:** [Platform secure store (design)](../../../../docs/security/platform-secure-store.md)
- *
  * Implementations live per runtime (e.g. Electrobun main process, Node CLI with
  * native addons). Wallet and other callers depend on this interface + shared
  * `vaultId` / `secretKind` conventions.

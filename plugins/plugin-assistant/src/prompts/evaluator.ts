@@ -13,6 +13,31 @@ export const EVALUATOR_CONTEXT_ROUTES = {
   RESTORE_FULL: "full",
 } as const;
 
+/** Which deferred sources this evaluator call can restore. */
+export interface EvaluatorRestorableContext {
+  /** Selected or background-reviewed dialogue left originals out. */
+  history: boolean;
+  /** Provider bodies were deferred behind references. */
+  providers: boolean;
+}
+
+/**
+ * Restoration decisions the runtime can honor for this call. The stable
+ * template and schema keep every route for prompt-cache reuse; this list is
+ * stated in the evaluator's current decision state and enforced after decoding.
+ */
+export function evaluatorContextRouteNames(
+  restorable: EvaluatorRestorableContext,
+): Array<keyof typeof EVALUATOR_CONTEXT_ROUTES> {
+  return [
+    ...(restorable.history ? (["RESTORE_HISTORY"] as const) : []),
+    ...(restorable.providers ? (["RESTORE_PROVIDERS"] as const) : []),
+    ...(restorable.history && restorable.providers
+      ? (["RESTORE_FULL"] as const)
+      : []),
+  ];
+}
+
 export function evaluatorTemplateForQueue(
   _hasQueuedCalls: boolean,
   _clipboardAvailable = true,
@@ -45,7 +70,7 @@ rules:
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome. Select recommendedToolCallId from the current decision state's queued IDs; preserve planned order and prerequisites. An empty queue forbids NEXT_RECOMMENDED. CONTINUE when the plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
-- Choose one restoration decision only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
+- Choose a restoration decision only when current decision state lists it as available, and only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
 - if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
 - For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise omit it only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/restoration decisions must not publish a progress draft. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis

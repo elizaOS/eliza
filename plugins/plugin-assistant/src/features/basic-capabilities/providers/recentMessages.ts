@@ -3,7 +3,7 @@
  * transcript injected into the planner prompt for the current room. Fetches all
  * retained room memories, then filters, dedupes, and
  * formats them into `# Conversation Messages` / `# Posts in Thread` blocks plus a
- * `# Received Message` / `# Focus your response` framing for the incoming turn.
+ * a `# Received Message` block identifying the incoming turn.
  * Part of the basic-capabilities bundle and the single source of dialogue
  * history — PLATFORM_CHAT_CONTEXT carries connector metadata, not the transcript.
  *
@@ -446,12 +446,6 @@ export const recentMessagesProvider: Provider = {
             `${senderName}: ${receivedMessageContent}`,
           )
         : "";
-      const focusHeader = hasReceivedMessage
-        ? addHeader(
-            "# Focus your response",
-            `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message, but include as context any previous messages in the thread from after your last reply.`,
-          )
-        : "";
       const data = {
         recentMessages: dialogueMessages,
         recentInteractions: [],
@@ -469,12 +463,10 @@ export const recentMessagesProvider: Provider = {
       // Combine all text sections
       const text = [
         isPostFormat ? recentPosts : recentMessages,
-        // Only add received message and focus headers if there are messages or a current message to process
+        // Reply framing belongs to each consuming stage's own instructions;
+        // this provider only identifies the message being processed.
         recentMessages || recentPosts || message.content.text
           ? receivedMessageHeader
-          : "",
-        recentMessages || recentPosts || message.content.text
-          ? focusHeader
           : "",
       ]
         .filter(Boolean)
