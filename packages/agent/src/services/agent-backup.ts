@@ -53,12 +53,16 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
+import { maybeInjectFault } from "../runtime/crash-injection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   AGENT_BACKUP_AUTHORITY_DIRECTORY,
   INITIAL_AGENT_BACKUP_GENERATION,
   isBackupAuthorityPath,
+  isProcessAlive,
+  readAgentBackupAuthorityClaim,
+  releaseAbandonedAgentBackupAuthorityClaim,
   withAgentBackupAuthority,
 } from "./agent-backup-authority.ts";
 
@@ -170,10 +174,15 @@ export class AgentSnapshotBudgetExceededError extends ElizaError {
     readonly stage: string,
     readonly observedBytes: number,
     readonly limitBytes: number,
+    /**
+     * Set when the streamed (v2) local format that takes over above the
+     * in-memory ceiling cannot capture this agent: it supports PGlite only.
+     */
+    readonly streamedBackupUnsupported?: "postgres",
   ) {
     super(`Snapshot refused during ${stage}: source budget exceeded`, {
       code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
-      context: { stage, observedBytes, limitBytes },
+      context: { stage, observedBytes, limitBytes, streamedBackupUnsupported },
       severity: "fatal",
     });
   }
@@ -1433,8 +1442,19 @@ export async function createLocalAgentBackup(
         error instanceof AgentSnapshotBudgetExceededError
           ? localBackupV2Adapter(runtime)
           : null;
-      if (!adapter || !(error instanceof AgentSnapshotBudgetExceededError))
+      if (!(error instanceof AgentSnapshotBudgetExceededError)) throw error;
+      if (!adapter) {
+        // error-policy:J2 keep the typed refusal, naming why the streamed
+        // format cannot take over for a Postgres-backed agent.
+        if (hasPostgresUrl(runtime))
+          throw new AgentSnapshotBudgetExceededError(
+            error.stage,
+            error.observedBytes,
+            error.limitBytes,
+            "postgres",
+          );
         throw error;
+      }
       logger.info(
         {
           agentId: runtime.agentId,
@@ -4139,7 +4159,7 @@ async function syncDirectory(directory: string): Promise<void> {
 function parseLocalBackupV2Json<T>(
   schema: z.ZodType<T>,
   bytes: Buffer,
-  part: "header" | "trailer",
+  part: "header" | "trailer" | "journal",
 ): T {
   let decoded: unknown;
   try {
@@ -5305,80 +5325,164 @@ async function verifyStagedLocalBackupV2(
   await removePgliteVolatileFiles(plan.staged.database);
 }
 
-/**
- * Replace every target by rename, journaling each move. Any failure replays the
- * journal in reverse so the previous data is back in place before rethrowing.
- */
-async function swapLocalBackupV2(
+const LOCAL_BACKUP_V2_JOURNAL_FILE = "journal.json";
+const localBackupV2JournalSchema = z.strictObject({
+  format: z.literal("elizaos.agent-backup-restore-journal"),
+  schemaVersion: z.literal(1),
+  agentId: z.string().min(1),
+  fileName: z.string().min(1),
+  authorityOperationId: z.string().uuid(),
+  phase: z.enum(["staging", "swapping", "committed"]),
+  moves: z.array(z.strictObject({ from: z.string(), to: z.string() })),
+  externalWork: z.array(z.string()),
+});
+type LocalBackupV2Journal = z.infer<typeof localBackupV2JournalSchema>;
+
+/** Durably replace the journal so a crash observes either version whole. */
+async function writeLocalBackupV2Journal(
+  restoreDir: string,
+  journal: LocalBackupV2Journal,
+): Promise<void> {
+  const target = path.join(restoreDir, LOCAL_BACKUP_V2_JOURNAL_FILE);
+  const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+  const handle = await fs.open(temporary, "wx", 0o600);
+  try {
+    await writeAllAt(handle, Buffer.from(JSON.stringify(journal)), null);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await fs.rename(temporary, target);
+  await syncDirectory(restoreDir);
+}
+
+/** Every rename the swap will perform, fixed before the first one runs. */
+async function planLocalBackupV2Moves(
   plan: LocalBackupV2RestorePlan,
   content: LocalBackupV2StagedContent,
-): Promise<void> {
-  const journal: Array<() => Promise<void>> = [];
-  const move = async (from: string, to: string): Promise<void> => {
-    await fs.mkdir(path.dirname(to), { recursive: true });
-    await fs.rename(from, to);
-    journal.push(() => fs.rename(to, from));
-  };
+): Promise<Array<{ from: string; to: string }>> {
+  const moves: Array<{ from: string; to: string }> = [];
   const replace = async (
     target: string,
     staged: string | null,
     previous: string,
   ): Promise<void> => {
-    if (await pathExists(target)) await move(target, previous);
-    if (staged) await move(staged, target);
+    if (await pathExists(target)) moves.push({ from: target, to: previous });
+    if (staged) moves.push({ from: staged, to: target });
   };
+  await replace(plan.pgliteDir, plan.staged.database, plan.previous.database);
+  await replace(plan.mediaDir, plan.staged.media, plan.previous.media);
+  await replace(
+    plan.vaultPgliteDir,
+    content.vaultPglite ? plan.staged.vaultPglite : null,
+    plan.previous.vaultPglite,
+  );
+  for await (const file of walkFiles(
+    plan.stateDir,
+    plan.stateTreeInclude,
+    new AbortController().signal,
+  ))
+    moves.push({
+      from: path.join(plan.stateDir, file.relativePath),
+      to: path.join(plan.previous.state, file.relativePath),
+    });
+  for (const relativePath of content.stateFiles)
+    moves.push({
+      from: path.join(plan.staged.state, relativePath),
+      to: path.join(plan.stateDir, relativePath),
+    });
+  if (!plan.configInStateTree)
+    await replace(plan.configPath, content.configFile, plan.previous.config);
+  return moves;
+}
+
+/**
+ * Undo journaled moves in reverse, whether they ran in this process or in one
+ * that crashed. Walking backwards, every later move that reused a path has
+ * already been undone, so a move ran exactly when its destination is present
+ * and its source is absent. A present source means it never ran (for example
+ * the replacement of a live file whose own move-out had not happened yet).
+ */
+async function rollBackLocalBackupV2Moves(
+  moves: readonly { from: string; to: string }[],
+): Promise<number> {
+  let undone = 0;
+  for (const move of [...moves].reverse()) {
+    const [toPresent, fromPresent] = await Promise.all([
+      pathExists(move.to),
+      pathExists(move.from),
+    ]);
+    if (!toPresent || fromPresent) continue;
+    await fs.mkdir(path.dirname(move.from), { recursive: true });
+    await fs.rename(move.to, move.from);
+    undone += 1;
+  }
+  return undone;
+}
+
+/**
+ * Replace every target by rename under a durable journal. The journal and its
+ * committed phase are fsynced, so a crash at any point is reconciled at the
+ * next startup by {@link recoverInterruptedLocalBackupRestores}; an in-process
+ * failure is rolled back here with the same algorithm.
+ */
+async function swapLocalBackupV2(
+  plan: LocalBackupV2RestorePlan,
+  content: LocalBackupV2StagedContent,
+  journal: LocalBackupV2Journal,
+): Promise<void> {
+  const moves = await planLocalBackupV2Moves(plan, content);
+  const swapping: LocalBackupV2Journal = {
+    ...journal,
+    phase: "swapping",
+    moves,
+  };
+  await writeLocalBackupV2Journal(plan.restoreDir, swapping);
   try {
-    await replace(plan.pgliteDir, plan.staged.database, plan.previous.database);
-    await replace(plan.mediaDir, plan.staged.media, plan.previous.media);
-    await replace(
-      plan.vaultPgliteDir,
-      content.vaultPglite ? plan.staged.vaultPglite : null,
-      plan.previous.vaultPglite,
-    );
-    const live: string[] = [];
-    for await (const file of walkFiles(
-      plan.stateDir,
-      plan.stateTreeInclude,
-      new AbortController().signal,
-    ))
-      live.push(file.relativePath);
-    for (const relativePath of live)
-      await move(
-        path.join(plan.stateDir, relativePath),
-        path.join(plan.previous.state, relativePath),
-      );
-    for (const relativePath of content.stateFiles)
-      await move(
-        path.join(plan.staged.state, relativePath),
-        path.join(plan.stateDir, relativePath),
-      );
-    if (!plan.configInStateTree)
-      await replace(plan.configPath, content.configFile, plan.previous.config);
-  } catch (cause) {
-    const failures: unknown[] = [];
-    for (const undo of journal.reverse()) {
-      try {
-        await undo();
-      } catch (error) {
-        // error-policy:J5 keep unwinding; every failure is reported below.
-        failures.push(error);
-      }
+    let index = 0;
+    for (const move of moves) {
+      await fs.mkdir(path.dirname(move.to), { recursive: true });
+      await fs.rename(move.from, move.to);
+      index += 1;
+      // Crash-test seam (disarmed unless ELIZA_CRASH_INJECT names it): the
+      // database and media directories have been exchanged, state has not.
+      if (index === Math.min(moves.length, 4))
+        await maybeInjectFault("backup-restore-swap");
     }
-    if (failures.length > 0) {
+  } catch (cause) {
+    let undone: number;
+    try {
+      undone = await rollBackLocalBackupV2Moves(moves);
+    } catch (rollbackError) {
+      // error-policy:J2 the journal stays on disk for startup reconciliation.
       localBackupV2Error(
-        "Local backup restore failed and could not fully roll back; the previous data is retained in the restore work directory",
+        "Local backup restore failed and could not fully roll back; the journal is retained for startup recovery",
         "AGENT_BACKUP_V2_ROLLBACK_FAILED",
-        { rollbackFailures: failures.length, restoreDir: plan.restoreDir },
-        cause,
+        { restoreDir: plan.restoreDir },
+        new AggregateError([cause, rollbackError]),
       );
     }
     localBackupV2Error(
       "Local backup restore could not replace agent data; the previous data was put back",
       "AGENT_BACKUP_V2_RESTORE_ROLLED_BACK",
-      { movesUndone: journal.length },
+      { movesUndone: undone },
       cause,
     );
   }
+  await writeLocalBackupV2Journal(plan.restoreDir, {
+    ...swapping,
+    phase: "committed",
+  });
+  await maybeInjectFault("backup-restore-commit");
+}
+
+async function removeLocalBackupV2RestoreWork(
+  restoreDir: string,
+  externalWork: readonly string[],
+): Promise<void> {
+  for (const work of externalWork)
+    await fs.rm(work, { recursive: true, force: true });
+  await fs.rm(restoreDir, { recursive: true, force: true });
 }
 
 async function restoreLocalAgentBackupV2(
@@ -5415,9 +5519,22 @@ async function restoreLocalAgentBackupV2(
         );
       }
       const plan = await planLocalBackupV2Restore(adapter);
+      const journal: LocalBackupV2Journal = {
+        format: "elizaos.agent-backup-restore-journal",
+        schemaVersion: 1,
+        agentId: runtime.agentId,
+        fileName,
+        authorityOperationId: authority.operationId,
+        phase: "staging",
+        moves: [],
+        externalWork: plan.externalWork,
+      };
       let retainWork = false;
       const key = await unwrapLocalBackupV2Key(header);
       try {
+        // Written first so a crash at any later point leaves a recognizable
+        // work directory for startup recovery.
+        await writeLocalBackupV2Journal(plan.restoreDir, journal);
         const content = await stageLocalBackupV2(archive, key, plan);
         key.fill(0);
         await verifyStagedLocalBackupV2(plan, content);
@@ -5425,7 +5542,7 @@ async function restoreLocalAgentBackupV2(
         await stopRuntimeBeforeDatabaseRestore(runtime);
         await adapter.close?.();
         try {
-          await swapLocalBackupV2(plan, content);
+          await swapLocalBackupV2(plan, content, journal);
         } catch (error) {
           retainWork =
             error instanceof LocalAgentBackupV2Error &&
@@ -5444,14 +5561,142 @@ async function restoreLocalAgentBackupV2(
         return { restored: true as const, requiresRestart: true as const };
       } finally {
         key.fill(0);
-        if (!retainWork) {
-          await fs.rm(plan.restoreDir, { recursive: true, force: true });
-          for (const work of plan.externalWork)
-            await fs.rm(work, { recursive: true, force: true });
-        }
+        if (!retainWork)
+          await removeLocalBackupV2RestoreWork(
+            plan.restoreDir,
+            plan.externalWork,
+          );
       }
     } finally {
       await archive.handle.close();
     }
   });
+}
+
+async function readLocalBackupV2Journal(
+  restoreDir: string,
+): Promise<LocalBackupV2Journal | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(
+      path.join(restoreDir, LOCAL_BACKUP_V2_JOURNAL_FILE),
+      "utf8",
+    );
+  } catch (error) {
+    // error-policy:J4 no journal: the directory predates any live change.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  return parseLocalBackupV2Json(
+    localBackupV2JournalSchema as z.ZodType<LocalBackupV2Journal>,
+    Buffer.from(raw),
+    "journal",
+  );
+}
+
+async function reconcileLocalBackupV2RestoreDir(
+  restoreDir: string,
+  journal: LocalBackupV2Journal | null,
+): Promise<"rolled-back" | "rolled-forward" | "discarded"> {
+  if (!journal || journal.phase === "staging") {
+    await removeLocalBackupV2RestoreWork(
+      restoreDir,
+      journal?.externalWork ?? [],
+    );
+    return "discarded";
+  }
+  if (journal.phase === "committed") {
+    await removeLocalBackupV2RestoreWork(restoreDir, journal.externalWork);
+    return "rolled-forward";
+  }
+  await rollBackLocalBackupV2Moves(journal.moves);
+  await removeLocalBackupV2RestoreWork(restoreDir, journal.externalWork);
+  return "rolled-back";
+}
+
+/**
+ * Startup reconciliation for local format-2 restores interrupted by a crash.
+ * Must run before PGlite or the configuration is opened. A journal in the
+ * `swapping` phase is rolled back to the previous data; a `committed` journal
+ * is rolled forward (only work files remain to remove); staging-only work is
+ * discarded because it never touched live data. The backup claim left by the
+ * crashed restore is released only when the journal names it and its process
+ * is gone; any other held claim is reported instead of guessed stale.
+ */
+export async function recoverInterruptedLocalBackupRestores(): Promise<{
+  rolledBack: number;
+  rolledForward: number;
+  discarded: number;
+}> {
+  const result = { rolledBack: 0, rolledForward: 0, discarded: 0 };
+  const stateDir = resolveStateDir();
+  const backupsDir = localBackupsDir();
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(backupsDir, { withFileTypes: true });
+  } catch (error) {
+    // error-policy:J4 no backups directory means nothing to recover.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return result;
+    throw error;
+  }
+  const restoreDirs = entries
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        entry.name.startsWith(LOCAL_BACKUP_V2_RESTORE_WORK_PREFIX),
+    )
+    .map((entry) => path.join(backupsDir, entry.name))
+    .sort();
+  if (restoreDirs.length === 0) return result;
+  const journals = await Promise.all(
+    restoreDirs.map(async (restoreDir) => ({
+      restoreDir,
+      journal: await readLocalBackupV2Journal(restoreDir),
+    })),
+  );
+  const reconcileAll = async (): Promise<void> => {
+    for (const { restoreDir, journal } of journals) {
+      const outcome = await reconcileLocalBackupV2RestoreDir(
+        restoreDir,
+        journal,
+      );
+      if (outcome === "rolled-back") result.rolledBack += 1;
+      else if (outcome === "rolled-forward") result.rolledForward += 1;
+      else result.discarded += 1;
+      logger.warn(
+        {
+          agentId: journal?.agentId,
+          fileName: journal?.fileName,
+          phase: journal?.phase ?? "none",
+          moves: journal?.moves.length ?? 0,
+          outcome,
+        },
+        "[agent-backup] Reconciled an interrupted local backup restore",
+      );
+    }
+  };
+  const claim = await readAgentBackupAuthorityClaim(stateDir);
+  if (!claim) {
+    await withAgentBackupAuthority(stateDir, async () => reconcileAll());
+    return result;
+  }
+  if (isProcessAlive(claim.pid)) {
+    logger.warn(
+      { pid: claim.pid },
+      "[agent-backup] Interrupted restore work is present but another live process holds the backup claim; skipping reconciliation",
+    );
+    return result;
+  }
+  if (
+    !journals.some(
+      ({ journal }) => journal?.authorityOperationId === claim.operationId,
+    )
+  )
+    throw new ElizaError(
+      "[AgentBackup] Interrupted restore work is present but the held backup claim belongs to no journal; reconcile offline",
+      { code: "AGENT_BACKUP_RESTORE_RECOVERY_BLOCKED" },
+    );
+  await reconcileAll();
+  await releaseAbandonedAgentBackupAuthorityClaim(stateDir, claim.operationId);
+  return result;
 }

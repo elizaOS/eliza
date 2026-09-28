@@ -1,4 +1,5 @@
-/** Round-trips an agent above the 128 MiB in-memory backup ceiling through the streamed, encrypted local format over the real HTTP host and filesystem PGlite, and proves corrupted archives and failed swaps leave live data untouched. */
+/** Round-trips an agent above the 128 MiB in-memory backup ceiling through the streamed, encrypted local format over the real HTTP host and filesystem PGlite, proves corrupted archives and failed swaps leave live data untouched, and recovers restores whose process crashed mid-swap or after commit. */
+import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -15,14 +16,25 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
-import { restoreLocalAgentBackup } from "../src/services/agent-backup.ts";
+import {
+  recoverInterruptedLocalBackupRestores,
+  restoreLocalAgentBackup,
+  reviewRetiredLocalAgentBackups,
+} from "../src/services/agent-backup.ts";
 
 const MIB = 1024 * 1024;
+const CRASH_CHILD = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "local-backup-v2-crash-child.ts",
+);
+const characterName = randomUUID();
 const LARGE_MIB = 144;
 const token = randomUUID();
 const canary = `local-v2-plaintext-canary-${randomUUID()}`;
@@ -48,12 +60,15 @@ beforeAll(async () => {
     ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: token,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
+    // A persistent root key so the crash child can unwrap this archive's key.
+    ELIZA_KMS_BACKEND: "local",
+    ELIZA_LOCAL_ROOT_KEY: randomBytes(32).toString("base64"),
   }))
     vi.stubEnv(key, value);
   for (const key of ["POSTGRES_URL", "DATABASE_URL", "ELIZA_CLOUD_PROVISIONED"])
     vi.stubEnv(key, undefined);
   fixture = await createTestRuntime({
-    characterName: randomUUID(),
+    characterName,
     pgliteDir: path.join(directory, ".elizadb"),
     settings: { LOAD_DOCS_ON_STARTUP: false },
   });
@@ -307,3 +322,128 @@ it("restores the streamed archive over HTTP with verified bytes", async () => {
   expect(await markerLabels()).toEqual(["before"]);
   expect(await backupWorkEntries()).toEqual([]);
 }, 600_000);
+
+function runCrashChild(crashPoint: string): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["--conditions=eliza-source", CRASH_CHILD], {
+      cwd: path.join(path.dirname(CRASH_CHILD), "..", ".."),
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        LOG_LEVEL: "fatal",
+        ELIZA_CRASH_INJECT: `${crashPoint}:exit:77`,
+        BACKUP_CRASH_CHARACTER: characterName,
+        BACKUP_CRASH_FILE: v2FileName,
+      },
+    });
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`crash child timed out\n${output}`));
+    }, 300_000);
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      if (code !== 77)
+        reject(new Error(`crash child exited ${code}\n${output}`));
+      else resolve(code);
+    });
+  });
+}
+
+async function setDatabaseMarker(label: string): Promise<void> {
+  const database = await PGlite.create({
+    dataDir: path.join(directory, ".elizadb"),
+  });
+  try {
+    await database.exec(
+      `DELETE FROM backup_v2_marker WHERE label <> 'before'; INSERT INTO backup_v2_marker VALUES ('${label}');`,
+    );
+  } finally {
+    await database.close();
+  }
+}
+
+async function restoreJournals(): Promise<Array<{ phase: string }>> {
+  const backups = path.join(directory, "backups");
+  const journals: Array<{ phase: string }> = [];
+  for (const name of await readdir(backups)) {
+    if (!name.startsWith(".restore-")) continue;
+    journals.push(
+      JSON.parse(
+        await readFile(path.join(backups, name, "journal.json"), "utf8"),
+      ),
+    );
+  }
+  return journals;
+}
+
+const authorityLock = () =>
+  path.join(directory, ".backup-authority", "operation.lock");
+
+it("rolls a crash mid-swap back and a crash after commit forward at the next startup", async () => {
+  // The live agent diverges from the archive, and its runtime is stopped (the
+  // previous restore stopped it), as it would be across a process restart.
+  await setDatabaseMarker("crash-marker");
+  await writeFile(path.join(directory, "notes.txt"), "changed before crash");
+  await writeFile(path.join(directory, "media", "new2.bin"), "pre-crash media");
+
+  await runCrashChild("backup-restore-swap");
+  expect(await restoreJournals()).toEqual([
+    expect.objectContaining({ phase: "swapping" }),
+  ]);
+  // Partial: media was exchanged for the archive's, state files were not.
+  await expect(
+    stat(path.join(directory, "media", "new2.bin")),
+  ).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readFile(path.join(directory, "notes.txt"), "utf8")).toBe(
+    "changed before crash",
+  );
+  await expect(stat(authorityLock())).resolves.toBeDefined();
+
+  expect(await recoverInterruptedLocalBackupRestores()).toEqual({
+    rolledBack: 1,
+    rolledForward: 0,
+    discarded: 0,
+  });
+  expect(
+    await readFile(path.join(directory, "media", "new2.bin"), "utf8"),
+  ).toBe("pre-crash media");
+  expect(await readFile(path.join(directory, "notes.txt"), "utf8")).toBe(
+    "changed before crash",
+  );
+  expect(await markerLabels()).toEqual(["before", "crash-marker"]);
+  expect(await backupWorkEntries()).toEqual([]);
+  await expect(stat(authorityLock())).rejects.toMatchObject({ code: "ENOENT" });
+
+  await runCrashChild("backup-restore-commit");
+  expect(await restoreJournals()).toEqual([
+    expect.objectContaining({ phase: "committed" }),
+  ]);
+  expect(await recoverInterruptedLocalBackupRestores()).toEqual({
+    rolledBack: 0,
+    rolledForward: 1,
+    discarded: 0,
+  });
+  expect(await readFile(path.join(directory, "notes.txt"), "utf8")).toBe(
+    canary,
+  );
+  await expect(
+    stat(path.join(directory, "media", "new2.bin")),
+  ).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await sha256File(path.join(directory, "media", "large.bin"))).toBe(
+    largeSha256,
+  );
+  expect(await markerLabels()).toEqual(["before"]);
+  expect(await backupWorkEntries()).toEqual([]);
+  // The abandoned claim was released: authority-guarded work proceeds.
+  await expect(
+    reviewRetiredLocalAgentBackups(fixture.runtime.agentId),
+  ).resolves.toMatchObject({ archives: [] });
+}, 900_000);

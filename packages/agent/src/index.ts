@@ -595,6 +595,7 @@ export {
   preflightPglitePhysicalDirectory,
   purgeAdmittedRetiredLocalAgentBackups,
   type RetiredLocalAgentBackup,
+  recoverInterruptedLocalBackupRestores,
   resolveAgentBackupAvailableMemoryBytes,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,

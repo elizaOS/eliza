@@ -1765,13 +1765,18 @@ async function handleRequestForViewClient(
           "[agent-backup] Local backup refused: agent state exceeds the backup size limit",
         );
         const unit = err.stage === "file count" ? "files" : "bytes";
+        const postgres = err.streamedBackupUnsupported === "postgres";
+        const base =
+          unit === "files"
+            ? `Agent state has too many files for a local backup (${err.observedBytes} files; the limit is ${err.limitBytes}).`
+            : `Agent state is too large for a local backup (${formatBackupMegabytes(err.observedBytes)} MB; the limit is ${formatBackupMegabytes(err.limitBytes)} MB).`;
         json(
           res,
           {
-            error:
-              unit === "files"
-                ? `Agent state has too many files for a local backup (${err.observedBytes} files; the limit is ${err.limitBytes}). Retrying will not help until files are removed from the agent's state.`
-                : `Agent state is too large for a local backup (${formatBackupMegabytes(err.observedBytes)} MB; the limit is ${formatBackupMegabytes(err.limitBytes)} MB). Retrying will not help until the agent's state is smaller.`,
+            error: postgres
+              ? `${base} The streamed (v2) local backup that handles larger agents supports PGlite databases only, and this agent uses Postgres. Retrying will not help; back up the Postgres database with its own tooling.`
+              : `${base} Retrying will not help until ${unit === "files" ? "files are removed from the agent's state" : "the agent's state is smaller"}.`,
+            ...(postgres ? { streamedBackupSupported: false } : {}),
             code: err.code,
             stage: err.stage,
             unit,
