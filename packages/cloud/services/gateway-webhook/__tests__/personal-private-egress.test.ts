@@ -21,6 +21,9 @@ import {
 } from "./telegram-identity-fixture";
 
 class MemoryRedis implements GatewayRedis {
+  async eval(): Promise<unknown> {
+    throw new Error("Cutover persistence is not part of this fixture");
+  }
   readonly values = new Map<string, string>();
   async get<T = unknown>(key: string): Promise<T | null> {
     return (this.values.get(key) ?? null) as T | null;

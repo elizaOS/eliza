@@ -66,7 +66,7 @@ afterEach(() => {
 
 /** Local Cloud route: holds the turn while `attested` is false. */
 function startCloud() {
-  const state = { attested: false };
+  const state = { attested: false, unavailable: false };
   const turns: Array<Record<string, unknown>> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -77,6 +77,8 @@ function startCloud() {
         return new Response("not found", { status: 404 });
       }
       turns.push((await request.json()) as Record<string, unknown>);
+      if (state.unavailable)
+        return new Response("temporarily unavailable", { status: 503 });
       if (!state.attested) {
         return Response.json(
           {
@@ -173,6 +175,15 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     );
     expect(response.status).toBe(200);
     await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    // A gateway outage longer than the retry budget must still leave the
+    // payload available for the explicit expiry/failure handler.
+    expect(
+      await redis.eval(
+        "return redis.call('TTL', KEYS[1])",
+        [`webhook:cutover-hold:${dedupKey}`],
+        [],
+      ),
+    ).toBe(-1);
     const heldTurns = cloud.turns.length;
     expect(heldTurns).toBeGreaterThan(0);
     expect(providerSends).toEqual([]);
@@ -196,6 +207,18 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     expect(sealed).toMatchObject({ rescheduled: 1, delivered: 0 });
     expect(await redis.get(dedupKey)).toBe(CONNECTOR_HELD);
     expect(providerSends).toEqual([]);
+
+    // A transport outage while held must retain the acknowledged event.
+    cloud.state.unavailable = true;
+    const unavailable = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 90_000 },
+    );
+    expect(unavailable).toMatchObject({ rescheduled: 1, released: 0 });
+    expect(await redis.get(dedupKey)).toBe(CONNECTOR_HELD);
+    expect(providerSends).toEqual([]);
+    cloud.state.unavailable = false;
 
     // Dedicated is attested: exactly one delivery, from the receiving line.
     cloud.state.attested = true;
@@ -231,6 +254,54 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     });
     expect(providerSends).toHaveLength(1);
   }, 60_000);
+
+  test.each(["held", "delivered"] as const)(
+    "an expired drainer cannot mutate a replacement lease (%s)",
+    async (kind) => {
+      const cloud = startCloud();
+      const redis = createRedis();
+      const messageId = `msg_lease_${kind}`;
+      const dedupKey = `webhook:blooio:${messageId}`;
+      await handleWebhook(
+        blooioWebhook(messageId),
+        blooioAdapter,
+        deps(cloud.origin, redis),
+        "eliza-app",
+      );
+      await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+      const recordKey = `webhook:cutover-hold:${dedupKey}`;
+      const leaseKey = `webhook:cutover-hold-lease:${dedupKey}`;
+      const original = await redis.get(recordKey);
+      const stats = await drainCutoverHolds(
+        redis,
+        {
+          redeliver: async () => {
+            // The old lease expires while its callback is running; another
+            // gateway now owns this event.
+            await redis.set(leaseKey, "replacement-owner", { ex: 180 });
+            return kind === "held"
+              ? {
+                  kind,
+                  signal: {
+                    code: "personal_cutover_in_progress",
+                    retryAfterSeconds: 1,
+                  },
+                }
+              : { kind };
+          },
+          release: async () => {
+            throw new Error("unexpected expiry");
+          },
+        },
+        { now: Date.now() + 60_000 },
+      );
+      expect(stats).toMatchObject({ delivered: 0, rescheduled: 0 });
+      expect(await redis.get(leaseKey)).toBe("replacement-owner");
+      expect(await redis.get(recordKey)).toEqual(original);
+      expect(await redis.get(dedupKey)).toBe(CONNECTOR_HELD);
+    },
+    60_000,
+  );
 
   test("a hold that outlives the cutover budget is released visibly, not silently kept", async () => {
     const cloud = startCloud();

@@ -40,6 +40,7 @@ export interface GatewayRedis {
     limit: number,
   ): Promise<string[]>;
   zrem(key: string, member: string): Promise<unknown>;
+  eval(script: string, keys: string[], args: string[]): Promise<unknown>;
   quit?(): Promise<unknown>;
 }
 
@@ -105,6 +106,10 @@ class NativeRedisAdapter implements GatewayRedis {
 
   async zrem(key: string, member: string): Promise<unknown> {
     return this.client.zrem(key, member);
+  }
+
+  eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return this.client.eval(script, keys.length, ...keys, ...args);
   }
 
   async quit(): Promise<unknown> {
@@ -183,6 +188,10 @@ class MemoryRedisAdapter implements GatewayRedis {
     return this.client.zrem(key, member);
   }
 
+  eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return this.client.eval(script, keys.length, ...keys, ...args);
+  }
+
   async quit(): Promise<unknown> {
     return this.client.quit();
   }
@@ -241,6 +250,10 @@ class UpstashRedisAdapter implements GatewayRedis {
 
   zrem(key: string, member: string): Promise<unknown> {
     return this.client.zrem(key, member);
+  }
+
+  eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return this.client.eval(script, keys, args);
   }
 }
 
