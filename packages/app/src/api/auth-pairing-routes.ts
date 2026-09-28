@@ -5,7 +5,7 @@
  * is fixed by server-held code state: the rotating operator code is owner
  * access, while an owner-authenticated guest invitation is always USER access.
  * The short-lived codes live in process
- * memory with a TTL and is disclosed only to trusted-loopback callers;
+ * memory with a TTL and are disclosed only to trusted-loopback or OWNER callers;
  * `POST /api/auth/pair` rate-limits by client IP, validates the code, and (when
  * a runtime DB is available) mints a revocable machine session bound to the
  * owner or a `paired-device` identity — returning the session id rather than the
@@ -360,11 +360,14 @@ export async function handleAuthPairingCompatRoutes(
     return true;
   }
   // ── GET /api/auth/pair-code ─────────────────────────────────────────
-  // Loopback-only helper for local dashboards/operators. External clients
-  // must use the normal pairing flow and never receive the code directly.
+  // Operator helper: trusted loopback, or an authenticated OWNER for a hosted
+  // agent without reachable loopback (remote-agent pairing contract).
+  // Unauthenticated clients never receive the code directly.
   if (method === "GET" && url.pathname === "/api/auth/pair-code") {
-    if (!isTrustedLocalRequest(req)) {
-      sendJsonErrorResponse(res, 403, "Pair code visible on loopback only");
+    if (
+      !isTrustedLocalRequest(req) &&
+      !(await ensureRouteMinRole(req, res, state, "OWNER"))
+    ) {
       return true;
     }
     const code = ensurePairingCode();
