@@ -10,6 +10,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { parseStoredAutoTopUpChargeBreakdown } from "@/lib/services/auto-top-up-charge-breakdown";
 import { invoicesService } from "@/lib/services/invoices";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -48,6 +49,10 @@ app.get("/", async (c) => {
           ? Number(invoice.credits_added)
           : undefined,
         metadata: invoice.metadata,
+        // #23020: separate lines for any affiliate surcharge on this charge.
+        chargeBreakdown: parseStoredAutoTopUpChargeBreakdown(
+          invoice.metadata?.charge_breakdown,
+        ),
         createdAt: invoice.created_at.toISOString(),
         updatedAt: invoice.updated_at.toISOString(),
         dueDate: invoice.due_date?.toISOString(),

@@ -203,3 +203,52 @@ export async function findConfirmedBillingSuspension(input: {
   ).limit(1);
   return row;
 }
+
+export interface ConfirmedBillingSuspension extends BillingResumeCandidate {
+  providerConfirmedAt: Date;
+}
+
+/**
+ * One cursor page of provider-confirmed billing suspensions that are still the
+ * agent's latest lifecycle decision, whether or not the organization is funded
+ * now. The funding-retention clock (#22967) starts from `providerConfirmedAt`.
+ */
+export async function listConfirmedBillingSuspensions(input: {
+  limit: number;
+  afterIntentId?: string;
+}): Promise<ConfirmedBillingSuspension[]> {
+  if (!Number.isSafeInteger(input.limit) || input.limit <= 0) {
+    throw new ElizaError("Billing suspension discovery requires a positive page size", {
+      code: "INVALID_BILLING_SUSPENSION_PAGE_SIZE",
+      context: { limit: input.limit },
+    });
+  }
+  const rows = await dbWrite
+    .select({
+      intentId: agentComputeStopIntents.id,
+      agentId: agentSandboxes.id,
+      organizationId: agentSandboxes.organization_id,
+      userId: agentSandboxes.user_id,
+      providerConfirmedAt: agentComputeStopIntents.provider_confirmed_at,
+    })
+    .from(agentComputeStopIntents)
+    .innerJoin(
+      agentSandboxes,
+      and(
+        eq(agentSandboxes.id, agentComputeStopIntents.agent_id),
+        eq(agentSandboxes.organization_id, agentComputeStopIntents.organization_id),
+      ),
+    )
+    .innerJoin(organizations, eq(organizations.id, agentComputeStopIntents.organization_id))
+    .where(
+      and(
+        resumableBillingStop(undefined, false),
+        input.afterIntentId ? gt(agentComputeStopIntents.id, input.afterIntentId) : undefined,
+      ),
+    )
+    .orderBy(asc(agentComputeStopIntents.id))
+    .limit(input.limit);
+  return rows.flatMap((row) =>
+    row.providerConfirmedAt ? [{ ...row, providerConfirmedAt: row.providerConfirmedAt }] : [],
+  );
+}

@@ -167,7 +167,7 @@ export type ApiUserMcp = (UserMcp | PublicUserMcp) & {
  * Postgres NUMERIC columns are returned by the driver as strings, and
  * `'NaN'::numeric` is a VALID stored value that reads back as the literal
  * `"NaN"`. A bare `Number("NaN")` yields `NaN`, and every downstream money
- * gate in `recordUsage` (`totalCreditsToDeduct > 0`, `creatorEarnings > 0`,
+ * gate in `recordUsage` (`totalCreditsToDeduct > 0`,
  * `affiliateFeeCredits > 0`) is FALSE for `NaN`, so a corrupt price/share row
  * silently: (a) skips charging the consumer while still executing the tool
  * call = free MCP usage, and (b) writes `"NaN"` into the usage/earnings ledger.
@@ -351,6 +351,21 @@ function resolveCreatorRevenueUsd(mcp: UserMcp | PublicUserMcp): string | null {
     });
     return null;
   }
+}
+
+/**
+ * Revenue split for one MCP call after creator monetization was retired
+ * (#22961). The creator share no longer accrues: no creator organization
+ * credit and no redeemable earning is written, and the stored
+ * `creator_share_percentage` is ignored. The base price and the platform fee
+ * are platform revenue. Historical usage rows keep their recorded
+ * `creator_earnings`; only new calls record zero.
+ */
+export function retiredCreatorRevenueSplit(
+  creditsCharged: number,
+  platformFeeCredits: number,
+): { creatorEarnings: 0; platformEarnings: number } {
+  return { creatorEarnings: 0, platformEarnings: creditsCharged + platformFeeCredits };
 }
 
 // ============================================================================
@@ -665,7 +680,7 @@ class UserMcpsService {
   }
 
   /**
-   * Record MCP usage and distribute revenue
+   * Record MCP usage, charge the consumer and pay any affiliate fee. Creator earnings are retired (#22961).
    */
   async recordUsage(params: UseMcpParams): Promise<UseMcpResult> {
     const mcp = await userMcpsRepository.getById(params.mcpId);
@@ -728,13 +743,10 @@ class UserMcpsService {
       platformFeePoints: platformFeeCredits,
     });
 
-    const creatorSharePct =
-      parseMcpSharePercentage(mcp.creator_share_percentage, "creator_share_percentage", 0) / 100;
-    const platformSharePct =
-      parseMcpSharePercentage(mcp.platform_share_percentage, "platform_share_percentage", 0) / 100;
-
-    const creatorEarnings = creditsCharged * creatorSharePct;
-    const platformEarnings = creditsCharged * platformSharePct + platformFeeCredits;
+    const { creatorEarnings, platformEarnings } = retiredCreatorRevenueSplit(
+      creditsCharged,
+      platformFeeCredits,
+    );
 
     // Charge the consumer
     if (params.paymentType === "credits" && totalCreditsToDeduct > 0) {
@@ -778,48 +790,6 @@ class UserMcpsService {
           mcp_id: mcp.id,
         },
       });
-    }
-
-    // Credit the creator's organization credits (for platform operations)
-    if (creatorEarnings > 0) {
-      await creditsService.addCredits({
-        organizationId: mcp.organization_id,
-        amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
-        description: `MCP Revenue: ${mcp.name} - ${params.toolName}`,
-        metadata: {
-          mcp_id: mcp.id,
-          consumer_org_id: params.organizationId,
-          tool_name: params.toolName,
-          payment_type: params.paymentType,
-        },
-      });
-
-      // CRITICAL: Also credit the creator's redeemable_earnings for token redemption
-      if (mcp.created_by_user_id) {
-        const result = await redeemableEarningsService.addEarnings({
-          userId: mcp.created_by_user_id,
-          amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
-          source: "mcp",
-          sourceId: mcp.id,
-          description: `MCP earnings: ${mcp.name} - ${params.toolName}`,
-          metadata: {
-            mcpId: mcp.id,
-            mcpName: mcp.name,
-            toolName: params.toolName,
-            consumerOrgId: params.organizationId,
-            paymentType: params.paymentType,
-            creditsEarned: creatorEarnings,
-          },
-        });
-
-        if (!result.success) {
-          logger.error("[UserMcps] Failed to credit redeemable earnings", {
-            mcpId: mcp.id,
-            creatorId: mcp.created_by_user_id,
-            error: result.error,
-          });
-        }
-      }
     }
 
     // Record usage
@@ -871,7 +841,7 @@ class UserMcpsService {
    * Record MCP usage WITHOUT deducting credits (for pre-paid requests)
    *
    * Use this when credits have already been deducted by the caller.
-   * This only handles revenue distribution and usage tracking.
+   * This only pays any affiliate fee and records usage; creator earnings are retired (#22961).
    */
   async recordUsageWithoutDeduction(params: UseMcpWithoutDeductionParams): Promise<UseMcpResult> {
     const mcp = await userMcpsRepository.getById(params.mcpId);
@@ -901,13 +871,10 @@ class UserMcpsService {
         affiliateFeePoints: affiliateFeeCredits,
         platformFeePoints: platformFeeCredits,
       });
-    const creatorSharePct =
-      parseMcpSharePercentage(mcp.creator_share_percentage, "creator_share_percentage", 0) / 100;
-    const platformSharePct =
-      parseMcpSharePercentage(mcp.platform_share_percentage, "platform_share_percentage", 0) / 100;
-
-    const creatorEarnings = creditsCharged * creatorSharePct;
-    const platformEarnings = creditsCharged * platformSharePct + platformFeeCredits;
+    const { creatorEarnings, platformEarnings } = retiredCreatorRevenueSplit(
+      creditsCharged,
+      platformFeeCredits,
+    );
 
     if (affiliateFeeCredits > 0 && params.affiliateOwnerId && params.affiliateCodeId) {
       const sourceSuffix =
@@ -931,52 +898,6 @@ class UserMcpsService {
 
       if (!result.success) {
         throw new Error(result.error || "Failed to credit affiliate earnings");
-      }
-    }
-
-    // Credit the creator's organization credits (for platform operations)
-    if (creatorEarnings > 0) {
-      await creditsService.addCredits({
-        organizationId: mcp.organization_id,
-        amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
-        description: `MCP Revenue: ${mcp.name} - ${params.toolName}`,
-        metadata: {
-          mcp_id: mcp.id,
-          consumer_org_id: params.organizationId,
-          tool_name: params.toolName,
-          payment_type: "credits",
-          affiliate_fee: affiliateFeeCredits.toFixed(4),
-          platform_fee: platformFeeCredits.toFixed(4),
-        },
-      });
-
-      // Credit the creator's redeemable_earnings for token redemption
-      if (mcp.created_by_user_id) {
-        const result = await redeemableEarningsService.addEarnings({
-          userId: mcp.created_by_user_id,
-          amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
-          source: "mcp",
-          sourceId: mcp.id,
-          description: `MCP earnings: ${mcp.name} - ${params.toolName}`,
-          metadata: {
-            mcpId: mcp.id,
-            mcpName: mcp.name,
-            toolName: params.toolName,
-            consumerOrgId: params.organizationId,
-            paymentType: "credits",
-            creditsEarned: creatorEarnings,
-            affiliateFeeCredits,
-            platformFeeCredits,
-          },
-        });
-
-        if (!result.success) {
-          logger.error("[UserMcps] Failed to credit redeemable earnings", {
-            mcpId: mcp.id,
-            creatorId: mcp.created_by_user_id,
-            error: result.error,
-          });
-        }
       }
     }
 

@@ -82,11 +82,11 @@ export const organizations = pgTable(
       scale: 2,
     }),
 
-    // When true, container daily-billing debits the org owner's
-    // redeemable_earnings before falling through to credit_balance.
-    // When false, hosting is paid purely from credits for compatibility,
-    // leaving earnings untouched for token cashout.
-    pay_as_you_go_from_earnings: boolean("pay_as_you_go_from_earnings").default(true).notNull(),
+    // Retired (#22961 / #23022): creator earnings are frozen, so migration 0500
+    // set every row to false and billing settings refuse to enable it. When
+    // true, container daily-billing would debit the owner's redeemable_earnings
+    // before credit_balance, which is an automatic payout of a frozen balance.
+    pay_as_you_go_from_earnings: boolean("pay_as_you_go_from_earnings").default(false).notNull(),
 
     // Steward auth tenant credentials for this organization.
     // Populated when an org is onboarded onto Steward-backed auth.

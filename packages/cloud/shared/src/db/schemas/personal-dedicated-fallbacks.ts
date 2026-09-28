@@ -61,7 +61,10 @@ export const personalDedicatedFallbacks = pgTable(
     entitlement_revision: bigint("entitlement_revision", { mode: "number" }),
     /** Organization entitlement projection revision that restored access. */
     recovery_entitlement_revision: bigint("recovery_entitlement_revision", { mode: "number" }),
-    /** The Dedicated runtime is preserved (stopped, never deleted) at least until this deadline. */
+    /**
+     * The Dedicated runtime is preserved (stopped) until this deadline; the
+     * funding-retention clock (#22967) removes its container after it.
+     */
     retain_until: timestamp("retain_until", { withTimezone: true }),
     /** Billing stop admitted for a running Dedicated runtime when access was withdrawn. */
     suspend_job_id: uuid("suspend_job_id"),

@@ -287,7 +287,7 @@ describe("workspace package resolution", () => {
             "@elizaos/cloud-shared/types/redemption-contract",
             path.resolve(
               appRoot,
-              "../ui/src/cloud/monetization/earnings/EarningsPageClient.tsx",
+              "../ui/src/cloud/monetization/earnings/CreatorEarningsStatement.tsx",
             ),
           );
         expect(resolved?.id).toBe(
