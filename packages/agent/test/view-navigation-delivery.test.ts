@@ -1187,6 +1187,12 @@ describe("model-selected host navigation", () => {
             ],
           },
         });
+        if (result.kind !== "direct_reply") {
+          throw new Error("Expected receipt-preserving direct failure reply");
+        }
+        if (!result.result.responseContent) {
+          throw new Error("Expected visible failure reply content");
+        }
         expect(result.result.responseContent.text).not.toBe(reply);
       } else {
         const result = await resultPromise;

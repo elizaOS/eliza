@@ -629,6 +629,112 @@ describe("answered arithmetic routing", () => {
   );
 });
 
+describe("acknowledgment filesystem recovery", () => {
+  const available = [
+    { name: "FILE", contexts: ["files"] },
+    {
+      name: "TASKS",
+      contexts: ["code"],
+      tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+    },
+  ];
+  const messageText =
+    'Create two files under /tmp/readback: index.html containing exactly "<html><body>CHECK-3562</body></html>", and metadata.json containing exactly "{\\"verificationCode\\":\\"CHECK-3562\\",\\"ready\\":true}". Read both saved files to verify their contents, then report the verification code.';
+  const intents = [
+    "Create index.html at /tmp/readback with exactly <html><body>CHECK-3562</body></html>",
+    'Create metadata.json at /tmp/readback with exactly {"verificationCode":"CHECK-3562","ready":true}',
+    "Read both saved files to verify their contents",
+    "Report the verification code",
+  ];
+  const envelope = {
+    shouldRespond: "RESPOND",
+    contexts: [],
+    intents,
+    replyText: "Working on it.",
+    replyEffectStatus: "pending",
+    facts: [],
+    relationships: [],
+    addressedTo: ["user"],
+  };
+
+  it("retains all four outcomes but selects only FILE for an unresolved exact write/readback", () => {
+    for (const result of [
+      messageHandlerFromFieldResult(envelope, undefined, {
+        actions: available,
+        messageText,
+      }),
+      parseMessageHandlerModelOutput(JSON.stringify(envelope), {
+        actions: available,
+        messageText,
+      }),
+    ]) {
+      expect(result?.plan.candidateActions).toEqual(["FILE"]);
+      expect(result?.plan.intents).toEqual(intents);
+      expect(result?.plan.requiresTool).toBe(true);
+    }
+  });
+
+  it.each([
+    {
+      label: "explicit hint",
+      fields: { candidateActionNames: ["TASKS"] },
+      text: messageText,
+      outcomes: intents,
+    },
+    {
+      label: "explicit code domain",
+      fields: { contexts: ["code"] },
+      text: messageText,
+      outcomes: intents,
+    },
+    {
+      label: "explicit delegation",
+      fields: {},
+      text: `${messageText} Delegate this to a coding agent.`,
+      outcomes: [...intents, "Delegate the work to a coding agent"],
+    },
+    {
+      label: "source implementation repair",
+      fields: {},
+      text: "Edit /tmp/app.ts to fix the runtime bug and add the missing feature.",
+      outcomes: [
+        "Edit /tmp/app.ts to fix the runtime bug and add the missing feature",
+      ],
+    },
+    {
+      label: "source refactor",
+      fields: {},
+      text: "Refactor the source file /tmp/main.ts to remove duplicated code.",
+      outcomes: [
+        "Refactor the source file /tmp/main.ts to remove duplicated code",
+      ],
+    },
+    {
+      label: "mixed file creation and source refactor",
+      fields: {},
+      text: 'Create /tmp/a.txt containing exactly "x". Then refactor the file /tmp/main.ts.',
+      outcomes: [
+        'Create /tmp/a.txt containing exactly "x"',
+        "Refactor the file /tmp/main.ts",
+      ],
+    },
+    {
+      label: "mixed application work",
+      fields: {},
+      text: `${messageText} Then build an app that displays those files.`,
+      outcomes: [...intents, "Build an app that displays the files"],
+    },
+  ])("preserves coding ownership for $label", ({ fields, text, outcomes }) => {
+    const result = messageHandlerFromFieldResult(
+      { ...envelope, ...fields, intents: outcomes },
+      undefined,
+      { actions: available, messageText: text },
+    );
+    expect(result?.plan.candidateActions).toContain("TASKS");
+    expect(result?.plan.intents).toEqual(outcomes);
+  });
+});
+
 describe("explicit filesystem routing", () => {
   const available = [{ name: "FILE" }];
   const omitted = {

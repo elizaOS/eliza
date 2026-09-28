@@ -16,6 +16,9 @@ import {
 } from "../../runtime/planner-loop";
 import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
+  CODING_OPERATION_VERB_PATTERN,
+  EXPANDED_WORK_ARTIFACT_PATTERN,
+  hasNearbyTerms,
   looksLikeCodingWorkRequest,
   looksLikeExplicitDelegationRequest,
   looksLikeInlineCodeSnippetRequest,
@@ -290,6 +293,32 @@ export function inferAckIntentCandidateActions(
     const shellAction = findShellDirectActionName(actions);
     if (shellAction) return [shellAction];
   }
+  // A grounded file operation does not need a coding-agent rescue merely
+  // because the generic coding recognizer includes "file". Preserve mixed
+  // coding/delegation requests and explicit domain routing; only disambiguate
+  // these hint words, leaving the original request and every intent intact.
+  const filesystemInference = inferDirectCurrentRequestCandidateInference(
+    actions,
+    fallbackText,
+    result.contexts,
+  );
+  if (
+    filesystemInference.kind === "filesystem" &&
+    filesystemInference.names.length > 0 &&
+    !looksLikeExplicitDelegationRequest(actionText) &&
+    !hasNearbyTerms(
+      actionText,
+      CODING_OPERATION_VERB_PATTERN,
+      EXPANDED_WORK_ARTIFACT_PATTERN,
+      160,
+    ) &&
+    !looksLikeCodingWorkRequest(
+      actionText
+        .replace(/\bfiles?\b/giu, " ")
+        .replace(/\b(?:verification|reference)\s+codes?\b/giu, " "),
+    )
+  )
+    return filesystemInference.names;
   // Coding-work precedes web-search: "build an app that shows the bitcoin price"
   // trips looksLikeWebSearchRequest (market term) yet is a coding task — route it
   // to coding delegation, not a web lookup. Mirrors the coding-first guard in
