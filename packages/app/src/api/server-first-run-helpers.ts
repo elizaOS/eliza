@@ -30,7 +30,7 @@ import {
 import { PREMADE_VOICES } from "@elizaos/core/voice";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { resolveProviderCredential } from "./credential-resolver";
-import { type FirstRunConfigWriteObserver } from "./first-run-rollback";
+import type { FirstRunConfigWriteObserver } from "./first-run-rollback";
 
 // ---------------------------------------------------------------------------
 // First-run API key persistence
@@ -117,8 +117,7 @@ export async function extractAndPersistFirstRunApiKey(
     serviceRouting: explicitServiceRouting,
   });
   let effectiveCredentialInputs = credentialInputs;
-  let effectiveServiceRouting = explicitServiceRouting;
-  let llmSelection = initialPlan.llmSelection;
+  const llmSelection = initialPlan.llmSelection;
   if (!llmSelection && !initialPlan.cloudApiKey) {
     logger.warn(
       "[first-run] No first-run credentials resolved from request body",
@@ -128,60 +127,39 @@ export async function extractAndPersistFirstRunApiKey(
   logger.info(
     `[first-run] Resolved selection: transport=${llmSelection?.transport ?? "none"}, provider=${llmSelection?.backend ?? "N/A"}, hasKey=${Boolean(llmSelection?.apiKey)}, hasCloudKey=${Boolean(initialPlan.cloudApiKey)}`,
   );
-  // If the key is masked (from IPC) or missing, try to resolve the real
-  // key from local credential stores (files, keychain, env). A "****xxxx"
-  // value is the server's own GET-response masking echoed back by the
-  // client — never a real credential — so it must be replaced by a resolved
-  // key or dropped, not persisted (persisting it clobbers a working key
-  // with an unusable placeholder).
+  // A fresh, unmasked key the user just typed always wins. Only when the key
+  // is masked (from IPC) or missing do we fall back to the local credential
+  // store (env). A "****xxxx" value is the server's own GET-response masking
+  // echoed back by the client — never a real credential — so it must be
+  // replaced by a resolved key or dropped, not persisted (persisting it
+  // clobbers a working key with an unusable placeholder).
   const llmApiKeyMasked = Boolean(llmSelection?.apiKey?.startsWith("****"));
   if (
     llmSelection?.transport === "direct" &&
-    llmSelection.backend !== "elizacloud"
+    llmSelection.backend !== "elizacloud" &&
+    (!llmSelection.apiKey || llmApiKeyMasked)
   ) {
     const resolved = resolveProviderCredential(llmSelection.backend);
-    if (resolved && resolved.authType === "subscription") {
-      effectiveCredentialInputs = {
-        ...(effectiveCredentialInputs ?? {}),
-        llmApiKey: resolved.apiKey,
-      };
-      effectiveServiceRouting = normalizeServiceRoutingConfig({
-        ...(effectiveServiceRouting ?? {}),
-        llmText: {
-          ...(effectiveServiceRouting?.llmText ?? {}),
-          backend: resolved.providerId,
-          transport: "direct",
-        },
-      });
-      logger.info(
-        `[first-run] Using subscription auth for ${resolved.providerId}`,
-      );
-    } else if (resolved) {
-      effectiveCredentialInputs = {
-        ...(effectiveCredentialInputs ?? {}),
-        llmApiKey: resolved.apiKey,
-      };
-      logger.info(
-        `[first-run] Resolved real key for ${llmSelection.backend} via credential-resolver`,
-      );
-    } else if (!llmSelection.apiKey || llmApiKeyMasked) {
+    if (!resolved) {
       logger.warn(
         `[first-run] No real key available for ${llmSelection.backend} (input key ${llmApiKeyMasked ? "masked" : "missing"}) — cannot persist`,
       );
       return null;
     }
-    llmSelection = deriveFirstRunCredentialPersistencePlan({
-      credentialInputs: effectiveCredentialInputs,
-      deploymentTarget: explicitDeploymentTarget,
-      serviceRouting: effectiveServiceRouting,
-    }).llmSelection;
+    effectiveCredentialInputs = {
+      ...(effectiveCredentialInputs ?? {}),
+      llmApiKey: resolved.apiKey,
+    };
+    logger.info(
+      `[first-run] Resolved real key for ${llmSelection.backend} via credential-resolver`,
+    );
   }
   const config = loadElizaConfig();
   const before = structuredClone(config);
   const result = await applyFirstRunCredentialPersistence(config, {
     credentialInputs: effectiveCredentialInputs,
     deploymentTarget: explicitDeploymentTarget,
-    serviceRouting: effectiveServiceRouting,
+    serviceRouting: explicitServiceRouting,
     observeEnvironmentMutation,
   });
   saveElizaConfig(config);
