@@ -7,6 +7,7 @@ import { type AuditAction, isAuditAction } from "./actions.js";
 import type { AuditSink } from "./sink.js";
 import {
   AUDIT_IP_MAX_LENGTH,
+  AUDIT_REQUEST_ID_MAX_LENGTH,
   AUDIT_USER_AGENT_MAX_LENGTH,
   type AuditActor,
   type AuditEvent,
@@ -161,15 +162,17 @@ export class AuditDispatcher {
       result: input.result,
       resource: input.resource ?? null,
       // Client-supplied headers must not make a mandatory audit record
-      // unwritable: an oversized IP cannot be an address and is dropped; the
-      // user agent keeps its schema-sized prefix.
+      // unwritable: an oversized IP cannot be an address and is dropped, as is
+      // an oversized `X-Request-Id` (a prefix would mis-correlate); the user
+      // agent keeps its schema-sized prefix.
       ...(input.ip !== undefined && input.ip.length <= AUDIT_IP_MAX_LENGTH
         ? { ip: input.ip }
         : {}),
       ...(input.user_agent !== undefined
         ? { user_agent: input.user_agent.slice(0, AUDIT_USER_AGENT_MAX_LENGTH) }
         : {}),
-      ...(input.request_id !== undefined
+      ...(input.request_id !== undefined &&
+      input.request_id.length <= AUDIT_REQUEST_ID_MAX_LENGTH
         ? { request_id: input.request_id }
         : {}),
       ...(input.org_id !== undefined ? { org_id: input.org_id } : {}),

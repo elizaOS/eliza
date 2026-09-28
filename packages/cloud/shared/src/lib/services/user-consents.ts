@@ -41,6 +41,51 @@ export async function listLatestUserConsents(
   return (await userConsentsRepository.listLatest(userId, organizationId)).map(toUserConsentDto);
 }
 
+/**
+ * Server policy applied to one purpose. `basis: "recorded"` means the user's
+ * latest ledger entry decides; `basis: "default"` means no choice is recorded
+ * and the deployment default decides.
+ */
+export interface EffectiveConsentDto {
+  purpose: UserConsentPurpose;
+  granted: boolean;
+  basis: "recorded" | "default";
+  defaultGranted: boolean;
+}
+
+/**
+ * Deployment default per purpose when the user has recorded no choice. Vision
+ * capture is always opt-in; training capture is on unless
+ * `TRAJECTORY_CAPTURE_REQUIRES_CONSENT=true`.
+ */
+export function resolveConsentDefaults(
+  env: NodeJS.ProcessEnv = getCloudAwareEnv(),
+): Record<UserConsentPurpose, boolean> {
+  return {
+    vision_capture: false,
+    trajectory_training: env.TRAJECTORY_CAPTURE_REQUIRES_CONSENT !== "true",
+  };
+}
+
+/** The policy the server enforces for each purpose, given recorded choices. */
+export function resolveEffectiveConsents(
+  consents: readonly UserConsentDto[],
+  env: NodeJS.ProcessEnv = getCloudAwareEnv(),
+): EffectiveConsentDto[] {
+  const defaults = resolveConsentDefaults(env);
+  return USER_CONSENT_PURPOSES.map((purpose) => {
+    const recorded = consents.find((consent) => consent.purpose === purpose);
+    return recorded
+      ? { purpose, granted: recorded.granted, basis: "recorded", defaultGranted: defaults[purpose] }
+      : {
+          purpose,
+          granted: defaults[purpose],
+          basis: "default",
+          defaultGranted: defaults[purpose],
+        };
+  });
+}
+
 export async function recordUserConsent(
   input: {
     userId: string;
@@ -83,5 +128,5 @@ export async function isTrajectoryCaptureAllowed(
     "trajectory_training",
   );
   if (latest) return latest.granted;
-  return env.TRAJECTORY_CAPTURE_REQUIRES_CONSENT !== "true";
+  return resolveConsentDefaults(env).trajectory_training;
 }

@@ -51,6 +51,7 @@ export const AuditResourceSchema = z.object({
 
 export const AUDIT_IP_MAX_LENGTH = 64;
 export const AUDIT_USER_AGENT_MAX_LENGTH = 512;
+export const AUDIT_REQUEST_ID_MAX_LENGTH = 128;
 
 export const AuditEventSchema = z.object({
   event_id: z.uuid(),
@@ -61,7 +62,7 @@ export const AuditEventSchema = z.object({
   resource: AuditResourceSchema.nullable(),
   ip: z.string().max(AUDIT_IP_MAX_LENGTH).optional(),
   user_agent: z.string().max(AUDIT_USER_AGENT_MAX_LENGTH).optional(),
-  request_id: z.string().max(128).optional(),
+  request_id: z.string().max(AUDIT_REQUEST_ID_MAX_LENGTH).optional(),
   org_id: z.string().max(128).optional(),
   metadata: z
     .record(

@@ -80,6 +80,28 @@ const visionRecord = (granted: boolean) => ({
   recordedAt: "2026-09-26T12:00:00.000Z",
 });
 
+type TestRecord = ReturnType<typeof visionRecord>;
+
+/** A `GET /api/v1/me/consents` body as the server builds it. */
+function consentList(records: TestRecord[], trainingDefault = true) {
+  const defaults: Record<string, boolean> = {
+    vision_capture: false,
+    trajectory_training: trainingDefault,
+  };
+  return {
+    consents: records,
+    effective: Object.entries(defaults).map(([purpose, defaultGranted]) => {
+      const recorded = records.find((record) => record.purpose === purpose);
+      return {
+        purpose,
+        granted: recorded ? recorded.granted : defaultGranted,
+        basis: recorded ? "recorded" : "default",
+        defaultGranted,
+      };
+    }),
+  };
+}
+
 function renderPanel() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -114,7 +136,7 @@ afterEach(() => {
 
 describe("PrivacyPanel", () => {
   it("renders server consent, with the training default stated when unset", async () => {
-    apiMock.mockResolvedValueOnce({ consents: [visionRecord(false)] });
+    apiMock.mockResolvedValueOnce(consentList([visionRecord(false)]));
     renderPanel();
     const vision = screen.getByTestId("vision-toggle");
     expect(vision.getAttribute("role")).toBe("switch");
@@ -130,9 +152,45 @@ describe("PrivacyPanel", () => {
     expect(screen.getByText(/the Cloud default \(on\) applies/)).toBeTruthy();
   });
 
+  it("renders the opt-in server default when training consent is required", async () => {
+    apiMock.mockResolvedValueOnce(consentList([], false));
+    renderPanel();
+    const trajectory = screen.getByTestId("trajectory-toggle");
+    await waitFor(() =>
+      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    );
+    expect(trajectory.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText(/the Cloud default \(off\) applies/)).toBeTruthy();
+    expect(screen.queryByText(/the Cloud default \(on\) applies/)).toBeNull();
+  });
+
+  it("renders an explicit grant without the default note", async () => {
+    apiMock.mockResolvedValueOnce(
+      consentList(
+        [{ ...visionRecord(true), purpose: "trajectory_training" }],
+        false,
+      ),
+    );
+    renderPanel();
+    const trajectory = screen.getByTestId("trajectory-toggle");
+    await waitFor(() =>
+      expect(trajectory.hasAttribute("disabled")).toBe(false),
+    );
+    expect(trajectory.getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByText(/the Cloud default/)).toBeNull();
+  });
+
+  it("rejects a consent list without the server's effective policy", async () => {
+    apiMock.mockResolvedValueOnce({ consents: [] });
+    renderPanel();
+    expect(
+      await screen.findByText("Consent list response is malformed"),
+    ).toBeTruthy();
+  });
+
   it("records a consent change on the server and shows the receipt", async () => {
     apiMock
-      .mockResolvedValueOnce({ consents: [] })
+      .mockResolvedValueOnce(consentList([]))
       .mockResolvedValueOnce({ consent: visionRecord(true) });
     renderPanel();
     const vision = screen.getByTestId("vision-toggle");
@@ -156,7 +214,7 @@ describe("PrivacyPanel", () => {
 
   it("keeps the prior state and shows an error when recording fails", async () => {
     apiMock
-      .mockResolvedValueOnce({ consents: [visionRecord(false)] })
+      .mockResolvedValueOnce(consentList([visionRecord(false)]))
       .mockRejectedValueOnce(new Error("consent store offline"));
     renderPanel();
     const vision = screen.getByTestId("vision-toggle");
@@ -172,7 +230,7 @@ describe("PrivacyPanel", () => {
   it("shows a load error with retry and never falls back to local state", async () => {
     apiMock
       .mockRejectedValueOnce(new Error("network down"))
-      .mockResolvedValueOnce({ consents: [visionRecord(true)] });
+      .mockResolvedValueOnce(consentList([visionRecord(true)]));
     renderPanel();
     expect(await screen.findByText("network down")).toBeTruthy();
     expect(screen.getByTestId("vision-toggle").hasAttribute("disabled")).toBe(
@@ -190,13 +248,14 @@ describe("PrivacyPanel", () => {
   it("rejects a malformed consent payload instead of rendering it", async () => {
     apiMock.mockResolvedValueOnce({
       consents: [{ purpose: "vision_capture" }],
+      effective: [],
     });
     renderPanel();
     expect(await screen.findByText("Consent record is malformed")).toBeTruthy();
   });
 
   it("downloads a digest-verified live-account export", async () => {
-    apiMock.mockResolvedValueOnce({ consents: [] });
+    apiMock.mockResolvedValueOnce(consentList([]));
     const bytes = new TextEncoder().encode('{"tables":{}}');
     apiFetchMock.mockResolvedValueOnce(
       new Response(bytes, {
@@ -222,7 +281,7 @@ describe("PrivacyPanel", () => {
   });
 
   it("refuses an export whose bytes do not match the server digest", async () => {
-    apiMock.mockResolvedValueOnce({ consents: [] });
+    apiMock.mockResolvedValueOnce(consentList([]));
     apiFetchMock.mockResolvedValueOnce(
       new Response("tampered", {
         status: 200,
@@ -239,7 +298,7 @@ describe("PrivacyPanel", () => {
   });
 
   it("tells the user when their export exceeds the size limit", async () => {
-    apiMock.mockResolvedValueOnce({ consents: [] });
+    apiMock.mockResolvedValueOnce(consentList([]));
     const { ApiError } = await import("../../lib/api-client");
     apiFetchMock.mockRejectedValueOnce(
       new ApiError(413, "EXPORT_TOO_LARGE", "Export too large"),
@@ -254,7 +313,7 @@ describe("PrivacyPanel", () => {
   });
 
   it("keeps account deletion behind its lifecycle dialog", async () => {
-    apiMock.mockResolvedValueOnce({ consents: [] });
+    apiMock.mockResolvedValueOnce(consentList([]));
     renderPanel();
     const del = screen.getByTestId(
       "delete-account-trigger",

@@ -2,7 +2,9 @@
  * GET/POST /api/v1/me/consents
  *
  * Server-recorded consent ledger for the signed-in user. GET returns the
- * latest decision per purpose; POST appends a new decision and writes the
+ * latest decision per purpose plus the policy the server enforces for every
+ * purpose (`effective`, which distinguishes a recorded choice from the
+ * deployment default); POST appends a new decision and writes the
  * matching `consent.granted` / `consent.revoked` audit record in the same
  * database transaction (a failed audit write records nothing).
  */
@@ -22,6 +24,7 @@ import {
 import {
   listLatestUserConsents,
   recordUserConsent,
+  resolveEffectiveConsents,
   USER_CONSENT_PURPOSES,
   type UserConsentDto,
 } from "@/lib/services/user-consents";
@@ -45,7 +48,7 @@ app.get("/", async (c) => {
       user.id,
       user.organization_id,
     );
-    return c.json({ consents });
+    return c.json({ consents, effective: resolveEffectiveConsents(consents) });
   } catch (error) {
     // error-policy:J1 The HTTP boundary translates service failures into a structured response.
     return failureResponse(c, error);

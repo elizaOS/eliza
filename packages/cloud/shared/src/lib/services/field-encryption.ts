@@ -71,6 +71,12 @@ export function isFieldEncryptionRequired(env: NodeJS.ProcessEnv = getCloudAware
  * Whether new writes must bind table/row/column coordinates into the AES-GCM
  * AAD (`FIELD_ENCRYPTION_REQUIRE_AAD=true`). Reads are unaffected so rows
  * written before AAD binding stay decryptable.
+ *
+ * Keep this off in deployments for now: the current writers (agent env
+ * secrets, user-database URIs) do not pass coordinates yet, so with the flag
+ * on they fail closed with `FIELD_ENCRYPTION_AAD_REQUIRED` rather than write.
+ * Enabling it belongs to the field-encryption v2 migration that threads
+ * coordinates through both encrypt and decrypt.
  */
 export function isFieldEncryptionAadRequired(env: NodeJS.ProcessEnv = getCloudAwareEnv()): boolean {
   return env.FIELD_ENCRYPTION_REQUIRE_AAD === "true";

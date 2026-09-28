@@ -474,7 +474,26 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/me/plugin-grants"), body: { grants: [] } },
   // No recorded choices: vision renders off, training renders the stated
   // Cloud default.
-  { match: path_("/api/v1/me/consents"), body: { consents: [] } },
+  {
+    match: path_("/api/v1/me/consents"),
+    body: {
+      consents: [],
+      effective: [
+        {
+          purpose: "vision_capture",
+          granted: false,
+          basis: "default",
+          defaultGranted: false,
+        },
+        {
+          purpose: "trajectory_training",
+          granted: true,
+          basis: "default",
+          defaultGranted: true,
+        },
+      ],
+    },
+  },
   {
     match: path_("/api/v1/me/account-deletion"),
     body: {

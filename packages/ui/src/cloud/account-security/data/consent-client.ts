@@ -28,8 +28,25 @@ export interface ConsentRecord {
   recordedAt: string;
 }
 
-/** Latest record per purpose; an absent purpose means no choice is recorded. */
-export type ConsentState = Partial<Record<ConsentPurpose, ConsentRecord>>;
+/**
+ * The policy the server enforces for one purpose. `basis: "default"` means no
+ * choice is recorded and the deployment default (`defaultGranted`) applies.
+ */
+export interface EffectiveConsent {
+  purpose: ConsentPurpose;
+  granted: boolean;
+  basis: "recorded" | "default";
+  defaultGranted: boolean;
+}
+
+/**
+ * Latest record per purpose (an absent purpose means no choice is recorded)
+ * and the server-enforced policy for every purpose.
+ */
+export interface ConsentState {
+  recorded: Partial<Record<ConsentPurpose, ConsentRecord>>;
+  effective: Record<ConsentPurpose, EffectiveConsent>;
+}
 
 const CONSENT_PURPOSES: ReadonlySet<string> = new Set<ConsentPurpose>([
   "vision_capture",
@@ -73,26 +90,67 @@ function parseConsentRecord(value: unknown): ConsentRecord {
   };
 }
 
+function parseEffectiveConsent(value: unknown): EffectiveConsent {
+  if (typeof value !== "object" || value === null) {
+    throw new ConsentResponseError("Effective consent was not an object");
+  }
+  const { purpose, granted, basis, defaultGranted } = value as Record<
+    string,
+    unknown
+  >;
+  if (typeof purpose !== "string" || !CONSENT_PURPOSES.has(purpose)) {
+    throw new ConsentResponseError("Effective consent has an unknown purpose");
+  }
+  if (
+    typeof granted !== "boolean" ||
+    typeof defaultGranted !== "boolean" ||
+    (basis !== "recorded" && basis !== "default")
+  ) {
+    throw new ConsentResponseError("Effective consent is malformed");
+  }
+  return {
+    purpose: purpose as ConsentPurpose,
+    granted,
+    basis,
+    defaultGranted,
+  };
+}
+
 export function parseConsentList(payload: unknown): ConsentState {
-  const consents =
+  const body =
     typeof payload === "object" && payload !== null
-      ? (payload as { consents?: unknown }).consents
+      ? (payload as { consents?: unknown; effective?: unknown })
       : undefined;
-  if (!Array.isArray(consents)) {
+  if (!Array.isArray(body?.consents) || !Array.isArray(body.effective)) {
     throw new ConsentResponseError("Consent list response is malformed");
   }
-  const state: ConsentState = {};
-  for (const item of consents) {
+  const recorded: ConsentState["recorded"] = {};
+  for (const item of body.consents) {
     const record = parseConsentRecord(item);
-    const existing = state[record.purpose];
+    const existing = recorded[record.purpose];
     if (
       !existing ||
       Date.parse(record.recordedAt) > Date.parse(existing.recordedAt)
     ) {
-      state[record.purpose] = record;
+      recorded[record.purpose] = record;
     }
   }
-  return state;
+  const effective: Partial<Record<ConsentPurpose, EffectiveConsent>> = {};
+  for (const item of body.effective) {
+    const entry = parseEffectiveConsent(item);
+    effective[entry.purpose] = entry;
+  }
+  const vision = effective.vision_capture;
+  const trajectory = effective.trajectory_training;
+  if (!vision || !trajectory) {
+    throw new ConsentResponseError(
+      "Consent list response is missing an effective policy",
+    );
+  }
+  return {
+    recorded,
+    effective: { vision_capture: vision, trajectory_training: trajectory },
+  };
 }
 
 export function parseRecordedConsent(payload: unknown): ConsentRecord {
@@ -134,7 +192,20 @@ export function useRecordConsent() {
     onSuccess: (record) => {
       queryClient.setQueryData<ConsentState>(
         authenticatedQueryKey(CONSENTS_KEY, gate),
-        (previous) => ({ ...(previous ?? {}), [record.purpose]: record }),
+        (previous) =>
+          previous
+            ? {
+                recorded: { ...previous.recorded, [record.purpose]: record },
+                effective: {
+                  ...previous.effective,
+                  [record.purpose]: {
+                    ...previous.effective[record.purpose],
+                    granted: record.granted,
+                    basis: "recorded",
+                  },
+                },
+              }
+            : previous,
       );
     },
   });

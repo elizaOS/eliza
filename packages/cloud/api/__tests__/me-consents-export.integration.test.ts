@@ -174,6 +174,69 @@ describe("/api/v1/me/consents", () => {
   );
 
   test(
+    "GET reports the effective policy for a no-choice account under both server defaults",
+    async () => {
+      const read = async () =>
+        (await (
+          await consentsRoute.request(
+            "http://localhost/",
+            undefined,
+            WORKER_ENV,
+          )
+        ).json()) as {
+          consents: unknown[];
+          effective: Array<{
+            purpose: string;
+            granted: boolean;
+            basis: string;
+            defaultGranted: boolean;
+          }>;
+        };
+
+      const optOut = await read();
+      expect(optOut.consents).toEqual([]);
+      expect(optOut.effective).toEqual([
+        {
+          purpose: "vision_capture",
+          granted: false,
+          basis: "default",
+          defaultGranted: false,
+        },
+        {
+          purpose: "trajectory_training",
+          granted: true,
+          basis: "default",
+          defaultGranted: true,
+        },
+      ]);
+
+      process.env.TRAJECTORY_CAPTURE_REQUIRES_CONSENT = "true";
+      const optIn = await read();
+      expect(optIn.effective).toContainEqual({
+        purpose: "trajectory_training",
+        granted: false,
+        basis: "default",
+        defaultGranted: false,
+      });
+      expect(await isTrajectoryCaptureAllowed(USER_ID, ORG_ID)).toBe(false);
+
+      await postConsent({
+        purpose: "trajectory_training",
+        granted: true,
+        policyVersion: "2026-09",
+      });
+      const granted = await read();
+      expect(granted.effective).toContainEqual({
+        purpose: "trajectory_training",
+        granted: true,
+        basis: "recorded",
+        defaultGranted: false,
+      });
+    },
+    PGLITE_TIMEOUT_MS,
+  );
+
+  test(
     "a failed audit write records no consent",
     async () => {
       spyOn(auditEventsSink, "emitInTransaction").mockImplementation(

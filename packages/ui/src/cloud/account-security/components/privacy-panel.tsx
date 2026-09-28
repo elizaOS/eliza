@@ -2,7 +2,8 @@
  * Privacy controls + data-subject rights, all server-authoritative:
  *   - vision / screen-capture consent (`/api/v1/me/consents`, default off)
  *   - model-call training consent (`/api/v1/me/consents`; with no recorded
- *     choice the Cloud default of capture applies, and the copy says so)
+ *     choice the server-reported deployment default applies, and the copy
+ *     says which default that is)
  *   - live-account data export (`/api/v1/me/data-export`, digest-verified)
  *   - account deletion via the Worker's lifecycle admission state
  *
@@ -57,12 +58,13 @@ export function PrivacyPanel() {
   });
 
   const loaded = consents.isSuccess;
-  const vision = consents.data?.vision_capture;
-  const trajectory = consents.data?.trajectory_training;
-  // Vision capture is opt-in. Training capture follows the Cloud default
-  // (capture) until the user records a choice; the description states this.
+  // Both switches render the policy the server enforces: the recorded choice,
+  // or the deployment default when none is recorded. Until the policy loads
+  // they stay off and disabled rather than guessing.
+  const vision = consents.data?.effective.vision_capture;
+  const trajectory = consents.data?.effective.trajectory_training;
   const visionChecked = vision?.granted ?? false;
-  const trajectoryChecked = trajectory?.granted ?? true;
+  const trajectoryChecked = trajectory?.granted ?? false;
 
   const onConsentChange = (purpose: ConsentPurpose, granted: boolean) => {
     setPendingPurpose(purpose);
@@ -119,13 +121,18 @@ export function PrivacyPanel() {
         defaultValue:
           "Eliza Cloud keeps the prompts and responses of model calls billed to your account and may use them to improve models. Turn off to opt out of that capture.",
       })}
-      {loaded && !trajectory ? (
+      {trajectory?.basis === "default" ? (
         <>
           {" "}
-          {t("cloud.privacyPanel.trainingNoChoice", {
-            defaultValue:
-              "You haven't chosen yet, so the Cloud default (on) applies.",
-          })}
+          {trajectory.defaultGranted
+            ? t("cloud.privacyPanel.trainingNoChoice", {
+                defaultValue:
+                  "You haven't chosen yet, so the Cloud default (on) applies.",
+              })
+            : t("cloud.privacyPanel.trainingNoChoiceOff", {
+                defaultValue:
+                  "You haven't chosen yet, so the Cloud default (off) applies. Nothing is captured until you turn this on.",
+              })}
         </>
       ) : null}
     </>
