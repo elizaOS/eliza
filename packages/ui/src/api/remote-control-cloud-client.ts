@@ -2,11 +2,11 @@
 import {
   RemoteControlCloudClient as HostClient,
   type RemoteControlCloudClientOptions,
-} from "@elizaos/remote-control-host/cloud-client";
+} from "@elizaos/plugin-browser/remote-control/cloud-client";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { fetchAgentTransport } from "./transport";
 
-export * from "@elizaos/remote-control-host/cloud-client";
+export * from "@elizaos/plugin-browser/remote-control/cloud-client";
 export class RemoteControlCloudClient extends HostClient {
   constructor(options: RemoteControlCloudClientOptions) {
     super({

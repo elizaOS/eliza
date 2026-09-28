@@ -1188,6 +1188,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     >("GET /api/v1/billing/application-slots/{slotKey}", options);
   }
 
+  getApiV1BillingHold<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/hold"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/billing/hold", TResponse>(
+      "GET /api/v1/billing/hold",
+      options,
+    );
+  }
+
   getApiV1BillingLedger<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/billing/ledger"> = {},
   ): Promise<TResponse> {
@@ -3749,6 +3758,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/ballots/{id}/vote", TResponse>(
       "POST /api/v1/ballots/{id}/vote",
+      options,
+    );
+  }
+
+  postApiV1BillingHold<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/billing/hold"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/billing/hold", TResponse>(
+      "POST /api/v1/billing/hold",
       options,
     );
   }
@@ -6418,6 +6436,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1BillingHoldRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/hold"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/billing/hold", options);
+  }
+
   getApiV1BillingLedgerRaw(
     options: PublicRouteCallOptions<"GET /api/v1/billing/ledger"> = {},
   ): Promise<Response> {
@@ -8312,6 +8336,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/ballots/{id}/vote">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/ballots/{id}/vote", options);
+  }
+
+  postApiV1BillingHoldRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/billing/hold"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/billing/hold", options);
   }
 
   postApiV1BillingResourcesByIdCancelRaw(

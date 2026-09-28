@@ -40,6 +40,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
+import { BillingHoldActiveError } from "@/lib/services/billing-hold";
 import {
   imageRequiresDigestPin,
   isCodingContainerImageAllowed,
@@ -365,6 +366,12 @@ app.post("/", async (c) => {
     });
     return c.json({ success: true, data: toContainerDto(container) }, 201);
   } catch (error) {
+    if (error instanceof BillingHoldActiveError) {
+      return c.json(
+        { success: false, code: error.code, error: error.message },
+        402,
+      );
+    }
     if (error instanceof QuotaExceededError) {
       const quota = {
         availability: "ready" as const,

@@ -270,7 +270,7 @@ class AssemblyTest(unittest.TestCase):
             # Input is original canonical source; expected source is deliberately
             # changed here solely to exercise the source identity comparison.
             M.assemble(build_root=self.build, runtime_deps=self.deps, gn_target="//chrome:chrome", component=self.component,
-                       overlay=self.overlay, node_archive=self.archive, native_host=Path(__file__).resolve().parents[4] / "packages/browser-bridge-extension/scripts/native-host.mjs",
+                       overlay=self.overlay, node_archive=self.archive, native_host=Path(__file__).resolve().parents[2] / "browser/scripts/native-host.mjs",
                        source_commit="d" * 40, architecture="x86_64", chromium_revision=PIN["revision"],
                        chromium_version="156.0.8072.0", output=self.output)
 

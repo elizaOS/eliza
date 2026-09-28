@@ -16,7 +16,7 @@ import {
 import { syncToAosp } from "../distro-android/sync-to-aosp.ts";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const rootUrl = new URL("../../../browser-bridge-extension/", import.meta.url);
+const rootUrl = new URL("../../browser/", import.meta.url);
 const reviewed = JSON.parse(
   fs.readFileSync(new URL("scripts/chromium/upstream.json", rootUrl), "utf8"),
 );

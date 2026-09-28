@@ -2,6 +2,8 @@
 export type ElizaSecureStoreKey =
   | "session.device_auth"
   | "session.steward_token"
+  /** Native Cloud mobile credential held inactive until the server ACK. */
+  | "session.cloud_mobile_pending"
   | "runtime.active_server"
   | "runtime.agent_profiles";
 

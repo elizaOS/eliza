@@ -14,7 +14,7 @@ export async function buildPluginSql(
   );
   await rm(`${root}src/dist`, { recursive: true, force: true });
   await build({
-    entry: { index: `${root}src/index.ts` },
+    entry: { index: `${root}src/index.ts`, schema: `${root}src/schema.ts` },
     outDir: `${root}dist`,
     tsconfig: `${root}tsconfig.build.json`,
     platform: "node",

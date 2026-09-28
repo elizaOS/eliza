@@ -5,8 +5,8 @@ import {
   secretsManagerPlugin,
 } from "@elizaos/plugin-assistant";
 import { browserPlugin } from "@elizaos/plugin-browser";
+import { restoreRemoteBrowserController } from "@elizaos/plugin-browser/remote-controller";
 import { webSearchPlugin } from "@elizaos/plugin-web-search";
-import { restoreRemoteBrowserController } from "@elizaos/remote-control-host";
 
 export function managedBrowserPlugins(encryptionConfigured: boolean): Plugin[] {
   return [

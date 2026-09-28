@@ -6290,6 +6290,7 @@
   "bootstrapstep.errorNoToken": "No token provided. Paste the token from your Eliza Cloud dashboard.",
   "bootstrapstep.errorInvalidToken": "Token invalid, expired, or already used. Bootstrap tokens are single-use — rotate from your Eliza Cloud dashboard to get a new one.",
   "bootstrapstep.errorNetwork": "Network error — check your connection and try again.",
+  "bootstrapstep.errorStorage": "The session could not be saved. Check device storage access, then get a new bootstrap token from your Cloud dashboard.",
   "bootstrapstep.formLabel": "Bootstrap token entry",
   "bootstrapstep.title": "Finish setting up your container",
   "bootstrapstep.description": "Paste the bootstrap token from your Eliza Cloud dashboard to activate this container.",
@@ -8760,5 +8761,12 @@
   "chat.personalFallback.retainedUntil": "Your Dedicated Eliza is kept until {{date}}.",
   "chat.personalFallback.retry": "Try again",
   "chat.personalFallback.reconciling": "Your Dedicated Eliza is restoring your recent conversation. This usually takes a few seconds.",
-  "chat.personalFallback.fallbackPending": "Your Eliza is switching to Shared. This usually takes a few seconds."
+  "chat.personalFallback.fallbackPending": "Your Eliza is switching to Shared. This usually takes a few seconds.",
+  "cloud.billingHold.title": "Paid usage is on hold",
+  "cloud.billingHold.owed": "A refunded or disputed payment left ${{amount}} unpaid. Inference, new agents and containers stay paused until it is repaid. Running resources keep their current funding.",
+  "cloud.billingHold.support": "A reversed payment is under review. Contact support to restore paid usage.",
+  "cloud.billingHold.pay": "Pay ${{amount}}",
+  "cloud.billingHold.applyBalance": "Apply current balance",
+  "cloud.billingHold.applyFailed": "Could not apply your balance. Try again.",
+  "cloud.billingHold.cleared": "Paid usage restored."
 }

@@ -1,23 +1,16 @@
 /** Shared runtime formatting, identity and structured text utilities. */
 
-import { createHash } from "node:crypto";
 import { ElizaError } from "./errors";
 import logger from "./logger";
 import { renderStoredEnvelopesForPrompt } from "./security/external-content";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
 import type { ModelRegistrationMetadata } from "./types/model";
-import {
-	type Content,
-	ContentType,
-	type JsonValue,
-	type UUID,
-} from "./types/primitives";
+import { type Content, ContentType, type JsonValue } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
-import { uuidFromString } from "./utils/uuid.js";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
@@ -739,14 +732,8 @@ export function parseBooleanFromText(
 	return false;
 }
 
+export { stringToUuid } from "./utils/string-to-uuid.js";
 export { validateUuid } from "./utils/uuid.js";
-
-/** Returns the persisted deterministic identity using the Node SHA-1 implementation. */
-export function stringToUuid(target: string | number): UUID {
-	return uuidFromString(target, (input) =>
-		createHash("sha1").update(input).digest(),
-	);
-}
 
 export const getContentTypeFromMimeType = (
 	mimeType: string,

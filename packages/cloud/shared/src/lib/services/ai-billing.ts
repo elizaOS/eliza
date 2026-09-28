@@ -33,6 +33,7 @@ import {
   reserveSubscriptionFundedCredits,
   subscriptionFundingOperationKey,
 } from "./allowance-first-credits";
+import { billingHoldService } from "./billing-hold";
 import {
   COST_BUFFER,
   type CreditReconciliationResult,
@@ -383,6 +384,8 @@ export async function reserveCredits(
   estimatedOutputTokens: number = 500,
   selection?: SubscriptionFundingSelection,
 ): Promise<CreditReservation> {
+  // New paid spend fails closed while a payment-reversal hold is active (#22930).
+  await billingHoldService.assertNoHold(context.organizationId);
   const provider = context.provider ?? getProviderFromModel(context.model);
   const normalizedModel = normalizeModelName(context.model);
   const affiliate = await resolveBillableAffiliate(context);
@@ -447,6 +450,7 @@ export async function reserveFlatUsageCredits(
   if (!preAffiliateCost.isFinite() || !preAffiliateCost.gt(0)) {
     throw new Error("Flat billing reservation cost must be positive and finite");
   }
+  await billingHoldService.assertNoHold(context.organizationId);
   const affiliate = await resolveBillableAffiliate(context);
   const affiliatePayoutSourceId = affiliate ? getAffiliatePayoutSourceId(context) : null;
   const reservedAmount = preAffiliateCost
