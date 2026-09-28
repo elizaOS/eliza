@@ -54,6 +54,46 @@ export function calculateDailyContainerCost(config?: {
   return Math.round(totalCost * 100) / 100; // Round to 2 decimal places
 }
 
+/**
+ * Canonical storage price catalogue (#22956, ratified by the owner as the
+ * current prices). Every storage charge and every storage price shown to a
+ * customer or operator reads these values; `service_pricing` rows for the
+ * `storage` service are a read-only mirror kept in sync by migration 0496 and
+ * cannot be edited through the admin pricing API.
+ *
+ * Values are exact decimal USD strings so no binary float can drift a price.
+ * PUT is billed as `put + put_per_byte × bytes`; every other operation is a
+ * flat per-request price. DELETE is free. Stored bytes count toward the one
+ * organization storage quota (plan `storageGiB`); there is no per-GB fee.
+ */
+export const STORAGE_PRICING = Object.freeze({
+  put: "0.0001",
+  put_per_byte: "0.000000001",
+  get: "0.00005",
+  head: "0.00005",
+  list: "0.00005",
+  presign: "0.00005",
+  delete: "0",
+} as const);
+
+export type StoragePricedOperation = keyof typeof STORAGE_PRICING;
+
+export const STORAGE_PRICED_OPERATIONS = Object.freeze(
+  Object.keys(STORAGE_PRICING) as StoragePricedOperation[],
+);
+
+/** Exact catalogue price for one storage operation, in USD. */
+export function storageOperationPriceUsd(operation: StoragePricedOperation): number {
+  const price = STORAGE_PRICING[operation];
+  if (price === undefined) {
+    throw new ElizaError("Unknown storage operation", {
+      code: "UNKNOWN_STORAGE_OPERATION",
+      context: { operation },
+    });
+  }
+  return Number(price);
+}
+
 export const CONTAINER_LIMITS = {
   // Free tier
   FREE_TIER_CONTAINERS: 1,

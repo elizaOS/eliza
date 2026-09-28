@@ -3291,6 +3291,13 @@
       "when": 1796083200117,
       "tag": "0495_agent_backup_restore_serving_state",
       "breakpoints": true
+    },
+    {
+      "idx": 470,
+      "version": "7",
+      "when": 1796083200118,
+      "tag": "0496_storage_pricing_catalogue_mirror",
+      "breakpoints": true
     }
   ]
 }
