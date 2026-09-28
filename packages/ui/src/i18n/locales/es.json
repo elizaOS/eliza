@@ -7283,5 +7283,19 @@
   "desktop.tray.hideWindow": "Ocultar ventana",
   "desktop.tray.quit": "Salir",
   "desktop.tray.testNotification.title": "Escritorio",
-  "desktop.tray.testNotification.body": "Las acciones de la bandeja del renderizador están conectadas y responden."
+  "desktop.tray.testNotification.body": "Las acciones de la bandeja del renderizador están conectadas y responden.",
+  "chat.personalRoute.retryNotice": "Tu Eliza está cambiando de entorno. Tu mensaje volvió al editor; envíalo de nuevo en un momento.",
+  "chat.personalRoute.switchedNotice": "Esta conversación ahora está en tu Eliza Dedicada. Tu mensaje volvió al editor; envíalo de nuevo.",
+  "chat.personalRoute.switchFailedNotice": "Esta conversación pasó a tu Eliza Dedicada, pero la app no pudo conectarse. Tu mensaje volvió al editor; inténtalo de nuevo.",
+  "chat.personalFallback.reason.billingSuspended": "Tu Eliza Dedicada está en pausa porque tu cuenta se quedó sin créditos.",
+  "chat.personalFallback.reason.paymentFailed": "Tu Eliza Dedicada está en pausa porque falló un pago de la suscripción.",
+  "chat.personalFallback.reason.subscriptionEnded": "Tu Eliza Dedicada está en pausa porque tu suscripción terminó.",
+  "chat.personalFallback.recoveryPending": "La facturación se restableció y tu Eliza Dedicada se está reiniciando. Eliza Compartida seguirá respondiendo hasta que vuelva.",
+  "chat.personalFallback.addCredits": "Añadir créditos",
+  "chat.personalFallback.restoreSubscription": "Restaurar suscripción",
+  "chat.personalFallback.sharedActive": "Estás chateando con Eliza Compartida. La memoria de tu Eliza Dedicada no estará disponible hasta que se restablezca la facturación.",
+  "chat.personalFallback.retainedUntil": "Tu Eliza Dedicada se conserva hasta el {{date}}.",
+  "chat.personalFallback.retry": "Reintentar",
+  "chat.personalFallback.reconciling": "Tu Eliza Dedicada está restaurando tu conversación reciente. Suele tardar unos segundos.",
+  "chat.personalFallback.fallbackPending": "Tu Eliza está cambiando a Compartida. Suele tardar unos segundos."
 }

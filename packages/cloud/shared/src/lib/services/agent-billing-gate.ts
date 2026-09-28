@@ -5,10 +5,10 @@
  * allowing agent creation, provisioning, or resume.
  */
 
-import { listActivePaymentReversalHolds } from "../../db/repositories/payment-reversal-holds";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { readAgentFundingAccount } from "./agent-funding-account";
+import { BillingHoldActiveError, billingHoldService } from "./billing-hold";
 import {
   readWelcomeBonusWithheldSettings,
   type SignupGrantWithheldReason,
@@ -18,8 +18,10 @@ export interface CreditGateResult {
   allowed: boolean;
   balance: number;
   error?: string;
-  /** Set when a final payment reversal (lost chargeback) holds paid admission (#22930). */
+  /** Set when an underfunding payment reversal holds paid admission (#22930). */
   paymentReversalHold?: true;
+  /** USD still owed on the reversal shortfall while {@link paymentReversalHold} is set. */
+  paymentReversalOutstandingUsd?: string;
   /**
    * Set only for organizations carrying historical welcome-credit withholding
    * metadata. New accounts start at zero and never write this legacy state.
@@ -108,17 +110,16 @@ async function runCreditGate(
       parseGateCreditBalance(org.eligible_subscription_allowance);
     if (!Number.isFinite(balance)) throw new CorruptCreditBalanceError(balance);
 
-    // A lost chargeback is a final payment reversal. Balance alone cannot
-    // re-establish trust in the account, so paid admission fails closed until
-    // an explicit, audited release (#22930).
-    const reversalHolds = await listActivePaymentReversalHolds(organizationId);
-    if (reversalHolds.length > 0) {
+    // An underfunding refund or dispute holds paid admission regardless of
+    // subscription allowance until repayment or reinstatement clears it (#22930).
+    const hold = await billingHoldService.getState(organizationId);
+    if (hold.status === "held") {
       return {
         allowed: false,
         balance,
         paymentReversalHold: true,
-        error:
-          "This account has an unresolved reversed payment (a lost chargeback). Contact support to restore paid agent operations.",
+        paymentReversalOutstandingUsd: hold.outstandingUsd,
+        error: new BillingHoldActiveError(organizationId, hold.outstandingUsd).message,
       };
     }
 

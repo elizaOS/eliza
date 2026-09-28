@@ -7265,5 +7265,19 @@
   "desktop.tray.hideWindow": "Ẩn cửa sổ",
   "desktop.tray.quit": "Thoát",
   "desktop.tray.testNotification.title": "Máy tính để bàn",
-  "desktop.tray.testNotification.body": "Hành động khay renderer đã được kết nối và đang phản hồi."
+  "desktop.tray.testNotification.body": "Hành động khay renderer đã được kết nối và đang phản hồi.",
+  "chat.personalRoute.retryNotice": "Eliza của bạn đang chuyển môi trường chạy. Tin nhắn đã được đưa lại vào ô soạn; hãy gửi lại sau giây lát.",
+  "chat.personalRoute.switchedNotice": "Cuộc trò chuyện này giờ ở Eliza Riêng của bạn. Tin nhắn đã được đưa lại vào ô soạn; hãy gửi lại.",
+  "chat.personalRoute.switchFailedNotice": "Cuộc trò chuyện này đã chuyển sang Eliza Riêng của bạn, nhưng ứng dụng không kết nối được. Tin nhắn đã được đưa lại vào ô soạn; hãy thử lại.",
+  "chat.personalFallback.reason.billingSuspended": "Eliza Riêng của bạn đang tạm dừng vì tài khoản đã hết tín dụng.",
+  "chat.personalFallback.reason.paymentFailed": "Eliza Riêng của bạn đang tạm dừng vì một khoản thanh toán gói đăng ký không thành công.",
+  "chat.personalFallback.reason.subscriptionEnded": "Eliza Riêng của bạn đang tạm dừng vì gói đăng ký đã kết thúc.",
+  "chat.personalFallback.recoveryPending": "Thanh toán đã được khôi phục và Eliza Riêng đang khởi động lại. Eliza Dùng chung sẽ tiếp tục trả lời cho đến khi nó quay lại.",
+  "chat.personalFallback.addCredits": "Nạp tín dụng",
+  "chat.personalFallback.restoreSubscription": "Khôi phục gói đăng ký",
+  "chat.personalFallback.sharedActive": "Bạn đang trò chuyện với Eliza Dùng chung. Bộ nhớ của Eliza Riêng sẽ không khả dụng cho đến khi thanh toán được khôi phục.",
+  "chat.personalFallback.retainedUntil": "Eliza Riêng của bạn được giữ đến {{date}}.",
+  "chat.personalFallback.retry": "Thử lại",
+  "chat.personalFallback.reconciling": "Eliza Riêng đang khôi phục cuộc trò chuyện gần đây của bạn. Thường chỉ mất vài giây.",
+  "chat.personalFallback.fallbackPending": "Eliza của bạn đang chuyển sang Dùng chung. Thường chỉ mất vài giây."
 }

@@ -28,7 +28,52 @@ export interface PersonalSharedFallbackAccountState {
   recoveryAction: {
     kind: "restore_subscription" | "add_credits";
     path: "/cloud/billing";
+    /**
+     * Signed, expiring link that resolves to `/cloud/billing` with the
+     * organization context. It carries no payment details and grants nothing:
+     * the billing page still requires the signed-in owner.
+     */
+    link?: PersonalFallbackRecoveryLink;
   };
+}
+
+export interface PersonalFallbackRecoveryLink {
+  url: string;
+  expiresAt: string;
+}
+
+/** Path of the signed recovery link resolver; the token is the final segment. */
+export const PERSONAL_FALLBACK_RECOVERY_LINK_PATH = "/api/v1/eliza/personal/recovery/";
+
+const RECOVERY_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+/** True for an absolute recovery-resolver URL with a compact JWS token and nothing else. */
+export function isPersonalFallbackRecoveryLinkUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 2_048) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    // error-policy:J3 untrusted boundary value — an unparseable URL is invalid.
+    return false;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  if (url.username || url.password || url.search || url.hash) return false;
+  if (!url.pathname.startsWith(PERSONAL_FALLBACK_RECOVERY_LINK_PATH)) return false;
+  return RECOVERY_TOKEN.test(url.pathname.slice(PERSONAL_FALLBACK_RECOVERY_LINK_PATH.length));
+}
+
+function parseRecoveryLink(value: unknown): PersonalFallbackRecoveryLink | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const link = value as Record<string, unknown>;
+  if (
+    Object.keys(link).length !== 2 ||
+    !isPersonalFallbackRecoveryLinkUrl(link.url) ||
+    !isIsoTimestamp(link.expiresAt)
+  ) {
+    return null;
+  }
+  return { url: link.url, expiresAt: link.expiresAt };
 }
 
 export const PERSONAL_FALLBACK_ACCOUNT_PROVIDER = "PERSONAL_FALLBACK_ACCOUNT_STATE";
@@ -61,11 +106,13 @@ export function parsePersonalSharedFallbackAccountState(
     typeof action !== "object" ||
     (action.kind !== "restore_subscription" && action.kind !== "add_credits") ||
     action.path !== "/cloud/billing" ||
-    Object.keys(action).length !== 2 ||
+    Object.keys(action).length !== ("link" in action ? 3 : 2) ||
     Object.keys(input).length !== 7
   ) {
     return null;
   }
+  const link = "link" in action ? parseRecoveryLink(action.link) : undefined;
+  if (link === null) return null;
   return {
     access: "shared_fallback",
     state: input.state as PersonalSharedFallbackAccountState["state"],
@@ -76,6 +123,7 @@ export function parsePersonalSharedFallbackAccountState(
     recoveryAction: {
       kind: action.kind as PersonalSharedFallbackAccountState["recoveryAction"]["kind"],
       path: "/cloud/billing",
+      ...(link ? { link } : {}),
     },
   };
 }
@@ -103,6 +151,11 @@ export function formatPersonalSharedFallbackAccountContext(
     state.recoveryAction.kind === "restore_subscription"
       ? "- To restore Dedicated access, the signed-in account owner can update payment or renew the plan at /cloud/billing."
       : "- To restore Dedicated access, the signed-in account owner can add credits at /cloud/billing.",
+    ...(state.recoveryAction.link
+      ? [
+          `- Pay action link (opens billing after sign-in; expires ${state.recoveryAction.link.expiresAt}): ${state.recoveryAction.link.url}. Share it only with this account owner in this conversation.`,
+        ]
+      : []),
     "- Free Shared capabilities listed above remain available. Never mention card details or payment provider data.",
   ];
   return lines.join("\n");

@@ -73,7 +73,10 @@ import {
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
-import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
+import {
+  clearSsoLoggedOut,
+  isSsoLoggedOut,
+} from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
@@ -636,6 +639,7 @@ export default function StewardLoginSection() {
   }, [stewardApiUrl]);
 
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -658,6 +662,13 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Client-side validation belongs to the field that failed: it renders next
+  // to that field, is linked through aria-describedby, and moves focus there
+  // instead of landing below every other provider (#27241).
+  const [fieldError, setFieldError] = useState<{
+    field: "phone" | "email";
+    message: string;
+  } | null>(null);
   const [accountSwitchError, setAccountSwitchError] = useState<string | null>(
     null,
   );
@@ -1093,6 +1104,11 @@ export default function StewardLoginSection() {
         }
 
         if (hasStewardAuthedCookie()) {
+          // An explicit sign-out on this origin stays signed out until the
+          // next explicit sign-in. A refresh cookie that survived it (a
+          // session clear raced the sign-out navigation) must not silently
+          // restore the ended account and send the user back to /join.
+          if (isSsoLoggedOut()) return;
           const refreshed = await recoverStewardSessionViaCookie();
           if (cancelled) return;
           if (refreshed?.token) {
@@ -1442,9 +1458,12 @@ export default function StewardLoginSection() {
       return false;
     }
     if (!email.trim()) {
-      setError("Enter your email first");
+      setError(null);
+      setFieldError({ field: "email", message: "Enter your email first" });
+      emailInputRef.current?.focus();
       return false;
     }
+    setFieldError(null);
     return true;
   }
 
@@ -1572,11 +1591,14 @@ export default function StewardLoginSection() {
 
   async function handleEmail() {
     if (!email.trim()) {
-      setError("Enter your email");
+      setError(null);
+      setFieldError({ field: "email", message: "Enter your email" });
+      emailInputRef.current?.focus();
       return;
     }
     setLoading("email");
     setError(null);
+    setFieldError(null);
     setPasskeyEmailGrant(null);
     setShowPasskeyEnrollmentRecovery(false);
     try {
@@ -1607,18 +1629,22 @@ export default function StewardLoginSection() {
       const selectedCountry = PHONE_COUNTRY_OPTIONS.find(
         (option) => option.code === phoneCountry,
       );
-      setError(
-        t("cloud.login.error.invalidPhone", {
+      setError(null);
+      setFieldError({
+        field: "phone",
+        message: t("cloud.login.error.invalidPhone", {
           defaultValue:
             "Enter a valid phone number for {{country}}, or include + and the country code.",
           country: selectedCountry?.name ?? phoneCountry,
         }),
-      );
+      });
+      phoneInputRef.current?.focus();
       return;
     }
 
     setLoading("sms");
     setError(null);
+    setFieldError(null);
     try {
       await auth.sendSmsOtp(normalizedPhone);
       setPhone(normalizedPhone);
@@ -2040,7 +2066,7 @@ export default function StewardLoginSection() {
               )
             }
           >
-            {t("cloud.emailCallback.continue", { defaultValue: "Continue" })}
+            {t("common.continue", { defaultValue: "Continue" })}
           </Button>
         </div>
       </ReservedLoginFrame>
@@ -2570,7 +2596,14 @@ export default function StewardLoginSection() {
               <Input
                 variant="embeddedSearch"
                 density="relaxed"
+                ref={phoneInputRef}
                 id="steward-login-phone"
+                aria-invalid={fieldError?.field === "phone" || undefined}
+                aria-describedby={
+                  fieldError?.field === "phone"
+                    ? "steward-login-phone-error"
+                    : undefined
+                }
                 type="tel"
                 name="phone"
                 inputMode="tel"
@@ -2579,7 +2612,10 @@ export default function StewardLoginSection() {
                   defaultValue: "Phone number",
                 })}
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
+                onChange={(event) => {
+                  setPhone(event.target.value);
+                  if (fieldError?.field === "phone") setFieldError(null);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") handleSendSms();
                 }}
@@ -2587,6 +2623,15 @@ export default function StewardLoginSection() {
                 className="hosted-signin-focus-emphasis flex-1"
               />
             </div>
+            {fieldError?.field === "phone" ? (
+              <p
+                id="steward-login-phone-error"
+                role="alert"
+                className="text-center text-sm text-destructive"
+              >
+                {fieldError.message}
+              </p>
+            ) : null}
           </div>
           <Button
             variant="default"
@@ -2626,6 +2671,12 @@ export default function StewardLoginSection() {
           density="relaxed"
           ref={emailInputRef}
           id="steward-login-email"
+          aria-invalid={fieldError?.field === "email" || undefined}
+          aria-describedby={
+            fieldError?.field === "email"
+              ? "steward-login-email-error"
+              : undefined
+          }
           type="email"
           name="email"
           placeholder={t("cloud.login.emailPlaceholder", {
@@ -2634,6 +2685,7 @@ export default function StewardLoginSection() {
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
+            if (fieldError?.field === "email") setFieldError(null);
             setPasskeyEmailGrant(null);
             setShowPasskeyEnrollmentRecovery(false);
           }}
@@ -2656,6 +2708,15 @@ export default function StewardLoginSection() {
           // Port of Steward PR #690.
           autoComplete="email"
         />
+        {fieldError?.field === "email" ? (
+          <p
+            id="steward-login-email-error"
+            role="alert"
+            className="text-center text-sm text-destructive"
+          >
+            {fieldError.message}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex gap-2">

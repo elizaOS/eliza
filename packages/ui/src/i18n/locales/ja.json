@@ -7272,5 +7272,19 @@
   "desktop.tray.hideWindow": "ウィンドウを非表示",
   "desktop.tray.quit": "終了",
   "desktop.tray.testNotification.title": "デスクトップ",
-  "desktop.tray.testNotification.body": "レンダラーのトレイアクションが正常に機能しています。"
+  "desktop.tray.testNotification.body": "レンダラーのトレイアクションが正常に機能しています。",
+  "chat.personalRoute.retryNotice": "Eliza の実行環境を切り替えています。メッセージは入力欄に戻しました。少し待ってから再送信してください。",
+  "chat.personalRoute.switchedNotice": "この会話は専用 Eliza に移りました。メッセージは入力欄に戻しました。もう一度送信してください。",
+  "chat.personalRoute.switchFailedNotice": "この会話は専用 Eliza に移りましたが、アプリが接続できませんでした。メッセージは入力欄に戻しました。もう一度お試しください。",
+  "chat.personalFallback.reason.billingSuspended": "アカウントのクレジットがなくなったため、専用 Eliza は一時停止しています。",
+  "chat.personalFallback.reason.paymentFailed": "サブスクリプションの支払いに失敗したため、専用 Eliza は一時停止しています。",
+  "chat.personalFallback.reason.subscriptionEnded": "サブスクリプションが終了したため、専用 Eliza は一時停止しています。",
+  "chat.personalFallback.recoveryPending": "支払いが回復し、専用 Eliza を再起動しています。戻るまでは共有 Eliza が応答します。",
+  "chat.personalFallback.addCredits": "クレジットを追加",
+  "chat.personalFallback.restoreSubscription": "サブスクリプションを再開",
+  "chat.personalFallback.sharedActive": "現在は共有 Eliza とチャットしています。支払いが回復するまで専用 Eliza のメモリは利用できません。",
+  "chat.personalFallback.retainedUntil": "専用 Eliza は {{date}} まで保持されます。",
+  "chat.personalFallback.retry": "再試行",
+  "chat.personalFallback.reconciling": "専用 Eliza が最近の会話を復元しています。通常は数秒で完了します。",
+  "chat.personalFallback.fallbackPending": "Eliza を共有に切り替えています。通常は数秒で完了します。"
 }

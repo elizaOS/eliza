@@ -7272,5 +7272,19 @@
   "desktop.tray.hideWindow": "隐藏窗口",
   "desktop.tray.quit": "退出",
   "desktop.tray.testNotification.title": "桌面",
-  "desktop.tray.testNotification.body": "渲染器托盘操作已连接并正常响应。"
+  "desktop.tray.testNotification.body": "渲染器托盘操作已连接并正常响应。",
+  "chat.personalRoute.retryNotice": "你的 Eliza 正在切换运行环境。消息已放回输入框，请稍后再发送。",
+  "chat.personalRoute.switchedNotice": "此对话现已转到你的专属 Eliza。消息已放回输入框，请重新发送。",
+  "chat.personalRoute.switchFailedNotice": "此对话已转到你的专属 Eliza，但应用无法连接。消息已放回输入框，请重试。",
+  "chat.personalFallback.reason.billingSuspended": "你的账户额度已用完，专属 Eliza 已暂停。",
+  "chat.personalFallback.reason.paymentFailed": "订阅付款失败，专属 Eliza 已暂停。",
+  "chat.personalFallback.reason.subscriptionEnded": "你的订阅已结束，专属 Eliza 已暂停。",
+  "chat.personalFallback.recoveryPending": "账单已恢复，专属 Eliza 正在重启。在它恢复之前由共享 Eliza 继续回复。",
+  "chat.personalFallback.addCredits": "添加额度",
+  "chat.personalFallback.restoreSubscription": "恢复订阅",
+  "chat.personalFallback.sharedActive": "你正在与共享 Eliza 聊天。在账单恢复之前，专属 Eliza 的记忆不可用。",
+  "chat.personalFallback.retainedUntil": "你的专属 Eliza 将保留至 {{date}}。",
+  "chat.personalFallback.retry": "重试",
+  "chat.personalFallback.reconciling": "你的专属 Eliza 正在恢复最近的对话，通常只需几秒钟。",
+  "chat.personalFallback.fallbackPending": "你的 Eliza 正在切换到共享模式，通常只需几秒钟。"
 }

@@ -207,6 +207,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/billing/application-slots/{slotKey}": {
     slotKey: string | number;
   };
+  "GET /api/v1/billing/hold": Record<never, never>;
   "GET /api/v1/billing/ledger": Record<never, never>;
   "GET /api/v1/billing/limits": Record<never, never>;
   "GET /api/v1/billing/resources/{id}/cancel": { id: string | number };
@@ -623,6 +624,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/ballots/{id}/distribute": { id: string | number };
   "POST /api/v1/ballots/{id}/tally": { id: string | number };
   "POST /api/v1/ballots/{id}/vote": { id: string | number };
+  "POST /api/v1/billing/hold": Record<never, never>;
   "POST /api/v1/billing/resources/{id}/cancel": { id: string | number };
   "POST /api/v1/blooio/connect": Record<never, never>;
   "POST /api/v1/blooio/disconnect": Record<never, never>;
@@ -1044,6 +1046,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/ballots/{id}": never;
   "GET /api/v1/billing/active": never;
   "GET /api/v1/billing/application-slots/{slotKey}": never;
+  "GET /api/v1/billing/hold": never;
   "GET /api/v1/billing/ledger": never;
   "GET /api/v1/billing/limits": never;
   "GET /api/v1/billing/resources/{id}/cancel": never;
@@ -1336,6 +1339,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/ballots/{id}/distribute": never;
   "POST /api/v1/ballots/{id}/tally": never;
   "POST /api/v1/ballots/{id}/vote": never;
+  "POST /api/v1/billing/hold": never;
   "POST /api/v1/billing/resources/{id}/cancel": never;
   "POST /api/v1/blooio/connect": never;
   "POST /api/v1/blooio/disconnect": never;
