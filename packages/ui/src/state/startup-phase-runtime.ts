@@ -149,21 +149,38 @@ async function hydrateReadyAgentStatus(
 }
 
 /**
- * Reads the remote backend's reported runtime state. `null` means the status
- * endpoint did not establish readiness; the caller enters the bounded
- * readiness loop so an unavailable backend cannot present a ready UI.
+ * The remote backend's answer to the startup status probe. Only an explicit
+ * `running` state or an endpoint the backend does not expose (HTTP 404) keeps
+ * the immediate-ready path; every other outcome, including a failed probe,
+ * must be proven ready by the bounded readiness loop.
  */
-async function readRemoteRuntimeState(): Promise<string | null> {
-  try {
-    const status = await client.getStatus();
-    return typeof status?.state === "string" ? status.state : null;
-  } catch (err) {
-    // error-policy:J4 an unavailable probe enters the bounded readiness loop.
-    logger.warn(
-      `[eliza][startup:init] remote backend status probe failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
+type RemoteRuntimeState =
+  | { kind: "reported"; state: string }
+  | { kind: "unsupported" }
+  | { kind: "unavailable" };
+
+async function readRemoteRuntimeState(): Promise<RemoteRuntimeState> {
+  const probe = await runStartupProbe(() => client.getStatus(), {
+    unsupportedStatuses: [404],
+  });
+  if (probe.kind === "ok") {
+    return typeof probe.value?.state === "string"
+      ? { kind: "reported", state: probe.value.state }
+      : { kind: "unavailable" };
   }
+  const detail =
+    probe.error instanceof Error ? probe.error.message : String(probe.error);
+  if (probe.kind === "unsupported") {
+    logger.info(
+      `[eliza][startup:init] remote backend does not expose a status endpoint: ${detail}`,
+    );
+    return { kind: "unsupported" };
+  }
+  // error-policy:J4 an unavailable probe enters the bounded readiness loop.
+  logger.warn(
+    `[eliza][startup:init] remote backend status probe failed: ${detail}`,
+  );
+  return { kind: "unavailable" };
 }
 
 /**
@@ -342,8 +359,9 @@ export async function runStartingRuntime(
     }
 
     // Self-hosted remote backend (or a cloud-managed target with no persisted
-    // cloud record): an already-running remote agent advances straight to
-    // hydration. A remote-backend whose runtime reports it has not booted
+    // cloud record): an already-running remote agent, or one that does not
+    // expose a status endpoint (404), advances straight to hydration. A
+    // failed status probe proves nothing and waits below. A remote-backend whose runtime reports it has not booted
     // (for example the desktop shell's own embedded API with its boot
     // deferred until onboarding commits, reached through a restored loopback
     // record) is not ready: fall through to the agent-readiness loop below,
@@ -352,9 +370,12 @@ export async function runStartingRuntime(
     if (target === "remote-backend") {
       const runtimeState = await readRemoteRuntimeState();
       if (cancelled.current || effectRunRef.current !== effectRunId) return;
-      if (runtimeState !== "running") {
+      if (
+        runtimeState.kind === "unavailable" ||
+        (runtimeState.kind === "reported" && runtimeState.state !== "running")
+      ) {
         logger.info(
-          `[eliza][startup:init] remote backend runtime is ${runtimeState}; waiting for it to run before declaring ready`,
+          `[eliza][startup:init] remote backend runtime is ${runtimeState.kind === "reported" ? runtimeState.state : "unavailable"}; waiting for it to run before declaring ready`,
         );
         return runStartingRuntime(
           deps,

@@ -326,9 +326,27 @@ describe("desktop embedded first-run startup gating (#30744)", () => {
 
       const events = await runRemoteRuntime(deps);
 
-      expect(clientMock.getLaunchProgress).toHaveBeenCalled();
+      expect(clientMock.getStatus).toHaveBeenCalledTimes(2);
       expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
       expect(deps.setAgentStatus).toHaveBeenCalledWith({ state: "running" });
+    });
+
+    it("keeps the ready path for a backend without a status endpoint", async () => {
+      clientMock.getStatus.mockRejectedValue(
+        Object.assign(new Error("Not Found"), {
+          kind: "http",
+          status: 404,
+          path: "/api/status",
+        }),
+      );
+      const deps = createRuntimeDeps();
+
+      const events = await runRemoteRuntime(deps);
+
+      expect(clientMock.getLaunchProgress).not.toHaveBeenCalled();
+      expect(clientMock.startAgent).not.toHaveBeenCalled();
+      expect(deps.setConnected).toHaveBeenCalledWith(true);
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
     });
 
     it("times out an unavailable remote backend without presenting ready", async () => {
