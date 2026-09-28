@@ -1147,6 +1147,36 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [activeConversationIdRef, conversationMessagesRef],
   );
+  // Startup/recovery hydration fetches history outside the newest-load fence,
+  // so its snapshot may lag a send that is still warming or has just received
+  // its receipts. Merge that snapshot with the owned overlay exactly like a
+  // cache paint: server rows win for older history, exact ids dedupe, and the
+  // unfenced response can never retire the registered local turn.
+  const reconcileRestoredConversationMessages = useCallback(
+    (
+      conversationId: string,
+      serverMessages: ConversationMessage[],
+    ): ConversationMessage[] => {
+      if (visibleConversationMessagesOwnerRef.current !== conversationId) {
+        return serverMessages;
+      }
+      captureVisibleConversationMessageOverlay(conversationId);
+      const overlay = conversationMessageOverlayRef.current.get(conversationId);
+      const ownsVisibleContent =
+        visibleConversationMessagesContentOwnerRef.current === conversationId;
+      return reconcileConversationMessagesWithOverlay(serverMessages, overlay, {
+        ...(ownsVisibleContent
+          ? { localContext: conversationMessagesRef.current }
+          : {}),
+        allowTextFallback:
+          ownsVisibleContent &&
+          canonicalNewestConversationMessageContentOwnerRef.current ===
+            conversationId &&
+          !textFallbackBlockedConversationIdsRef.current.has(conversationId),
+      });
+    },
+    [captureVisibleConversationMessageOverlay, conversationMessagesRef],
+  );
   const applyConversationMessageStream = useCallback(
     (
       conversationId: string,
@@ -2103,6 +2133,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    reconcileRestoredConversationMessages,
     getConversationMessagesSnapshot,
     applyConversationMessageStream,
     applyConversationMessageOverlayModification,

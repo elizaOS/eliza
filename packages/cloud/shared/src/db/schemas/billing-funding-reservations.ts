@@ -85,7 +85,7 @@ export const billingFundingReservations = pgTable(
     ),
     amount_check: check(
       "billing_funding_reservations_amount_check",
-      sql`${table.requested_amount} > 0 AND ${table.reserved_amount} = ${table.requested_amount}`,
+      sql`${table.reserved_amount} = ${table.requested_amount} AND (${table.requested_amount} > 0 OR (${table.requested_amount} = 0 AND ${table.status} = 'finalized'))`,
     ),
     uncollected_overage_check: check(
       "billing_funding_reservations_uncollected_overage_check",

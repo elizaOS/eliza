@@ -103,8 +103,8 @@ export interface InferenceAuthTimings {
   readonly extractMs: number;
   readonly cacheAvailabilityMs: number | null;
   readonly cacheReadMs: number | null;
-  readonly keyLookupMs: number | null;
-  readonly userOrgLookupMs: number | null;
+  /** Combined key/user/organization primary statement. */
+  readonly identityLookupMs: number | null;
   readonly moderationMs: number | null;
   readonly cacheWriteMs: number | null;
   readonly totalMs: number;
@@ -165,8 +165,7 @@ interface MutableInferenceAuthTrace {
     extractMs: number;
     cacheAvailabilityMs: number | null;
     cacheReadMs: number | null;
-    keyLookupMs: number | null;
-    userOrgLookupMs: number | null;
+    identityLookupMs: number | null;
     moderationMs: number | null;
     cacheWriteMs: number | null;
   };
@@ -702,8 +701,7 @@ export async function resolveInferenceAuthContext(
       extractMs: 0,
       cacheAvailabilityMs: null,
       cacheReadMs: null,
-      keyLookupMs: null,
-      userOrgLookupMs: null,
+      identityLookupMs: null,
       moderationMs: null,
       cacheWriteMs: null,
     },
@@ -939,8 +937,7 @@ export async function resolveInferenceAuthContext(
         );
         if (continued) {
           const authoritative = hydration.authoritativeTelemetry();
-          trace.timings.keyLookupMs = authoritative.timings.keyLookupMs;
-          trace.timings.userOrgLookupMs = authoritative.timings.userOrgLookupMs;
+          trace.timings.identityLookupMs = authoritative.timings.identityLookupMs;
           trace.timings.moderationMs = authoritative.timings.moderationMs;
         }
         if (continued?.kind === "authorized") {
@@ -1023,11 +1020,8 @@ export async function resolveInferenceAuthContext(
     trace.result = "error";
     const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
       timing: {
-        keyLookup: (durationMs) => {
-          trace.timings.keyLookupMs = Math.round(durationMs * 100) / 100;
-        },
-        userOrgLookup: (durationMs) => {
-          trace.timings.userOrgLookupMs = Math.round(durationMs * 100) / 100;
+        identityLookup: (durationMs) => {
+          trace.timings.identityLookupMs = Math.round(durationMs * 100) / 100;
         },
       },
       rejected: (reason) => {

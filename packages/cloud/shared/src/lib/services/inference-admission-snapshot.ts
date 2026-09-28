@@ -20,6 +20,7 @@ import {
   requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
 } from "./organization-quota-policy";
+import { hydrationSettledWithin } from "./shared-runtime/bounded-hydration";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
 
@@ -124,6 +125,13 @@ export async function refreshStaleInferenceAdmissionSnapshot(
 export async function getInferenceAdmissionSnapshotCacheOnly(
   organizationId: string,
   executionCtx: AdmissionSnapshotExecutionContext,
+  options: {
+    /**
+     * Join the scheduled hydration for up to this long before reporting
+     * warming. The hydration still runs under the Worker lifetime either way.
+     */
+    awaitHydrationMs?: number;
+  } = {},
 ): Promise<InferenceAdmissionSnapshot> {
   const key = CacheKeys.inference.orgAdmission(organizationId);
   const local = admissionMemoryCache.get(key);
@@ -155,5 +163,13 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
       });
     });
   executionCtx.waitUntil(hydration);
+  if (
+    options.awaitHydrationMs !== undefined &&
+    options.awaitHydrationMs > 0 &&
+    (await hydrationSettledWithin(hydration, options.awaitHydrationMs))
+  ) {
+    const hydrated = admissionMemoryCache.get(key);
+    if (isInferenceAdmissionSnapshot(hydrated)) return hydrated;
+  }
   throw new InferenceAdmissionSnapshotCacheWarmingError();
 }

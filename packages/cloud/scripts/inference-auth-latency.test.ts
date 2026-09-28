@@ -40,7 +40,7 @@ function timingHeader(phase, resolveMs = 10) {
   const shared = `auth_extract;dur=0.1, auth_cache_available;dur=0.2, auth_cache_read;dur=1, auth_resolve;dur=${resolveMs}`;
   return phase === "hit"
     ? shared
-    : `${shared}, auth_key_lookup;dur=3, auth_user_org;dur=2, auth_moderation;dur=1`;
+    : `${shared}, auth_identity;dur=3, auth_moderation;dur=1`;
 }
 
 function warmTailRecord(traceId) {
@@ -65,8 +65,7 @@ function warmTailRecord(traceId) {
               extractMs: 0,
               cacheAvailabilityMs: 0,
               cacheReadMs: 1,
-              keyLookupMs: null,
-              userOrgLookupMs: null,
+              identityLookupMs: null,
               moderationMs: null,
               cacheWriteMs: null,
               totalMs: 1,
@@ -181,7 +180,7 @@ test("auth probe omits suspended credentials and records not_requested explicitl
         ? authHeader("miss")
         : authHeader("hit");
     const timings = invalid
-      ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_key_lookup;dur=3, auth_resolve;dur=5"
+      ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_identity;dur=3, auth_resolve;dur=5"
       : timingHeader(forcedMiss ? "miss" : "hit");
     return new Response(null, {
       status: invalid ? 401 : 400,
@@ -263,8 +262,7 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
       extractMs: 0.1,
       cacheAvailabilityMs: 0.1,
       cacheReadMs: 1,
-      keyLookupMs: 4,
-      userOrgLookupMs: 3,
+      identityLookupMs: 4,
       moderationMs: 2,
       cacheWriteMs: null,
       totalMs: 10.2,
@@ -371,7 +369,7 @@ test("an incomplete origin timing fails with only the missing metric name", asyn
           },
         }),
     }),
-    { message: "Missing required authorized_origin timing: auth_key_lookup" },
+    { message: "Missing required authorized_origin timing: auth_identity" },
   );
 });
 
@@ -603,9 +601,9 @@ test("guard probes retain 401 taxonomy and reject forged probe controls", async 
             ? "v=1;credential=x_api_key;probe=on;available=available;backend=cloudflare_kv;read=miss;authoritative=suspended;write=not_run;result=suspended"
             : authHeader(phase),
         "Server-Timing": invalid
-          ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_key_lookup;dur=3, auth_resolve;dur=5"
+          ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_identity;dur=3, auth_resolve;dur=5"
           : suspended
-            ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_key_lookup;dur=3, auth_user_org;dur=2, auth_moderation;dur=1, auth_resolve;dur=8"
+            ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_identity;dur=3, auth_moderation;dur=1, auth_resolve;dur=8"
             : timingHeader(phase),
       },
     });
@@ -658,8 +656,7 @@ function sample(phase, resolveMs) {
     phase,
     timings: {
       auth_resolve: resolveMs,
-      auth_key_lookup: phase === "miss" ? resolveMs / 2 : undefined,
-      auth_user_org: phase === "miss" ? 1 : undefined,
+      auth_identity: phase === "miss" ? resolveMs / 2 : undefined,
       auth_moderation: phase === "miss" ? 1 : undefined,
       auth_cache_read: 1,
       auth_cache_write: phase === "miss" ? 1 : undefined,
