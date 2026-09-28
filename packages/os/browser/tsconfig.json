@@ -10,7 +10,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "strict": false,
-    "types": ["node"]
+    "types": ["node"],
+    "customConditions": ["eliza-source"]
   },
   "include": [
     "src/protocol.mjs",

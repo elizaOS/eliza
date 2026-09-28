@@ -1,2 +1,2 @@
 /** Shared host implementation; this path preserves existing consumers. */
-export * from "@elizaos/remote-control-host/runtime-store";
+export * from "@elizaos/plugin-browser/remote-control/runtime-store";
