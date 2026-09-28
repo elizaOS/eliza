@@ -202,6 +202,7 @@ export function checkConfigFile(
 }
 export function checkModelKey(
   env: Record<string, string | undefined> = process.env,
+  configEnvError?: string,
 ): CheckResult {
   for (const entry of MODEL_KEY_VARS) {
     // Cloud API key may have been scrubbed from process.env into the
@@ -230,6 +231,18 @@ export function checkModelKey(
         detail: `${entry.alias} set (${entry.label})`,
       };
     }
+  }
+  if (configEnvError) {
+    // The config's env section could not be read, so a saved key may exist.
+    // `eliza setup` would hit the same load failure, so it is not the fix.
+    return {
+      label: "Model API key",
+      category: "config",
+      status: "fail",
+      detail: `No model provider API key found; could not read config env: ${configEnvError}`,
+      fix: "Fix the configuration load error, then re-run `eliza doctor`",
+      autoFixable: false,
+    };
   }
   return {
     label: "Model API key",
@@ -473,35 +486,50 @@ export interface DoctorOptions {
   apiPort?: number;
   uiPort?: number;
 }
+interface ConfigEnvOverlay {
+  env: Record<string, string | undefined>;
+  /** Why the config env could not be read; absent when it was read (or absent). */
+  error?: string;
+}
 /**
  * Overlay the config file's `env` section on `env`, the way the runtime does
  * at boot. `eliza setup` / `auth dev-login` persist provider keys there, so a
  * model-key check that only reads the process env would report a saved key as
  * missing (and `doctor --fix` would loop on `eliza setup`). An explicit
  * `configPath` is read as-is; otherwise the canonical loader resolves the
- * persist path and bind-mount overlay. An unreadable config is reported by
- * `checkConfigFile`, so it contributes no env here.
+ * persist path, bind-mount overlay, and `$include`s. A load failure is
+ * returned with the process env so the model-key check can name it.
  */
 function withConfigEnv(
   env: Record<string, string | undefined>,
   configPath?: string,
-): Record<string, string | undefined> {
+): ConfigEnvOverlay {
   let configEnv: Record<string, string>;
   try {
     if (configPath) {
-      if (!existsSync(configPath)) return env;
+      if (!existsSync(configPath)) return { env };
       configEnv = collectConfigEnvVars(
         JSON5.parse(readFileSync(configPath, "utf-8")),
       );
     } else {
       configEnv = collectConfigEnvVars(loadElizaConfig());
     }
-  } catch {
-    // error-policy:J4 the Config file check reports the unreadable config
-    // with its own fix; the model-key check falls back to the process env.
-    return env;
+  } catch (error) {
+    // error-policy:J2 the canonical loader reads files `checkConfigFile` does
+    // not (persist path, overlay, includes); carry its failure to the report.
+    return {
+      env,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
-  return { ...env, ...configEnv };
+  return { env: { ...env, ...configEnv } };
+}
+function checkModelKeyWithConfig(
+  env: Record<string, string | undefined>,
+  configPath?: string,
+): CheckResult {
+  const overlay = withConfigEnv(env, configPath);
+  return checkModelKey(overlay.env, overlay.error);
 }
 export async function runAllChecks(
   opts: DoctorOptions = {},
@@ -514,7 +542,7 @@ export async function runAllChecks(
     checkBuildArtifacts(opts.projectRoot),
     // config
     checkConfigFile(opts.configPath, env),
-    checkModelKey(withConfigEnv(env, opts.configPath)),
+    checkModelKeyWithConfig(env, opts.configPath),
     checkHostConfig(env),
     // storage
     checkStateDir(env),

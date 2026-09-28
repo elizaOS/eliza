@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkConfigFile,
   checkHostConfig,
@@ -12,6 +12,7 @@ import {
 
 const directories: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -117,6 +118,38 @@ describe("doctor reads what `eliza setup` saves", () => {
     expect(results.find((r) => r.label === "Model API key")?.status).toBe(
       "fail",
     );
+  });
+
+  it("names a canonical config load failure instead of sending --fix to setup", async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "eliza-doctor-"));
+    directories.push(directory);
+    const configPath = path.join(directory, "eliza.json");
+    const persistPath = path.join(directory, "persisted.json");
+    // The base file is valid (the Config file check passes); only the persist
+    // file the canonical loader also reads is malformed.
+    writeFileSync(configPath, "{}");
+    writeFileSync(persistPath, "{ env: { OPENAI_API_KEY: ");
+    const env = {
+      ELIZA_CONFIG_PATH: configPath,
+      ELIZA_PERSIST_CONFIG_PATH: persistPath,
+      ELIZA_STATE_DIR: directory,
+    };
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+
+    const results = await runAllChecks({
+      env,
+      projectRoot: directory,
+      checkPorts: false,
+    });
+
+    expect(results.find((r) => r.label === "Config file")?.status).toBe("pass");
+    const modelKey = results.find((r) => r.label === "Model API key");
+    expect(modelKey).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining("could not read config env:"),
+      autoFixable: false,
+    });
+    expect(modelKey?.fix).not.toBe("eliza setup");
   });
 
   it("does not check the retired ./eliza vendored-upstreams layout", async () => {
