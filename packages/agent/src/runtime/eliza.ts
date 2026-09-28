@@ -3850,6 +3850,13 @@ export async function startEliza(
   captureEarlyLogs();
   // Register log listener for chat mirroring
   ensureChatLogListenerAttached();
+  // 0. Reconcile a local backup restore interrupted by a crash before the
+  // configuration or PGlite are opened: they may be half-swapped on disk.
+  const { recoverInterruptedLocalBackupRestores } = await import(
+    "../services/agent-backup.ts"
+  );
+  await recoverInterruptedLocalBackupRestores();
+  opts?.abortSignal?.throwIfAborted();
   // 1. Load Eliza config from the resolved state dir.
   bootContext.enterPhase("load-config");
   let config: ElizaConfig;

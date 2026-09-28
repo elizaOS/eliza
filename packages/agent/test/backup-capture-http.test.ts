@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Frames,
@@ -170,11 +171,13 @@ it("rejects unauthenticated, wrong-agent and expired captures before streaming",
 });
 
 it("answers an over-limit local backup with an actionable 413 and creates it once the state fits", async () => {
-  // A sparse file declares 200 MiB without allocating it; capture refuses from
-  // its stat size before reading any bytes.
+  // A sparse file declares 1.5 GiB without allocating it. The in-memory format
+  // refuses it from its stat size, and so does the streamed format that takes
+  // over above that ceiling (its limit is the capture-v2 1 GiB plaintext cap),
+  // both before reading any bytes.
   const oversized = path.join(directory, "media", "oversized.bin");
   await writeFile(oversized, "");
-  await truncate(oversized, 200 * 1024 * 1024);
+  await truncate(oversized, 1536 * 1024 * 1024);
   try {
     const refused = await request("/api/backups");
     expect(refused.status).toBe(413);
@@ -185,6 +188,7 @@ it("answers an over-limit local backup with an actionable 413 and creates it onc
       retryable: false,
     });
     expect(body.observed as number).toBeGreaterThan(body.limit as number);
+    expect(body.limit).toBe(AGENT_BACKUP_CAPTURE_V2_LIMITS.maxPlainBytes);
     expect(String(body.error)).toMatch(/too large for a local backup/);
     expect(JSON.stringify(body)).not.toContain(directory);
   } finally {
