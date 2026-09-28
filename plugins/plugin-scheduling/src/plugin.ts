@@ -8,8 +8,14 @@
  * scheduled-task REST route.
  */
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
+import {
+  ALPHA_ROUTINES_PACK_ID,
+  buildAlphaRoutinesPack,
+  parseDefaultPackSetting,
+  SCHEDULING_DEFAULT_PACKS_SETTING,
+} from "./scheduled-task/alpha-routines-pack.js";
 import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
 import {
@@ -18,6 +24,7 @@ import {
   ScheduledTaskRunnerService,
 } from "./scheduled-task/runner-service.js";
 import {
+  type DefaultTaskPack,
   getDefaultTaskPacks,
   registerDefaultTaskPack,
   seedRegisteredTaskPacks,
@@ -212,6 +219,48 @@ export async function waitForScheduledTaskRunnerService(
     signal,
   )) as ScheduledTaskRunnerService;
 }
+/** Opt-in supplemental packs selectable via `ELIZA_SCHEDULING_DEFAULT_PACKS`. */
+const OPT_IN_DEFAULT_PACK_BUILDERS: Readonly<
+  Record<string, (opts: { agentId: string }) => DefaultTaskPack>
+> = {
+  [ALPHA_ROUTINES_PACK_ID]: buildAlphaRoutinesPack,
+};
+
+/**
+ * Register the opt-in supplemental packs named by the
+ * `ELIZA_SCHEDULING_DEFAULT_PACKS` setting. Unknown ids are reported (not
+ * silently ignored) and do not block the known packs from seeding.
+ */
+export function registerOptInDefaultPacks(runtime: IAgentRuntime): string[] {
+  const requested = parseDefaultPackSetting(
+    runtime.getSetting(SCHEDULING_DEFAULT_PACKS_SETTING),
+  );
+  const registered: string[] = [];
+  for (const packId of requested) {
+    const build = Object.hasOwn(OPT_IN_DEFAULT_PACK_BUILDERS, packId)
+      ? OPT_IN_DEFAULT_PACK_BUILDERS[packId]
+      : undefined;
+    if (!build) {
+      runtime.reportError(
+        "scheduling.optInDefaultPack",
+        new ElizaError(`Unknown opt-in default pack "${packId}"`, {
+          code: "SCHEDULING_UNKNOWN_DEFAULT_PACK",
+          context: {
+            setting: SCHEDULING_DEFAULT_PACKS_SETTING,
+            packId,
+            known: Object.keys(OPT_IN_DEFAULT_PACK_BUILDERS),
+          },
+        }),
+        { agentId: runtime.agentId },
+      );
+      continue;
+    }
+    registerDefaultTaskPack(runtime, build({ agentId: runtime.agentId }));
+    registered.push(packId);
+  }
+  return registered;
+}
+
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:
@@ -269,13 +318,16 @@ export const schedulingPlugin: Plugin = {
         // here keeps the registry honest and avoids seeding generic defaults
         // alongside a host's richer pack.
         const hasConsumerHost = getScheduledTaskRunnerDeps(runtime) !== null;
-        const alreadyRegistered = getDefaultTaskPacks(runtime).length > 0;
+        const alreadyRegistered = getDefaultTaskPacks(runtime).some(
+          (pack) => pack.supplemental !== true,
+        );
         if (!hasConsumerHost && !alreadyRegistered) {
           registerDefaultTaskPack(
             runtime,
             buildFallbackDefaultPack({ agentId: runtime.agentId }),
           );
         }
+        registerOptInDefaultPacks(runtime);
         const runner = service.getRunner({ agentId: runtime.agentId });
         await seedRegisteredTaskPacks(runtime, runner);
         // Fallback TaskService worker: without this, a runtime with no
