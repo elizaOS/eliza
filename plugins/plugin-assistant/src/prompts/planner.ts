@@ -26,17 +26,62 @@ export const plannerRequiredPolicy = {
     "- Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.",
   responseStyle:
     "- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Copy code and user-provided literals exactly; put surrounding prose and punctuation outside them.",
-  recallTools:
-    "- SHELL is for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_ACTIONS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
   discovery:
     "- candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_ACTIONS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES, TRIGGER_CREATE for OWNER_REMINDERS). Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
-  codingDelegation:
-    "- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
   workClaims:
     '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. A final user-facing reply ends this turn; tool-call returns still proceed through evaluation and continuation. Promise future work only when current evidence confirms an authorized, active persisted continuation or delegated task owns it; describe its actual status, not completion. A paused task awaiting user input does not authorize automatic continuation. If iterations end without usable results, state the actual attempt and outcome; never invent background work.',
   errorClaims:
     "- messageToUser and REPLY must not invent a failure, error, interruption or retry excuse in any wording. Require a real tool error or empty result THIS turn before reporting one or asking for retry. Choosing not to act is not a malfunction: take the appropriate available action or truthfully explain what is possible and clarify scope as needed.",
 } as const;
+
+const isShellTool = (name: string) =>
+  name === "SHELL" || name.startsWith("SHELL_") || name === "TERMINAL_SHELL";
+const isCodingDelegationTool = (name: string) =>
+  name === "TASKS" || name === "TASKS_CREATE" || name === "TASKS_SPAWN_AGENT";
+
+/**
+ * Mandatory rules that constrain one tool family. They ride with that family
+ * on the native tool surface; a turn without the tool never pays for them, and
+ * discovery that loads the tool brings the rule with it on the next round.
+ */
+export const plannerToolScopedPolicy = {
+  recallTools: {
+    appliesTo: isShellTool,
+    rule: "- Shell tools are for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_ACTIONS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
+  },
+  codingDelegation: {
+    appliesTo: isCodingDelegationTool,
+    rule: "- Coding delegation is for coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Do not delegate a single live/current/public lookup to a coding agent. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
+  },
+} as const;
+
+/**
+ * Tool-scoped mandatory rules for an exposed surface. `undefined` means the
+ * surface is unknown, so every rule applies.
+ */
+export function plannerToolScopedRules(
+  toolNames?: readonly string[],
+): string[] {
+  const rules: string[] = Object.values(plannerToolScopedPolicy)
+    .filter(
+      ({ appliesTo }) => toolNames === undefined || toolNames.some(appliesTo),
+    )
+    .map(({ rule }) => rule);
+  const lookupTools = [
+    ...(toolNames === undefined || toolNames.includes("WEB_FETCH")
+      ? ["WEB_FETCH with a grounded URL"]
+      : []),
+    ...(toolNames === undefined || toolNames.includes("WEB_SEARCH")
+      ? ["WEB_SEARCH"]
+      : []),
+  ];
+  if (lookupTools.length) {
+    rules.push(
+      `- For a single live/current/public lookup (price, weather, score, news, status or known URL), call ${lookupTools.join(" or ")} directly and answer from its result.`,
+    );
+  }
+  return rules;
+}
 
 /** The settled-result round has no effect tools and must never plan more work. */
 export const plannerReplyTemplate = `task: Write the final reply from the current request, supplied context and settled tool results.
@@ -63,10 +108,16 @@ const ownerGoalsFallbackExample =
 export function buildPlannerTemplate({
   includeOwnerGoalsExample = true,
   nativeToolsOnly = false,
+  toolNames,
 }: {
   includeOwnerGoalsExample?: boolean;
   nativeToolsOnly?: boolean;
+  /** Exposed native tool names; omit to render every tool-scoped rule. */
+  toolNames?: readonly string[];
 } = {}): string {
+  const toolRules = plannerToolScopedRules(toolNames)
+    .map((rule) => `${rule}\n`)
+    .join("");
   return `task: Plan next native tool calls.
 
 rules:
@@ -89,11 +140,8 @@ ${nativeToolsOnly ? "" : '- plain-JSON fallback only (when native tool calls are
 - incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try
 - attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool
 - exposed tool can try => call it; do not say "I cannot browse/search/run/inspect/build/deploy/verify"
-${plannerRequiredPolicy.recallTools}
 ${plannerRequiredPolicy.discovery}
-${plannerRequiredPolicy.codingDelegation}
-- For a single live/current/public lookup (price, weather, score, news, status or known URL), call WEB_FETCH with a grounded URL or WEB_SEARCH directly and answer from its result. Do not delegate a lookup to a coding agent; reserve delegation for build/code/repo/multi-step work.
-- No authorized tool fits after available discovery, or task complete: native mode ends with one REPLY and the actual answer in text or accompanying native prose. Omit all reply text only when planner feedback explicitly requests verified-answer reuse or existing-draft evaluation.${nativeToolsOnly ? "" : " Plain-JSON fallback: toolCalls=[], messageToUser=answer."}
+${toolRules}- No authorized tool fits after available discovery, or task complete: native mode ends with one REPLY and the actual answer in text or accompanying native prose. Omit all reply text only when planner feedback explicitly requests verified-answer reuse or existing-draft evaluation.${nativeToolsOnly ? "" : " Plain-JSON fallback: toolCalls=[], messageToUser=answer."}
 - Batch scope: ${plannerBatchScopeDescription}
 - native toolCalls: every tool requires the reserved arg \`eliza_turn_scope\` (stripped before execution); use the same batch scope on every call. ${nativeToolsOnly ? "Final scope still requires result verification." : 'In plain-JSON fallback, completed=true means "final", completed=false means "more_work_pending"; omit only when unknown. Neither form skips result verification.'}
 ${plannerRequiredPolicy.workClaims}

@@ -1,6 +1,7 @@
 /** Stable evaluator wire contracts; dynamic eligibility is validated against real trajectory evidence. */
 import type {
   ChatMessage,
+  ContextObject,
   EffectReceipt,
   JSONSchema,
   PlannerToolCall,
@@ -8,6 +9,7 @@ import type {
   RunEvaluatorParams,
 } from "@elizaos/core";
 import {
+  completionContextSources,
   computePrefixHashes,
   ModelType,
   normalizePromptSegments,
@@ -505,3 +507,114 @@ it.each(["none", "terminal", "current", "archived"] as const)(
     }
   },
 );
+
+describe("applicable evaluator guidance with a stable protocol", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    "offers only deferred-source guidance: history=%s providers=%s",
+    async (history, providers) => {
+      const context: ContextObject = {
+        id: "applicable-rules",
+        events: [
+          ...[1, 2].map((id) => ({
+            id: `history:${id}`,
+            type: "segment" as const,
+            source: "prior-dialogue",
+            createdAt: id,
+            segment: {
+              id: `history:${id}`,
+              label: "prior_message:user",
+              content: `Original ${id}`,
+              stable: false,
+            },
+          })),
+          {
+            id: "provider:guide",
+            type: "provider",
+            name: "GUIDE",
+            text: `Complete guide ${"detail ".repeat(100)}`,
+            discoveryText: "Guide reference.",
+          },
+        ],
+        metadata: { providerDiscoveryEnabled: providers },
+      };
+      if (history)
+        context.metadata = {
+          ...context.metadata,
+          completionContext: {
+            mode: "selected",
+            complete: true,
+            sourceSetId: completionContextSources(context).sourceSetId,
+            relevantSourceIds: ["h1"],
+            constraintSourceIds: [],
+            referentSourceIds: [],
+            pendingIntentSourceIds: [],
+          },
+        };
+      const captured = await captureSchema([], { trajectory: { context } });
+      const tail = String(captured.messages.at(-1)?.content);
+      const routes = [
+        ...(history ? ["RESTORE_HISTORY"] : []),
+        ...(providers ? ["RESTORE_PROVIDERS"] : []),
+        ...(history && providers ? ["RESTORE_FULL"] : []),
+      ];
+      expect(tail).toContain(
+        `Available restoration routes: ${routes.join(", ") || "none"}`,
+      );
+      expect(tail.includes("Choose RESTORE_HISTORY only")).toBe(
+        history && !providers,
+      );
+      expect(tail.includes("Choose RESTORE_PROVIDERS only")).toBe(
+        providers && !history,
+      );
+      expect(tail.includes("Choose one restoration decision")).toBe(
+        history && providers,
+      );
+      expect(captured.schema).toEqual(evaluatorSchema);
+      expect(evaluatorTemplate).not.toContain(
+        "Choose one restoration decision",
+      );
+      expect(tail).not.toContain("For every completed change claimed");
+    },
+  );
+
+  it.each(["RESTORE_HISTORY", "RESTORE_PROVIDERS", "RESTORE_FULL"])(
+    "rejects unavailable %s without publishing or running effects",
+    async (decision) => {
+      const result = await captureSchema([], {
+        output: { thought: "Need a source", decision, success: false },
+      });
+      expect(result.modelCalls).toBe(1);
+      expect(result.output).toMatchObject({
+        success: false,
+        protocolFailure: true,
+        parseError: "Full completion context was already supplied",
+      });
+      expect(result.output.messageToUser).toBeUndefined();
+    },
+  );
+
+  it("moves receipt-selection guidance only to a state with committed proof", async () => {
+    const result = await captureSchema([], {
+      trajectory: {
+        steps: [
+          {
+            iteration: 1,
+            result: { success: true, text: "Saved", effectReceipts: [receipt] },
+          },
+        ],
+      },
+    });
+    expect(String(result.messages.at(-1)?.content)).toContain(
+      "For every completed change claimed",
+    );
+    expect(evaluatorTemplate).not.toContain(
+      "For every completed change claimed",
+    );
+    expect(result.schema).toEqual(evaluatorSchema);
+  });
+});

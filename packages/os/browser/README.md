@@ -4,7 +4,7 @@ Controls the actual Chromium profile, including background tabs, through native
 messaging. The extension has no HTTP listener or cloud token. The native host owns
 authenticated device registration and routes authorized commands to this profile.
 
-Build with `bun run --cwd packages/browser-bridge-extension build`. Android builds
+Build with `bun run --cwd packages/os build:browser`. Android builds
 require `ELIZA_BROWSER_ANDROID_CERTIFICATE` containing the launcher's public signing
 certificate SHA-256. The Android host is `ai.elizaos.app`; Linux uses
 `ai.elizaos.browser`. Chromium must allow the extension to use that native host.
@@ -16,7 +16,7 @@ Large native messages use ordered lossless chunks below the Android Binder limit
 Incomplete or out-of-order messages never execute. Repeated
 request IDs fail closed; interrupted effects are never replayed automatically.
 
-Run `bun run --cwd packages/browser-bridge-extension test` for protocol tests.
+Run `bun run --cwd packages/os test:browser` for protocol tests.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 
@@ -30,9 +30,9 @@ has compiled or passed release-device tests.
 After building the extension, generate the overlay outside the checkout:
 
 ```sh
-node packages/browser-bridge-extension/scripts/chromium-component.mjs \
+node packages/os/browser/scripts/chromium-component.mjs \
   --source /absolute/chromium/src \
-  --extension /absolute/eliza/packages/browser-bridge-extension/dist/android \
+  --extension /absolute/eliza/packages/os/browser/dist/android \
   --out /absolute/new-overlay-directory --platform android \
   --certificate APP_SIGNING_CERTIFICATE_SHA256
 ```
@@ -54,3 +54,16 @@ The package test command includes pinned-source patch application and compiled C
 integrity tests. Those tests require a C++20 compiler and OpenSSL development
 headers/library; they are not a substitute for a full Chromium build. Chromium
 fixtures retain their upstream license in `scripts/chromium/LICENSE.chromium`.
+
+This is an internal OS component, not a standalone workspace or installable
+product. The OS package builds it against the locked
+`@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
+provisioning live in `../scripts/linux/assemble-browser-payload.py` and
+`../scripts/distro-android/prepare-chromium-browser.ts`. Preserve those existing
+signed-artifact and certificate checks when changing the component.
+
+For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
+Chromium executable and run `node --conditions=eliza-source
+packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
+component and installed `/usr/libexec/elizaos-browser-native-host` relay without
+unpacked-extension or allowlist-bypass flags.

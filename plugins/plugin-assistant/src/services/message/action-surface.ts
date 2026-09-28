@@ -159,6 +159,26 @@ function pendingActionContexts(
     .map(normalizeContextId);
 }
 
+const OPERATION_CONNECTORS = new Set([
+  "with",
+  "to",
+  "from",
+  "of",
+  "in",
+  "by",
+  "for",
+  "and",
+]);
+
+function operationWords(
+  name: string,
+  parentWords: ReadonlySet<string>,
+): string[] {
+  return tokenizeActionSearchText(name).filter(
+    (word) => !parentWords.has(word) && !OPERATION_CONNECTORS.has(word),
+  );
+}
+
 function positiveIntentText(intent: string): string {
   const unquoted = intent.replace(
     /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
@@ -392,9 +412,123 @@ export function retrieveContextualPlannerActions(args: {
         : operationQuery,
       owners.map((action) => action.name),
     );
-    for (const action of owners)
-      if (operationNames.size === 0 || operationNames.has(action.name))
+    if (operationNames.size > 0) {
+      const wanted = new Set(operationNames);
+      const clauses = args.intents?.length ? args.intents : [operationQuery];
+      for (const parent of owners) {
+        const childNames = new Set(
+          parent.subActions?.map((child) =>
+            typeof child === "string" ? child : child.name,
+          ),
+        );
+        const children = owners.filter(
+          (action) => childNames.has(action.name) && wanted.has(action.name),
+        );
+        if (children.length < 2) continue;
+        const parentWords = new Set(tokenizeActionSearchText(parent.name));
+        const wordsFor = (action: Action) =>
+          operationWords(action.name, parentWords);
+        const retained = new Set<string>();
+        for (const clause of clauses) {
+          const unquoted = clause.replace(
+            /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
+            " ",
+          );
+          const clauseWords = new Set(tokenizeActionSearchText(unquoted));
+          const mentions = (word: string) =>
+            clauseWords.has(word) ||
+            clauseWords.has(`${word}s`) ||
+            clauseWords.has(`${word}ed`) ||
+            (word.endsWith("e") && clauseWords.has(`${word}d`));
+          const preferred = preferredOperationNames(
+            unquoted,
+            children.map((action) => action.name),
+          );
+          const candidates = children.filter((action) =>
+            preferred.has(action.name),
+          );
+          // Unstructured compound wording is ambiguous. Keep its alternatives;
+          // model-selected intents provide independent outcome boundaries.
+          if (/\band\b|[;,]/iu.test(unquoted)) {
+            for (const action of candidates) retained.add(action.name);
+            continue;
+          }
+          for (const action of candidates) {
+            const words = wordsFor(action);
+            const superseded = candidates.some((other) => {
+              if (other === action) return false;
+              const otherWords = wordsFor(other);
+              const extra = words.filter((word) => !otherWords.includes(word));
+              const otherExtra = otherWords.filter(
+                (word) => !words.includes(word),
+              );
+              // Prefer the more specific operation only when its qualifier was
+              // requested; otherwise use the complete base operation. Evaluate
+              // each requested outcome independently before taking the union.
+              if (extra.length > 0 && otherExtra.length === 0)
+                return !extra.every(mentions);
+              if (extra.length === 0 && otherExtra.length > 0)
+                return otherExtra.every(mentions);
+              if (
+                words.some((word) => otherWords.includes(word)) &&
+                otherExtra.length > 0 &&
+                otherExtra.every(mentions) &&
+                extra.every((word) => !mentions(word))
+              )
+                return true;
+              // Search supports list as a fallback, not every list sibling
+              // alongside an available search operation in the same family.
+              return (
+                words.includes("list") &&
+                otherWords.includes("search") &&
+                !clauseWords.has("list") &&
+                ["search", "find", "lookup"].some((word) =>
+                  clauseWords.has(word),
+                )
+              );
+            });
+            if (!superseded) retained.add(action.name);
+          }
+        }
+        if (retained.size > 0)
+          for (const child of children)
+            if (!retained.has(child.name)) wanted.delete(child.name);
+      }
+      for (const action of owners)
+        if (wanted.has(action.name)) selected.add(action);
+      continue;
+    }
+    // A family word ("message") is not a request for every sibling operation.
+    // Keep its authorized umbrella when the operation is unresolved. Explicit
+    // child words ("inbox", "triage") still select their complete definitions,
+    // including operations outside the generic verb vocabulary above.
+    const queryWords = new Set(tokenizeActionSearchText(operationQuery));
+    const deferredFamilyNames = new Set<string>();
+    for (const parent of owners) {
+      const childNames = new Set(
+        parent.subActions?.map((child) =>
+          typeof child === "string" ? child : child.name,
+        ),
+      );
+      const children = owners.filter((action) => childNames.has(action.name));
+      if (children.length === 0) continue;
+      const parentWords = new Set(tokenizeActionSearchText(parent.name));
+      const explicitChildren = children.filter((action) =>
+        operationWords(action.name, parentWords).some((word) =>
+          queryWords.has(word),
+        ),
+      );
+      if (explicitChildren.length === 0 && typeof parent.handler !== "function")
+        continue;
+      for (const child of children) deferredFamilyNames.add(child.name);
+      deferredFamilyNames.add(parent.name);
+      for (const action of explicitChildren.length > 0
+        ? explicitChildren
+        : [parent])
         selected.add(action);
+    }
+    for (const action of owners)
+      if (!deferredFamilyNames.has(action.name)) selected.add(action);
   }
   // A selected context with no registry matches must still permit global lookup.
   const relevant =

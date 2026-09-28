@@ -8,6 +8,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildPlannerToolsFromActions,
+  ContextRegistry,
   normalizeActionJsonSchema,
   promoteSubactionsToActions,
 } from "@elizaos/core";
@@ -16,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin.ts";
 import { documentAction } from "../../features/documents/actions";
 import { createAssistantPlugin } from "../../index.ts";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { collectV5PlannerCandidateActions } from "./action-surface";
 import {
   collectBudgetedStageOneCandidateActions,
@@ -1390,4 +1392,49 @@ describe("planner tool discovery", () => {
       ).toThrow("conflicts");
     },
   );
+});
+
+describe("explicit discovery context aliases", () => {
+  it("resolves registered aliases without widening unknown or revoked domains", async () => {
+    const contexts = new ContextRegistry([...DEFAULT_CONTEXT_DEFINITIONS]);
+    const aliasRuntime = { contexts } as IAgentRuntime;
+    const messaging: Action = {
+      name: "MESSAGE_SEARCH",
+      description: "Search messages",
+      contexts: ["messaging"],
+    };
+    const notes: Action = {
+      name: "NOTES_LIST",
+      description: "List notes",
+      contexts: ["notes"],
+    };
+    let admitted = [messaging, notes];
+    const loads: string[][] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      admitted,
+      (actions) => loads.push(actions.map((action) => action.name)),
+      async () => admitted,
+    );
+    const call = (context: string) =>
+      discovery.handler?.(aliasRuntime, message, undefined, {
+        parameters: { contexts: [context] },
+      });
+    for (const alias of ["message", " Messages ", "messaging"]) {
+      expect((await call(alias))?.data?.loadedTools).toEqual([
+        "MESSAGE_SEARCH",
+      ]);
+    }
+    const unknown = await call("unknown-domain");
+    expect(unknown?.data?.loadedTools).toEqual([]);
+    expect(unknown?.data?.availableContexts).toEqual(["messaging", "notes"]);
+    admitted = [notes];
+    const revoked = await call("messages");
+    expect(revoked?.data?.loadedTools).toEqual([]);
+    expect(revoked?.data?.availableContexts).toEqual(["notes"]);
+    expect(loads).toEqual([
+      ["MESSAGE_SEARCH"],
+      ["MESSAGE_SEARCH"],
+      ["MESSAGE_SEARCH"],
+    ]);
+  });
 });

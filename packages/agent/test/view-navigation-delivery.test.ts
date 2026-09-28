@@ -13,6 +13,7 @@ import {
   ResponseHandlerFieldRegistry,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
+  type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
@@ -1085,7 +1086,26 @@ describe("model-selected host navigation", () => {
         );
         const request = params as {
           messages: Array<{ role: string; content: string }>;
+          tools: ToolDefinition[];
         };
+        const handlerSchema = request.tools.find(
+          (tool) => tool.name === "HANDLE_RESPONSE",
+        )?.parameters;
+        expect(handlerSchema?.properties).toHaveProperty("visualContinuation");
+        expect(handlerSchema?.properties).not.toHaveProperty(
+          "candidateActionNames",
+        );
+        expect(viewNavigationField.description).not.toContain(
+          "candidateActionNames",
+        );
+        for (const field of [
+          "intents",
+          "contexts",
+          "replyEffectStatus",
+          "replyText",
+        ]) {
+          expect(handlerSchema?.properties).toHaveProperty(field);
+        }
         expect(
           request.messages.find((entry) => entry.role === "user")?.content,
         ).toContain('"viewId":"notes","label":"Notes"');
@@ -1105,7 +1125,6 @@ describe("model-selected host navigation", () => {
                 contexts: ["general"],
                 contextRequests: [],
                 intents: ["Open Home"],
-                candidateActionNames: ["VIEWS"],
                 replyText: reply,
                 replyEffectStatus: "pending",
                 facts: [],
@@ -1154,7 +1173,21 @@ describe("model-selected host navigation", () => {
           }),
       );
       if (wrongDestination) {
-        await expect(resultPromise).rejects.toBe(recoveryRequired);
+        const result = await resultPromise;
+        expect(result).toMatchObject({
+          kind: "direct_reply",
+          result: {
+            requestFulfilled: false,
+            terminalFailure: { code: "PLANNER_INTERRUPTED_AFTER_ACTION" },
+            actionResults: [
+              {
+                success: true,
+                values: { completedActionDelivered: true, viewId: "chat" },
+              },
+            ],
+          },
+        });
+        expect(result.result.responseContent.text).not.toBe(reply);
       } else {
         const result = await resultPromise;
         expect(useModel).toHaveBeenCalledTimes(1);

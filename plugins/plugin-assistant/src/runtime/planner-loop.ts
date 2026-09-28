@@ -124,6 +124,7 @@ import {
   plannerRequiredPolicy,
   plannerSchema,
   plannerTemplate,
+  plannerToolScopedRules,
 } from "../prompts/planner.ts";
 import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import {
@@ -3245,12 +3246,13 @@ function renderPlannerModelInput(params: {
     template === plannerTemplate &&
     !params.codingMode &&
     !params.replyOnly &&
-    params.tools?.length
+    params.tools !== undefined
       ? buildPlannerTemplate({
           includeOwnerGoalsExample: params.tools.some(
             (tool) => tool.name === "OWNER_GOALS",
           ),
           nativeToolsOnly: true,
+          toolNames: params.tools.map((tool) => tool.name),
         })
       : template;
   let instructions = (
@@ -3260,6 +3262,7 @@ function renderPlannerModelInput(params: {
         ? template.split("context_object:")[0]
         : appendMandatoryPlannerPolicy(
             scopedTemplate.split("context_object:")[0] ?? scopedTemplate,
+            params.replyOnly ? [] : params.tools?.map((tool) => tool.name),
           )
   ).trim();
   if (actionSourceSelectionSchema) {
@@ -3447,11 +3450,16 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 // Optimized and custom templates must retain the shared protocol used by tool pointers.
 const plannerBatchScopeRule = `- Batch scope: ${plannerBatchScopeDescription}`;
 
-function appendMandatoryPlannerPolicy(instructions: string): string {
+function appendMandatoryPlannerPolicy(
+  instructions: string,
+  toolNames?: readonly string[],
+): string {
   // Match complete canonical rules, not introductory fragments: a partial or
   // stale custom template must not disable the rest of a required policy.
+  // Tool-scoped rules are required exactly while their tool is exposed.
   const missing = [
     ...Object.values(plannerRequiredPolicy),
+    ...plannerToolScopedRules(toolNames),
     plannerBatchScopeRule,
   ].filter((rule) => !instructions.includes(rule));
   return missing.length === 0

@@ -58,6 +58,10 @@ import {
 } from "@elizaos/core";
 import {
   EVALUATOR_CONTEXT_ROUTES,
+  type EvaluatorRestorableContext,
+  evaluatorContextRouteNames,
+  evaluatorReceiptSelectionRule,
+  evaluatorRestorationRule,
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
@@ -339,6 +343,7 @@ function finalizeEvaluatorOutput(
 }
 
 type EvaluatorDecisionState = {
+  restorable: EvaluatorRestorableContext;
   queuedCallIds: string[];
   availableReceiptIds: string[];
   clipboardAvailable: boolean;
@@ -351,6 +356,11 @@ type EvaluatorDecisionState = {
 function renderEvaluatorDecisionState(state: EvaluatorDecisionState): string {
   return [
     "# Current decision state",
+    `Available restoration routes: ${evaluatorContextRouteNames(state.restorable).join(", ") || "none"}`,
+    evaluatorRestorationRule(state.restorable).trim(),
+    ...(state.availableReceiptIds.length
+      ? [evaluatorReceiptSelectionRule]
+      : []),
     `Queued call IDs: ${JSON.stringify(state.queuedCallIds)}`,
     `Committed effect receipt IDs: ${JSON.stringify(state.availableReceiptIds)}`,
     `clipboardAvailable: ${state.clipboardAvailable}`,
@@ -497,6 +507,9 @@ async function runEvaluatorWithSelectedModel(
   // Dynamic eligibility belongs after the evidence, not inside the reusable
   // schema or system instructions. The same checks are enforced after decoding.
   const decisionState: EvaluatorDecisionState = {
+    restorable: evaluatorRestorableContext(
+      params.trajectory.modelBaseContext ?? params.context,
+    ),
     queuedCallIds,
     availableReceiptIds,
     clipboardAvailable,
@@ -644,12 +657,7 @@ async function runEvaluatorWithSelectedModel(
     });
     const attemptWindow = resolvedBudget.contextWindowTokens;
     const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
-    const attemptInput = renderEvaluatorModelInput({
-      context: params.context,
-      trajectory: params.trajectory,
-      redactText: redactDiagnosticText,
-      decisionState,
-    });
+    const attemptInput = renderEvaluatorModelInput(renderArgs);
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
       promptSegments: attemptInput.promptSegments,
@@ -841,11 +849,10 @@ async function runEvaluatorWithSelectedModel(
       contextRequest === "history" || contextRequest === "full";
     const readProviders =
       contextRequest === "providers" || contextRequest === "full";
+    const restorableNow = evaluatorRestorableContext(original);
     if (
-      (readHistory &&
-        (selectCompletionContext(original).applied ||
-          projectBackgroundHistory(original).applied)) ||
-      (readProviders && projectDeferredProviders(original).available.length)
+      (readHistory && restorableNow.history) ||
+      (readProviders && restorableNow.providers)
     ) {
       // A context read takes precedence over a conflicting verdict. Record
       // the invalid draft, but never deliver it or replay a completed action.
@@ -1067,6 +1074,18 @@ function reportEvaluatorUsage(
       completionTokens: usage.completionTokens,
     });
   }
+}
+
+/** The deferred sources a restoration decision can actually bring back. */
+function evaluatorRestorableContext(
+  original: ContextObject,
+): EvaluatorRestorableContext {
+  return {
+    history:
+      selectCompletionContext(original).applied ||
+      projectBackgroundHistory(original).applied,
+    providers: projectDeferredProviders(original).available.length > 0,
+  };
 }
 
 function renderEvaluatorModelInput(params: {

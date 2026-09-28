@@ -250,6 +250,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "messaging",
       label: "Messaging",
+      aliases: ["message", "messages"],
       description: "Private and group messages and inboxes.",
       sensitivity: "private",
       cacheScope: "turn",

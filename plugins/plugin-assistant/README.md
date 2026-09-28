@@ -62,10 +62,14 @@ Use `query` and optional `contexts` when an action name is unknown. When context
 are omitted, exact registered domain phrases or declared aliases in the query scope the search; the
 result reports those inferred domains. Identifier fragments and path components do not
 supply domain hints. Unresolved initial routing starts with discovery; explicit queries
-without a domain retain global search, and explicit contexts or catalog reads remain available. Search ranks
+without a domain retain global search, and explicit contexts or catalog reads remain available.
+Explicit contexts accept registered aliases within the authorized catalog. Unknown
+contexts stay restrictive; misses return authorized context names for correction. Search ranks
 complete authorized operations and prefers matching operation names over
 incidental words in long descriptions. Multiple requested operations remain
-eligible. Ambiguous wording falls back to the existing lexical matches; a miss
+eligible. An unresolved family uses its authorized parent instead of loading all
+siblings; exact child operations remain discoverable. Ambiguous wording falls
+back to the existing lexical matches; a miss
 means the query found nothing, not that the capability is unavailable.
 
 Automatic initial selection and query/context search select at most ten complete

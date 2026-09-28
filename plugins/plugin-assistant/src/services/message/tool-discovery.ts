@@ -131,29 +131,25 @@ export function createPlannerToolDiscoveryAction(
   const catalog = catalogFor(authorizedActions);
   const discoveryDescription =
     "Find authorized operations by query and/or contexts, or load exact names (parents load their families). " +
-    "To perform work use mode=load: complete schemas appear in the next tool surface. " +
-    "mode=describe answers capability or parameter questions without enabling tools. " +
-    "Empty load selectors search the current task. For an intentional complete catalog read use mode=describe,names=[]. Search and loads refresh permissions; no domain work executes. " +
-    "Use loaded tools to perform work. A search miss does not prove a capability is unavailable.";
+    "mode=load enables complete schemas in the next tool surface; use loaded tools to perform work. " +
+    "Empty load selectors search the current task. mode=describe reads complete descriptions and selected parameter schemas without enabling tools; mode=describe,names=[] reads the complete authorized catalog. " +
+    (catalogIndex
+      ? "Without task context, names=[] returns a routing index. "
+      : "") +
+    "Discovery refreshes permissions and never executes domain work. A search miss does not prove a capability is unavailable.";
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
   const referenceDescription = `${discoveryDescription} No name index is preloaded here.`;
   return {
     name: DISCOVER_ACTIONS_NAME,
     similes: [DISCOVER_TOOLS_NAME],
     description: options?.deferNameIndex
-      ? referenceDescription +
-        (catalogIndex
-          ? " Without task context, empty names returns a routing index; use mode=describe for complete descriptions."
-          : "")
-      : inlineDescription +
-        (catalogIndex
-          ? " Without task context, empty names returns a routing index; use mode=describe for complete descriptions."
-          : ""),
+      ? referenceDescription
+      : inlineDescription,
     parameters: [
       {
         name: "mode",
         description:
-          "load (default) enables matching tools; empty selectors search the current task. describe reads complete descriptions and, for named tools, parameter schemas. Neither executes domain work.",
+          "load (default) enables matching tools; describe only reads their complete definitions.",
         required: false,
         schema: { type: "string", enum: ["load", "describe"] },
       },
@@ -173,7 +169,7 @@ export function createPlannerToolDiscoveryAction(
       },
       {
         name: "contexts",
-        description: `Optional exact domain IDs to scope search. Without a query, load ranks the current task; describe lists domain members. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names; mode=describe,names=[] reads the complete catalog.`,
+        description: `Optional exact domain IDs to scope search. Without a query, load ranks the current task; describe lists domain members. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names.`,
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
@@ -248,8 +244,30 @@ export function createPlannerToolDiscoveryAction(
                 (context) => runtime.contexts?.get(context)?.aliases,
               )
             : [];
+        const availableContexts = [
+          ...new Set(
+            freshActions
+              .flatMap((action) => actionDiscoveryContexts(action))
+              .map(normalizeContextId),
+          ),
+        ].sort();
+        // Resolve only declared aliases of freshly authorized domains. An
+        // unknown explicit context stays restrictive rather than widening to a
+        // global search; canonical domain names take precedence over aliases.
+        const explicitContexts = contexts?.flatMap((context) => {
+          const normalized = normalizeContextId(context);
+          if (availableContexts.includes(normalized)) return [normalized];
+          const matching = availableContexts.filter((candidate) =>
+            runtime.contexts
+              ?.get(candidate)
+              ?.aliases?.some(
+                (alias) => normalizeContextId(alias) === normalized,
+              ),
+          );
+          return matching.length > 0 ? matching : [normalized];
+        });
         const searchContexts =
-          contexts ??
+          explicitContexts ??
           (inferredContexts.length > 0 ? inferredContexts : undefined);
         const scopedActions =
           searchContexts === undefined
@@ -290,13 +308,14 @@ export function createPlannerToolDiscoveryAction(
           modelReplyRequired: true,
           text:
             selected.length === 0
-              ? "No matching operations. Rephrase the query, change contexts, or use mode=describe,names=[] to read the complete authorized catalog. No tools were loaded or executed."
+              ? "No matching operations. Rephrase the query or select from availableContexts to retry a scoped search. Explicit mode=describe,names=[] remains available for a complete catalog read. No tools were loaded or executed."
               : mode === "describe"
                 ? "Complete descriptions and schemas for the selected matching operations. Deferred matches remain discoverable. No tools were enabled or executed."
                 : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or mode=describe,names=[] for the complete catalog; no domain work was executed.",
           data: {
             readOnlyOperation: true,
             ...(inferredContexts.length > 0 ? { inferredContexts } : {}),
+            ...(selected.length === 0 ? { availableContexts } : {}),
             matchCount: selection.matchCount,
             selectedCount: selection.selectedCount,
             deferredCount: selection.deferredCount,

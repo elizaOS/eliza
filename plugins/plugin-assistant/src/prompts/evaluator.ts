@@ -13,6 +13,52 @@ export const EVALUATOR_CONTEXT_ROUTES = {
   RESTORE_FULL: "full",
 } as const;
 
+/** Which deferred sources this evaluator call can restore. */
+export interface EvaluatorRestorableContext {
+  /** Selected or background-reviewed dialogue left originals out. */
+  history: boolean;
+  /** Provider bodies were deferred behind references. */
+  providers: boolean;
+}
+
+const ALL_RESTORABLE: EvaluatorRestorableContext = {
+  history: true,
+  providers: true,
+};
+
+/**
+ * Restoration decisions applicable to the current deferred sources. The
+ * dynamic decision state advertises these; the stable response schema retains
+ * the protocol superset, and the runtime rejects unavailable restoration.
+ */
+export function evaluatorContextRouteNames(
+  restorable: EvaluatorRestorableContext = ALL_RESTORABLE,
+): Array<keyof typeof EVALUATOR_CONTEXT_ROUTES> {
+  return [
+    ...(restorable.history ? (["RESTORE_HISTORY"] as const) : []),
+    ...(restorable.providers ? (["RESTORE_PROVIDERS"] as const) : []),
+    ...(restorable.history && restorable.providers
+      ? (["RESTORE_FULL"] as const)
+      : []),
+  ];
+}
+
+/** Restoration guidance limited to the routes this call can honor. */
+export function evaluatorRestorationRule(
+  restorable: EvaluatorRestorableContext,
+): string {
+  if (restorable.history && restorable.providers)
+    return "- Choose one restoration decision only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.\n";
+  if (restorable.history)
+    return "- Choose RESTORE_HISTORY only for missing evidence, not merely omitted dialogue: a specific missing original dialogue constraint, correction, referent or historical fact. Explain that deficit in thought. Missing live-record fields are tool work: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or live-record fields. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. RESTORE_HISTORY requires success=false and no messageToUser/copyToClipboard; it cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call; never infer omitted facts or repeat completed mutations.\n";
+  if (restorable.providers)
+    return "- Choose RESTORE_PROVIDERS only for missing evidence, not merely omitted categories: needed content advertised by a deferred provider reference. Explain that deficit in thought. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. RESTORE_PROVIDERS requires success=false and no messageToUser/copyToClipboard; it cannot simultaneously select a queued call or finish. The runtime restores complete provider content in one tool-free evaluator call; never infer omitted facts or repeat completed mutations.\n";
+  return "";
+}
+
+export const evaluatorReceiptSelectionRule =
+  "- For every completed change claimed in messageToUser or an approved terminal reply, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].";
+
 export function evaluatorTemplateForQueue(
   _hasQueuedCalls: boolean,
   _clipboardAvailable = true,
@@ -24,9 +70,6 @@ routes:
 - FINISH: the task is complete or should stop
 - NEXT_RECOMMENDED: one valid queued tool should run next before replanning
 - CONTINUE: ask the planner to discover or plan remaining work; an empty queue is not a blocker
-- RESTORE_HISTORY: read missing original dialogue before deciding
-- RESTORE_PROVIDERS: read needed deferred provider content before deciding
-- RESTORE_FULL: read both missing dialogue and provider content before deciding
 
 rules:
 - For document extraction, verification codes, reference numbers and other identifiers are values in the document text, not file hashes. Report the matching content value. A request to verify a write does not request its checksum: report integrity metadata only if the user explicitly asks for a hash, checksum or revision. Copy exact values verbatim.
@@ -45,7 +88,6 @@ rules:
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome. Select recommendedToolCallId from the current decision state's queued IDs; preserve planned order and prerequisites. An empty queue forbids NEXT_RECOMMENDED. CONTINUE when the plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
-- Choose one restoration decision only for missing evidence, not merely omitted categories: RESTORE_HISTORY for a specific missing original dialogue constraint, correction, referent or historical fact; RESTORE_PROVIDERS for needed content advertised by a deferred provider reference; RESTORE_FULL only when both dialogue and provider evidence are independently needed. Explain those deficits in thought. A missing provider body alone does not require history. Missing live-record fields are tool work when the provider reference does not promise them: recommend a grounded queued read or discovery needed to load its schema, or CONTINUE to plan that read. Restoring dialogue cannot establish current record timestamps, latest ordering or fields absent from the full provider. Do not discard a useful queued discovery merely because a view advertises a capability; a capability name is not a loaded callable schema. Restoration decisions require success=false and no messageToUser/copyToClipboard; they cannot simultaneously select a queued call or finish. The runtime restores complete originals in one tool-free evaluator call. Preserve full restoration when both deficits exist; never infer omitted facts or repeat completed mutations.
 - if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
 - For FINISH, when current decision state requires a reply, provide the grounded answer or necessary question in messageToUser. Otherwise omit it only to approve an accurate terminal planner reply, verified tool text or explicit reply suppression. Internal results and undelivered Stage-1 drafts alone are not replies. CONTINUE/restoration decisions must not publish a progress draft. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
@@ -55,7 +97,6 @@ rules:
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
 - Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, omit messageToUser entirely unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
 - If setting messageToUser, ground it in THIS request's outcome in everyday language. Do not rely on a fixed canned phrase list or use a process-status ack as the whole message.
-- For every completed change claimed in messageToUser or an approved terminal reply, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].
 - Classify the reply's claimed outcome in replyEffectStatus: applied for a claimed committed mutation or send, even indirect or non-English wording; non_applied for a stopped, failed or clarification-only outcome; none for reads, receipt-grounded view navigation or other prose without a mutation claim. An applied claim needs committed receipt proof; the classification itself proves no execution.
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Rejecting or cancelling queued approvals, stored events, jobs, notes or other persisted state requires its own committed receipt; a promise not to execute the original action does not settle a pending request. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result. Omit file paths, internal ids and raw logs unless explicitly requested and safe to disclose; never expose secrets or internal reasoning. Do not invent unreported authentication/settings failures.

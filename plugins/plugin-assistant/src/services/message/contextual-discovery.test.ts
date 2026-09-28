@@ -15,6 +15,8 @@ import { notesPlugin } from "../../../../plugin-notes/src/plugin";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
+import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
+import { postAction } from "../../features/advanced-capabilities/actions/post.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
@@ -40,6 +42,117 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it.each([
+    ["message", ["MESSAGE"]],
+    ["help with my messages", ["MESSAGE"]],
+    ["Help with my messages.", ["MESSAGE"]],
+    ["send a message", ["MESSAGE_SEND"]],
+    ["search messages", ["MESSAGE_SEARCH"]],
+    ["search my inbox", ["MESSAGE_SEARCH_INBOX"]],
+    ["list inbox", ["MESSAGE_LIST_INBOX"]],
+    ["send draft", ["MESSAGE_SEND_DRAFT"]],
+    ["send drafts", ["MESSAGE_SEND_DRAFT"]],
+    ["send scheduled drafts", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
+    ['send "search and send draft" to Amy', ["MESSAGE_SEND"]],
+    ["MESSAGE_SEND_DRAFT", ["MESSAGE_SEND_DRAFT"]],
+    ["schedule draft send", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
+    ["check my inbox", ["MESSAGE_LIST_INBOX", "MESSAGE_SEARCH_INBOX"]],
+    ["triage messages", ["MESSAGE_TRIAGE"]],
+  ])(
+    "retrieves the requested messaging operation for %s",
+    (query, expected) => {
+      const actions = promoteSubactionsToActions(messageAction);
+      const result = retrieveContextualPlannerActions({
+        actions,
+        query,
+        contexts: ["messaging"],
+      });
+      expect(result.actions.map((action) => action.name).sort()).toEqual(
+        expected,
+      );
+      for (const action of result.actions) expect(actions).toContain(action);
+      // Selection never rewrites or removes the full discoverable registry.
+      expect(actions.some((action) => action.name === "MESSAGE_SEND")).toBe(
+        true,
+      );
+      expect(actions.some((action) => action.name === "MESSAGE_SEARCH")).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each([
+    ["search messages", "send a message"],
+    ["send a message", "send draft"],
+  ])("retains independent outcomes %s and %s", (first, second) => {
+    const actions = promoteSubactionsToActions(messageAction);
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query: `${first} and ${second}`,
+      intents: [first, second],
+      contexts: ["messaging"],
+    });
+    const expected = first.startsWith("search")
+      ? ["MESSAGE_SEARCH", "MESSAGE_SEND"]
+      : ["MESSAGE_SEND", "MESSAGE_SEND_DRAFT"];
+    expect(result.actions.map((action) => action.name).sort()).toEqual(
+      expected,
+    );
+  });
+
+  it.each([
+    ["messaging", "send a DM", "MESSAGE_SEND"],
+    ["messaging", "search my inbox", "MESSAGE_SEARCH_INBOX"],
+    ["social_posting", "send a public post", "POST_SEND"],
+  ])("keeps %s operation ownership for %s", (context, query, expected) => {
+    const actions = [
+      ...promoteSubactionsToActions(messageAction),
+      ...promoteSubactionsToActions(postAction),
+    ];
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query,
+      contexts: [context],
+    });
+    expect(result.actions.map((action) => action.name)).toEqual([expected]);
+  });
+
+  it("does not substitute a metadata-only umbrella for executable children", () => {
+    const actions = promoteSubactionsToActions(messageAction).map((action) =>
+      action.name === "MESSAGE" ? { ...action, handler: undefined } : action,
+    );
+    const result = retrieveContextualPlannerActions({
+      actions,
+      query: "message",
+      contexts: ["messaging"],
+    });
+    expect(result.actions.length).toBeGreaterThan(0);
+    expect(result.actions.some((action) => action.name === "MESSAGE")).toBe(
+      false,
+    );
+    expect(
+      result.actions.every((action) => typeof action.handler === "function"),
+    ).toBe(true);
+  });
+
+  it("never reconstructs a missing family parent and preserves exact child hints", () => {
+    const actions = promoteSubactionsToActions(messageAction);
+    const child = actions.find(
+      (action) => action.name === "MESSAGE_SEND_DRAFT",
+    );
+    if (!child) throw new Error("Registered send-draft operation is missing");
+    const result = retrieveContextualPlannerActions({
+      actions: actions.filter((action) => action.name !== "MESSAGE"),
+      query: "message",
+      contexts: ["messaging"],
+      selectedActions: [child],
+    });
+    expect(result.actions).toContain(child);
+    expect(result.actions.some((action) => action.name === "MESSAGE")).toBe(
+      false,
+    );
+  });
+
   it.each([
     {
       query: "Read input.json and report product and verificationCode",
@@ -1324,16 +1437,22 @@ describe("contextual native discovery", () => {
       query: "notes",
       contexts: ["notes"],
     }).actions;
-    expect(result.map((action) => action.name)).toEqual(
-      expect.arrayContaining([
-        "NOTES_LIST",
-        "NOTES_GET",
-        "NOTES_CREATE",
-        "NOTES_UPDATE",
-        "NOTES_DELETE",
-        "NOTES_PATCH",
-      ]),
-    );
+    expect(result.map((action) => action.name)).toEqual(["NOTES"]);
+    for (const name of [
+      "NOTES_LIST",
+      "NOTES_GET",
+      "NOTES_CREATE",
+      "NOTES_UPDATE",
+      "NOTES_DELETE",
+      "NOTES_PATCH",
+    ]) {
+      const discovered = retrieveContextualPlannerActions({
+        actions,
+        query: name,
+        contexts: ["notes"],
+      }).actions;
+      expect(discovered.map((action) => action.name)).toContain(name);
+    }
   });
 
   it("scopes an unqualified Notes query using fresh registered domains", async () => {
