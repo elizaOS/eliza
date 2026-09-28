@@ -2446,9 +2446,27 @@ export class ElizaClient {
         // the parsed-and-fanned path is dispatchWsData, exercised by tests.
       }
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.ws !== socket) return;
       this.ws = null;
+      if (
+        event.code === 1008 &&
+        (event.reason === "session_revoked" ||
+          event.reason === "session_invalid")
+      ) {
+        // A denied machine session cannot send queued work or keep retrying
+        // its stale bearer. The shell owns credential persistence and pairing.
+        this.wsSendQueue = [];
+        this.disconnectedAt = Date.now();
+        this.connectionState = "disconnected";
+        this.emitConnectionStateChange();
+        this.dispatchWsData({
+          type: "auth-revoked",
+          apiBase: effectiveBase,
+          reason: event.reason,
+        });
+        return;
+      }
       // Track disconnection time if not already set
       if (this.disconnectedAt === null) {
         this.disconnectedAt = Date.now();

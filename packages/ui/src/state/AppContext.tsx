@@ -49,6 +49,7 @@ import {
   tryHandleTutorialText,
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
+import { scrubRevokedRemoteCredential } from "./active-server-credential";
 import { applyAgentProfileConnection } from "./agent-profile-connection";
 import {
   activeServerIdForAgentProfile,
@@ -67,7 +68,10 @@ import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
-import { createPersistedActiveServer } from "./persistence";
+import {
+  createPersistedActiveServer,
+  loadPersistedActiveServer,
+} from "./persistence";
 import {
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
@@ -1524,6 +1528,45 @@ function AppProviderInner({
   coordinatorRetryRef.current = startupCoordinator.retry;
   coordinatorResetRef.current = startupCoordinator.reset;
   coordinatorFirstRunCompleteRef.current = startupCoordinator.firstRunComplete;
+
+  useEffect(
+    () =>
+      client.onWsEvent("auth-revoked", (event) => {
+        const apiBase =
+          typeof event.apiBase === "string" ? event.apiBase : null;
+        const token = client.getRestAuthToken();
+        const activeServer = loadPersistedActiveServer();
+        if (
+          !apiBase ||
+          !token ||
+          activeServer?.kind !== "remote" ||
+          activeServer.apiBase?.replace(/\/+$/, "") !==
+            apiBase.replace(/\/+$/, "") ||
+          activeServer.accessToken !== token
+        ) {
+          return;
+        }
+        const cleared = scrubRevokedRemoteCredential(token, apiBase);
+        client.setToken(null);
+        setActionNotice(
+          "This device's session ended. Pair it again.",
+          "error",
+          8000,
+        );
+        void cleared
+          .then((didClear) => {
+            if (didClear && client.getBaseUrl() === apiBase) retryStartup();
+          })
+          .catch(() => {
+            setActionNotice(
+              "Session ended, but the saved credential could not be cleared. Check device storage before re-pairing.",
+              "error",
+              12000,
+            );
+          });
+      }),
+    [retryStartup, setActionNotice],
+  );
 
   // Memoize the coordinator handle so that unrelated re-renders (e.g. chatInput
   // keystrokes) don't produce a new object reference and bust the value useMemo below.
