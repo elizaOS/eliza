@@ -80,6 +80,9 @@ function fixture(altered = false) {
     "--restart",
     "no",
     "--no-healthcheck",
+    // Mirrors the inert host bindings the provider reserves at create.
+    "--publish",
+    "127.0.0.1::3000",
     "--read-only",
     "--tmpfs",
     "/restore:rw,nosuid,nodev,mode=0700,size=64m",

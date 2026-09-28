@@ -313,26 +313,97 @@ const EXACT_RESTORE_QUARANTINE_COMMAND = [
 
 /** Inspect and start only the retained quarantine host; never create or boot a workload. */
 export function buildExactRestoreQuarantineStartCommand(
-  input: Parameters<typeof buildExactRestoreQuarantineCommand>[0],
+  input: ExactRestoreQuarantineCommandInput,
 ): Readonly<{ command: string; receiptDigest: string }> {
   return buildExactRestoreQuarantineCommand(input, "start");
 }
 
 /** Execute only the private worker in an already-running exact quarantine; never start it. */
 export function buildExactRestoreQuarantineMaterializerCommand(
-  input: Parameters<typeof buildExactRestoreQuarantineCommand>[0],
+  input: ExactRestoreQuarantineCommandInput,
 ): string {
   return buildExactRestoreQuarantineCommand(input, "materialize").command;
 }
 
+/**
+ * Execute the private restore controller (root preparation, generation commit
+ * or boot-grant handoff) in the exact running container. The controller reads
+ * one framed request on stdin and prints one canonical JSON response.
+ */
+export function buildExactRestoreControllerCommand(
+  input: ExactRestoreQuarantineCommandInput,
+  phase: "quarantine" | "serving",
+): string {
+  return buildExactRestoreQuarantineCommand(
+    input,
+    phase === "quarantine" ? "controller" : "serving-controller",
+  ).command;
+}
+
+/**
+ * The single serving transition of an exact restore container: detach it from
+ * the `none` network, attach the agent network (activating the host ports
+ * reserved at create), and start the retained quarantine host as PID 1. It
+ * never boots the workload; it prints the container's published port map.
+ * Replays observe an already attached, running container and only re-prove it.
+ */
+export function buildExactRestoreServingAttachCommand(
+  input: ExactRestoreQuarantineCommandInput,
+): string {
+  return buildExactRestoreQuarantineCommand(input, "serving-attach").command;
+}
+
+/**
+ * Launch the committed-generation runtime detached inside the attached
+ * container. The runtime consumes its boot grant and holds an exclusive lock,
+ * so a replayed launch cannot boot the generation twice.
+ */
+export function buildExactRestoreServingLaunchCommand(
+  input: ExactRestoreQuarantineCommandInput,
+): Readonly<{ command: string; receiptDigest: string }> {
+  return buildExactRestoreQuarantineCommand(input, "serving-launch");
+}
+
+/** Relay one signed probe to the restored runtime's private socket. */
+export function buildExactRestoreServingProbeCommand(
+  input: ExactRestoreQuarantineCommandInput,
+): string {
+  return buildExactRestoreQuarantineCommand(input, "serving-probe").command;
+}
+
+/**
+ * Fail-closed rollback of the serving transition: stop the exact container
+ * (attached or not) so it can never answer traffic. Removal and capacity
+ * release remain with the exact cleanup authority.
+ */
+export function buildExactRestoreServingStopCommand(
+  input: ExactRestoreQuarantineCommandInput,
+): Readonly<{ command: string; receiptDigest: string }> {
+  return buildExactRestoreQuarantineCommand(input, "serving-stop");
+}
+
+export type ExactRestoreQuarantineCommandInput = Readonly<{
+  agentId: string;
+  replacementAttemptId: string;
+  containerId: string;
+  exactRestore: SandboxExactRestoreCreateConfig;
+}>;
+
+type ExactRestoreQuarantineEffect =
+  | "start"
+  | "materialize"
+  | "controller"
+  | "serving-controller"
+  | "serving-attach"
+  | "serving-launch"
+  | "serving-probe"
+  | "serving-stop";
+
+const EXACT_RESTORE_AGENT_DIST = "/app/packages/agent/dist/services";
+
 function buildExactRestoreQuarantineCommand(
-  input: Readonly<{
-    agentId: string;
-    replacementAttemptId: string;
-    containerId: string;
-    exactRestore: SandboxExactRestoreCreateConfig;
-  }>,
-  effect: "start" | "materialize",
+  input: ExactRestoreQuarantineCommandInput,
+  effect: ExactRestoreQuarantineEffect,
 ): Readonly<{ command: string; receiptDigest: string }> {
   validateAgentId(input.agentId);
   assertSandboxReplacementAttemptId(input.replacementAttemptId);
@@ -349,13 +420,14 @@ function buildExactRestoreQuarantineCommand(
     [EXACT_RESTORE_IMAGE_DIGEST_LABEL, exact.imageDigest],
     [EXACT_RESTORE_QUARANTINE_LABEL, "true"],
   ] as const;
+  // Create-time HostConfig is immutable. Network attachment is observed
+  // separately because only the serving transition may change it.
   const format = [
     "{{.Id}}",
     "{{.Name}}",
     "{{.Config.Image}}",
     "{{.ImageManifestDescriptor.digest}}",
     "{{.ImageManifestDescriptor.platform.os}}/{{.ImageManifestDescriptor.platform.architecture}}",
-    "{{.HostConfig.NetworkMode}}",
     "{{.HostConfig.RestartPolicy.Name}}",
     "{{len .HostConfig.PortBindings}}",
     "{{json .Config.Healthcheck.Test}}",
@@ -369,19 +441,27 @@ function buildExactRestoreQuarantineCommand(
     `${imageName}@${exact.imagePlatformDigest}`,
     exact.imagePlatformDigest,
     exact.target.platform,
-    "none",
     "no",
-    "0",
+    "1",
     '["NONE"]',
     JSON.stringify([EXACT_RESTORE_QUARANTINE_ENTRYPOINT]),
     JSON.stringify(EXACT_RESTORE_QUARANTINE_COMMAND),
     ...labels.map(([, value]) => value),
   ].join("|");
   const receiptDigest = createHash("sha256")
-    .update("eliza.agent-backup-restore.quarantine-running.v1\n")
+    .update(`eliza.agent-backup-restore.quarantine-${effect}.v2\n`)
     .update(expected)
     .digest("hex");
-  const inspect = `docker inspect --format ${shellQuote(format)} ${shellQuote(containerId)}`;
+  const quoted = shellQuote(containerId);
+  const inspect = `docker inspect --format ${shellQuote(format)} ${quoted}`;
+  const networksInspect = `docker inspect --format ${shellQuote(
+    "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}",
+  )} ${quoted}`;
+  const network = shellQuote(DOCKER_NETWORK);
+  const attachedValue = shellQuote(`${DOCKER_NETWORK} `);
+  const quarantined = `test "$(${networksInspect})" = 'none '`;
+  const attached = `test "$(${networksInspect})" = ${attachedValue}`;
+  const running = `test "$(docker inspect --format '{{.State.Running}}' ${quoted})" = true`;
   const probe = `import fs from "node:fs/promises";
 try {
   const title = (await fs.readFile("/proc/1/cmdline", "utf8")).split("\\0").filter(Boolean);
@@ -390,25 +470,129 @@ try {
   // error-policy:J1 Reject the process probe without exposing container diagnostics.
   process.exitCode = 78;
 }`;
-  const command = buildExactRestoreDockerBootFencedCommand(
-    exact.target.nodeIncarnation,
-    [
-      `test "$(${inspect})" = ${shellQuote(expected)}`,
-      ...(effect === "start"
-        ? [
-            `quarantine_state=$(docker inspect --format '{{.State.Status}}' ${shellQuote(containerId)})`,
-            `case "$quarantine_state" in created|exited) docker start ${shellQuote(containerId)} >/dev/null ;; running) : ;; *) exit 78 ;; esac`,
-          ]
-        : []),
-      `test "$(${inspect})" = ${shellQuote(expected)}`,
-      `test "$(docker inspect --format '{{.State.Running}}' ${shellQuote(containerId)})" = true`,
-      `docker exec ${shellQuote(containerId)} /usr/bin/env -i /usr/local/bin/node --input-type=module -e ${shellQuote(probe)}`,
-      effect === "start"
-        ? `printf '%s' ${shellQuote(receiptDigest)}`
-        : `docker exec -i ${shellQuote(containerId)} /usr/bin/env -i /usr/local/bin/node /app/packages/agent/dist/services/agent-backup-restore-v3-materializer-worker.js`,
-    ].join("; "),
-  );
-  return Object.freeze({ command, receiptDigest });
+  const pidOneProbe = `docker exec ${quoted} /usr/bin/env -i /usr/local/bin/node --input-type=module -e ${shellQuote(probe)}`;
+  const fingerprint = `test "$(${inspect})" = ${shellQuote(expected)}`;
+  const worker = (name: string) =>
+    `docker exec -i ${quoted} /usr/bin/env -i /usr/local/bin/node ${EXACT_RESTORE_AGENT_DIST}/${name}`;
+  const steps: string[] = [fingerprint];
+  switch (effect) {
+    case "start":
+      steps.push(
+        quarantined,
+        `quarantine_state=$(docker inspect --format '{{.State.Status}}' ${quoted})`,
+        `case "$quarantine_state" in created|exited) docker start ${quoted} >/dev/null ;; running) : ;; *) exit 78 ;; esac`,
+        fingerprint,
+        quarantined,
+        running,
+        pidOneProbe,
+        `printf '%s' ${shellQuote(receiptDigest)}`,
+      );
+      break;
+    case "materialize":
+      steps.push(
+        quarantined,
+        running,
+        pidOneProbe,
+        worker("agent-backup-restore-v3-materializer-worker.js"),
+      );
+      break;
+    case "controller":
+    case "serving-controller":
+      steps.push(
+        effect === "controller" ? quarantined : attached,
+        running,
+        pidOneProbe,
+        worker("agent-backup-restore-v3-controller-worker.js"),
+      );
+      break;
+    case "serving-attach":
+      steps.push(
+        `restore_networks=$(${networksInspect})`,
+        `if [ "$restore_networks" = 'none ' ]; then docker stop -t 10 ${quoted} >/dev/null; docker network inspect ${network} >/dev/null 2>&1 || docker network create ${network} >/dev/null; docker network disconnect none ${quoted}; docker network connect ${network} ${quoted}; elif [ "$restore_networks" != ${attachedValue} ]; then exit 78; fi`,
+        attached,
+        `serving_state=$(docker inspect --format '{{.State.Status}}' ${quoted})`,
+        `case "$serving_state" in created|exited) docker start ${quoted} >/dev/null ;; running) : ;; *) exit 78 ;; esac`,
+        fingerprint,
+        attached,
+        running,
+        pidOneProbe,
+        `docker inspect --format '{{json .NetworkSettings.Ports}}' ${quoted}`,
+      );
+      break;
+    case "serving-launch":
+      steps.push(
+        attached,
+        running,
+        pidOneProbe,
+        `docker exec -d ${quoted} /usr/local/bin/node ${EXACT_RESTORE_AGENT_DIST}/agent-backup-restore-v3-restored-runtime.js ${shellQuote(exact.restoreAttemptId)}`,
+        `printf '%s' ${shellQuote(receiptDigest)}`,
+      );
+      break;
+    case "serving-probe":
+      steps.push(attached, running, pidOneProbe, worker("agent-backup-restore-v3-probe-client.js"));
+      break;
+    case "serving-stop":
+      steps.push(
+        `restore_state=$(docker inspect --format '{{.State.Status}}' ${quoted})`,
+        `case "$restore_state" in created|exited) : ;; *) docker stop -t 30 ${quoted} >/dev/null ;; esac`,
+        `test "$(docker inspect --format '{{.State.Running}}' ${quoted})" = false`,
+        `printf '%s' ${shellQuote(receiptDigest)}`,
+      );
+      break;
+  }
+  return Object.freeze({
+    command: buildExactRestoreDockerBootFencedCommand(
+      exact.target.nodeIncarnation,
+      steps.join("; "),
+    ),
+    receiptDigest,
+  });
+}
+
+/** Parse Docker's published-port map into the two reserved host ports. */
+export function parseExactRestoreServingPorts(
+  raw: string,
+): Readonly<{ bridgePort: number; webUiPort: number; containerPort: number }> {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let parsed: unknown = null;
+  try {
+    parsed = lines.length === 1 ? JSON.parse(lines[0]!) : null;
+  } catch {
+    // error-policy:J3 an untrusted Docker inspect response must fail closed.
+    parsed = null;
+  }
+  const entries =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? Object.entries(parsed as Record<string, unknown>)
+      : [];
+  const published = entries.length === 1 ? /^([1-9][0-9]{0,4})\/tcp$/.exec(entries[0]![0]) : null;
+  const containerPort = published ? Number(published[1]) : Number.NaN;
+  const bindings = published && containerPort <= 65_535 ? entries[0]![1] : undefined;
+  const ports = Array.isArray(bindings)
+    ? [
+        ...new Set(
+          bindings
+            .map((binding) =>
+              binding && typeof binding === "object"
+                ? Number((binding as { HostPort?: unknown }).HostPort)
+                : Number.NaN,
+            )
+            .filter((port) => Number.isSafeInteger(port) && port > 0 && port <= 65_535),
+        ),
+      ].sort((left, right) => left - right)
+    : [];
+  const bridgePort = ports.find((port) => port >= BRIDGE_PORT_MIN && port < BRIDGE_PORT_MAX);
+  const webUiPort = ports.find((port) => port >= WEBUI_PORT_MIN && port < WEBUI_PORT_MAX);
+  if (ports.length !== 2 || bridgePort === undefined || webUiPort === undefined) {
+    throw new ElizaError("Exact restore container does not publish its reserved ports", {
+      code: "SANDBOX_EXACT_RESTORE_SERVING_PORTS_INVALID",
+      severity: "fatal",
+    });
+  }
+  return Object.freeze({ bridgePort, webUiPort, containerPort });
 }
 
 function freezeExactRestoreTarget(target: SandboxExactRestoreTarget): SandboxExactRestoreTarget {
@@ -487,6 +671,39 @@ function freezeExactRestoreConfig(
     imagePlatformDigest: exactRestore.imagePlatformDigest,
     quarantine: true,
   });
+}
+/** Exact inert host bindings reserved for the one serving transition. */
+export function exactRestorePortBindingsMatch(
+  raw: string | undefined,
+  containerPort: string,
+  bridgePort: number,
+  webUiPort: number,
+): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw ?? "null");
+  } catch {
+    // error-policy:J3 an untrusted Docker inspect response must fail closed.
+    return false;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  if (entries.length !== 1 || entries[0]![0] !== `${containerPort}/tcp`) return false;
+  const bindings = entries[0]![1];
+  if (!Array.isArray(bindings) || bindings.length !== 2) return false;
+  const hostPorts = bindings.map((binding) =>
+    binding &&
+    typeof binding === "object" &&
+    ((binding as { HostIp?: unknown }).HostIp ?? "") === "" &&
+    typeof (binding as { HostPort?: unknown }).HostPort === "string"
+      ? (binding as { HostPort: string }).HostPort
+      : null,
+  );
+  return (
+    hostPorts.includes(String(bridgePort)) &&
+    hostPorts.includes(String(webUiPort)) &&
+    bridgePort !== webUiPort
+  );
 }
 function isExactRestoreContainerName(value: string): boolean {
   const match = /^agent-restore-([0-9a-f-]{36})-([0-9a-f-]{36})$/.exec(value);
@@ -2742,10 +2959,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     const platformFlags = dockerPlatformFlag(exactRestore.target.platform);
     const initialNode = await this.resolveExactRestoreTarget(exactRestore.target);
     const initialHostKeyFingerprint = initialNode.host_key_fingerprint!;
-    // The generic handle shape still carries route fields, but quarantine has
-    // no published host ports or reachable health surface by construction.
-    const bridgePort = 0;
-    const webUiPort = 0;
+    // Host ports are reserved at create because Docker cannot add bindings to
+    // an existing container. They stay inert while the container is attached
+    // only to the `none` network; the restore coordinator attaches the agent
+    // network after the committed generation is proven, which is the only
+    // transition that makes this exact container routable.
+    const quarantineUsedPorts = await getUsedDockerHostPorts(exactRestore.target.nodeId);
+    const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, quarantineUsedPorts);
+    const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, quarantineUsedPorts);
     const baseMetadata = {
       provider: "docker" as const,
       nodeId: exactRestore.target.nodeId,
@@ -2923,6 +3144,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         ...platformFlags,
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
+        `-p ${bridgePort}:${containerPort}`,
+        `-p ${webUiPort}:${containerPort}`,
         ...envTransport.commandFlags,
         `--env-file ${shellQuote(secretEnvPath)}`,
         shellQuote(platformImageReference),
@@ -2987,7 +3210,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         proofFields[3] !== "created" ||
         proofFields[4] !== "none" ||
         proofFields[5] !== "no" ||
-        (proofFields[6] !== "{}" && proofFields[6] !== "null") ||
+        !exactRestorePortBindingsMatch(proofFields[6], containerPort, bridgePort, webUiPort) ||
         proofFields[7] !== platformImageReference ||
         !/^sha256:[0-9a-f]{64}$/.test(proofFields[8] ?? "") ||
         proofFields[9] !== "linux" ||

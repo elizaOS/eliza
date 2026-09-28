@@ -23,6 +23,10 @@ import {
 } from "../../db/repositories/agent-backup-restore";
 import { assertAgentBackupRestoreV3OperationControl } from "../../db/repositories/agent-backup-restore-v3-candidate-database-control";
 import { createAgentBackupRestoreV3CandidateSealAuthority } from "../../db/repositories/agent-backup-restore-v3-candidate-seal-authority";
+import type {
+  AgentBackupObjectStoreRegistry,
+  AgentBackupStorageAuthority,
+} from "../storage/agent-backup-object-store";
 import {
   type ExactObjectStorageBackend,
   getExactObjectAtBackend,
@@ -148,8 +152,12 @@ export async function streamAgentBackupRestoreV3FromCatalogue(
     > & {
       enabled: boolean;
       source: Readonly<AgentBackupRestoreSourceV3Input>;
-      backend: ExactObjectStorageBackend;
     } & (
+        | { backend: ExactObjectStorageBackend; registry?: never }
+        /** Resolve each object's own persisted endpoint; a repointed endpoint fails. */
+        | { registry: AgentBackupObjectStoreRegistry; backend?: never }
+      ) &
+      (
         | (CatalogueStaging & { quarantine?: never })
         | {
             quarantine: Readonly<QuarantineTarget>;
@@ -201,7 +209,11 @@ export async function streamAgentBackupRestoreV3FromCatalogue(
           candidateSealAuthority: input.candidateSealAuthority,
         }
       : undefined;
-  const { source: sourceInput, backend: backendInput } = input;
+  const { source: sourceInput, backend: backendInput, registry } = input;
+  if ((backendInput === undefined) === (registry === undefined))
+    throw new ElizaError("Restore catalogue requires exactly one object storage authority", {
+      code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STORAGE_CONFLICT",
+    });
   const streamInput = Object.freeze({
     keyBundle: input.keyBundle,
     signal: input.signal,
@@ -209,18 +221,33 @@ export async function streamAgentBackupRestoreV3FromCatalogue(
     reportDetachedFailure: input.reportDetachedFailure,
   });
   const sourceIdentity = Object.freeze({ ...sourceInput });
-  const backend = Object.freeze({
-    ...backendInput,
-    locator: Object.freeze({ ...backendInput.locator }),
-  });
+  const backend = backendInput
+    ? Object.freeze({
+        ...backendInput,
+        locator: Object.freeze({ ...backendInput.locator }),
+      })
+    : undefined;
   const control = Object.freeze({
     signal: streamInput.signal,
     deadlineEpochMs: streamInput.deadlineEpochMs,
   });
   assertAgentBackupRestoreV3OperationControl(control, "Catalogue restore stream");
-  const source = projectSource(
-    sourceIdentity,
-    await loadAgentBackupRestoreSourceV3(sourceIdentity, control),
+  const loaded = await loadAgentBackupRestoreSourceV3(sourceIdentity, control);
+  const source = projectSource(sourceIdentity, loaded);
+  // Each catalogued object carries its own persisted endpoint authority; the
+  // registry refuses any endpoint that was repointed since the upload.
+  const storageByObjectId = new Map<string, AgentBackupStorageAuthority>(
+    loaded.objects.map((row) => [
+      row.id,
+      Object.freeze({
+        provider: row.provider,
+        transport: row.transport,
+        endpointAlias: row.endpoint_alias,
+        endpointIdentityFingerprint: row.endpoint_identity_fingerprint,
+        bucket: row.bucket,
+        region: row.region,
+      }),
+    ]),
   );
   assertAgentBackupRestoreV3OperationControl(control, "Catalogue restore staging");
   if (quarantine) {
@@ -247,17 +274,22 @@ export async function streamAgentBackupRestoreV3FromCatalogue(
     ...streamInput,
     ...staging,
     source,
-    openExactObject: (object, readControl) =>
-      getExactObjectAtBackend({
-        backend,
-        input: {
-          locator: object.locator,
-          expectedSize: object.authority.catalog.sizeBytes,
-          expectedCipherSha256: object.authority.catalog.ciphertextSha256,
-          signal: readControl.signal,
-          deadline: new Date(readControl.deadlineEpochMs),
-        },
-      }),
+    openExactObject: (object, readControl) => {
+      const read = {
+        locator: object.locator,
+        expectedSize: object.authority.catalog.sizeBytes,
+        expectedCipherSha256: object.authority.catalog.ciphertextSha256,
+        signal: readControl.signal,
+        deadline: new Date(readControl.deadlineEpochMs),
+      };
+      if (backend) return getExactObjectAtBackend({ backend, input: read });
+      const storage = storageByObjectId.get(object.authority.objectId);
+      if (!storage || !registry)
+        throw new ElizaError("Restore catalogue object lacks its persisted storage authority", {
+          code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STORAGE_CONFLICT",
+        });
+      return registry.forStoredObject(storage).getExactObject(read);
+    },
     revalidateAuthority: async (_expected, readControl) => {
       const current = projectSource(
         sourceIdentity,

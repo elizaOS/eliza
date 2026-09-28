@@ -15,6 +15,7 @@ import { ElizaError } from "@elizaos/core";
 import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/core/contracts/agent-backup-capture-v2";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
+import { logger } from "../utils/logger";
 import { createAccountDeletionBackupAuthority } from "./account-deletion-backup-authority";
 import { createAccountDeletionProviderAdapters } from "./account-deletion-provider-adapters";
 import { processIrreversibleAccountDeletionSaga } from "./account-deletion-saga";
@@ -43,6 +44,13 @@ import { createAgentBackupCatalogPublicationExecutor } from "./agent-backup-publ
 const MAX_SPOOL_BYTES = 1024 ** 4;
 const MAX_TOKEN_BYTES = 16 * 1024;
 const MAX_PROVIDER_IDENTITY_BYTES = 256;
+import {
+  type AgentBackupRestoreCoordinatorStreamer,
+  createProductionCoordinatorDependencies,
+  runAgentBackupRestoreCoordinatorCycle,
+} from "./agent-backup-restore-coordinator";
+import { readAgentBackupRestoreCoordinatorConfig } from "./agent-backup-restore-coordinator-runtime";
+import { streamAgentBackupRestoreV3FromCatalogue } from "./agent-backup-restore-v3-catalogue-stream";
 const PLUGIN_ID_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$/;
 const DEPLOYMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -552,7 +560,56 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
       await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
         dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
       );
+  // The restore coordinator shares this worker's KMS key bundle and storage
+  // registry. It is disabled-first and validated with the rest of the config.
+  const restoreConfig = readAgentBackupRestoreCoordinatorConfig(input.env);
+  const restoreStreamer: AgentBackupRestoreCoordinatorStreamer = {
+    async stream(streamInput) {
+      const streamed = await streamAgentBackupRestoreV3FromCatalogue({
+        enabled: true,
+        source: streamInput.source,
+        registry,
+        keyBundle,
+        quarantine: streamInput.quarantine,
+        signal: streamInput.signal,
+        deadlineEpochMs: streamInput.deadlineEpochMs,
+        reportDetachedFailure: (event) => {
+          logger.error("[AgentBackupRestoreCoordinator] Detached restore stream failure", {
+            operationId: streamInput.source.operationId,
+            restoreAttemptId: streamInput.source.restoreAttemptId,
+            event,
+          });
+        },
+      });
+      if (!("sealed" in streamed)) {
+        throw new ElizaError("Restore catalogue stream did not run", {
+          code: "AGENT_BACKUP_RESTORE_STREAM_DISABLED",
+          severity: "fatal",
+        });
+      }
+      return streamed;
+    },
+  };
+  const restoreDependencies = restoreConfig.enabled
+    ? createProductionCoordinatorDependencies(restoreStreamer)
+    : null;
       return summary;
     },
   });
 }
+      if (restoreConfig.enabled && restoreDependencies) {
+        const restore = await runAgentBackupCatalogCycleStage("restore-coordinator", () =>
+          runAgentBackupRestoreCoordinatorCycle({
+            config: restoreConfig,
+            dependencies: restoreDependencies,
+            signal,
+          }),
+        );
+        if (restore.examined > 0 || restore.terminalCleanups > 0 || restore.failures > 0) {
+          logger.info("[AgentBackupRestoreCoordinator] Restore cycle", {
+            examined: restore.examined,
+            failures: restore.failures,
+            results: restore.results,
+          });
+        }
+      }
