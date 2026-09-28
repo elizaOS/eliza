@@ -1,5 +1,6 @@
 /** Defines model registration, admission, and diagnostic policies shared by runtime model dispatch. */
 
+import { ElizaError } from "../../errors.js";
 import {
 	type ModelHandler,
 	type ModelRegistrationMetadata,
@@ -25,15 +26,18 @@ export function isUnavailableLocalModel(error: unknown): boolean {
 }
 
 /** Distinguishes absent model configuration from a deliberately disabled capability. */
-export class NoModelProviderConfiguredError extends Error {
+export class NoModelProviderConfiguredError extends ElizaError {
+	override readonly name = "NoModelProviderConfiguredError";
 	readonly reason: "no-provider" | "capability-disabled";
 
 	constructor(
 		message: string = "This agent has no model provider configured. Register a model provider plugin before requesting inference.",
 		reason: "no-provider" | "capability-disabled" = "no-provider",
 	) {
-		super(message);
-		this.name = "NoModelProviderConfiguredError";
+		super(message, {
+			code: "NO_MODEL_PROVIDER_CONFIGURED",
+			context: { reason },
+		});
 		this.reason = reason;
 	}
 }

@@ -18,11 +18,13 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type OwnerContactEntry,
   type OwnerContactsConfig,
+  readSystemNotice,
   requireConfirmedSendHandlerDelivery,
   resolveOwnerEntityId,
+  type SystemNotice,
+  systemNoticeText,
   type UUID,
 } from "@elizaos/core";
-
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -30,6 +32,7 @@ import {
   resolveOwnerContactWithFallback,
   resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
+import { projectLegacySystemNotice } from "../runtime/legacy-system-notice.ts";
 import {
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,
@@ -39,6 +42,7 @@ export interface EscalationState {
   id: string;
   reason: string;
   text: string;
+  systemNotice?: SystemNotice;
   currentStep: number;
   channelsSent: string[];
   startedAt: number;
@@ -190,10 +194,19 @@ async function loadActiveFromCache(
   runtime: IAgentRuntime,
 ): Promise<EscalationState | null> {
   try {
-    return (
-      (await runtime.getCache<EscalationState>(escalationCacheKey(runtime))) ??
-      null
+    const state = await runtime.getCache<EscalationState>(
+      escalationCacheKey(runtime),
     );
+    if (!state) return null;
+    const notice = readSystemNotice(state.systemNotice);
+    if (notice)
+      return { ...state, systemNotice: notice, text: systemNoticeText(notice) };
+    const legacy = state.reason
+      .split("; ")
+      .some((reason) => reason.startsWith("Systemic failure "))
+      ? projectLegacySystemNotice(state.text)
+      : undefined;
+    return legacy ? { ...state, ...legacy } : state;
   } catch (cause) {
     // error-policy:J2 An unavailable cache is not evidence of no active escalation.
     throw new ElizaError("Escalation state could not be loaded", {
@@ -346,6 +359,7 @@ async function sendToChannel(
   ownerContacts: OwnerContactsConfig,
   routingHints: Record<string, OwnerContactRoutingHint>,
   ownerEntityId: string | null,
+  systemNotice?: SystemNotice,
 ): Promise<boolean> {
   const hint = routingHints[channel] ?? null;
   const resolvedContact =
@@ -403,7 +417,8 @@ async function sendToChannel(
           roomId: contact.roomId as UUID | undefined,
         } as Parameters<typeof runtime.sendMessageToTarget>[0],
         {
-          text,
+          text: systemNotice ? systemNoticeText(systemNotice) : text,
+          ...(systemNotice ? { systemNotice } : {}),
           source: targetSource,
           metadata: {
             urgency: "urgent",
@@ -511,9 +526,10 @@ export class EscalationService {
     runtime: IAgentRuntime,
     reason: string,
     text: string,
+    systemNotice?: SystemNotice,
   ): Promise<EscalationState> {
     return transition(agentIdOf(runtime), () =>
-      EscalationService.start(runtime, reason, text),
+      EscalationService.start(runtime, reason, text, systemNotice),
     );
   }
 
@@ -521,6 +537,7 @@ export class EscalationService {
     runtime: IAgentRuntime,
     reason: string,
     text: string,
+    systemNotice?: SystemNotice,
   ): Promise<EscalationState> {
     if (stoppedRuntimes.has(runtime)) {
       throw new ElizaError("Cannot start escalation after runtime shutdown", {
@@ -535,10 +552,18 @@ export class EscalationService {
         ?.has(existing.id)
         ? undefined
         : resolveWaitMs(loadEscalationSettings().config);
+      const duplicateNotice =
+        systemNotice !== undefined && existing.systemNotice === systemNotice;
       const updated = {
         ...existing,
-        reason: `${existing.reason}; ${reason}`,
-        text: `${existing.text}\n---\n${text}`,
+        reason:
+          existing.reason === reason
+            ? existing.reason
+            : `${existing.reason}; ${reason}`,
+        text: duplicateNotice
+          ? existing.text
+          : `${existing.text}\n---\n${text}`,
+        systemNotice: duplicateNotice ? systemNotice : undefined,
       };
       await persistState(runtime, updated);
       Object.assign(existing, updated);
@@ -573,7 +598,8 @@ export class EscalationService {
     const state: EscalationState = {
       id: escalationId,
       reason,
-      text,
+      text: systemNotice ? systemNoticeText(systemNotice) : text,
+      ...(systemNotice ? { systemNotice } : {}),
       currentStep: 0,
       channelsSent: [],
       startedAt: now,
@@ -592,10 +618,11 @@ export class EscalationService {
       const sent = await sendToChannel(
         runtime,
         channel,
-        text,
+        state.text,
         ownerContacts,
         routingHints,
         ownerEntityId,
+        state.systemNotice,
       );
       if (sent) {
         state.channelsSent.push(channel);
@@ -686,6 +713,7 @@ export class EscalationService {
         ownerContacts,
         routingHints,
         ownerEntityId,
+        state.systemNotice,
       );
       if (sent) {
         state.channelsSent.push(nextChannel);

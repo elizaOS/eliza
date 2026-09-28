@@ -2086,15 +2086,17 @@ describe("ChatOverlay", () => {
     expect(controller.toggleHandsFree).toHaveBeenCalled();
   });
 
-  it("shows a waking-up placeholder while booting (typing allowed)", () => {
+  it("shows a connection-neutral placeholder while not ready (typing allowed)", () => {
     render(
       <ChatOverlay
         controller={makeController({ phase: "booting", canSend: false })}
       />,
     );
     const input = screen.getByLabelText("message");
-    expect(input.getAttribute("placeholder")).toContain("waking up");
-    // You can type while the agent boots; the message sends once it's ready.
+    expect(input.getAttribute("placeholder")).toContain("connecting");
+    expect(
+      screen.getByText(/sending may wait for the connection/i),
+    ).toBeTruthy();
     expect(input.hasAttribute("readonly")).toBe(false);
   });
 

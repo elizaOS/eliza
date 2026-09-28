@@ -19,7 +19,12 @@ const baseReport = (
   habitSummaries: [],
   habitEscalationLevel: "none" as CheckinReport["habitEscalationLevel"],
   briefingSections: [],
-  collectorErrors: {} as CheckinReport["collectorErrors"],
+  collectorErrors: {
+    overdueTodos: null,
+    todaysMeetings: null,
+    yesterdaysWins: null,
+    habitSummaries: null,
+  },
   sleepRecap: null,
   ...over,
 });
@@ -77,5 +82,28 @@ describe("buildCheckinSummaryPrompt", () => {
     expect(p).not.toContain("typical bedtime:");
     expect(p).not.toContain("typical sleep duration:");
     expect(p).toContain("sleep regularity index (SRI): 10/100");
+  });
+});
+
+describe("check-in collector availability", () => {
+  it("exposes unavailable collectors as null, while successful empty sources remain arrays", () => {
+    const prompt = buildCheckinSummaryPrompt(
+      baseReport({
+        collectorErrors: {
+          overdueTodos: "database unavailable",
+          todaysMeetings: null,
+          yesterdaysWins: "denied",
+          habitSummaries: "database unavailable",
+        },
+      }),
+    );
+    const report = JSON.parse(
+      prompt.split("Report JSON:\n")[1].split("\n\nSummary:")[0],
+    );
+    expect(report.overdueTodos).toBeNull();
+    expect(report.habitSummaries).toBeNull();
+    expect(report.yesterdaysWins).toBeNull();
+    expect(report.todaysMeetings).toEqual([]);
+    expect(report.collectorErrors.habitSummaries).toBe("database unavailable");
   });
 });

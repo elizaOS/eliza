@@ -6706,7 +6706,7 @@ export function ChatOverlay({
                                         ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
                                         : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
                                       : booting
-                                        ? `Message ${agentName} — waking up…`
+                                        ? `Message ${agentName} — connecting…`
                                         : "Hey Eliza…"
                         }
                         aria-label="message"
@@ -6730,8 +6730,8 @@ export function ChatOverlay({
                     !noProviderConfigured &&
                     !firstRunOpen ? (
                       <span id="cc-booting-hint" className="sr-only">
-                        {agentName} is waking up. You can type now; your message
-                        sends and the reply arrives in a moment.
+                        {agentName} is not ready yet. You can keep typing;
+                        sending may wait for the connection.
                       </span>
                     ) : null}
                     {firstRunOpen ? (

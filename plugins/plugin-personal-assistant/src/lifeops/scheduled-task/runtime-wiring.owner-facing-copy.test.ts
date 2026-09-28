@@ -349,7 +349,7 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     expect(reportError).not.toHaveBeenCalled();
   });
 
-  it("degrades honestly when the delegated assembler fails — never the raw instruction", async () => {
+  it("reports delegated assembly failure without sending or fabricating a ready brief", async () => {
     morningBriefMocks.assembleMorningBrief.mockRejectedValueOnce(
       new Error("brief sources unavailable"),
     );
@@ -373,19 +373,11 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       metadata: record.metadata,
     });
 
-    expect(result?.ok).toBe(true);
-    // The message-render seam stays unused on the degrade path (the honest
-    // "couldn't assemble" copy is a fixed string, not a model render). The one
-    // model call is the notification-title render over that fixed body.
-    expect(modelPrompts).toHaveLength(1);
-    const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
-    if (!emitted) throw new Error("assistant event missing");
-    expect(emitted.data.text).toBe(
-      "Your morning check-in is ready, but I couldn't assemble the full brief right now.",
-    );
-    expect(emitted.data.text).not.toBe(record.promptInstructions);
+    expect(result?.ok).toBe(false);
+    expect(modelPrompts).toHaveLength(0);
+    expect(agentMocks.eventService.emit).not.toHaveBeenCalled();
     expect(reportError).toHaveBeenCalledWith(
-      "lifeops:scheduled-task:owner-facing-copy",
+      "lifeops:scheduled-task:dispatch-render",
       expect.any(Error),
       expect.objectContaining({ taskId: record.taskId }),
     );

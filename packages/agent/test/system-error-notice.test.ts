@@ -1,0 +1,288 @@
+/** Real runtime, SQLite, HTTP history and connector delivery with an unavailable local model. */
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  AgentRuntime,
+  createMessageMemory,
+  ensureAgentVoice,
+  ModelType,
+  systemNoticeText,
+  type UUID,
+} from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { expect, it, vi } from "vitest";
+import { LocalInferenceUnavailableError } from "../../../plugins/plugin-local-inference/src/provider.ts";
+import { startApiServer } from "../src/api/server.ts";
+import { registerErrorEscalation } from "../src/runtime/error-escalation.ts";
+import { EscalationService } from "../src/services/escalation.ts";
+
+it("keeps diagnostics while delivering and restoring safe system notices without rewriting them", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-system-notice-"));
+  const configPath = join(directory, "config.json");
+  for (const [key, value] of Object.entries({
+    ELIZA_STATE_DIR: directory,
+    ELIZA_CONFIG_PATH: configPath,
+    ELIZA_PERSIST_CONFIG_PATH: configPath,
+    ELIZA_API_BIND_HOST: "127.0.0.1",
+    ELIZA_API_TOKEN: "notice-test-token",
+    ELIZA_REQUIRE_LOCAL_AUTH: "1",
+  }))
+    vi.stubEnv(key, value);
+  const agentId = randomUUID() as UUID;
+  let runtime: AgentRuntime | undefined;
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  let modelCalls = 0;
+  const open = async () => {
+    const next = new AgentRuntime({
+      agentId,
+      character: { name: "Notice evidence", bio: [], settings: {} },
+      logLevel: "fatal",
+      enableAutonomy: false,
+    });
+    next.registerDatabaseAdapter(
+      SQLiteDatabaseAdapter.create(join(directory, "state.sqlite"), agentId),
+    );
+    await next.init();
+    next.registerModel(
+      ModelType.TEXT_SMALL,
+      async () => {
+        modelCalls++;
+        throw new LocalInferenceUnavailableError(
+          ModelType.TEXT_SMALL,
+          "backend_unavailable",
+          "No local text model is assigned or loaded.",
+        );
+      },
+      "unavailable-local-model",
+      100,
+    );
+    return next;
+  };
+  try {
+    runtime = await open();
+    server = await startApiServer({
+      port: 0,
+      runtime,
+      skipDeferredStartupWork: true,
+    });
+    const base = `http://127.0.0.1:${server.port}`;
+    expect((await fetch(`${base}/api/conversations`)).status).toBe(401);
+    const headers = {
+      authorization: "Bearer notice-test-token",
+      "content-type": "application/json",
+    };
+    const created = await fetch(`${base}/api/conversations`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "System notices" }),
+    });
+    expect(created.status).toBe(200);
+    const { conversation } = await created.json();
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        agents: {
+          defaults: {
+            ownerContacts: { client_chat: { roomId: conversation.roomId } },
+            escalation: {
+              channels: ["client_chat"],
+              waitMinutes: 60,
+              maxRetries: 3,
+            },
+          },
+        },
+      }),
+    );
+    registerErrorEscalation(runtime);
+    for (let i = 0; i < 3; i++) {
+      const original = { text: `Owner update ${i}`, source: "notice-test" };
+      const delivered = await ensureAgentVoice(runtime, original, {
+        source: "notice-test",
+      });
+      expect(delivered.agentVoiced).toBeUndefined();
+      expect(delivered.text).toBe(original.text);
+    }
+    await vi.waitFor(async () => {
+      if (!runtime) throw new Error("Runtime closed during delivery");
+      const messages = await runtime.getMemories({
+        roomId: conversation.roomId,
+        tableName: "messages",
+      });
+      expect(
+        messages.some((m) => m.content.systemNotice === "model-unavailable"),
+      ).toBe(true);
+    });
+    expect(modelCalls).toBe(3);
+    expect(runtime.getRecentReportedErrors()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "LOCAL_INFERENCE_UNAVAILABLE",
+          scope: "voice-gate",
+          message: "No local text model is assigned or loaded.",
+          context: expect.objectContaining({
+            source: "notice-test",
+            reason: "backend_unavailable",
+            modelType: ModelType.TEXT_SMALL,
+          }),
+        }),
+      ]),
+    );
+    const state = await EscalationService.getActiveEscalation(runtime);
+    expect(state?.systemNotice).toBe("model-unavailable");
+    if (!state) throw new Error("Escalation was not persisted");
+    await EscalationService.checkEscalation(runtime, state.id);
+    expect(modelCalls).toBe(3);
+    const raw =
+      'Repeated runtime failure "UNCLASSIFIED" from [voice-gate]: No local text model is assigned or loaded. {"private":"preserved-evidence"}';
+    const legacyId = randomUUID() as UUID;
+    await runtime.createMemory(
+      createMessageMemory({
+        id: legacyId,
+        entityId: agentId,
+        roomId: conversation.roomId,
+        content: {
+          text: raw,
+          source: "client_chat",
+          metadata: { escalation: true },
+        },
+      }),
+      "messages",
+    );
+    await runtime.createMemory(
+      createMessageMemory({
+        id: randomUUID() as UUID,
+        entityId: agentId,
+        roomId: conversation.roomId,
+        content: { text: raw, source: "client_chat" },
+      }),
+      "messages",
+    );
+    const mixedId = randomUUID() as UUID;
+    await runtime.createMemory(
+      createMessageMemory({
+        id: mixedId,
+        entityId: agentId,
+        roomId: conversation.roomId,
+        content: {
+          text: `${raw}\n---\nYour scheduled appointment still needs confirmation.`,
+          source: "client_chat",
+          metadata: { escalation: true },
+        },
+      }),
+      "messages",
+    );
+    const checkinId = randomUUID() as UUID;
+    const rawBrief =
+      "Morning check-in: 0 overdue todos, 0 meetings today, 0 yesterday's wins, and 0 tracked habits. X DMs: unavailable X timeline: unavailable";
+    await runtime.createMemory(
+      createMessageMemory({
+        id: checkinId,
+        entityId: agentId,
+        roomId: conversation.roomId,
+        content: {
+          text: rawBrief,
+          source: "lifeops-scheduled-task",
+          agentVoiced: true,
+        },
+      }),
+      "messages",
+    );
+    const realBriefId = randomUUID() as UUID;
+    await runtime.createMemory(
+      createMessageMemory({
+        id: realBriefId,
+        entityId: agentId,
+        roomId: conversation.roomId,
+        content: {
+          text: "Morning check-in: Your meeting starts at nine.",
+          source: "lifeops-scheduled-task",
+          agentVoiced: true,
+        },
+      }),
+      "messages",
+    );
+    const historyResponse = await fetch(
+      `${base}/api/conversations/${conversation.id}/messages`,
+      { headers },
+    );
+    expect(historyResponse.status).toBe(200);
+    const history = await historyResponse.json();
+    expect(
+      history.messages.find((m: { id: string }) => m.id === checkinId).text,
+    ).toBe(systemNoticeText("runtime-error"));
+    expect(
+      history.messages.find((m: { id: string }) => m.id === realBriefId).text,
+    ).toBe("Morning check-in: Your meeting starts at nine.");
+    expect(
+      (await runtime.getMemoriesByIds([checkinId], "messages"))[0].content.text,
+    ).toBe(rawBrief);
+    const legacy = history.messages.find(
+      (m: { id: string }) => m.id === legacyId,
+    );
+    expect(
+      history.messages.find((m: { id: string }) => m.id === mixedId).text,
+    ).toBe(
+      `${systemNoticeText("model-unavailable")}\n---\nYour scheduled appointment still needs confirmation.`,
+    );
+    expect(legacy.text).toBe(systemNoticeText("model-unavailable"));
+    expect(legacy.failureKind).toBe("no_provider");
+    expect(history.messages.some((m: { text: string }) => m.text === raw)).toBe(
+      true,
+    );
+    expect(
+      (await runtime.getMemoriesByIds([legacyId], "messages"))[0].content.text,
+    ).toBe(raw);
+    const storedNotices = await runtime.getMemories({
+      roomId: conversation.roomId,
+      tableName: "messages",
+    });
+    for (const message of storedNotices.filter((m) => m.content.systemNotice)) {
+      expect(message.content.agentVoiced).not.toBe(true);
+      expect(message.content.text).not.toMatch(
+        /UNCLASSIFIED|voice-gate|agentId|\{/,
+      );
+    }
+    await EscalationService.stop(runtime);
+    // An older unresolved alert survives disk reopen. Its retry projection must
+    // be safe without deleting the historical diagnostic payload.
+    await runtime.setCache(`agent:escalation:active:${agentId}`, {
+      ...state,
+      reason: "Systemic failure UNCLASSIFIED reported 3 times within 10m",
+      text: raw,
+      systemNotice: undefined,
+    });
+    await server.close();
+    server = undefined;
+    await runtime.close();
+    runtime = await open();
+    const restored = await EscalationService.getActiveEscalation(runtime);
+    expect(restored).toMatchObject({
+      id: state.id,
+      systemNotice: "model-unavailable",
+      text: systemNoticeText("model-unavailable"),
+    });
+    expect(
+      (
+        await runtime.getCache<{ text: string }>(
+          `agent:escalation:active:${agentId}`,
+        )
+      )?.text,
+    ).toBe(raw);
+    const coalesced = await EscalationService.startEscalation(
+      runtime,
+      "Systemic failure LOCAL_INFERENCE_UNAVAILABLE reported 3 times within 10m",
+      systemNoticeText("model-unavailable"),
+      "model-unavailable",
+    );
+    expect(coalesced.text).toBe(systemNoticeText("model-unavailable"));
+    expect(modelCalls).toBe(3);
+  } finally {
+    if (runtime) await EscalationService.stop(runtime);
+    if (server) await server.close();
+    if (runtime) await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
