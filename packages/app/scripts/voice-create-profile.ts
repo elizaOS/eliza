@@ -38,7 +38,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -166,33 +166,55 @@ function parseArgs(argv) {
 // ---------------------------------------------------------------------------
 
 const CATALOG_VERSION = 1;
+const DEFAULT_PROFILE_ID = "same";
 
-function catalogPath(voiceModelsDir) {
+export class VoiceProfileCatalogError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "VoiceProfileCatalogError";
+  }
+}
+
+function catalogPath(voiceModelsDir: string) {
   return path.join(voiceModelsDir, "profiles", "catalog.json");
 }
 
-async function readCatalog(voiceModelsDir) {
+/**
+ * Read the profile catalog. A missing file yields an empty catalog; an
+ * unreadable or malformed file throws so the caller never overwrites
+ * existing profiles with an empty catalog.
+ */
+export async function readCatalog(voiceModelsDir: string) {
   const p = catalogPath(voiceModelsDir);
   if (!existsSync(p)) {
     return {
       version: CATALOG_VERSION,
-      defaultProfileId: "same",
+      defaultProfileId: DEFAULT_PROFILE_ID,
       profiles: [],
     };
   }
-  try {
-    const raw = await fsp.readFile(p, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed.profiles) parsed.profiles = [];
-    if (!parsed.defaultProfileId) parsed.defaultProfileId = "sam";
-    return parsed;
-  } catch {
-    return {
-      version: CATALOG_VERSION,
-      defaultProfileId: "same",
-      profiles: [],
-    };
+  const parsed = await fsp
+    .readFile(p, "utf8")
+    .then((raw) => JSON.parse(raw))
+    .catch((err) => {
+      throw new VoiceProfileCatalogError(
+        `cannot read voice profile catalog ${p}: ${err instanceof Error ? err.message : String(err)}; fix or remove it before creating a profile`,
+        { cause: err },
+      );
+    });
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new VoiceProfileCatalogError(
+      `voice profile catalog ${p} is not a JSON object`,
+    );
   }
+  if (parsed.profiles === undefined) parsed.profiles = [];
+  if (!Array.isArray(parsed.profiles)) {
+    throw new VoiceProfileCatalogError(
+      `voice profile catalog ${p} has a non-array "profiles" field`,
+    );
+  }
+  if (!parsed.defaultProfileId) parsed.defaultProfileId = DEFAULT_PROFILE_ID;
+  return parsed;
 }
 
 async function writeCatalog(voiceModelsDir, catalog) {
@@ -372,8 +394,10 @@ async function main() {
   console.log(`  Activate: POST /v1/voice/profiles/${args.name}/activate`);
 }
 
-main().catch((err) => {
-  console.error(`[voice:create-profile] ${err.message}`);
-  if (err.stack) console.error(err.stack);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(`[voice:create-profile] ${err.message}`);
+    if (err.stack) console.error(err.stack);
+    process.exit(1);
+  });
+}
