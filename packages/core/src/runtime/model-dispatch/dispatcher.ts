@@ -926,7 +926,9 @@ export class RuntimeModelDispatch {
 			}
 		}
 
-		let requestedModelKey = String(modelType);
+		// The caller's model type, before any LLM-mode override rewrites it.
+		const callerModelKey = String(modelType);
+		let requestedModelKey = callerModelKey;
 
 		// Apply LLM mode override for text generation models
 		const llmMode = this.runtime.getLLMMode();
@@ -1027,7 +1029,7 @@ export class RuntimeModelDispatch {
 					kind: "model_attempt",
 					model: {
 						modelType: String(resolvedModelKey),
-						requestedModelType: requestedModelKey,
+						requestedModelType: callerModelKey,
 						modality: modalityForModelType(String(resolvedModelKey)),
 						provider: resolvedModel.provider,
 						handler,

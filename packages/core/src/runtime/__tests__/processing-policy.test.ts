@@ -295,6 +295,36 @@ describe("processing policy: action effects", () => {
 		expect(isProcessingPolicyDenial(failure)).toBe(true);
 		expect(unapproved.handler).not.toHaveBeenCalled();
 	});
+
+	it("settles a model denial inside the handler as terminal, not retryable", async () => {
+		// The action is admitted; the model call it makes is not ("anthropic" is
+		// not an approved provider), so the denial surfaces from the handler.
+		const runtime = makeRuntime(allowProviders(["mail"]));
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			vi.fn(async () => "never"),
+			"anthropic",
+			10,
+		);
+		const action = makeAction({ egress: ["mail"] });
+		const result = await settleActionHandler({
+			runtime,
+			action,
+			invoke: async () => {
+				await runtime.useModel(ModelType.TEXT_SMALL, { prompt: "hi" });
+				return { success: true };
+			},
+		});
+		expect(result.success).toBe(false);
+		expect(result.failureProvenance).toMatchObject({
+			code: "PROCESSING_POLICY_DENIED",
+			retryable: false,
+		});
+		expect(result.data).toMatchObject({
+			retryable: false,
+			processingDenied: true,
+		});
+	});
 });
 
 describe("unified action gate on mode hooks", () => {

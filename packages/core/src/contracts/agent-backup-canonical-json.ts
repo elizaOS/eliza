@@ -34,7 +34,16 @@ export function canonicalBackupJson(
 		return String(value);
 	}
 	if (Array.isArray(value)) {
-		return `[${value.map((entry) => canonicalBackupJson(entry, errors)).join(",")}]`;
+		// `map` skips holes and `join` renders them as empty text, which would
+		// emit unparseable JSON; a sparse slot is a non-JSON value.
+		const entries: string[] = [];
+		for (let index = 0; index < value.length; index += 1) {
+			if (!Object.hasOwn(value, index)) {
+				throw new TypeError(errors.nonJsonValue);
+			}
+			entries.push(canonicalBackupJson(value[index], errors));
+		}
+		return `[${entries.join(",")}]`;
 	}
 	if (typeof value !== "object") {
 		throw new TypeError(errors.nonJsonValue);

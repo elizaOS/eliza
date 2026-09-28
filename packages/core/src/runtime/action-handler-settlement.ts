@@ -10,6 +10,7 @@
 import { ElizaError } from "../errors";
 import {
 	admitProcessing,
+	isProcessingPolicyDenial,
 	PROCESSING_POLICY_DENIED,
 	processingPolicyFor,
 } from "../security/processing-policy";
@@ -405,6 +406,9 @@ export async function settleActionHandler(
 			throw error;
 		}
 		const contextOverflow = isProviderContextOverflowFailure(error);
+		// A processing-policy denial raised by a model call inside the handler is
+		// as terminal as a denied admission: a replan must not retry it.
+		const processingDenied = isProcessingPolicyDenial(error);
 		const failureProvenance = contextOverflow
 			? ({
 					kind: "handler_error",
@@ -412,17 +416,30 @@ export async function settleActionHandler(
 					code: PROVIDER_CONTEXT_OVERFLOW,
 					retryable: false,
 				} satisfies ActionFailureProvenance)
-			: (readActionFailureProvenance(error) ??
-				({
-					kind: "handler_error",
-					boundary: "handler",
-					code: "ACTION_HANDLER_FAILED",
-					retryable: true,
-				} satisfies ActionFailureProvenance));
+			: processingDenied
+				? ({
+						kind: "handler_error",
+						boundary: "handler",
+						code: PROCESSING_POLICY_DENIED,
+						retryable: false,
+					} satisfies ActionFailureProvenance)
+				: (readActionFailureProvenance(error) ??
+					({
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_HANDLER_FAILED",
+						retryable: true,
+					} satisfies ActionFailureProvenance));
 		return actionFailureResult(
 			options.action.name,
 			stringifyActionError(error),
-			{ error, ...(contextOverflow ? { retryable: false } : {}) },
+			{
+				error,
+				...(contextOverflow ? { retryable: false } : {}),
+				...(processingDenied
+					? { retryable: false, processingDenied: true }
+					: {}),
+			},
 			failureProvenance,
 		);
 	}
