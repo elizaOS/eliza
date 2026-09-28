@@ -58,6 +58,20 @@ describe("BrowserWorkspaceManager.listEvents", () => {
 		expect(String(warn.mock.calls[0]?.[0])).toContain("evicted 1");
 	});
 
+	it("returns the newest events when limited without a cursor", async () => {
+		const manager = new BrowserWorkspaceManager();
+		await seed(manager, 10);
+
+		const tail = await manager.listEvents({ limit: 3 });
+		expect(tail.events.map((event) => event.seq)).toEqual([8, 9, 10]);
+		expect(tail.latestSequence).toBe(10);
+		expect(tail.limit).toBe(3);
+
+		const filtered = await manager.listEvents({ limit: 1, tabId: "missing-4" });
+		expect(filtered.events.map((event) => event.seq)).toEqual([4]);
+		expect(filtered.latestSequence).toBe(10);
+	});
+
 	it("rejects a non-positive event capacity", () => {
 		expect(() => new BrowserWorkspaceManager({ maxEvents: 0 })).toThrow(
 			TypeError,

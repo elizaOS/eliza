@@ -63,12 +63,15 @@ export interface ListBrowserWorkspaceEventsOptions {
 }
 
 export interface BrowserWorkspaceEventLogSnapshot {
-	/** Matching events after the cursor, oldest first. */
+	/**
+	 * Matching events, oldest first: the first `limit` after the cursor when
+	 * `after` is given, otherwise the newest `limit` retained events.
+	 */
 	events: BrowserWorkspaceEvent[];
 	/**
 	 * Resume cursor: pass it back as `after` to continue without skipping.
-	 * Equals the last returned event's `seq` when the page was truncated by
-	 * `limit`, otherwise the newest recorded sequence.
+	 * Equals the last returned event's `seq` when a cursor page was truncated
+	 * by `limit`, otherwise the newest recorded sequence.
 	 */
 	latestSequence: number;
 	limit: number;
@@ -538,10 +541,9 @@ export class BrowserWorkspaceManager {
 	async listEvents(
 		options: ListBrowserWorkspaceEventsOptions = {},
 	): Promise<BrowserWorkspaceEventLogSnapshot> {
-		const after =
-			typeof options.after === "number" && Number.isFinite(options.after)
-				? options.after
-				: 0;
+		const cursor = options.after;
+		const hasCursor = typeof cursor === "number" && Number.isFinite(cursor);
+		const after = hasCursor ? cursor : 0;
 		const limit = options.limit;
 		if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
 			throw new TypeError(
@@ -555,10 +557,18 @@ export class BrowserWorkspaceManager {
 			.filter((event) => !tabId || event.tabId === tabId)
 			.filter((event) => !type || event.type === type);
 		const truncated = limit !== undefined && matchingEvents.length > limit;
-		const events = truncated ? matchingEvents.slice(0, limit) : matchingEvents;
+		// Without a cursor the caller wants a tail: the newest `limit` events,
+		// resuming from the head. With a cursor, page forward from it and
+		// resume after the last returned event so nothing is skipped.
+		const pagingForward = hasCursor && truncated;
+		const events = !truncated
+			? matchingEvents
+			: pagingForward
+				? matchingEvents.slice(0, limit)
+				: matchingEvents.slice(-limit);
 		return {
 			events,
-			latestSequence: truncated
+			latestSequence: pagingForward
 				? (events.at(-1)?.seq ?? this.eventSequence)
 				: this.eventSequence,
 			limit: limit ?? events.length,
