@@ -10,6 +10,10 @@ import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@/lib/services/personal-direct-chat-route";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   type CachedAgentSandbox,
@@ -285,6 +289,28 @@ app.post("/", async (c) => {
     }
 
     const conversationId = c.req.param("conversationId") ?? r.agentId;
+    const personal = "agentKind" in r && r.agentKind === "personal";
+    // The personal identity follows its entitlement route (#25146).
+    const target = await resolveSharedSurfaceTarget({
+      agent: r.agent,
+      personal,
+      conversationId,
+      namespace: worker.namespace,
+    });
+    if (!target.ok) {
+      const refusal = personalDirectChatRefusalResponse(target.refusal);
+      return {
+        response: applyCorsHeaders(
+          Response.json(refusal.body, {
+            status: refusal.status,
+            headers: refusal.headers,
+          }),
+          CORS_METHODS,
+          origin,
+        ),
+        runtimeKind: "personal",
+      };
+    }
     return {
       response: await handleCanonicalScopedAgentStream({
         traceId: c.get("traceId"),
@@ -292,7 +318,10 @@ app.post("/", async (c) => {
         agent: r.agent,
         agentId: r.agentId,
         orgId: r.orgId,
-        conversationId,
+        conversationId: target.roomId,
+        ...(target.accountState
+          ? { trustedAccountState: target.accountState }
+          : {}),
         ...("userId" in r ? { userId: r.userId } : {}),
         body: raw,
         origin,

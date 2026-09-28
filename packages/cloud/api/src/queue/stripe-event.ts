@@ -893,7 +893,19 @@ async function handleCheckoutSessionCompleted(
     });
   }
 
-  if (agentId) {
+  // A top-up repays any outstanding reversal shortfall first (#22930). Runs on
+  // every delivery so a crash between the grant and this step is repaired.
+  const stillHeld = await settleShortfallsAfterCredit(
+    organizationId,
+    "checkout.session.completed",
+  );
+
+  if (agentId && stillHeld) {
+    logger.info(
+      "[Stripe Queue] Agent restart skipped after top-up: billing hold still active",
+      { agentId, organizationId, paymentIntentId },
+    );
+  } else if (agentId) {
     await enqueueAgentRestartAfterTopUp({
       agentId,
       organizationId,
@@ -1471,6 +1483,10 @@ async function handlePaymentIntentSucceeded(
     logger.info(
       `[Stripe Queue] Credits added: ${credits} to org ${organizationId} (${purchaseType})`,
     );
+    await settleShortfallsAfterCredit(
+      organizationId,
+      "payment_intent.succeeded",
+    );
 
     invalidateOrgTierCache(organizationId).catch((err) =>
       logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
@@ -1795,46 +1811,24 @@ async function handleChargeDisputeFundsWithdrawn(
 }
 
 /**
- * A dispute that closes LOST is a final payment reversal. The credit clawback
- * already ran on `funds_withdrawn`; this only places the durable organization
- * hold that fails new paid admission closed (#22930). It never changes credit
- * balances, never stops running resources and is released only explicitly.
- * Won or otherwise closed disputes are no-ops.
+ * A dispute that closes LOST makes its `funds_withdrawn` clawback final. The
+ * clawback already recorded any unrecovered shortfall together with its
+ * billing hold, which now clears only through repayment (#22930 Decision A).
+ * An organization whose clawback fully recovered the reversal owes nothing and
+ * is not held. Nothing here mutates credits or holds.
  */
 async function handleChargeDisputeClosed(event: Stripe.Event): Promise<void> {
   const dispute = event.data.object as Stripe.Dispute;
   if (dispute.status !== "lost") return;
-  const chargeId =
-    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
-  const paymentIntentId =
-    typeof dispute.payment_intent === "string"
-      ? dispute.payment_intent
-      : dispute.payment_intent?.id;
-  const reference = `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`;
-  // Attribute the reversal through the credit grant it funded; a charge that
-  // never granted organization credits has no Cloud entitlement to hold.
-  const grant = paymentIntentId
-    ? await creditsService.getTransactionByStripePaymentIntent(paymentIntentId)
-    : undefined;
-  if (!grant) {
-    logger.warn(
-      `[Stripe Queue] charge.dispute.closed ${reference}: lost dispute has no organization credit grant to hold`,
-      { paymentIntentId },
-    );
-    return;
-  }
-  const { recordLostChargebackHold } = await import(
-    "@/db/repositories/payment-reversal-holds"
+  const clawback = await creditsService.getTransactionByStripePaymentIntent(
+    `stripe:dispute:${dispute.id}`,
   );
-  const { created } = await recordLostChargebackHold({
-    organizationId: grant.organization_id,
-    stripeDisputeId: dispute.id,
-    stripeChargeId: chargeId ?? null,
-    stripePaymentIntentId: paymentIntentId ?? null,
-    amountCents: dispute.amount ?? null,
-  });
-  logger.warn(
-    `[Stripe Queue] ${created ? "Placed" : "Confirmed"} payment reversal hold on org ${grant.organization_id} for lost ${reference}`,
+  logger.info(
+    `[Stripe Queue] charge.dispute.closed dispute ${dispute.id}: lost; withdrawal clawback is final`,
+    {
+      organizationId: clawback?.organization_id,
+      unrecoveredUsd: clawback?.metadata?.unrecovered_clawback_usd ?? null,
+    },
   );
 }
 
@@ -1863,6 +1857,50 @@ async function handleChargeDisputeFundsReinstated(
     );
   }
 
+  // Stripe returned the disputed funds, so the unrecovered shortfall is no
+  // longer owed: clear the hold this clawback placed first (#22930). Its
+  // outstanding amount is frozen at release, which keeps the repayment
+  // returned below stable across redeliveries.
+  const { releaseShortfallHoldForReinstatement } = await import(
+    "@/db/repositories/payment-reversal-holds"
+  );
+  const hold = await releaseShortfallHoldForReinstatement({
+    clawbackTransactionId: clawback.id,
+    stripeDisputeId: dispute.id,
+  });
+  const shortfallMicros = hold
+    ? parseCreditMicros(hold.shortfall_usd ?? "")
+    : 0n;
+  const outstandingMicros = hold
+    ? parseCreditMicros(hold.outstanding_usd ?? "")
+    : 0n;
+  if (shortfallMicros === null || outstandingMicros === null) {
+    throw new Error(
+      `Invalid shortfall hold amounts for reinstatement ${reference}`,
+    );
+  }
+  const repaidMicros = shortfallMicros - outstandingMicros;
+
+  // Return any repayment the organization already made toward that shortfall
+  // as its own ledger entry. It is deliberately not tagged with the payment
+  // intent, so the cumulative reversal tally for later refunds nets only the
+  // clawback reinstatement below.
+  if (repaidMicros > 0n) {
+    const repaidUsd = formatCreditMicros(repaidMicros);
+    await creditsService.refundCredits({
+      organizationId: clawback.organization_id,
+      amount: repaidUsd,
+      description: `Stripe ${source} return of shortfall repayment — ${reference}`,
+      stripePaymentIntentId: `${clawbackKey}:repayment-returned`,
+      metadata: {
+        type: "reversal_shortfall_repayment_return",
+        hold_id: hold?.id,
+        clawback_key: clawbackKey,
+        reference,
+      },
+    });
+  }
+
   // `clawback.amount` is the credit amount actually removed by the matching
   // funds-withdrawn event (already scaled from the disputed provider amount to
   // the pack's credit units and capped at the balance then available). Winning
@@ -1874,6 +1912,7 @@ async function handleChargeDisputeFundsReinstated(
       `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
       { clawbackAmount: clawback.amount, disputeAmount: dispute.amount },
     );
+    await settleShortfallsAfterCredit(clawback.organization_id, source);
     return;
   }
 
@@ -1895,4 +1934,30 @@ async function handleChargeDisputeFundsReinstated(
   logger.info(
     `[Stripe Queue] Reinstated $${reinstatedUsd.toFixed(2)} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
   );
+  await settleShortfallsAfterCredit(clawback.organization_id, source);
+}
+
+/**
+ * Credits that land while reversal shortfalls are outstanding repay them
+ * first (#22930). Runs after the credit commits; if it fails the hold simply
+ * stays in force and the queue retries the idempotent delivery. Returns
+ * whether a hold is still active afterwards.
+ */
+async function settleShortfallsAfterCredit(
+  organizationId: string,
+  source: string,
+): Promise<boolean> {
+  const { billingHoldService } = await import("@/lib/services/billing-hold");
+  const settlement =
+    await billingHoldService.settleOutstandingShortfalls(organizationId);
+  if (settlement.appliedUsd !== "0.000000") {
+    logger.info(
+      `[Stripe Queue] ${source}: applied $${settlement.appliedUsd} to reversal shortfalls for org ${organizationId}`,
+      {
+        outstandingUsd: settlement.outstandingUsd,
+        releasedHolds: settlement.releasedHoldIds.length,
+      },
+    );
+  }
+  return (await billingHoldService.getState(organizationId)).status === "held";
 }

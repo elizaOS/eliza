@@ -15,8 +15,7 @@ const AUTH_METRICS = new Set([
   "auth_extract",
   "auth_cache_available",
   "auth_cache_read",
-  "auth_key_lookup",
-  "auth_user_org",
+  "auth_identity",
   "auth_moderation",
   "auth_cache_write",
   "auth_resolve",
@@ -78,8 +77,7 @@ const AUTH_TIMING_FIELDS = Object.freeze([
   "extractMs",
   "cacheAvailabilityMs",
   "cacheReadMs",
-  "keyLookupMs",
-  "userOrgLookupMs",
+  "identityLookupMs",
   "moderationMs",
   "cacheWriteMs",
   "totalMs",
@@ -521,7 +519,7 @@ function assertRequiredTimings(timings, auth) {
     "auth_resolve",
   ];
   if (auth.result === "authorized_origin") {
-    required.push("auth_key_lookup", "auth_user_org", "auth_moderation");
+    required.push("auth_identity", "auth_moderation");
     if (auth.write !== "deferred") required.push("auth_cache_write");
   }
   for (const name of required) {
@@ -821,7 +819,7 @@ export async function probeAuthGuardSample({
       auth.read !== "miss" ||
       auth.authoritative !== "rejected" ||
       auth.result !== "rejected" ||
-      !Object.hasOwn(timings, "auth_key_lookup")
+      !Object.hasOwn(timings, "auth_identity")
     ) {
       throw new Error(
         "Invalid-key probe did not preserve the 401 rejection path",
@@ -913,13 +911,9 @@ export function summarizeAuthSamples(
       misses,
       (record) => record.timings.auth_resolve,
     ),
-    missKeyLookupMs: metricSummary(
+    missIdentityLookupMs: metricSummary(
       misses,
-      (record) => record.timings.auth_key_lookup,
-    ),
-    missUserOrgMs: metricSummary(
-      misses,
-      (record) => record.timings.auth_user_org,
+      (record) => record.timings.auth_identity,
     ),
     missModerationMs: metricSummary(
       misses,

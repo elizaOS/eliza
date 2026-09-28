@@ -57,6 +57,7 @@ import {
   type BillingSnapshotViewState,
 } from "./active-compute-card";
 import { AutoTopUpCard } from "./auto-top-up-card";
+import { BillingHoldBanner } from "./billing-hold-banner";
 
 // Lazy-loaded so its @solana/spl-token + @solana/web3.js imports — which eval
 // top-level PublicKey program-id constants through safe-buffer's Buffer() at
@@ -677,6 +678,17 @@ export function BillingTab({
 
   return (
     <div className="flex flex-col gap-4 md:gap-6 pb-6 md:pb-8">
+      <BillingHoldBanner
+        organizationId={user.organization_id}
+        onPay={(amountUsd) => {
+          setPaymentMethod("card");
+          setPurchaseAmount(amountUsd);
+          document.getElementById("purchase-amount")?.focus();
+        }}
+        onBalanceApplied={() => {
+          void billingSnapshot.refetch();
+        }}
+      />
       {/* Credit Balance Card */}
       <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />

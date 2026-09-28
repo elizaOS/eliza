@@ -15,6 +15,12 @@
  *      currently-served build is strictly newer than what this run would ship.
  *   3. A `--force` flag (wired from a `workflow_dispatch` input) bypasses the
  *      guard for intentional rollbacks.
+ *   4. Skips ONLY when that newer served commit is itself reachable from the
+ *      environment's canonical branch (#27229). A newer served commit absent
+ *      from the canonical branch is an unattested upload (for example a manual
+ *      Wrangler upload from another branch). Skipping would let this protected
+ *      release finish green, and be certified, while unattested bytes stay
+ *      live, so the release deploys over it instead.
  *
  * FAIL-OPEN by design: the guard only SKIPS on a DEFINITIVE stale signal (the
  * run SHA is provably an ancestor of a known-newer served commit). Every
@@ -49,6 +55,10 @@ export const DEPLOY_FRESHNESS_SCHEMA = "elizaos.deploy.freshness-guard/v1";
  *        returns true if runSha is a strict-or-equal ancestor of servedCommit,
  *        false if it is not, and null if ancestry could NOT be determined
  *        (histories unrelated / commit not fetchable / git error).
+ * @param {(servedCommit: string) => (boolean|null)} [args.isServedCommitOnCanonical]
+ *        returns true when the served commit is reachable from the target
+ *        environment's canonical branch head, false when it is not, and null
+ *        when membership could not be proven. Omitting it means unattested.
  * @returns {FreshnessResult}
  */
 export function decideDeployFreshness({
@@ -56,6 +66,7 @@ export function decideDeployFreshness({
   servedCommit,
   force = false,
   isAncestor,
+  isServedCommitOnCanonical = undefined,
 }) {
   const normalizedRun =
     typeof runSha === "string" && runSha.trim() ? runSha.trim() : null;
@@ -119,8 +130,41 @@ export function decideDeployFreshness({
   }
 
   if (ancestor === true) {
-    // The run's SHA is an ancestor of the served commit → the served build is
-    // strictly NEWER than what this run would ship → this is a stale run.
+    // The served build claims to be newer. The claim is authoritative only
+    // when the served commit belongs to the canonical branch: an upload made
+    // outside the protected release path must never suppress this release.
+    let attested = null;
+    if (typeof isServedCommitOnCanonical === "function") {
+      try {
+        attested = isServedCommitOnCanonical(normalizedServed);
+      } catch {
+        // error-policy:J3 an attestation probe failure is indeterminate and
+        // is reported below as served_attestation_unknown.
+        attested = null;
+      }
+    }
+    if (attested !== true) {
+      return {
+        ...base,
+        decision: "deploy",
+        reason:
+          attested === false
+            ? "served_commit_unattested"
+            : "served_attestation_unknown",
+        detail:
+          attested === false
+            ? `Served commit ${normalizedServed} is newer than run SHA ` +
+              `${normalizedRun} but is not reachable from the canonical ` +
+              "branch, so it was not released by the protected workflow. " +
+              "Deploying to restore exact-SHA release authority."
+            : `Served commit ${normalizedServed} is newer than run SHA ` +
+              `${normalizedRun} but its canonical-branch membership could ` +
+              "not be proven. Deploying instead of certifying an unattested " +
+              "served build.",
+      };
+    }
+    // The run's SHA is an ancestor of an attested served commit → the served
+    // build is strictly NEWER than what this run would ship → stale run.
     return {
       ...base,
       decision: "skip",
