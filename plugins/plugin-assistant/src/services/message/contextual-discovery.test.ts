@@ -1110,6 +1110,46 @@ describe("contextual native discovery", () => {
     },
   );
 
+  it("does not load a domain family from an incidental domain word in a clause claimed by a selected action (#31017)", () => {
+    const echo: Action = {
+      name: "ECHO_TEST",
+      contexts: ["general"],
+      description: "Echo the user's message back",
+    };
+    const worldOperations: Action[] = [
+      {
+        name: "MESSAGE_LIST_WORLDS",
+        contexts: ["messaging", "world"],
+        description: "List shared worlds",
+      },
+      {
+        name: "MESSAGE_EDIT",
+        contexts: ["messaging", "world"],
+        description: "Edit a sent message",
+      },
+    ];
+    const retrieve = (intent: string) =>
+      retrieveContextualPlannerActions({
+        actions: [echo, ...worldOperations],
+        query: intent,
+        intents: [intent],
+        contexts: ["general"],
+        selectedActions: [echo],
+      }).actions.map((action) => action.name);
+    // ECHO_TEST claims the clause; "world" names a registered domain, but
+    // nothing asks for one of its operations, so the family stays behind
+    // DISCOVER_ACTIONS.
+    expect(
+      retrieve("please echo this message back to me: hello world"),
+    ).toEqual(["ECHO_TEST"]);
+    // An unclaimed clause naming the domain still loads its matching
+    // operation without its siblings.
+    expect(retrieve("list the world rooms")).toEqual([
+      "ECHO_TEST",
+      "MESSAGE_LIST_WORLDS",
+    ]);
+  });
+
   it("does not use negated operations to widen a positive read intent", () => {
     const view: Action = {
       name: "VIEWS_SHOW",

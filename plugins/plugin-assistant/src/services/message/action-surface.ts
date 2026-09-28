@@ -116,47 +116,103 @@ export function inferActionSearchContexts(
   });
 }
 
+/** Generic operation verbs name no specific capability on their own. */
+const GENERIC_OPERATION_WORDS = new Set([
+  "list",
+  "search",
+  "find",
+  "lookup",
+  "create",
+  "add",
+  "write",
+  "save",
+  "update",
+  "edit",
+  "change",
+  "modify",
+  "replace",
+  "patch",
+  "delete",
+  "remove",
+  "erase",
+  "get",
+  "read",
+  "retrieve",
+  "next",
+  "upcoming",
+  "open",
+  "navigate",
+  "show",
+  "close",
+  "send",
+  "set",
+  "run",
+]);
+
 function pendingActionContexts(
   actions: readonly Action[],
   intents: readonly string[] | undefined,
   aliases?: (context: string) => readonly string[] | undefined,
+  selectedActions?: readonly Action[],
 ): string[] {
   // These are exposure hints only. Ambiguous/negated clauses and navigation
   // destinations remain discoverable instead of loading their record tools.
-  const domainIntents = (intents ?? [])
-    .map(positiveIntentText)
-    .filter((intent) => {
-      const words = tokenizeActionSearchText(intent);
-      return (
-        words.length > 0 &&
-        ![
-          "open",
-          "navigate",
-          "switch",
-          "go",
-          "show",
-          "close",
-          "return",
-        ].includes(words[0])
-      );
-    });
-  const domainText = domainIntents.join("\n");
-  // Readback identifiers are data, not programming work. This affects only
-  // inferred extra domains; explicit contexts, action names and discovery
-  // queries retain their ordinary meaning and complete source text.
-  const programmingText = domainText.replace(
-    /\b(?:verification|reference)\s+codes?\b/giu,
-    " ",
+  // A clause whose verb already names a Stage-1 selected action ("echo this
+  // message back to me: hello world" -> ECHO_TEST) is claimed by that action.
+  // An incidental domain word in it (MESSAGE's `world` context) is not a
+  // second domain intent unless the clause also names one of that domain's
+  // operations; otherwise the family stays behind DISCOVER_ACTIONS (#31017).
+  const claimWords = new Set(
+    (selectedActions ?? []).flatMap((action) =>
+      tokenizeActionSearchText(action.name).filter(
+        (word) => word.length > 2 && !GENERIC_OPERATION_WORDS.has(word),
+      ),
+    ),
   );
-  return inferActionSearchContexts(actions, domainText, aliases)
-    .filter(
-      (context) =>
-        normalizeContextId(context) !== "code" ||
-        ["code", ...(aliases?.("code") ?? [])].some((name) =>
-          containsDomainPhrase(programmingText, name),
-        ),
+  const domains = new Set<string>();
+  for (const intent of (intents ?? []).map(positiveIntentText)) {
+    const words = tokenizeActionSearchText(intent);
+    const claimed = words.some((word) => claimWords.has(word));
+    if (
+      words.length === 0 ||
+      ["open", "navigate", "switch", "go", "show", "close", "return"].includes(
+        words[0],
+      )
     )
-    .map(normalizeContextId);
+      continue;
+    // Readback identifiers are data, not programming work. This affects only
+    // inferred extra domains; explicit contexts, action names and discovery
+    // queries retain their ordinary meaning and complete source text.
+    const programmingText = intent.replace(
+      /\b(?:verification|reference)\s+codes?\b/giu,
+      " ",
+    );
+    for (const context of inferActionSearchContexts(actions, intent, aliases)) {
+      const domain = normalizeContextId(context);
+      if (domains.has(domain)) continue;
+      if (
+        domain === "code" &&
+        !["code", ...(aliases?.("code") ?? [])].some((name) =>
+          containsDomainPhrase(programmingText, name),
+        )
+      )
+        continue;
+      if (!claimed) {
+        domains.add(domain);
+        continue;
+      }
+      const operations = actions
+        .filter((action) =>
+          actionDiscoveryContexts(action).some(
+            (candidate) => normalizeContextId(candidate) === domain,
+          ),
+        )
+        .map((action) => action.name);
+      if (preferredOperationNames(intent, operations).size > 0)
+        domains.add(domain);
+    }
+  }
+  return [...domains];
 }
 
 const OPERATION_CONNECTORS = new Set([
@@ -241,7 +297,12 @@ export function retrieveContextualPlannerActions(args: {
   );
   const domains = new Set([
     ...declaredDomains,
-    ...pendingActionContexts(args.actions, args.intents, args.contextAliases),
+    ...pendingActionContexts(
+      args.actions,
+      args.intents,
+      args.contextAliases,
+      args.selectedActions,
+    ),
   ]);
   if (args.deferUnscopedBootstrap && domains.size === 0) {
     const required = [

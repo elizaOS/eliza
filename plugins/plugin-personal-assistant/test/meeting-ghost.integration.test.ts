@@ -16,13 +16,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { AgentEventService, getConnectorAccountManager } from "@elizaos/core";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/transcripts";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type { ApprovalQueue } from "../src/lifeops/approval-queue.types.js";
 import { runMeetingGhostForTranscript } from "../src/lifeops/meeting-ghost/consumer.js";
+import { handleMeetingTranscriptFinalized } from "../src/lifeops/meeting-ghost/event-handler.js";
+import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { personalAssistantPlugin } from "../src/plugin.js";
 
@@ -378,5 +380,140 @@ describe("meeting-ghost consumer (real approval queue)", () => {
     expect(previous).not.toHaveLength(0);
     for (const request of previous)
       expect(request.payload).toMatchObject({ grantId: senderGrantId });
+  }, 60_000);
+});
+
+describe("finalized transcript commitments on the owner's local day (#32880)", () => {
+  function ownerSeg(
+    id: string,
+    startMs: number,
+    text: string,
+  ): TranscriptSegment {
+    return {
+      id,
+      speakerLabel: "Shaw",
+      speakerEntityId: "owner-local-day",
+      startMs,
+      endMs: startMs + 8_000,
+      text,
+      words: [],
+    };
+  }
+
+  // Drives the production finalized-event handler, so both the segment-keyed
+  // transcript projection and the meeting-ghost consumer write real rows.
+  async function finalizeInOwnerZone(input: {
+    timeZone: string;
+    transcriptId: string;
+    meetingId: string;
+    createdAt: string;
+    segments: TranscriptSegment[];
+  }) {
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: input.timeZone },
+      { source: "profile_save", recordedAt: new Date().toISOString() },
+    );
+    const createdAt = Date.parse(input.createdAt);
+    await handleMeetingTranscriptFinalized({
+      runtime,
+      source: "test",
+      session: {
+        id: input.meetingId,
+        platform: "google_meet",
+        meetingUrl: "https://meet.google.com/abc-defg-hij",
+        nativeMeetingId: "abc-defg-hij",
+        botName: "Eliza Notetaker",
+        status: "ended",
+        requestedAt: createdAt - 60_000,
+        activeAt: createdAt,
+        endedAt: createdAt + 600_000,
+        transcriptId: input.transcriptId,
+        participants: [{ id: "owner", displayName: "Shaw" }],
+      },
+      transcript: {
+        id: input.transcriptId,
+        title: "Evening planning",
+        createdAt,
+        durationMs: 600_000,
+        source: "meeting",
+        scope: "owner-private",
+        status: "ready",
+        speakerCount: 2,
+        segments: input.segments,
+      },
+      ghostAttendance: {
+        ownerUserId: "owner-local-day",
+        ownerDisplayName: "Shaw",
+        careAbouts: [],
+        // No attendee emails: no follow-up drafts, so no sender grant needed.
+        attendees: [{ name: "Ava" }],
+      },
+    });
+    const rows = await new LifeOpsRepository(
+      runtime,
+    ).listCommitmentLedgerRecords(runtime.agentId, { source: "transcript" });
+    return rows.filter(
+      (row) =>
+        row.sourceKey.startsWith(`${input.transcriptId}:`) ||
+        row.sourceKey.startsWith(`${input.meetingId}:`),
+    );
+  }
+
+  it("resolves an evening 'tomorrow' in Los Angeles to 17:00 Pacific the next local day, persisted once", async () => {
+    const rows = await finalizeInOwnerZone({
+      timeZone: "America/Los_Angeles",
+      transcriptId: "transcript-local-day",
+      meetingId: "meeting-local-day",
+      // Monday 2026-09-14 17:30 Pacific is already Tuesday in UTC.
+      createdAt: "2026-09-14T17:30:00-07:00",
+      segments: [
+        ownerSeg("seg-1", 0, "I will send the report tomorrow."),
+        ownerSeg("seg-2", 30_000, "I will book the venue by tomorrow."),
+        seg("Ava", 60_000, "Ava will draft the agenda by tomorrow."),
+      ],
+    });
+
+    // One row per spoken commitment: the owner's promises come only from the
+    // segment-keyed transcript projection, Ava's only from the meeting ghost.
+    expect(rows.map((row) => row.sourceKey).sort()).toEqual([
+      expect.stringMatching(/^meeting-local-day:/),
+      "transcript-local-day:seg-1",
+      "transcript-local-day:seg-2",
+    ]);
+    const bySummary = new Map(rows.map((row) => [row.summary, row]));
+    expect(bySummary.get("I will send the report tomorrow")).toMatchObject({
+      sourceKey: "transcript-local-day:seg-1",
+      dueAt: "2026-09-16T00:00:00.000Z",
+      metadata: expect.objectContaining({
+        observedAt: "2026-09-15T00:30:00.000Z",
+      }),
+    });
+    expect(bySummary.get("I will book the venue by tomorrow")?.dueAt).toBe(
+      "2026-09-16T00:00:00.000Z",
+    );
+    expect(bySummary.get("draft the agenda")).toMatchObject({
+      counterparty: "Ava",
+      dueAt: "2026-09-16T00:00:00.000Z",
+    });
+  }, 60_000);
+
+  it("resolves a morning weekday in Tokyo on the local calendar while UTC is still the previous day", async () => {
+    const rows = await finalizeInOwnerZone({
+      timeZone: "Asia/Tokyo",
+      transcriptId: "transcript-local-day-tokyo",
+      meetingId: "meeting-local-day-tokyo",
+      // Tuesday 2026-09-15 08:00 JST is still Monday in UTC.
+      createdAt: "2026-09-15T08:00:00+09:00",
+      segments: [
+        ownerSeg("seg-1", 0, "I'll send the budget on Wednesday."),
+        ownerSeg("seg-2", 30_000, "I will call the vendor tomorrow."),
+      ],
+    });
+
+    // Both fall on Wednesday 2026-09-16 at 17:00 JST.
+    expect(rows.map((row) => [row.sourceKey, row.dueAt]).sort()).toEqual([
+      ["transcript-local-day-tokyo:seg-1", "2026-09-16T08:00:00.000Z"],
+      ["transcript-local-day-tokyo:seg-2", "2026-09-16T08:00:00.000Z"],
+    ]);
   }, 60_000);
 });

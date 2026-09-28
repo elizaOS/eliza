@@ -163,8 +163,13 @@ it("loads cross-room originals only for their selected context while preserving 
       message,
       emptyState,
     );
-    expect(manifest.text).toContain(sourceRoomId);
-    expect(manifest.text).not.toContain("END ORIGINAL");
+    // A recall action only adds a room index; complete bodies stay inline.
+    expect(manifest.text).toContain(original);
+    expect(manifest.text).toContain(corrected);
+    expect(manifest.text).toContain(
+      "Room index for exact reads with MEMORY action=search, type=messages",
+    );
+    expect(manifest.text).toContain(`roomId=${sourceRoomId}`);
     const read = await memoryAction.handler(runtime, message, emptyState, {
       parameters: { op: "search", type: "messages", roomId: sourceRoomId },
     });
