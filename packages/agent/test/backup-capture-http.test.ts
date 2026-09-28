@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  stat,
   truncate,
   writeFile,
 } from "node:fs/promises";
@@ -203,6 +204,10 @@ it("distinguishes size and storage failures, then creates and restores a complet
     const failed = await request("/api/backups");
     expect(failed.status).toBe(500);
     expect(await failed.json()).toEqual({ error: "Backup failed" });
+    // The refusal happens at the storage boundary: the blocking file is intact
+    // and no partial backup directory was created in its place.
+    expect((await stat(backupDirectory)).isFile()).toBe(true);
+    expect(await readFile(backupDirectory, "utf8")).toBe("not a directory");
   } finally {
     await rm(backupDirectory, { force: true });
   }
@@ -214,7 +219,22 @@ it("distinguishes size and storage failures, then creates and restores a complet
   };
   const artifact = await readFile(path.join(backupDirectory, backup.fileName));
   expect(artifact.length).toBe(backup.sizeBytes);
+  const envelope = JSON.parse(artifact.toString("utf8")) as {
+    format: string;
+    agentId: string;
+    encryption: { algorithm: string; ciphertext: string };
+  };
+  expect(envelope.format).toBe("elizaos.agent-backup-file");
+  expect(envelope.agentId).toBe(fixture.runtime.agentId);
+  expect(envelope.encryption.algorithm).toBe("kms-aes-256-gcm");
+  expect(envelope.encryption.ciphertext.length).toBeGreaterThan(0);
+  // Plaintext state stores file bytes as base64; neither form may appear.
+  const artifactText = artifact.toString("utf8");
   expect(artifact.includes(media)).toBe(false);
+  expect(
+    artifactText.includes(media.subarray(0, 3072).toString("base64")),
+  ).toBe(false);
+  expect(artifactText.includes("complete state tail")).toBe(false);
   const artifactHash = createHash("sha256").update(artifact).digest("hex");
 
   const originalName = fixture.runtime.character.name;
@@ -230,6 +250,8 @@ it("distinguishes size and storage failures, then creates and restores a complet
   await writeFile(path.join(directory, "media", "complete.bin"), "changed");
   await writeFile(path.join(directory, "media", "empty.bin"), "changed");
   await writeFile(path.join(directory, "notes.txt"), "changed");
+  // Restore stops the shared runtime and closes its adapter, so this must stay
+  // the final scenario that uses `fixture.runtime` or the server.
   const restored = await request("/api/backups/restore", {
     fileName: backup.fileName,
   });
