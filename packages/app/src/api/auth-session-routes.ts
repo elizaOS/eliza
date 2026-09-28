@@ -18,7 +18,6 @@ import {
   ensureSessionForRequest,
   getSensitiveLimiter,
   hashPassword,
-  parseSessionCookie,
   revokeSession,
   SESSION_COOKIE_NAME,
   serializeCsrfCookie,
@@ -28,7 +27,7 @@ import {
   verifyPassword,
   WeakPasswordError,
 } from "./auth/index";
-import { findActiveSession } from "./auth/sessions";
+import { findActiveSession, readAllCookieValues } from "./auth/sessions";
 import {
   extractHeaderValue,
   getProvidedApiToken,
@@ -461,14 +460,18 @@ async function handleLogout(
   store: AuthRepository,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
-  const sessionId = parseSessionCookie(req) ?? getProvidedApiToken(req) ?? null;
-  if (!sessionId) {
-    clearSessionCookies(req, res);
-    sendJsonResponse(res, 200, { ok: true });
-    return true;
-  }
-  const session = await findActiveSession(store, sessionId);
-  if (session) {
+  // Revoke every session credential the browser presents. Conflicting
+  // duplicate session cookies are ambiguous for authentication, but logout
+  // must still end each of them rather than report success while they stay
+  // live. Revoking a token the caller already holds grants nothing.
+  const candidates = new Set<string>(
+    readAllCookieValues(req, SESSION_COOKIE_NAME),
+  );
+  const bearer = getProvidedApiToken(req);
+  if (bearer) candidates.add(bearer);
+  for (const sessionId of candidates) {
+    const session = await findActiveSession(store, sessionId);
+    if (!session) continue;
     await revokeSession(session.id, {
       store,
       reason: "user_logout",

@@ -474,6 +474,31 @@ export function readCookie(
   );
 }
 /**
+ * Every distinct, well-formed value of one cookie, including conflicting
+ * duplicates that `readCookie` rejects. Only for paths that must act on every
+ * credential the browser presents (logout revokes each); never use it to
+ * choose an authenticating value.
+ */
+export function readAllCookieValues(
+  req: Pick<http.IncomingMessage, "headers">,
+  name: string,
+): string[] {
+  const headerValue = extractHeaderValue(req.headers.cookie);
+  if (!headerValue) return [];
+  const values = new Set<string>();
+  for (const part of headerValue.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0 || part.slice(0, eq).trim() !== name) continue;
+    try {
+      const decoded = decodeURIComponent(part.slice(eq + 1).trim());
+      if (decoded.length > 0) values.add(decoded);
+    } catch {
+      // error-policy:J3 a malformed percent-escape is not a credential.
+    }
+  }
+  return [...values];
+}
+/**
  * Read the eliza session id from the request cookie header. Returns null
  * when the cookie is absent, empty, malformed, or duplicated.
  */

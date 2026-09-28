@@ -7,6 +7,7 @@ import {
   CSRF_HEADER_NAME,
   parseCookieHeader,
   parseSessionCookie,
+  readAllCookieValues,
   readCookie,
   SESSION_COOKIE_NAME,
   serializeCsrfExpiryCookie,
@@ -71,4 +72,15 @@ it("treats malformed, empty and absent session cookies as no session", () => {
   expect(parseSessionCookie(req("eliza_session=; eliza_session=x"))).toBeNull();
   expect(parseSessionCookie(req(undefined))).toBeNull();
   expect(parseSessionCookie(req(["eliza_session=array"]))).toBe("array");
+});
+
+it("lists every distinct session credential for logout without choosing one", () => {
+  const header =
+    "eliza_session=first; other=x; eliza_session=second; eliza_session=first; eliza_session=%E0%A4%A";
+  expect(parseSessionCookie(req(header))).toBeNull();
+  expect(readAllCookieValues(req(header), SESSION_COOKIE_NAME)).toEqual([
+    "first",
+    "second",
+  ]);
+  expect(readAllCookieValues(req(undefined), SESSION_COOKIE_NAME)).toEqual([]);
 });

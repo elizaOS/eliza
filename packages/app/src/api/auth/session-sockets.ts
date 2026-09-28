@@ -57,6 +57,11 @@ export function bindSessionSocket(session: BoundSocket, socket: Duplex): void {
   socket.once("close", () => unbind(socket));
 }
 
+/** Drop a binding without closing the socket (a handshake being refused). */
+export function unbindSessionSocket(socket: Duplex): void {
+  unbind(socket);
+}
+
 function closeSocket(socket: Duplex): void {
   unbind(socket);
   if (socket.destroyed) return;

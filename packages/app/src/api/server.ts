@@ -67,7 +67,7 @@ import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import { readCookie, resolveSessionTokenRole } from "./auth";
-import { bindSessionSocket } from "./auth/session-sockets";
+import { bindSessionSocket, unbindSessionSocket } from "./auth/session-sockets";
 import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -1083,6 +1083,34 @@ export async function startApiServer(
       });
     },
     authorizeWebSocket: async (request, url) => {
+      // Bind first, then re-read the session: a revoke that landed between
+      // the admission lookup and the bind found no socket to close, so the
+      // re-read is what keeps a revoked session from being admitted.
+      const bindActiveSession = async (binding: {
+        sessionId: string;
+        identityId: string;
+      }): Promise<boolean> => {
+        bindSessionSocket(binding, request.socket);
+        const store = compatState.current
+          ? authStoreForRuntime(compatState.current)
+          : null;
+        const stillActive = store
+          ? await findActiveSession(store, binding.sessionId).catch(
+              (error: unknown) => {
+                // error-policy:J1 an unavailable auth store refuses the socket.
+                compatState.current?.reportError(
+                  "appCore.webSocketSessionRecheck",
+                  error,
+                  { phase: "upgrade" },
+                );
+                return null;
+              },
+            )
+          : null;
+        if (stillActive) return true;
+        unbindSessionSocket(request.socket);
+        return false;
+      };
       const cookie = readCookie(request, SESSION_COOKIE_NAME);
       const origin =
         typeof request.headers.origin === "string"
@@ -1096,13 +1124,15 @@ export async function startApiServer(
           scope: "appCore.webSocketCookieAuth",
         });
         if (session?.role === "OWNER") {
-          if (session.identityId) {
-            bindSessionSocket(
-              { sessionId: cookie, identityId: session.identityId },
-              request.socket,
-            );
+          if (!session.identityId) return true;
+          if (
+            await bindActiveSession({
+              sessionId: cookie,
+              identityId: session.identityId,
+            })
+          ) {
+            return true;
           }
-          return true;
         }
       }
       const sessionToken =
@@ -1118,11 +1148,13 @@ export async function startApiServer(
             const session = store
               ? await findActiveSession(store, sessionToken)
               : null;
-            if (session) {
-              bindSessionSocket(
-                { sessionId: session.id, identityId: session.identityId },
-                request.socket,
-              );
+            if (
+              session &&
+              (await bindActiveSession({
+                sessionId: session.id,
+                identityId: session.identityId,
+              }))
+            ) {
               return true;
             }
           } catch (error) {

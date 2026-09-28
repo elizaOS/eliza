@@ -1,11 +1,13 @@
-/** Drives the production config HTTP route with an owner token: TEE, dstack, confidential and protected-profile environment keys can neither be persisted nor set or cleared in the live process, while ordinary variables still apply. */
+/** Drives the production config HTTP route with an owner token: TEE, dstack, confidential and protected-profile environment keys can neither be persisted nor set or cleared in the live process, while ordinary variables still apply. The state-dir config.env file is held to the same boundary. */
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { persistConfigEnv } from "../src/api/config-env.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { loadElizaConfig } from "../src/config/config.ts";
 
 const token = randomUUID();
 let stateDirectory: string;
@@ -30,6 +32,7 @@ beforeAll(async () => {
     "ELIZA_DSTACK_EVIDENCE_CONFIG_JSON",
     "ELIZA_CONFIDENTIAL_WEIGHTS",
     "BOUNDARY_ACCEPTED_VAR",
+    "BOUNDARY_FILE_VAR",
   ])
     vi.stubEnv(key, undefined);
   fixture = await createTestRuntime({ characterName: "TeeEnvBoundary" });
@@ -82,4 +85,23 @@ it("never persists or applies TEE authority keys from config writes", async () =
   );
   expect(persisted.env.vars).toEqual({ BOUNDARY_ACCEPTED_VAR: "kept" });
   expect(persisted.env.ELIZA_TEE_POLICY_JSON).toBeUndefined();
+}, 120_000);
+
+it("never applies or persists TEE authority keys through the state-dir config.env", async () => {
+  await writeFile(
+    path.join(stateDirectory, "config.env"),
+    "ELIZA_TEE_REQUIRED=false\nELIZA_PROTECTED_PROFILE=none\nBOUNDARY_FILE_VAR=kept\n",
+    { mode: 0o600 },
+  );
+  loadElizaConfig();
+  expect(process.env.ELIZA_TEE_REQUIRED).toBe("true");
+  expect(process.env.ELIZA_PROTECTED_PROFILE).toBeUndefined();
+  expect(process.env.BOUNDARY_FILE_VAR).toBe("kept");
+
+  await expect(persistConfigEnv("ELIZA_TEE_REQUIRED", "false")).rejects.toThrow(
+    /process-environment only/,
+  );
+  await expect(
+    persistConfigEnv("ELIZA_DSTACK_EVIDENCE_CONFIG_JSON", "{}"),
+  ).rejects.toThrow(/process-environment only/);
 }, 120_000);
