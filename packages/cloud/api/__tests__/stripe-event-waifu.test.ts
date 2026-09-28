@@ -77,6 +77,17 @@ mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
   },
 }));
 mock.module("@/db/helpers", () => ({ dbRead }));
+mock.module("@/lib/services/billing-hold", () => ({
+  billingHoldService: {
+    settleOutstandingShortfalls: async () => ({
+      appliedUsd: "0.000000",
+      outstandingUsd: "0.000000",
+      releasedHoldIds: [],
+      repaymentTransactionId: null,
+    }),
+    getState: async () => ({ status: "clear" }),
+  },
+}));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Agent Org" })),
@@ -89,24 +100,6 @@ mock.module("@/db/repositories/users", () => ({
 }));
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
-}));
-mock.module("@/lib/services/app-charge-callbacks", () => ({
-  appChargeCallbacksService: {},
-}));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {
-    markPaid: mock(async () => undefined),
-  },
-}));
-mock.module("@/lib/services/app-credits", () => ({
-  appCreditsService: {
-    processPurchase: mock(async () => ({
-      creditsAdded: 5,
-      platformOffset: 0,
-      creatorEarnings: 0,
-      newBalance: 5,
-    })),
-  },
 }));
 mock.module("@/lib/services/auto-top-up", () => ({
   autoTopUpService: {

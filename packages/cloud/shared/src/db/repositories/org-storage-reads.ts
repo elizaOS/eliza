@@ -2,7 +2,16 @@
  * Owns durable storage-read receipts and atomically attaches one exact debit
  * only after the native provider result has been recorded.
  */
+import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import {
+  canonicalFundingAmount,
+  fundAllowanceEligibleChargeInTransaction,
+  isAllowanceFirstOrganizationInTransaction,
+} from "../../lib/services/allowance-first-credits";
+import { creditsService } from "../../lib/services/credits";
+import { SUBSCRIPTION_FUNDING_INSUFFICIENT } from "../../lib/services/subscription-funding";
+import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { writeTransaction } from "../helpers";
 import {
@@ -69,6 +78,15 @@ export interface CommittedStorageRead {
   operation: OrgStorageReadOperation;
   insufficient: boolean;
   availableUsd?: string;
+}
+
+/**
+ * Funding identity for one paid read receipt. Reads are charged only after the
+ * provider result is recorded, so each hold is reserved and settled in the
+ * receipt's commit transaction and never outlives it.
+ */
+export function storageReadFundingOperationId(operationId: string): string {
+  return `storage.read:${operationId}`;
 }
 
 function requiredRow<T>(rows: T[], label: string): T {
@@ -432,7 +450,8 @@ export class OrgStorageReadsRepository {
     organizationId: string;
     now: Date;
   }): Promise<CommittedStorageRead> {
-    return await writeTransaction(async (tx) => {
+    let purchasedCreditDebited = false;
+    const result = await writeTransaction(async (tx): Promise<CommittedStorageRead> => {
       const rows = await sqlRows<OrgStorageReadOperation>(
         tx,
         sql`SELECT * FROM ${orgStorageReadOperations}
@@ -487,7 +506,37 @@ export class OrgStorageReadsRepository {
       }
 
       let creditTransactionId: string | null = null;
-      if (String(operation.price_usd) !== "0.000000") {
+      let fundingReservationId: string | null = null;
+      const priced = String(operation.price_usd) !== "0.000000";
+      if (priced && (await isAllowanceFirstOrganizationInTransaction(tx, params.organizationId))) {
+        let funded: Awaited<ReturnType<typeof fundAllowanceEligibleChargeInTransaction>>;
+        try {
+          // The receipt lock is the workload lock; funding takes the organization lock.
+          funded = await tx.transaction((savepoint) =>
+            fundAllowanceEligibleChargeInTransaction(savepoint, {
+              organizationId: params.organizationId,
+              operation: "storage",
+              logicalOperationId: storageReadFundingOperationId(operation.id),
+              amount: canonicalFundingAmount(String(operation.price_usd), "up"),
+              description: `API proxy: storage — native ${operation.method}`,
+              occurredAt: settlementNow,
+              metadata: {
+                native_storage_read_operation_id: operation.id,
+                method: operation.method,
+                request_digest: operation.request_digest,
+              },
+            }),
+          );
+        } catch (error) {
+          if (!(error instanceof ElizaError && error.code === SUBSCRIPTION_FUNDING_INSUFFICIENT)) {
+            throw error;
+          }
+          // error-policy:J2 a funding shortfall keeps the read's insufficient-credit receipt.
+          return await this.failInsufficient(tx, operation, settlementNow);
+        }
+        fundingReservationId = funded.reservation.id;
+        purchasedCreditDebited = funded.purchasedCreditDebited;
+      } else if (priced) {
         const balanceRows = await sqlRows<{ credit_balance: string }>(
           tx,
           sql`UPDATE ${organizations}
@@ -498,27 +547,7 @@ export class OrgStorageReadsRepository {
             RETURNING credit_balance`,
         );
         if (balanceRows.length === 0) {
-          const availableRows = await sqlRows<{ credit_balance: string }>(
-            tx,
-            sql`SELECT credit_balance FROM ${organizations}
-              WHERE id = ${params.organizationId} FOR UPDATE`,
-          );
-          const failed = await tx
-            .update(orgStorageReadOperations)
-            .set({
-              state: "failed",
-              response_status: 402,
-              response_json: JSON.stringify({ error: "Insufficient credits" }),
-              completed_at: settlementNow,
-              updated_at: settlementNow,
-            })
-            .where(eq(orgStorageReadOperations.id, operation.id))
-            .returning();
-          return {
-            operation: normalize(requiredRow(failed, "insufficient receipt")),
-            insufficient: true,
-            availableUsd: requiredRow(availableRows, "organization balance").credit_balance,
-          };
+          return await this.failInsufficient(tx, operation, settlementNow);
         }
 
         const metadata = JSON.stringify({
@@ -549,6 +578,7 @@ export class OrgStorageReadsRepository {
         .set({
           state: "committed",
           credit_transaction_id: creditTransactionId,
+          funding_reservation_id: fundingReservationId,
           completed_at: settlementNow,
           updated_at: settlementNow,
         })
@@ -559,6 +589,38 @@ export class OrgStorageReadsRepository {
         insufficient: false,
       };
     });
+    if (purchasedCreditDebited) {
+      await creditsService.invalidateCreditCaches(params.organizationId);
+    }
+    return result;
+  }
+
+  private async failInsufficient(
+    tx: DbTransaction,
+    operation: OrgStorageReadOperation,
+    settlementNow: Date,
+  ): Promise<CommittedStorageRead> {
+    const availableRows = await sqlRows<{ credit_balance: string }>(
+      tx,
+      sql`SELECT credit_balance FROM ${organizations}
+        WHERE id = ${operation.organization_id} FOR UPDATE`,
+    );
+    const failed = await tx
+      .update(orgStorageReadOperations)
+      .set({
+        state: "failed",
+        response_status: 402,
+        response_json: JSON.stringify({ error: "Insufficient credits" }),
+        completed_at: settlementNow,
+        updated_at: settlementNow,
+      })
+      .where(eq(orgStorageReadOperations.id, operation.id))
+      .returning();
+    return {
+      operation: normalize(requiredRow(failed, "insufficient receipt")),
+      insufficient: true,
+      availableUsd: requiredRow(availableRows, "organization balance").credit_balance,
+    };
   }
 
   async authorizeCapability(params: {

@@ -698,4 +698,106 @@ describe("Miniflare Durable Object integration", () => {
     });
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
+
+  test("subscriber funding capacity is a fenced view of the same balance revision", async () => {
+    const gate = "org-funding-view";
+    const lease = (
+      requestId: string,
+      estimatedCostUsd: number,
+      snapshot: { balanceUsd: number; balanceRevision: string },
+      options: {
+        balanceView?: "funding";
+        accounting?: "subscription_funding" | "direct_debit";
+      } = { balanceView: "funding", accounting: "subscription_funding" },
+    ) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          ...snapshot,
+          ...(options.balanceView && { balanceView: options.balanceView }),
+          estimatedCostUsd,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare subscriber funding test",
+            accounting: { kind: options.accounting ?? "subscription_funding" },
+          },
+        },
+        gate,
+      );
+
+    // Purchased credit alone is $1 at revision 5.
+    expect(
+      (await post("/hydrate", { balanceUsd: 1, balanceRevision: "5" }, gate))
+        .status,
+    ).toBe(200);
+
+    // A funding lease must carry the funding view, and only it may.
+    expect(
+      (
+        await lease(
+          "funding-no-view",
+          1,
+          { balanceUsd: 10, balanceRevision: "5" },
+          { accounting: "subscription_funding" },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await lease(
+          "credit-with-view",
+          1,
+          { balanceUsd: 10, balanceRevision: "5" },
+          { balanceView: "funding", accounting: "direct_debit" },
+        )
+      ).status,
+    ).toBe(400);
+
+    // Same revision: $10 of credit plus allowance supersedes the credit view.
+    expect(
+      (await lease("funding-a", 7, { balanceUsd: 10, balanceRevision: "5" }))
+        .status,
+    ).toBe(200);
+    // A late credit-only observation of that revision cannot shrink or grow
+    // the funding ceiling.
+    expect(
+      (await post("/hydrate", { balanceUsd: 1, balanceRevision: "5" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (await lease("funding-b", 2, { balanceUsd: 10, balanceRevision: "5" }))
+        .status,
+    ).toBe(200);
+    // $7 + $2 are held against $10: another $2 would overspend.
+    const exhausted = await lease("funding-c", 2, {
+      balanceUsd: 10,
+      balanceRevision: "5",
+    });
+    expect(exhausted.status).toBe(402);
+    expect(JSON.parse(await exhausted.text()).availableUsd).toBeCloseTo(1, 6);
+
+    // A newer credit-only revision is adopted conservatively; the next
+    // subscriber admission restores capacity at that revision.
+    expect(
+      (await post("/hydrate", { balanceUsd: 0, balanceRevision: "6" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (await lease("funding-d", 0.5, { balanceUsd: 0, balanceRevision: "5" }))
+        .status,
+    ).toBe(402);
+    expect(
+      (await lease("funding-e", 0.5, { balanceUsd: 10, balanceRevision: "6" }))
+        .status,
+    ).toBe(200);
+  }, 120_000);
 });

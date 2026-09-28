@@ -10,11 +10,9 @@ import {
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/
  * 03-coverage-gap-matrix.md` line 444 + #67): `paymentsAction` had no scenario.
  *
- * The companion `payments.agent-charge-five-dollar.scenario.ts` covers the
- * Cloud-app charge surface (`CREATE_APP_CHARGE`); this scenario covers the
- * lifeops `PAYMENTS` umbrella's dashboard read path. Owner asks "how am I
- * spending" → planner should route to PAYMENTS with mode=dashboard or
- * spending_summary, and the result data must contain the composite
+ * This scenario covers the lifeops `PAYMENTS` umbrella's dashboard read
+ * path. Owner asks "how am I spending" → planner should route to PAYMENTS
+ * with mode=dashboard or spending_summary, and the result data must contain the composite
  * dashboard payload (sources + spending + recurring) so the agent has the
  * facts it needs to summarize.
  */

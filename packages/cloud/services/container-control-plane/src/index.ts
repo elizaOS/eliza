@@ -40,6 +40,7 @@ import {
   type BridgeRequest,
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { resolvePersonalDedicatedTrafficAccess } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
 import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
@@ -1227,6 +1228,36 @@ app.delete("/api/compat/agents/:id", (c) =>
   }),
 );
 
+/**
+ * A cut-over personal Dedicated whose owner's access is withdrawn is not
+ * reachable through the bridge (#25146); its memory stays sealed until the
+ * owner's recovery hands the same agent id back.
+ */
+async function withdrawnPersonalDedicatedResponse(
+  agentId: string,
+  organizationId: string,
+): Promise<Response | null> {
+  const access = await resolvePersonalDedicatedTrafficAccess({
+    dedicatedAgentId: agentId,
+    organizationId,
+  });
+  if (access.access === "dedicated") return null;
+  return Response.json(
+    {
+      success: false,
+      error: access.error,
+      code: access.code,
+      retryable: access.retryable,
+    },
+    {
+      status: access.status,
+      ...(access.retryAfterSeconds
+        ? { headers: { "Retry-After": String(access.retryAfterSeconds) } }
+        : {}),
+    },
+  );
+}
+
 app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
   handle(c, async (auth) => {
     const agentId = c.req.param("id");
@@ -1246,6 +1277,11 @@ app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
       );
     }
 
+    const withdrawn = await withdrawnPersonalDedicatedResponse(
+      agentId,
+      auth.organizationId,
+    );
+    if (withdrawn) return withdrawn;
     const response = await elizaSandboxService.bridge(
       agentId,
       auth.organizationId,
@@ -1278,6 +1314,11 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
       );
     }
 
+    const withdrawn = await withdrawnPersonalDedicatedResponse(
+      agentId,
+      auth.organizationId,
+    );
+    if (withdrawn) return withdrawn;
     const response = await elizaSandboxService.bridgeStream(
       agentId,
       auth.organizationId,

@@ -712,7 +712,9 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error(`Unsupported VoiceBench real profile: ${profile}`);
   }
 
-  const groqModule = (await import("@elizaos/plugin-groq")) as GroqPluginModule;
+  // Resolve the external provider at runtime; a missing installation still fails.
+  const groqModuleName: string = "@elizaos/plugin-groq";
+  const groqModule = (await import(groqModuleName)) as GroqPluginModule;
   const groq = groqModule.groqPlugin ?? groqModule.default;
   if (!groq) {
     throw new Error("Failed to load Groq TypeScript plugin");

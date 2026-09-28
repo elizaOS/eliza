@@ -440,9 +440,9 @@ export function normalizeIncomingChatPrompt(
   text: string | null | undefined,
   images: ChatImageAttachment[] | null | undefined,
 ): string | null {
-  const normalizedText = typeof text === "string" ? text.trim() : "";
-  if (normalizedText.length > 0) {
-    return normalizedText;
+  // Whitespace decides whether input is empty; authored bytes remain evidence.
+  if (typeof text === "string" && text.trim().length > 0) {
+    return text;
   }
   return Array.isArray(images) && images.length > 0
     ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT

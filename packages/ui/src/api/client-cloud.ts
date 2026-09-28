@@ -83,6 +83,10 @@ import {
   resolveDirectCloudWebBase,
   stripTrailingSlashes,
 } from "./direct-cloud-endpoints";
+import {
+  type PersonalFallbackAccountState,
+  parsePersonalFallbackAccountState,
+} from "./personal-fallback";
 import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
 import { fetchAgentTransport } from "./transport";
 
@@ -1978,7 +1982,11 @@ declare module "./client-base" {
       data: CloudCompatJob;
       error?: string;
     }>;
-    exportAgent(password: string, includeLogs?: boolean): Promise<Response>;
+    exportAgent(
+      password: string,
+      includeLogs?: boolean,
+      excludeSecrets?: boolean,
+    ): Promise<Response>;
     getExportEstimate(): Promise<{
       estimatedBytes: number;
       memoriesCount: number;
@@ -2057,6 +2065,11 @@ declare module "./client-base" {
       agentName: string;
       apiBase: string;
       runtime: "shared" | "dedicated";
+      /**
+       * Present only on Shared while Dedicated access is withdrawn (#25146):
+       * the typed state, reason, retention deadline and pay action.
+       */
+      accountState?: PersonalFallbackAccountState;
     }>;
     /**
      * Resolve the signed-in account's stable personal identity and guarantee
@@ -3408,6 +3421,7 @@ ElizaClient.prototype.exportAgent = async function (
   this: ElizaClient,
   password,
   includeLogs = false,
+  excludeSecrets = false,
 ) {
   if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
     throw new Error(
@@ -3419,7 +3433,7 @@ ElizaClient.prototype.exportAgent = async function (
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ password, includeLogs }),
+    body: JSON.stringify({ password, includeLogs, excludeSecrets }),
   });
 };
 
@@ -4651,6 +4665,16 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
   if (identity?.runtime !== "shared") {
     throw new Error("Eliza Cloud returned an unknown personal Eliza runtime.");
   }
+  let accountState: PersonalFallbackAccountState | undefined;
+  if (identity.accountState !== undefined) {
+    const parsed = parsePersonalFallbackAccountState(identity.accountState);
+    if (!parsed) {
+      throw new Error(
+        "Eliza Cloud returned an invalid account state for this personal Eliza.",
+      );
+    }
+    accountState = parsed;
+  }
   return {
     personalElizaId,
     agentId: personalElizaId,
@@ -4658,6 +4682,7 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     agentName,
     apiBase: buildCloudSharedAgentApiBase(cloudApiBase, personalElizaId),
     runtime: "shared",
+    ...(accountState ? { accountState } : {}),
   };
 };
 

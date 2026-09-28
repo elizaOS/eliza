@@ -33,7 +33,7 @@ async function handle(c: Context<AppEnv>) {
     let errors = 0;
     for (const payment of expiredPayments) {
       try {
-        await cryptoPaymentsService.expirePaymentWithCallback(payment);
+        await cryptoPaymentsService.expirePayment(payment);
         markedExpired++;
       } catch (error) {
         errors++;

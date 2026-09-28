@@ -22,7 +22,7 @@ export {
   roomTable,
   taskTable,
   worldTable,
-} from "@elizaos/plugin-sql";
+} from "@elizaos/plugin-sql/schema";
 export * from "./account-deletion-exports";
 export * from "./account-deletion-phase-receipts";
 export * from "./account-deletion-requests";
@@ -137,12 +137,14 @@ export * from "./organization-config";
 export * from "./organization-encryption-keys";
 export * from "./organization-entitlements";
 export * from "./organization-invites";
+export * from "./organization-payment-reversal-holds";
 export * from "./organization-policy-audit";
 export * from "./organizations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";
 export * from "./personal-dedicated-adoption-selections";
+export * from "./personal-dedicated-fallbacks";
 export * from "./personal-dedicated-upgrade-authorities";
 export * from "./personal-shared-groups";
 export * from "./personal-shared-inbound-media";

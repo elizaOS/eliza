@@ -41,7 +41,6 @@
     "@elizaos/plugin-blocker",
     "@elizaos/plugin-browser",
     "@elizaos/plugin-calendar",
-    "@elizaos/plugin-codex-cli",
     "@elizaos/plugin-coding-tools",
     "@elizaos/plugin-computeruse",
     "@elizaos/plugin-discord",

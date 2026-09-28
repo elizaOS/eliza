@@ -8,6 +8,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildPlannerToolsFromActions,
+  ContextRegistry,
   normalizeActionJsonSchema,
   promoteSubactionsToActions,
 } from "@elizaos/core";
@@ -16,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin.ts";
 import { documentAction } from "../../features/documents/actions";
 import { createAssistantPlugin } from "../../index.ts";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { collectV5PlannerCandidateActions } from "./action-surface";
 import {
   collectBudgetedStageOneCandidateActions,
@@ -31,6 +33,89 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("canonical discovery surface", () => {
+  it("emits identical complete tools and alias contracts across discovery orders", async () => {
+    const parent: Action = {
+      name: "LEDGER",
+      description: "Manage ledger entries",
+      contexts: ["ledger"],
+      parameters: [
+        {
+          name: "action",
+          schema: { type: "string", enum: ["read", "create", "delete"] },
+        },
+      ],
+    };
+    const actions = [...promoteSubactionsToActions(parent)];
+    const context: ContextObject = {
+      id: "wire-order",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    const load = async (order: string[]) => {
+      const selected: Action[] = [];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        (discovered) => {
+          for (const action of discovered)
+            if (!selected.includes(action)) selected.push(action);
+        },
+      );
+      for (const name of order)
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: [name] },
+        });
+      const originalOrder = [...selected];
+      const tools = collectPlannerTools(context, selected, {
+        canonicalFamilies: true,
+        directActionNames: new Set(["LEDGER_CREATE"]),
+      });
+      expect(selected).toEqual(originalOrder);
+      return tools;
+    };
+    const forward = await load(["LEDGER_CREATE", "LEDGER"]);
+    const reverse = await load(["LEDGER", "LEDGER_CREATE"]);
+    expect(JSON.stringify(forward)).toBe(JSON.stringify(reverse));
+    expect(forward.map((tool) => tool.name)).toEqual(
+      [...forward.map((tool) => tool.name)].sort(),
+    );
+    expect(
+      forward.find((tool) => tool.name === "LEDGER_CREATE")?.parameters
+        .properties?.action.enum,
+    ).toEqual(["create"]);
+    const umbrella = forward.find((tool) => tool.name === "LEDGER");
+    expect(umbrella?.description).toContain("LEDGER_READ");
+    expect(umbrella?.description).toContain("LEDGER_DELETE");
+  });
+
+  it("rejects conflicting native identities while retaining identical duplicates", () => {
+    const action: Action = {
+      name: "READ",
+      description: "Read a file",
+      parameters: [
+        { name: "path", required: true, schema: { type: "string" } },
+      ],
+    };
+    const context: ContextObject = {
+      id: "wire-collision",
+      events: [
+        { id: "read", type: "tool", tool: { name: action.name, action } },
+      ],
+    };
+    expect(
+      collectPlannerTools(context, [action, { ...action }]).filter(
+        (tool) => tool.name === "READ",
+      ),
+    ).toHaveLength(1);
+    expect(() =>
+      collectPlannerTools(context, [
+        action,
+        { ...action, description: "Replace the file" },
+      ]),
+    ).toThrow("Conflicting native definitions");
+  });
   it("retains discriminator and parent validation boundaries for every explicitly discovered child", async () => {
     const dispatched: unknown[] = [];
     const validated: unknown[] = [];
@@ -164,7 +249,9 @@ describe("canonical discovery surface", () => {
       expanded.find((tool) => tool.name === "NOTES_LIST")?.parameters,
     ).toEqual(native?.parameters);
     const umbrella = expanded.find((tool) => tool.name === "NOTES");
-    expect(umbrella?.description).toContain("NOTES_CREATE");
+    expect(umbrella).toBeDefined();
+    // Every operation stays reachable: as its own tool or through the
+    // umbrella's alias contract, not through incidental routing prose.
     for (const action of actions) {
       expect(
         expanded.some((tool) => tool.name === action.name) ||
@@ -537,7 +624,14 @@ describe("planner tool discovery", () => {
       }
       expect(results[1]).toEqual(results[0]);
       expect(executions).toBe(0);
-      if (parameters.names.length === 0) {
+      if (parameters.names.length === 0 && parameters.mode !== "describe") {
+        expect(results[1]?.reads).toEqual([]);
+        expect(results[1]?.loads).toEqual([]);
+        expect(results[1]?.result).toMatchObject({
+          success: false,
+          data: { coachingFailure: true },
+        });
+      } else if (parameters.names.length === 0) {
         expect(results[1]?.reads).toEqual([[]]);
         expect(results[1]?.loads).toEqual([]);
         expect(JSON.stringify(results[1]?.result)).toContain(
@@ -698,11 +792,11 @@ describe("planner tool discovery", () => {
     };
     const tools = collectPlannerTools(context, initial);
     expect(tools.map((tool) => tool.name)).toEqual([
-      "VIEWS_SHOW",
+      "IGNORE",
       "NOTES_LIST",
       "REPLY",
-      "IGNORE",
       "STOP",
+      "VIEWS_SHOW",
     ]);
     expect(tools.every((tool) => tool.strict === true)).toBe(true);
     const before = structuredClone(tools);
@@ -960,7 +1054,14 @@ describe("planner tool discovery", () => {
         discovery.handler?.(actualRuntime, turn, undefined, {
           parameters: { names },
         });
-      const catalogRead = await invoke([]);
+      const catalogRead = await discovery.handler?.(
+        actualRuntime,
+        turn,
+        undefined,
+        {
+          parameters: { names: [], mode: "describe" },
+        },
+      );
       expect(catalogRead?.success).toBe(true);
       const entries = catalogRead?.data?.catalog;
       if (!Array.isArray(entries)) throw new Error("Missing discovery catalog");
@@ -1109,7 +1210,7 @@ describe("planner tool discovery", () => {
         ]),
       );
       const result = await discovery.handler?.(runtime, message, undefined, {
-        parameters: { names: [] },
+        parameters: { names: [], mode: "describe" },
       });
       const catalog = result?.data?.catalog as Array<{
         name: string;
@@ -1166,7 +1267,7 @@ describe("planner tool discovery", () => {
     expect(discovery.description).toContain("NOTES_READ");
     expect(discovery.description).not.toContain("FINAL_DETAIL");
     const result = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { names: [] },
+      parameters: { names: [], mode: "describe" },
     });
     expect(result?.success).toBe(true);
     expect(JSON.stringify(result?.data)).toContain(
@@ -1291,4 +1392,49 @@ describe("planner tool discovery", () => {
       ).toThrow("conflicts");
     },
   );
+});
+
+describe("explicit discovery context aliases", () => {
+  it("resolves registered aliases without widening unknown or revoked domains", async () => {
+    const contexts = new ContextRegistry([...DEFAULT_CONTEXT_DEFINITIONS]);
+    const aliasRuntime = { contexts } as IAgentRuntime;
+    const messaging: Action = {
+      name: "MESSAGE_SEARCH",
+      description: "Search messages",
+      contexts: ["messaging"],
+    };
+    const notes: Action = {
+      name: "NOTES_LIST",
+      description: "List notes",
+      contexts: ["notes"],
+    };
+    let admitted = [messaging, notes];
+    const loads: string[][] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      admitted,
+      (actions) => loads.push(actions.map((action) => action.name)),
+      async () => admitted,
+    );
+    const call = (context: string) =>
+      discovery.handler?.(aliasRuntime, message, undefined, {
+        parameters: { contexts: [context] },
+      });
+    for (const alias of ["message", " Messages ", "messaging"]) {
+      expect((await call(alias))?.data?.loadedTools).toEqual([
+        "MESSAGE_SEARCH",
+      ]);
+    }
+    const unknown = await call("unknown-domain");
+    expect(unknown?.data?.loadedTools).toEqual([]);
+    expect(unknown?.data?.availableContexts).toEqual(["messaging", "notes"]);
+    admitted = [notes];
+    const revoked = await call("messages");
+    expect(revoked?.data?.loadedTools).toEqual([]);
+    expect(revoked?.data?.availableContexts).toEqual(["notes"]);
+    expect(loads).toEqual([
+      ["MESSAGE_SEARCH"],
+      ["MESSAGE_SEARCH"],
+      ["MESSAGE_SEARCH"],
+    ]);
+  });
 });

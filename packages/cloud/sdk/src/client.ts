@@ -79,12 +79,6 @@ import {
   type CreateAdSlotResponse,
   type CreateAgentRequest,
   type CreateAgentResponse,
-  type CreateAppChargeCheckoutRequest,
-  type CreateAppChargeCheckoutResponse,
-  type CreateAppChargeRequest,
-  type CreateAppChargeResponse,
-  type CreateAppCreditsCheckoutRequest,
-  type CreateAppCreditsCheckoutResponse,
   type CreateAppInput,
   type CreateAppResponse,
   type CreateBookingInput,
@@ -121,7 +115,6 @@ import {
   type GatewayRelayResponse,
   type GenerateImageRequest,
   type GenerateImageResponse,
-  type GetAppChargeResponse,
   type GetCampaignPerformanceReportOptions,
   type GetPressReleaseResponse,
   type GetX402PaymentRequestResponse,
@@ -131,7 +124,6 @@ import {
   type LinkAffiliateRequest,
   type LinkAffiliateResponse,
   type ListAdSlotsResponse,
-  type ListAppChargesResponse,
   type ListAppDomainsResponse,
   type ListAppFrontendDeploymentsResponse,
   type ListAppsResponse,
@@ -158,7 +150,11 @@ import {
   type SnapshotType,
   type SubmitPressReleaseInput,
   type SubmitPressReleaseResponse,
+  type SubscriptionCheckoutConfirmationResponse,
+  type SubscriptionCheckoutRequest,
+  type SubscriptionCheckoutResponse,
   type SubscriptionPlansResponse,
+  type SubscriptionPortalResponse,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
@@ -167,7 +163,6 @@ import {
   type UpdatePressReleaseResponse,
   type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
-  type VerifyAppCreditsCheckoutResponse,
   type VoiceSttRequest,
   type VoiceSttResponse,
   type WithdrawAppEarningsRequest,
@@ -544,6 +539,29 @@ export class ElizaCloudClient {
     );
   }
 
+  /** Requires a current organization owner/admin session; starts or resumes one Plus/Pro checkout. */
+  startSubscriptionCheckout(
+    input: SubscriptionCheckoutRequest,
+  ): Promise<SubscriptionCheckoutResponse> {
+    return this.v1.requestData("POST", "/subscriptions/checkout", {
+      json: input,
+    });
+  }
+
+  /** Confirms a Checkout return from provider payment evidence; the session id is never payment authority. */
+  confirmSubscriptionCheckout(
+    sessionId: string,
+  ): Promise<SubscriptionCheckoutConfirmationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/checkout/confirm", {
+      json: { sessionId },
+    });
+  }
+
+  /** Requires a current organization owner/admin session; opens the locked Stripe Customer Portal. */
+  createSubscriptionPortalSession(): Promise<SubscriptionPortalResponse> {
+    return this.v1.requestData("POST", "/subscriptions/portal", { json: {} });
+  }
+
   /** Requires a current organization owner/admin session; schedules cancellation at period end. */
   submitOrganizationSubscriptionCancellation(
     input: OrganizationSubscriptionCancellationRequest,
@@ -738,30 +756,6 @@ export class ElizaCloudClient {
     );
   }
 
-  createAppCreditsCheckout(
-    request: CreateAppCreditsCheckoutRequest,
-  ): Promise<CreateAppCreditsCheckoutResponse> {
-    return this.requestData<CreateAppCreditsCheckoutResponse>(
-      "POST",
-      "/api/v1/app-credits/checkout",
-      {
-        json: request,
-      },
-    );
-  }
-
-  verifyAppCreditsCheckout(
-    sessionId: string,
-  ): Promise<VerifyAppCreditsCheckoutResponse> {
-    return this.requestData<VerifyAppCreditsCheckoutResponse>(
-      "GET",
-      "/api/v1/app-credits/verify",
-      {
-        query: { session_id: sessionId },
-      },
-    );
-  }
-
   getX402Supported(): Promise<X402SupportedResponse> {
     return this.requestData<X402SupportedResponse>("GET", "/api/v1/x402", {
       skipAuth: true,
@@ -821,51 +815,6 @@ export class ElizaCloudClient {
       "POST",
       `/api/v1/x402/requests/${encodePathParam(id)}/settle`,
       { json: { paymentPayload }, skipAuth: true },
-    );
-  }
-
-  createAppCharge(
-    appId: string,
-    request: CreateAppChargeRequest,
-  ): Promise<CreateAppChargeResponse> {
-    return this.requestData<CreateAppChargeResponse>(
-      "POST",
-      `/api/v1/apps/${encodePathParam(appId)}/charges`,
-      { json: request },
-    );
-  }
-
-  listAppCharges(
-    appId: string,
-    options: { limit?: number } = {},
-  ): Promise<ListAppChargesResponse> {
-    return this.requestData<ListAppChargesResponse>(
-      "GET",
-      `/api/v1/apps/${encodePathParam(appId)}/charges`,
-      {
-        query:
-          options.limit === undefined ? undefined : { limit: options.limit },
-      },
-    );
-  }
-
-  getAppCharge(appId: string, chargeId: string): Promise<GetAppChargeResponse> {
-    return this.requestData<GetAppChargeResponse>(
-      "GET",
-      `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}`,
-      { skipAuth: true },
-    );
-  }
-
-  createAppChargeCheckout(
-    appId: string,
-    chargeId: string,
-    request: CreateAppChargeCheckoutRequest,
-  ): Promise<CreateAppChargeCheckoutResponse> {
-    return this.requestData<CreateAppChargeCheckoutResponse>(
-      "POST",
-      `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}/checkout`,
-      { json: request },
     );
   }
 

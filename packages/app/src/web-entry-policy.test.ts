@@ -19,7 +19,6 @@ const PUBLIC_PATHS = [
   "/auth/success",
   "/auth/callback/email",
   "/payment/request-1",
-  "/payment/app-charge/app-1/charge-1",
   "/approve/approval-1",
   "/ballot/ballot-1",
   "/sensitive-requests/request-1",
@@ -130,7 +129,7 @@ describe("hosted public renderer entry policy", () => {
     "/settings",
     "/chat",
     "/payment",
-    "/payment/app-charge/app-only",
+    "/payment/app-charge/app-1/charge-1",
     "/approve/id/extra",
     "/unknown",
   ])("rejects non-public or near-miss path %s", (pathname) => {

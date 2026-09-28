@@ -265,6 +265,10 @@ export class AgentComputeFundingService {
       amount,
       description: "Dedicated runtime funding reservation",
       expiresAt,
+      // An allowance period ending inside this window funds only its share;
+      // purchased credits fund the remainder so the window is never clipped
+      // to the period boundary.
+      timeMeteredFrom: periodStart,
       metadata: { agent_id: identity.agentId, compute_funding_id: id },
     });
     const fundedAt = await readPostLockDatabaseNow(tx);

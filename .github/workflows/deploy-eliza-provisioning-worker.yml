@@ -1104,6 +1104,14 @@ jobs:
             append_environment_setting \
               "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
               PROVISIONING_JOB_LANES agent
+            # The orphan-container reconcilers issue `docker rm -f` and are
+            # disabled by repository policy. The preserved host file can carry a
+            # stale hand-set `ORPHAN_RECONCILER_ENABLED=1`, which SIGKILLed
+            # healthy same-name agent generations on staging (#29678). Rewrite
+            # it to exactly one repository-owned value on every deploy.
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              ORPHAN_RECONCILER_ENABLED 0
             # Headscale is the required dedicated-agent ingress. Bridge-host
             # fallback was a legacy escape hatch; if it remains hand-set on the
             # box, docker-sandbox-provider deliberately disables VPN injection
@@ -1279,6 +1287,15 @@ jobs:
                   "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" "$name" "$val"
                 unset val
               done
+              # The deletion-only authority opens the same Cloud DB connection
+              # as the provisioning daemon, so it must inherit the same TLS
+              # verification policy; without it a self-signed managed proxy
+              # fails the first authority query.
+              if [ -n "${DATABASE_SSL_NO_VERIFY:-}" ]; then
+                append_environment_setting \
+                  "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+                  DATABASE_SSL_NO_VERIFY "$DATABASE_SSL_NO_VERIFY"
+              fi
             fi
             if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
               runtime_backup_names=(
@@ -1306,7 +1323,6 @@ jobs:
                 unset val
               done
               optional_enabled_backup_names=(
-                DATABASE_SSL_NO_VERIFY
                 AGENT_BACKUP_SCHEDULE_BATCH_SIZE
                 AGENT_BACKUP_SCHEDULE_LEASE_MS
                 AGENT_BACKUP_SCHEDULE_RETRY_MS
@@ -1443,6 +1459,11 @@ jobs:
             if ! require_environment_setting_equals \
               "$ENV_FILE" WARM_POOL_ENABLED "$WARM_POOL_ENABLED"; then
               echo "::error::Provisioning host warm-pool state does not match the protected environment"
+              exit 1
+            fi
+            if ! require_environment_setting_equals \
+              "$ENV_FILE" ORPHAN_RECONCILER_ENABLED 0; then
+              echo "::error::Provisioning host orphan reconciler must be disabled before restart"
               exit 1
             fi
             echo "Verified provisioning-host warm-pool state: $WARM_POOL_ENABLED"
@@ -1786,6 +1807,13 @@ jobs:
                   "$NODE_BIN" "$ENV_SERIALIZER" equals \
                   "$ENV_FILE" VPN_REGISTRATION_TIMEOUT_MS; then
               echo "::error::Provisioning host VPN registration timeout drift. Values were not printed."
+              exit 1
+            fi
+            if ! printf '%s' 0 \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" ORPHAN_RECONCILER_ENABLED; then
+              echo "::error::Provisioning host orphan reconciler drifted from its disabled policy."
               exit 1
             fi
             # The worker logs to journald via systemd's stdout/stderr capture.

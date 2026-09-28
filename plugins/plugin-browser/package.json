@@ -13,6 +13,41 @@
       "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
+    "./remote-controller": {
+      "browser": null,
+      "eliza-source": "./src/remote-controller.ts",
+      "types": "./dist/remote-controller.d.ts",
+      "import": "./dist/remote-controller.js",
+      "default": "./dist/remote-controller.js"
+    },
+    "./remote-control/browser-controller": {
+      "browser": null,
+      "eliza-source": "./src/remote-control/browser-controller.ts",
+      "types": "./dist/remote-control/browser-controller.d.ts",
+      "import": "./dist/remote-control/browser-controller.js",
+      "default": "./dist/remote-control/browser-controller.js"
+    },
+    "./remote-control/controller": {
+      "browser": null,
+      "eliza-source": "./src/remote-control/controller.ts",
+      "types": "./dist/remote-control/controller.d.ts",
+      "import": "./dist/remote-control/controller.js",
+      "default": "./dist/remote-control/controller.js"
+    },
+    "./remote-control/crypto": {
+      "browser": null,
+      "eliza-source": "./src/remote-control/crypto.ts",
+      "types": "./dist/remote-control/crypto.d.ts",
+      "import": "./dist/remote-control/crypto.js",
+      "default": "./dist/remote-control/crypto.js"
+    },
+    "./remote-control/runtime-store": {
+      "browser": null,
+      "eliza-source": "./src/remote-control/runtime-store.ts",
+      "types": "./dist/remote-control/runtime-store.d.ts",
+      "import": "./dist/remote-control/runtime-store.js",
+      "default": "./dist/remote-control/runtime-store.js"
+    },
     "./*": {
       "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
@@ -26,18 +61,20 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "vitest run",
+    "test": "vitest run && bun run test:remote-control",
     "build": "bun run build:js && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc6 --noCheck -p tsconfig.build.json"
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json",
+    "test:remote-control": "bun test --conditions=eliza-source test/remote-control"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "drizzle-orm": "0.45.2",
     "linkify-it": "5.0.2",
     "@elizaos/auth": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
@@ -48,7 +85,8 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

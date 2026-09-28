@@ -218,14 +218,15 @@ export async function publishPaidRenewalInTransaction(
     stripe_subscription_item_id: source.stripe_subscription_item_id,
     catalog_version: source.catalog_version,
     plan_key: source.plan_key,
-    status: source.status,
+    // A verified paid renewal settles any dunning the source was in.
+    status: "active" as const,
     current_period_start: verified.start,
     current_period_end: verified.end,
     cancel_at_period_end: false,
     canceled_at: source.canceled_at,
     ended_at: source.ended_at,
-    dunning_started_at: source.dunning_started_at,
-    grace_expires_at: source.grace_expires_at,
+    dunning_started_at: null,
+    grace_expires_at: null,
     pending_plan_key: source.pending_plan_key,
     last_provider_event_id:
       input.provenance.kind === "webhook"

@@ -108,6 +108,7 @@ export * from "./media/image-description-cache.js";
 export * from "./media/local-store.js";
 export * from "./media/mime.js";
 export * from "./media/mime-sniffer.js";
+export * from "./media/outbound.js";
 export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./messaging/manage-server-authorization";
@@ -1514,6 +1515,7 @@ export {
 	type MessageExampleContent,
 	type ModelOption,
 	migrateLegacyRuntimeConfig,
+	migrateRetiredSubscriptionChatRoute,
 	normalizeFirstRunCredentialInputs,
 	normalizeFirstRunProviderId,
 	normalizePersistedFirstRunConnection,
@@ -3169,6 +3171,7 @@ export {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
 	authorizeOwnerExclusiveDisclosure,
+	beginTrustedDeliveryAudienceTurn,
 	disclosureGateFailure,
 	evaluateOwnerExclusiveDisclosure,
 	getTrustedDeliveryAudience,
@@ -3184,11 +3187,15 @@ export {
 	PRIVACY_DENIED_TEXT,
 	recordOwnerExclusiveSuppression,
 	registerRuntimeManagedInternalActor,
+	renewExpiredTrustedDeliveryAudience,
+	renewTrustedDeliveryAudience,
 	revalidateOwnerExclusiveDisclosure,
 	type TrustedApiPrincipal,
+	type TrustedApiPrincipalRevalidator,
 	type TrustedDeliveryAudience,
 	type TrustedDeliveryAudienceKind,
 	type TrustedDeliveryAudienceProvenance,
+	type TrustedDeliveryAudienceRenewal,
 	trustedDeliveryAudienceCacheKey,
 	trustedDeliveryAudienceIsBoundToRuntime,
 } from "./security/trusted-delivery-audience.js";

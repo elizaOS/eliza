@@ -4,11 +4,22 @@
  * keys make its ambiguous outcomes recoverable by a strong R2 HEAD.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import {
+  canonicalFundingAmount,
+  isAllowanceFirstOrganizationInTransaction,
+} from "../../lib/services/allowance-first-credits";
+import { creditsService } from "../../lib/services/credits";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
 } from "../../lib/services/organization-quota-policy";
+import {
+  SUBSCRIPTION_FUNDING_INSUFFICIENT,
+  subscriptionFundingService,
+} from "../../lib/services/subscription-funding";
+import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -26,6 +37,22 @@ import { lockOrganizationPolicy } from "./organization-policy-generation";
 
 const GC_PIN_MS = 24 * 60 * 60 * 1000;
 const MAX_DUE_BATCH = 100;
+/**
+ * Funding holds for native PUTs outlive the provider lease, recovery grace,
+ * and absence quarantine by a wide margin. The deadline is informational:
+ * `storage.put:` holds are never swept; the native reconciler settles or
+ * cancels them from strong R2 HEAD evidence.
+ */
+const PUT_FUNDING_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Retry-stable funding identity owned by the native storage PUT reconciler. */
+export function storagePutFundingOperationId(operationId: string): string {
+  return `storage.put:${operationId}`;
+}
+
+function isFundingShortfall(error: unknown): boolean {
+  return error instanceof ElizaError && error.code === SUBSCRIPTION_FUNDING_INSUFFICIENT;
+}
 
 export class StoragePutConflictError extends Error {
   constructor(public readonly reason: "idempotency_mismatch" | "object_busy" | "stale_lease") {
@@ -61,6 +88,8 @@ export interface ReservedStoragePut {
   operation: OrgStoragePutOperation;
   insufficient: boolean;
   available: number;
+  /** True when this call moved purchased credit (credit caches are invalidated after commit). */
+  purchasedCreditMoved: boolean;
 }
 
 export interface LegacyStorageObjectCandidate {
@@ -212,7 +241,7 @@ export class OrgStorageMutationsRepository {
     operationId: string;
     organizationId: string;
   }): Promise<ReservedStoragePut> {
-    return await writeTransaction(async (tx) => {
+    const result = await writeTransaction(async (tx): Promise<ReservedStoragePut> => {
       const rows = await sqlRows<OrgStoragePutOperation>(
         tx,
         sql`SELECT * FROM ${orgStoragePutOperations}
@@ -223,7 +252,7 @@ export class OrgStorageMutationsRepository {
       const operation = normalizeOperation(requiredRow(rows, "credit reservation lock"));
       if (operation.state !== "prepared") {
         if (["reserved", "provider_started", "committed"].includes(operation.state)) {
-          return { operation, insufficient: false, available: 0 };
+          return { operation, insufficient: false, available: 0, purchasedCreditMoved: false };
         }
         throw new StoragePutConflictError("stale_lease");
       }
@@ -237,7 +266,12 @@ export class OrgStorageMutationsRepository {
           operation: normalizeOperation(requiredRow(reserved, "zero-cost reservation")),
           insufficient: false,
           available: 0,
+          purchasedCreditMoved: false,
         };
+      }
+
+      if (await isAllowanceFirstOrganizationInTransaction(tx, params.organizationId)) {
+        return await this.reserveSubscriptionFundedPut(tx, operation);
       }
 
       const balanceRows = await sqlRows<{ credit_balance: string }>(
@@ -250,37 +284,7 @@ export class OrgStorageMutationsRepository {
           RETURNING credit_balance`,
       );
       if (balanceRows.length === 0) {
-        const availableRows = await sqlRows<{ credit_balance: string }>(
-          tx,
-          sql`SELECT credit_balance FROM organizations
-            WHERE id = ${params.organizationId} FOR UPDATE`,
-        );
-        const quotaRows = await sqlRows<{ bytes_used: bigint }>(
-          tx,
-          sql`UPDATE ${orgStorageQuota}
-            SET bytes_used = ${orgStorageQuota.bytes_used} - ${operation.quota_reserved_bytes},
-                updated_at = NOW()
-            WHERE ${orgStorageQuota.organization_id} = ${params.organizationId}
-              AND ${orgStorageQuota.bytes_used} >= ${operation.quota_reserved_bytes}
-            RETURNING ${orgStorageQuota.bytes_used}`,
-        );
-        requiredRow(quotaRows, "insufficient-credit quota release");
-        const responseJson = JSON.stringify({ error: "Insufficient credits" });
-        const refunded = await tx
-          .update(orgStoragePutOperations)
-          .set({
-            state: "refunded",
-            response_json: responseJson,
-            completed_at: new Date(),
-            updated_at: new Date(),
-          })
-          .where(eq(orgStoragePutOperations.id, operation.id))
-          .returning();
-        return {
-          operation: normalizeOperation(requiredRow(refunded, "insufficient-credit receipt")),
-          insufficient: true,
-          available: Number(requiredRow(availableRows, "organization balance").credit_balance),
-        };
+        return await this.refundInsufficientPut(tx, operation);
       }
 
       const metadata = JSON.stringify({
@@ -308,8 +312,99 @@ export class OrgStorageMutationsRepository {
         operation: normalizeOperation(requiredRow(reserved, "credit reservation attach")),
         insufficient: false,
         available: Number(requiredRow(balanceRows, "credit balance debit").credit_balance),
+        purchasedCreditMoved: false,
       };
     });
+    if (result.purchasedCreditMoved) {
+      await creditsService.invalidateCreditCaches(params.organizationId);
+    }
+    return result;
+  }
+
+  /**
+   * Holds a subscriber's PUT allowance-first. The PUT receipt lock is the
+   * workload lock; funding then takes the organization lock. A shortfall rolls
+   * back only the funding savepoint and takes the insufficient-credit receipt.
+   */
+  private async reserveSubscriptionFundedPut(
+    tx: DbTransaction,
+    operation: OrgStoragePutOperation,
+  ): Promise<ReservedStoragePut> {
+    let funded: Awaited<ReturnType<typeof subscriptionFundingService.reserveInTransaction>>;
+    try {
+      funded = await tx.transaction((savepoint) =>
+        subscriptionFundingService.reserveInTransaction(savepoint, {
+          organizationId: operation.organization_id,
+          logicalOperationId: storagePutFundingOperationId(operation.id),
+          operation: "storage",
+          amount: canonicalFundingAmount(String(operation.price_usd), "up"),
+          description: "API proxy: storage — native put (reserved)",
+          reservationTtlMs: PUT_FUNDING_RESERVATION_TTL_MS,
+          metadata: { native_storage_put_operation_id: operation.id },
+        }),
+      );
+    } catch (error) {
+      if (!isFundingShortfall(error)) throw error;
+      // error-policy:J2 a funding shortfall keeps the PUT's insufficient-credit receipt.
+      return await this.refundInsufficientPut(tx, operation);
+    }
+    const reserved = await tx
+      .update(orgStoragePutOperations)
+      .set({
+        state: "reserved",
+        funding_reservation_id: funded.reservation.id,
+        updated_at: new Date(),
+      })
+      .where(eq(orgStoragePutOperations.id, operation.id))
+      .returning();
+    const balanceRows = await sqlRows<{ credit_balance: string }>(
+      tx,
+      sql`SELECT credit_balance FROM organizations WHERE id = ${operation.organization_id}`,
+    );
+    return {
+      operation: normalizeOperation(requiredRow(reserved, "funding reservation attach")),
+      insufficient: false,
+      available: Number(requiredRow(balanceRows, "organization balance").credit_balance),
+      purchasedCreditMoved: funded.purchasedCreditDebited,
+    };
+  }
+
+  private async refundInsufficientPut(
+    tx: DbTransaction,
+    operation: OrgStoragePutOperation,
+  ): Promise<ReservedStoragePut> {
+    const availableRows = await sqlRows<{ credit_balance: string }>(
+      tx,
+      sql`SELECT credit_balance FROM organizations
+        WHERE id = ${operation.organization_id} FOR UPDATE`,
+    );
+    const quotaRows = await sqlRows<{ bytes_used: bigint }>(
+      tx,
+      sql`UPDATE ${orgStorageQuota}
+        SET bytes_used = ${orgStorageQuota.bytes_used} - ${operation.quota_reserved_bytes},
+            updated_at = NOW()
+        WHERE ${orgStorageQuota.organization_id} = ${operation.organization_id}
+          AND ${orgStorageQuota.bytes_used} >= ${operation.quota_reserved_bytes}
+        RETURNING ${orgStorageQuota.bytes_used}`,
+    );
+    requiredRow(quotaRows, "insufficient-credit quota release");
+    const responseJson = JSON.stringify({ error: "Insufficient credits" });
+    const refunded = await tx
+      .update(orgStoragePutOperations)
+      .set({
+        state: "refunded",
+        response_json: responseJson,
+        completed_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(eq(orgStoragePutOperations.id, operation.id))
+      .returning();
+    return {
+      operation: normalizeOperation(requiredRow(refunded, "insufficient-credit receipt")),
+      insufficient: true,
+      available: Number(requiredRow(availableRows, "organization balance").credit_balance),
+      purchasedCreditMoved: false,
+    };
   }
 
   async claimProviderLease(params: {
@@ -448,7 +543,19 @@ export class OrgStorageMutationsRepository {
         throw new StoragePutConflictError("object_busy");
       }
 
-      if (Number(operation.price_usd) > 0) {
+      if (operation.funding_reservation_id) {
+        const settlement = await subscriptionFundingService.settleInTransaction(tx, {
+          organizationId: params.organizationId,
+          logicalOperationId: storagePutFundingOperationId(operation.id),
+          operation: "storage",
+          actualAmount: canonicalFundingAmount(String(operation.price_usd), "up"),
+          occurredAt: params.uploadedAt,
+          metadata: { native_storage_put_operation_id: operation.id },
+        });
+        if (settlement.reservation.id !== operation.funding_reservation_id) {
+          throw new Error("[NativeStoragePut] funding settlement reservation mismatch");
+        }
+      } else if (Number(operation.price_usd) > 0) {
         const settled = await sqlRows<{ id: string }>(
           tx,
           sql`UPDATE credit_transactions
@@ -531,7 +638,8 @@ export class OrgStorageMutationsRepository {
     leaseToken: string;
     responseJson: string;
   }): Promise<OrgStoragePutOperation> {
-    return await writeTransaction(async (tx) => {
+    let purchasedCreditRefunded = false;
+    const finalized = await writeTransaction(async (tx) => {
       const rows = await sqlRows<OrgStoragePutOperation>(
         tx,
         sql`SELECT * FROM ${orgStoragePutOperations}
@@ -548,7 +656,19 @@ export class OrgStorageMutationsRepository {
         throw new StoragePutConflictError("stale_lease");
       }
 
-      if (Number(operation.price_usd) > 0) {
+      if (operation.funding_reservation_id) {
+        const canceled = await subscriptionFundingService.cancelInTransaction(tx, {
+          organizationId: params.organizationId,
+          logicalOperationId: storagePutFundingOperationId(operation.id),
+          operation: "storage",
+          reason: "provider_absent",
+          metadata: { native_storage_put_operation_id: operation.id },
+        });
+        if (canceled.reservation.id !== operation.funding_reservation_id) {
+          throw new Error("[NativeStoragePut] funding cancellation reservation mismatch");
+        }
+        purchasedCreditRefunded = canceled.purchasedCreditRefunded;
+      } else if (Number(operation.price_usd) > 0) {
         const holdRows = await sqlRows<{ id: string; settled_at: Date | null }>(
           tx,
           operation.credit_transaction_id
@@ -636,6 +756,10 @@ export class OrgStorageMutationsRepository {
         .returning();
       return requiredRow(refunded, "operation refund");
     });
+    if (purchasedCreditRefunded) {
+      await creditsService.invalidateCreditCaches(params.organizationId);
+    }
+    return finalized;
   }
 
   async findOperation(

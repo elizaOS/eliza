@@ -510,7 +510,8 @@ describe("atomic terminal subscription finalization", () => {
     { stripe_customer_id: "cus_other" },
     { stripe_subscription_item_id: "si_other" },
     { plan_key: "pro_monthly" },
-    { current_period_end: new Date(PERIOD_END.getTime() + 86_400_000) },
+    // Stripe may advance the period (dunning cancellation), never move it backwards.
+    { current_period_start: new Date(PERIOD_START.getTime() - 86_400_000) },
     { current_period_start: new Date("invalid") },
   ])("mismatched provider/plan/period observation fails closed: %j", async (changes) => {
     const input = await prepare();

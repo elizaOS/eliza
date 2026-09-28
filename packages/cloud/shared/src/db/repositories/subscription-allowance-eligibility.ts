@@ -1,7 +1,10 @@
 /** Reads the canonical eligibility for new allowance spending in the caller's transaction and database clock; historical reservations never pass through this gate. */
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
-import { readOrganizationQuotaPolicyInTransaction } from "../../lib/services/organization-quota-policy";
+import {
+  type OrganizationQuotaPolicy,
+  readOrganizationQuotaPolicyInTransaction,
+} from "../../lib/services/organization-quota-policy";
 import type { DbTransaction } from "../client";
 import {
   billingSubscriptionRevisions,
@@ -48,6 +51,8 @@ export async function readEligibleSubscriptionAllowance(
   organizationId: string,
   now: Date,
   lock: boolean,
+  /** Policy the caller already read in this transaction at `now`; avoids re-reading it. */
+  observedPolicy?: OrganizationQuotaPolicy,
 ) {
   const [org] = await tx
     .select({
@@ -71,13 +76,12 @@ export async function readEligibleSubscriptionAllowance(
       "Organization is unavailable for new funding",
       { organizationId: organizationId },
     );
-  const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId, now);
-  if (policy.authority.source === "subscription" && !policy.subscriptionFunded)
-    fundingError(
-      "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
-      "Current subscription is unavailable for new funding",
-      { organizationId: organizationId },
-    );
+  const policy =
+    observedPolicy ?? (await readOrganizationQuotaPolicyInTransaction(tx, organizationId, now));
+  // An unfunded (canceled or expired-to-free) subscription is cash-only: new
+  // allowance-eligible work is funded entirely from purchased credits, and any
+  // bucket its terminal source left open is never spendable.
+  if (!policy.subscriptionFunded) return undefined;
   const period = await findCurrentAllowance(tx, organizationId, now, lock);
   if (period) {
     const [source] = await tx

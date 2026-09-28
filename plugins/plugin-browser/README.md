@@ -2,7 +2,7 @@
 
 Adds browser automation through registered native Chromium profiles, the desktop
 workspace, and configured hosted endpoints. Enable `features.browser` in host
-configuration. The MV3 companion in `packages/browser-bridge-extension` controls
+configuration. The MV3 companion in `packages/os/browser` controls
 the same visible profile through an authenticated native messaging host on Linux
 and the supported Chromium Desktop Android build. It supports background tabs and
 complete DOM snapshots; selectors expire after effects and require fresh readback.
@@ -31,3 +31,14 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-browser build
 bun run --cwd plugins/plugin-browser test
 ```
+
+## Remote controllers
+
+App, CLI and cloud hosts import `@elizaos/plugin-browser/remote-controller` to
+compose owner-authorized remote profiles and encrypted runtime storage. That
+entrypoint is server-only and is deliberately absent from the default/mobile
+barrels. Renderers use only `remote-control/cloud-client` and
+`remote-control/cloud-endpoints`; those leaves do not import controller crypto.
+The shared wire contracts remain in core. Run `bun run --cwd
+plugins/plugin-browser test:remote-control` for authority and real encrypted SQL
+storage regressions.

@@ -20,6 +20,7 @@ import {
   requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
 } from "./organization-quota-policy";
+import { hydrationSettledWithin } from "./shared-runtime/bounded-hydration";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
 
@@ -97,12 +98,40 @@ export async function warmInferenceAdmissionSnapshot(
 }
 
 /**
+ * Repairs a projection that the authoritative admission check proved stale
+ * (for example after a policy-generation bump from renewal, cancellation or an
+ * override). The isolate copy is dropped at once and the shared entry is
+ * republished from the primary, so the stale window closes on the first
+ * rejected request instead of lasting the full cache TTL.
+ */
+export async function refreshStaleInferenceAdmissionSnapshot(
+  organizationId: string,
+): Promise<void> {
+  const key = CacheKeys.inference.orgAdmission(organizationId);
+  admissionMemoryCache.delete(key);
+  try {
+    await warmInferenceAdmissionSnapshot(organizationId);
+  } catch (error) {
+    // error-policy:J7 a failed republish must not leave the stale entry usable.
+    await cache.del(key);
+    throw error;
+  }
+}
+
+/**
  * Resolve the shared-runtime billing and rate policy with one remote cache read.
  * Misses hydrate from authoritative stores only under the Worker lifetime.
  */
 export async function getInferenceAdmissionSnapshotCacheOnly(
   organizationId: string,
   executionCtx: AdmissionSnapshotExecutionContext,
+  options: {
+    /**
+     * Join the scheduled hydration for up to this long before reporting
+     * warming. The hydration still runs under the Worker lifetime either way.
+     */
+    awaitHydrationMs?: number;
+  } = {},
 ): Promise<InferenceAdmissionSnapshot> {
   const key = CacheKeys.inference.orgAdmission(organizationId);
   const local = admissionMemoryCache.get(key);
@@ -134,5 +163,13 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
       });
     });
   executionCtx.waitUntil(hydration);
+  if (
+    options.awaitHydrationMs !== undefined &&
+    options.awaitHydrationMs > 0 &&
+    (await hydrationSettledWithin(hydration, options.awaitHydrationMs))
+  ) {
+    const hydrated = admissionMemoryCache.get(key);
+    if (isInferenceAdmissionSnapshot(hydrated)) return hydrated;
+  }
   throw new InferenceAdmissionSnapshotCacheWarmingError();
 }

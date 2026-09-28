@@ -849,15 +849,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
-  getApiV1AppCreditsVerify<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/app-credits/verify"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/app-credits/verify", TResponse>(
-      "GET /api/v1/app-credits/verify",
-      options,
-    );
-  }
-
   getApiV1ApprovalRequests<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/approval-requests"> = {},
   ): Promise<TResponse> {
@@ -968,24 +959,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/apps/{id}/characters", TResponse>(
       "GET /api/v1/apps/{id}/characters",
-      options,
-    );
-  }
-
-  getApiV1AppsByIdCharges<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges">,
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apps/{id}/charges", TResponse>(
-      "GET /api/v1/apps/{id}/charges",
-      options,
-    );
-  }
-
-  getApiV1AppsByIdChargesByChargeId<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges/{chargeId}">,
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apps/{id}/charges/{chargeId}", TResponse>(
-      "GET /api/v1/apps/{id}/charges/{chargeId}",
       options,
     );
   }
@@ -1213,6 +1186,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/billing/application-slots/{slotKey}",
       TResponse
     >("GET /api/v1/billing/application-slots/{slotKey}", options);
+  }
+
+  getApiV1BillingHold<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/hold"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/billing/hold", TResponse>(
+      "GET /api/v1/billing/hold",
+      options,
+    );
   }
 
   getApiV1BillingLedger<TResponse = unknown>(
@@ -3265,15 +3247,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
-  postApiV1AppCreditsCheckout<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/app-credits/checkout"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/app-credits/checkout", TResponse>(
-      "POST /api/v1/app-credits/checkout",
-      options,
-    );
-  }
-
   postApiV1AppAgents<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/app/agents"> = {},
   ): Promise<TResponse> {
@@ -3481,24 +3454,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "POST /api/v1/apps/{id}/billing/registration",
       options,
     );
-  }
-
-  postApiV1AppsByIdCharges<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges">,
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/apps/{id}/charges", TResponse>(
-      "POST /api/v1/apps/{id}/charges",
-      options,
-    );
-  }
-
-  postApiV1AppsByIdChargesByChargeIdCheckout<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges/{chargeId}/checkout">,
-  ): Promise<TResponse> {
-    return this.call<
-      "POST /api/v1/apps/{id}/charges/{chargeId}/checkout",
-      TResponse
-    >("POST /api/v1/apps/{id}/charges/{chargeId}/checkout", options);
   }
 
   postApiV1AppsByIdChat<TResponse = unknown>(
@@ -3803,6 +3758,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/ballots/{id}/vote", TResponse>(
       "POST /api/v1/ballots/{id}/vote",
+      options,
+    );
+  }
+
+  postApiV1BillingHold<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/billing/hold"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/billing/hold", TResponse>(
+      "POST /api/v1/billing/hold",
       options,
     );
   }
@@ -5128,6 +5092,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1SubscriptionsPortal<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/portal", TResponse>(
+      "POST /api/v1/subscriptions/portal",
+      options,
+    );
+  }
+
   postApiV1TelegramConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/telegram/connect"> = {},
   ): Promise<TResponse> {
@@ -6217,12 +6190,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/app-credits/balance", options);
   }
 
-  getApiV1AppCreditsVerifyRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/app-credits/verify"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/app-credits/verify", options);
-  }
-
   getApiV1ApprovalRequestsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/approval-requests"> = {},
   ): Promise<Response> {
@@ -6305,18 +6272,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/characters">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apps/{id}/characters", options);
-  }
-
-  getApiV1AppsByIdChargesRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges">,
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/apps/{id}/charges", options);
-  }
-
-  getApiV1AppsByIdChargesByChargeIdRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges/{chargeId}">,
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/apps/{id}/charges/{chargeId}", options);
   }
 
   getApiV1AppsByIdDatabaseRaw(
@@ -6479,6 +6434,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/billing/application-slots/{slotKey}",
       options,
     );
+  }
+
+  getApiV1BillingHoldRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/hold"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/billing/hold", options);
   }
 
   getApiV1BillingLedgerRaw(
@@ -7981,12 +7942,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("POST /api/v1/app-auth/mobile/token", options);
   }
 
-  postApiV1AppCreditsCheckoutRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/app-credits/checkout"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/app-credits/checkout", options);
-  }
-
   postApiV1AppAgentsRaw(
     options: PublicRouteCallOptions<"POST /api/v1/app/agents"> = {},
   ): Promise<Response> {
@@ -8159,21 +8114,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apps/{id}/billing/registration", options);
-  }
-
-  postApiV1AppsByIdChargesRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges">,
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/apps/{id}/charges", options);
-  }
-
-  postApiV1AppsByIdChargesByChargeIdCheckoutRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges/{chargeId}/checkout">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "POST /api/v1/apps/{id}/charges/{chargeId}/checkout",
-      options,
-    );
   }
 
   postApiV1AppsByIdChatRaw(
@@ -8396,6 +8336,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/ballots/{id}/vote">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/ballots/{id}/vote", options);
+  }
+
+  postApiV1BillingHoldRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/billing/hold"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/billing/hold", options);
   }
 
   postApiV1BillingResourcesByIdCancelRaw(
@@ -9356,6 +9302,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout/confirm"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/subscriptions/checkout/confirm", options);
+  }
+
+  postApiV1SubscriptionsPortalRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/portal", options);
   }
 
   postApiV1TelegramConnectRaw(

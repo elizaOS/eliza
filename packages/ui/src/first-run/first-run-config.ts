@@ -147,10 +147,7 @@ function buildFirstRunLinkedAccounts(
     linkedAccounts.elizacloud = { status: "linked", source: "api-key" };
   }
   const localProviderId = resolveLocalProviderId(args.firstRunProvider);
-  if (
-    localProviderId === "anthropic-subscription" ||
-    localProviderId === "openai-subscription"
-  ) {
+  if (localProviderId === "anthropic-subscription") {
     linkedAccounts[localProviderId] = {
       status: "linked",
       source: "subscription",

@@ -10,7 +10,8 @@ import {
 import { cache } from "../../cache/client";
 import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
-import { creditsService, InsufficientCreditsError } from "../credits";
+import { reserveAllowanceEligibleCredits } from "../allowance-first-credits";
+import { InsufficientCreditsError } from "../credits";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
 import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
 import {
@@ -286,11 +287,12 @@ export function createHandler(
           atomicProviderBoundary: true,
         });
       } else {
-        const reservation = await creditsService.reserve({
+        const reservation = await reserveAllowanceEligibleCredits("search", {
           organizationId,
           userId: user.id,
           amount: cost,
           description: config.name,
+          operationKey: { prefix: "search:", identity: crypto.randomUUID() },
         });
         settlement = {
           settle: (actualCostUsd) => reservation.reconcile(actualCostUsd),

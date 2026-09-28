@@ -35,6 +35,12 @@ import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
+import {
+  type PersonalDedicatedFallback,
+  type PersonalSharedFallbackDelivery,
+  resolvePersonalDedicatedRoute,
+} from "@/lib/services/personal-dedicated-fallback";
+import { reconcilePersonalFallbackIntoDedicated } from "@/lib/services/personal-dedicated-fallback-reconcile";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
   GROUP_OWNER_FALLBACK_LABEL,
@@ -1548,6 +1554,53 @@ app.post("/", async (c) => {
         agent.id,
       );
     }
+    // One entitlement/route authority for both personal consumers (#25146): a
+    // direct turn whose Dedicated access was withdrawn (lapsed paid plan or a
+    // confirmed, unfunded billing stop) is answered by Shared in a separately
+    // scoped fallback journal; a recovered interval is reconciled into
+    // Dedicated before its first send. Groups keep their owner-bound
+    // Dedicated contract: the fallback journal is the owner's direct
+    // conversation only, so a group turn is refused while access is withdrawn
+    // and never reaches Dedicated memory.
+    let sharedFallback: PersonalSharedFallbackDelivery | null = null;
+    let fallbackToReconcile: PersonalDedicatedFallback | null = null;
+    if (dedicated) {
+      const route = await resolvePersonalDedicatedRoute({
+        dedicated,
+        organizationId: account.organizationId,
+        userId: account.userId,
+        sourceAgentId: agent.id,
+      });
+      if (route.route === "unavailable") {
+        return c.json(
+          {
+            success: false,
+            code: route.code,
+            error: route.error,
+            retryable: route.retryable,
+          },
+          route.status,
+          { "Retry-After": String(route.retryAfterSeconds) },
+        );
+      }
+      if (route.route === "shared_fallback" && isGroupMessage(parsed.data)) {
+        // The owner's billing state is never disclosed to group members.
+        return c.json({
+          success: true,
+          data: {
+            code: "group_dedicated_access_paused",
+            reply: "Eliza is unavailable in this group right now.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
+          },
+        });
+      }
+      if (route.route === "shared_fallback") {
+        sharedFallback = route.delivery;
+        dedicated = null;
+      } else {
+        fallbackToReconcile = route.reconcile;
+      }
+    }
     const accountMs = performance.now() - accountStartedAt;
     const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
     c.header("Server-Timing", accountTiming);
@@ -1560,10 +1613,14 @@ app.post("/", async (c) => {
             worker.namespace,
             {
               warmConversation:
-                isNewPersonalAccount || Boolean(groupConversationId),
+                isNewPersonalAccount ||
+                Boolean(groupConversationId) ||
+                Boolean(sharedFallback),
               ...(groupConversationId
                 ? { conversationId: groupConversationId }
-                : {}),
+                : sharedFallback
+                  ? { conversationId: sharedFallback.journalRoomId }
+                  : {}),
             },
           ).then(() => performance.now() - startedAt);
           worker.executionCtx.waitUntil(timing);
@@ -1711,6 +1768,27 @@ app.post("/", async (c) => {
             ? { "Retry-After": String(preparation.retryAfterSeconds) }
             : undefined,
         );
+      }
+      if (fallbackToReconcile) {
+        // The recovered Shared interval reaches Dedicated before routing
+        // returns, so both runtimes never own the same conversation.
+        const reconciled = await reconcilePersonalFallbackIntoDedicated({
+          fallback: fallbackToReconcile,
+          namespace: worker.namespace,
+        });
+        if (!reconciled.reconciled) {
+          return c.json(
+            {
+              success: false,
+              code: "dedicated_reconciling",
+              error:
+                "Dedicated Eliza is restoring your recent conversation. Try again shortly.",
+              retryable: true,
+            },
+            503,
+            { "Retry-After": "5" },
+          );
+        }
       }
       const bridgeRequest = {
         jsonrpc: "2.0" as const,
@@ -1889,7 +1967,9 @@ app.post("/", async (c) => {
         )
       : await sharedRestMessageSend(
           agent,
-          agent.id,
+          // A withdrawn Dedicated turn uses its scoped fallback journal, never
+          // the canonical Dedicated/pre-upgrade conversation.
+          sharedFallback?.journalRoomId ?? agent.id,
           deliveryMessage,
           agent.agent_name ?? "Eliza",
           worker.executionCtx,
@@ -1898,6 +1978,8 @@ app.post("/", async (c) => {
           "platform",
           trustedDelivery,
           capabilityText,
+          undefined,
+          sharedFallback?.accountState,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -1923,7 +2005,13 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(result.responded === false
+          ? { responded: false, responseReason: result.responseReason }
+          : {}),
         ...(result.mediaUrls ? { mediaUrls: result.mediaUrls } : {}),
+        ...(sharedFallback
+          ? { accountState: sharedFallback.accountState }
+          : {}),
         ...(groupDeliveryAuthority
           ? {
               groupDelivery: {

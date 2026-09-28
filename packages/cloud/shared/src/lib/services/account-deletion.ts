@@ -435,6 +435,9 @@ export async function activateAccountDeletion(
   }
 
   const request = activation.request;
+  if (request.organization_id) {
+    await closePendingSubscriptionCheckouts(request.organization_id);
+  }
   if ((request.status === "reserved" || request.status === "recovery") && request.steward_user_id) {
     await attemptImmediateStewardDeactivation({
       requestId: request.id,
@@ -444,6 +447,25 @@ export async function activateAccountDeletion(
   }
   const latest = await accountDeletionRequestsRepository.findById(request.id);
   return toAccountDeletionRequestDto(latest ?? request);
+}
+
+/**
+ * The paid-work fence is committed; a still-payable subscription checkout would now capture a
+ * payment that finalization must refuse. Close them best-effort; the checkout sweep retries.
+ */
+async function closePendingSubscriptionCheckouts(organizationId: string): Promise<void> {
+  try {
+    const { expirePendingSubscriptionCheckoutsForOrganization } = await import(
+      "./subscription-checkout"
+    );
+    await expirePendingSubscriptionCheckoutsForOrganization(organizationId);
+  } catch (error) {
+    // error-policy:J4 Deletion activation is already durable; checkout recovery retries the close.
+    logger.error("[AccountDeletion] Could not close pending subscription checkouts", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function attemptImmediateStewardDeactivation(input: {

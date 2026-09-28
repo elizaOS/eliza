@@ -402,6 +402,7 @@ export function messageHandlerFromFieldResult(
       ? inferDirectCurrentRequestCandidateInference(
           runtimeContext?.actions ?? [],
           currentMessageText,
+          contexts,
         )
       : ({ names: [], kind: null } as DirectCurrentRequestCandidateInference);
   // Text-derived hints cannot override a completed model answer
@@ -910,6 +911,7 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
   const directCurrentInference = inferDirectCurrentRequestCandidateInference(
     runtimeContext.actions,
     currentMessageText,
+    messageHandler.plan.contexts,
   );
   const directCurrentCandidateActions = directCurrentInference.names;
   if (directCurrentCandidateActions.length === 0) return messageHandler;

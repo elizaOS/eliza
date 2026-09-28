@@ -3,6 +3,10 @@
 // from the schema/types/validator files individually.
 
 export {
+	collectFailedEvalNames,
+	manifestPassesActivationGate,
+} from "./activation-gate";
+export {
 	bundleTierSlug,
 	ELIZA_1_BACKENDS,
 	ELIZA_1_BUNDLE_TIER_SLUGS,
@@ -40,7 +44,6 @@ export {
 	SUPPORTED_BACKENDS_BY_TIER,
 	VOICE_PRESET_CACHE_PATH,
 } from "./schema";
-
 export type {
 	Eliza1Backend,
 	Eliza1DeviceCaps,

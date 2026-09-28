@@ -206,16 +206,16 @@ export function injectNativeLibLegacyPackaging(content) {
  * KV cache types (turbo3, turbo4, turbo3_tcq) and MTP spec-decoding kernels
  * live in this .so; without it, mobile only gets stock llama.cpp.
  *
- * Resolution order for the libdir:
- *   1. -Peliza.mtp.android.libdir=<path>   (gradle property)
- *   2. ELIZA_MTP_ANDROID_LIBDIR env var
- *   3. ~/.eliza/local-inference/bin/mtp/android-arm64-{cpu,vulkan}/
+ * Resolution order for the libdir (explicit only):
+ *   1. -Peliza.mtp.android.libdir[.<abi>]=<path>   (gradle property)
+ *   2. ELIZA_MTP_ANDROID_LIBDIR[_<ABI>] env var
+ *   3. the NDK-built slice already staged in src/main/jniLibs/<abi>
  *
- * Fails local builds when no path is configured or the dir doesn't exist. The
- * Android Capacitor JNI wrapper links against these MTP libraries and cannot
- * honestly support Eliza-1/Gemma 4 without them. Cloud builds skip the task.
- * A build with no fresh source dir falls back to the already-staged fused lib
- * set (the common dev case); only a genuinely missing arm64 lib is a hard error.
+ * Bun/AOSP musl assets (assets/agent/<abi>) and the musl mtp compile cache are
+ * never discovered: they do not link against bionic. The JNI CMake target
+ * builds the real bridge for arm64-v8a and x86_64, so a missing slice for
+ * either fails before any native build and names the
+ * `stage-elizavoice-lib.ts --abi <abi>` command. Cloud builds skip the task.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
@@ -246,20 +246,17 @@ export function injectCopyForkLlamaLibTask(content) {
     return ensureCopyForkLlamaLibGuards(content);
   }
   const block =
-    `\n// Bundle the MTP Android llama.cpp stack into the APK so mobile\n` +
-    `// gets Eliza-1/Gemma 4 support across every supported Android ABI\n` +
-    `// (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for\n` +
-    `// local-agent capable builds; x86_64 and riscv64 ship when their\n` +
-    `// per-ABI artifacts exist (Wave 2 cross-compiles land them\n` +
-    `// incrementally). Cloud builds and explicitly opted-out CI smoke\n` +
-    `// builds skip this task.\n` +
-    `ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64', 'riscv64']\n` +
     `\n` +
-    `ext.forkLlamaAbiTokens = [\n` +
-    `    'arm64-v8a': 'android-arm64',\n` +
-    `    'x86_64': 'android-x86_64',\n` +
-    `    'riscv64': 'android-riscv64'\n` +
-    `]\n` +
+    `// Bundle the NDK (bionic) fused inference stack into the APK's jniLibs.\n` +
+    `// The elizavoice JNI CMake target links the real bridge for arm64-v8a and\n` +
+    `// x86_64, so both slices are required before any native build starts;\n` +
+    `// riscv64 ships when its artifact exists. Only explicitly configured lib\n` +
+    `// dirs or slices already staged by stage-elizavoice-lib.ts are used: the\n` +
+    `// Bun/AOSP musl assets and the musl compile cache are NOT bionic JNI inputs\n` +
+    `// and are never discovered automatically. Cloud builds and explicitly\n` +
+    `// opted-out CI smoke builds skip this task.\n` +
+    `ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64', 'riscv64']\n` +
+    `ext.elizaRequiredJniAbis = ['arm64-v8a', 'x86_64']\n` +
     `\n` +
     `ext.forkLlamaLibompAbiTokens = [\n` +
     `    'arm64-v8a': 'aarch64',\n` +
@@ -276,14 +273,10 @@ export function injectCopyForkLlamaLibTask(content) {
     `    if (fromProp) return fromProp.toString()\n` +
     `    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR\${envSuffix}")\n` +
     `    if (fromEnv) return fromEnv\n` +
-    `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
-    `    def abiToken = project.ext.forkLlamaAbiTokens[abi]\n` +
-    `    def candidates = [\n` +
-    `        new File(elizaRepoRoot, "packages/app/android/app/src/main/assets/agent/\${abi}").toString()\n` +
-    `    ] + ['vulkan', 'cpu'].collect { backend ->\n` +
-    `        "\${stateDir}/local-inference/bin/mtp/\${abiToken}-\${backend}"\n` +
-    `    }\n` +
-    `    return candidates.find { new File(it).isDirectory() }\n` +
+    `    // No automatic discovery: assets/agent/<abi> holds Bun's musl runtime and\n` +
+    `    // the local-inference mtp cache holds musl builds; neither links against\n` +
+    `    // bionic, so the pre-staged jniLibs slice is the only implicit source.\n` +
+    `    return null\n` +
     `}\n` +
     `\n` +
     `def resolveAndroidLibompForAbi = { String abi ->\n` +
@@ -333,7 +326,8 @@ export function injectCopyForkLlamaLibTask(content) {
     `            println "[copyForkLlamaLib] skipped for cloud/smoke build"\n` +
     `            return\n` +
     `        }\n` +
-    `        boolean stagedArm64 = false\n` +
+    `        def stagedAbis = [] as Set\n` +
+    `        def requiredAbis = project.ext.elizaRequiredJniAbis\n` +
     `        int totalCopied = 0\n` +
     `        boolean stagedKernels = false\n` +
     `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
@@ -345,20 +339,20 @@ export function injectCopyForkLlamaLibTask(content) {
     `                def alreadyStaged = new File(file("src/main/jniLibs/\${abi}"), 'libelizainference.so')\n` +
     `                if (alreadyStaged.isFile()) {\n` +
     `                    logger.lifecycle("[copyForkLlamaLib] no source dir for \${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")\n` +
-    `                    if (abi == 'arm64-v8a') stagedArm64 = true\n` +
+    `                    stagedAbis << abi\n` +
     `                    return\n` +
     `                }\n` +
-    `                if (abi == 'arm64-v8a') {\n` +
-    `                    // arm64-v8a is the mandatory baseline ABI; missing it (and no pre-staged lib) is a hard error.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app/scripts/aosp/compile-libllama.ts --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.ts has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
+    `                if (requiredAbis.contains(abi)) {\n` +
+    `                    // The JNI CMake target links this slice; fail before any native build.\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no bionic fused inference lib for \${abi} (not configured, not pre-staged in src/main/jniLibs/\${abi}). Run \`node packages/app/scripts/stage-elizavoice-lib.ts --abi \${abi}\` (NDK/bionic build) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR to an NDK-built lib dir (use the .\${abi} / _\${abi.replace('-', '_').toUpperCase()} suffixed forms for non-arm64 ABIs).")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
     `            }\n` +
     `            def srcDir = new File(libDir.toString())\n` +
     `            if (!srcDir.isDirectory()) {\n` +
-    `                if (abi == 'arm64-v8a') {\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] MTP Android lib dir does not exist for arm64-v8a: \${libDir}")\n` +
+    `                if (requiredAbis.contains(abi)) {\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] configured Android lib dir does not exist for \${abi}: \${libDir}. Run \`node packages/app/scripts/stage-elizavoice-lib.ts --abi \${abi}\` or fix the configured path.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] fork lib dir \${libDir} does not exist for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -388,17 +382,18 @@ export function injectCopyForkLlamaLibTask(content) {
     `                dst.bytes = libomp.bytes\n` +
     `                copied++\n` +
     `                println "[copyForkLlamaLib] staged Android OpenMP runtime for \${abi} from \${libomp}"\n` +
-    `            } else if (abi == 'arm64-v8a') {\n` +
-    `                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; MTP CPU backend cannot load without it.")\n` +
+    `            } else if (requiredAbis.contains(abi)) {\n` +
+    `                throw new GradleException("[copyForkLlamaLib] Android \${abi} libomp.so not found in the configured NDK; MTP CPU backend cannot load without it.")\n` +
     `            } else {\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no libomp.so found for \${abi}; the .so set may not link on-device")\n` +
     `            }\n` +
     `            println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
     `            totalCopied += copied\n` +
-    `            if (abi == 'arm64-v8a') stagedArm64 = true\n` +
+    `            stagedAbis << abi\n` +
     `        }\n` +
-    `        if (!stagedArm64) {\n` +
-    `            throw new GradleException("[copyForkLlamaLib] arm64-v8a slice was not staged; aborting (this is the baseline ABI).")\n` +
+    `        def missingAbis = requiredAbis.findAll { !stagedAbis.contains(it) }\n` +
+    `        if (!missingAbis.isEmpty()) {\n` +
+    `            throw new GradleException("[copyForkLlamaLib] required JNI slice(s) \${missingAbis} were not staged; run \`node packages/app/scripts/stage-elizavoice-lib.ts --abi <abi>\` for each before building.")\n` +
     `        }\n` +
     `    }\n` +
     `}\n` +

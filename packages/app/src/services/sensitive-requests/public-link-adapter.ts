@@ -1,7 +1,8 @@
 /**
  * `public_link` delivery adapter.
  *
- * Generates an unauthenticated payment URL for `kind === "payment"` with
+ * Generates the unauthenticated hosted payment-request URL (`/payment/<id>` on
+ * the cloud site) for `kind === "payment"` with
  * `paymentContext.kind === "any_payer"`. Refuses every other shape with a
  * structured `DeliveryFailure` so the caller can fall back to a different
  * adapter (cloud authenticated link, DM, etc.).
@@ -11,12 +12,13 @@
  */
 
 import { toRuntimeSettings } from "@elizaos/cloud-routing";
-import {
-  type DeliveryResult,
-  type SensitiveRequestDeliveryAdapter,
-  type SensitiveRequestWithPaymentContext,
+import type {
+  DeliveryResult,
+  SensitiveRequestDeliveryAdapter,
+  SensitiveRequestWithPaymentContext,
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 /**
  * Cloud API base used when neither a runtime setting nor an env override
@@ -71,21 +73,6 @@ function resolveCloudBaseUrl(runtime: unknown): string {
   if (fromEnv) return stripTrailingSlashes(fromEnv);
   return stripTrailingSlashes(CLOUD_BASE_FALLBACK);
 }
-function readAppId(
-  request: SensitiveRequestWithPaymentContext,
-): string | undefined {
-  const target = request.target as Record<string, unknown>;
-  const fromTarget = target.appId;
-  if (typeof fromTarget === "string" && fromTarget.trim()) {
-    return fromTarget.trim();
-  }
-  const callback = request.callback as Record<string, unknown> | undefined;
-  const fromCallback = callback?.appId;
-  if (typeof fromCallback === "string" && fromCallback.trim()) {
-    return fromCallback.trim();
-  }
-  return undefined;
-}
 export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
   {
     target: "public_link",
@@ -102,16 +89,9 @@ export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter 
           error: "public_link only allowed for any_payer payment",
         };
       }
-      const appId = readAppId(typed);
-      if (!appId) {
-        return {
-          delivered: false,
-          target: "public_link",
-          error: "public_link payment request is missing appId",
-        };
-      }
-      const cloudBase = resolveCloudBaseUrl(runtime);
-      const url = `${cloudBase}/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(typed.id)}/public`;
+      // The resolved base may be the cloud API origin; payers open the site.
+      const cloudSite = normalizeCloudSiteUrl(resolveCloudBaseUrl(runtime));
+      const url = `${cloudSite}/payment/${encodeURIComponent(typed.id)}`;
       return {
         delivered: true,
         target: "public_link",

@@ -2,6 +2,8 @@
  * Mic-capture recorder for local ASR: records mono PCM16, exposes a live analyser
  * for amplitude visualization, and stops/cancels the audio context cleanly.
  */
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { logger } from "../logger.ts";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
 import {
   DEFAULT_POST_TTS_COOLDOWN_MS,
@@ -91,6 +93,73 @@ export type MicrophonePermissionState =
   | "prompt"
   | "unknown";
 
+interface NativeMicrophonePermissionState {
+  status?: unknown;
+  platform?: unknown;
+}
+
+/**
+ * Maps the macOS app-process (TCC) microphone state reported by the Electrobun
+ * permission bridge. Returns `null` when there is no desktop bridge, the host
+ * is not macOS, or the reply is not a recognizable permission state, so the
+ * caller falls back to the renderer Permissions API.
+ */
+function mapNativeMicrophonePermission(
+  state: NativeMicrophonePermissionState | null,
+): MicrophonePermissionState | null {
+  if (state?.platform !== "darwin") return null;
+  switch (state.status) {
+    case "granted":
+    case "limited":
+      return "granted";
+    case "denied":
+    case "restricted":
+      return "denied";
+    case "not-determined":
+      return "prompt";
+    default:
+      return null;
+  }
+}
+
+async function invokeNativeMicrophonePermission(
+  action: "check" | "request",
+): Promise<MicrophonePermissionState | null> {
+  try {
+    const state =
+      action === "check"
+        ? await invokeDesktopBridgeRequest<NativeMicrophonePermissionState>({
+            rpcMethod: "permissionsCheck",
+            ipcChannel: "permissions:check",
+            params: { id: "microphone", forceRefresh: true },
+          })
+        : await invokeDesktopBridgeRequest<NativeMicrophonePermissionState>({
+            rpcMethod: "permissionsRequest",
+            ipcChannel: "permissions:request",
+            params: { id: "microphone" },
+          });
+    return mapNativeMicrophonePermission(state);
+  } catch (err) {
+    // The renderer Permissions API remains the fallback probe; keep the bridge
+    // failure observable instead of reporting it as a permission state.
+    logger.warn(
+      { err, action },
+      "[voice] desktop microphone permission bridge request failed",
+    );
+    return null;
+  }
+}
+
+/**
+ * Asks the macOS desktop host to request microphone access for the app process
+ * (the same native request Settings → Permissions uses), so a first-use Talk in
+ * chat presents the system prompt from the capture path itself. Returns `null`
+ * outside a macOS Electrobun shell, where getUserMedia owns the prompt.
+ */
+export async function requestDesktopMicrophoneAccess(): Promise<MicrophonePermissionState | null> {
+  return invokeNativeMicrophonePermission("request");
+}
+
 /**
  * Proactively read the microphone permission via
  * `navigator.permissions.query({ name: "microphone" })` without opening the
@@ -100,8 +169,15 @@ export type MicrophonePermissionState =
  * Returns `"unknown"` (never throws) when the Permissions API is missing or
  * the `"microphone"` descriptor is unsupported (Safari/older iOS) — callers
  * treat unknown as "proceed normally", identical to `"prompt"`/`"granted"`.
+ * On the macOS Electrobun shell the native (TCC) app grant is read first.
  */
 export async function queryMicrophonePermission(): Promise<MicrophonePermissionState> {
+  // In the macOS desktop shell the app-process grant is authoritative: the
+  // WKWebView Permissions API describes the embedded page, can report
+  // "denied" before any capture request reached the native media-permission
+  // handler, and does not observe a grant made from the Settings window.
+  const nativeState = await invokeNativeMicrophonePermission("check");
+  if (nativeState) return nativeState;
   if (
     typeof navigator === "undefined" ||
     typeof navigator.permissions?.query !== "function"

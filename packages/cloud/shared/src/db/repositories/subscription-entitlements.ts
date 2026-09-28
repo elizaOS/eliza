@@ -5,7 +5,10 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
-import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
+import {
+  FREE_RESOURCE_CEILINGS,
+  resolveSubscriptionPlanDefinition,
+} from "../../lib/services/subscription-catalog";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -34,16 +37,17 @@ type RebuildValues = Omit<
   "organization_id" | "created_at" | "updated_at" | "rebuilt_at" | "projection_revision"
 >;
 
-const FREE_ENTITLEMENT_VALUES = {
+/** Free-tier projection values, also served for a lapsed paid projection. */
+export const SUBSCRIPTION_FREE_ENTITLEMENT_VALUES = {
   completions_rpm: 60,
   embeddings_rpm: 100,
   standard_rpm: 30,
   strict_rpm: 5,
-  cloud_characters_ceiling: 5,
-  agent_sandboxes_ceiling: 5,
-  containers_ceiling: 1,
-  storage_gib_ceiling: 5,
-  apps_ceiling: 25,
+  cloud_characters_ceiling: FREE_RESOURCE_CEILINGS.cloudCharacters,
+  agent_sandboxes_ceiling: FREE_RESOURCE_CEILINGS.agentSandboxes,
+  containers_ceiling: FREE_RESOURCE_CEILINGS.containers,
+  storage_gib_ceiling: FREE_RESOURCE_CEILINGS.storageGiB,
+  apps_ceiling: FREE_RESOURCE_CEILINGS.apps,
   plan_key: "free",
   state: "free",
   entitlement_effective: true,
@@ -89,7 +93,7 @@ export function deriveSubscriptionEntitlementValues(
     });
   if (revision.status === "canceled" || revision.status === "incomplete_expired") {
     return {
-      ...FREE_ENTITLEMENT_VALUES,
+      ...SUBSCRIPTION_FREE_ENTITLEMENT_VALUES,
       effective_from: revision.ended_at ?? revision.canceled_at ?? revision.recorded_at,
       source_digest: revision.provider_object_digest,
       source_subscription_id: revision.subscription_id,
@@ -134,11 +138,11 @@ export function deriveSubscriptionEntitlementValues(
     embeddings_rpm: plan.rateLimits.embeddingsRpm,
     standard_rpm: plan.rateLimits.standardRpm,
     strict_rpm: plan.rateLimits.strictRpm,
-    cloud_characters_ceiling: null,
-    agent_sandboxes_ceiling: null,
-    containers_ceiling: null,
-    storage_gib_ceiling: null,
-    apps_ceiling: null,
+    cloud_characters_ceiling: plan.resourceCeilings.cloudCharacters,
+    agent_sandboxes_ceiling: plan.resourceCeilings.agentSandboxes,
+    containers_ceiling: plan.resourceCeilings.containers,
+    storage_gib_ceiling: plan.resourceCeilings.storageGiB,
+    apps_ceiling: plan.resourceCeilings.apps,
     plan_key: revision.plan_key,
     state: revision.status,
     entitlement_effective: revision.status === "active" || revision.status === "grace",

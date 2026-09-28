@@ -459,6 +459,7 @@ export function isShellDirectActionName(
  */
 export type DirectCurrentRequestCandidateKind =
   | "shell"
+  | "filesystem"
   | "coding"
   | "settings-write"
   | "owner-goals"
@@ -471,7 +472,8 @@ export type DirectCurrentRequestCandidateKind =
   | "view-navigation"
   | "view-capability"
   | "web"
-  | "calculate";
+  | "calculate"
+  | "calculate-tool";
 
 export interface DirectCurrentRequestCandidateInference {
   names: string[];
@@ -1187,13 +1189,14 @@ export function inferDirectCurrentRequestCandidateActions(
 /**
  * An explicit arithmetic request in the message ("whats 3847 times 292",
  * "1,234 * 56", "whats 17 times 23"). The request cue, not operand width, is
- * what makes the turn arithmetic: an explicit ask is computed exactly by
- * CALCULATE instead of recalled, at any operand size. The ambiguous operators
+ * what makes the turn arithmetic and supplies a CALCULATE retrieval hint.
+ * A completed simple answer may suppress this hint; an explicit request to
+ * invoke a calculator remains a tool request, at any operand size. The ambiguous operators
  * (- / + x) still need a math cue or a complete-expression message, because
  * they occur routinely in dates, ranges, phone numbers, versions, and
  * dimensions; a strong operator (times, *, ×, ÷, ...) is unambiguous on its
  * own. Operand width is not a routing boundary — two-digit mental math drifts
- * as readily as larger operands, and CALCULATE costs one deterministic call.
+ * as readily as larger operands; width alone must not override Stage 1.
  */
 const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
 const STRONG_ARITHMETIC_OPERATOR =
@@ -1257,10 +1260,54 @@ function looksLikeArithmeticRequest(text: string): boolean {
   );
 }
 
+function explicitlyRequestsCalculationTool(text: string): boolean {
+  // Reuse contrast-clause boundaries and the scheduled-admin restriction
+  // projection: negated wording cannot strengthen a retrieval hint.
+  return intentClauses(text)
+    .flatMap((clause) => clause.split(/[.!?\n]/u))
+    .map(
+      (clause) =>
+        clause.split(
+          /\b(?:do\s+not|don['’]?t|never(?!\s+mind\b)|without)\b/iu,
+          1,
+        )[0] ?? "",
+    )
+    .some((clause) =>
+      /\b(?:use|using|invoke|call|run)\s+(?:(?:a|the)\s+)?(?:calculator|calculate(?:\s+tool)?|(?:calculation|arithmetic)\s+tool|tools?)\b/iu.test(
+        clause,
+      ),
+    );
+}
+
 function findCalculateActionName(
   actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 ): string | undefined {
   return findAvailableActionName(actions, ["CALCULATE"]);
+}
+
+/** A concrete filesystem imperative requires planning, never argument extraction here. */
+function looksLikeExplicitFilesystemRequest(text: string): boolean {
+  const imperative =
+    /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:save|write|create|edit|append|read)\b/iu;
+  if (!imperative.test(text.trim()) || looksLikeActionExplanationRequest(text))
+    return false;
+  if (
+    /\b(?:if|hypothetically|suppose|pretend|imagine)\b/iu.test(text) ||
+    /\b(?:do\s+not|don['’]?t|never|without|no)\b[^\n;]{0,100}\b(?:tools?|actions?|files?|filesystem|read(?:ing)?|writ(?:e|ing)|sav(?:e|ing)|creat(?:e|ing)|edit(?:ing)?|append(?:ing)?|execut(?:e|ing))\b/iu.test(
+      text,
+    )
+  )
+    return false;
+  return intentClauses(text).some((clause) => {
+    // Only an addressed imperative, not quoted instructions or supplied file contents.
+    const instruction = clause.split("\n", 1)[0];
+    return (
+      imperative.test(instruction) &&
+      /(?:^|[\s"'`])(?:\/|~\/|\.\.?\/|[a-z]:[\\/])[^\s"'`<>]+/iu.test(
+        instruction,
+      )
+    );
+  });
 }
 
 export function inferDirectCurrentRequestCandidateInference(
@@ -1268,6 +1315,10 @@ export function inferDirectCurrentRequestCandidateInference(
   messageText: string,
   hooks: DirectActionInferenceHooks = {},
 ): DirectCurrentRequestCandidateInference {
+  if (looksLikeExplicitFilesystemRequest(messageText)) {
+    const fileAction = findAvailableActionName(actions, ["FILE"]);
+    if (fileAction) return { names: [fileAction], kind: "filesystem" };
+  }
   if (looksLikeLocalShellRequest(messageText)) {
     const shellAction = findShellDirectActionName(actions);
     if (shellAction) return { names: [shellAction], kind: "shell" };
@@ -1275,7 +1326,12 @@ export function inferDirectCurrentRequestCandidateInference(
   if (looksLikeArithmeticRequest(messageText)) {
     const calculateAction = findCalculateActionName(actions);
     if (calculateAction) {
-      return { names: [calculateAction], kind: "calculate" };
+      return {
+        names: [calculateAction],
+        kind: explicitlyRequestsCalculationTool(messageText)
+          ? "calculate-tool"
+          : "calculate",
+      };
     }
   }
   if (hooks.looksLikeCodingWorkRequest?.(messageText)) {

@@ -84,6 +84,14 @@ export interface InferenceRateLimitDecision {
   retryAfter?: number;
 }
 
+/** Authoritative balance observation published to the gate at settlement. */
+export interface InferenceAdmissionBalanceObservation {
+  balanceUsd: number;
+  balanceRevision: string;
+  /** "funding" for subscriber capacity (credit plus spendable allowance). */
+  balanceView?: "funding";
+}
+
 export interface InferenceAdmissionLease {
   organizationId: string;
   requestId: string;
@@ -648,6 +656,8 @@ export async function acquireInferenceAdmissionLease(params: {
   requestId: string;
   balanceUsd: number;
   balanceRevision: string;
+  /** "funding" when the balance is subscriber funding capacity, not credit only. */
+  balanceView?: "funding";
   estimatedCostUsd: number;
   recovery: InferenceAdmissionRecoveryContext;
   /** Strong standing proof fused into the lease transaction when supplied. */
@@ -676,6 +686,7 @@ export async function acquireInferenceAdmissionLease(params: {
     requestId: params.requestId,
     balanceUsd,
     balanceRevision: params.balanceRevision,
+    ...(params.balanceView && { balanceView: params.balanceView }),
     estimatedCostUsd,
     recovery: params.recovery,
     ...(params.credential
@@ -1096,6 +1107,11 @@ export async function settleInferenceAdmissionLease(
   lease: InferenceAdmissionLease,
   balanceBackedCostUsd: number,
   gateConsumedCostUsd = balanceBackedCostUsd,
+  /**
+   * Post-accounting balance already observed by the settling transaction.
+   * Supplying it avoids a separate balance readback after the debit.
+   */
+  observedBalance?: InferenceAdmissionBalanceObservation,
 ): Promise<void> {
   const balanceBackedUsd = finiteNonNegative(balanceBackedCostUsd, "balanceBackedCostUsd");
   const gateConsumedUsd = finiteNonNegative(gateConsumedCostUsd, "gateConsumedCostUsd");
@@ -1111,7 +1127,11 @@ export async function settleInferenceAdmissionLease(
     }
     await markInferenceAdmissionLeaseDispatched(lease);
   }
-  const snapshot = await creditsService.getOrganizationBalanceSnapshot(lease.organizationId);
+  const snapshot: InferenceAdmissionBalanceObservation =
+    observedBalance ??
+    (await creditsService
+      .getOrganizationBalanceSnapshot(lease.organizationId)
+      .then((credit) => ({ balanceUsd: credit.balanceUsd, balanceRevision: credit.revision })));
   const response = await gateFetch(
     lease.organizationId,
     "/settle",
@@ -1119,8 +1139,9 @@ export async function settleInferenceAdmissionLease(
       requestId: lease.requestId,
       balanceBackedUsd,
       gateConsumedUsd,
-      balanceUsd: snapshot.balanceUsd,
-      balanceRevision: snapshot.revision,
+      balanceUsd: finiteNonNegative(snapshot.balanceUsd, "balanceUsd"),
+      balanceRevision: snapshot.balanceRevision,
+      ...(snapshot.balanceView && { balanceView: snapshot.balanceView }),
     },
     lease.gate,
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),

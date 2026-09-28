@@ -770,7 +770,8 @@ export function AccountCommandTable({
                           label: account.label,
                         })}
                         title={t("accounts.table.remove", {
-                          defaultValue: "Remove account",
+                          defaultValue: "Remove {{label}}",
+                          label: account.label,
                         })}
                       >
                         <Trash2 className="size-3.5" aria-hidden />

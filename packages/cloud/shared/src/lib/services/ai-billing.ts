@@ -29,6 +29,12 @@ import {
 import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import {
+  canonicalFundingAmount,
+  reserveSubscriptionFundedCredits,
+  subscriptionFundingOperationKey,
+} from "./allowance-first-credits";
+import { billingHoldService } from "./billing-hold";
+import {
   COST_BUFFER,
   type CreditReconciliationResult,
   type CreditReservation,
@@ -39,7 +45,6 @@ import {
 } from "./credits";
 import { generationsService } from "./generations";
 import { readOrganizationQuotaPolicy } from "./organization-quota-policy";
-import { subscriptionFundingService } from "./subscription-funding";
 import { usageService } from "./usage";
 
 // ============================================================================
@@ -113,20 +118,13 @@ export async function isSubscriptionFundedOrganization(organizationId: string): 
   return (await readOrganizationQuotaPolicy(organizationId)).subscriptionFunded;
 }
 
-function inferenceFundingLogicalOperationId(
+async function inferenceFundingLogicalOperationId(
   context: BillingContext,
   logicalOperationKey?: string,
-): string {
+): Promise<string> {
+  // Request ids are caller-influenced; hash any id outside the durable key grammar.
   const requestId = logicalOperationKey || context.requestId || crypto.randomUUID();
-  return `inference-gate:${requestId}`;
-}
-
-function canonicalFundingAmount(value: number): string {
-  const amount = new Decimal(value).toDecimalPlaces(6);
-  if (!amount.isFinite() || amount.isNegative()) {
-    throw new Error("AI billing funding amount must be finite and non-negative");
-  }
-  return amount.toFixed(6);
+  return subscriptionFundingOperationKey("inference-gate:", requestId);
 }
 
 async function reserveSubscriptionFunding(params: {
@@ -138,13 +136,12 @@ async function reserveSubscriptionFunding(params: {
   logicalOperationKey?: string;
 }): Promise<CreditReservation> {
   const { context, affiliate, affiliatePayoutSourceId } = params;
-  const logicalOperationId = inferenceFundingLogicalOperationId(
-    context,
-    params.logicalOperationKey,
-  );
-  const reserveResult = await subscriptionFundingService.reserve({
+  const reservation = await reserveSubscriptionFundedCredits({
     organizationId: context.organizationId,
-    logicalOperationId,
+    logicalOperationId: await inferenceFundingLogicalOperationId(
+      context,
+      params.logicalOperationKey,
+    ),
     operation: "ai_inference",
     amount: canonicalFundingAmount(params.reservedAmount),
     description: context.description ?? `AI request: ${context.model}`,
@@ -158,40 +155,10 @@ async function reserveSubscriptionFunding(params: {
       billingSource: context.billingSource ?? null,
     },
   });
-  const reservedAmount = Number(reserveResult.reservation.requested_amount);
-  const settlementOccurredAt = reserveResult.reservation.created_at;
   return {
-    reservedAmount,
-    reservationTransactionId: reserveResult.reservation.id,
+    ...reservation,
     affiliateAttribution: affiliate?.attribution ?? null,
     affiliatePayoutSourceId,
-    reconcile: async (actualCost) => {
-      const canonicalActual = canonicalFundingAmount(actualCost);
-      const settlement = await subscriptionFundingService.settle({
-        organizationId: context.organizationId,
-        logicalOperationId,
-        operation: "ai_inference",
-        actualAmount: canonicalActual,
-        occurredAt: settlementOccurredAt,
-        metadata: params.metadata,
-      });
-      const actual = Number(canonicalActual);
-      const collected = Number(settlement.collectedAmount);
-      const uncollectedOverage = Number(settlement.uncollectedOverageAmount);
-      return {
-        reservedAmount,
-        actualCost,
-        collectedAmount: collected,
-        reservationTransactionId: reserveResult.reservation.id,
-        settlementTransactionIds: [settlement.reservation.id],
-        adjustmentType:
-          uncollectedOverage > 0
-            ? "uncollected_overage"
-            : actual < reservedAmount
-              ? "refund"
-              : "none",
-      };
-    },
   };
 }
 
@@ -417,6 +384,8 @@ export async function reserveCredits(
   estimatedOutputTokens: number = 500,
   selection?: SubscriptionFundingSelection,
 ): Promise<CreditReservation> {
+  // New paid spend fails closed while a payment-reversal hold is active (#22930).
+  await billingHoldService.assertNoHold(context.organizationId);
   const provider = context.provider ?? getProviderFromModel(context.model);
   const normalizedModel = normalizeModelName(context.model);
   const affiliate = await resolveBillableAffiliate(context);
@@ -481,6 +450,7 @@ export async function reserveFlatUsageCredits(
   if (!preAffiliateCost.isFinite() || !preAffiliateCost.gt(0)) {
     throw new Error("Flat billing reservation cost must be positive and finite");
   }
+  await billingHoldService.assertNoHold(context.organizationId);
   const affiliate = await resolveBillableAffiliate(context);
   const affiliatePayoutSourceId = affiliate ? getAffiliatePayoutSourceId(context) : null;
   const reservedAmount = preAffiliateCost

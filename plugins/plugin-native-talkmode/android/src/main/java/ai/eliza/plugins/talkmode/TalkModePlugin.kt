@@ -113,6 +113,7 @@ class TalkModePlugin : Plugin() {
     private var lastInterruptedAtSeconds: Double? = null
     @Volatile private var activePcmConnection: HttpURLConnection? = null
     @Volatile private var activeLocalAgentSocket: LocalSocket? = null
+    @Volatile private var activeBionicTtsSocket: LocalSocket? = null
 
     // Voice audio session (communication-mode routing + focus, mirrors the iOS
     // .playAndRecord/.voiceChat/.defaultToSpeaker session). Held for the whole
@@ -451,7 +452,17 @@ class TalkModePlugin : Plugin() {
         val useLocalInferenceTts = call.getBoolean("useLocalInferenceTts", false) ?: false
         val directive = call.getObject("directive")
 
+        // One speech call owns pcmTrack at a time. A replacement first closes
+        // the prior call's sockets/connection (so blocking reads unwind) and
+        // cancels it, then waits for it to settle and release playback before
+        // acquiring its own track.
+        val previous = speakingJob
+        if (previous?.isActive == true) {
+            lastInterruptedAtSeconds = computeInterruptedAt()
+            stopSpeakingInternal()
+        }
         speakingJob = scope.launch {
+            previous?.join()
             speakInternal(text, useSystemTts, useLocalInferenceTts, directive, call)
         }
     }
@@ -1093,6 +1104,10 @@ class TalkModePlugin : Plugin() {
                             lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
                         })
                     }
+                } catch (e: CancellationException) {
+                    // Stop, replacement, or teardown: never fall back to system
+                    // speech for a cancelled call.
+                    throw e
                 } catch (e: Exception) {
                     if (pcmStopRequested.get()) {
                         call.resolve(JSObject().apply {
@@ -1135,6 +1150,8 @@ class TalkModePlugin : Plugin() {
                             lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
                         })
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     if (pcmStopRequested.get()) {
                         call.resolve(JSObject().apply {
@@ -1150,6 +1167,16 @@ class TalkModePlugin : Plugin() {
             } else {
                 speakWithSystemTts(text, call)
             }
+        } catch (e: CancellationException) {
+            // The cancelled call settles once, as interrupted, and cancellation
+            // keeps propagating to the coroutine that owns it.
+            call.resolve(JSObject().apply {
+                put("completed", false)
+                put("interrupted", true)
+                put("usedSystemTts", usedSystemTts)
+                lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
+            })
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Speak failed", e)
             call.resolve(JSObject().apply {
@@ -1331,13 +1358,20 @@ class TalkModePlugin : Plugin() {
         if (trimmed.isEmpty()) return@withContext false
         val speed = (directive?.optDouble("speed", 1.0) ?: 1.0).toFloat()
         val sock = LocalSocket()
+        // Registered before connect so stopSpeakingInternal() can close it
+        // during connect, phonemization, or the synthesis read.
+        activeBionicTtsSocket = sock
         try {
             sock.connect(
                 LocalSocketAddress(BIONIC_INFER_SOCKET, LocalSocketAddress.Namespace.ABSTRACT)
             )
         } catch (e: Exception) {
+            releaseBionicTtsSocket(sock)
+            // A stop that closed the socket mid-connect is not an unreachable
+            // host: report it handled so no fallback voice starts.
+            if (pcmStopRequested.get()) return@withContext true
+            ensureActive()
             Log.d(TAG, "bionic Kokoro TTS host unreachable: ${e.message}")
-            try { sock.close() } catch (_: Exception) {}
             return@withContext false
         }
         try {
@@ -1355,6 +1389,8 @@ class TalkModePlugin : Plugin() {
                         throw IllegalStateException("Local agent returned invalid Kokoro phonemization")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 throw KokoroPhonemizationException(e)
             }
@@ -1418,8 +1454,15 @@ class TalkModePlugin : Plugin() {
             true
         } finally {
             cleanupPcmTrack()
-            try { sock.close() } catch (_: Exception) {}
+            releaseBionicTtsSocket(sock)
         }
+    }
+
+    private fun releaseBionicTtsSocket(sock: LocalSocket) {
+        if (activeBionicTtsSocket === sock) {
+            activeBionicTtsSocket = null
+        }
+        try { sock.close() } catch (_: Exception) {}
     }
 
     private class KokoroPhonemizationException(cause: Exception) :
@@ -1844,6 +1887,16 @@ class TalkModePlugin : Plugin() {
                 put("interrupted", false)
                 put("usedSystemTts", true)
             })
+        } catch (e: TimeoutCancellationException) {
+            call.resolve(JSObject().apply {
+                put("completed", false)
+                put("interrupted", false)
+                put("usedSystemTts", true)
+                put("error", e.message ?: "System TTS timed out")
+            })
+        } catch (e: CancellationException) {
+            // Settled by speakInternal as interrupted.
+            throw e
         } catch (e: Exception) {
             call.resolve(JSObject().apply {
                 put("completed", false)
@@ -1973,6 +2026,9 @@ class TalkModePlugin : Plugin() {
         val localAgentSocket = activeLocalAgentSocket
         activeLocalAgentSocket = null
         try { localAgentSocket?.close() } catch (_: Exception) {}
+        val bionicTtsSocket = activeBionicTtsSocket
+        activeBionicTtsSocket = null
+        try { bionicTtsSocket?.close() } catch (_: Exception) {}
         val conn = activePcmConnection
         activePcmConnection = null
         conn?.disconnect()
@@ -2152,7 +2208,7 @@ class TalkModePlugin : Plugin() {
         }
         silenceJob?.cancel()
         restartJob?.cancel()
-        speakingJob?.cancel()
+        stopSpeakingInternal()
         releaseVoiceAudioSession()
         scope.cancel()
     }

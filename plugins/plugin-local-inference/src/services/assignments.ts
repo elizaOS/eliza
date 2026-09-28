@@ -15,7 +15,9 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
+import { manifestPassesActivationGate } from "./manifest";
 import { localInferenceRoot } from "./paths";
+import { defaultManifestLoader, type ManifestLoader } from "./ram-budget";
 import { listInstalledModels } from "./registry";
 import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
 
@@ -109,15 +111,35 @@ function pickLargestInstalledModel(
  * and other background tasks at boot. The user opted into the external
  * tool, not into Eliza loading those weights through llama.cpp.
  */
+/**
+ * Whether an installed model may fill default slots without an explicit user
+ * choice: a verified curated Eliza-1 download whose installed manifest (when
+ * present) passes the activation gate. A candidate-only bundle — installed
+ * before the download gate existed, or hand-staged — is refused at
+ * activation, so it is never made a default.
+ */
+function isAutoAssignableInstall(
+	model: InstalledModel,
+	manifestLoader: ManifestLoader,
+): boolean {
+	if (
+		model.source !== "eliza-download" ||
+		!isDefaultEligibleId(model.id) ||
+		typeof model.bundleVerifiedAt !== "string" ||
+		model.bundleVerifiedAt.length === 0
+	) {
+		return false;
+	}
+	const manifest = manifestLoader(model.id, model);
+	return !manifest || manifestPassesActivationGate(manifest);
+}
+
 export function buildRecommendedAssignments(
 	installed: InstalledModel[],
+	manifestLoader: ManifestLoader = defaultManifestLoader,
 ): ModelAssignments {
-	const ownDownloads = installed.filter(
-		(model) =>
-			model.source === "eliza-download" &&
-			isDefaultEligibleId(model.id) &&
-			typeof model.bundleVerifiedAt === "string" &&
-			model.bundleVerifiedAt.length > 0,
+	const ownDownloads = installed.filter((model) =>
+		isAutoAssignableInstall(model, manifestLoader),
 	);
 	const best = pickLargestInstalledModel(ownDownloads);
 	if (best) {
@@ -273,13 +295,10 @@ export async function ensureDefaultAssignment(
  */
 export async function autoAssignAtBoot(
 	installed: InstalledModel[],
+	manifestLoader: ManifestLoader = defaultManifestLoader,
 ): Promise<ModelAssignments | null> {
-	const ownDownloads = installed.filter(
-		(model) =>
-			model.source === "eliza-download" &&
-			isDefaultEligibleId(model.id) &&
-			typeof model.bundleVerifiedAt === "string" &&
-			model.bundleVerifiedAt.length > 0,
+	const ownDownloads = installed.filter((model) =>
+		isAutoAssignableInstall(model, manifestLoader),
 	);
 	if (ownDownloads.length !== 1) return null;
 	const current = await readAssignments();

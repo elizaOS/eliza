@@ -16,6 +16,9 @@ import {
 } from "../../runtime/planner-loop";
 import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
+  CODING_OPERATION_VERB_PATTERN,
+  EXPANDED_WORK_ARTIFACT_PATTERN,
+  hasNearbyTerms,
   looksLikeCodingWorkRequest,
   looksLikeExplicitDelegationRequest,
   looksLikeInlineCodeSnippetRequest,
@@ -259,6 +262,21 @@ export function hasAckOnlyActionableIntent(
   );
 }
 
+/** Explicit domain routing owns interpretation; legacy coding rescue fills unresolved routes. */
+function permitsInferredCodingDelegation(
+  contexts: readonly string[] | undefined,
+  messageText: string,
+): boolean {
+  if (looksLikeExplicitDelegationRequest(messageText)) return true;
+  const domains = (contexts ?? [])
+    .map((context) => context.trim().toLowerCase())
+    .filter(
+      (context) =>
+        context && context !== "general" && context !== SIMPLE_CONTEXT_ID,
+    );
+  return domains.length === 0 || domains.includes("code");
+}
+
 export function inferAckIntentCandidateActions(
   result: ResponseHandlerResult,
   actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
@@ -275,11 +293,39 @@ export function inferAckIntentCandidateActions(
     const shellAction = findShellDirectActionName(actions);
     if (shellAction) return [shellAction];
   }
+  // A grounded file operation does not need a coding-agent rescue merely
+  // because the generic coding recognizer includes "file". Preserve mixed
+  // coding/delegation requests and explicit domain routing; only disambiguate
+  // these hint words, leaving the original request and every intent intact.
+  const filesystemInference = inferDirectCurrentRequestCandidateInference(
+    actions,
+    fallbackText,
+    result.contexts,
+  );
+  if (
+    filesystemInference.kind === "filesystem" &&
+    filesystemInference.names.length > 0 &&
+    !looksLikeExplicitDelegationRequest(actionText) &&
+    !hasNearbyTerms(
+      actionText,
+      CODING_OPERATION_VERB_PATTERN,
+      EXPANDED_WORK_ARTIFACT_PATTERN,
+      160,
+    ) &&
+    !looksLikeCodingWorkRequest(
+      actionText
+        .replace(/\bfiles?\b/giu, " ")
+        .replace(/\b(?:verification|reference)\s+codes?\b/giu, " "),
+    )
+  )
+    return filesystemInference.names;
   // Coding-work precedes web-search: "build an app that shows the bitcoin price"
   // trips looksLikeWebSearchRequest (market term) yet is a coding task — route it
   // to coding delegation, not a web lookup. Mirrors the coding-first guard in
   // shouldPreferDirectCurrentCandidateActions.
   if (looksLikeCodingWorkRequest(actionText)) {
+    if (!permitsInferredCodingDelegation(result.contexts, fallbackText))
+      return [];
     const codingAction = findCodingDelegationActionName(actions);
     if (codingAction) return [codingAction];
   }
@@ -310,8 +356,9 @@ export function inferDirectCurrentRequestCandidateActions(
 export function inferDirectCurrentRequestCandidateInference(
   actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
   messageText: string,
+  contexts?: readonly string[],
 ): DirectCurrentRequestCandidateInference {
-  return inferDirectCurrentRequestCandidateInferenceFromHeuristics(
+  const inference = inferDirectCurrentRequestCandidateInferenceFromHeuristics(
     actions,
     messageText,
     {
@@ -319,11 +366,25 @@ export function inferDirectCurrentRequestCandidateInference(
       findCodingDelegationActionName,
     },
   );
+  // Explicit model domain routing already hands work to contextual discovery.
+  // Concrete file inference repairs only an omitted route.
+  if (
+    inference.kind === "filesystem" &&
+    contexts?.some((context) => {
+      const name = context.trim().toLowerCase();
+      return name && name !== "general" && name !== SIMPLE_CONTEXT_ID;
+    })
+  )
+    return { names: [], kind: null };
+  return inference.kind === "coding" &&
+    !permitsInferredCodingDelegation(contexts, messageText)
+    ? { names: [], kind: null }
+    : inference;
 }
 
 /**
  * Keep terminal non-applied replies out of metadata-inferred planning. Other
- * answered simple turns may suppress inferred view, owner, or coding matches
+ * answered simple turns may suppress inferred arithmetic, view, owner, or coding matches
  * with the model's explicit no-effect classification and no declared intent; legacy
  * incomplete envelopes remain conservative. Model-selected actions and
  * pending/applied effects keep their normal planning and verification paths.
@@ -340,7 +401,8 @@ export function shouldSuppressInferredCandidateEscalation(args: {
     args.stageOneReplyEffectStatus !== "non_applied" &&
     args.inference.kind !== "view-capability" &&
     !(
-      (args.inference.kind === "coding" ||
+      (args.inference.kind === "calculate" ||
+        args.inference.kind === "coding" ||
         args.inference.kind === "view-surface" ||
         args.inference.kind === "owner-goals" ||
         args.inference.kind === "owner-scheduled-admin") &&

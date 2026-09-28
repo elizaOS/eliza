@@ -145,7 +145,10 @@ it.each(
             return JSON.stringify({
               thought: "Need original.",
               success: false,
-              decision: "RESTORE_HISTORY",
+              // This independent PR uses develop's restoration envelope.
+              // Exclusive RESTORE_* decisions are reviewed separately.
+              decision: "CONTINUE",
+              contextRequest: "history",
             });
           }
           expect(JSON.stringify(params.messages)).toContain("Original 2");

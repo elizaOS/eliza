@@ -11,6 +11,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { isSettingsDefaultLocalModel } from "../../services/local-inference/catalog-policy";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -62,7 +63,8 @@ export function FirstRunOffer({
               "Download the default local model ({{model}}) to run chat on this device.",
           })
         : t("firstrunoffer.detailNoModel", {
-            defaultValue: "No local chat model is available on this device.",
+            defaultValue:
+              "No local chat model is available on this device. Use Eliza Cloud or connect another model provider to chat.",
           })
       : anyActiveDownload
         ? t("firstrunoffer.detailRunningModel", {
@@ -119,7 +121,7 @@ function pickRecommended(
   return (
     catalog.find(
       (model) =>
-        model.id.startsWith("eliza-1-") && !findInstalled(model, installed),
+        isSettingsDefaultLocalModel(model) && !findInstalled(model, installed),
     ) ?? null
   );
 }

@@ -21,7 +21,7 @@ import type {
   RouteHandlerContext,
   RouteHandlerResult,
 } from "@elizaos/core/api/http-plugin";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   interact,
   type NotesInteractResult,
@@ -29,7 +29,11 @@ import {
 } from "../interact.js";
 import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
-import { NotesStore, notesStateFilePath } from "../store.js";
+import {
+  NotesStore,
+  notesPublicationDirectory,
+  notesStateFilePath,
+} from "../store.js";
 import type { StickyNote } from "../types.js";
 
 const temporaryDirectories: string[] = [];
@@ -582,6 +586,157 @@ describe("NotesStore", () => {
       error: { code: "NOTES_STORE_INVALID_JSON" },
     });
     expect(() => store.snapshot()).toThrow("not valid JSON");
+  });
+});
+
+describe("NotesStore on filesystems that deny hard links (#30725)", () => {
+  // Android app storage rejects link(2) with EACCES. Every other filesystem
+  // operation in these tests is real.
+  function denyHardLinks() {
+    return vi.spyOn(fs, "link").mockImplementation(async () => {
+      throw Object.assign(new Error("EACCES: permission denied, link"), {
+        code: "EACCES",
+        syscall: "link",
+      });
+    });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("initializes a fresh store and keeps CRUD across restarts", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const first = await serviceFor(filePath);
+    expect(first.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    const published = JSON.parse(
+      await fs.readFile(
+        path.join(notesPublicationDirectory(filePath), "state.json"),
+        "utf8",
+      ),
+    );
+    expect(published).toMatchObject({ revision: 0, notes: [] });
+    await first.stop();
+
+    const second = await serviceFor(filePath);
+    expect(second.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    const note = await second.createNote({ content: "Survives restart" });
+    await second.stop();
+
+    const third = await serviceFor(filePath);
+    expect(third.getNote(note.id).title).toBe("Survives restart");
+    await third.deleteNote(note.id);
+    await third.stop();
+
+    const fourth = await serviceFor(filePath);
+    expect(fourth.snapshot().notes).toEqual([]);
+    expect(fourth.snapshot().revision).toBe(2);
+    await fourth.stop();
+  });
+
+  it("never replaces a competing initializer's publication", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const rival = {
+      schemaVersion: 2,
+      revision: 7,
+      persistedAt: "2026-07-16T12:00:00.000Z",
+      notes: [],
+    };
+    const publication = notesPublicationDirectory(filePath);
+    await fs.mkdir(publication, { recursive: true });
+    await fs.writeFile(
+      path.join(publication, "state.json"),
+      JSON.stringify(rival),
+      "utf8",
+    );
+    // A second store for the same file loses the publication race and must
+    // adopt the rival's document instead of overwriting it.
+    const store = new NotesStore({ filePath });
+    await expect(store.initialize()).resolves.toBeUndefined();
+    expect(store.snapshot().revision).toBe(7);
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(publication, "state.json"), "utf8"),
+      ),
+    ).toEqual(rival);
+    await store.stop();
+  });
+
+  it("concurrent fresh initializers share one publication", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const notesDir = path.dirname(filePath);
+    await fs.mkdir(notesDir, { recursive: true });
+    // A symlinked alias gives each store its own in-process state, so the
+    // initializers race on the real filesystem like separate processes do.
+    const aliasDir = `${notesDir}-alias`;
+    await fs.symlink(notesDir, aliasDir);
+    const stores = [
+      new NotesStore({ filePath, now: clock() }),
+      new NotesStore({
+        filePath: path.join(aliasDir, "state.json"),
+        now: clock("2026-07-17T12:00:00.000Z"),
+      }),
+    ];
+    await Promise.all(stores.map((store) => store.initialize()));
+    const persisted = JSON.parse(
+      await fs.readFile(
+        path.join(notesPublicationDirectory(filePath), "state.json"),
+        "utf8",
+      ),
+    );
+    // Exactly one candidate won; both stores adopted the same bytes.
+    for (const store of stores) {
+      expect(store.snapshot()).toEqual({ revision: 0, notes: [] });
+      expect((await store.persistedSnapshot()).revision).toBe(0);
+    }
+    expect(persisted.revision).toBe(0);
+    const entries = await fs.readdir(notesDir);
+    // No staging directory or temporary file survives publication.
+    expect(entries.filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
+    for (const store of stores) await store.stop();
+  });
+
+  it("ignores an interrupted publication and fails loudly on a malformed one", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const publication = notesPublicationDirectory(filePath);
+    // An interrupted staging directory is never read as state.
+    const staging = `${publication}.999.interrupted.tmp`;
+    await fs.mkdir(staging, { recursive: true });
+    await fs.writeFile(path.join(staging, "state.json"), "{", "utf8");
+    const fresh = new NotesStore({ filePath });
+    await fresh.initialize();
+    expect(fresh.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    await fresh.stop();
+
+    await fs.writeFile(path.join(publication, "state.json"), "{ nope", "utf8");
+    const corrupt = new NotesStore({ filePath });
+    await expect(corrupt.initialize()).rejects.toMatchObject({
+      code: "NOTES_STORE_INVALID_JSON",
+    });
+  });
+
+  it("keeps an existing flat document authoritative", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const legacy = {
+      schemaVersion: 2,
+      revision: 3,
+      persistedAt: "2026-07-16T12:00:00.000Z",
+      notes: [],
+    };
+    await fs.writeFile(filePath, JSON.stringify(legacy), "utf8");
+    const store = new NotesStore({ filePath });
+    await store.initialize();
+    expect(store.snapshot().revision).toBe(3);
+    await expect(
+      fs.access(notesPublicationDirectory(filePath)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await store.stop();
   });
 });
 

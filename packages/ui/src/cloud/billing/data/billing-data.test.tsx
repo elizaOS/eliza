@@ -74,6 +74,8 @@ describe("useBillingUser", () => {
       id: "api-user-id",
       organization_id: "org-one",
       wallet_address: "0xabc",
+      // Advisory billing-manager role is absent from this payload and never guessed.
+      role: null,
     });
     expect(apiMock).toHaveBeenCalledWith("/api/v1/user", {
       signal: expect.any(AbortSignal),

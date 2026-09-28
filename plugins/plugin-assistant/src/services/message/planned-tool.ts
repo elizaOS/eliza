@@ -24,6 +24,7 @@ import {
   CORE_PLANNER_TERMINALS,
   completionContextSources,
   composeToolDiagnosticRedactor,
+  ElizaError,
   type ExecutePlannedToolCallContext,
   type ExecutePlannedToolCallOptions,
   emitStreamingHook,
@@ -671,7 +672,48 @@ export function collectPlannerTools(
       ),
   );
   if (!hasAnyAction) return [];
-  const actions = narrowedActions ?? collectActionsFromContext(context);
+  // Retrieval rank and execution order are untouched; canonicalize only the
+  // model-facing projection so equal admitted sets have equal wire order.
+  const actions = [
+    ...(narrowedActions ?? collectActionsFromContext(context)),
+  ].sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
+  const definitions = new Map<string, Action>();
+  for (const action of actions) {
+    const previous = definitions.get(action.name);
+    if (
+      previous &&
+      previous !== action &&
+      canonicalJson({
+        tool: buildPlannerToolsFromTieredActions([previous], {
+          expandSubActions: false,
+        }),
+        subActions: [...(previous.subActions ?? [])].sort((left, right) =>
+          (typeof left === "string" ? left : left.name).localeCompare(
+            typeof right === "string" ? right : right.name,
+          ),
+        ),
+      }) !==
+        canonicalJson({
+          tool: buildPlannerToolsFromTieredActions([action], {
+            expandSubActions: false,
+          }),
+          subActions: [...(action.subActions ?? [])].sort((left, right) =>
+            (typeof left === "string" ? left : left.name).localeCompare(
+              typeof right === "string" ? right : right.name,
+            ),
+          ),
+        })
+    )
+      throw new ElizaError(
+        `Conflicting native definitions for action ${action.name}`,
+        {
+          code: "PLANNER_TOOL_NAME_CONFLICT",
+        },
+      );
+    definitions.set(action.name, action);
+  }
   const tierAParents = readTierAParentsFromContext(context);
   const wireActions = options.canonicalFamilies
     ? collectCanonicalPlannerActions(actions, options.directActionNames)
@@ -828,7 +870,9 @@ export function collectPlannerTools(
       (tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
     ),
     ...CORE_PLANNER_TERMINALS,
-  ];
+  ].sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
 }
 
 /** Word-boundary common lead of two or more texts when it is long enough to be worth stating once. */

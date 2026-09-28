@@ -22,7 +22,7 @@ import {
 	composeAgentStatusSnapshot,
 	readAgentStatusViaHttp,
 } from "./agent-status-rpc";
-import { resolveDesktopRuntimeMode } from "./api-base";
+import { resolveBootedDesktopRuntimeMode } from "./api-base";
 import {
 	composeBootProgressSnapshot,
 	readAgentHealthSnapshotViaHttp,
@@ -759,7 +759,7 @@ export function buildBunRpcHandlers({
 		},
 
 		desktopGetRuntimeMode: async () => {
-			const runtimeMode = resolveDesktopRuntimeMode(
+			const runtimeMode = resolveBootedDesktopRuntimeMode(
 				process.env as Record<string, string | undefined>,
 			);
 			return {

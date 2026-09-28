@@ -13,15 +13,15 @@
  */
 
 import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
-import {
-  type LifeOpsActivitySignal,
-  type LifeOpsCircadianRuleFiring,
-  type LifeOpsCircadianState,
-  type LifeOpsPersonalBaseline,
-  type LifeOpsRegularityClass,
+import type {
+  LifeOpsActivitySignal,
+  LifeOpsCircadianRuleFiring,
+  LifeOpsCircadianState,
+  LifeOpsPersonalBaseline,
+  LifeOpsRegularityClass,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import { type LifeOpsActivityWindow } from "./sleep-cycle.js";
+import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 export const MIN_STABILITY_WINDOW_MS = 5 * 60000;
 export const WAKE_CONFIRM_WINDOW_MS = 10 * 60000;
 export const SLEEP_ONSET_WINDOW_MS = 20 * 60000;

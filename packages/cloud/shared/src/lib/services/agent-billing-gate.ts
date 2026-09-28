@@ -8,6 +8,7 @@
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { readAgentFundingAccount } from "./agent-funding-account";
+import { BillingHoldActiveError, billingHoldService } from "./billing-hold";
 import {
   readWelcomeBonusWithheldSettings,
   type SignupGrantWithheldReason,
@@ -17,6 +18,10 @@ export interface CreditGateResult {
   allowed: boolean;
   balance: number;
   error?: string;
+  /** Set when an underfunding payment reversal holds paid admission (#22930). */
+  paymentReversalHold?: true;
+  /** USD still owed on the reversal shortfall while {@link paymentReversalHold} is set. */
+  paymentReversalOutstandingUsd?: string;
   /**
    * Set only for organizations carrying historical welcome-credit withholding
    * metadata. New accounts start at zero and never write this legacy state.
@@ -104,6 +109,19 @@ async function runCreditGate(
       parseGateCreditBalance(org.credit_balance) +
       parseGateCreditBalance(org.eligible_subscription_allowance);
     if (!Number.isFinite(balance)) throw new CorruptCreditBalanceError(balance);
+
+    // An underfunding refund or dispute holds paid admission regardless of
+    // subscription allowance until repayment or reinstatement clears it (#22930).
+    const hold = await billingHoldService.getState(organizationId);
+    if (hold.status === "held") {
+      return {
+        allowed: false,
+        balance,
+        paymentReversalHold: true,
+        paymentReversalOutstandingUsd: hold.outstandingUsd,
+        error: new BillingHoldActiveError(organizationId, hold.outstandingUsd).message,
+      };
+    }
 
     if (balance < minimumBalance) {
       // A successful credit transaction removes this marker atomically with

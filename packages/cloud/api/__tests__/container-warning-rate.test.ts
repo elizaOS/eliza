@@ -1,6 +1,9 @@
 import { afterAll, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
-import { calculateDailyContainerCost } from "@/lib/constants/pricing";
+import {
+  CONTAINER_PRICING,
+  calculateDailyContainerCost,
+} from "@/lib/constants/pricing";
 
 const sent: Array<{
   dailyCost: number;
@@ -35,6 +38,7 @@ mock.module("@/db/repositories/container-billing", () => ({
         billing_email: "fixture@example.com",
         credit_balance: "0",
         pay_as_you_go_from_earnings: false,
+        subscription_allowance_available: "0.000000",
       },
     ],
     scheduleShutdownWarning: async () => true,
@@ -89,4 +93,16 @@ test("shutdown mail displays the actual full daily rate while preserving the pro
     minimumRecommended: Math.round(daily * 7 * 100) / 100,
   });
   expect(sent[0].dailyCost).not.toBe(sent[0].requiredCredits);
+});
+
+test("the container catalogue advertises only the settled daily rate (#22957)", () => {
+  // Deployment, image-upload, per-GB storage/bandwidth, extra-instance,
+  // monthly-reference and low-credit constants were advertised without a
+  // metering caller. Readmitting one requires an idempotent, receipted charge.
+  expect(Object.keys(CONTAINER_PRICING).sort()).toEqual([
+    "DAILY_RUNNING_COST",
+    "SHUTDOWN_WARNING_HOURS",
+  ]);
+  expect(CONTAINER_PRICING.DAILY_RUNNING_COST).toBe(0.67);
+  expect(calculateDailyContainerCost()).toBe(0.67);
 });

@@ -188,7 +188,7 @@ describe("parent-agent explicit coding-mode negative conformance", () => {
       kind: "coding_mutation_unverified",
       transient: false,
       message:
-        "I changed files but could not complete the required command verification. The coding task is incomplete.",
+        "Required workspace verification did not complete. The coding task is incomplete.",
     };
     expect(readFileSync(mutatedFile, "utf8")).toBe("mutated but unverified\n");
     expect(sent).toHaveLength(1);

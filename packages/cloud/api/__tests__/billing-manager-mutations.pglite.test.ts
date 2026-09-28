@@ -59,7 +59,11 @@ mock.module("@/lib/services/auto-top-up", () => ({
     },
   },
 }));
+// The route's auth graph (repositories -> allowance-first funding) imports
+// other credits exports, so keep them real and replace only the pack lookup.
+const creditsActual = await import("@/lib/services/credits");
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: {
     getCreditPackById: async () => ({
       is_active: true,
@@ -93,6 +97,17 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
     bindSession: async () => {
       effects.push("bind-session");
     },
+  },
+}));
+mock.module("@/lib/services/subscription-customer-portal", () => ({
+  // The portal adapter re-runs the route's billing-manager revalidation before its provider effect.
+  createSubscriptionPortalSession: async (
+    input: { organizationId: string },
+    reauthorize: () => Promise<void>,
+  ) => {
+    await reauthorize();
+    effects.push(`portal:${input.organizationId}`);
+    return { url: "https://billing.stripe.com/p/session/test" };
   },
 }));
 mock.module("@/lib/stripe", () => ({
@@ -148,6 +163,10 @@ beforeAll(async () => {
     (await import("../stripe/create-checkout-session/route")).default,
   );
   route.route("/topup", (await import("../auto-top-up/trigger/route")).default);
+  route.route(
+    "/portal",
+    (await import("../v1/subscriptions/portal/route")).default,
+  );
 }, 30_000);
 beforeEach(async () => {
   effects.length = 0;
@@ -196,13 +215,19 @@ function request(
     env,
   );
 }
-for (const path of ["checkout", "topup"]) {
+for (const path of ["checkout", "topup", "portal"]) {
   for (const role of ["owner", "admin"])
     test(`${path}: current ${role} reaches its payment adapter`, async () => {
       cached.role = role;
       await pg.query("UPDATE users SET role=$1 WHERE id=$2", [role, userId]);
       expect((await request(path)).status).toBe(200);
-      expect(effects).toContain(path === "checkout" ? "stripe" : "topup");
+      expect(effects).toContain(
+        path === "checkout"
+          ? "stripe"
+          : path === "portal"
+            ? `portal:${org}`
+            : "topup",
+      );
     });
   for (const role of ["member", "guest"])
     test(`${path}: ${role} has no financial effects`, async () => {

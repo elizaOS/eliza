@@ -10,7 +10,8 @@
  * Read-only introspection; both status endpoints treat optional local-inference
  * and cloud health as best-effort and degrade rather than 500. Also exports
  * `computeCanRespond`, the shared "first-turn capability online" predicate
- * (live runtime AND `running` AND a registered text-generation handler) reused
+ * (live runtime AND `running` AND a registered text-generation handler AND no
+ * cached Cloud catalog answer that the only text provider's model is gone) reused
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
 import type http from "node:http";
@@ -461,10 +462,115 @@ export function computeCanRespond(
     return false;
   }
   try {
-    return hasTextGenerationHandler(runtime);
+    if (!hasTextGenerationHandler(runtime)) return false;
   } catch {
     return false;
   }
+  return !isCloudTextModelUnavailable(runtime);
+}
+
+/**
+ * `{ modelReadiness }` for status payloads when the Cloud model registry is
+ * running, so clients can tell an invalid model setting apart from a provider
+ * outage or a missing provider.
+ */
+export function cloudModelReadinessField(runtime: AgentRuntime | null): {
+  modelReadiness?: CloudModelReadinessView;
+} {
+  const readiness = readCloudModelReadiness(runtime);
+  return readiness ? { modelReadiness: readiness } : {};
+}
+
+/** Provider name the elizacloud plugin registers its text handlers under. */
+const ELIZA_CLOUD_TEXT_PROVIDER = "elizaOSCloud";
+const CLOUD_MODEL_REGISTRY_SERVICE = "CLOUD_MODEL_REGISTRY";
+
+/**
+ * Status projection of the Cloud model registry's text-model readiness
+ * (plugins/plugin-elizacloud/src/services/cloud-model-readiness.ts). Read
+ * structurally so the status route does not load the Cloud plugin graph.
+ */
+export type CloudModelReadinessView =
+  | { status: "available"; checkedAt: number }
+  | { status: "unknown"; reason: string; checkedAt: number | null }
+  | {
+      status: "model_not_available";
+      code: "MODEL_NOT_AVAILABLE";
+      missing: Array<{
+        modelType: "TEXT_SMALL" | "TEXT_LARGE";
+        configKey: string | null;
+        modelId: string;
+      }>;
+      message: string;
+      checkedAt: number;
+    };
+
+type CloudModelReadinessSource = {
+  getTextModelReadiness: () => CloudModelReadinessView;
+};
+
+function isCloudModelReadinessSource(
+  value: unknown,
+): value is CloudModelReadinessSource {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { getTextModelReadiness?: unknown })
+      .getTextModelReadiness === "function"
+  );
+}
+
+/**
+ * Cached Cloud catalog readiness for the configured TEXT_SMALL/TEXT_LARGE ids,
+ * or null when the Cloud model registry is not running. Never performs an
+ * inference call; the registry refreshes its catalog in the background.
+ */
+export function readCloudModelReadiness(
+  runtime: AgentRuntime | null,
+): CloudModelReadinessView | null {
+  if (!runtime) return null;
+  try {
+    const service = runtime.getService(CLOUD_MODEL_REGISTRY_SERVICE);
+    if (!isCloudModelReadinessSource(service)) return null;
+    return service.getTextModelReadiness();
+  } catch (error) {
+    // error-policy:J7 readiness is a status input; an unreadable registry is
+    // "unknown", which keeps the handler-registration answer (fail open).
+    runtime.logger.warn(
+      {
+        src: "health-routes",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Cloud model readiness unavailable",
+    );
+    return null;
+  }
+}
+
+/**
+ * True only on a positive catalog answer that a configured Cloud text model id
+ * is not listed AND Eliza Cloud is the sole registered provider for that model
+ * type, so no failover can serve it. Catalog outages stay `unknown` and never
+ * gate chat (#30228).
+ */
+function isCloudTextModelUnavailable(runtime: AgentRuntime): boolean {
+  const readiness = readCloudModelReadiness(runtime);
+  if (readiness?.status !== "model_not_available") return false;
+  let registrations: Array<{ modelType: string; provider: string }>;
+  try {
+    registrations = runtime.getModelRegistrations?.() ?? [];
+  } catch {
+    return false;
+  }
+  return readiness.missing.some(({ modelType }) => {
+    const providers = registrations
+      .filter((entry) => entry.modelType === modelType)
+      .map((entry) => entry.provider);
+    return (
+      providers.length > 0 &&
+      providers.every((provider) => provider === ELIZA_CLOUD_TEXT_PROVIDER)
+    );
+  });
 }
 /**
  * Handle health / status / runtime introspection routes.
@@ -534,6 +640,7 @@ export async function handleHealthRoutes(
       agentName: state.agentName,
       model,
       canRespond: computeCanRespond(state.runtime, state.agentState),
+      ...cloudModelReadinessField(state.runtime),
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
@@ -606,6 +713,7 @@ export async function handleHealthRoutes(
         canRespond: databaseLiveness.terminal
           ? false
           : computeCanRespond(runtime, state.agentState),
+        ...cloudModelReadinessField(runtime),
         runtime: runtime ? "ok" : "not_initialized",
         database: databaseLiveness.ok
           ? runtime

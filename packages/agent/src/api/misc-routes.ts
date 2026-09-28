@@ -13,7 +13,6 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
-  buildStoreVariantBlockedMessage,
   type CustomActionDef,
   isAndroidMobile,
   isLocalCodeExecutionAllowed,
@@ -45,6 +44,7 @@ import type { ServerState } from "./server-types.ts";
 import {
   capturedTerminalOutputIsSafe,
   MAX_TERMINAL_CAPTURE_BYTES,
+  terminalRejectionResponse,
 } from "./terminal-output-contract.ts";
 import {
   resolveRequestedTerminalRunId,
@@ -420,11 +420,11 @@ export async function handleMiscRoutes(
   // ── POST /api/terminal/run ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/terminal/run") {
     if (!isLocalCodeExecutionAllowed()) {
-      error(res, buildStoreVariantBlockedMessage("Terminal commands"), 403);
+      json(res, terminalRejectionResponse("TERMINAL_SHELL_DISABLED"), 403);
       return true;
     }
     if (state.shellEnabled === false) {
-      error(res, "Shell access is disabled", 403);
+      json(res, terminalRejectionResponse("TERMINAL_SHELL_DISABLED"), 403);
       return true;
     }
     const rawTerm = await readJsonBody<Record<string, unknown>>(req, res);
@@ -441,16 +441,20 @@ export async function handleMiscRoutes(
     const body = parsedTerm.data;
     const terminalRejection = ctx.resolveTerminalRunRejection(req, body);
     if (terminalRejection) {
-      error(res, terminalRejection.reason, terminalRejection.status);
+      json(
+        res,
+        terminalRejectionResponse("TERMINAL_AUTHORIZATION_REQUIRED"),
+        terminalRejection.status,
+      );
       return true;
     }
     const command = body.command.trim();
     if (!command) {
-      error(res, "Missing or empty command");
+      json(res, terminalRejectionResponse("TERMINAL_COMMAND_REQUIRED"), 400);
       return true;
     }
     if (command.length > 4096) {
-      error(res, "Command exceeds maximum length (4096 chars)", 400);
+      json(res, terminalRejectionResponse("TERMINAL_COMMAND_TOO_LONG"), 400);
       return true;
     }
     if (
@@ -458,9 +462,9 @@ export async function handleMiscRoutes(
       command.includes("\r") ||
       command.includes("\0")
     ) {
-      error(
+      json(
         res,
-        "Command must be a single line without control characters",
+        terminalRejectionResponse("TERMINAL_COMMAND_SINGLE_LINE_REQUIRED"),
         400,
       );
       return true;

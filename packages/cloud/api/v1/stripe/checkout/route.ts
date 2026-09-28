@@ -5,9 +5,6 @@
  * payment_requests table. Looks up the request, verifies it's
  * pending and provider=stripe, then dispatches to the
  * Stripe payment adapter.
- *
- * The legacy app-charge checkout flow at
- * `/api/v1/apps/[id]/charges/[chargeId]/checkout` is unchanged.
  */
 
 import { Hono } from "hono";

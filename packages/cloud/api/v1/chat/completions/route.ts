@@ -102,6 +102,7 @@ import {
   appInferenceErrorResponse,
 } from "@/lib/services/app-subscription-inference-admission";
 import { appsService } from "@/lib/services/apps";
+import { BillingHoldActiveError } from "@/lib/services/billing-hold";
 import { contentModerationService } from "@/lib/services/content-moderation";
 import type {
   CreditReconciliationResult,
@@ -2066,6 +2067,20 @@ export async function handleChatCompletionsPOST(
               },
             },
             { status: 400 },
+          ),
+        );
+      }
+      if (error instanceof BillingHoldActiveError) {
+        return addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: error.message,
+                type: "insufficient_quota",
+                code: error.code,
+              },
+            },
+            { status: 402 },
           ),
         );
       }

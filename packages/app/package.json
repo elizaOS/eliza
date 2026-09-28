@@ -325,8 +325,7 @@
     "three": "^0.184.0",
     "util": "^0.12.5",
     "ws": "^8.21.3",
-    "zod": "^4.6.5",
-    "@elizaos/remote-control-host": "workspace:*"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",

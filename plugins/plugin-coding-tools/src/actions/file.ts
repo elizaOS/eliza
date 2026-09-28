@@ -416,8 +416,9 @@ async function deviceFileHandler(
 
 export const fileAction: Action = {
   name: "FILE",
-  contexts: [...CODING_TOOLS_CONTEXTS],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  contexts: ["files", ...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: ["files", ...CODING_TOOLS_CONTEXTS] },
+  tags: ["resource:files"],
   roleGate: { minRole: "ADMIN" },
   // Stage-1 models routinely hint file work with invented names like
   // FILES_READ / FILES_LIST; the retrieval layer resolves simile hints to this
@@ -468,7 +469,8 @@ export const fileAction: Action = {
     },
     {
       name: "content",
-      description: "Full file contents for action=write.",
+      description:
+        "Exact full text for action=write, preserving all whitespace including the final newline.",
       required: false,
       schema: { type: "string" },
     },
@@ -582,7 +584,7 @@ export const fileAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "For action=read continuation, reject if the file revision changed.",
+        "For read continuation only, copy the opaque revision from the latest READ of this file, never a write receipt version or content hash. Omit on initial reads and after writes or edits.",
       required: false,
       schema: { type: "string" },
     },

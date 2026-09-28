@@ -16,6 +16,7 @@ import type {
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -44,6 +45,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedUserUtterance?: string;
   /** Authenticated transport semantics; never accepted from bridge RPC params. */
   channel?: SharedRuntimeChannel;
+  /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
+  trustedAccountState?: PersonalSharedFallbackAccountState;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -154,7 +157,7 @@ export async function coordinateSharedConversationPrewarm(
   agentId: string,
   roomId: string,
   options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
+): Promise<SharedConversationPrewarmResult> {
   const namespace = requireHistoryCoordinator(options);
   const response = await coordinatorStub(namespace, agentId, roomId).fetch(
     "https://shared-runtime.internal/prewarm",
@@ -172,7 +175,20 @@ export async function coordinateSharedConversationPrewarm(
   await requireCoordinatorResponse(response, "conversation prewarm");
   // The Durable Object releases its per-room queue when the response body is
   // consumed. Drain this tiny acknowledgement before the first real turn.
-  await response.arrayBuffer();
+  const body: unknown = await response.json();
+  const organizationId =
+    typeof body === "object" && body !== null && "organizationId" in body
+      ? body.organizationId
+      : undefined;
+  if (organizationId !== undefined && (typeof organizationId !== "string" || !organizationId)) {
+    throw new Error("[shared-runtime] conversation prewarm returned an invalid owner");
+  }
+  return organizationId ? { organizationId } : {};
+}
+
+/** Prewarm acknowledgement; personal rooms report their verified owning organization. */
+export interface SharedConversationPrewarmResult {
+  organizationId?: string;
 }
 
 /** Persist one idempotent lifecycle marker without dispatching or billing a model turn. */
@@ -340,6 +356,9 @@ export async function coordinateSharedBridge(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedAccountState
+          ? { trustedAccountState: options.trustedAccountState }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
@@ -374,6 +393,9 @@ export async function coordinateSharedStream(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedAccountState
+          ? { trustedAccountState: options.trustedAccountState }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },

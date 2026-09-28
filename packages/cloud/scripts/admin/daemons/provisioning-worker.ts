@@ -298,7 +298,11 @@ let depsPromise: Promise<WorkerDeps> | null = null;
  */
 export function __setDepsForTests(deps: WorkerDeps | null): void {
   depsPromise = deps ? Promise.resolve(deps) : null;
-  if (!deps) cachedWarmPoolManagerInstance = null;
+  if (!deps) {
+    cachedWarmPoolManagerInstance = null;
+    billingResumeCursor = undefined;
+    personalDedicatedEntitlementCursor = undefined;
+  }
 }
 
 async function loadDeps(): Promise<WorkerDeps> {
@@ -890,6 +894,44 @@ async function processReplacementCleanupReconcileCycle(
 ) {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.reconcileReplacementCleanupFences(batchSize);
+}
+
+let personalDedicatedEntitlementCursor: string | undefined;
+
+/**
+ * Advance one page of personal Dedicated entitlement convergence (#25146):
+ * stop the preserved runtime promptly when a paid plan lapses and restart the
+ * same runtime when it is restored. Runs before billing resume so a lapsed
+ * plan fences credit-driven automatic resume in the same cycle.
+ */
+export async function processPersonalDedicatedEntitlementReconcileCycle(
+  batchSize: number,
+) {
+  const { provisioningJobService } = await loadDeps();
+  const result =
+    await provisioningJobService.reconcilePersonalDedicatedEntitlements({
+      limit: batchSize,
+      afterAuthorityId: personalDedicatedEntitlementCursor,
+    });
+  personalDedicatedEntitlementCursor = result.nextCursor ?? undefined;
+  return result;
+}
+
+let billingResumeCursor: string | undefined;
+
+/**
+ * Advance one page of billing-suspension recovery (#30702). The cursor moves
+ * past unfunded accounts so funded ones are never starved behind them, and
+ * wraps once the last page is reached.
+ */
+export async function processBillingResumeReconcileCycle(batchSize: number) {
+  const { provisioningJobService } = await loadDeps();
+  const result = await provisioningJobService.reconcileBillingSuspendedResumes({
+    limit: batchSize,
+    afterIntentId: billingResumeCursor,
+  });
+  billingResumeCursor = result.nextCursor ?? undefined;
+  return result;
 }
 
 async function processHeartbeatCycle(
@@ -1828,6 +1870,38 @@ async function runWorkCycle(
         if (result.total > 0) {
           logger.info(
             "[provisioning-worker] expired Dedicated funding reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "personal dedicated entitlement reconcile",
+      () => processPersonalDedicatedEntitlementReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.open > 0 || result.failures.length > 0) {
+          logger.info(
+            "[provisioning-worker] personal dedicated entitlement reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "billing suspension resume reconcile",
+      () => processBillingResumeReconcileCycle(config.batchSize),
+      (result) => {
+        if (
+          result.queued > 0 ||
+          result.reused > 0 ||
+          result.failures.length > 0
+        ) {
+          logger.info(
+            "[provisioning-worker] billing suspension resume reconcile complete",
             result,
           );
         }
