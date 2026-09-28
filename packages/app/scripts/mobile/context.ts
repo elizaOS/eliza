@@ -11,6 +11,7 @@ import {
 import { resolveMainAppDir } from "../lib/app-dir.ts";
 import { androidUsesAppDirFor } from "../lib/mobile-build-decisions.ts";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.ts";
+import { loadWhitelabelBrand } from "./whitelabel.ts";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -40,6 +41,10 @@ export const packagesRoot = path.resolve(appCoreRoot, "..");
 export const elizaRepoRoot = path.resolve(packagesRoot, "..");
 
 export const appDir = resolveMainAppDir(repoRoot, "app");
+
+// Private white-label brand (ELIZA_WHITELABEL_DIR). It may change the visible
+// name and artwork only; app ID, URL scheme and signing stay canonical.
+export const WHITELABEL = loadWhitelabelBrand(process.env, elizaRepoRoot);
 
 export const iosDir = path.join(appDir, "ios", "App");
 
@@ -154,6 +159,7 @@ export function readAppIdentity() {
     configAppId;
   const appName =
     process.env.ELIZA_APP_NAME?.trim() ||
+    WHITELABEL?.appName ||
     src.match(/appName:\s*["']([^"']+)["']/)?.[1];
   const urlScheme =
     process.env.ELIZA_APP_URL_SCHEME?.trim() ||
@@ -168,6 +174,7 @@ export function readAppIdentity() {
   // to the upstream elizaOS accent so a config without the field is unchanged.
   const iconBackgroundColor =
     process.env.ELIZA_ICON_BACKGROUND?.trim() ||
+    WHITELABEL?.iconBackgroundColor ||
     src.match(/iconBackgroundColor:\s*["']([^"']+)["']/)?.[1] ||
     "#FF5800";
   // android.userAgentMarkers is an optional array literal nested under

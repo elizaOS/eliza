@@ -2127,6 +2127,16 @@ export {
 	PostRelationshipLinkRequestSchema,
 } from "./contracts/relationships-routes.js";
 export {
+	buildRemoteAgentPairingUri,
+	normalizeRemoteAgentOrigin,
+	parseRemoteAgentPairingUri,
+	REMOTE_AGENT_ENDPOINTS,
+	REMOTE_AGENT_PAIRING_HOST,
+	REMOTE_AGENT_PAIRING_PATH,
+	REMOTE_AGENT_PAIRING_VERSION,
+	type RemoteAgentPairingPayload,
+} from "./contracts/remote-agent-pairing.js";
+export {
 	classifyRemoteAgentRequestPath,
 	parseRemoteAgentRequest,
 	REMOTE_AGENT_CHAT_TIMEOUT_MS,

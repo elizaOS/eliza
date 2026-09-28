@@ -55,6 +55,7 @@ import {
   registerMediaGcWorker,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
+import { dstackOperatorAttestationRoute } from "../api/tee-attestation-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -194,6 +195,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
+      // Authenticated operator attestation; 404 unless dstack is configured.
+      dstackOperatorAttestationRoute,
     ],
     responseHandlerFieldEvaluators: [viewNavigationField],
     responseHandlerEvaluators: [viewNavigationEvaluator],

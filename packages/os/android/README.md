@@ -21,6 +21,8 @@ commands. Building an image does not flash a physical device.
 The Pixel 11 Pro lock targets stock B1 (`CD1A.260905.001.B1`) with the pinned
 Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference is
 a build input; physical installation still requires qualification and a signed contract.
+Alpha Phone (#31023) names Pixel 10, which has no lock here; see the grizzly
+`decisionNote` in `hardware-targets.json` before choosing a device.
 Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 
@@ -79,3 +81,20 @@ AOSP targets may admit them. Sync rechecks copied bytes before replacing vendor
 output. Launcher builds derive `ELIZA_CHROMIUM_CERT_SHA256` from the selected pin
 and reject a conflicting override. Bitwarden's upstream source/signature contract
 is unchanged. Development unpacked-extension proofs do not qualify release builds.
+
+## White-label builds
+
+Keep private branding outside the repository and point `ELIZA_WHITELABEL_DIR`
+at it. `brand.json` (schema 1) names `appName`, optional `iconBackgroundColor`,
+`icon`, `splash`, `splashMark` (required for Cloud APKs) and
+`bootanimation.{logo,background}`. It cannot change the package ID, URL scheme
+or signing; unknown fields fail the build. Same-ID white-label APKs build in the
+app's own Android directory, never the tracked shared tree.
+
+```bash
+export ELIZA_WHITELABEL_DIR=/absolute/private/brand
+bun run --cwd packages/app build:android:cloud
+make -C packages/os/android bootanimation
+```
+
+The rendered frames and `bootanimation.zip` are gitignored build outputs.

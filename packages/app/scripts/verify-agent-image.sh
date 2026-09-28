@@ -27,6 +27,10 @@ set -Eeuo pipefail
 #   SMOKE_PORT           Host port to bind for smoke boot (default: 32138)
 #   SMOKE_TIMEOUT_SEC    Max wait for boot probe (default: 420)
 #   DOCKER_IMAGE         Override image tag completely
+#   DOCKER_BUILD_EXTRA_ARGS
+#                        Newline-separated extra `docker build` arguments, e.g.
+#                        --platform, --build-arg NODE_VERSION=... or digest-pinned
+#                        --build-context overrides (deploy/dstack-alpha).
 #   BOOT_VERIFY_ONLY     If "true", skip the build and only boot-verify
 #                        DOCKER_IMAGE (must be set). Equivalent to
 #                        --boot-verify-only.
@@ -732,7 +736,12 @@ minimum_kb=$((18 * 1024 * 1024))
 if [[ -n "$available_kb" && "$available_kb" -lt "$minimum_kb" ]]; then
   fail "Insufficient disk for Docker smoke build: available=$((available_kb / 1024 / 1024))GiB required>=18GiB"
 fi
+EXTRA_BUILD_ARGS=()
+while IFS= read -r extra_arg; do
+  [[ -n "$extra_arg" ]] && EXTRA_BUILD_ARGS+=("$extra_arg")
+done <<< "${DOCKER_BUILD_EXTRA_ARGS:-}"
 "$DOCKER_BIN" build \
+  ${EXTRA_BUILD_ARGS[@]+"${EXTRA_BUILD_ARGS[@]}"} \
   --file "$APP_CORE_DIR/deploy/Dockerfile.ci" \
   --tag "$DOCKER_IMAGE" \
   --build-arg "BUN_VERSION=$BUN_VERSION" \
