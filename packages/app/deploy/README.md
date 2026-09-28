@@ -2,7 +2,8 @@
 
 This directory contains the generic deployment assets for elizaOS apps: Dockerfiles, compose files, node rollout scripts, Cloudflare proxy sources, and the cloud-agent runtime helpers.
 
-This directory is part of `packages/app`.
+This directory is part of `packages/app`. [`dstack-alpha/`](dstack-alpha/README.md)
+holds the reproducible Alpha agent deployment for dstack CVMs.
 
 Build from the repository root:
 
