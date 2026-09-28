@@ -111,6 +111,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/dev-ui-vision.ts",
   "scripts/lib/dev-ui-vite.ts",
   "scripts/lib/duet-bridge.ts",
+  "scripts/lib/electrobun-ffi-callback-strings.ts",
   "scripts/lib/electrobun-linux-build-dir.ts",
   "scripts/lib/electrobun-loopback-hardening.ts",
   "scripts/lib/eliza-error.ts",

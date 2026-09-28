@@ -172,6 +172,7 @@ export default defineConfig({
       "scripts/ensure-fused-inference-install.test.ts",
       "scripts/build-helpers/arm64-simd.test.ts",
       "scripts/lib/electrobun-loopback-hardening.test.ts",
+      "scripts/lib/electrobun-ffi-callback-strings.test.ts",
       "scripts/lib/linux-artifact-permissions.test.ts",
       "scripts/lib/fused-artifact-integrity.test.ts",
       "scripts/lib/ios-fused-slice-cache.test.ts",
