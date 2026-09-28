@@ -11,7 +11,7 @@
  */
 
 import { LoginClient } from "@elizaos/auth";
-import { writeStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { replaceStoredStewardTokenIfCurrent } from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   type ComponentProps,
   type ReactNode,
@@ -249,7 +249,14 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
           if (res.ok) {
             const body = await parseStewardResponseBody(res);
             if (body?.token) {
-              await writeStoredStewardToken(body.token);
+              // Compare-and-swap against the token this refresh started from:
+              // a response that lands after an explicit sign-out (or an
+              // account switch) must not resurrect the ended session.
+              const replaced = await replaceStoredStewardTokenIfCurrent(
+                token,
+                body.token,
+              );
+              if (!replaced) return;
               lastSyncedToken.current = body.token;
               wasAuthenticated.current = true;
             }

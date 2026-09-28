@@ -178,6 +178,25 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         return;
       }
 
+      // Persist the credential durably before anything publishes it. A
+      // storage failure is a visible, recoverable error, never a screen stuck
+      // on "submitting" with an unhandled rejection.
+      try {
+        await persistActiveServerCredential(result.sessionId);
+      } catch {
+        // error-policy:J4 storage failure is visible and cannot advance startup
+        // or publish the session through the live client/browser mirror.
+        setSubmitState({
+          phase: "error",
+          message: t("bootstrapstep.errorStorage", {
+            defaultValue:
+              "The session could not be saved. Check device storage access, then get a new bootstrap token from your Cloud dashboard.",
+          }),
+          tone: "danger",
+        });
+        return;
+      }
+
       // P0 bridge: write session id to sessionStorage. P1 replaces this with
       // an HttpOnly cookie set by the server on the exchange response.
       try {
@@ -186,7 +205,6 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         // sessionStorage unavailable (e.g. private browsing on some browsers).
         // Session is still in memory for this page load; startup can advance.
       }
-      await persistActiveServerCredential(result.sessionId);
       client.setToken(result.sessionId);
 
       setSubmitState({ phase: "success" });

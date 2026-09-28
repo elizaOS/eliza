@@ -28,7 +28,11 @@ const getCloudCreditsMock = vi.hoisted(() => vi.fn());
 const cloudDisconnectMock = vi.hoisted(() => vi.fn());
 const signOutFromSsoBridgedHostMock = vi.hoisted(() => vi.fn());
 const signOutAndroidCloudMock = vi.hoisted(() => vi.fn());
-const nativePlatformState = vi.hoisted(() => ({ enabled: false }));
+const nativePlatformState = vi.hoisted(() => ({
+  enabled: false,
+  platform: "android",
+}));
+const revokeIosStagingMock = vi.hoisted(() => vi.fn());
 const isElizaCloudRuntimeLockedMock = vi.hoisted(() => vi.fn());
 const isAppModeHostMock = vi.hoisted(() => vi.fn());
 const clearManagedCloudAccountBindingMock = vi.hoisted(() => vi.fn());
@@ -44,13 +48,22 @@ vi.mock("@capacitor/core", async (importOriginal) => {
     Capacitor: {
       ...actual.Capacitor,
       isNativePlatform: () => nativePlatformState.enabled,
+      getPlatform: () => nativePlatformState.platform,
     },
   };
 });
 
 vi.mock("../platform/android-runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../platform/android-runtime")>()),
-  isAndroidCloudBuild: () => true,
+  isAndroidCloudBuild: () => nativePlatformState.platform === "android",
+}));
+
+vi.mock("../ios-cloud/ios-cloud-auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ios-cloud/ios-cloud-auth")>()),
+  hasIosNativeCloudCredential: () => false,
+  isIosNativeCloudAuthAvailable: async () => false,
+  recoverIosCloudCredential: async () => "none",
+  revokeIosCloudStagedCredential: revokeIosStagingMock,
 }));
 
 vi.mock("../android-cloud/android-cloud-auth", async (importOriginal) => ({
@@ -115,6 +128,8 @@ describe("useCloudState — Cloud account sign-out", () => {
       clearPersistedActiveServer();
     });
     nativePlatformState.enabled = false;
+    nativePlatformState.platform = "android";
+    revokeIosStagingMock.mockReset().mockResolvedValue(undefined);
     isElizaCloudRuntimeLockedMock.mockReturnValue(true);
     isAppModeHostMock.mockReturnValue(false);
   });
@@ -188,4 +203,48 @@ describe("useCloudState — Cloud account sign-out", () => {
     expect(result.current.elizaCloudEnabled).toBe(false);
     expect(result.current.elizaCloudUserId).toBeNull();
   });
+
+  it.each([false, true])(
+    "reconciles iOS staging before SSO sign-out (revocation fails: %s)",
+    async (fails) => {
+      nativePlatformState.enabled = true;
+      nativePlatformState.platform = "ios";
+      getCloudStatusMock.mockResolvedValue({
+        connected: true,
+        enabled: true,
+        userId: "prior-sso-user",
+      });
+      revokeIosStagingMock.mockImplementation(async () => {
+        expect(signOutFromSsoBridgedHostMock).not.toHaveBeenCalled();
+        if (fails) throw new Error("Staged revocation unavailable");
+      });
+      const params = makeParams();
+      const { result } = renderHook(() => useCloudState(params));
+      act(() => {
+        result.current.setElizaCloudEnabled(true);
+        result.current.setElizaCloudConnected(true);
+        result.current.setElizaCloudUserId("prior-sso-user");
+      });
+
+      await act(async () => {
+        if (fails) {
+          await expect(result.current.handleCloudSignOut()).rejects.toThrow(
+            "Staged revocation unavailable",
+          );
+        } else {
+          await result.current.handleCloudSignOut();
+        }
+      });
+
+      expect(revokeIosStagingMock).toHaveBeenCalledTimes(1);
+      expect(signOutFromSsoBridgedHostMock).toHaveBeenCalledTimes(
+        fails ? 0 : 1,
+      );
+      expect(result.current.elizaCloudConnected).toBe(fails);
+      expect(result.current.elizaCloudEnabled).toBe(fails);
+      expect(result.current.elizaCloudUserId).toBe(
+        fails ? "prior-sso-user" : null,
+      );
+    },
+  );
 });
