@@ -837,6 +837,7 @@ export class CreditsService {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
     await CacheInvalidation.onCreditMutation(organizationId);
+    await CacheInvalidation.onPurchasedCreditMutation(organizationId);
   }
 
   async deductCredits(params: DeductCreditsParams): Promise<{
@@ -1581,6 +1582,8 @@ export class CreditsService {
     invalidateOrganizationCache(params.organizationId).catch((error) => {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
+    // A reversal lowers the purchased-credit total behind the RPM tier.
+    await CacheInvalidation.onPurchasedCreditMutation(params.organizationId);
     return result;
   }
 

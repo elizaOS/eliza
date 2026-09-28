@@ -22,7 +22,7 @@ import { getMaxAppsPerOrg } from "../constants/app-quota";
 import { resolveMaxCloudCharactersForOrg } from "../constants/cloud-character-quota";
 import { resolveMaxContainersForOrg } from "../constants/pricing";
 import {
-  ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES,
+  ORG_TIER_PURCHASED_CREDIT_SOURCES,
   type OrgTierData,
   resolveOrgTierFromSourceValues,
 } from "./org-rate-limits";
@@ -157,6 +157,44 @@ export function requireOrganizationResourceLimit(
     });
   return observation.limit;
 }
+const paymentIdentity = sql`COALESCE(${creditTransactions.stripe_payment_intent_id}, '')`;
+const purchasedPaymentIdentity = sql.join(
+  ORG_TIER_PURCHASED_CREDIT_SOURCES.paymentIdentityPrefixes.map(
+    (prefix) => sql`starts_with(${paymentIdentity}, ${prefix})`,
+  ),
+  sql` OR `,
+);
+const purchasedMetadataType = sql.join(
+  ORG_TIER_PURCHASED_CREDIT_SOURCES.metadataTypes.map((value) => sql`${value}`),
+  sql`,`,
+);
+const decimalPattern = "^[0-9]+(\\.[0-9]+)?$";
+const metadataDecimal = (field: string) =>
+  sql`CASE WHEN ${creditTransactions.metadata}->>${field} ~ ${decimalPattern}
+    THEN (${creditTransactions.metadata}->>${field})::numeric END`;
+/**
+ * One ledger row's contribution to the pay-as-you-go RPM tier: purchased
+ * credits add, reversal clawbacks subtract their requested amount, and a
+ * won-dispute reinstatement adds back. Every other provenance contributes 0.
+ */
+const purchasedCreditTierAmount = sql`CASE
+  WHEN ${creditTransactions.type} = 'credit' AND (${purchasedPaymentIdentity}
+    OR COALESCE(${creditTransactions.metadata}->>'type', '') IN (${purchasedMetadataType}))
+    THEN ${creditTransactions.amount}
+  WHEN ${creditTransactions.type} = 'credit'
+    AND starts_with(${paymentIdentity}, ${ORG_TIER_PURCHASED_CREDIT_SOURCES.bonusExcludedPaymentIdentityPrefix})
+    THEN LEAST(${creditTransactions.amount}, COALESCE(
+      ${metadataDecimal("paid_amount_usd")},
+      ${creditTransactions.amount} - COALESCE(${metadataDecimal("bonus_credits")}, 0)
+    ))
+  WHEN ${creditTransactions.type} = 'clawback'
+    THEN -COALESCE(${metadataDecimal("requested_clawback_usd")}, -${creditTransactions.amount})
+  WHEN ${creditTransactions.type} = 'refund'
+    AND ${creditTransactions.metadata}->>'source' = 'charge.dispute.funds_reinstated'
+    THEN ${creditTransactions.amount}
+  ELSE 0
+END`;
+
 export async function readOrganizationQuotaPolicyInTransaction(
   tx: DbTransaction,
   organizationId: string,
@@ -190,7 +228,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
       },
       // Correlated selectors preserve one policy row per organization. The
       // legacy branch still rejects any persisted subscription, including a
-      // terminal one, and uses the same qualifying credits as the rate policy.
+      // terminal one, and sums only net purchased credits (#23019).
       legacyHasSubscription: sql<
         boolean | null
       >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN EXISTS (
@@ -200,14 +238,9 @@ export async function readOrganizationQuotaPolicyInTransaction(
       legacyCreditTotal: sql<
         string | null
       >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN (
-        SELECT COALESCE(SUM(${creditTransactions.amount}),0)::text
+        SELECT GREATEST(COALESCE(SUM(${purchasedCreditTierAmount}), 0), 0)::text
         FROM ${creditTransactions}
         WHERE ${creditTransactions.organization_id} = ${organizations.id}
-          AND ${creditTransactions.type} = 'credit'
-          AND COALESCE(${creditTransactions.metadata}->>'type','') NOT IN (${sql.join(
-            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((value) => sql`${value}`),
-            sql`,`,
-          )})
       ) END`,
     })
     .from(organizations)
