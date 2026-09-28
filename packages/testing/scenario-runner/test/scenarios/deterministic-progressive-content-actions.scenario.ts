@@ -237,6 +237,15 @@ function currentTurnInputPattern(input: string): string {
   return `${escaped}(?![\\s\\S]*message:user:\\n)`;
 }
 
+const FILE_EVALUATOR_DECISION_STATE_PATTERN = [
+  "^# Current decision state\\n[\\s\\S]*",
+  "\\nhasUnresolvedToolFailure: false",
+  "\\nIntent sources \\(check the full original request as well\\):",
+  "\\nintent:1: inspect the seeded large file",
+  "\\nEvidence step sources \\(complete results remain above\\):",
+  "\\nstep:1: FILE; success=true$",
+].join("");
+
 const progressiveModelFixtures: ScenarioModelFixture[] = [
   {
     name: "progressive-file-stage1",
@@ -282,7 +291,10 @@ const progressiveModelFixtures: ScenarioModelFixture[] = [
     name: "progressive-file-final",
     match: {
       modelType: "RESPONSE_HANDLER",
-      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+      // The evaluator's latest user message is its runtime decision state,
+      // which binds this turn's declared intent to the single successful
+      // production FILE read.
+      input: { pattern: FILE_EVALUATOR_DECISION_STATE_PATTERN },
       toolNames: [],
     },
     response: {
