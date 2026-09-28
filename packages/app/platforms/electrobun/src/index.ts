@@ -2017,6 +2017,10 @@ async function setupUpdater(): Promise<void> {
 			}
 		}
 	};
+	// The updater status subscription, the application-menu/tray dispatcher,
+	// and the initial update check are independent: a throwing updater API
+	// must never leave the native menu, tray entries, or the test bridge
+	// `/menu-action` route without a handler.
 	try {
 		// Subscribe to update status changes so we can notify the renderer
 		// at the right lifecycle points.
@@ -2037,6 +2041,12 @@ async function setupUpdater(): Promise<void> {
 				});
 			}
 		});
+	} catch (err) {
+		logger.warn(
+			`[Updater] Status subscription failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+	try {
 		const triggerManualUpdateCheck = () => {
 			Utils.showNotification({
 				title: "Checking for Updates",
@@ -2308,12 +2318,13 @@ async function setupUpdater(): Promise<void> {
 				void getDesktopManager().relaunch();
 			}
 		});
-		await runUpdateCheck(false);
 	} catch (err) {
-		logger.warn(
-			`[Updater] Update check failed: ${err instanceof Error ? err.message : String(err)}`,
+		logger.error(
+			`[Menu] Failed to install application menu action dispatcher: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	}
+	// runUpdateCheck catches and logs its own failures.
+	await runUpdateCheck(false);
 }
 /**
  * Handle a `<scheme>://...` deep link. Recognized routes:
