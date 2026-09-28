@@ -4,7 +4,8 @@
  * mirror, retry, or direct writer converges instead of replacing newer turns.
  */
 
-import { isBlockedHostname, isPrivateIpAddress, stringToUuid } from "@elizaos/core";
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/network/ssrf";
+import { stringToUuid } from "@elizaos/core/utils/string-to-uuid";
 import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,

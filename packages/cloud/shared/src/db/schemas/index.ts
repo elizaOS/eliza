@@ -22,7 +22,7 @@ export {
   roomTable,
   taskTable,
   worldTable,
-} from "@elizaos/plugin-sql";
+} from "@elizaos/plugin-sql/schema";
 export * from "./account-deletion-exports";
 export * from "./account-deletion-phase-receipts";
 export * from "./account-deletion-requests";

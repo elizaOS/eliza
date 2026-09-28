@@ -12,6 +12,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./schema": {
+      "eliza-source": "./src/schema.ts",
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
