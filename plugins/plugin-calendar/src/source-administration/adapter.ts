@@ -129,7 +129,9 @@ export async function listCalendarSourceAdministration(
     const identity = sourceIdentityKey(key);
     selectableIdentities.add(identity);
     // listCalendars already reads the versioned preference for every exact
-    // source. Reuse that snapshot: zero additional preference SQL per source.
+    // source and throws CALENDAR_SOURCE_PREFERENCE_INCOMPLETE (CalendarService)
+    // when either field is missing. Reuse that snapshot: zero additional
+    // preference SQL per source.
     entries.push({
       key,
       accountEmail: calendar.accountEmail,
