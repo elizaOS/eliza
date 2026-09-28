@@ -50,11 +50,12 @@ it("treats a final 401 for the exact paired remote bearer as revocation", async 
   );
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
     ),
   );
   const client = new ElizaClient(base);
@@ -78,8 +79,9 @@ it("does not mistake a feature denial or changed saved authority for revocation"
       accessToken: "paired-machine-session",
     }),
   );
-  const fetchMock = vi.fn(async () =>
-    new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
+  const fetchMock = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
   );
   vi.stubGlobal("fetch", fetchMock);
   const client = new ElizaClient(base);
@@ -89,8 +91,9 @@ it("does not mistake a feature denial or changed saved authority for revocation"
   await expect(client.rawRequest("/api/owner-only")).rejects.toMatchObject({
     status: 401,
   });
-  fetchMock.mockImplementationOnce(async () =>
-    new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+  fetchMock.mockImplementationOnce(
+    async () =>
+      new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
   );
   await expect(client.rawRequest("/api/status")).rejects.toMatchObject({
     status: 403,

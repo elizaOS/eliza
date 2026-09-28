@@ -27,8 +27,8 @@ import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearPendingChatTurn,
   listPendingChatTurns,
-  PENDING_CHAT_TURN_SETTLED_EVENT,
   PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
+  PENDING_CHAT_TURN_SETTLED_EVENT,
 } from "./pending-chat-turns";
 
 /**

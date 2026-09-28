@@ -97,8 +97,8 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
-  getAgentHostBridge,
   type AgentHttpRequestAuthorization,
+  getAgentHostBridge,
 } from "../runtime/host-bridge.ts";
 import {
   deleteConversationMemories,
@@ -4961,7 +4961,10 @@ async function streamConversationMessage(
     pairedSessionToken,
     runtime: state.runtime,
   });
-  if (!(await disconnectTracker.authorityReady) || disconnectTracker.signal.aborted) {
+  if (
+    !(await disconnectTracker.authorityReady) ||
+    disconnectTracker.signal.aborted
+  ) {
     disconnectTracker.dispose();
     error(res, "Paired session ended", 401);
     return true;
