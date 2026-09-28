@@ -1,24 +1,15 @@
 /** Implements Electrobun desktop desktop tray config ts behavior for app shell integration. */
+import { readDesktopEnvFlag } from "./desktop-env-flags";
 import { isKioskShellMode } from "./kiosk-mode";
-
-function parseTruthy(value: string | undefined): boolean {
-	const normalized = value?.trim().toLowerCase();
-	return normalized === "1" || normalized === "true" || normalized === "yes";
-}
-
-function parseFalsy(value: string | undefined): boolean {
-	const normalized = value?.trim().toLowerCase();
-	return normalized === "0" || normalized === "false" || normalized === "no";
-}
 
 export function shouldCreateDesktopTray(
 	env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-	if (parseTruthy(env.ELIZA_DESKTOP_DISABLE_TRAY)) {
+	if (readDesktopEnvFlag(env, "ELIZA_DESKTOP_DISABLE_TRAY", false)) {
 		return false;
 	}
 
-	if (parseFalsy(env.ELIZA_DESKTOP_TRAY)) {
+	if (!readDesktopEnvFlag(env, "ELIZA_DESKTOP_TRAY", true)) {
 		return false;
 	}
 
@@ -46,7 +37,7 @@ export function shouldStartTrayFirst(
 	if (platform !== "darwin") {
 		return false;
 	}
-	if (parseFalsy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
+	if (!readDesktopEnvFlag(env, "ELIZA_DESKTOP_TRAY_FIRST", true)) {
 		return false;
 	}
 	if (!shouldCreateDesktopTray(env)) {
@@ -99,7 +90,7 @@ export function shouldAttachTrayMenu(
 	platform: NodeJS.Platform = process.platform,
 ): boolean {
 	void platform;
-	return !parseFalsy(env.ELIZA_DESKTOP_TRAY_MENU);
+	return readDesktopEnvFlag(env, "ELIZA_DESKTOP_TRAY_MENU", true);
 }
 
 export type TrayClickAction = "toggle-popover" | "hide-window" | "show-window";
@@ -139,7 +130,7 @@ export function shouldEnableTrayPopover(
 	if (!TRAY_POPOVER_SUPPORTED_PLATFORMS.has(platform)) {
 		return false;
 	}
-	if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_POPOVER)) {
+	if (!readDesktopEnvFlag(env, "ELIZA_DESKTOP_TRAY_POPOVER", false)) {
 		return false;
 	}
 	if (!shouldCreateDesktopTray(env)) {

@@ -5,6 +5,7 @@ import {
 	resolveDesktopApiPort,
 } from "@elizaos/core/runtime-env";
 import { DEFAULT_API_PORT } from "./constants";
+import { readDesktopEnvFlag } from "./desktop-env-flags";
 import { logger } from "./logger";
 /**
  * Renderer-facing API base for the desktop local-agent IPC transport (#12180
@@ -66,15 +67,6 @@ export function resolveExternalApiBase(
 	}
 	return { base: null, source: null, invalidSources };
 }
-function isEnabledFlag(raw: string | undefined): boolean {
-	const normalized = raw?.trim().toLowerCase();
-	return (
-		normalized === "1" ||
-		normalized === "true" ||
-		normalized === "yes" ||
-		normalized === "on"
-	);
-}
 export function resolveDesktopRuntimeMode(
 	env: Record<string, string | undefined>,
 ): DesktopRuntimeModeResolution {
@@ -82,7 +74,7 @@ export function resolveDesktopRuntimeMode(
 	if (externalApi.base) {
 		return { mode: "external", externalApi };
 	}
-	if (isEnabledFlag(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT)) {
+	if (readDesktopEnvFlag(env, "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT", false)) {
 		return { mode: "disabled", externalApi };
 	}
 	return { mode: "local", externalApi };
@@ -195,7 +187,8 @@ export function resolveDesktopRuntimeModeSignal(
 ): "cloud" | null {
 	const explicit = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
 	if (explicit === "cloud" || explicit === "elizacloud") return "cloud";
-	if (isEnabledFlag(env.ELIZA_DESKTOP_CLOUD_ONLY)) return "cloud";
+	if (readDesktopEnvFlag(env, "ELIZA_DESKTOP_CLOUD_ONLY", false))
+		return "cloud";
 	if (deployment?.runtime === "cloud") return "cloud";
 	return null;
 }
@@ -214,8 +207,7 @@ export function resolveLocalAgentIpcMode(
 	env: Record<string, string | undefined>,
 ): boolean {
 	if (resolveApiExposePort(env) === true) return false;
-	const raw = env[LOCAL_AGENT_IPC_ENV_KEY];
-	return isEnabledFlag(raw);
+	return readDesktopEnvFlag(env, LOCAL_AGENT_IPC_ENV_KEY, false);
 }
 export function resolveInitialApiBase(
 	env: Record<string, string | undefined>,
