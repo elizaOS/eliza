@@ -326,7 +326,16 @@ function withLeaseMutationLock<T>(leasePath: string, fn: () => T): T {
     result = fn();
   } catch (error) {
     // Release before surfacing the original failure; it is the primary error.
-    removeMutationLockIfUnchanged(lockPath, ownLock);
+    // A release failure must never replace it: surface both together.
+    try {
+      removeMutationLockIfUnchanged(lockPath, ownLock);
+    } catch (releaseError) {
+      throw new AggregateError(
+        [error, releaseError],
+        `device lease mutation failed and releasing lock ${lockPath} also failed`,
+        { cause: error },
+      );
+    }
     throw error;
   }
   // Only ever remove our own lock. If it is no longer ours, another process

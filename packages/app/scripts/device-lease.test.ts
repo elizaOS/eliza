@@ -411,6 +411,49 @@ describe("device leases", () => {
     expect(readdirSync(stateDir)).toEqual([]);
   });
 
+  it("keeps the original mutation error when releasing the lock also fails", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:release-fails", {
+      stateDir,
+      sessionId: "holder",
+      pid: 903,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    const unlinkError = Object.assign(new Error("unlink failed"), {
+      code: "EIO",
+    });
+    const renameError = Object.assign(new Error("rename failed"), {
+      code: "EACCES",
+    });
+    const realUnlink = fs.unlinkSync;
+    const realRename = fs.renameSync;
+    const unlink = vi.spyOn(fs, "unlinkSync").mockImplementation((p) => {
+      if (p === handle.path) throw unlinkError;
+      return realUnlink(p);
+    });
+    const rename = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (from === lockPath) throw renameError;
+      return realRename(from, to);
+    });
+    let thrown: unknown = null;
+    try {
+      handle.release();
+    } catch (error) {
+      thrown = error;
+    } finally {
+      unlink.mockRestore();
+      rename.mockRestore();
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([
+      unlinkError,
+      renameError,
+    ]);
+    expect((thrown as AggregateError).cause).toBe(unlinkError);
+  });
+
   it("publishes leases without leaving temp or lock files behind", async () => {
     const stateDir = tempDir();
     const handle = await acquireDeviceLease("ios:clean", {
