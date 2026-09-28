@@ -23,6 +23,7 @@ import {
   getUserMessageText,
   hashString,
   isObjectRecord as isRecord,
+  isValidTimeZone,
   mergeEffectReceipts,
   ownerExclusiveDisclosureWasUsed,
   PRIVACY_DENIED_TEXT,
@@ -441,6 +442,159 @@ function navigationClaimIsUngrounded(args: {
   return currentViewId !== claimed.id;
 }
 
+/** Exclude only an exact field label grounded in a current Notes read's host display. */
+function withoutObservedTimestampLabels(
+  reply: string,
+  results: readonly ActionResult[],
+): string {
+  if (
+    !results.length ||
+    results.some(
+      (result) =>
+        result.success !== true ||
+        result.data?.awaitingUserInput === true ||
+        result.data?.requiresInput === true,
+    )
+  )
+    return reply;
+  // A later read/revision supersedes an earlier projection; never pick a stale
+  // label merely because it happens to match the proposed prose.
+  let data: Record<string, unknown> | undefined;
+  for (const result of results) {
+    const candidate = result.data;
+    if (
+      candidate &&
+      typeof candidate.actionName === "string" &&
+      (candidate.actionName === "NOTES" ||
+        candidate.actionName.startsWith("NOTES_")) &&
+      candidate.readOnlyOperation !== true
+    ) {
+      data = undefined;
+      continue;
+    }
+    if (
+      !candidate ||
+      typeof candidate.actionName !== "string" ||
+      !["NOTES", "NOTES_GET", "NOTES_LIST"].includes(candidate.actionName)
+    )
+      continue;
+    if (
+      result.transcriptVisibility !== "internal" ||
+      candidate.readOnlyOperation !== true ||
+      !Number.isSafeInteger(candidate.notesRevision) ||
+      Number(candidate.notesRevision) < 0
+    )
+      return reply;
+    if (data && Number(candidate.notesRevision) < Number(data.notesRevision))
+      return reply;
+    data = candidate;
+  }
+  if (
+    !data ||
+    !Array.isArray(data.notes) ||
+    !data.notes.length ||
+    data.count !== data.notes.length
+  )
+    return reply;
+  const notes = data.notes;
+  const labels = new Map<string, Set<string>>([
+    ["saved", new Set()],
+    ["created", new Set()],
+    ["updated", new Set()],
+  ]);
+  const addDisplay = (
+    instant: unknown,
+    label: unknown,
+    zone: unknown,
+    source: unknown,
+    field: "createdAt" | "updatedAt",
+  ) => {
+    if (
+      typeof instant !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T/.test(instant) ||
+      !Number.isFinite(Date.parse(instant)) ||
+      typeof label !== "string" ||
+      typeof zone !== "string" ||
+      !isValidTimeZone(zone) ||
+      (source !== "explicit" && source !== "ui")
+    )
+      return;
+    const expected = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      dateStyle: "medium",
+      timeStyle: "long",
+    }).format(new Date(instant));
+    if (label === expected) {
+      labels.get("saved")?.add(label);
+      labels.get(field === "createdAt" ? "created" : "updated")?.add(label);
+    }
+  };
+  const selection = data.selection;
+  if (
+    (data.actionName === "NOTES_LIST" || data.actionName === "NOTES") &&
+    data.op === "list" &&
+    isRecord(selection) &&
+    selection.kind === "latest"
+  ) {
+    const field = selection.field;
+    const display = selection.display;
+    if (
+      (field === "createdAt" || field === "updatedAt") &&
+      isRecord(display) &&
+      typeof selection.at === "string" &&
+      notes.every(
+        (note) =>
+          isRecord(note) &&
+          typeof note.id === "string" &&
+          typeof note[field] === "string" &&
+          Date.parse(note[field]) === Date.parse(selection.at as string),
+      )
+    )
+      addDisplay(
+        selection.at,
+        display.label,
+        display.timeZone,
+        display.source,
+        field,
+      );
+  }
+  const display = data.noteTimestampDisplay;
+  if (
+    (data.actionName === "NOTES_GET" || data.actionName === "NOTES") &&
+    data.op === "get" &&
+    notes.length === 1 &&
+    isRecord(notes[0]) &&
+    isRecord(display) &&
+    typeof notes[0].id === "string" &&
+    notes[0].id.length > 0 &&
+    display.noteId === notes[0].id
+  ) {
+    addDisplay(
+      notes[0].createdAt,
+      display.createdAt,
+      display.timeZone,
+      display.source,
+      "createdAt",
+    );
+    addDisplay(
+      notes[0].updatedAt,
+      display.updatedAt,
+      display.timeZone,
+      display.source,
+      "updatedAt",
+    );
+  }
+  // Only the complete metadata line is excluded from assertion detection.
+  // Preserve its boundaries; any adjacent/prepended/appended write still counts.
+  return reply.replace(
+    /^[ \t]*(Saved|Created|Updated):[ \t]+([^\r\n]+)[ \t]*$/gim,
+    (line, field: string, value: string) =>
+      labels.get(field.toLowerCase())?.has(value.trim())
+        ? " ".repeat(line.length)
+        : line,
+  );
+}
+
 /**
  * Final planned replies may assert only state proven by a matching action
  * receipt from this trajectory. Rejection degrades to an honest statement at
@@ -479,8 +633,16 @@ export function evaluatePlannedReplyEgress(args: {
   ) {
     return { verdict: "reject", kind: "stated_time" };
   }
+  const assertionText =
+    !args.pendingWork &&
+    (!args.evaluator ||
+      (args.evaluator.success === true && args.evaluator.decision === "FINISH"))
+      ? withoutObservedTimestampLabels(reply, args.actionResults)
+      : reply;
   if (
-    replyClaimsCompletedSideEffect(reply, { pendingWork: args.pendingWork })
+    replyClaimsCompletedSideEffect(assertionText, {
+      pendingWork: args.pendingWork,
+    })
   ) {
     if (
       plannedReplyHasClaimGroundingReceipt({
@@ -587,6 +749,31 @@ export async function resolvePlannedReplyEgress(args: {
     ...(recovery?.actionResults ?? []),
     ...args.actionResults,
   ];
+  // Final visible delivery may acquire the current turn's read results only
+  // through this authorized recovery capture. Recheck exact observation metadata
+  // before asking a model to rewrite a reply that already matches those results.
+  if (
+    reason === "completed_side_effect" &&
+    !recovery?.pendingToolCalls?.length &&
+    withoutObservedTimestampLabels(args.reply, actionResults()) !==
+      args.reply &&
+    evaluatePlannedReplyEgress({
+      reply: args.reply,
+      request: getUserMessageText(args.message),
+      providers: args.providers,
+      actionResults: actionResults(),
+      actions: args.runtime.actions,
+      evaluator: args.evaluator,
+    }).verdict === "allow"
+  )
+    return {
+      text: args.reply,
+      effectReceiptIds: appliedEffectReceiptIdsForReply(
+        args.reply,
+        actionResults(),
+        args.evaluator,
+      ),
+    };
   const historySelection = recovery
     ? parseReplyRecoveryHistorySelection(
         recovery.historySelection,
@@ -777,24 +964,25 @@ export async function enforceEffectGroundedVisibleContent(
       replyClaimsCompletedSideEffect(assertedText) &&
       !effectDeliveryBindingProvesApplication(response))
   ) {
-    runtime.logger.warn(
-      {
-        src: "service:message",
-        actionName: resolveCallbackActionName(response, actionName),
-      },
-      "Replaced visible completion text that lacked validated effect receipt bindings",
-    );
+    const resolved = await resolvePlannedReplyEgress({
+      runtime,
+      message,
+      reply: response.text ?? "",
+      actionResults: [],
+      prepareRecovery,
+    });
+    if (resolved.text !== response.text) {
+      runtime.logger.warn(
+        {
+          src: "service:message",
+          actionName: resolveCallbackActionName(response, actionName),
+        },
+        "Replaced visible completion text that lacked validated effect receipt bindings",
+      );
+    }
     return {
       ...stripEffectDeliveryBinding(response),
-      text: (
-        await resolvePlannedReplyEgress({
-          runtime,
-          message,
-          reply: response.text ?? "",
-          actionResults: [],
-          prepareRecovery,
-        })
-      ).text,
+      text: resolved.text,
       agentVoiced: true,
     };
   }
