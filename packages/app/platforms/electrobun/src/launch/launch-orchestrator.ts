@@ -116,6 +116,25 @@ function classifyFirstRunPhase(params: {
 		: "runtime-gate-required";
 }
 
+/**
+ * Runtime phases in which the embedded agent is serving. The legacy agent
+ * host reports "running"; the app server host (`packages/app/src/runtime/
+ * startup-state.ts`) reports "runtime-ready", "features-starting", "ready"
+ * or "degraded", all of which it projects as agent state "running". Gating
+ * only on "running" left a returning packaged profile in startup forever.
+ */
+const SERVING_RUNTIME_PHASES: ReadonlySet<string> = new Set([
+	"running",
+	"runtime-ready",
+	"features-starting",
+	"ready",
+	"degraded",
+]);
+
+function isServingRuntimePhase(phase: string | null | undefined): boolean {
+	return typeof phase === "string" && SERVING_RUNTIME_PHASES.has(phase);
+}
+
 function classifyPhase(params: {
 	agent: EmbeddedAgentStatus;
 	boot: BootProgressSnapshot | null;
@@ -133,7 +152,7 @@ function classifyPhase(params: {
 		params.boot?.database === "error"
 	)
 		return "error";
-	if (!params.boot?.phase || params.boot.phase !== "running") {
+	if (!isServingRuntimePhase(params.boot?.phase)) {
 		return "agent-api-ready";
 	}
 	const authPhase = classifyAuthPhase(params);

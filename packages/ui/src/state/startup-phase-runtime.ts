@@ -84,8 +84,27 @@ function mapBootProgressToAgentStatus(
   };
 }
 
+/**
+ * Runtime phases in which the agent is serving. The legacy agent host reports
+ * "running"; the app server host that the packaged desktop embeds reports
+ * "runtime-ready", "features-starting", "ready" or "degraded" (all projected
+ * as agent state "running"). Matching only "running" kept a returning
+ * packaged profile in starting-runtime although its runtime was serving.
+ */
+const SERVING_RUNTIME_PHASES: ReadonlySet<string> = new Set([
+  "running",
+  "runtime-ready",
+  "features-starting",
+  "ready",
+  "degraded",
+]);
+
+function isServingRuntimePhase(phase: string | null | undefined): boolean {
+  return typeof phase === "string" && SERVING_RUNTIME_PHASES.has(phase);
+}
+
 function isRuntimeReadyFromBootProgress(progress: AgentBootProgress): boolean {
-  return progress.state === "running" && progress.phase === "running";
+  return progress.state === "running" && isServingRuntimePhase(progress.phase);
 }
 
 function mapLaunchProgressToAgentStatus(progress: LaunchSnapshot): AgentStatus {
@@ -118,7 +137,7 @@ function isRuntimeReadyFromLaunchProgress(progress: LaunchSnapshot): boolean {
   return (
     progress.phase === "ready" ||
     (progress.agent.state === "running" &&
-      progress.boot.runtimePhase === "running")
+      isServingRuntimePhase(progress.boot.runtimePhase))
   );
 }
 
