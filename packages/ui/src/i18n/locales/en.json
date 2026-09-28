@@ -8747,5 +8747,12 @@
   "browserworkspace.NativeSurfaceUnavailable": "Browser view unavailable",
   "browserworkspace.NativeSurfaceUnavailableDescription": "The secure browser couldn’t connect. Try again without losing your tabs.",
   "browserworkspace.NativeSurfaceUnsupported": "Secure browsing not supported here",
-  "browserworkspace.NativeSurfaceUnsupportedDescription": "This device can’t keep in-app browsing isolated. Open the page in your browser instead."
+  "browserworkspace.NativeSurfaceUnsupportedDescription": "This device can’t keep in-app browsing isolated. Open the page in your browser instead.",
+  "cloud.billingHold.title": "Paid usage is on hold",
+  "cloud.billingHold.owed": "A refunded or disputed payment left ${{amount}} unpaid. Inference, new agents and containers stay paused until it is repaid. Running resources keep their current funding.",
+  "cloud.billingHold.support": "A reversed payment is under review. Contact support to restore paid usage.",
+  "cloud.billingHold.pay": "Pay ${{amount}}",
+  "cloud.billingHold.applyBalance": "Apply current balance",
+  "cloud.billingHold.applyFailed": "Could not apply your balance. Try again.",
+  "cloud.billingHold.cleared": "Paid usage restored."
 }

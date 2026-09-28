@@ -1,8 +1,10 @@
 /**
  * Drives the real Stripe queue consumer and real credits service against a
  * PGlite database built from the Drizzle schema. Proves dispute reinstatement
- * restores the clawback's applied credit units (#31449), not provider dollars.
- * Expanded synthetic charges keep every case free of provider requests.
+ * restores the clawback's applied credit units (#31449), not provider dollars,
+ * and that an underfunding reversal holds paid admission until repayment or
+ * reinstatement clears it (#22930). Expanded synthetic charges keep every case
+ * free of provider requests.
  */
 import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test";
 import { randomUUID } from "node:crypto";
@@ -23,6 +25,13 @@ const { creditTransactions } = await import("@/db/schemas/credit-transactions");
 const { stripeCheckoutOrders } = await import(
   "@/db/schemas/stripe-checkout-orders"
 );
+const { organizationPaymentReversalHolds } = await import(
+  "@/db/schemas/organization-payment-reversal-holds"
+);
+const { billingHoldService, BillingHoldActiveError } = await import(
+  "@/lib/services/billing-hold"
+);
+const { creditsService } = await import("@/lib/services/credits");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
 const pg = () => getPgliteClientForTests();
@@ -40,6 +49,7 @@ beforeAll(async () => {
         creditPacks,
         creditTransactions,
         stripeCheckoutOrders,
+        organizationPaymentReversalHolds,
       },
       empty.id,
     ),
@@ -109,7 +119,10 @@ async function purchase(params: {
 }
 
 function disputeEvent(
-  type: "charge.dispute.funds_withdrawn" | "charge.dispute.funds_reinstated",
+  type:
+    | "charge.dispute.funds_withdrawn"
+    | "charge.dispute.funds_reinstated"
+    | "charge.dispute.closed",
   disputeId: string,
   amountCents: number,
   paymentIntentId: string,
@@ -133,6 +146,7 @@ function disputeEvent(
             // Expanded one-time charge: no invoice, so no provider lookup.
             charge: { id: `ch_${disputeId}`, object: "charge", invoice: null },
             payment_intent: paymentIntentId,
+            ...(type === "charge.dispute.closed" ? { status: "lost" } : {}),
           },
         },
       } as unknown as Stripe.Event,
@@ -251,4 +265,244 @@ test("a dispute with nothing left to claw back reinstates nothing", async () => 
     "credit",
     "clawback",
   ]);
+});
+
+function refundEvent(
+  chargeId: string,
+  amountRefundedCents: number,
+  paymentIntentId: string,
+) {
+  const eventId = `evt_${randomUUID()}`;
+  return {
+    attempts: 1,
+    body: {
+      kind: "stripe.event" as const,
+      eventId,
+      eventType: "charge.refunded",
+      receivedAt: Date.now(),
+      event: {
+        id: eventId,
+        type: "charge.refunded",
+        data: {
+          object: {
+            id: chargeId,
+            object: "charge",
+            invoice: null,
+            amount_refunded: amountRefundedCents,
+            payment_intent: paymentIntentId,
+          },
+        },
+      } as unknown as Stripe.Event,
+    },
+  };
+}
+
+function topUpEvent(org: string, credits: number) {
+  const eventId = `evt_${randomUUID()}`;
+  const paymentIntentId = `pi_topup_${randomUUID().replaceAll("-", "")}`;
+  return {
+    attempts: 1,
+    body: {
+      kind: "stripe.event" as const,
+      eventId,
+      eventType: "payment_intent.succeeded",
+      receivedAt: Date.now(),
+      event: {
+        id: eventId,
+        type: "payment_intent.succeeded",
+        data: {
+          object: {
+            id: paymentIntentId,
+            object: "payment_intent",
+            amount: credits * 100,
+            amount_received: credits * 100,
+            currency: "usd",
+            invoice: null,
+            metadata: {
+              organization_id: org,
+              credits: String(credits),
+              type: "one_time",
+            },
+          },
+        },
+      } as unknown as Stripe.Event,
+    },
+  };
+}
+
+async function holdRows(org: string) {
+  const rows = await pg().query<{
+    reason: string;
+    shortfall_usd: string;
+    outstanding_usd: string;
+    released_by: string | null;
+  }>(
+    "SELECT reason, shortfall_usd, outstanding_usd, released_by FROM organization_payment_reversal_holds WHERE organization_id=$1 ORDER BY created_at",
+    [org],
+  );
+  return rows.rows.map((row) => ({
+    reason: row.reason,
+    shortfall: Number(row.shortfall_usd),
+    outstanding: Number(row.outstanding_usd),
+    releasedBy: row.released_by,
+  }));
+}
+
+test("a fully recovered refund leaves no billing hold", async () => {
+  const buyer = await purchase({ credits: "50", cents: 5000, balance: "50" });
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 5000, buyer.paymentIntentId),
+    ),
+  ).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await holdRows(buyer.org)).toEqual([]);
+  expect(await billingHoldService.getState(buyer.org)).toEqual({
+    status: "clear",
+  });
+});
+
+test("a refund after consumption holds admission until a top-up repays the shortfall", async () => {
+  const buyer = await purchase({ credits: "50", cents: 5000, balance: "20" });
+  const chargeId = `ch_${randomUUID()}`;
+  // Partial refund, then the cumulative full refund; each is replayed.
+  for (const cents of [1000, 1000, 5000, 5000])
+    expect(
+      await processStripeEvent(
+        refundEvent(chargeId, cents, buyer.paymentIntentId),
+      ),
+    ).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await holdRows(buyer.org)).toEqual([
+    {
+      reason: "reversal_shortfall",
+      shortfall: 30,
+      outstanding: 30,
+      releasedBy: null,
+    },
+  ]);
+  const held = await billingHoldService.getState(buyer.org);
+  expect(held).toMatchObject({
+    status: "held",
+    outstandingUsd: "30.000000",
+    payAction: { kind: "add_funds", amountUsd: "30.00" },
+  });
+  await expect(
+    billingHoldService.assertNoHold(buyer.org),
+  ).rejects.toBeInstanceOf(BillingHoldActiveError);
+
+  // A partial top-up repays part of the debt and keeps the hold.
+  expect(await processStripeEvent(topUpEvent(buyer.org, 10))).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await holdRows(buyer.org)).toEqual([
+    {
+      reason: "reversal_shortfall",
+      shortfall: 30,
+      outstanding: 20,
+      releasedBy: null,
+    },
+  ]);
+
+  // Credits granted outside the card path are applied by the pay action.
+  await creditsService.addCredits({
+    organizationId: buyer.org,
+    amount: "25",
+    description: "Operator grant",
+  });
+  const settled = await billingHoldService.settleOutstandingShortfalls(
+    buyer.org,
+  );
+  expect(settled).toMatchObject({
+    appliedUsd: "20.000000",
+    outstandingUsd: "0.000000",
+  });
+  expect(await balance(buyer.org)).toBe(5);
+  expect(await holdRows(buyer.org)).toEqual([
+    {
+      reason: "reversal_shortfall",
+      shortfall: 30,
+      outstanding: 0,
+      releasedBy: "system:repayment",
+    },
+  ]);
+  await billingHoldService.assertNoHold(buyer.org);
+  // Settling again is a no-op.
+  expect(
+    await billingHoldService.settleOutstandingShortfalls(buyer.org),
+  ).toMatchObject({
+    appliedUsd: "0.000000",
+  });
+  expect(await balance(buyer.org)).toBe(5);
+});
+
+test("a lost dispute keeps the shortfall hold; it clears only by repayment", async () => {
+  const buyer = await purchase({ credits: "500", cents: 1000, balance: "100" });
+  const disputeId = `dp_${randomUUID()}`;
+  for (const type of [
+    "charge.dispute.funds_withdrawn",
+    "charge.dispute.closed",
+  ] as const)
+    expect(
+      await processStripeEvent(
+        disputeEvent(type, disputeId, 1000, buyer.paymentIntentId),
+      ),
+    ).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await holdRows(buyer.org)).toEqual([
+    {
+      reason: "reversal_shortfall",
+      shortfall: 400,
+      outstanding: 400,
+      releasedBy: null,
+    },
+  ]);
+});
+
+test("a won dispute clears its hold and returns any repayment toward it", async () => {
+  const buyer = await purchase({ credits: "500", cents: 1000, balance: "50" });
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        1000,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  // The organization repays $100 of the $450 shortfall before the dispute is won.
+  expect(await processStripeEvent(topUpEvent(buyer.org, 100))).toBe("ack");
+  expect(await holdRows(buyer.org)).toEqual([
+    {
+      reason: "reversal_shortfall",
+      shortfall: 450,
+      outstanding: 350,
+      releasedBy: null,
+    },
+  ]);
+  for (let delivery = 0; delivery < 2; delivery++)
+    expect(
+      await processStripeEvent(
+        disputeEvent(
+          "charge.dispute.funds_reinstated",
+          disputeId,
+          1000,
+          buyer.paymentIntentId,
+        ),
+      ),
+    ).toBe("ack");
+  // 50 applied clawback restored plus the 100 repayment returned, exactly once.
+  expect(await balance(buyer.org)).toBe(150);
+  expect(await holdRows(buyer.org)).toEqual([
+    {
+      reason: "reversal_shortfall",
+      shortfall: 450,
+      outstanding: 350,
+      releasedBy: "system:dispute_reinstated",
+    },
+  ]);
+  expect(await billingHoldService.getState(buyer.org)).toEqual({
+    status: "clear",
+  });
 });

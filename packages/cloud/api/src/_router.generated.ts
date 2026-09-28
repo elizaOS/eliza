@@ -2134,6 +2134,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../v1/billing/application-slots/[slotKey]/route"),
   },
   {
+    path: "/api/v1/billing/hold",
+    shard: "v1/billing",
+    load: () => import("../v1/billing/hold/route"),
+  },
+  {
     path: "/api/v1/billing/ledger",
     shard: "v1/billing",
     load: () => import("../v1/billing/ledger/route"),
