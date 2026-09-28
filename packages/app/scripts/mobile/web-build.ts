@@ -27,13 +27,20 @@ import {
 import { appDir, packagesRoot, repoRoot } from "./context.ts";
 import {
   isFullIosBunEngineRequested,
+  isIosAppStoreLocalRuntimeEnabled,
   shouldIncludeIosFullBunEngine,
 } from "./ios/policy.ts";
 import { resolveBunExecutable } from "./toolchain.ts";
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-export function resolveMobileBuildPolicy(platform) {
+export function resolveMobileBuildPolicy(platform, env = process.env) {
+  // The App Store lane is Cloud-only by default (#16420): Eliza Cloud is the
+  // only hosting target and the renderer hides local runtime options. An
+  // operator opt-in (ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=1) keeps the App
+  // Store-safe cloud-hybrid on-device runtime.
+  const iosStoreLocalRuntime =
+    platform === "ios" && isIosAppStoreLocalRuntimeEnabled(env);
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-launcher" ||
@@ -63,7 +70,9 @@ export function resolveMobileBuildPolicy(platform) {
     platform === "ios-local"
       ? "local"
       : platform === "ios"
-        ? "cloud-hybrid"
+        ? iosStoreLocalRuntime
+          ? "cloud-hybrid"
+          : "cloud"
         : platform === "ios-overlay"
           ? "cloud"
           : null;
@@ -79,7 +88,9 @@ export function resolveMobileBuildPolicy(platform) {
         : platform === "ios-local"
           ? "local-safe"
           : platform === "ios"
-            ? "local-safe"
+            ? iosStoreLocalRuntime
+              ? "local-safe"
+              : "cloud"
             : platform === "ios-overlay"
               ? "cloud"
               : null;

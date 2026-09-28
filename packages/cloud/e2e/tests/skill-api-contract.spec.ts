@@ -10,10 +10,7 @@
  *   - `apps/{id}/users` is GET-only (POST must 404)
  *   - the documented org-credit checkout body is accepted
  */
-import {
-  approveAppForMonetizationTest,
-  authedClient,
-} from "../src/helpers/monetization";
+import { authedClient } from "../src/helpers/monetization";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 /** A documented endpoint must resolve to a real route with working auth. */
@@ -90,34 +87,14 @@ test.describe("skill ↔ API contract", () => {
     });
     expect(rename.status, "rename/config app").toBe(200);
 
-    // `set markup percentage` is compliance-gated (#10732): a freshly created
-    // app is a review DRAFT, and turning monetization ON is refused with 403
-    // until review approves it. The route/method/auth the skill documents are
-    // correct — the prerequisite is a business rule the skill omitted, so pin
-    // BOTH halves of the real contract here (the same shape
-    // monetized-full-loop.spec.ts pins) rather than only the post-approval one.
-    const draftMonetization = await c(
-      "PUT",
-      `/api/v1/apps/${appId}/monetization`,
-      {
-        monetizationEnabled: true,
-        inferenceMarkupPercentage: 50,
-        purchaseSharePercentage: 10,
-      },
-    );
-    expect(
-      draftMonetization.status,
-      "draft app cannot enable monetization before compliance approval",
-    ).toBe(403);
-
-    await approveAppForMonetizationTest(appId, c);
-
+    // App creator monetization is retired (#22961 / #23022): enabling a
+    // markup answers 410 `creator_monetization_retired` for every app.
     const monetization = await c("PUT", `/api/v1/apps/${appId}/monetization`, {
       monetizationEnabled: true,
       inferenceMarkupPercentage: 50,
       purchaseSharePercentage: 10,
     });
-    expect(monetization.status, "set markup percentage").toBe(200);
+    expect(monetization.status, "app monetization is retired").toBe(410);
 
     const affiliate = await c<{
       success?: boolean;

@@ -50,7 +50,8 @@
         "The generated vendor module has not yet completed an exact-source build and physical Pixel 11 Pro boot validation.",
         "No retained Pixel 11 Pro rollback, flash, post-boot hardware, launcher, local inference, or voice evidence bundle exists yet."
       ],
-      "labExperimentsEligible": false
+      "labExperimentsEligible": false,
+      "decisionNote": "Alpha Phone (#31023) names Pixel 10 as the target and allows Pixel 11 only after support is validated. This tree pins only Pixel 11 Pro (grizzly) and has no Pixel 10 (frankel/blazer/mustang) lock, so the device choice is an open owner decision. Keep this target unvalidated until either the Pixel 11 Pro evidence above exists or a Pixel 10 lock, brand config and vendor product are added."
     },
     {
       "targetId": "lightphone3-tlp301",

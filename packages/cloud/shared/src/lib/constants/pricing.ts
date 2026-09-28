@@ -58,7 +58,7 @@ export function calculateDailyContainerCost(config?: {
  * Canonical storage price catalogue (#22956, ratified by the owner as the
  * current prices). Every storage charge and every storage price shown to a
  * customer or operator reads these values; `service_pricing` rows for the
- * `storage` service are a read-only mirror kept in sync by migration 0496 and
+ * `storage` service are a read-only mirror kept in sync by migration 0503 and
  * cannot be edited through the admin pricing API.
  *
  * Values are exact decimal USD strings so no binary float can drift a price.

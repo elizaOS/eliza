@@ -254,6 +254,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/documents/check": Record<never, never>;
   "GET /api/v1/domains": Record<never, never>;
   "GET /api/v1/domains/resolve": Record<never, never>;
+  "GET /api/v1/earnings/statement": Record<never, never>;
   "GET /api/v1/eliza/agents": Record<never, never>;
   "GET /api/v1/eliza/agents/{agentId}": { agentId: string | number };
   "GET /api/v1/eliza/agents/{agentId}/api/{path}": {
@@ -313,6 +314,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/paypal/popup-callback": Record<never, never>;
   "GET /api/v1/eliza/paypal/status": Record<never, never>;
   "GET /api/v1/eliza/personal": Record<never, never>;
+  "GET /api/v1/eliza/personal/recovery/{token}": { token: string | number };
   "GET /api/v1/eliza/plaid/status": Record<never, never>;
   "GET /api/v1/files": Record<never, never>;
   "GET /api/v1/files/{id}": { id: string | number };
@@ -1077,6 +1079,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/documents/check": never;
   "GET /api/v1/domains": never;
   "GET /api/v1/domains/resolve": never;
+  "GET /api/v1/earnings/statement": never;
   "GET /api/v1/eliza/agents": never;
   "GET /api/v1/eliza/agents/{agentId}": never;
   "GET /api/v1/eliza/agents/{agentId}/api/{path}": never;
@@ -1109,6 +1112,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/paypal/popup-callback": never;
   "GET /api/v1/eliza/paypal/status": never;
   "GET /api/v1/eliza/personal": never;
+  "GET /api/v1/eliza/personal/recovery/{token}": never;
   "GET /api/v1/eliza/plaid/status": never;
   "GET /api/v1/files": never;
   "GET /api/v1/files/{id}": never;

@@ -36,6 +36,7 @@ export interface EmailMessages {
   };
   purchaseConfirmation: { subject: string };
   containerShutdownWarning: { subject: string };
+  agentRetentionDeletionNotice: { subject: string };
   footer: { copyright: string };
 }
 
@@ -82,6 +83,9 @@ export const emailMessages: EmailMessages = {
   },
   containerShutdownWarning: {
     subject: '🚨 URGENT: container "{{containerName}}" will be shut down in 48 hours',
+  },
+  agentRetentionDeletionNotice: {
+    subject: 'Your agent "{{agentName}}" will be deleted in {{daysRemaining}} day(s)',
   },
   footer: {
     copyright: "© {{year}} Eliza Cloud. All rights reserved.",

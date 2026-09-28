@@ -1,4 +1,4 @@
-/** Verifies canonical USD MCP pricing through the rendered editor boundary. */
+/** Verifies the MCP editor offers no pricing and always submits a free listing (#22961). */
 // @vitest-environment jsdom
 
 import {
@@ -36,7 +36,7 @@ vi.mock("./lib/mcp-mutations", () => ({
   }),
 }));
 
-import { McpEditorDialog, resolveEditorPriceUsd } from "./McpEditorDialog";
+import { McpEditorDialog } from "./McpEditorDialog";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,8 +62,8 @@ const EDITING_MCP = {
   documentation_url: null,
 } as unknown as UserMcpRecord;
 
-describe("McpEditorDialog canonical credit pricing", () => {
-  it("renders and submits the server-projected USD price, not legacy points", async () => {
+describe("McpEditorDialog free listings", () => {
+  it("shows no price controls and submits an edit as free", async () => {
     mutationMocks.update.mockResolvedValueOnce({ mcp: EDITING_MCP });
     const onOpenChange = vi.fn();
 
@@ -75,99 +75,24 @@ describe("McpEditorDialog canonical credit pricing", () => {
       />,
     );
 
-    const priceInput = screen.getByLabelText(
-      "Price per request (USD cloud credit)",
-    ) as HTMLInputElement;
-    expect(priceInput.value).toBe("0.0125");
+    expect(screen.getByTestId("mcp-free-listing-note")).toBeTruthy();
+    expect(
+      screen.queryByLabelText("Price per request (USD cloud credit)"),
+    ).toBeNull();
+    expect(screen.queryByLabelText("Pricing")).toBeNull();
+    expect(screen.queryByLabelText("Enable x402 micropayments")).toBeNull();
 
-    fireEvent.change(priceInput, { target: { value: "0.025" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(mutationMocks.update).toHaveBeenCalledOnce());
     const submitted = mutationMocks.update.mock.calls[0]?.[0];
     expect(submitted).toMatchObject({
       mcpId: "mcp-1",
-      input: { priceUsd: 0.025 },
+      input: { pricingType: "free" },
     });
-    expect(submitted.input).not.toHaveProperty("creditsPerRequest");
+    expect(submitted.input).not.toHaveProperty("priceUsd");
+    expect(submitted.input).not.toHaveProperty("x402PriceUsd");
+    expect(submitted.input).not.toHaveProperty("x402Enabled");
     expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it("converts a mixed-version legacy point price instead of silently defaulting", () => {
-    const legacyRecord = {
-      ...EDITING_MCP,
-      price_usd: undefined,
-      credits_per_request: "250",
-      legacy_credits_per_request: undefined,
-    } as unknown as UserMcpRecord;
-
-    render(
-      <McpEditorDialog open onOpenChange={vi.fn()} editing={legacyRecord} />,
-    );
-
-    expect(
-      (
-        screen.getByLabelText(
-          "Price per request (USD cloud credit)",
-        ) as HTMLInputElement
-      ).value,
-    ).toBe("2.5");
-  });
-
-  it("quantizes a fractional legacy point price instead of seeding a float artifact", () => {
-    const legacyRecord = {
-      ...EDITING_MCP,
-      price_usd: undefined,
-      credits_per_request: "1.1",
-      legacy_credits_per_request: undefined,
-    } as unknown as UserMcpRecord;
-
-    // A bare `points / 100` renders "0.011000000000000001" here.
-    expect(resolveEditorPriceUsd(legacyRecord)).toBe("0.011");
-
-    render(
-      <McpEditorDialog open onOpenChange={vi.fn()} editing={legacyRecord} />,
-    );
-
-    expect(
-      (
-        screen.getByLabelText(
-          "Price per request (USD cloud credit)",
-        ) as HTMLInputElement
-      ).value,
-    ).toBe("0.011");
-  });
-
-  it("refuses to submit a malformed price instead of publishing it as free", async () => {
-    render(
-      <McpEditorDialog open onOpenChange={vi.fn()} editing={EDITING_MCP} />,
-    );
-
-    fireEvent.change(
-      screen.getByLabelText("Price per request (USD cloud credit)"),
-      { target: { value: "abc" } },
-    );
-    expect(
-      await screen.findByText("Enter a valid non-negative price per request."),
-    ).toBeTruthy();
-
-    const save = screen.getByRole("button", {
-      name: "Save changes",
-    }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    fireEvent.click(save);
-
-    await waitFor(() => expect(mutationMocks.update).not.toHaveBeenCalled());
-  });
-
-  it("seeds the credit default rather than the server's zero projection for an x402 MCP", () => {
-    const x402Record = {
-      ...EDITING_MCP,
-      pricing_type: "x402",
-      price_usd: "0",
-      credits_per_request: "0",
-    } as unknown as UserMcpRecord;
-
-    expect(resolveEditorPriceUsd(x402Record)).toBe("0.01");
   });
 });

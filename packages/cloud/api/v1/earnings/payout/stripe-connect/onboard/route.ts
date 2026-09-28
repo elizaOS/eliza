@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 earnings payout stripe connect onboard route traffic with route-local auth expectations.
+import { affiliatesRepository } from "@elizaos/cloud-shared/db/repositories/affiliates";
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { createConnectOnboarding } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
 import { Hono } from "hono";
@@ -24,6 +24,9 @@ const OnboardSchema = z.object({
  * POST /api/v1/earnings/payout/stripe-connect/onboard (#8922)
  * Create (or reuse) the caller's Stripe Connect Express account and return a
  * one-time onboarding URL. Persists the linkage on first creation.
+ *
+ * Creator payouts are retired (#23022); Stripe Connect now only pays affiliate
+ * earnings, so onboarding is limited to users with an affiliate code.
  */
 async function handlePOST(request: Request) {
   try {
@@ -46,6 +49,21 @@ async function handlePOST(request: Request) {
           error: parsed.error.issues[0]?.message ?? "Invalid request",
         },
         { status: 400 },
+      );
+    }
+
+    const affiliateCode = await affiliatesRepository.getAffiliateCodeByUserId(
+      user.id,
+    );
+    if (!affiliateCode) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Stripe Connect payouts are only available to affiliates. Creator payouts have been retired.",
+          code: "access_denied",
+        },
+        { status: 403 },
       );
     }
 

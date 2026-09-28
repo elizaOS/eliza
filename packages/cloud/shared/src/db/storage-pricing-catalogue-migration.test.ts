@@ -1,5 +1,5 @@
 /**
- * Applies migration 0496 to PGlite and proves the storage service_pricing
+ * Applies migration 0503 to PGlite and proves the storage service_pricing
  * mirror equals the ratified STORAGE_PRICING catalogue (#22956).
  */
 
@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { STORAGE_PRICING } from "../lib/constants/pricing";
 
 const migrationSource = readFileSync(
-  join(import.meta.dir, "migrations/0496_storage_pricing_catalogue_mirror.sql"),
+  join(import.meta.dir, "migrations/0503_storage_pricing_catalogue_mirror.sql"),
   "utf8",
 );
 const databases: PGlite[] = [];
@@ -58,7 +58,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-test("0496 pins every storage row to the catalogue and audits only corrections", async () => {
+test("0503 pins every storage row to the catalogue and audits only corrections", async () => {
   const db = await database();
   await db.exec(`
     INSERT INTO service_pricing (service_id, method, cost, is_active) VALUES

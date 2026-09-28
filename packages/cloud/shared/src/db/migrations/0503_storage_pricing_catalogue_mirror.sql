@@ -24,7 +24,7 @@ WITH catalogue("method", "cost", "description") AS (
     change_type, changed_by, reason
   )
   SELECT id, 'storage', method, old_cost, new_cost,
-    'migration_reseed', 'migration:0496',
+    'migration_reseed', 'migration:0503',
     'Pin storage mirror to the ratified STORAGE_PRICING catalogue (#22956)'
   FROM corrected
   RETURNING 1
@@ -32,7 +32,7 @@ WITH catalogue("method", "cost", "description") AS (
 INSERT INTO "service_pricing" ("service_id", "method", "cost", "metadata", "is_active", "updated_by")
 SELECT 'storage', catalogue.method, catalogue.cost,
   jsonb_build_object('description', catalogue.description, 'catalogue', 'STORAGE_PRICING'),
-  true, 'migration:0496'
+  true, 'migration:0503'
 FROM catalogue
 ON CONFLICT ("service_id", "method") DO UPDATE SET
   "cost" = EXCLUDED."cost",

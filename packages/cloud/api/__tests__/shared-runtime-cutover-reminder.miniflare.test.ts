@@ -690,4 +690,114 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     ]);
     releaseFinalizationGate();
   }, 120_000);
+
+  test("a connector turn refused by the cutover seal is a retryable hold, before and after commit", async () => {
+    const { coordinateSharedBridge } = await import(
+      "../../shared/src/lib/services/shared-runtime/conversation-coordinator"
+    );
+    const { PersonalCutoverHoldError } = await import(
+      "../../shared/src/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const agent = {
+      id: "personal:cutover-connector-hold",
+      organization_id: "organization-cutover-hold",
+      user_id: "user-cutover-hold",
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza" } },
+      execution_tier: "shared",
+    };
+    const room = agent.id;
+    const token = "personal-cutover:hold-source:hold-dedicated";
+    // The production coordinator client reaches the same Workerd object the
+    // seal was written to; only the namespace addressing is substituted.
+    const namespace = {
+      getByName: () => ({
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          miniflare.dispatchFetch(String(input), {
+            method: init?.method,
+            body: init?.body as string,
+            headers: {
+              "content-type": "application/json",
+              "x-test-room": room,
+            },
+          }) as unknown as Promise<Response>,
+      }),
+    };
+    const connectorTurn = () =>
+      coordinateSharedBridge(
+        agent as never,
+        {
+          jsonrpc: "2.0",
+          id: "blooio:eliza-app:held-turn",
+          method: "message.send",
+          params: {
+            text: "remind me to call mom",
+            roomId: room,
+            clientMessageId: "blooio:eliza-app:held-turn",
+          },
+        },
+        {
+          namespace: namespace as never,
+          executionCtx: { waitUntil: () => undefined },
+          agentKind: "personal",
+        },
+      );
+
+    const seeded = await post(room, "/__test/seed", {
+      conversation: {
+        agentId: agent.id,
+        channelId: agent.id,
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    });
+    expect(seeded.status, await seeded.text()).toBe(200);
+    const sealed = await post(room, "/cutover-seal", {
+      operation: "cutover-seal",
+      agentId: agent.id,
+      roomId: room,
+      token,
+      leaseMs: 60_000,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      dedicatedAgentId: "hold-dedicated",
+    });
+    expect(sealed.status, await sealed.text()).toBe(200);
+
+    // Sealed, not yet committed: a hold the connector retries shortly.
+    const whileSealed = await connectorTurn().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(whileSealed).toBeInstanceOf(PersonalCutoverHoldError);
+    expect(whileSealed).toMatchObject({
+      committed: false,
+      retryAfterSeconds: 1,
+    });
+
+    const committed = await post(room, "/cutover-commit", {
+      operation: "cutover-commit",
+      token,
+    });
+    expect(committed.status, await committed.text()).toBe(200);
+
+    // Committed: still a hold, never a terminal conflict, so the retry
+    // re-resolves the attested Dedicated route instead of dropping the turn.
+    const afterCommit = await connectorTurn().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(afterCommit).toBeInstanceOf(PersonalCutoverHoldError);
+    expect(afterCommit).toMatchObject({ committed: true });
+
+    // Neither refusal admitted the turn into Shared history or inference.
+    const history = await post(room, "/history", {
+      operation: "history",
+      agentId: agent.id,
+      roomId: room,
+    });
+    expect(await history.json()).toEqual({ history: [] });
+  }, 120_000);
 });

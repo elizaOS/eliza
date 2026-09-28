@@ -55,6 +55,7 @@ import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-d
 import { ApiError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { checkAgentCreditGate } from "./agent-billing-gate";
+import { AGENT_FUNDING_RETENTION_DAYS } from "./agent-funding-retention";
 import { withPersonalFallbackRecoveryLink } from "./personal-fallback-recovery-link";
 import type { PersonalSharedFallbackAccountState } from "./shared-runtime/personal-fallback-account-state";
 
@@ -62,11 +63,12 @@ export type { PersonalDedicatedFallback } from "../../db/schemas/personal-dedica
 export type { PersonalSharedFallbackAccountState } from "./shared-runtime/personal-fallback-account-state";
 
 /**
- * Minimum preservation window for a Dedicated agent whose paid plan lapsed.
- * Nothing in this workflow deletes the agent; this is the deadline shown to
- * the user and the earliest point any future retention policy may act.
+ * Preservation window for a Dedicated agent whose paid plan lapsed. Nothing in
+ * this workflow deletes the agent; `agent-funding-retention.ts` (#22967) sends
+ * the 7-day and 1-day notices and removes the container through the sleep
+ * lifecycle once this deadline passes, keeping the latest backup 90 more days.
  */
-export const PERSONAL_DEDICATED_FALLBACK_RETENTION_DAYS = 30;
+export const PERSONAL_DEDICATED_FALLBACK_RETENTION_DAYS = AGENT_FUNDING_RETENTION_DAYS;
 export const PERSONAL_DEDICATED_FALLBACK_RETRY_AFTER_SECONDS = 5;
 
 export const PERSONAL_DEDICATED_FALLBACK_CONFLICT = "PERSONAL_DEDICATED_FALLBACK_CONFLICT";

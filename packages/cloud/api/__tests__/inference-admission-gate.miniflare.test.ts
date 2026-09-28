@@ -857,4 +857,179 @@ describe("Miniflare Durable Object integration", () => {
         .status,
     ).toBe(200);
   }, 120_000);
+
+  test("snapshot admissions under a superseded policy generation fail closed at lease and dispatch", async () => {
+    const gate = "org-policy-generation";
+    const lease = (requestId: string, policyGeneration: string) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "4",
+          estimatedCostUsd: 1,
+          policyGeneration,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare policy generation test",
+            accounting: { kind: "direct_debit" },
+          },
+        },
+        gate,
+      );
+    const staleCode = async (response: {
+      status: number;
+      text(): Promise<string>;
+    }) => {
+      expect(response.status).toBe(409);
+      return JSON.parse(await response.text()).code;
+    };
+
+    // A snapshot publication carries the authoritative generation.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "5" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await staleCode(await lease("policy-old", "4"))).toBe(
+      "inference_admission_policy_stale",
+    );
+    expect((await lease("policy-current", "5")).status).toBe(200);
+    // A newer authoritative admission advances the fence for everyone else.
+    expect((await lease("policy-newer", "6")).status).toBe(200);
+    expect(await staleCode(await lease("policy-was-current", "5"))).toBe(
+      "inference_admission_policy_stale",
+    );
+    // An out-of-order older publication cannot roll the fence back.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "3" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await staleCode(await lease("policy-rollback", "5"))).toBe(
+      "inference_admission_policy_stale",
+    );
+
+    // A lease taken at generation 6 cannot dispatch once 7 is published.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "7" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      await staleCode(
+        await post(
+          "/dispatch",
+          {
+            requestId: "policy-newer",
+            preProviderCancellationToken: "policy-newer-token",
+          },
+          gate,
+        ),
+      ),
+    ).toBe("inference_admission_policy_stale");
+    // The undispatched lease still releases through the normal zero path.
+    expect(
+      (await post("/release", { requestId: "policy-newer" }, gate)).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "x" },
+          gate,
+        )
+      ).status,
+    ).toBe(400);
+  }, 120_000);
+
+  test("subscriber funding leases pin a well-formed affiliate payout contract", async () => {
+    const gate = "org-funding-affiliate";
+    const userId = "00000000-0000-0000-0000-000000000002";
+    const attribution = {
+      affiliateCodeId: "00000000-0000-4000-8000-0000000000a1",
+      affiliateUserId: "00000000-0000-4000-8000-0000000000a2",
+      affiliateCode: "PARTNER",
+      markupPercent: 0.2,
+    };
+    const lease = (requestId: string, affiliate: unknown) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "3",
+          balanceView: "funding",
+          estimatedCostUsd: 1.2,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId,
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare subscriber affiliate test",
+            accounting: { kind: "subscription_funding", affiliate },
+          },
+        },
+        gate,
+      );
+    expect(
+      (await post("/hydrate", { balanceUsd: 10, balanceRevision: "3" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await lease("funding-affiliate-ok", {
+          attribution,
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-ok",
+        })
+      ).status,
+    ).toBe(200);
+    // A self-referral, a missing payout identity, or an extra field is not a
+    // recoverable payout contract and never reaches the alarm.
+    expect(
+      (
+        await lease("funding-affiliate-self", {
+          attribution: { ...attribution, affiliateUserId: userId },
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-self",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await lease("funding-affiliate-nosource", { attribution })).status,
+    ).toBe(400);
+    expect(
+      (
+        await lease("funding-affiliate-extra", {
+          attribution,
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-extra",
+          amount: 1,
+        })
+      ).status,
+    ).toBe(400);
+  }, 120_000);
 });

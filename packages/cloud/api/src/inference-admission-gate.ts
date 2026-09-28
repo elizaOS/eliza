@@ -32,6 +32,12 @@ interface ActiveLease extends ActiveLeaseTiming {
    * dispatch without making crash recovery optimistic.
    */
   preProviderCancellationToken?: string;
+  /**
+   * Organization policy generation the lease was admitted under. Dispatch of
+   * a separately leased request fails closed once the gate has observed a
+   * newer generation.
+   */
+  policyGeneration?: string;
   recovery: InferenceAdmissionRecoveryContext;
 }
 
@@ -53,6 +59,12 @@ interface GateLedger {
   activeEstimateUsd: number;
   nextAlarmAt: number | null;
   settledRequestIds: string[];
+  /**
+   * Highest organization policy generation observed from an authoritative
+   * policy read (primary admission or snapshot publication). Cache-served
+   * admissions carrying an older generation are stale and fail closed.
+   */
+  policyGeneration?: string;
 }
 
 interface LeaseExpiryIndex {
@@ -69,6 +81,8 @@ interface LeaseRequest {
   balanceView?: BalanceView;
   estimatedCostUsd: number;
   recovery: InferenceAdmissionRecoveryContext;
+  /** Policy generation the caller's admission decision was made under. */
+  policyGeneration?: string;
 }
 
 interface AuthorizedLeaseRequest extends LeaseRequest {
@@ -87,6 +101,8 @@ interface HydrateRequest {
   balanceUsd: number;
   balanceRevision: string;
   balanceView?: BalanceView;
+  /** Authoritative policy generation published with the observation. */
+  policyGeneration?: string;
 }
 
 interface SettleRequest {
@@ -326,8 +342,21 @@ function validRecoveryContext(
     const accounting = record.accounting;
     if (!accounting || typeof accounting !== "object") return false;
     const lane = accounting as Record<string, unknown>;
-    if (lane.kind === "direct_debit" || lane.kind === "subscription_funding") {
+    if (lane.kind === "direct_debit") {
       return Object.keys(lane).length === 1;
+    }
+    if (lane.kind === "subscription_funding") {
+      if (lane.affiliate === undefined) return Object.keys(lane).length === 1;
+      const affiliate = lane.affiliate as Record<string, unknown> | null;
+      return (
+        Object.keys(lane).length === 2 &&
+        affiliate !== null &&
+        typeof affiliate === "object" &&
+        Object.keys(affiliate).length === 2 &&
+        isAffiliateBillingAttribution(affiliate.attribution) &&
+        affiliate.attribution.affiliateUserId !== record.userId &&
+        validTrimmedId(affiliate.payoutSourceId)
+      );
     }
     return (
       lane.kind === "affiliate_debit" &&
@@ -404,6 +433,56 @@ function jsonError(message: string, status: 400 | 409 | 503): Response {
   return Response.json({ success: false, error: message }, { status });
 }
 
+const POLICY_STALE_CODE = "inference_admission_policy_stale";
+
+function policyStale(): Response {
+  return Response.json(
+    {
+      success: false,
+      code: POLICY_STALE_CODE,
+      error: "Inference admission policy generation is stale",
+    },
+    { status: 409 },
+  );
+}
+
+/**
+ * Adopt a newer authoritative policy generation. Returns false when the
+ * supplied generation is older than one the gate has already observed, which
+ * proves the caller decided admission from a superseded policy projection.
+ */
+function observePolicyGeneration(
+  ledger: GateLedger,
+  generation: string | undefined,
+): boolean {
+  if (generation === undefined) return true;
+  const incoming = balanceRevision(generation);
+  if (incoming === null) {
+    throw new Error("Inference admission policy generation is invalid");
+  }
+  const current =
+    ledger.policyGeneration === undefined
+      ? null
+      : balanceRevision(ledger.policyGeneration);
+  if (current !== null && incoming < current) return false;
+  if (current === null || incoming > current) {
+    ledger.policyGeneration = generation;
+  }
+  return true;
+}
+
+function policyGenerationIsCurrent(
+  ledger: GateLedger,
+  generation: string | undefined,
+): boolean {
+  if (generation === undefined || ledger.policyGeneration === undefined) {
+    return true;
+  }
+  const leased = balanceRevision(generation);
+  const current = balanceRevision(ledger.policyGeneration);
+  return leased !== null && current !== null && leased >= current;
+}
+
 function cloneLedger(ledger: GateLedger): GateLedger {
   return {
     balanceRevision: ledger.balanceRevision,
@@ -415,6 +494,9 @@ function cloneLedger(ledger: GateLedger): GateLedger {
     activeEstimateUsd: ledger.activeEstimateUsd,
     nextAlarmAt: ledger.nextAlarmAt,
     settledRequestIds: [...ledger.settledRequestIds],
+    ...(ledger.policyGeneration !== undefined && {
+      policyGeneration: ledger.policyGeneration,
+    }),
   };
 }
 
@@ -600,6 +682,8 @@ export class InferenceAdmissionGate {
             this.ledger.nextAlarmAt <= 0)) ||
         !Array.isArray(this.ledger.settledRequestIds) ||
         this.ledger.settledRequestIds.length > MAX_SETTLED_REQUEST_IDS ||
+        (this.ledger.policyGeneration !== undefined &&
+          balanceRevision(this.ledger.policyGeneration) === null) ||
         this.ledger.settledRequestIds.some(
           (requestId) => !validRequestId(requestId),
         ))
@@ -638,6 +722,8 @@ export class InferenceAdmissionGate {
       !["leased", "dispatched", "recovering"].includes(lease.phase) ||
       (lease.preProviderCancellationToken !== undefined &&
         !validTrimmedId(lease.preProviderCancellationToken)) ||
+      (lease.policyGeneration !== undefined &&
+        balanceRevision(lease.policyGeneration) === null) ||
       (lease.phase === "recovering" &&
         (!Number.isSafeInteger(lease.recoveryStartedAt) ||
           (lease.recoveryStartedAt ?? 0) <= 0)) ||
@@ -833,6 +919,8 @@ export class InferenceAdmissionGate {
       !validBalanceView(request.balanceView) ||
       !nonNegativeFinite(request.estimatedCostUsd) ||
       request.estimatedCostUsd === 0 ||
+      (request.policyGeneration !== undefined &&
+        balanceRevision(request.policyGeneration) === null) ||
       (preProviderCancellationToken !== undefined &&
         !validTrimmedId(preProviderCancellationToken)) ||
       !validRecoveryContext(
@@ -933,6 +1021,12 @@ export class InferenceAdmissionGate {
       await this.save(ledger);
       return jsonError("Request ID was already settled", 409);
     }
+    // A new lease decided under a superseded policy generation never reaches
+    // the provider. Replays of an existing lease above keep their identity.
+    if (!observePolicyGeneration(ledger, request.policyGeneration)) {
+      await this.save(ledger);
+      return policyStale();
+    }
     if (ledger.activeLeaseCount >= MAX_ACTIVE_LEASES) {
       await this.save(ledger);
       return jsonError("Inference admission gate capacity is exhausted", 503);
@@ -960,6 +1054,9 @@ export class InferenceAdmissionGate {
         preProviderCancellationToken === undefined ? "leased" : "dispatched",
       ...(preProviderCancellationToken !== undefined && {
         preProviderCancellationToken,
+      }),
+      ...(request.policyGeneration !== undefined && {
+        policyGeneration: request.policyGeneration,
       }),
       recovery: structuredClone(request.recovery),
     };
@@ -999,7 +1096,9 @@ export class InferenceAdmissionGate {
     if (
       !nonNegativeFinite(request.balanceUsd) ||
       balanceRevision(request.balanceRevision) === null ||
-      !validBalanceView(request.balanceView)
+      !validBalanceView(request.balanceView) ||
+      (request.policyGeneration !== undefined &&
+        balanceRevision(request.policyGeneration) === null)
     ) {
       return jsonError("Invalid inference admission hydration", 400);
     }
@@ -1008,6 +1107,9 @@ export class InferenceAdmissionGate {
       await this.save({
         balanceRevision: request.balanceRevision,
         ...(request.balanceView && { balanceView: request.balanceView }),
+        ...(request.policyGeneration !== undefined && {
+          policyGeneration: request.policyGeneration,
+        }),
         balanceCeilingUsd: request.balanceUsd,
         availableUsd: request.balanceUsd,
         uncollectedDebtUsd: 0,
@@ -1025,6 +1127,9 @@ export class InferenceAdmissionGate {
       request.balanceRevision,
       request.balanceView,
     );
+    // An older published generation is an out-of-order observation, not a
+    // rollback: the gate keeps the newest generation it has seen.
+    observePolicyGeneration(ledger, request.policyGeneration);
     await this.save(ledger);
     return Response.json({ hydrated: true, initialized: false });
   }
@@ -1126,6 +1231,9 @@ export class InferenceAdmissionGate {
         put: [{ requestId: request.requestId, lease: refreshed }],
       });
       return Response.json({ dispatched: true, duplicate: true });
+    }
+    if (!policyGenerationIsCurrent(ledger, lease.policyGeneration)) {
+      return policyStale();
     }
     const dispatched: ActiveLease = {
       ...lease,

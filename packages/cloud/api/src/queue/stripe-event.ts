@@ -53,6 +53,7 @@ import { ApiError } from "@/lib/api/cloud-worker-errors";
 import type { DrainResult } from "@/lib/queue/redis-queue";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
+import { autoTopUpChargeBreakdownFromMetadata } from "@/lib/services/auto-top-up-charge-breakdown";
 import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
 import { invoicesService } from "@/lib/services/invoices";
@@ -1551,6 +1552,11 @@ async function handlePaymentIntentSucceeded(
 
   // Invoice creation is non-critical. It deliberately runs for duplicate
   // credit rows because synchronous durable settlement may win first.
+  // The receipt carries the credited base, affiliate markup, platform fee and
+  // total charge from the signed durable metadata (#23020).
+  const chargeBreakdown = isDurableAutoTopUp
+    ? autoTopUpChargeBreakdownFromMetadata(paymentIntent.metadata)
+    : null;
   try {
     const invoiceIdOrObject = (
       paymentIntent as Stripe.PaymentIntent & {
@@ -1585,6 +1591,7 @@ async function handlePaymentIntentSucceeded(
           credits_added: credits.toString(),
           metadata: {
             type: purchaseType,
+            ...(chargeBreakdown && { charge_breakdown: chargeBreakdown }),
           },
           paid_at: stripeInvoice.status_transitions?.paid_at
             ? new Date(stripeInvoice.status_transitions.paid_at * 1000)
@@ -1617,6 +1624,7 @@ async function handlePaymentIntentSucceeded(
           credits_added: credits.toString(),
           metadata: {
             type: purchaseType,
+            ...(chargeBreakdown && { charge_breakdown: chargeBreakdown }),
           },
           paid_at: new Date(),
         });

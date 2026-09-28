@@ -10,7 +10,7 @@ import {
 } from "./android/cloud-policy.ts";
 import { assertSharedTreeOnlyForEliza } from "./android/shared-tree.ts";
 import { run } from "./build-tools.ts";
-import { APP, androidDir, appDir, iosDir } from "./context.ts";
+import { APP, androidDir, appDir, iosDir, WHITELABEL } from "./context.ts";
 import { firstExisting, resolveExecutable } from "./toolchain.ts";
 
 // Opaque app-icon background on iOS and the Android adaptive-icon background
@@ -182,6 +182,13 @@ export async function writeAndroidForegroundPng(tool, source, output, canvas) {
 }
 
 export function resolveBrandSources() {
+  if (WHITELABEL) {
+    // A private brand supplies its own artwork; never mix in upstream marks.
+    return {
+      iconSource: WHITELABEL.icon,
+      launchSource: WHITELABEL.splash,
+    };
+  }
   return {
     // The icon mark is a transparent-background face chosen to contrast with
     // BRAND_ICON_BACKGROUND, so iOS can flatten it onto that color and Android
@@ -287,7 +294,20 @@ export async function generateAndroidBrandAssets({ cloudBuild = false } = {}) {
     fs.rmSync(cloudSplashMarkPath);
   }
 
-  if (cloudBuild) {
+  if (cloudBuild && WHITELABEL && !WHITELABEL.splashMark) {
+    throw new Error(
+      "[mobile-build] White-label Android Cloud builds require splashMark in brand.json",
+    );
+  }
+  if (cloudBuild && WHITELABEL?.splashMark) {
+    fs.mkdirSync(path.dirname(cloudSplashMarkPath), { recursive: true });
+    await writeAndroidForegroundPng(
+      imageTool,
+      WHITELABEL.splashMark,
+      cloudSplashMarkPath,
+      ANDROID_CLOUD_SPLASH_MARK_SIZE,
+    );
+  } else if (cloudBuild) {
     const cloudSplashSource = path.join(
       appDir,
       "public",

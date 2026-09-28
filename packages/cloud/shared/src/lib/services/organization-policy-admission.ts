@@ -16,16 +16,15 @@ import {
   type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
 } from "./organization-quota-policy";
-
-/** Admission callback; `tx` is the locked policy transaction for same-snapshot reads. */
-type PolicyAdmissionOperation<T> = (
-  policy: OrganizationQuotaPolicy,
-  tx: DbTransaction,
-) => Promise<T>;
+/**
+ * The callback receives the locked transaction so publication can read the
+ * remaining admission inputs (subscriber capacity, billing holds) under the
+ * same policy lock and clock.
+ */
 export async function withOrganizationPolicyAdmission<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: PolicyAdmissionOperation<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return admitUnderPolicyLock(organizationId, expected, operation, lockOrganizationPolicy);
 }
@@ -38,14 +37,14 @@ export async function withOrganizationPolicyAdmission<T>(
 export async function withOrganizationPolicyReadAdmission<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: PolicyAdmissionOperation<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return admitUnderPolicyLock(organizationId, expected, operation, lockOrganizationPolicyForRead);
 }
 async function admitUnderPolicyLock<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: PolicyAdmissionOperation<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
   lock: typeof lockOrganizationPolicy,
 ): Promise<T> {
   return observeInferenceDependency("transaction", "policy_admission", () =>

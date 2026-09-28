@@ -1494,6 +1494,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1EarningsStatement<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/earnings/statement"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/earnings/statement", TResponse>(
+      "GET /api/v1/earnings/statement",
+      options,
+    );
+  }
+
   getApiV1ElizaAgents<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents"> = {},
   ): Promise<TResponse> {
@@ -1786,6 +1795,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/eliza/personal", TResponse>(
       "GET /api/v1/eliza/personal",
+      options,
+    );
+  }
+
+  getApiV1ElizaPersonalRecoveryByToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/personal/recovery/{token}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/eliza/personal/recovery/{token}", TResponse>(
+      "GET /api/v1/eliza/personal/recovery/{token}",
       options,
     );
   }
@@ -6649,6 +6667,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/domains/resolve", options);
   }
 
+  getApiV1EarningsStatementRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/earnings/statement"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/earnings/statement", options);
+  }
+
   getApiV1ElizaAgentsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents"> = {},
   ): Promise<Response> {
@@ -6881,6 +6905,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"GET /api/v1/eliza/personal"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/eliza/personal", options);
+  }
+
+  getApiV1ElizaPersonalRecoveryByTokenRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/personal/recovery/{token}">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/eliza/personal/recovery/{token}", options);
   }
 
   getApiV1ElizaPlaidStatusRaw(

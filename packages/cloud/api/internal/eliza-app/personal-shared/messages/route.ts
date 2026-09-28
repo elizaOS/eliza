@@ -55,6 +55,7 @@ import {
   sharedTurnServerTiming,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import {
+  PersonalCutoverHoldError,
   SharedRuntimeCacheWarmingError,
   SharedRuntimeTurnError,
 } from "@/lib/services/shared-runtime/shared-runtime-errors";
@@ -98,6 +99,7 @@ const SAFE_ERROR_NAMES = new Set([
   "Error",
   "HTTPException",
   "InsufficientCreditsError",
+  "PersonalCutoverHoldError",
   "PersonalDeliveryAccountResolutionError",
   "RangeError",
   "RateLimitError",
@@ -118,6 +120,7 @@ function retryableDeliveryError(error: unknown): boolean {
   const name = error instanceof Error ? error.name : "";
   return (
     error instanceof PersonalDeliveryAccountResolutionError ||
+    error instanceof PersonalCutoverHoldError ||
     error instanceof SharedRuntimeCacheWarmingError ||
     name === "AbortError" ||
     name === "RateLimitError" ||
@@ -2093,6 +2096,20 @@ app.post("/", async (c) => {
         },
         503,
         { "Retry-After": "1" },
+      );
+    }
+    if (error instanceof PersonalCutoverHoldError) {
+      // The turn did not execute in Shared. Connector ingress holds it and
+      // retries; the retry resolves the attested Dedicated route (#22934).
+      return c.json(
+        {
+          success: false,
+          error: error.message,
+          code: "personal_cutover_in_progress",
+          retryable: true,
+        },
+        503,
+        { "Retry-After": String(error.retryAfterSeconds) },
       );
     }
     if (isGroupDeliveryPendingError(error)) {

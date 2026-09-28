@@ -1,5 +1,5 @@
 /**
- * Applies migration 0498 to PGlite and proves only user-created live keys are
+ * Applies migration 0505 to PGlite and proves only user-created live keys are
  * backfilled into the plan-limited API-key count (#22958).
  */
 
@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 
 const migrationSource = readFileSync(
-  join(import.meta.dir, "migrations/0498_api_key_plan_ceilings.sql"),
+  join(import.meta.dir, "migrations/0505_api_key_plan_ceilings.sql"),
   "utf8",
 );
 const ORG = "00000000-0000-4000-8000-000000022958";
@@ -19,7 +19,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-test("0498 backfills user-created keys and leaves system-provisioned keys uncounted", async () => {
+test("0505 backfills user-created keys and leaves system-provisioned keys uncounted", async () => {
   const db = new PGlite();
   databases.push(db);
   await db.exec(`
