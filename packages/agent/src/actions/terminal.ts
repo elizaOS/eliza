@@ -23,9 +23,9 @@ import {
   type Memory,
   readAliasedEnv,
   redactSensitiveText,
-  resolveServerOnlyPort,
   stringToUuid,
 } from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 import { capturedTerminalOutputIsSafe } from "../api/terminal-output-contract.ts";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
@@ -640,7 +640,7 @@ export const terminalAction: Action = {
     let response: Response;
     try {
       response = await fetch(
-        `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
+        `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
         {
           method: "POST",
           headers,
