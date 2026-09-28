@@ -13,6 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { ChatEvent, Platform } from "./adapters/types";
+import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 
 /** Cloud codes that prove the turn did not execute and will be accepted later. */
@@ -171,8 +172,45 @@ export interface CutoverHoldDrainStats {
 }
 
 /**
+ * Keep a redelivery's lease alive for as long as the redelivery runs. A
+ * Personal Shared turn can run for many lease periods, and a lapsed lease lets
+ * another replica run the same held turn again. Renewal is an atomic
+ * compare-and-expire and stops once the lease belongs to someone else.
+ */
+function renewLeaseWhileRedelivering(
+  redis: GatewayRedis,
+  leaseKey: string,
+  leaseToken: string,
+  leaseSeconds: number,
+  dedupKey: string,
+): () => void {
+  const timer = setInterval(
+    () => {
+      void (async () => {
+        if (await redis.expireIfEquals(leaseKey, leaseToken, leaseSeconds)) {
+          return;
+        }
+        clearInterval(timer);
+        logger.warn("Cutover hold lease was lost during redelivery", {
+          dedupKey,
+        });
+      })().catch((error) => {
+        // error-policy:J7 a failed renewal is reported and retried on the next tick.
+        logger.error("Cutover hold lease renewal failed", {
+          dedupKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+    Math.max(100, Math.floor((leaseSeconds * 1_000) / 3)),
+  );
+  return () => clearInterval(timer);
+}
+
+/**
  * Redeliver every due hold once. A per-hold lease keeps replicas from running
- * the same turn concurrently. `redeliver` owns delivery and the terminal
+ * the same turn concurrently. It is renewed while the redelivery runs and
+ * released only by its owner. `redeliver` owns delivery and the terminal
  * ledger state for "delivered" and "released"; an expired hold is released
  * through `release` so the ordinary failure handling decides its ledger state.
  */
@@ -182,9 +220,10 @@ export async function drainCutoverHolds(
     redeliver(held: HeldWebhook): Promise<HeldWebhookOutcome>;
     release(held: HeldWebhook, reason: "expired"): Promise<void>;
   },
-  options: { now?: number; limit?: number } = {},
+  options: { now?: number; limit?: number; leaseSeconds?: number } = {},
 ): Promise<CutoverHoldDrainStats> {
   const now = options.now ?? Date.now();
+  const leaseSeconds = options.leaseSeconds ?? HOLD_LEASE_SECONDS;
   const stats: CutoverHoldDrainStats = {
     delivered: 0,
     rescheduled: 0,
@@ -202,7 +241,7 @@ export async function drainCutoverHolds(
     const leaseToken = randomUUID();
     const leased = await redis.set(leaseKey, leaseToken, {
       nx: true,
-      ex: HOLD_LEASE_SECONDS,
+      ex: leaseSeconds,
     });
     if (!leased) continue;
     const removeHeldRecord = async (): Promise<boolean> =>
@@ -216,6 +255,13 @@ export async function drainCutoverHolds(
           [leaseToken, dedupKey],
         ),
       ) === 1;
+    const stopRenewal = renewLeaseWhileRedelivering(
+      redis,
+      leaseKey,
+      leaseToken,
+      leaseSeconds,
+      dedupKey,
+    );
     try {
       const held = parseHeldWebhook(await redis.get(recordKey(dedupKey)));
       if (!held || held.dedupKey !== dedupKey) {
@@ -243,11 +289,8 @@ export async function drainCutoverHolds(
       if (outcome.kind === "delivered") stats.delivered += 1;
       else stats.released += 1;
     } finally {
-      await redis.eval(
-        `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`,
-        [leaseKey],
-        [leaseToken],
-      );
+      stopRenewal();
+      await redis.delIfEquals(leaseKey, leaseToken);
     }
   }
   return stats;

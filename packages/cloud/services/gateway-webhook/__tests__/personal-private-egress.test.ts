@@ -49,6 +49,13 @@ class MemoryRedis implements GatewayRedis {
   async expire(): Promise<unknown> {
     return 1;
   }
+  async delIfEquals(key: string, value: string): Promise<boolean> {
+    if (this.values.get(key) !== value) return false;
+    return this.values.delete(key);
+  }
+  async expireIfEquals(key: string, value: string): Promise<boolean> {
+    return this.values.get(key) === value;
+  }
   async zadd(): Promise<unknown> {
     return 1;
   }
