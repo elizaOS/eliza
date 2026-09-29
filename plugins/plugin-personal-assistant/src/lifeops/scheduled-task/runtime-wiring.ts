@@ -71,6 +71,11 @@ import {
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
 import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
+import {
+  QUIET_USER_WATCHER_PACK_KEY,
+  runQuietUserWatcher,
+} from "../../default-packs/quiet-user-watcher.js";
+import { createRecentTaskStatesProvider } from "../../providers/recent-task-states.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
@@ -843,6 +848,51 @@ export function createProductionScheduledTaskDispatcher(opts: {
           ok: true,
           messageId: `family-monthly:${result.periodKey}:${result.runId}`,
         };
+      }
+
+      if (
+        record.kind === "watcher" &&
+        record.ownerVisible === false &&
+        record.metadata?.packKey === QUIET_USER_WATCHER_PACK_KEY &&
+        record.metadata?.recordKey === "quiet-user-watcher"
+      ) {
+        const thresholdDays = record.metadata.quietThresholdDays;
+        if (
+          thresholdDays !== undefined &&
+          (typeof thresholdDays !== "number" ||
+            !Number.isInteger(thresholdDays) ||
+            thresholdDays <= 0)
+        ) {
+          return {
+            ok: false,
+            reason: "transport_error",
+            userActionable: false,
+            message:
+              "Quiet watcher threshold must be a positive whole number of days.",
+          };
+        }
+        try {
+          const observations = await runQuietUserWatcher(
+            createRecentTaskStatesProvider(opts.runtime),
+            {
+              asOf: new Date(record.firedAtIso),
+              ...(typeof thresholdDays === "number" ? { thresholdDays } : {}),
+            },
+          );
+          return { ok: true, metadata: { internalOnly: true, observations } };
+        } catch (error) {
+          opts.runtime.reportError(
+            "lifeops:scheduled-task:quiet-watcher",
+            error,
+            { taskId: record.taskId },
+          );
+          return {
+            ok: false,
+            reason: "transport_error",
+            userActionable: false,
+            message: "Quiet watcher observation failed.",
+          };
+        }
       }
 
       const registry = getChannelRegistry(opts.runtime);
