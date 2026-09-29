@@ -1,16 +1,19 @@
 /**
  * Conversation text extraction. Pulls every available conversation line from
  * `State` (the `recentMessages` / `text` values plus the recent-messages memory
- * array) without splitting, trimming, or rewriting it, and preserves every
- * occurrence in source order. `recentConversationTexts`
+ * array) without splitting, trimming, or rewriting it. A complete rendered
+ * history projection already embedded in composed text is included once;
+ * distinct memory occurrences remain in source order. `recentConversationTexts`
  * additionally reads the room's `messages` table and appends complete state
  * context. Storage failures propagate so missing history is not mistaken for a
  * legitimately short conversation.
  */
+
 import { getRecentMessagesData } from "../recent-messages-state";
 import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
+import { CONVERSATION_MESSAGES_HEADER_PREFIX } from "../utils";
 
 export function recentConversationTextsFromState(
 	state: State | undefined,
@@ -23,8 +26,19 @@ export function recentConversationTextsFromState(
 		}
 	};
 
-	pushText(state?.values?.recentMessages);
-	pushText((state as { text?: unknown })?.text);
+	const renderedHistory = state?.values?.recentMessages;
+	const composedText = (state as { text?: unknown })?.text;
+	// The composed state already carries this exact rendered history block.
+	// Keep distinct memory occurrences below; only omit its redundant projection.
+	if (
+		typeof renderedHistory !== "string" ||
+		!renderedHistory.startsWith(CONVERSATION_MESSAGES_HEADER_PREFIX) ||
+		typeof composedText !== "string" ||
+		!composedText.includes(renderedHistory)
+	) {
+		pushText(renderedHistory);
+	}
+	pushText(composedText);
 
 	for (const item of getRecentMessagesData(state)) {
 		const content = item.content;
