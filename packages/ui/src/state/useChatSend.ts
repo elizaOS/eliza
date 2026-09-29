@@ -600,6 +600,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     pollCloudCredits,
   } = deps;
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
@@ -2747,7 +2748,12 @@ export function useChatSend(deps: UseChatSendDeps) {
       const recoveredClientMessageId =
         conversationId && !hasAttachedImages
           ? listPendingChatTurns(conversationId).find(
-              (receipt) => receipt.text === rawInput.trim(),
+              (receipt) =>
+                receipt.restoredToDraft === true &&
+                receipt.text === rawInput.trim() &&
+                !admittedSendKeysRef.current.has(
+                  JSON.stringify([conversationId, receipt.clientMessageId]),
+                ),
             )?.clientMessageId
           : undefined;
       const clientMessageId =
@@ -2801,15 +2807,30 @@ export function useChatSend(deps: UseChatSendDeps) {
           optimisticTurn.userMsgId,
         ]);
       }
-      await new Promise<void>((resolve, reject) => {
-        chatSendQueueRef.current.push({
-          ...queuedTurn,
-          resolve,
-          reject,
+      // Keep queued and active retries distinct from new identical messages.
+      // Release only when this admission settles, including cancellation.
+      const admissionKey = JSON.stringify([conversationId, clientMessageId]);
+      admittedSendKeysRef.current.set(
+        admissionKey,
+        (admittedSendKeysRef.current.get(admissionKey) ?? 0) + 1,
+      );
+      try {
+        await new Promise<void>((resolve, reject) => {
+          chatSendQueueRef.current.push({
+            ...queuedTurn,
+            resolve,
+            reject,
+          });
+          setChatSending(true);
+          void flushQueuedChatSends();
         });
-        setChatSending(true);
-        void flushQueuedChatSends();
-      });
+      } finally {
+        const remaining =
+          (admittedSendKeysRef.current.get(admissionKey) ?? 1) - 1;
+        if (remaining > 0)
+          admittedSendKeysRef.current.set(admissionKey, remaining);
+        else admittedSendKeysRef.current.delete(admissionKey);
+      }
     },
     [
       flushQueuedChatSends,

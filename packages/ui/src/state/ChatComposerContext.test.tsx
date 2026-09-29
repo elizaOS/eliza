@@ -224,6 +224,9 @@ describe("ChatComposerContext draft persistence", () => {
 
     expect(setChatInput).toHaveBeenCalledWith("reload-safe message");
     expect(readChatDraft("conversation-1")).toBe("reload-safe message");
+    expect(listPendingChatTurns("conversation-1")[0]?.restoredToDraft).toBe(
+      true,
+    );
   });
 
   it("does not restore a pending send after server truth clears its receipt", async () => {

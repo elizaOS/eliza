@@ -19,6 +19,7 @@ export interface PendingChatTurnReceipt {
   text: string;
   sentAt: number;
   restoreAt: number;
+  restoredToDraft?: boolean;
 }
 
 function keyFor(conversationId: string, clientMessageId: string): string {
@@ -31,6 +32,8 @@ function isReceipt(value: unknown): value is PendingChatTurnReceipt {
     typeof record?.conversationId === "string" &&
     typeof record.clientMessageId === "string" &&
     typeof record.text === "string" &&
+    (record.restoredToDraft === undefined ||
+      typeof record.restoredToDraft === "boolean") &&
     // Number.isFinite, not typeof: these come back from localStorage, which is
     // untrusted persisted input, and `typeof NaN === "number"` while JSON's
     // `1e999` parses to Infinity. A non-finite stamp survives to break the
@@ -56,11 +59,17 @@ function readReceipt(raw: string | null): PendingChatTurnReceipt | null {
 }
 
 export function persistPendingChatTurn(
-  receipt: Omit<PendingChatTurnReceipt, "restoreAt">,
+  receipt: Omit<PendingChatTurnReceipt, "restoreAt" | "restoredToDraft">,
 ): PendingChatTurnReceipt {
+  const previous = listPendingChatTurns(receipt.conversationId).find(
+    (pending) => pending.clientMessageId === receipt.clientMessageId,
+  );
   const complete: PendingChatTurnReceipt = {
     ...receipt,
     restoreAt: receipt.sentAt + PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
+    ...(previous?.restoredToDraft && previous.text === receipt.text
+      ? { restoredToDraft: true }
+      : {}),
   };
   if (typeof window === "undefined") return complete;
   try {
@@ -74,6 +83,28 @@ export function persistPendingChatTurn(
     return complete;
   }
   return complete;
+}
+
+/** Only the recovery flow may associate a draft with an uncertain send. */
+export function markPendingChatTurnRestored(
+  conversationId: string,
+  clientMessageId: string,
+): boolean {
+  const receipt = listPendingChatTurns(conversationId).find(
+    (pending) => pending.clientMessageId === clientMessageId,
+  );
+  if (!receipt) return false;
+  try {
+    shellLocalStorage.setItem(
+      keyFor(conversationId, clientMessageId),
+      JSON.stringify({ ...receipt, restoredToDraft: true }),
+    );
+    return true;
+  } catch {
+    // error-policy:J3 Do not restore a retry draft without its identity: submitting it could
+    // repeat an already accepted effect. Canonical history can still settle it.
+    return false;
+  }
 }
 
 export function clearPendingChatTurn(

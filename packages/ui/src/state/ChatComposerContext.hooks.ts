@@ -27,6 +27,7 @@ import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearPendingChatTurn,
   listPendingChatTurns,
+  markPendingChatTurnRestored,
   PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
   PENDING_CHAT_TURN_SETTLED_EVENT,
 } from "./pending-chat-turns";
@@ -263,6 +264,13 @@ export function useChatComposerDraftPersistence({
         }
         return;
       }
+      if (
+        !markPendingChatTurnRestored(
+          activeConversationId,
+          receipt.clientMessageId,
+        )
+      )
+        return;
       writeChatDraft(activeConversationId, receipt.text);
       setChatInput(receipt.text);
       // Keep the original id until canonical history settles this send. If the
