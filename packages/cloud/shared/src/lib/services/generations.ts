@@ -109,8 +109,8 @@ export class GenerationsService {
   }
 
   /** Soft-deletes once; false when the generation was already deleted. */
-  async markDeletedOnce(id: string): Promise<boolean> {
-    return await generationsRepository.markDeletedOnce(id);
+  async markDeletedOnce(id: string, storageQuotaBytes?: string): Promise<boolean> {
+    return await generationsRepository.markDeletedOnce(id, storageQuotaBytes);
   }
 
   async listRandomPublicImages(limit: number = 20): Promise<Generation[]> {

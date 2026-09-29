@@ -9,8 +9,10 @@ import {
   offloadJsonField,
   offloadTextField,
 } from "../../lib/storage/object-store";
-import { dbRead, dbWrite } from "../helpers";
+import { dbRead, dbWrite, writeTransaction } from "../helpers";
 import { type Generation, generations, type NewGeneration } from "../schemas/generations";
+
+import { orgStorageQuotaRepository } from "./org-storage-quota";
 
 export type { Generation, NewGeneration };
 
@@ -511,13 +513,23 @@ export class GenerationsRepository {
    * Marks a generation deleted exactly once. Returns false when it was already
    * deleted, so a replayed delete cannot release its storage twice.
    */
-  async markDeletedOnce(id: string): Promise<boolean> {
-    const updated = await dbWrite
-      .update(generations)
-      .set({ status: "deleted", updated_at: new Date() })
-      .where(and(eq(generations.id, id), ne(generations.status, "deleted")))
-      .returning({ id: generations.id });
-    return updated.length > 0;
+  async markDeletedOnce(id: string, storageQuotaBytes?: string): Promise<boolean> {
+    return writeTransaction(async (tx) => {
+      const updated = await tx
+        .update(generations)
+        .set({ status: "deleted", updated_at: new Date() })
+        .where(and(eq(generations.id, id), ne(generations.status, "deleted")))
+        .returning({ organizationId: generations.organization_id });
+      if (updated.length === 0) return false;
+      if (storageQuotaBytes !== undefined) {
+        await orgStorageQuotaRepository.releaseBytes(
+          updated[0].organizationId,
+          BigInt(storageQuotaBytes),
+          tx,
+        );
+      }
+      return true;
+    });
   }
 
   /**

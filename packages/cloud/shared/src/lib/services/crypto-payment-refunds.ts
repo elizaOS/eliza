@@ -31,6 +31,7 @@ export const CRYPTO_REFUND_POLICY = Object.freeze({
 export type CryptoRefundErrorCode =
   | "CRYPTO_REFUND_DESTINATION_NOT_ALLOWED"
   | "CRYPTO_REFUND_PAYMENT_NOT_FOUND"
+  | "CRYPTO_REFUND_PAYMENT_NOT_CONFIRMED"
   | "CRYPTO_REFUND_RECIPIENT_MISMATCH"
   | "CRYPTO_REFUND_INVALID_AMOUNT"
   | "CRYPTO_REFUND_EXCEEDS_PAYMENT";
@@ -144,6 +145,14 @@ export class CryptoPaymentRefundsService {
           "CRYPTO_REFUND_RECIPIENT_MISMATCH",
           "Refund credits can only go to the organization that owns the payment",
           { paymentId: input.paymentId },
+        );
+      }
+
+      if (payment.status !== "confirmed" || !payment.confirmed_at) {
+        throw new CryptoRefundError(
+          "CRYPTO_REFUND_PAYMENT_NOT_CONFIRMED",
+          "Refund requires a confirmed payment settlement",
+          { paymentId: input.paymentId, status: payment.status },
         );
       }
 
