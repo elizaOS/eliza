@@ -191,6 +191,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/mobile/context.ts",
   "scripts/mobile/environment.ts",
   "scripts/mobile/escape.ts",
+  "scripts/mobile/whitelabel.ts",
   "scripts/mobile/ios-healthkit-authority.ts",
   "scripts/mobile/ios-plist.ts",
   "scripts/mobile/ios-pods.ts",

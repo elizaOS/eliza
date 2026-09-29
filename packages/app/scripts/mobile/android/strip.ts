@@ -17,8 +17,10 @@ import { APP, androidDir } from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
   ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+  ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_QUERY_PACKAGES,
   ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  ANDROID_CLOUD_STRIPPED_QUERY_PACKAGES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
@@ -385,11 +387,26 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
       stripPolicy.mergerRemovedPermissions,
     );
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
-    xml = xml
-      .replace(
-        /\s*<package\s+android:name="com\.google\.android\.apps\.healthdata"\s*\/>/g,
+    for (const queryPackage of ANDROID_CLOUD_STRIPPED_QUERY_PACKAGES) {
+      xml = xml.replace(
+        new RegExp(
+          String.raw`\s*<package\s+android:name="${escapeRegExp(queryPackage)}"\s*/>`,
+          "g",
+        ),
         "",
-      )
+      );
+    }
+    for (const queryPackage of ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_QUERY_PACKAGES) {
+      const marker = `<package android:name="${queryPackage}" tools:node="remove" />`;
+      if (xml.includes(marker)) continue;
+      xml = xml.includes("<queries>")
+        ? xml.replace("<queries>", `<queries>\n        ${marker}`)
+        : xml.replace(
+            "<application",
+            `<queries>\n        ${marker}\n    </queries>\n\n    <application`,
+          );
+    }
+    xml = xml
       .replace(
         /\s*<uses-feature\b(?=[^>]*android:name="android\.hardware\.(?:telephony|bluetooth_le)")[^>]*\/>/g,
         "",
