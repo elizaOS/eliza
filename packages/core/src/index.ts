@@ -211,6 +211,10 @@ export {
 	promotedSubactionParent,
 } from "./actions/promote-subactions.ts";
 export {
+	bindTaskExtractionContext,
+	readTaskExtractionContext,
+} from "./actions/task-extraction-context";
+export {
 	actionToTool,
 	buildPlannerToolsFromActions,
 	buildPlannerToolsFromTieredActions,
