@@ -788,6 +788,20 @@ export function createConversationStreamDisconnectTracker({
   // Subscribe first, then close the gap from HTTP authorization to tracker
   // creation. A revoke in that interval must not own a queued turn.
   const authorityReady = revalidatePairedSession();
+  // Revocation notifications are process-local. Recheck the durable session
+  // while an offline turn is running so expiry or another host's revocation
+  // cancels generation too, matching the WebSocket authority interval.
+  let authorityCheckPending = false;
+  const authorityInterval = pairedSessionToken
+    ? setInterval(() => {
+        if (completed || aborted || authorityCheckPending) return;
+        authorityCheckPending = true;
+        void revalidatePairedSession().finally(() => {
+          authorityCheckPending = false;
+        });
+      }, 5_000)
+    : undefined;
+  authorityInterval?.unref();
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
     if (continueOnDisconnect) {
@@ -859,6 +873,7 @@ export function createConversationStreamDisconnectTracker({
     abort,
     checkConnectionClosed,
     dispose: () => {
+      if (authorityInterval) clearInterval(authorityInterval);
       unsubscribeRevocations?.();
       for (const { source, event, listener } of registrations) {
         source.off?.(event, listener);

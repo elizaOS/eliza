@@ -24,6 +24,7 @@ it.each([
   "provider failure",
   "generation timeout",
   "session revoked",
+  "session revoked in storage",
   "unpaired disconnect",
 ] as const)(
   "handles %s through real HTTP, cancellation, and persistence",
@@ -163,6 +164,24 @@ it.each([
       if (failure === "unpaired disconnect") {
         release.resolve();
         await observedAbort.promise;
+        return;
+      }
+      if (failure === "session revoked in storage") {
+        expect(await store.revokeSession(session.id)).toBe(true);
+        release.resolve();
+        await Promise.race([
+          observedAbort.promise,
+          new Promise<never>((_resolve, reject) => {
+            const timeout = setTimeout(
+              () =>
+                reject(
+                  new Error("Persisted revocation did not cancel generation"),
+                ),
+              10_000,
+            );
+            observedAbort.promise.then(() => clearTimeout(timeout));
+          }),
+        ]);
         return;
       }
       if (failure === "session revoked") {
