@@ -7663,7 +7663,7 @@
   "cloud.privacyPanel.visionPermissionsTitle": "Vision and screen capture",
   "cloud.privacyPanel.recordingTitle": "Model-call recording",
   "cloud.privacyPanel.recordingOn": "This deployment records model calls to improve Eliza. Recordings are encrypted and deleted after {{days}} days.",
-  "cloud.privacyPanel.recordingOff": "Model-call recording is off on this deployment. Nothing you send is kept for training.",
+  "cloud.privacyPanel.recordingOff": "Model-call recording is off on this deployment.",
   "cloud.privacyPanel.downloadAccountDescription": "Download a JSON archive of records owned by your account. Organization-wide records are excluded. Secrets and credentials are redacted.",
   "cloud.privacyPanel.exportPreparing": "Preparing…",
   "cloud.privacyPanel.exportTooLarge": "Your data is larger than the self-service export limit. Contact support to request a full export.",

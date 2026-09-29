@@ -106,8 +106,7 @@ export function PrivacyPanel() {
                 days: recording.retentionDays,
               })
             : t("cloud.privacyPanel.recordingOff", {
-                defaultValue:
-                  "Model-call recording is off on this deployment. Nothing you send is kept for training.",
+                defaultValue: "Model-call recording is off on this deployment.",
               })}
         </span>
       }

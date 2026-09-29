@@ -153,7 +153,7 @@ describe("PrivacyPanel", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/v1/me/consents");
     expect(status.getAttribute("data-state")).toBe("off");
     expect(status.textContent).toBe(
-      "Model-call recording is off on this deployment. Nothing you send is kept for training.",
+      "Model-call recording is off on this deployment.",
     );
     expect(
       screen.getByText(
