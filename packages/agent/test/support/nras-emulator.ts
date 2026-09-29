@@ -93,6 +93,7 @@ function gpuToken(nonce: string): Record<string, unknown> {
     measres: "success",
     dbgstat: "disabled",
     hwmodel: GPU_FIRMWARE.hwModel,
+    ueid: "490457405999046854973671575630853621547794591064",
     "x-nvidia-gpu-driver-version": GPU_FIRMWARE.driver,
     "x-nvidia-gpu-vbios-version": GPU_FIRMWARE.vbios,
     ...Object.fromEntries(flags.map((flag) => [flag, true])),

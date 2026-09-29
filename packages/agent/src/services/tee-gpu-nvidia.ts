@@ -200,7 +200,7 @@ export type NvidiaVerifiedGpu = {
   hwModel: string;
   driverVersion: string;
   vbiosVersion: string;
-  ueid?: string;
+  ueid: string;
   oemid?: string;
 };
 
@@ -607,7 +607,7 @@ function appraiseGpu(
     hwModel: requiredString(payload, "hwmodel"),
     driverVersion: requiredString(payload, "x-nvidia-gpu-driver-version"),
     vbiosVersion: requiredString(payload, "x-nvidia-gpu-vbios-version"),
-    ...(typeof payload.ueid === "string" ? { ueid: payload.ueid } : {}),
+    ueid: requiredString(payload, "ueid"),
     ...(typeof payload.oemid === "string" ? { oemid: payload.oemid } : {}),
   };
   const policy = config.policy;
@@ -845,11 +845,11 @@ export class NvidiaGpuAttestationVerifier {
       this.config,
       signal,
     );
-    return this.verifyEatBundle(challenge, evidence, response, signal);
+    return this.#verifyEatBundle(challenge, evidence, response, signal);
   }
 
-  /** Verifies an NRAS detached EAT bundle for evidence submitted by the caller. */
-  async verifyEatBundle(
+  /** Only the authenticated NRAS exchange may supply a detached bundle. */
+  async #verifyEatBundle(
     nonce: string,
     evidence: NvidiaGpuEvidence,
     response: unknown,
@@ -887,7 +887,10 @@ export class NvidiaGpuAttestationVerifier {
       );
     // The submods digest covers NRAS's pre-serialization claims JSON, which is
     // not reproducible from the signed token; each detached token is instead
-    // verified independently (signature, issuer, time and eat_nonce).
+    // verified independently (signature, issuer, time and eat_nonce). The
+    // bundle mapping must therefore come from the authenticated NRAS HTTPS
+    // response above; accepting caller-supplied detached mappings would lose
+    // that binding. Distinct signed device identities are required below.
     for (const id of ids) {
       const entry = submods[id];
       if (
@@ -900,6 +903,7 @@ export class NvidiaGpuAttestationVerifier {
         throw failure("claims", "NRAS submods digest entry is malformed");
     }
     const gpus: NvidiaVerifiedGpu[] = [];
+    const deviceIdentities = new Set<string>();
     for (const id of ids) {
       throwIfAborted(signal);
       const payload = await verifyJwt(
@@ -908,7 +912,11 @@ export class NvidiaGpuAttestationVerifier {
         this.config,
         signal,
       );
-      gpus.push(appraiseGpu(id, payload, challenge, this.config));
+      const gpu = appraiseGpu(id, payload, challenge, this.config);
+      if (deviceIdentities.has(gpu.ueid))
+        throw failure("claims", "NRAS results repeat a GPU device identity");
+      deviceIdentities.add(gpu.ueid);
+      gpus.push(gpu);
     }
     const policy = this.config.policy;
     if (

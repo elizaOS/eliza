@@ -370,6 +370,81 @@ describe("NvidiaGpuAttestationVerifier", () => {
     ).toThrow(/locally verified/);
   });
 
+  it("rejects reusing one signed GPU identity for two GPU slots", async () => {
+    responder = ({ nonce: challenge }) => {
+      const overall = overallClaims(challenge);
+      overall.submods = {
+        "GPU-0": ["DIGEST", ["SHA-256", "ab".repeat(32)]],
+        "GPU-1": ["DIGEST", ["SHA-256", "cd".repeat(32)]],
+      };
+      const token = jwt(gpuClaims(challenge));
+      return {
+        status: 200,
+        body: JSON.stringify([
+          ["JWT", jwt(overall)],
+          { "GPU-0": token, "GPU-1": token },
+        ]),
+      };
+    };
+    const verifier = new NvidiaGpuAttestationVerifier(
+      config({ policy: { expectedGpuCount: 2 } }),
+    );
+    expect(
+      await rejection(
+        verifier.attest(nonce(), {
+          evidence: {
+            ...EVIDENCE,
+            evidence_list: [
+              EVIDENCE.evidence_list[0],
+              EVIDENCE.evidence_list[0],
+            ],
+          },
+        }),
+      ),
+    ).toBe("claims");
+  });
+
+  it("accepts two distinct signed GPU identities and rejects a missing identity", async () => {
+    responder = ({ nonce: challenge }) => {
+      const overall = overallClaims(challenge);
+      overall.submods = {
+        "GPU-0": ["DIGEST", ["SHA-256", "ab".repeat(32)]],
+        "GPU-1": ["DIGEST", ["SHA-256", "cd".repeat(32)]],
+      };
+      const second = { ...gpuClaims(challenge), ueid: "second-device" };
+      return {
+        status: 200,
+        body: JSON.stringify([
+          ["JWT", jwt(overall)],
+          { "GPU-0": jwt(gpuClaims(challenge)), "GPU-1": jwt(second) },
+        ]),
+      };
+    };
+    const verifier = new NvidiaGpuAttestationVerifier(
+      config({ policy: { expectedGpuCount: 2 } }),
+    );
+    const result = await verifier.attest(nonce(), {
+      evidence: {
+        ...EVIDENCE,
+        evidence_list: [EVIDENCE.evidence_list[0], EVIDENCE.evidence_list[0]],
+      },
+    });
+    expect(new Set(result.gpus.map((gpu) => gpu.ueid)).size).toBe(2);
+    responder = ({ nonce: challenge }) =>
+      bundle(challenge, {
+        gpu: (claims) => {
+          delete claims.ueid;
+        },
+      });
+    expect(
+      await rejection(
+        new NvidiaGpuAttestationVerifier(config()).attest(nonce(), {
+          evidence: EVIDENCE,
+        }),
+      ),
+    ).toBe("claims");
+  });
+
   it("accepts the documented false attestation-warning value", async () => {
     responder = ({ nonce: n }) =>
       bundle(n, {
