@@ -1,5 +1,7 @@
 /** Real task execution and PGlite trajectory persistence; no model provider calls. */
+
 import { randomUUID } from "node:crypto";
+import { ModelType } from "@elizaos/core";
 import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
@@ -13,6 +15,7 @@ import {
 } from "../../core/src/trajectory-context.ts";
 import {
   logActiveTrajectoryLlmCall,
+  recordLlmCall,
   withStandaloneTrajectory,
 } from "../../core/src/trajectory-utils.ts";
 import {
@@ -77,20 +80,24 @@ for (const failure of [false, true]) {
       name,
       execute: async () => {
         executions += 1;
-        trajectoryId = getTrajectoryContext()?.trajectoryId;
-        await runWithTrajectoryPurpose("reminder_dispatch", () => {
-          expect(
-            logActiveTrajectoryLlmCall(fixture.runtime, {
+        await runWithTrajectoryPurpose("reminder_dispatch", async () => {
+          await recordLlmCall(
+            fixture.runtime,
+            {
               model: "fixture-no-inference",
-              purpose: "provider_default",
+              purpose: "reminder_dispatch",
               actionType: "runtime.useModel",
               systemPrompt: "Complete synthetic task instructions",
               userPrompt: prompt,
               response,
               promptTokens: 13,
               completionTokens: 7,
-            }),
-          ).toBe(true);
+            },
+            () => {
+              trajectoryId = getTrajectoryContext()?.trajectoryId;
+              return response;
+            },
+          );
         });
         if (failure) throw new Error("controlled worker failure");
         return { nextInterval: 45_000 };
@@ -230,7 +237,7 @@ it("does not create capture when recording is disabled and still executes once",
   expect((await reader.listTrajectories({})).total).toBe(before.total);
 });
 
-it("records one empty parent and step per enabled no-model execution without retrying", async () => {
+it("creates zero capture rows for 100 enabled no-model executions", async () => {
   const before = await reader.listTrajectories({});
   const name = `no-model-${randomUUID()}`;
   const owners: string[] = [];
@@ -242,17 +249,10 @@ it("records one empty parent and step per enabled no-model execution without ret
     },
   });
   const taskId = await fixture.runtime.createTask({ name, tags: ["queue"] });
-  await service.executeTaskById(taskId);
-  await service.executeTaskById(taskId);
-  expect(owners).toHaveLength(2);
-  expect(new Set(owners).size).toBe(2);
-  expect((await reader.listTrajectories({})).total).toBe(before.total + 2);
-  for (const owner of owners) {
-    const detail = await reader.getTrajectoryDetail(owner);
-    expect(detail?.status).toBe("completed");
-    expect(detail?.steps).toHaveLength(1);
-    expect(detail?.steps?.flatMap((step) => step.llmCalls ?? [])).toEqual([]);
-  }
+  for (let i = 0; i < 100; i++) await service.executeTaskById(taskId);
+  expect(owners).toHaveLength(100);
+  expect(owners.every((id) => id === "")).toBe(true);
+  expect((await reader.listTrajectories({})).total).toBe(before.total);
   await fixture.runtime.deleteTask(taskId);
 });
 
@@ -271,6 +271,18 @@ it("reports capture cleanup failure without retrying or failing completed task w
     name,
     execute: async () => {
       executions += 1;
+      await recordLlmCall(
+        fixture.runtime,
+        {
+          model: "fixture",
+          purpose: "task_test",
+          systemPrompt: "fixture",
+          actionType: "runtime.useModel",
+          userPrompt: "cleanup",
+          response: "done",
+        },
+        () => "done",
+      );
     },
   });
   const taskId = await fixture.runtime.createTask({ name, tags: ["queue"] });
@@ -323,16 +335,21 @@ it("persists upstream-swapped task payloads without restoring secret or PII valu
       const prepared = context.piiSwapSession.substituteText(
         context.secretSwapSession.substituteText(original),
       );
-      expect(
-        logActiveTrajectoryLlmCall(fixture.runtime, {
+      await recordLlmCall(
+        fixture.runtime,
+        {
           model: "fixture-no-inference",
           purpose: "reminder_dispatch",
           actionType: "runtime.useModel",
           systemPrompt: prepared,
           userPrompt: prepared,
           response: prepared,
-        }),
-      ).toBe(true);
+        },
+        () => {
+          owner = getTrajectoryContext()?.trajectoryId;
+          return prepared;
+        },
+      );
     },
   });
   const taskId = await fixture.runtime.createTask({ name, tags: ["queue"] });
@@ -350,4 +367,337 @@ it("persists upstream-swapped task payloads without restoring secret or PII valu
   ]);
   expect(JSON.stringify(detail)).not.toContain(secret);
   expect(JSON.stringify(detail)).not.toContain(person);
+});
+
+it("allocates once for parallel model calls and isolates concurrent tasks and privacy", async () => {
+  const before = await reader.listTrajectories({});
+  const name = `parallel-${randomUUID()}`;
+  const owners = new Map<string, Set<string>>();
+  fixture.runtime.registerModel(
+    ModelType.TEXT_SMALL,
+    async () => {
+      const context = getTrajectoryContext();
+      if (!context?.trajectoryId || !context.trajectoryStepId)
+        throw Error("No capture before handler");
+      const key = context.roomId ?? "missing";
+      const ids = owners.get(key) ?? new Set<string>();
+      ids.add(context.trajectoryId);
+      owners.set(key, ids);
+      expect(context.secretSwapSession).toBeTruthy();
+      expect(context.piiSwapSession).toBeTruthy();
+      return "synthetic result";
+    },
+    "task-test",
+    1000,
+  );
+  fixture.runtime.registerTaskWorker({
+    name,
+    execute: async () => {
+      await Promise.all(
+        ["one", "two"].map((purpose) =>
+          runWithTrajectoryPurpose(purpose, () =>
+            fixture.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt: "full synthetic request",
+            }),
+          ),
+        ),
+      );
+    },
+  });
+  const ids = await Promise.all(
+    [1, 2].map(() => fixture.runtime.createTask({ name, tags: ["queue"] })),
+  );
+  await Promise.all(
+    ids.map((id) =>
+      runWithTrajectoryContext(
+        {
+          trajectoryId: "obsolete-owner",
+          roomId: id,
+          secretSwapSession: new SecretSwapSession(),
+          piiSwapSession: new PseudonymSession(),
+        },
+        () => service.executeTaskById(id),
+      ),
+    ),
+  );
+  expect(owners.size).toBe(2);
+  const distinct = [...owners.values()].flatMap((set) => [...set]);
+  expect(distinct).toHaveLength(2);
+  expect(new Set(distinct).size).toBe(2);
+  expect(distinct).not.toContain("obsolete-owner");
+  expect((await reader.listTrajectories({})).total).toBe(before.total + 2);
+  for (const id of distinct)
+    expect(
+      (await reader.getTrajectoryDetail(id))?.steps?.flatMap(
+        (step) => step.llmCalls ?? [],
+      ),
+    ).toHaveLength(2);
+});
+
+it("captures PII generation and nested text fallback but not embedding-only work", async () => {
+  const before = await reader.listTrajectories({});
+  let piiOwner: string | undefined;
+  fixture.runtime.registerModel(
+    ModelType.PII_SCRUB,
+    async () => {
+      piiOwner = getTrajectoryContext()?.trajectoryId;
+      expect(piiOwner).toBeTruthy();
+      return {
+        verdicts: [],
+        modelId: "synthetic-local",
+        rulesetVersion: "test",
+      };
+    },
+    "task-test",
+    1000,
+  );
+  fixture.runtime.registerModel(
+    ModelType.TEXT_EMBEDDING,
+    async () => [1, 0],
+    "task-test",
+    1000,
+  );
+  const embedding = `embedding-${randomUUID()}`;
+  fixture.runtime.registerTaskWorker({
+    name: embedding,
+    execute: async () => {
+      await fixture.runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text: "synthetic",
+      });
+    },
+  });
+  await service.executeTaskById(
+    await fixture.runtime.createTask({ name: embedding, tags: ["queue"] }),
+  );
+  expect((await reader.listTrajectories({})).total).toBe(before.total);
+  const pii = `pii-${randomUUID()}`;
+  fixture.runtime.registerTaskWorker({
+    name: pii,
+    execute: async () => {
+      await fixture.runtime.useModel(ModelType.PII_SCRUB, {
+        text: "synthetic",
+        candidateSpans: [],
+        rulesetVersion: "test",
+      });
+    },
+  });
+  await service.executeTaskById(
+    await fixture.runtime.createTask({ name: pii, tags: ["queue"] }),
+  );
+  expect((await reader.listTrajectories({})).total).toBe(before.total + 1);
+  if (!piiOwner) throw Error("Missing PII owner");
+  expect(
+    (await reader.getTrajectoryDetail(piiOwner))?.steps?.flatMap(
+      (step) => step.llmCalls ?? [],
+    ),
+  ).toHaveLength(1);
+  fixture.runtime.registerModel(
+    ModelType.TEXT_SMALL,
+    async () => "fallback",
+    "task-test",
+    1001,
+  );
+  fixture.runtime.registerModel(
+    ModelType.TEXT_EMBEDDING,
+    async () => {
+      await fixture.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: "fallback generation",
+      });
+      return [1, 0];
+    },
+    "task-test",
+    1001,
+  );
+  await service.executeTaskById(
+    await fixture.runtime.createTask({ name: embedding, tags: ["queue"] }),
+  );
+  expect((await reader.listTrajectories({})).total).toBe(before.total + 2);
+});
+
+for (const cancel of [false, true]) {
+  it(`retains deferred stream finalization on ${cancel ? "cancellation" : "completion"}`, async () => {
+    let owner: string | undefined;
+    let finalized = false;
+    const controller = new AbortController();
+    fixture.runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        owner = getTrajectoryContext()?.trajectoryId;
+        if (!owner) throw Error("Stream started without capture");
+        let resolveText!: (text: string) => void;
+        const text = new Promise<string>((resolve) => {
+          resolveText = resolve;
+        });
+        return {
+          text,
+          finishReason: Promise.resolve("stop"),
+          usage: Promise.resolve({
+            promptTokens: 2,
+            completionTokens: 2,
+            totalTokens: 4,
+          }),
+          textStream: (async function* () {
+            try {
+              yield "first";
+              yield " second";
+            } finally {
+              finalized = true;
+              expect(
+                logActiveTrajectoryLlmCall(fixture.runtime, {
+                  model: "synthetic-stream",
+                  actionType: "runtime.useModel",
+                  purpose: "task_test",
+                  systemPrompt: "fixture",
+                  userPrompt: "stream input",
+                  response: cancel ? "first" : "first second",
+                  finishReason: cancel ? "error" : "stop",
+                }),
+              ).toBe(true);
+              resolveText(cancel ? "first" : "first second");
+            }
+          })(),
+        };
+      },
+      `task-stream-test-${cancel}`,
+      cancel ? 2001 : 2000,
+    );
+    const name = `stream-${randomUUID()}`;
+    fixture.runtime.registerTaskWorker({
+      name,
+      execute: async () => {
+        const result = await fixture.runtime.useModel<
+          typeof ModelType.TEXT_LARGE,
+          import("@elizaos/core").TextStreamResult
+        >(ModelType.TEXT_LARGE, {
+          prompt: "stream input",
+          stream: true,
+          signal: controller.signal,
+        });
+        for await (const chunk of result.textStream) {
+          expect(chunk).toBeTruthy();
+          if (cancel)
+            controller.abort(new Error("controlled stream cancellation"));
+        }
+      },
+    });
+    const id = await fixture.runtime.createTask({ name, tags: ["queue"] });
+    if (cancel) await expect(service.executeTaskById(id)).rejects.toThrow();
+    else await service.executeTaskById(id);
+    expect(finalized).toBe(true);
+    if (!owner) throw Error("Missing stream capture");
+    const detail = await reader.getTrajectoryDetail(owner);
+    expect(detail?.status).toBe(cancel ? "error" : "completed");
+    expect(detail?.steps?.flatMap((step) => step.llmCalls ?? [])).toEqual([
+      expect.objectContaining({
+        model: "synthetic-stream",
+        userPrompt: "stream input",
+        response: cancel ? "first" : "first second",
+      }),
+    ]);
+  });
+}
+
+it("does not retry capture initialization or worker work when capture setup fails", async () => {
+  const logger = fixture.runtime.getService("trajectories") as unknown as {
+    startTrajectory: (...args: unknown[]) => Promise<string>;
+  };
+  const start = vi
+    .spyOn(logger, "startTrajectory")
+    .mockRejectedValue(new Error("synthetic capture setup failure"));
+  const report = vi.spyOn(fixture.runtime, "reportError");
+  const before = await reader.listTrajectories({});
+  let calls = 0;
+  const name = `setup-failure-${randomUUID()}`;
+  fixture.runtime.registerTaskWorker({
+    name,
+    execute: async () => {
+      for (let i = 0; i < 2; i++)
+        await recordLlmCall(
+          fixture.runtime,
+          {
+            model: "fixture",
+            purpose: "task_test",
+            systemPrompt: "fixture",
+            userPrompt: "unrecorded only on diagnostic failure",
+          },
+          () => {
+            calls++;
+            return "done";
+          },
+        );
+    },
+  });
+  const id = await fixture.runtime.createTask({ name, tags: ["queue"] });
+  try {
+    await service.executeTaskById(id);
+    expect(calls).toBe(2);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect((await reader.listTrajectories({})).total).toBe(before.total);
+    expect(await fixture.runtime.getTask(id)).toBeNull();
+    expect(report).toHaveBeenCalledWith(
+      "StandaloneTrajectory.start",
+      expect.any(Error),
+      expect.objectContaining({ diagnosticOnly: true }),
+    );
+  } finally {
+    start.mockRestore();
+    report.mockRestore();
+  }
+});
+
+it("does not enter the model handler if cancellation arrives during capture initialization", async () => {
+  const logger = fixture.runtime.getService("trajectories") as unknown as {
+    startTrajectory: (...args: unknown[]) => Promise<string>;
+  };
+  const original = logger.startTrajectory.bind(logger);
+  let admit!: () => void;
+  const initializing = new Promise<void>((resolve) => {
+    admit = resolve;
+  });
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const start = vi
+    .spyOn(logger, "startTrajectory")
+    .mockImplementation(async (...args) => {
+      admit();
+      await released;
+      return original(...args);
+    });
+  const controller = new AbortController();
+  let providerCalls = 0;
+  fixture.runtime.registerModel(
+    ModelType.TEXT_SMALL,
+    async () => {
+      providerCalls++;
+      return "not reached";
+    },
+    "cancel-during-capture",
+    3000,
+  );
+  const name = `init-cancel-${randomUUID()}`;
+  fixture.runtime.registerTaskWorker({
+    name,
+    execute: async () => {
+      await fixture.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: "cancel before provider",
+        signal: controller.signal,
+      });
+    },
+  });
+  const id = await fixture.runtime.createTask({ name, tags: ["queue"] });
+  const execution = service.executeTaskById(id);
+  const rejected = expect(execution).rejects.toThrow();
+  try {
+    await initializing;
+    controller.abort(new Error("cancel during capture initialization"));
+    release();
+    await rejected;
+    expect(providerCalls).toBe(0);
+    expect(start).toHaveBeenCalledTimes(1);
+  } finally {
+    release();
+    start.mockRestore();
+  }
 });

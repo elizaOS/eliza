@@ -834,7 +834,11 @@ export class TaskService extends Service {
 			>;
 			const result = await withStandaloneTrajectory(
 				this.runtime,
-				{ source: "task", metadata: { taskId: task.id, taskName: task.name } },
+				{
+					source: "task",
+					metadata: { taskId: task.id, taskName: task.name },
+					deferUntilModelCall: true,
+				},
 				() => worker.execute(this.runtime, taskOptions, task),
 			);
 			if (result?.preserveTask) {

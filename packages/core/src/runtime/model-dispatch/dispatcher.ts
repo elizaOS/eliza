@@ -32,6 +32,7 @@ import {
 } from "../../streaming-context";
 import { getTrajectoryContext } from "../../trajectory-context";
 import {
+	ensureTaskTrajectory,
 	runInModelCallRecordingScope,
 	type TrajectoryRuntimeLlmCallLogger,
 } from "../../trajectory-utils";
@@ -1643,6 +1644,16 @@ export class RuntimeModelDispatch {
 					Date.now() - preprocessingStartedAt,
 					attemptMeta,
 				);
+				throwIfAborted();
+				// Capture actual calls, including PII_SCRUB and custom slots. Embedding
+				// and tokenizer work stays exempt; any nested generative fallback enters here.
+				if (
+					modelType !== ModelType.TEXT_EMBEDDING &&
+					modelType !== ModelType.TEXT_EMBEDDING_BATCH &&
+					!String(modelType).startsWith("TEXT_TOKENIZER")
+				) {
+					await ensureTaskTrajectory();
+				}
 				throwIfAborted();
 				handlerStartedAt = Date.now();
 				providerAttempt = {
