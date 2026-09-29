@@ -5625,13 +5625,13 @@ async function streamConversationMessage(
             onChunk: (chunk, origin) => {
               if (!chunk) return;
               assertCurrentGenerationOwner();
-              if (
-                disconnectTracker.isAborted() ||
-                disconnectTracker.checkConnectionClosed()
-              ) {
-                return;
-              }
+              const connectionClosed =
+                disconnectTracker.checkConnectionClosed();
+              if (disconnectTracker.signal.aborted) return;
+              // Keep the durable candidate complete even when a paired client
+              // has gone offline. Transport closure only suppresses writes.
               streamedText += chunk;
+              if (connectionClosed || disconnectTracker.isAborted()) return;
               // Action-callback text is provisional on the wire: the final reply
               // may replace it wholesale, and a voice client must not speak text
               // it cannot retract. Text rendering remains unchanged.
@@ -5642,12 +5642,9 @@ async function streamConversationMessage(
             onSnapshot: (text, origin) => {
               if (!text) return;
               assertCurrentGenerationOwner();
-              if (
-                disconnectTracker.isAborted() ||
-                disconnectTracker.checkConnectionClosed()
-              ) {
-                return;
-              }
+              const connectionClosed =
+                disconnectTracker.checkConnectionClosed();
+              if (disconnectTracker.signal.aborted) return;
               // Action callbacks may be the first visible source for a turn. An
               // authoritative snapshot therefore has to be able to establish the
               // stream, not merely revise text emitted by a model-token source.
@@ -5663,6 +5660,7 @@ async function streamConversationMessage(
                 return;
               }
               streamedText = text;
+              if (connectionClosed || disconnectTracker.isAborted()) return;
               tokenWriter.writeSnapshot(res, streamedText, {
                 provisional: origin === "action_callback",
               });
@@ -5816,7 +5814,7 @@ async function streamConversationMessage(
               ),
             });
           }
-        } else if (!disconnectTracker.isAborted()) {
+        } else if (!disconnectTracker.signal.aborted) {
           // If text was already streamed to the client (e.g. the initial
           // response succeeded but planner follow-up failed), use the
           // streamed text as the final reply instead of replacing it with a
@@ -5857,13 +5855,28 @@ async function streamConversationMessage(
                 userMessageId: messageToStore.id,
               };
               await settleTurnReservation(outcome);
-              writeConversationDoneSse(res, outcome);
+              if (!disconnectTracker.isAborted()) {
+                writeConversationDoneSse(res, outcome);
+              }
             } catch (persistErr) {
+              if (disconnectTracker.isAborted()) {
+                runtime.reportError(
+                  "ConversationStream.offlineFailurePersistence",
+                  persistErr,
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    clientMessageId,
+                  },
+                );
+              }
               releaseTurnReservation();
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(persistErr),
-              });
+              if (!disconnectTracker.isAborted()) {
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+              }
             }
           } else {
             logger.warn(
@@ -5969,18 +5982,33 @@ async function streamConversationMessage(
                   state.runtime,
                   connectionDescriptor,
                 );
-                writeConversationDoneSse(res, outcome);
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, outcome);
+                }
                 return true;
               }
             } catch (salvageErr) {
+              if (disconnectTracker.isAborted()) {
+                runtime.reportError(
+                  "ConversationStream.offlineFailurePersistence",
+                  salvageErr,
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    clientMessageId,
+                  },
+                );
+              }
               // error-policy:J1 route boundary — this code already runs inside
               // the generation catch, so exact-row salvage failures require
               // their own observable SSE terminal instead of escaping silently.
               releaseTurnReservation();
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(salvageErr),
-              });
+              if (!disconnectTracker.isAborted()) {
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(salvageErr),
+                });
+              }
               return true;
             }
             const providerIssueReply = getChatFailureReply(
@@ -6020,13 +6048,28 @@ async function streamConversationMessage(
                 failureKind,
               };
               await settleTurnReservation(outcome);
-              writeConversationDoneSse(res, outcome);
+              if (!disconnectTracker.isAborted()) {
+                writeConversationDoneSse(res, outcome);
+              }
             } catch (persistErr) {
+              if (disconnectTracker.isAborted()) {
+                runtime.reportError(
+                  "ConversationStream.offlineFailurePersistence",
+                  persistErr,
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    clientMessageId,
+                  },
+                );
+              }
               releaseTurnReservation();
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(persistErr),
-              });
+              if (!disconnectTracker.isAborted()) {
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+              }
             }
           }
         } else {
