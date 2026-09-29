@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { persistConfigEnv, readConfigEnv } from "./config-env";
+import { persistConfigEnv, readConfigEnv, readConfigEnvSync } from "./config-env";
 
 // fsync-per-write is slow on a loaded CI host; the assertions are not timing-based.
 const FS_TIMEOUT_MS = 60_000;
@@ -20,18 +20,64 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  delete process.env.ELIZA_TEST_CONFIG_ENV_ROUNDTRIP;
+  delete process.env.ELIZA_TEST_CONFIG_ENV_DUPLICATE;
   await fs.rm(root, { recursive: true, force: true });
 });
 
 describe("plugin-elizacloud persistConfigEnv", () => {
+  it(
+    "round-trips literal escapes alongside quotes and line breaks",
+    async () => {
+      const key = "ELIZA_TEST_CONFIG_ENV_ROUNDTRIP";
+      const value = 'C:\\new\\records\\path "quoted"\nnext\rline\\n';
+      await persistConfigEnv(key, value, { stateDir: root });
+      expect((await readConfigEnv(root))[key]).toBe(value);
+      expect(readConfigEnvSync(root)[key]).toBe(value);
+    },
+    FS_TIMEOUT_MS
+  );
+
+  it(
+    "deletes every definition without reviving an older value",
+    async () => {
+      const key = "ELIZA_TEST_CONFIG_ENV_DUPLICATE";
+      await fs.writeFile(
+        path.join(root, "config.env"),
+        `# preserve this comment\n${key}=old\nOTHER_SETTING=keep\n${key}=current\n`
+      );
+      await persistConfigEnv(key, "", { stateDir: root });
+      expect(await readConfigEnv(root)).toEqual({ OTHER_SETTING: "keep" });
+      expect(readConfigEnvSync(root)).toEqual({ OTHER_SETTING: "keep" });
+      expect(await fs.readFile(path.join(root, "config.env"), "utf8")).toBe(
+        "# preserve this comment\nOTHER_SETTING=keep\n"
+      );
+    },
+    FS_TIMEOUT_MS
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "hardens existing temporary and backup files before writing",
+    async () => {
+      const file = path.join(root, "config.env");
+      await fs.writeFile(file, "OTHER_SETTING=old\n");
+      for (const suffix of [".tmp", ".bak"]) {
+        await fs.writeFile(`${file}${suffix}`, "old", { mode: 0o644 });
+        await fs.chmod(`${file}${suffix}`, 0o644);
+      }
+      await persistConfigEnv("ELIZA_TEST_CONFIG_ENV_ROUNDTRIP", "new", { stateDir: root });
+      expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(`${file}.bak`)).mode & 0o777).toBe(0o600);
+    },
+    FS_TIMEOUT_MS
+  );
+
   it("rejects keys on the core spawn-env denylist", async () => {
     const stateDir = path.join(root, "state");
     // BASH_ENV / PYTHONPATH are core spawn-env hijack vectors that the local
     // BLOCKED_CONFIG_ENV_KEYS set does not list.
     for (const key of ["BASH_ENV", "PYTHONPATH", "GIT_SSH_COMMAND"]) {
-      await expect(persistConfigEnv(key, "x", { stateDir })).rejects.toThrow(
-        /hijack vector/,
-      );
+      await expect(persistConfigEnv(key, "x", { stateDir })).rejects.toThrow(/hijack vector/);
       expect(process.env[key] === "x").toBe(false);
     }
     await expect(fs.stat(path.join(stateDir, "config.env"))).rejects.toThrow();
@@ -53,27 +99,24 @@ describe("plugin-elizacloud persistConfigEnv", () => {
         stateDir: legacy,
       });
       expect((await fs.stat(legacy)).mode & 0o777).toBe(0o700);
-      expect(
-        (await fs.stat(path.join(legacy, "config.env"))).mode & 0o777,
-      ).toBe(0o600);
+      expect((await fs.stat(path.join(legacy, "config.env"))).mode & 0o777).toBe(0o600);
       delete process.env.ELIZA_TEST_CONFIG_ENV_A;
     },
-    FS_TIMEOUT_MS,
+    FS_TIMEOUT_MS
   );
 
-  it("serialises concurrent writes without losing updates", async () => {
-    const stateDir = path.join(root, "race");
-    const keys = Array.from(
-      { length: 12 },
-      (_, i) => `ELIZA_TEST_CONFIG_ENV_RACE_${i}`,
-    );
-    await Promise.all(
-      keys.map((key, i) => persistConfigEnv(key, `v${i}`, { stateDir })),
-    );
-    const onDisk = await readConfigEnv(stateDir);
-    for (const [i, key] of keys.entries()) {
-      expect(onDisk[key]).toBe(`v${i}`);
-      delete process.env[key];
-    }
-  }, FS_TIMEOUT_MS);
+  it(
+    "serialises concurrent writes without losing updates",
+    async () => {
+      const stateDir = path.join(root, "race");
+      const keys = Array.from({ length: 12 }, (_, i) => `ELIZA_TEST_CONFIG_ENV_RACE_${i}`);
+      await Promise.all(keys.map((key, i) => persistConfigEnv(key, `v${i}`, { stateDir })));
+      const onDisk = await readConfigEnv(stateDir);
+      for (const [i, key] of keys.entries()) {
+        expect(onDisk[key]).toBe(`v${i}`);
+        delete process.env[key];
+      }
+    },
+    FS_TIMEOUT_MS
+  );
 });

@@ -36,7 +36,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { isBlockedSpawnEnvKey } from "@elizaos/core";
+import { ElizaError, isBlockedSpawnEnvKey } from "@elizaos/core";
 
 import { resolveStateDir } from "./state-paths";
 
@@ -150,13 +150,15 @@ function encodeValue(value: string): string {
 
 function validateKey(key: string): void {
   if (!KEY_PATTERN.test(key)) {
-    throw new Error(
+    throw new ElizaError(
       `persistConfigEnv: invalid key "${key}" — must match /^[A-Z][A-Z0-9_]*$/`,
+      { code: "CONFIG_ENV_INVALID_KEY" }
     );
   }
   if (BLOCKED_CONFIG_ENV_KEYS.has(key) || isBlockedSpawnEnvKey(key)) {
-    throw new Error(
+    throw new ElizaError(
       `persistConfigEnv: key "${key}" is a shell/runtime hijack vector and cannot be written`,
+      { code: "CONFIG_ENV_BLOCKED_KEY" }
     );
   }
 }
@@ -174,6 +176,8 @@ async function writeAtomic(filePath: string, contents: string): Promise<void> {
   const tmpPath = `${filePath}${TMP_SUFFIX}`;
   const handle = await fs.open(tmpPath, "w", 0o600);
   try {
+    // Creation mode does not change an existing file left by an older writer.
+    await handle.chmod(0o600);
     await handle.writeFile(contents, "utf8");
     await handle.sync();
   } finally {
@@ -200,9 +204,7 @@ export function resolveConfigEnvPath(stateDir: string | undefined): string {
  * Read the on-disk `config.env` into a plain record. Does NOT touch
  * `process.env`. Missing file → empty record.
  */
-export async function readConfigEnv(
-  stateDir?: string,
-): Promise<Record<string, string>> {
+export async function readConfigEnv(stateDir?: string): Promise<Record<string, string>> {
   const filePath = resolveConfigEnvPath(stateDir);
   const raw = await readIfExists(filePath);
   if (raw === null) return {};
@@ -249,18 +251,15 @@ function decodeValue(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return "";
   const first = trimmed[0];
-  if (
-    (first === '"' || first === "'") &&
-    trimmed.endsWith(first) &&
-    trimmed.length >= 2
-  ) {
+  if ((first === '"' || first === "'") && trimmed.endsWith(first) && trimmed.length >= 2) {
     const inner = trimmed.slice(1, -1);
     if (first === '"') {
-      return inner
-        .replace(/\\n/g, "\n")
-        .replace(/\\r/g, "\r")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
+      // Decode once: an escaped backslash must not become a second escape.
+      return inner.replace(/\\([\\"nr])/g, (_match, escaped: string) => {
+        if (escaped === "n") return "\n";
+        if (escaped === "r") return "\r";
+        return escaped;
+      });
     }
     return inner;
   }
@@ -279,7 +278,7 @@ function decodeValue(raw: string): string {
 export async function persistConfigEnv(
   key: string,
   value: string,
-  opts: PersistConfigEnvOptions = {},
+  opts: PersistConfigEnvOptions = {}
 ): Promise<void> {
   validateKey(key);
 
@@ -308,9 +307,12 @@ export async function persistConfigEnv(
         if (key in process.env) delete process.env[key];
         return;
       }
-      parsed.lines.splice(existingIdx, 1);
-      // Indices after removal are stale, but we're done mutating — no
-      // further lookups happen in this call.
+      // Removing only the winning definition would restore an older value
+      // on the next read. Preserve unrelated entries and comments.
+      parsed.lines = parsed.lines.filter((line) => {
+        const eq = line.indexOf("=");
+        return eq <= 0 || line.slice(0, eq).trim() !== key;
+      });
     } else {
       const encoded = `${key}=${encodeValue(value)}`;
       if (existingIdx === undefined) {
@@ -324,10 +326,13 @@ export async function persistConfigEnv(
 
     // Snapshot pre-image for manual recovery before touching the live file.
     if (existing.length > 0) {
-      await fs.writeFile(`${filePath}${BAK_SUFFIX}`, existing, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
+      const backup = await fs.open(`${filePath}${BAK_SUFFIX}`, "w", 0o600);
+      try {
+        await backup.chmod(0o600);
+        await backup.writeFile(existing, "utf8");
+      } finally {
+        await backup.close();
+      }
     }
 
     await writeAtomic(filePath, nextContents);
