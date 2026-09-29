@@ -156,7 +156,11 @@ export async function ensureAgentVoice(
 		const reminder = readReminderPresentation(content.reminderPresentation);
 		if (!reminder || content.text !== reminder.chatText)
 			throw new Error("Untrusted or mismatched reminder presentation");
-		const { agentVoiced: _voice, reminderPresentation: _authority, ...rest } = content;
+		const {
+			agentVoiced: _voice,
+			reminderPresentation: _authority,
+			...rest
+		} = content;
 		return { ...rest, text: reminder.chatText };
 	}
 	const rewriteOverride = runtime.getSetting?.("OUTBOUND_VOICE_REWRITE");
