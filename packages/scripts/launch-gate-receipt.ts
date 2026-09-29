@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { testOutputPath } from "./lib/test-output.ts";
 
 export const LANE_RECEIPT_SCHEMA = "elizaos.launch-gate.lane/v1";
@@ -232,8 +233,53 @@ function readLaneReceipt(file, expected) {
     parsed.sourceSha !== expected.sourceSha ||
     parsed.deployedSha !== expected.deployedSha ||
     parsed.workflow?.runId !== expected.workflow.runId ||
-    parsed.workflow?.runAttempt !== expected.workflow.runAttempt
+    parsed.workflow?.runAttempt !== expected.workflow.runAttempt ||
+    typeof parsed.startedAtMs !== "number" ||
+    typeof parsed.completedAtMs !== "number" ||
+    (parsed.outcome === "success" &&
+      ((parsed.lane === "first-turn" &&
+        typeof parsed.metrics?.firstTurnLatencyMs !== "number") ||
+        (parsed.lane === "reload" &&
+          typeof parsed.metrics?.continuity !== "string")))
   ) {
+    return { status: "invalid" };
+  }
+  // Downloaded JSON must satisfy the same closed contract as the producer.
+  // Identity and a success flag alone do not prove timings or lane metrics.
+  try {
+    const args = [
+      "--lane",
+      parsed.lane,
+      "--outcome",
+      parsed.outcome,
+      "--source-sha",
+      parsed.sourceSha,
+      "--deployed-sha",
+      parsed.deployedSha,
+      "--run-id",
+      String(parsed.workflow.runId),
+      "--run-attempt",
+      String(parsed.workflow.runAttempt),
+      "--started-ms",
+      String(parsed.startedAtMs),
+      "--completed-ms",
+      String(parsed.completedAtMs),
+    ];
+    if (parsed.lane === "first-turn" && parsed.outcome === "success") {
+      args.push(
+        "--first-turn-latency-ms",
+        String(parsed.metrics?.firstTurnLatencyMs),
+      );
+    }
+    if (parsed.lane === "reload" && parsed.outcome === "success") {
+      args.push("--continuity", String(parsed.metrics?.continuity));
+    }
+    if (!isDeepStrictEqual(parsed, createLaneReceipt(args))) {
+      return { status: "invalid" };
+    }
+  } catch (error) {
+    // error-policy:J3 producer-contract failures invalidate the downloaded lane.
+    if (!(error instanceof LaunchGateReceiptError)) throw error;
     return { status: "invalid" };
   }
   return { status: parsed.outcome, receipt: parsed };

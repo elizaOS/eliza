@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -171,6 +171,48 @@ describe("launch-gate receipt CLI", () => {
     expect(new Set(receipt.lanes.map((lane) => lane.outcome))).toEqual(
       new Set(["invalid"]),
     );
+  });
+
+  test("rejects incomplete or altered downloaded receipts before composition", () => {
+    const dir = tempDir();
+    writePassingLanes(dir);
+    const file = join(dir, "first-turn.json");
+    const original = JSON.parse(readFileSync(file, "utf8"));
+    const malformed = [
+      { ...original, metrics: {} },
+      { ...original, metrics: { firstTurnLatencyMs: 60_001 } },
+      { ...original, metrics: { firstTurnLatencyMs: "4200" } },
+      { ...original, startedAtMs: undefined },
+      { ...original, startedAtMs: { toString: "invalid" } },
+      { ...original, completedAtMs: original.startedAtMs - 1 },
+      { ...original, durationMs: 1 },
+      { ...original, owner: "#1" },
+      { ...original, proves: "unverified assertion" },
+      { ...original, extra: "unexpected field" },
+      {
+        ...original,
+        metrics: { firstTurnLatencyMs: 4200, extra: "unexpected field" },
+      },
+      { ...original, workflow: { ...original.workflow, extra: true } },
+    ];
+    for (const receipt of malformed) {
+      writeFileSync(file, JSON.stringify(receipt));
+      const result = compose(dir);
+      expect(result.status).toBe(1);
+      expect(result.receipt.failedLane).toBe("first-turn");
+      expect(result.receipt.lanes[1].outcome).toBe("invalid");
+      expect(result.receipt.lanes[1].metrics).toEqual({});
+    }
+    writeFileSync(file, JSON.stringify(original));
+    expect(compose(dir).status).toBe(0);
+
+    const reloadFile = join(dir, "reload.json");
+    const reload = JSON.parse(readFileSync(reloadFile, "utf8"));
+    writeFileSync(
+      reloadFile,
+      JSON.stringify({ ...reload, metrics: { continuity: "unavailable" } }),
+    );
+    expect(compose(dir).receipt.failedLane).toBe("reload");
   });
 
   test("refuses free text, split trees, and unproven success metrics", () => {
