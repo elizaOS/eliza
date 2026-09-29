@@ -138,38 +138,77 @@ it("rejects sink attachment and every queued record when storage is unavailable"
   expect(await reopened.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE })).toEqual([]);
 });
 
-it("rejects a record when the required durable sink cannot commit it", async () => {
-  const { file, agentId } = await storage();
-  const runtime = await openRuntime(file, agentId);
+it.each([true, false])(
+  "rejects a record when durable storage cannot commit it (sink required: %s)",
+  async (required) => {
+    const { file, agentId } = await storage();
+    const runtime = await openRuntime(file, agentId);
+    const audit = new SandboxAuditLog({
+      console: false,
+      requireDurableSink: true,
+      sinks: [{ ...(await createRuntimeLogAuditSink(runtime)), required }],
+    });
+    await audit.record({
+      type: "sandbox_lifecycle",
+      summary: "committed before storage closed",
+      severity: "info",
+    });
+    await runtime.close();
+
+    await expect(
+      audit.record({
+        type: "security_kill_switch",
+        summary: "storage unavailable during kill switch",
+        severity: "critical",
+      }),
+    ).rejects.toMatchObject({ code: "AUDIT_SINK_FAILED" });
+    // The bounded operational feed still shows the attempt.
+    expect(
+      queryAuditFeed({ type: "security_kill_switch" }).map(
+        (entry) => entry.summary,
+      ),
+    ).toContain("storage unavailable during kill switch");
+
+    const reopened = await openRuntime(file, agentId);
+    cleanups.push(() => reopened.close());
+    const summaries = (
+      await reopened.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE })
+    ).map((row) => (row.body.metadata as Record<string, unknown>).summary);
+    expect(summaries).toEqual(["committed before storage closed"]);
+  },
+);
+
+it("accepts a durable fallback after an optional storage sink fails", async () => {
+  const failedStorage = await storage();
+  const failedRuntime = await openRuntime(
+    failedStorage.file,
+    failedStorage.agentId,
+  );
+  const failedSink = await createRuntimeLogAuditSink(failedRuntime);
+  await failedRuntime.close();
+  const healthyStorage = await storage();
+  const healthyRuntime = await openRuntime(
+    healthyStorage.file,
+    healthyStorage.agentId,
+  );
+  cleanups.push(() => healthyRuntime.close());
+  const healthySink = await createRuntimeLogAuditSink(healthyRuntime);
   const audit = new SandboxAuditLog({
     console: false,
-    sinks: [await createRuntimeLogAuditSink(runtime)],
+    requireDurableSink: true,
+    sinks: [
+      { ...failedSink, name: "unavailable-storage", required: false },
+      { ...healthySink, name: "healthy-storage", required: false },
+    ],
   });
   await audit.record({
     type: "sandbox_lifecycle",
-    summary: "committed before storage closed",
+    summary: "committed by fallback",
     severity: "info",
   });
-  await runtime.close();
-
-  await expect(
-    audit.record({
-      type: "security_kill_switch",
-      summary: "storage unavailable during kill switch",
-      severity: "critical",
-    }),
-  ).rejects.toMatchObject({ code: "AUDIT_SINK_FAILED" });
-  // The bounded operational feed still shows the attempt.
   expect(
-    queryAuditFeed({ type: "security_kill_switch" }).map(
-      (entry) => entry.summary,
-    ),
-  ).toContain("storage unavailable during kill switch");
-
-  const reopened = await openRuntime(file, agentId);
-  cleanups.push(() => reopened.close());
-  const summaries = (
-    await reopened.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE })
-  ).map((row) => (row.body.metadata as Record<string, unknown>).summary);
-  expect(summaries).toEqual(["committed before storage closed"]);
+    await healthyRuntime.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE }),
+  ).toMatchObject([
+    { body: { metadata: { summary: "committed by fallback" } } },
+  ]);
 });

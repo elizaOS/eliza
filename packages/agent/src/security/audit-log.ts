@@ -178,7 +178,7 @@ type PendingAudit = {
 function sinkFailure(
   failures: ReadonlyArray<{ sink: string; error: unknown }>,
 ) {
-  return new ElizaError("Required audit sink rejected the entry", {
+  return new ElizaError("Audit delivery requirements were not met", {
     code: "AUDIT_SINK_FAILED",
     cause: new AggregateError(failures.map((failure) => failure.error)),
     context: { sinks: failures.map((failure) => failure.sink) },
@@ -255,8 +255,8 @@ export class SandboxAuditLog {
   }
 
   /**
-   * Record one entry. Resolves after every sink accepted it; rejects with
-   * `AUDIT_SINK_FAILED` when a required sink failed.
+   * Record one entry. Resolves after delivery meets required sink and durability
+   * guarantees; rejects with `AUDIT_SINK_FAILED` when either requirement fails.
    */
   record(entry: Omit<AuditEntry, "timestamp">): Promise<void> {
     const full: AuditEntry = { ...entry, timestamp: new Date().toISOString() };
@@ -296,9 +296,12 @@ export class SandboxAuditLog {
 
   private async fanOut(entry: AuditEntry): Promise<void> {
     const failures: Array<{ sink: string; error: unknown }> = [];
+    const durableFailures: Array<{ sink: string; error: unknown }> = [];
+    let durablyCommitted = false;
     for (const sink of [...this.sinks]) {
       try {
         await sink.append(entry);
+        if (sink.durable) durablyCommitted = true;
       } catch (error) {
         // error-policy:J2 Required failures reject below; optional ones stay visible.
         logger.error(
@@ -310,8 +313,13 @@ export class SandboxAuditLog {
           },
           "[SandboxAuditLog] audit sink delivery failed",
         );
-        if (sink.required) failures.push({ sink: sink.name, error });
+        const failure = { sink: sink.name, error };
+        if (sink.required) failures.push(failure);
+        else if (sink.durable) durableFailures.push(failure);
       }
+    }
+    if (this.requireDurableSink && !durablyCommitted) {
+      failures.push(...durableFailures);
     }
     if (failures.length > 0) throw sinkFailure(failures);
   }
