@@ -134,6 +134,12 @@ interface RateLimitRequest {
   maxRequests: number;
   /** Fixed-window identity captured before this request enters a Durable Object queue. */
   windowStartedAt?: number;
+  /**
+   * Optional per-API-key cap (`api_keys.rate_limit`, requests per window across
+   * every endpoint) enforced under the plan tier in the same serialized
+   * decision: a request is allowed only when both windows have room.
+   */
+  apiKey?: { id: string; maxRequests: number };
 }
 
 type CredentialCheckRequest =
@@ -203,6 +209,8 @@ interface RateLimitReceipt {
   windowStartedAt: number;
   windowMs: number;
   maxRequests: number;
+  apiKeyId?: string;
+  apiKeyMaxRequests?: number;
   decision: {
     allowed: boolean;
     remaining: number;
@@ -218,6 +226,7 @@ const LEASE_KEY_PREFIX = "lease:";
 const LEASE_ACTIVE_KEY_PREFIX = "lease-active:";
 const LEASE_EXPIRY_KEY_PREFIX = "lease-expiry:";
 const RATE_LIMITS_KEY = "rate-limits";
+const API_KEY_RATE_LIMIT_WINDOW_PREFIX = "api-key:";
 const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
 const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
 const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
@@ -1384,7 +1393,12 @@ export class InferenceAdmissionGate {
       !Number.isSafeInteger(request.windowMs) ||
       request.windowMs <= 0 ||
       !Number.isSafeInteger(request.maxRequests) ||
-      request.maxRequests <= 0
+      request.maxRequests <= 0 ||
+      (request.apiKey !== undefined &&
+        (!validTrimmedId(request.apiKey?.id) ||
+          request.apiKey.id.length > 128 ||
+          !Number.isSafeInteger(request.apiKey.maxRequests) ||
+          request.apiKey.maxRequests <= 0))
     ) {
       return jsonError("Invalid inference rate-limit request", 400);
     }
@@ -1417,7 +1431,9 @@ export class InferenceAdmissionGate {
         receipt.operationDeadlineAt !== request.operationDeadlineAt ||
         receipt.windowStartedAt !== windowStartedAt ||
         receipt.windowMs !== request.windowMs ||
-        receipt.maxRequests !== request.maxRequests
+        receipt.maxRequests !== request.maxRequests ||
+        receipt.apiKeyId !== request.apiKey?.id ||
+        receipt.apiKeyMaxRequests !== request.apiKey?.maxRequests
       ) {
         return jsonError(
           "Inference rate-limit operation was reused with a different policy",
@@ -1474,11 +1490,44 @@ export class InferenceAdmissionGate {
             ...(activeReceipts.length > 0 && { receipts: activeReceipts }),
           };
     current.count = Math.min(current.count + 1, Number.MAX_SAFE_INTEGER);
-    const allowed = current.count <= request.maxRequests;
+    // The per-key window counts every endpoint; like the tier window it counts
+    // denied attempts, so a throttled key cannot hammer the object for free.
+    const apiKeyWindowName = request.apiKey
+      ? `${API_KEY_RATE_LIMIT_WINDOW_PREFIX}${request.apiKey.id}`
+      : undefined;
+    const apiKeyWindow = request.apiKey
+      ? (() => {
+          const prior = apiKeyWindowName
+            ? windows[apiKeyWindowName]
+            : undefined;
+          return {
+            windowStartedAt,
+            windowMs: request.windowMs,
+            maxRequests: request.apiKey.maxRequests,
+            count:
+              prior &&
+              prior.windowStartedAt === windowStartedAt &&
+              prior.windowMs === request.windowMs
+                ? Math.min(prior.count + 1, Number.MAX_SAFE_INTEGER)
+                : 1,
+          };
+        })()
+      : undefined;
+    const allowed =
+      current.count <= request.maxRequests &&
+      (!apiKeyWindow || apiKeyWindow.count <= apiKeyWindow.maxRequests);
     const resetAt = windowStartedAt + request.windowMs;
     const decision = {
       allowed,
-      remaining: Math.max(0, request.maxRequests - current.count),
+      remaining: Math.max(
+        0,
+        Math.min(
+          request.maxRequests - current.count,
+          apiKeyWindow
+            ? apiKeyWindow.maxRequests - apiKeyWindow.count
+            : Number.MAX_SAFE_INTEGER,
+        ),
+      ),
       resetAt,
       retryAfter: allowed
         ? undefined
@@ -1493,10 +1542,25 @@ export class InferenceAdmissionGate {
         windowStartedAt,
         windowMs: request.windowMs,
         maxRequests: request.maxRequests,
+        ...(request.apiKey && {
+          apiKeyId: request.apiKey.id,
+          apiKeyMaxRequests: request.apiKey.maxRequests,
+        }),
         decision,
       });
     }
     windows[request.endpointType] = current;
+    // Per-key windows are dropped once their window has ended, so the stored
+    // map stays bounded by the keys active in the current window.
+    for (const [name, window] of Object.entries(windows)) {
+      if (
+        name.startsWith(API_KEY_RATE_LIMIT_WINDOW_PREFIX) &&
+        window.windowStartedAt + window.windowMs <= now
+      )
+        delete windows[name];
+    }
+    if (apiKeyWindowName && apiKeyWindow)
+      windows[apiKeyWindowName] = apiKeyWindow;
     this.saveRateLimitWindows(windows);
 
     return Response.json(decision, { status: allowed ? 200 : 429 });

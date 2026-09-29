@@ -20,7 +20,13 @@ import nodeFs, { type BigIntStats, constants, type Dirent } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createKmsClient, systemKey } from "@elizaos/auth/kms";
+import {
+  createKmsClient,
+  type KmsClient,
+  resolveKmsBackend,
+  systemKey,
+} from "@elizaos/auth/kms";
+import { defaultMasterKey, type MasterKeyResolver } from "@elizaos/auth/vault";
 import {
   AGENT_BACKUP_CANONICAL_JSON,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
@@ -382,9 +388,44 @@ const RESTORE_TABLE_ORDER = [
 ];
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
-let localBackupKmsClient: ReturnType<typeof createKmsClient> | null = null;
-function getLocalBackupKmsClient(): ReturnType<typeof createKmsClient> {
-  localBackupKmsClient ??= createKmsClient();
+let localBackupKmsClient: Promise<KmsClient> | null = null;
+/**
+ * Local backups are sealed on this machine, so without an explicit KMS choice
+ * they use the local adapter rooted in the same OS-keychain (or
+ * `ELIZA_VAULT_PASSPHRASE`) master key as the agent vault. The generic factory
+ * defaults to the Steward backend, which a local agent never configures, so
+ * every desktop or standalone backup failed before a file was written.
+ * An explicit `ELIZA_KMS_BACKEND`, `ELIZA_LOCAL_MODE`, `ELIZA_LOCAL_ROOT_KEY`,
+ * or a test environment keeps the factory's resolution.
+ */
+export async function createLocalBackupKmsClient(
+  env: NodeJS.ProcessEnv = process.env,
+  masterKey: MasterKeyResolver = defaultMasterKey(),
+): Promise<KmsClient> {
+  if (resolveKmsBackend({}, env) !== "steward" || env.ELIZA_KMS_BACKEND) {
+    return createKmsClient({ env });
+  }
+  if (env.ELIZA_LOCAL_ROOT_KEY) {
+    return createKmsClient({ env, backend: "local" });
+  }
+  const rootKey = await masterKey.load();
+  return createKmsClient({
+    env,
+    backend: "local",
+    local: { rootKey: new Uint8Array(rootKey) },
+  });
+}
+function getLocalBackupKmsClient(): Promise<KmsClient> {
+  if (!localBackupKmsClient) {
+    const pending = createLocalBackupKmsClient();
+    localBackupKmsClient = pending;
+    // error-policy:J2 an unavailable master key is not cached, so a later
+    // keychain unlock or passphrase configuration can succeed; the caller
+    // still receives the typed failure.
+    pending.catch(() => {
+      if (localBackupKmsClient === pending) localBackupKmsClient = null;
+    });
+  }
   return localBackupKmsClient;
 }
 /**
@@ -1362,7 +1403,7 @@ async function encryptLocalBackupEnvelope(
 ): Promise<AgentBackupFileEnvelope> {
   const manifest = assertManifest(snapshot);
   const stateSha256 = sha256Json(snapshot);
-  const kms = getLocalBackupKmsClient();
+  const kms = await getLocalBackupKmsClient();
   const keyId = systemKey("agent-backup");
   await kms.getOrCreateKey(keyId);
   const encrypted = await kms.encrypt(
@@ -1396,7 +1437,7 @@ async function decryptLocalBackupEnvelope(
   ) {
     throw new Error("Unsupported local agent backup file");
   }
-  const kms = getLocalBackupKmsClient();
+  const kms = await getLocalBackupKmsClient();
   const plaintext = await kms.decrypt(
     envelope.encryption.kmsKeyId,
     b64decode(envelope.encryption.ciphertext),
@@ -4273,7 +4314,7 @@ async function unwrapLocalBackupV2Key(
   header: LocalBackupV2Header,
 ): Promise<Buffer> {
   const wrapped = header.encryption.wrappedKey;
-  const key = await getLocalBackupKmsClient().decrypt(
+  const key = await (await getLocalBackupKmsClient()).decrypt(
     wrapped.kmsKeyId,
     b64decode(wrapped.ciphertext),
     b64decode(wrapped.nonce),
@@ -4785,7 +4826,7 @@ async function captureLocalAgentBackupV2(
     );
     assertLocalBackupV2Fits(measures);
 
-    const kms = getLocalBackupKmsClient();
+    const kms = await getLocalBackupKmsClient();
     const keyId = systemKey("agent-backup");
     await kms.getOrCreateKey(keyId);
     const identity = { agentId, backupId, restoreGeneration, createdAt };

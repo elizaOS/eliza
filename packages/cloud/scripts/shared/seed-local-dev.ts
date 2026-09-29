@@ -1,5 +1,5 @@
 /**
- * Seeds local development users, credit packs and the default agent.
+ * Seeds local development users and the default agent.
  * Each run adds 1,000,000 credits to the development organization; other
  * fixtures are upserted without duplication. USER_EMAIL/DEVELOPER_EMAIL may
  * attach the developer's account to that organization.
@@ -81,62 +81,7 @@ async function seedLocalDev() {
       console.log(`   ✓ User ready (${devEmail})`);
     }
 
-    console.log("\n3️⃣ Seeding credit packs...");
-    const creditPacks = [
-      {
-        name: "Small Pack",
-        description: "50,000 credits for AI generations",
-        credits: 50000,
-        price_cents: 4999,
-        stripe_price_id:
-          process.env.STRIPE_SMALL_PACK_PRICE_ID || "price_test_small",
-        stripe_product_id:
-          process.env.STRIPE_SMALL_PACK_PRODUCT_ID || "prod_test_small",
-        sort_order: 1,
-      },
-      {
-        name: "Medium Pack",
-        description: "150,000 credits for AI generations",
-        credits: 150000,
-        price_cents: 12999,
-        stripe_price_id:
-          process.env.STRIPE_MEDIUM_PACK_PRICE_ID || "price_test_medium",
-        stripe_product_id:
-          process.env.STRIPE_MEDIUM_PACK_PRODUCT_ID || "prod_test_medium",
-        sort_order: 2,
-      },
-      {
-        name: "Large Pack",
-        description: "500,000 credits for AI generations",
-        credits: 500000,
-        price_cents: 39999,
-        stripe_price_id:
-          process.env.STRIPE_LARGE_PACK_PRICE_ID || "price_test_large",
-        stripe_product_id:
-          process.env.STRIPE_LARGE_PACK_PRODUCT_ID || "prod_test_large",
-        sort_order: 3,
-      },
-    ];
-
-    for (const pack of creditPacks) {
-      await db
-        .insert(schema.creditPacks)
-        .values({
-          name: pack.name,
-          description: pack.description,
-          credits: pack.credits.toString(),
-          price_cents: pack.price_cents,
-          stripe_price_id: pack.stripe_price_id,
-          stripe_product_id: pack.stripe_product_id,
-          sort_order: pack.sort_order,
-        })
-        .onConflictDoNothing({
-          target: schema.creditPacks.stripe_price_id,
-        });
-      console.log(`   ✓ ${pack.name} ready`);
-    }
-
-    console.log("\n4️⃣ Creating default Eliza agent and entity...");
+    console.log("\n3️⃣ Creating default Eliza agent and entity...");
     // Create the default Eliza agent first
     await db
       .insert(agentTable)

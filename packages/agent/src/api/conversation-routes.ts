@@ -3230,6 +3230,81 @@ async function createConversation(
   json(res, { conversation: conv, ...(greeting ? { greeting } : {}) });
   return true;
 }
+/** A wallet-scoped waifu conversation belongs to that wallet, not the owner. */
+function isOwnerConversation(conv: ConversationMeta): boolean {
+  return (
+    !getWaifuChatOwnerWallet(conv) || conv.metadata?.waifuChatRole === "admin"
+  );
+}
+const ownerConversationCreations = new WeakMap<
+  Map<string, ConversationMeta>,
+  Promise<ConversationMeta>
+>();
+/**
+ * Resolve the owner's canonical app conversation: the active one, else the
+ * most recently updated, restoring persisted conversations first. When the
+ * agent has no conversation yet, create one through the same room setup as
+ * `POST /api/conversations` so owner-addressed deliveries persist durably and
+ * are listed when a client connects. Concurrent callers share one creation.
+ */
+export async function ensureOwnerConversation(
+  state: ConversationRouteState & { activeConversationId?: string | null },
+  runtime: AgentRuntime,
+): Promise<ConversationMeta> {
+  await waitForConversationRestore(state);
+  // A registered provisional conversation is not ready until room setup settles.
+  const pending = ownerConversationCreations.get(state.conversations);
+  if (pending) return pending;
+
+  const active = state.activeConversationId
+    ? state.conversations.get(state.activeConversationId)
+    : undefined;
+  if (active && isOwnerConversation(active)) return active;
+  const recent = Array.from(state.conversations.values())
+    .filter(isOwnerConversation)
+    .sort(compareConversationsByRecency)[0];
+  if (recent) return recent;
+
+  const creation = (async () => {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const conv: ConversationMeta = {
+      id,
+      title: "New Chat",
+      roomId: stringToUuid(`web-conv-${id}`),
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.conversations.set(id, conv);
+    try {
+      prepareConversationConnectionRoom(runtime, conv.roomId);
+      await ensureConversationRoom(state, runtime, conv, {
+        entityId: ensureAdminEntityIdForRuntime(state, runtime),
+        role: "OWNER",
+        userName: resolveAppUserName(state.config),
+        grantSource: "owner",
+      });
+      await syncConversationRoomState(state, conv);
+    } catch (err) {
+      // error-policy:J1 withdraw the registration so a failed room setup
+      // leaves no listed conversation without a backing room; the caller
+      // records the delivery failure.
+      if (state.conversations.get(id) === conv) {
+        state.conversations.delete(id);
+      }
+      throw err;
+    }
+    evictOldestConversation(state.conversations, 500);
+    state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
+    return conv;
+  })();
+  ownerConversationCreations.set(state.conversations, creation);
+  try {
+    return await creation;
+  } finally {
+    ownerConversationCreations.delete(state.conversations);
+  }
+}
 async function listConversationMessages(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {

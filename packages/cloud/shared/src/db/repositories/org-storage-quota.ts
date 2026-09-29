@@ -86,6 +86,23 @@ export class OrgStorageQuotaRepository {
   }
 
   /**
+   * Whether the organization can store at least one more byte under its
+   * current storage ceiling. Generated media checks this before dispatching
+   * paid provider work so a full quota is refused without a charge (#20956).
+   */
+  async hasHeadroom(organizationId: string): Promise<boolean> {
+    return writeTransaction(async (tx) => {
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+      const ceiling = requireOrganizationResourceLimit(policy, "storage");
+      const [row] = await tx
+        .select({ bytes_used: orgStorageQuota.bytes_used })
+        .from(orgStorageQuota)
+        .where(eq(orgStorageQuota.organization_id, organizationId));
+      return (row?.bytes_used ?? 0n) < ceiling;
+    });
+  }
+
+  /**
    * Atomically releases `bytes` back to an organization's quota. Clamped at
    * zero so a repeated compensating release cannot drive the counter negative.
    */

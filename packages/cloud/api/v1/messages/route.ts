@@ -737,6 +737,7 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+          apiKeyId: apiKey?.id,
         },
       );
     } catch (error) {

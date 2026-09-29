@@ -14,6 +14,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "../../billing/organization-credits";
 import {
   listActivePaymentReversalHolds,
   type ReversalShortfallSettlement,
@@ -63,8 +64,8 @@ function toEntry(hold: Awaited<ReturnType<typeof listActivePaymentReversalHolds>
   } satisfies BillingHoldEntry;
 }
 
-/** Checkout minimum for a custom top-up; mirrors ORGANIZATION_CREDIT_CHECKOUT_LIMITS. */
-const MINIMUM_TOP_UP_USD = "1.00";
+/** Checkout minimum for a pay-as-you-go top-up, from the canonical contract. */
+const MINIMUM_TOP_UP_USD = ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd.toFixed(2);
 
 export class BillingHoldService {
   /** Reads the authoritative hold state from the primary. */

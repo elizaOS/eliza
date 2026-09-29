@@ -15,6 +15,8 @@ const optionalExpiresAtSchema = z
     return new Date(value);
   });
 
+// Requests per minute for this key across every inference endpoint. The
+// limiter enforces it as a cap under the plan tier; it never raises the tier.
 // JSON booleans and arrays are not numeric rate limits.
 const rateLimitSchema = z
   .union([z.number(), z.string()])

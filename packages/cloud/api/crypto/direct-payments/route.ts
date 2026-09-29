@@ -5,6 +5,7 @@
  * recipient, token, and amount on-chain before issuing org credits.
  */
 
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -21,7 +22,10 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const createSchema = z.object({
-  amount: z.number().min(1).max(10000),
+  amount: z
+    .number()
+    .min(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd)
+    .max(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd),
   network: z.enum(["base", "bsc", "solana"]),
   payerAddress: z.string().min(1),
   // BSC supports multiple tokens (BNB native, USDT, U). Other networks ignore

@@ -17,7 +17,7 @@
  *   /api/quotas/usage
  *   /api/stats/account
  *   /api/stripe/create-checkout-session
- *   /api/stripe/credit-packs
+ *   /api/stripe/credit-packs (retired)
  *   /api/signup-code/redeem
  *
  * Each route has three assertions where viable:
@@ -678,25 +678,13 @@ describeE2E("GET /api/stats/account", () => {
   });
 });
 
-// -------- /api/stripe/credit-packs (public) --------------------------------
+// -------- /api/stripe/credit-packs (retired, #22963) -----------------------
 
 describeE2E("GET /api/stripe/credit-packs", () => {
-  test("auth gate: public path, unauthenticated request reaches the handler", async () => {
-    const res = await api.get("/api/stripe/credit-packs");
-    // Public path (never 401) serving DB-backed packs — a 500 is a defect,
-    // not a tolerable state.
-    expect(res.status).toBe(200);
-  });
-
-  test("happy path: returns a creditPacks array", async () => {
-    const res = await api.get("/api/stripe/credit-packs");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { creditPacks?: unknown[] };
-    expect(Array.isArray(body.creditPacks)).toBe(true);
-  });
-
-  test("validation: POST is not mounted (only GET)", async () => {
-    const res = await api.post("/api/stripe/credit-packs");
+  test("retired: fixed credit packs are no longer served", async () => {
+    const res = await api.get("/api/stripe/credit-packs", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(404);
   });
 });
@@ -757,8 +745,45 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     expect(body.url).toMatch(/^https:\/\//);
   });
 
+  testSession("validation: 400 for a retired creditPackId", async () => {
+    if (!sessionCookie) throw new Error("session cookie missing");
+    const res = await api.post(
+      "/api/stripe/create-checkout-session",
+      { creditPackId: "00000000-0000-4000-8000-000000000001" },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-retired-pack-checkout-1",
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toMatch(/Credit packs are retired/);
+  });
+
   testSession(
-    "validation: 400 when neither creditPackId nor amount is provided",
+    "validation: 400 below the $5 pay-as-you-go minimum",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      const res = await api.post(
+        "/api/stripe/create-checkout-session",
+        { amount: 4.99 },
+        {
+          headers: sameOriginBrowserHeaders({
+            Cookie: sessionCookie,
+            "Idempotency-Key": "e2e-below-minimum-checkout-1",
+          }),
+        },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toBe("Amount must be at least $5");
+    },
+  );
+
+  testSession(
+    "validation: 400 when neither amount nor hardwareSku is provided",
     async () => {
       if (!sessionCookie) throw new Error("session cookie missing");
       const res = await api.post(

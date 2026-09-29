@@ -11,10 +11,7 @@ import {
   validateStorageReadCapabilityConfiguration,
 } from "@/api-app/storage-read-capability";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  PricingNotFoundError,
-  requireServiceMethodCost,
-} from "@/lib/services/proxy/pricing";
+import { storageOperationPriceUsd } from "@/lib/constants/pricing";
 import {
   executeNativeStoragePresign,
   NativeStorageReadError,
@@ -77,7 +74,7 @@ app.post("/", async (c) => {
       c.env.STORAGE_READ_SIGNING_SECRETS,
       c.env.R2_PUBLIC_HOST,
     );
-    const priceUsd = await requireServiceMethodCost("storage", "presign");
+    const priceUsd = storageOperationPriceUsd("presign");
     const result = await executeNativeStoragePresign({
       bucket: c.env.BLOB,
       organizationId: user.organization_id,
@@ -119,23 +116,6 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     // error-policy:J1 transport boundary maps receipt and signer failures to HTTP status.
-    if (error instanceof PricingNotFoundError) {
-      // Fail-closed pricing fault (#22956): mixed-unit storage catalogue is
-      // absent/partial, so refuse before any debit or capability mint.
-      logger.error("[storage presign] pricing catalogue unavailable", {
-        serviceId: error.serviceId,
-        method: error.method,
-      });
-      return c.json(
-        {
-          error:
-            "Storage pricing is unavailable; the operation was not billed or executed",
-          code: "pricing_unavailable",
-        },
-        503,
-        { "Retry-After": "30" },
-      );
-    }
     if (error instanceof NativeStorageReadError) {
       if (error.code === "INSUFFICIENT_CREDITS") {
         return c.json(
