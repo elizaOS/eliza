@@ -6,7 +6,7 @@
  * than trusted; anything malformed is rejected instead of coerced.
  */
 
-import type { PersonalSharedFallbackAccountState } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-fallback-account-state";
+import type { PersonalSharedFallbackAccountState } from "@elizaos/cloud-sdk/browser-contracts";
 import { isElizaCloudControlPlaneHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 export type PersonalFallbackAccountState = PersonalSharedFallbackAccountState;

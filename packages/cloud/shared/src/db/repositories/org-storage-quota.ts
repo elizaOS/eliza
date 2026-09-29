@@ -5,6 +5,7 @@ import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
 } from "../../lib/services/organization-quota-policy";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite, writeTransaction } from "../helpers";
 import {
   type NewOrgStorageQuota,
@@ -106,11 +107,11 @@ export class OrgStorageQuotaRepository {
    * Atomically releases `bytes` back to an organization's quota. Clamped at
    * zero so a repeated compensating release cannot drive the counter negative.
    */
-  async releaseBytes(organizationId: string, bytes: bigint): Promise<void> {
+  async releaseBytes(organizationId: string, bytes: bigint, tx?: DbTransaction): Promise<void> {
     if (bytes <= 0n) {
       return;
     }
-    await dbWrite
+    await (tx ?? dbWrite)
       .update(orgStorageQuota)
       .set({
         bytes_used: sql`GREATEST(${orgStorageQuota.bytes_used} - ${bytes}, 0)`,

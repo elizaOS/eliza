@@ -33,6 +33,7 @@ import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { createProductionScheduledTaskDispatcher } from "../../../plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts";
 import { startApiServer } from "../src/api/server.ts";
+import type { ConversationMeta } from "../src/api/server-types.ts";
 
 const ROUTINE_SOURCE = "lifeops-scheduled-task";
 
@@ -206,3 +207,134 @@ it("persists a routine fired with no conversation into the owner's conversation 
     await rm(directory, { recursive: true, force: true });
   }
 }, 180_000);
+
+it("waits for the backing owner room before concurrent callers receive its conversation", async () => {
+  const { ensureOwnerConversation } = await import(
+    "../src/api/conversation-routes.ts"
+  );
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({ name: "OwnerConversationRace" }),
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  const state = {
+    runtime,
+    config: {},
+    agentName: "OwnerConversationRace",
+    adminEntityId: null,
+    chatUserId: null,
+    logBuffer: [],
+    conversations: new Map(),
+    activeChatTurnCount: 0,
+    conversationRestorePromise: null,
+    deletedConversationIds: new Set<string>(),
+    broadcastWs: null,
+  };
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const original = runtime.ensureConnection.bind(runtime);
+  const ensure = vi
+    .spyOn(runtime, "ensureConnection")
+    .mockImplementation(async (...args) => {
+      entered();
+      await gate;
+      return original(...args);
+    });
+  let first: Promise<ConversationMeta> | undefined;
+  let second: Promise<ConversationMeta> | undefined;
+  try {
+    await runtime.initialize();
+    first = ensureOwnerConversation(state, runtime);
+    await started;
+    let secondResolved = false;
+    second = ensureOwnerConversation(state, runtime).then((value) => {
+      secondResolved = true;
+      return value;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(secondResolved).toBe(false);
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.id).toBe(b.id);
+    expect(await runtime.getRoom(a.roomId)).toBeTruthy();
+    expect(state.conversations.size).toBe(1);
+  } finally {
+    release();
+    ensure.mockRestore();
+    await Promise.allSettled([first, second]);
+    await runtime.stop();
+    await runtime.close();
+  }
+}, 120000);
+
+it("rejects concurrent room setup together and permits a later successful retry", async () => {
+  const { ensureOwnerConversation } = await import(
+    "../src/api/conversation-routes.ts"
+  );
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({ name: "OwnerConversationRace" }),
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  const state = {
+    runtime,
+    config: {},
+    agentName: "OwnerConversationRace",
+    adminEntityId: null,
+    chatUserId: null,
+    logBuffer: [],
+    conversations: new Map(),
+    activeChatTurnCount: 0,
+    conversationRestorePromise: null,
+    deletedConversationIds: new Set<string>(),
+    broadcastWs: null,
+  };
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const original = runtime.ensureConnection.bind(runtime);
+  const ensure = vi
+    .spyOn(runtime, "ensureConnection")
+    .mockImplementation(async () => {
+      entered();
+      await gate;
+      throw new Error("room setup rejected");
+    });
+  let first: Promise<ConversationMeta> | undefined;
+  let second: Promise<ConversationMeta> | undefined;
+  try {
+    await runtime.initialize();
+    first = ensureOwnerConversation(state, runtime);
+    await started;
+    second = ensureOwnerConversation(state, runtime);
+    const settled = Promise.allSettled([first, second]);
+    release();
+    const results = await settled;
+    expect(results.map((result) => result.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(state.conversations.size).toBe(0);
+    ensure.mockImplementation(original);
+    const retry = await ensureOwnerConversation(state, runtime);
+    expect(await runtime.getRoom(retry.roomId)).toBeTruthy();
+    expect(state.conversations.size).toBe(1);
+  } finally {
+    release();
+    ensure.mockRestore();
+    await Promise.allSettled([first, second]);
+    await runtime.stop();
+    await runtime.close();
+  }
+}, 120000);
