@@ -94,11 +94,15 @@ export async function putGeneratedMediaObject(
   } catch (error) {
     // error-policy:J6 a rejected write is ambiguous: release the reservation
     // only after the object is confirmed gone, then rethrow the put failure.
-    await discardGeneratedMediaObject(bindings, {
-      organizationId: input.organizationId,
-      key: input.key,
-      storageQuotaBytes: bytes.toString(),
-    });
+    await discardGeneratedMediaObject(
+      bindings,
+      {
+        organizationId: input.organizationId,
+        key: input.key,
+        storageQuotaBytes: bytes.toString(),
+      },
+      quota,
+    );
     throw error;
   }
 }
