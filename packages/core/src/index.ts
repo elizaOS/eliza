@@ -3819,3 +3819,5 @@ export {
 	type VoicePreset,
 	type VoiceUiContext,
 } from "./voice.js";
+
+export { createReminderPresentation, readReminderPresentation, type ReminderPresentation } from "./types/reminder-presentation";
