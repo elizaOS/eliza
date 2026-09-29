@@ -20,6 +20,28 @@ export type CloudLiveOptionalActionName =
 
 export type CloudLivePersonalIdentityRecovery = "runtime-cloud" | "retry";
 
+/**
+ * A stored session can start onboarding before the runtime chooser is shown.
+ * Observing that request only avoids replaying the choice; callers must still
+ * prove the resolved identity, consent, and binding through the normal gates.
+ */
+export async function chooseCloudRuntimeUnlessIdentityStarted(
+  identityStarted: () => Promise<boolean>,
+  chooseRuntime: () => Promise<void>,
+): Promise<void> {
+  if (await identityStarted()) return;
+  try {
+    await chooseRuntime();
+  } catch (error) {
+    if (
+      error instanceof CloudLiveRequiredActionUnavailableError &&
+      (await identityStarted())
+    )
+      return;
+    throw error;
+  }
+}
+
 export type CloudLiveDedicatedConfirmationRequiredReason =
   | "approval-required"
   | "quote-changed"
