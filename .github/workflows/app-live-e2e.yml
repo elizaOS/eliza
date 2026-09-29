@@ -281,6 +281,7 @@ jobs:
       # before spending any Cloud credit (#18076), so a misconfigured base URL
       # cannot silently retarget the production lane.
       ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: production
+      ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
       # Prefer the variable named for the runtime contract, but retain the
       # repository's established ELIZACLOUD_API_KEY as the canonical fallback.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
@@ -385,23 +386,40 @@ jobs:
         if: ${{ !inputs.production_credential_preflight_only }}
         run: packages/scripts/github/install-playwright-browsers.sh chromium
 
-      # Cloud-live still builds the same renderer bundle, so it needs the same
-      # workspace dists before Vite can load packages/app/vite.config.ts.
       - name: Build runtime contracts and provider exports
         if: ${{ !inputs.production_credential_preflight_only }}
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
 
-      - name: Build app renderer bundle
+      # Production intentionally denies credentialed localhost CORS. Exercise
+      # the real deployed app and pin its public manifest before handing it a
+      # bearer; the smoke rechecks this exact identity before and after login.
+      - name: Pin deployed production renderer identity
         if: ${{ !inputs.production_credential_preflight_only }}
-        run: bun run --cwd packages/app build:web
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          const response = await fetch("https://eliza.app/eliza-renderer-build.json", {
+            redirect: "error", cache: "no-store", signal: AbortSignal.timeout(20_000),
+          });
+          if (!response.ok) throw new Error("Production renderer manifest unavailable");
+          const manifest = await response.json();
+          if (manifest.schema !== "elizaos.renderer.build/v1" ||
+              !/^[0-9a-f]{40}$/.test(manifest.commit) ||
+              manifest.playwrightTestAuth !== false) {
+            throw new Error("Production renderer manifest is not a real deployed build");
+          }
+          appendFileSync(process.env.GITHUB_ENV, `ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA=${manifest.commit}\n`);
+          console.log(`Production renderer source: ${manifest.commit}; test source: ${process.env.GITHUB_SHA}`);
+          NODE
 
       - name: Run real cloud login + personal identity + chat
         if: ${{ !inputs.production_credential_preflight_only }}
         id: production-cloud-smoke
+        working-directory: packages/app
         shell: bash
         run: |
           set -euo pipefail
-          if bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium >/dev/null 2>&1; then
+          if bunx playwright test --config playwright.cloud-deployed.config.ts --project=chromium test/ui-smoke/cloud-live.spec.ts >/dev/null 2>&1; then
             echo "Cloud login/chat passed (category=cloud-live-passed; raw-output=suppressed)."
           else
             status=$?
