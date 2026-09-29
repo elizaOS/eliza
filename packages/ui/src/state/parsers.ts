@@ -12,6 +12,7 @@ import type {
   CustomActionDef,
   StreamEventEnvelope,
 } from "../api/client";
+import type { LocalModelReadiness } from "../api/client-types-core";
 import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,
@@ -76,6 +77,16 @@ export function parseAgentModelReadiness(
   }
   return undefined;
 }
+/** Accept only the host's runtime-owned, sole-local-provider readiness shape. */
+export function parseLocalModelReadiness(
+  value: unknown,
+): LocalModelReadiness | undefined {
+  if (!isRecord(value) || value.provider !== "eliza-local-inference")
+    return undefined;
+  if (value.status !== "available" && value.status !== "model_not_loaded")
+    return undefined;
+  return { provider: "eliza-local-inference", status: value.status };
+}
 export function parseAgentStatusEvent(
   data: Record<string, unknown>,
 ): AgentStatus | null {
@@ -101,12 +112,16 @@ export function parseAgentStatusEvent(
   const canRespond =
     typeof data.canRespond === "boolean" ? data.canRespond : undefined;
   const modelReadiness = parseAgentModelReadiness(data.modelReadiness);
+  const localModelReadiness = parseLocalModelReadiness(
+    data.localModelReadiness,
+  );
   return {
     state: state as AgentStatus["state"],
     agentName,
     model,
     ...(canRespond !== undefined ? { canRespond } : {}),
     ...(modelReadiness ? { modelReadiness } : {}),
+    ...(localModelReadiness ? { localModelReadiness } : {}),
     startedAt,
     uptime,
     startup,
