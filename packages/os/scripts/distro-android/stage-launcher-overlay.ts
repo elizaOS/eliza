@@ -52,27 +52,51 @@ export function validateInspection(
 ) {
   if (/package: name='([^']+)'/.exec(badging)?.[1] !== d.packageName)
     throw new Error("Launcher package mismatch");
-  // Require MAIN/HOME/DEFAULT in one intent-filter, not unrelated activities.
+  // Require one eligible exported activity with MAIN/HOME/DEFAULT together.
+  // A receiver or a private/disabled activity must not qualify as a launcher.
   const lines = xml.split("\n");
   let homeFilter = false;
+  const ancestors: { indent: number; name: string; attributes: string[] }[] =
+    [];
   for (let i = 0; i < lines.length; i++) {
-    if (!/^\s*E: intent-filter\b/.test(lines[i])) continue;
-    const indent = lines[i].search(/\S/);
-    let j = i + 1;
-    while (
-      j < lines.length &&
-      (!lines[j].trim() || lines[j].search(/\S/) > indent)
-    )
-      j++;
-    const filter = lines.slice(i, j).join("\n");
-    if (
-      [
-        "android.intent.action.MAIN",
-        "android.intent.category.HOME",
-        "android.intent.category.DEFAULT",
-      ].every((s) => filter.includes(`"${s}"`))
-    )
-      homeFilter = true;
+    const element = /^(\s*)E: ([\w-]+)/.exec(lines[i]);
+    if (!element) {
+      if (/^\s*A:/.test(lines[i])) ancestors.at(-1)?.attributes.push(lines[i]);
+      continue;
+    }
+    const indent = element[1].length;
+    while ((ancestors.at(-1)?.indent ?? -1) >= indent)
+      ancestors.pop();
+    const parent = ancestors.at(-1);
+    if (element[2] === "intent-filter" && parent?.name === "activity") {
+      const attributes = parent.attributes.join("\n");
+      const exported = /android:exported[^\n]*0xffffffff/.test(attributes);
+      const disabled = /android:enabled[^\n]*\)0x0(?:\s|$)/.test(attributes);
+      const appDisabled = ancestors.some(
+        (node) =>
+          node.name === "application" &&
+          /android:enabled[^\n]*\)0x0(?:\s|$)/.test(node.attributes.join("\n")),
+      );
+      let j = i + 1;
+      while (
+        j < lines.length &&
+        (!lines[j].trim() || lines[j].search(/\S/) > indent)
+      )
+        j++;
+      const filter = lines.slice(i, j).join("\n");
+      if (
+        exported &&
+        !disabled &&
+        !appDisabled &&
+        [
+          "android.intent.action.MAIN",
+          "android.intent.category.HOME",
+          "android.intent.category.DEFAULT",
+        ].every((value) => filter.includes(`"${value}"`))
+      )
+        homeFilter = true;
+    }
+    ancestors.push({ indent, name: element[2], attributes: [] });
   }
   if (!homeFilter) throw new Error("APK is not a MAIN/HOME/DEFAULT launcher");
   if (!development && /android:debuggable[^\n]*0xffffffff/.test(xml))

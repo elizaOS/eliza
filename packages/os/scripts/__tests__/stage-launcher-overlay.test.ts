@@ -19,7 +19,7 @@ const descriptor = {
   certificateSha256: "b".repeat(64),
 };
 const badging = `package: name='${descriptor.packageName}'`;
-const xml = `  E: activity\n    E: intent-filter\n      E: action\n        A: android:name="android.intent.action.MAIN"\n      E: category\n        A: android:name="android.intent.category.HOME"\n      E: category\n        A: android:name="android.intent.category.DEFAULT"`;
+const xml = `  E: activity\n    A: android:exported(0x01010010)=(type 0x12)0xffffffff\n    E: intent-filter\n      E: action\n        A: android:name="android.intent.action.MAIN"\n      E: category\n        A: android:name="android.intent.category.HOME"\n      E: category\n        A: android:name="android.intent.category.DEFAULT"`;
 const signer = `Signer #1 certificate SHA-256 digest: ${descriptor.certificateSha256}`;
 test("descriptor rejects code and path injection", () => {
   for (const field of [
@@ -112,4 +112,18 @@ test("digest mismatch stages nothing and never invokes SDK tools", () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("rejects private, disabled and non-activity HOME filters", () => {
+  for (const invalid of [
+    xml.replace("0xffffffff", "0x0"),
+    xml.replace("E: activity", "E: receiver"),
+    xml.replace(
+      "    E: intent-filter",
+      "    A: android:enabled(0x0101000e)=(type 0x12)0x0\n    E: intent-filter",
+    ),
+  ])
+    assert.throws(() =>
+      validateInspection(descriptor, badging, invalid, signer, true),
+    );
 });
