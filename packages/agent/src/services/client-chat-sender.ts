@@ -158,7 +158,8 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
 
       const messageId = crypto.randomUUID() as UUID;
       const failure =
-        content.systemNotice === "model-unavailable"
+        content.systemNotice === "model-unavailable" ||
+        content.systemNotice === "model-and-runtime-error"
           ? { failureKind: "no_provider" as const }
           : {};
 

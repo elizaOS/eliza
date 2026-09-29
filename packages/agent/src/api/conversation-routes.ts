@@ -3438,7 +3438,8 @@ async function listConversationMessages(
                 : undefined))
             : undefined;
         const failureKind =
-          systemNotice === "model-unavailable"
+          systemNotice === "model-unavailable" ||
+          systemNotice === "model-and-runtime-error"
             ? "no_provider"
             : parseChatFailureKind(rawFailureKind);
         const terminalFailure = parseChatTerminalFailure(

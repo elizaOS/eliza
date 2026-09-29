@@ -134,6 +134,25 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     if (!state) throw new Error("Escalation was not persisted");
     await EscalationService.checkEscalation(runtime, state.id);
     expect(modelCalls).toBe(3);
+    const combined = await EscalationService.startEscalation(
+      runtime,
+      "Systemic failure STORAGE_UNAVAILABLE reported 3 times within 10m",
+      systemNoticeText("runtime-error"),
+      "runtime-error",
+    );
+    await EscalationService.checkEscalation(runtime, combined.id);
+    expect(modelCalls).toBe(3);
+    expect(combined.systemNotice).toBe("model-and-runtime-error");
+    expect(combined.text).toContain(systemNoticeText("model-unavailable"));
+    expect(combined.text).toContain(systemNoticeText("runtime-error"));
+    expect(
+      await runtime.getCache<{ systemNotice?: string; text: string }>(
+        `agent:escalation:active:${agentId}`,
+      ),
+    ).toMatchObject({
+      systemNotice: "model-and-runtime-error",
+      text: combined.text,
+    });
     const raw =
       'Repeated runtime failure "UNCLASSIFIED" from [voice-gate]: No local text model is assigned or loaded. {"private":"preserved-evidence"}';
     const legacyId = randomUUID() as UUID;

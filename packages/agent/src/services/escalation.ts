@@ -552,18 +552,22 @@ export class EscalationService {
         ?.has(existing.id)
         ? undefined
         : resolveWaitMs(loadEscalationSettings().config);
-      const duplicateNotice =
-        systemNotice !== undefined && existing.systemNotice === systemNotice;
+      const combinedNotice =
+        systemNotice !== undefined && existing.systemNotice !== undefined
+          ? existing.systemNotice === systemNotice
+            ? systemNotice
+            : ("model-and-runtime-error" as const)
+          : undefined;
       const updated = {
         ...existing,
         reason:
           existing.reason === reason
             ? existing.reason
             : `${existing.reason}; ${reason}`,
-        text: duplicateNotice
-          ? existing.text
+        text: combinedNotice
+          ? systemNoticeText(combinedNotice)
           : `${existing.text}\n---\n${text}`,
-        systemNotice: duplicateNotice ? systemNotice : undefined,
+        systemNotice: combinedNotice,
       };
       await persistState(runtime, updated);
       Object.assign(existing, updated);
