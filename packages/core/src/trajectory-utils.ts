@@ -1116,7 +1116,7 @@ export async function withStandaloneTrajectory<T>(
 	let completed = false;
 	try {
 		const result = await runWithTrajectoryContext(
-			{ trajectoryId, trajectoryStepId: stepId },
+			{ ...getTrajectoryContext(), trajectoryId, trajectoryStepId: stepId },
 			() => callback(),
 		);
 		completed = true;

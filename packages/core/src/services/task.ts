@@ -8,6 +8,7 @@
  */
 
 import { ElizaError } from "../errors";
+import { withStandaloneTrajectory } from "../trajectory-utils";
 import type { UUID } from "../types/primitives";
 import type { JsonValue } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
@@ -831,7 +832,11 @@ export class TaskService extends Service {
 				string,
 				JsonValue | object
 			>;
-			const result = await worker.execute(this.runtime, taskOptions, task);
+			const result = await withStandaloneTrajectory(
+				this.runtime,
+				{ source: "task", metadata: { taskId: task.id, taskName: task.name } },
+				() => worker.execute(this.runtime, taskOptions, task),
+			);
 			if (result?.preserveTask) {
 				return;
 			}
