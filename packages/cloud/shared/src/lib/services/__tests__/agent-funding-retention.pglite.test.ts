@@ -215,7 +215,7 @@ async function seedCreditStoppedAgent(balance: string, stoppedAt: Date): Promise
 }
 
 /** Fake clock plus a recording mail transport and the real sleep enqueue. */
-function harness(start: Date) {
+function harness(start: Date, transport?: (notice: AgentRetentionNotice) => Promise<boolean>) {
   let now = start;
   const notices: AgentRetentionNotice[] = [];
   const jobService = new ProvisioningJobService({ executionOwnerId: OWNER_ID });
@@ -223,7 +223,7 @@ function harness(start: Date) {
     now: () => now,
     sendNotice: async (notice) => {
       notices.push(notice);
-      return true;
+      return transport ? transport(notice) : true;
     },
     enqueueSleep: async (input) => {
       const { job } = await jobService.enqueueAgentSleepOnce(input);
@@ -294,7 +294,7 @@ test(
       agentName: expect.any(String),
       reason: "credits_exhausted",
     });
-    expect(h.notices[0]?.deleteAfter.getTime()).toBe(stoppedAt.getTime() + 30 * DAY);
+    expect(h.notices[0]?.deleteAfter.getTime()).toBe(stoppedAt.getTime() + 30 * DAY + 60_000);
 
     // 1 day before deletion.
     h.at(new Date(stoppedAt.getTime() + 29 * DAY + 60_000));
@@ -452,6 +452,96 @@ test(
     expect(closed.closed).toBe(1);
     const [after] = await retentionFor(seeded.agentId);
     expect(after).toMatchObject({ state: "closed", closed_reason: "funding_restored" });
+    expect(await jobsFor(seeded.agentId, "agent_sleep")).toHaveLength(0);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "failed notice delivery never becomes deletion authority and can retry",
+  async () => {
+    const stoppedAt = new Date();
+    const seeded = await seedCreditStoppedAgent("0.000000", stoppedAt);
+    let accepted = false;
+    const now = new Date(stoppedAt.getTime() + 23 * DAY);
+    const h = harness(now, async () => accepted);
+    const failed = await h.retention.reconcile();
+    expect(failed.failures).toHaveLength(1);
+    const [unsent] = await retentionFor(seeded.agentId);
+    expect(unsent.notice_7d_sent_at).toBeNull();
+    expect(await jobsFor(seeded.agentId, "agent_sleep")).toHaveLength(0);
+    accepted = true;
+    const retry = await h.retention.reconcile();
+    expect(retry.failures).toEqual([]);
+    expect(retry.noticesSent).toBe(1);
+    const [sent] = await retentionFor(seeded.agentId);
+    expect(sent.notice_7d_sent_at?.getTime()).toBe(now.getTime());
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a removed container without a backup remains an actionable failure",
+  async () => {
+    const stoppedAt = new Date();
+    const seeded = await seedCreditStoppedAgent("0.000000", stoppedAt);
+    const h = harness(stoppedAt);
+    await h.retention.reconcile();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "sleeping" })
+      .where(eq(agentSandboxes.id, seeded.agentId));
+    h.at(new Date(stoppedAt.getTime() + 31 * DAY));
+    const result = await h.retention.reconcile();
+    expect(result.failures).toHaveLength(1);
+    expect(result.containersDeleted).toBe(0);
+    const [row] = await retentionFor(seeded.agentId);
+    expect(row.state).toBe("retained");
+    expect(row.retained_backup_id).toBeNull();
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "retention cannot sleep an agent that resumed after its state was read",
+  async () => {
+    const stoppedAt = new Date();
+    const seeded = await seedCreditStoppedAgent("0.000000", stoppedAt);
+    const h = harness(stoppedAt);
+    const [observed] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, seeded.agentId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "running", lifecycle_revision: observed.lifecycle_revision + 1 })
+      .where(eq(agentSandboxes.id, seeded.agentId));
+    await expect(
+      h.jobService.enqueueAgentSleepOnce({
+        agentId: seeded.agentId,
+        organizationId: seeded.orgId,
+        userId: seeded.userId,
+        expectedLifecycleRevision: observed.lifecycle_revision,
+      }),
+    ).rejects.toMatchObject({ code: "AGENT_SLEEP_AUTHORITY_CHANGED" });
+    expect(await jobsFor(seeded.agentId, "agent_sleep")).toHaveLength(0);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a missed first notice postpones deletion for the full seven days",
+  async () => {
+    const stoppedAt = new Date();
+    const seeded = await seedCreditStoppedAgent("0.000000", stoppedAt);
+    const h = harness(stoppedAt);
+    await h.retention.reconcile();
+    const late = new Date(stoppedAt.getTime() + 31 * DAY);
+    h.at(late);
+    await h.retention.reconcile();
+    expect(h.notices.map((n) => n.daysRemaining)).toEqual([7]);
+    const [row] = await retentionFor(seeded.agentId);
+    expect(row.delete_after.getTime()).toBe(late.getTime() + 7 * DAY);
     expect(await jobsFor(seeded.agentId, "agent_sleep")).toHaveLength(0);
   },
   TEST_TIMEOUT,

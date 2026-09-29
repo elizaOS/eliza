@@ -22,6 +22,7 @@
  * the clock once the agent is running again or its lifecycle moved on.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
 import { listConfirmedBillingSuspensions } from "../../db/repositories/agent-billing-resume";
@@ -73,6 +74,7 @@ export interface AgentFundingRetentionDependencies {
     agentId: string;
     organizationId: string;
     userId: string;
+    expectedLifecycleRevision: number;
   }) => Promise<{ jobId: string }>;
 }
 
@@ -342,6 +344,7 @@ export class AgentFundingRetentionService {
           agentId: row.agent_id,
           organizationId: row.organization_id,
           userId: row.user_id,
+          expectedLifecycleRevision: agent.lifecycle_revision,
         });
         if (jobId !== row.sleep_job_id) {
           await dbWrite
@@ -359,18 +362,24 @@ export class AgentFundingRetentionService {
       return;
     }
 
+    if (!row.notice_7d_sent_at) {
+      summary.noticesSent += (await this.sendNoticeNow(row, agent, now, 7, "notice_7d_sent_at"))
+        ? 1
+        : 0;
+      return;
+    }
+
     if (!row.notice_1d_sent_at) {
       // Never delete without the final notice: send it and move the deadline.
       const sent = await this.sendNoticeNow(row, agent, now, 1, "notice_1d_sent_at");
       if (sent) {
         summary.noticesSent += 1;
-        await dbWrite
-          .update(agentFundingRetentions)
-          .set({ delete_after: addDays(now, 1), updated_at: now })
-          .where(eq(agentFundingRetentions.id, row.id));
       }
       return;
     }
+
+    // Even a late final notice must give the owner a full day to act.
+    if (now.getTime() < row.notice_1d_sent_at.getTime() + DAY_MS) return;
 
     if (agent.retained_runtime) {
       // The stopped container holds writes no backup covers (#30746). Removing
@@ -395,6 +404,7 @@ export class AgentFundingRetentionService {
       agentId: row.agent_id,
       organizationId: row.organization_id,
       userId: row.user_id,
+      expectedLifecycleRevision: agent.lifecycle_revision,
     });
     const queued = await dbWrite
       .update(agentFundingRetentions)
@@ -490,9 +500,6 @@ export class AgentFundingRetentionService {
     now: Date,
   ): Promise<number> {
     const [first, last] = AGENT_FUNDING_RETENTION_NOTICE_DAYS;
-    if (!row.notice_1d_sent_at && now >= addDays(row.delete_after, -last)) {
-      return (await this.sendNoticeNow(row, agent, now, last, "notice_1d_sent_at")) ? 1 : 0;
-    }
     if (
       !row.notice_7d_sent_at &&
       !row.notice_1d_sent_at &&
@@ -500,12 +507,17 @@ export class AgentFundingRetentionService {
     ) {
       return (await this.sendNoticeNow(row, agent, now, first, "notice_7d_sent_at")) ? 1 : 0;
     }
+    if (!row.notice_1d_sent_at && now >= addDays(row.delete_after, -last)) {
+      return (await this.sendNoticeNow(row, agent, now, last, "notice_1d_sent_at")) ? 1 : 0;
+    }
     return 0;
   }
 
   /**
-   * Claim the notice column, send, and release the claim if sending failed so
-   * the next pass retries. Concurrent passes cannot both send one notice.
+   * Serialize notice delivery for this retention row. A sent timestamp is a
+   * receipt, never a pre-send claim: a failed send or worker crash rolls the
+   * transaction back and cannot authorize deletion without notice. A crash
+   * after provider acceptance can resend a notice, which is safer than losing it.
    */
   private async sendNoticeNow(
     row: AgentFundingRetention,
@@ -514,53 +526,44 @@ export class AgentFundingRetentionService {
     daysRemaining: 7 | 1,
     column: "notice_7d_sent_at" | "notice_1d_sent_at",
   ): Promise<boolean> {
-    const target = agentFundingRetentions[column];
-    const [claimed] = await dbWrite
-      .update(agentFundingRetentions)
-      .set({ [column]: now, updated_at: now })
-      .where(and(eq(agentFundingRetentions.id, row.id), isNull(target)))
-      .returning({ id: agentFundingRetentions.id });
-    if (!claimed) return false;
-
-    const release = async (reason: string) => {
-      await dbWrite
-        .update(agentFundingRetentions)
-        .set({ [column]: null, last_error: reason.slice(0, 1000), updated_at: now })
-        .where(eq(agentFundingRetentions.id, row.id));
-    };
-
     const recipient = await this.recipient(row);
     if (!recipient) {
-      await release("No billing recipient for the deletion notice");
-      logger.error("[AgentFundingRetention] No recipient for deletion notice", {
-        retentionId: row.id,
-        organizationId: row.organization_id,
+      throw new ElizaError("No billing recipient for the deletion notice", {
+        code: "AGENT_RETENTION_NOTICE_RECIPIENT_MISSING",
+        context: { retentionId: row.id, organizationId: row.organization_id },
       });
-      return false;
     }
-    const deleteAfter =
-      daysRemaining === 1 && now >= row.delete_after ? addDays(now, 1) : row.delete_after;
-    try {
+    return dbWrite.transaction(async (tx) => {
+      const [current] = await tx
+        .select()
+        .from(agentFundingRetentions)
+        .where(eq(agentFundingRetentions.id, row.id))
+        .limit(1)
+        .for("update");
+      if (!current || current.state !== "retained" || current[column]) return false;
+      const deleteAfter = laterOf(current.delete_after, addDays(now, daysRemaining));
       const sent = await this.deps.sendNotice({
-        retentionId: row.id,
+        retentionId: current.id,
         email: recipient.email,
         organizationName: recipient.organizationName,
         agentName: agent.agent_name ?? "your agent",
-        reason: row.reason,
+        reason: current.reason,
         daysRemaining,
-        suspendedAt: row.suspended_at,
+        suspendedAt: current.suspended_at,
         deleteAfter,
         backupRetainUntil: addDays(deleteAfter, AGENT_FUNDING_BACKUP_RETENTION_DAYS),
       });
-      if (!sent) {
-        await release("Deletion notice was not accepted by the email provider");
-        return false;
-      }
+      if (!sent)
+        throw new ElizaError("Deletion notice was not accepted by the email provider", {
+          code: "AGENT_RETENTION_NOTICE_FAILED",
+          context: { retentionId: current.id },
+        });
+      await tx
+        .update(agentFundingRetentions)
+        .set({ [column]: now, delete_after: deleteAfter, last_error: null, updated_at: now })
+        .where(eq(agentFundingRetentions.id, current.id));
       return true;
-    } catch (error) {
-      await release(errorMessage(error));
-      throw error;
-    }
+    });
   }
 
   private async recipient(
@@ -637,10 +640,13 @@ export class AgentFundingRetentionService {
         backupId = legacy?.id ?? null;
       }
       if (!backupId) {
-        logger.error("[AgentFundingRetention] Container removed but no backup row was found", {
-          retentionId: row.id,
-          agentId: row.agent_id,
-          organizationId: row.organization_id,
+        throw new ElizaError("Container removed but no durable backup row was found", {
+          code: "AGENT_RETENTION_BACKUP_MISSING",
+          context: {
+            retentionId: row.id,
+            agentId: row.agent_id,
+            organizationId: row.organization_id,
+          },
         });
       }
       await tx
