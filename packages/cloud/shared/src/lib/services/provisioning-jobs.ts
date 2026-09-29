@@ -2844,6 +2844,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    expectedLifecycleRevision?: number;
   }): Promise<EnqueueAgentSleepResult> {
     return this.enqueueLifecycleJob<AgentSleepJobData>({
       jobType: JOB_TYPES.AGENT_SLEEP,
@@ -2861,6 +2862,24 @@ export class ProvisioningJobService {
       // snapshot fetch (~15s) + docker stop (~5s) + DB update.
       estimatedDurationMs: 30_000,
       logName: "agent_sleep",
+      validateSandbox:
+        params.expectedLifecycleRevision !== undefined
+          ? (sandbox) => {
+              if (
+                sandbox.lifecycle_revision !== params.expectedLifecycleRevision ||
+                sandbox.status !== "stopped"
+              ) {
+                throw new ElizaError("Agent state changed before retention sleep", {
+                  code: "AGENT_SLEEP_AUTHORITY_CHANGED",
+                  context: {
+                    agentId: params.agentId,
+                    expectedLifecycleRevision: params.expectedLifecycleRevision,
+                    actualLifecycleRevision: sandbox.lifecycle_revision,
+                  },
+                });
+              }
+            }
+          : undefined,
     });
   }
 

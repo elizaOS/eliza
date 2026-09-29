@@ -2100,6 +2100,25 @@ describe("ChatOverlay", () => {
     expect(input.hasAttribute("readonly")).toBe(false);
   });
 
+  it("names an unloaded local text model without promising a delayed reply", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          phase: "booting",
+          localTextModelNotLoaded: true,
+        })}
+      />,
+    );
+    const input = screen.getByLabelText("message");
+    expect(input.getAttribute("placeholder")).toContain(
+      "Text model not loaded",
+    );
+    expect(
+      screen.getByText(/check its model settings before sending/i),
+    ).toBeTruthy();
+    expect(screen.queryByText(/reply arrives in a moment/i)).toBeNull();
+  });
+
   it("uses the pulsing composer glyph instead of rendering interim transcript text", () => {
     render(
       <ChatOverlay

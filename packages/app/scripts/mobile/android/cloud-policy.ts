@@ -106,6 +106,23 @@ export const ANDROID_LP3_COLOR_POLICY_ACTIONS = [
   ...ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS,
 ];
 
+// <queries> package-visibility entries the Play cloud client must not declare.
+export const ANDROID_CLOUD_STRIPPED_QUERY_PACKAGES = [
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal Gradle manifest placeholder in AndroidManifest.xml.
+  "${elizaChromiumPackageName}",
+  "com.x8bit.bitwarden",
+  "com.onepassword.android",
+  "com.google.android.apps.healthdata",
+];
+
+// Kept Capacitor libraries can reintroduce a stripped <queries> package through
+// manifest merge: plugin-native-browser-surface declares the Chromium package.
+// The cloud manifest gets a merger removal marker for each of these.
+export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_QUERY_PACKAGES = [
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal Gradle manifest placeholder in library manifests.
+  "${elizaChromiumPackageName}",
+];
+
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "GatewayConnectionService",
   "ElizaAgentService",
@@ -135,6 +152,11 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaCameraActivity",
   "ElizaClockActivity",
   "ElizaCalendarActivity",
+  // Password-manager bridge (Chromium native messaging, Bitwarden/1Password
+  // hand-off). It is a sideload/desktop-browser surface, not part of the Play
+  // cloud thin client or its manifest allowlist.
+  "BrowserNativeMessagingService",
+  "PasswordsActivity",
   ...ANDROID_LP3_COLOR_POLICY_COMPONENTS,
 ];
 
@@ -146,7 +168,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // background location/service, camera, Bluetooth, health, telephony, or
 // shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
-  "android.permission.USE_FULL_SCREEN_INTENT",
+  "USE_FULL_SCREEN_INTENT",
   "CAMERA",
   "BLUETOOTH_SCAN",
   "BLUETOOTH_CONNECT",
@@ -205,6 +227,9 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 // reference manifest-stripped classes and break compilation.
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
+  "BrowserNativeMessagingService.java",
+  "CredentialManagerPlugin.java",
+  "PasswordsActivity.java",
   "BgeEmbeddingSession.java",
   "ElizaBgePlugin.java",
   "BionicDecodeLoop.java",
@@ -537,6 +562,7 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
     "elizaos-capacitor-mobile-agent-bridge",
   ],
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
+  ["@elizaos/capacitor-network-policy", "elizaos-capacitor-network-policy"],
   ["@elizaos/plugin-native-phone", "elizaos-plugin-native-phone"],
   ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],

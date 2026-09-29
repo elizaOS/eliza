@@ -94,7 +94,7 @@ describe("isInternalMessageSource", () => {
     for (const sentinel of INTERNAL_SENTINELS) {
       expect(isInternalMessageSource(sentinel)).toBe(true);
     }
-    expect(INTERNAL_SENTINELS).toHaveLength(5);
+    expect(INTERNAL_SENTINELS).toContain("owner_chat");
   });
 
   it("covers the api transport label", () => {

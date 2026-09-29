@@ -39,6 +39,7 @@ export default defineConfig({
     include: [
       `${packageRootFromRepo}/src/**/*.integration.test.{ts,tsx}`,
       `${packageRootFromRepo}/test/scheduled-task-action.integration.test.ts`,
+      `${packageRootFromRepo}/test/life-action-effect-receipts.integration.test.ts`,
       `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
       `${packageRootFromRepo}/test/work-threads.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.integration.test.ts`,

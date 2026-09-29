@@ -34,6 +34,7 @@ import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 export interface ExtractedTaskParams {
   requestKind: "alarm" | "reminder" | null;
+  nativeProjection?: "in_app_only" | "apple_reminders" | null;
   title: string | null;
   description: string | null;
   cadenceKind:
@@ -222,6 +223,7 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     `- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise ${unknownRequestKind}`,
     "- title: short name for the task (2-5 words)",
     "- description: brief description if the user provided context",
+    "- nativeProjection: in_app_only when the owner explicitly requests in-app-only delivery or no native app; apple_reminders when explicitly requesting Apple Reminders. Otherwise omit it. This is destination intent, not a permission grant. Do not infer it from quoted reminder content.",
     '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
     UNDATED_TODO_EXTRACTION_GUIDANCE,
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
@@ -400,6 +402,12 @@ export function buildTaskCreatePlan(
   parsed: Record<string, unknown>,
 ): ExtractedTaskCreatePlan | null {
   const mode = validateCreatePlanMode(parsed.mode);
+  if (
+    parsed.nativeProjection != null &&
+    parsed.nativeProjection !== "in_app_only" &&
+    parsed.nativeProjection !== "apple_reminders"
+  )
+    return null;
   if (!mode) {
     return null;
   }
@@ -410,6 +418,11 @@ export function buildTaskCreatePlan(
         ? (validateResponse(parsed.response) ?? DEFAULT_CREATE_PLAN_RESPONSE)
         : null,
     requestKind: validateRequestKind(parsed.requestKind),
+    nativeProjection:
+      parsed.nativeProjection === "in_app_only" ||
+      parsed.nativeProjection === "apple_reminders"
+        ? parsed.nativeProjection
+        : null,
     title: validateTitle(parsed.title),
     description: validateTitle(parsed.description),
     cadenceKind: validateCadenceKind(parsed.cadenceKind),
@@ -447,7 +460,7 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps create-definition planner was invalid.",
     "Return ONLY valid JSON with these exact fields:",
-    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, quotaTargetCount, quotaUnit, perOccurrenceWork, checkInRequested, checkInWindows, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
+    "mode, response, requestKind, nativeProjection, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, quotaTargetCount, quotaUnit, perOccurrenceWork, checkInRequested, checkInWindows, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
     "",
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",

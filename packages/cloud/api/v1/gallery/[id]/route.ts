@@ -9,12 +9,14 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+  NotFoundError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { deleteBlob, isValidBlobUrl } from "@/lib/blob";
 import { generationsService } from "@/lib/services/generations";
-import { releaseGeneratedMediaStorage } from "@/lib/storage/generated-media-storage";
-import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -29,40 +31,30 @@ app.delete("/", async (c) => {
       throw NotFoundError("Media not found or access denied");
     }
 
-    let objectDeleted = false;
-    if (generation.storage_url && isValidBlobUrl(generation.storage_url)) {
-      try {
-        await deleteBlob(generation.storage_url);
-        objectDeleted = true;
-      } catch (error) {
-        // Log and proceed with the soft delete so the row is removed from
-        // the gallery even if R2 object deletion fails. An out-of-band
-        // sweeper can reconcile orphaned objects later.
-        logger.error(
-          "[GALLERY API] R2 delete failed; marking generation deleted only",
-          {
-            id,
-            storageUrl: generation.storage_url,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      }
-    }
-
-    const transitioned = await generationsService.markDeletedOnce(id);
-    // Release only reserved media whose object is confirmed gone; a failed R2
-    // delete keeps the bytes counted so usage is never undercounted.
     const storageQuotaBytes = generation.result?.storageQuotaBytes;
-    if (
-      transitioned &&
-      objectDeleted &&
-      typeof storageQuotaBytes === "string"
-    ) {
-      await releaseGeneratedMediaStorage(
-        generation.organization_id,
-        storageQuotaBytes,
-      );
+    const reservedBytes =
+      typeof storageQuotaBytes === "string" && /^\d+$/.test(storageQuotaBytes)
+        ? storageQuotaBytes
+        : undefined;
+    const trustedObject =
+      generation.storage_url && isValidBlobUrl(generation.storage_url);
+    if (reservedBytes && BigInt(reservedBytes) > 0n && !trustedObject) {
+      throw new ApiError({
+        status: 503,
+        code: "service_unavailable",
+        message:
+          "Stored media cannot be deleted with the current storage configuration",
+      });
     }
+    if (trustedObject && generation.storage_url) {
+      // Keep the row retryable when deletion fails. Object deletion is
+      // idempotent if the subsequent database transaction must be retried.
+      await deleteBlob(generation.storage_url);
+    }
+    await generationsService.markDeletedOnce(
+      id,
+      trustedObject ? reservedBytes : undefined,
+    );
 
     return c.json({ success: true });
   } catch (error) {

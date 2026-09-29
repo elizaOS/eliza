@@ -46,12 +46,14 @@ import {
   type DedicatedAdoptionConsentProof,
   installDedicatedAdoptionConsentProof,
 } from "../cloud-live-dedicated-adoption-consent";
+import { cloudLiveDeployedRendererOrigin } from "../cloud-live-deployed-target";
 import {
   CloudLiveDedicatedConfirmationRequiredError,
   type CloudLiveDedicatedConsentGate,
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
   CloudLiveRequiredActionUnavailableError,
+  chooseCloudRuntimeUnlessIdentityStarted,
   clickCloudLiveOptionalAction,
   createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
@@ -86,7 +88,9 @@ const CLOUD_LIVE_ENABLED =
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 const DEPLOYED_RENDERER_ENABLED =
   process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
-const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_ALIAS = cloudLiveDeployedRendererOrigin(
+  process.env.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV,
+);
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
@@ -250,7 +254,7 @@ async function requireDeployedRendererIdentity(
   ).toMatch(/^[0-9a-f]{40}$/);
   expect(
     new URL(baseURL ?? "https://missing.invalid").origin,
-    "deployed Playwright must be hard-pinned to the canonical develop Pages alias",
+    "deployed Playwright must be hard-pinned to the canonical deployed app origin",
   ).toBe(DEPLOYED_RENDERER_ALIAS);
   expect(
     new URL(page.url()).origin,
@@ -332,7 +336,11 @@ async function openProtectedCloudBlankStart(
   expectedApiOrigin: string,
 ): Promise<ProtectedCloudBlankStart> {
   await seedProtectedCloudBlankStart(page);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // Hosted Cloud opens Personal Eliza through its post-login join route. The
+  // root is the account dashboard and does not start the identity trajectory.
+  await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
+    waitUntil: "domcontentloaded",
+  });
   const publicIdentity = await requireDeployedRendererIdentity(page, baseURL);
   const publicApiOrigin = await requireRendererCloudApiOrigin(
     page,
@@ -610,7 +618,13 @@ async function resolvePersonalIdentity(
       chooseRuntime,
       chatOverlay: page.getByTestId("chat-overlay"),
       chatOverlayTimeoutMs: 60_000,
-      chooseRuntimeAction: () => chooseCloudRuntime(page),
+      chooseRuntimeAction: () =>
+        chooseCloudRuntimeUnlessIdentityStarted(
+          async () =>
+            (await dedicatedNetworkAudit.snapshot())
+              .personalIdentityGetRequestCount > 0,
+          () => chooseCloudRuntime(page),
+        ),
       resolvedIdentity: existingReferenceBinding
         ? {
             reference: existingReferenceBinding,
@@ -982,18 +996,23 @@ test.describe("real cloud login + personal identity + chat", () => {
       installDedicatedAdoptionConsentProof(page);
     const referenceBinding = await (async () => {
       try {
-        await chooseCloudRuntime(page, async (state) => {
-          if (state === "attempt") {
-            runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
-          } else if (state === "success") {
-            runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
-          } else if (state === "timeout") {
-            runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
-          } else {
-            runtimeChoiceCounters.runtimeCloudActionUnavailableCount += 1;
-          }
-          await writePreIdentityDiagnostic();
-        });
+        await chooseCloudRuntimeUnlessIdentityStarted(
+          async () =>
+            (await primaryAudit.snapshot()).personalIdentityGetRequestCount > 0,
+          () =>
+            chooseCloudRuntime(page, async (state) => {
+              if (state === "attempt") {
+                runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
+              } else if (state === "success") {
+                runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
+              } else if (state === "timeout") {
+                runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
+              } else {
+                runtimeChoiceCounters.runtimeCloudActionUnavailableCount += 1;
+              }
+              await writePreIdentityDiagnostic();
+            }),
+        );
 
         // The join resolves the account-derived Personal Eliza through the
         // canonical identity endpoint. A correctly prepared proof principal is

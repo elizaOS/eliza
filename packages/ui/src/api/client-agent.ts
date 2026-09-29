@@ -381,7 +381,10 @@ declare module "./client-base" {
       instanceId?: string;
     }>;
     postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
-    pair(code: string): Promise<{
+    pair(
+      code: string,
+      expectedInstanceId?: string,
+    ): Promise<{
       token: string;
       instanceId: string;
     }>;
@@ -1576,9 +1579,25 @@ ElizaClient.prototype.postBootstrapExchange = async function (
     reason,
   };
 };
-ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
+ElizaClient.prototype.pair = async function (
+  this: ElizaClient,
+  code,
+  expectedInstanceId,
+) {
   const status = await this.getAuthStatus();
   const instanceId = status.instanceId;
+  if (
+    expectedInstanceId &&
+    instanceId?.toLowerCase() !== expectedInstanceId.toLowerCase()
+  ) {
+    throw new ApiError({
+      kind: "http",
+      path: "/api/auth/pair",
+      status: 409,
+      code: "PAIRING_INSTANCE_MISMATCH",
+      message: "Pairing code belongs to a different server instance.",
+    });
+  }
   if (!instanceId) {
     throw new ApiError({
       kind: "http",

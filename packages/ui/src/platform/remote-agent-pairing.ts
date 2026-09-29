@@ -31,7 +31,10 @@ export interface RemoteAgentPairingClient {
   setBaseUrl(baseUrl: string): void;
   setToken(token: string | null): void;
   getAuthStatus(): Promise<{ instanceId?: string; pairingEnabled?: boolean }>;
-  pair(code: string): Promise<{ token: string; instanceId?: string }>;
+  pair(
+    code: string,
+    expectedInstanceId?: string,
+  ): Promise<{ token: string; instanceId?: string }>;
 }
 
 export function parseRemoteAgentPairingDeepLink(
@@ -72,7 +75,7 @@ export async function exchangeRemoteAgentPairing(
       "This pairing code belongs to a different or restarted agent. Request a new code.",
     );
   }
-  const paired = await client.pair(payload.code);
+  const paired = await client.pair(payload.code, payload.instanceId);
   if (paired.instanceId?.toLowerCase() !== payload.instanceId) {
     throw new RemoteAgentPairingError(
       "PAIRING_INSTANCE_MISMATCH",
