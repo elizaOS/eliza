@@ -280,7 +280,7 @@ export class EmailService {
         })),
       });
       const messageId = receiptId(result.messageId);
-      if (result.rejected?.length > 0 || result.pending?.length > 0) {
+      if (result.rejected?.length > 0 || (result.pending?.length ?? 0) > 0) {
         return {
           status: "uncertain",
           provider: "smtp",
