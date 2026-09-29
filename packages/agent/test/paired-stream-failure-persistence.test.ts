@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type AgentRuntime, createCharacter, ModelType } from "@elizaos/core";
+import { createCharacter, ModelType } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
@@ -86,26 +86,27 @@ it.each([
               "",
           ),
       });
-      const fail = async (
-        _runtime: AgentRuntime,
-        params: { signal?: AbortSignal },
+      const fail: Parameters<typeof runtime.registerModel>[1] = async (
+        _runtime,
+        params,
       ) => {
         calls++;
         started.resolve();
         await release.promise;
         if (failure !== "provider failure") {
-          if (!params.signal)
+          const signal = params.signal;
+          if (!(signal instanceof AbortSignal))
             throw new Error("Missing generation cancellation signal");
           await new Promise<void>((_resolve, reject) => {
-            if (params.signal?.aborted) {
+            if (signal.aborted) {
               observedAbort.resolve();
-              reject(params.signal.reason);
+              reject(signal.reason);
             } else
-              params.signal?.addEventListener(
+              signal.addEventListener(
                 "abort",
                 () => {
                   observedAbort.resolve();
-                  reject(params.signal?.reason);
+                  reject(signal.reason);
                 },
                 { once: true },
               );
