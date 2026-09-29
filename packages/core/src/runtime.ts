@@ -2820,8 +2820,23 @@ export class AgentRuntime implements IAgentRuntime {
 						action,
 						callback: protectedCallback,
 						handlerError: "rethrow",
-						invoke: (actionCallback) =>
-							runWithActionRoutingContext(
+						invoke: async (actionCallback) => {
+							const currentGateFailure = await resolveActionGateFailure(
+								this,
+								action,
+								{
+									message,
+									activeContexts: options?.selectedContexts,
+									evaluateContexts: isContextMode,
+								},
+							);
+							if (currentGateFailure) {
+								throw new ElizaError(currentGateFailure, {
+									code: "ACTION_AUTHORITY_CHANGED",
+									context: { action: action.name, mode },
+								});
+							}
+							return runWithActionRoutingContext(
 								{ actionName: action.name, modelClass: action.modelClass },
 								() =>
 									action.handler(
@@ -2832,7 +2847,8 @@ export class AgentRuntime implements IAgentRuntime {
 										actionCallback,
 										options?.responses,
 									),
-							),
+							);
+						},
 					});
 					if (action.disclosureGate?.require === "owner_exclusive") {
 						const disclosure = await revalidateOwnerExclusiveDisclosure(
