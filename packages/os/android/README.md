@@ -121,4 +121,4 @@ from the selected product. The generated Soong import is presigned, nonprivilege
 and additive. Device provisioning must select the HOME role. The helper does not
 replace the full local-agent APK contract, grant roles, build an image, or qualify
 boot, OTA, Chromium signer admission, or physical hardware. Keep those checks
-separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.test.ts`.
+separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts`.

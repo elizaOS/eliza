@@ -54,49 +54,72 @@ export function validateInspection(
     throw new Error("Launcher package mismatch");
   // Require one eligible exported activity with MAIN/HOME/DEFAULT together.
   // A receiver or a private/disabled activity must not qualify as a launcher.
-  const lines = xml.split("\n");
-  let homeFilter = false;
-  const ancestors: { indent: number; name: string; attributes: string[] }[] =
-    [];
-  for (let i = 0; i < lines.length; i++) {
-    const element = /^(\s*)E: ([\w-]+)/.exec(lines[i]);
-    if (!element) {
-      if (/^\s*A:/.test(lines[i])) ancestors.at(-1)?.attributes.push(lines[i]);
+  interface ManifestElement {
+    indent: number;
+    name: string;
+    attributes: string[];
+    children: ManifestElement[];
+    parent?: ManifestElement;
+  }
+  const elements: ManifestElement[] = [];
+  const ancestors: ManifestElement[] = [];
+  for (const line of xml.split("\n")) {
+    const match = /^(\s*)E: ([\w-]+)/.exec(line);
+    if (!match) {
+      if (/^\s*A:/.test(line)) ancestors.at(-1)?.attributes.push(line);
       continue;
     }
-    const indent = element[1].length;
+    const indent = match[1].length;
     while ((ancestors.at(-1)?.indent ?? -1) >= indent) ancestors.pop();
     const parent = ancestors.at(-1);
-    if (element[2] === "intent-filter" && parent?.name === "activity") {
-      const attributes = parent.attributes.join("\n");
-      const exported = /android:exported[^\n]*0xffffffff/.test(attributes);
-      const disabled = /android:enabled[^\n]*\)0x0(?:\s|$)/.test(attributes);
-      const appDisabled = ancestors.some(
-        (node) =>
-          node.name === "application" &&
-          /android:enabled[^\n]*\)0x0(?:\s|$)/.test(node.attributes.join("\n")),
-      );
-      let j = i + 1;
-      while (
-        j < lines.length &&
-        (!lines[j].trim() || lines[j].search(/\S/) > indent)
-      )
-        j++;
-      const filter = lines.slice(i, j).join("\n");
-      if (
-        exported &&
-        !disabled &&
-        !appDisabled &&
-        [
-          "android.intent.action.MAIN",
-          "android.intent.category.HOME",
-          "android.intent.category.DEFAULT",
-        ].every((value) => filter.includes(`"${value}"`))
-      )
-        homeFilter = true;
-    }
-    ancestors.push({ indent, name: element[2], attributes: [] });
+    const element: ManifestElement = {
+      indent,
+      name: match[2],
+      attributes: [],
+      children: [],
+      parent,
+    };
+    parent?.children.push(element);
+    elements.push(element);
+    ancestors.push(element);
   }
+  const disabled = (element: ManifestElement) =>
+    element.attributes.some((attribute) =>
+      /android:enabled[^\n]*\)0x0(?:\s|$)/.test(attribute),
+    );
+  const named = (element: ManifestElement, name: string) =>
+    element.attributes.some(
+      (attribute) =>
+        /^\s*A: android:name(?:\([^)]*\))?=/.test(attribute) &&
+        attribute.includes(`"${name}"`),
+    );
+  const homeFilter = elements.some((filter) => {
+    const activity = filter.parent;
+    if (filter.name !== "intent-filter" || activity?.name !== "activity")
+      return false;
+    if (
+      !activity.attributes.some((attribute) =>
+        /android:exported[^\n]*0xffffffff/.test(attribute),
+      ) ||
+      disabled(activity)
+    )
+      return false;
+    for (let parent = activity.parent; parent; parent = parent.parent) {
+      if (parent.name === "application" && disabled(parent)) return false;
+    }
+    return (
+      filter.children.some(
+        (child) =>
+          child.name === "action" && named(child, "android.intent.action.MAIN"),
+      ) &&
+      ["android.intent.category.HOME", "android.intent.category.DEFAULT"].every(
+        (category) =>
+          filter.children.some(
+            (child) => child.name === "category" && named(child, category),
+          ),
+      )
+    );
+  });
   if (!homeFilter) throw new Error("APK is not a MAIN/HOME/DEFAULT launcher");
   if (!development && /android:debuggable[^\n]*0xffffffff/.test(xml))
     throw new Error("Debug launcher requires --development");

@@ -127,3 +127,17 @@ test("rejects private, disabled and non-activity HOME filters", () => {
       validateInspection(descriptor, badging, invalid, signer, true),
     );
 });
+
+test("intent names must belong to the correct action and category elements", () => {
+  for (const invalid of [
+    xml.replace("E: action", "E: category"),
+    xml.replaceAll("E: category", "E: action"),
+    xml.replace(
+      'android:name="android.intent.category.HOME',
+      'android:label="android.intent.category.HOME',
+    ),
+  ])
+    assert.throws(() =>
+      validateInspection(descriptor, badging, invalid, signer, false),
+    );
+});
