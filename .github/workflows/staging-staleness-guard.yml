@@ -95,10 +95,10 @@ jobs:
       # build from another branch can sit "0 behind" while serving a tree the
       # protected release never produced. Require one exact Pages/Worker SHA
       # reachable from the canonical branch (#27229).
-      - name: Checkout canonical history for release authority
+      - name: Checkout verifier source and canonical history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: staging
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
           submodules: false
