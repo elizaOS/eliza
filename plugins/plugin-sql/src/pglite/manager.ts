@@ -305,6 +305,9 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     if (this.client) {
       const client = this.client;
       try {
+        // Initialization itself queries PGlite. Taking its query mutex before
+        // readiness would deadlock close()'s internal readiness wait.
+        await client.waitReady;
         // PGlite.close() does not wait for its query queue: terminating while a
         // detached query (e.g. a background schema check) is mid-flight wedges
         // the WASM backend and blocks the event loop. Close only once every
