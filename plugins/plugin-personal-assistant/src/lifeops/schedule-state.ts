@@ -557,7 +557,7 @@ function observationRelevant(
   if (startMs === null) {
     return false;
   }
-  return startMs <= nowMs && (endMs === null || endMs >= nowMs - ttl);
+  return startMs <= nowMs && endMs !== null && endMs >= nowMs - ttl;
 }
 function latestSnapshotValue<T>(
   observations: LifeOpsScheduleObservation[],
@@ -652,9 +652,18 @@ function resolveMergedCircadianState(relevant: LifeOpsScheduleObservation[]): {
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
 } {
-  const candidates = relevant.filter(
-    (observation) => observation.circadianState !== "unclear",
-  );
+  // Each device publishes its current decision; older decisions from that
+  // same authority are history, not concurrent votes against a newer wake.
+  const latestByDevice = new Map<string, number>();
+  const candidates = relevant.filter((observation) => {
+    if (observation.mealLabel !== null) return false;
+    const key = `${observation.origin}:${observation.deviceId}`;
+    const observedMs = parseIsoMs(observation.observedAt) ?? 0;
+    const latest = latestByDevice.get(key);
+    if (latest !== undefined && observedMs < latest) return false;
+    latestByDevice.set(key, observedMs);
+    return observation.circadianState !== "unclear";
+  });
   if (candidates.length === 0) {
     const fallback = relevant[0];
     return {
@@ -717,13 +726,14 @@ export function mergeScheduleObservations(args: {
     relevant,
     (observation) => observation.mealLabel !== null,
   );
-  const currentSleepStartedAt =
-    latestSnapshotValue(
-      relevant,
-      (snapshot) => snapshot.currentSleepStartedAt,
-    ) ??
-    currentSleep?.windowStartAt ??
-    null;
+  const currentSleepStartedAt = !isAsleepState(circadianState)
+    ? null
+    : (latestSnapshotValue(
+        relevant,
+        (snapshot) => snapshot.currentSleepStartedAt,
+      ) ??
+      currentSleep?.windowStartAt ??
+      null);
   const lastSleepStartedAt =
     latestSnapshotValue(relevant, (snapshot) => snapshot.lastSleepStartedAt) ??
     currentSleepStartedAt;
