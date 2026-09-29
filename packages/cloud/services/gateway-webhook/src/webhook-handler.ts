@@ -946,8 +946,14 @@ export async function redeliverHeldWebhook(
       held.agentId,
     );
   } catch (err) {
-    if (err instanceof PersonalSharedPreEgressError && err.hold) {
-      return { kind: "held", signal: err.hold };
+    if (err instanceof PersonalSharedPreEgressError) {
+      // The provider already acknowledged this event. A transient transport or
+      // pre-execution failure must stay in the durable retry queue; reopening
+      // the provider dedup key cannot cause a provider retry after its ACK.
+      return {
+        kind: "held",
+        signal: err.hold ?? { code: held.code, retryAfterSeconds: null },
+      };
     }
     await settleBackgroundDeliveryFailure(redis, err, failureContext);
     return { kind: "released" };
