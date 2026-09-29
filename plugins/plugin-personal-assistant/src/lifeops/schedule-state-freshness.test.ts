@@ -99,3 +99,38 @@ it("retains sleep authority across devices even at equal timestamps", () => {
     ])?.circadianState,
   ).toBe("sleeping");
 });
+
+it("does not resurrect superseded sleep when the newer waking observation expires", () => {
+  const rows = [
+    ...observation("sleeping", "2026-09-29T08:00:00Z"),
+    ...observation("waking", "2026-09-29T11:00:00Z"),
+  ];
+  const before = structuredClone(rows);
+  expect(merge(rows)).toMatchObject({
+    circadianState: "unclear",
+    currentSleepStartedAt: null,
+    stateConfidence: 0,
+  });
+  expect(rows).toEqual(before);
+  expect(
+    merge([...rows, ...observation("awake", "2026-09-29T13:00:00Z", "two")]),
+  ).toMatchObject({ circadianState: "awake", currentSleepStartedAt: null });
+});
+
+it("keeps fresh unknown decisions and future signals from resurrecting or suppressing current sleep", () => {
+  const sleep = observation("sleeping", "2026-09-29T13:00:00Z");
+  const unknown = observation("awake", "2026-09-29T13:30:00Z").map((row) => ({
+    ...row,
+    circadianState: "unclear" as const,
+    uncertaintyReason: "contradictory_signals" as const,
+  }));
+  expect(merge([...sleep, ...unknown])).toMatchObject({
+    circadianState: "unclear",
+    currentSleepStartedAt: null,
+    uncertaintyReason: "contradictory_signals",
+  });
+  expect(
+    merge([...sleep, ...observation("awake", "2026-09-29T15:00:00Z")])
+      ?.circadianState,
+  ).toBe("sleeping");
+});
