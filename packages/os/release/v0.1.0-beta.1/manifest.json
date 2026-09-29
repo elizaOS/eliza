@@ -371,7 +371,7 @@
   "checksumPolicy": {
     "algorithm": "sha256",
     "generatedFile": "SHA256SUMS",
-    "verificationScript": "packages/os/scripts/verify-release-checksums.mjs"
+    "verificationScript": "packages/os/scripts/verify-release-checksums.ts"
   },
   "validation": {
     "evidenceDirectory": "evidence",
