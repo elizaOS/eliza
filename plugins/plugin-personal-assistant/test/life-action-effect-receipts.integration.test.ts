@@ -13,7 +13,10 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { executePlannedToolCall } from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  executePlannedToolCall,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   OWNER_OPERATION_TAGS,
@@ -44,6 +47,7 @@ function receipt(result: ActionResult): EffectReceipt {
 async function invoke(
   params: Record<string, unknown>,
   text: string,
+  internalFailure = false,
 ): Promise<{
   callback: ReturnType<typeof vi.fn<HandlerCallback>>;
   result: ActionResult;
@@ -68,8 +72,17 @@ async function invoke(
     { parameters: params },
     callback,
   );
-  expect(callback).toHaveBeenCalledOnce();
-  expect(callback.mock.calls[0]?.[0]).toEqual({ text: result.text });
+  if (internalFailure) {
+    expect(result).toMatchObject({
+      success: false,
+      transcriptVisibility: "internal",
+    });
+    expect(result.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+  } else {
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toEqual({ text: result.text });
+  }
   return { callback, result };
 }
 
@@ -121,12 +134,14 @@ describe("owner life action effect receipts — real PGlite", () => {
       id: crypto.randomUUID() as UUID,
       agentId: runtime.agentId,
       entityId: runtime.agentId,
-      roomId: crypto.randomUUID() as UUID,
+      // The initialized SELF room supplies canonical owner-private membership.
+      roomId: runtime.agentId,
       content: {
         source: "autonomy",
         text: "Create an executor-backed daily receipt task",
       },
     } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
     const result = await executePlannedToolCall(
       runtime,
       {
@@ -154,6 +169,7 @@ describe("owner life action effect receipts — real PGlite", () => {
       },
     );
 
+    expect(result.success, JSON.stringify(result)).toBe(true);
     const applied = receipt(result);
     expect(applied).toMatchObject({
       outcome: "applied",
@@ -414,9 +430,11 @@ describe("owner life action effect receipts — real PGlite", () => {
         details: { occurrenceId: "missing-occurrence" },
       },
       "Complete a missing occurrence",
+      true,
     );
-    expect(failed.result.success).toBe(false);
-    expect(receipt(failed.result)).toMatchObject({
+    expect(failed.result.effectReceipts).toHaveLength(1);
+    expect(failed.result.userFacingEffectReceiptIds).toBeUndefined();
+    expect(failed.result.effectReceipts?.[0]).toMatchObject({
       outcome: "failed",
       operation: "lifeops.owner.complete",
       failure: {
@@ -558,6 +576,9 @@ it.each([undefined, "apple_reminders"])(
           kind: "definition",
           confirmed: true,
           intent: "Remind me in 2 minutes",
+          ...(nativeProjection
+            ? { details: { metadata: { nativeProjection: "in_app_only" } } }
+            : {}),
           createPlan: {
             mode: "create",
             requestKind: "reminder",
@@ -580,6 +601,7 @@ it.each([undefined, "apple_reminders"])(
         provider: "apple_reminders",
         kind: "reminder",
       });
+      expect(definition?.metadata?.nativeProjection).toBe(nativeProjection);
       expect(native).toHaveBeenCalledOnce();
     } finally {
       native.mockRestore();

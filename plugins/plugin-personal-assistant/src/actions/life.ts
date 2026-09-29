@@ -4997,9 +4997,11 @@ async function runLifeOperationHandlerInner(
             surfaceMetadata,
           );
 
-      if (nativeProjection === "in_app_only") {
+      if (nativeProjection !== undefined) {
         definitionMetadata = { ...definitionMetadata, nativeProjection };
-        delete definitionMetadata.nativeAppleReminder;
+        if (nativeProjection === "in_app_only") {
+          delete definitionMetadata.nativeAppleReminder;
+        }
       }
 
       if (!title) {
