@@ -3535,6 +3535,11 @@ export * from "./types/prompt-optimization-score-card.js";
 export * from "./types/prompt-optimization-trace.js";
 export * from "./types/prompts.js";
 export * from "./types/provider-integrations.js";
+export {
+	createReminderPresentation,
+	type ReminderPresentation,
+	readReminderPresentation,
+} from "./types/reminder-presentation";
 export type {
 	ConnectorAccountCapability,
 	ConnectorAccountRef,
