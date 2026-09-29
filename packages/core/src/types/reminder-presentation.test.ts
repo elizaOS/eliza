@@ -15,5 +15,5 @@ it("shares issued authority across separately loaded core copies and rejects ser
 	).toBeNull();
 	expect(() =>
 		first.createReminderPresentation("body", "different", "title"),
-	).toThrow();
+	).toThrow(expect.objectContaining({ code: "REMINDER_PRESENTATION_INVALID" }));
 });

@@ -1,4 +1,5 @@
 import { getAmbientSingleton } from "../ambient-context";
+import { ElizaError } from "../errors";
 /** Process-local authority for a saved reminder's exact presentation. Never accepted from JSON. */
 export type ReminderPresentation = {
 	readonly kind: "saved-one-shot-reminder";
@@ -15,7 +16,9 @@ export function createReminderPresentation(
 	title: string,
 ): ReminderPresentation {
 	if (!body.trim() || !title.trim() || !chatText.startsWith(body))
-		throw new Error("Invalid saved reminder presentation");
+		throw new ElizaError("Invalid saved reminder presentation", {
+			code: "REMINDER_PRESENTATION_INVALID",
+		});
 	const value = Object.freeze({
 		kind: "saved-one-shot-reminder" as const,
 		body,

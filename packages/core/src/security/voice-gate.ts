@@ -1,3 +1,4 @@
+import { ElizaError } from "../errors";
 import { readReminderPresentation } from "../types/reminder-presentation";
 /**
  * The humanness voice gate (#14873): the single canonical last-mile pass that
@@ -155,7 +156,9 @@ export async function ensureAgentVoice(
 	if (content.reminderPresentation !== undefined) {
 		const reminder = readReminderPresentation(content.reminderPresentation);
 		if (!reminder || content.text !== reminder.chatText)
-			throw new Error("Untrusted or mismatched reminder presentation");
+			throw new ElizaError("Untrusted or mismatched reminder presentation", {
+				code: "REMINDER_PRESENTATION_UNTRUSTED",
+			});
 		const {
 			agentVoiced: _voice,
 			reminderPresentation: _authority,
