@@ -578,6 +578,21 @@ async function opCreate(
   // explicit one-shot/interval `triggerType` — a typed statement, not a
   // sprayed number — outranks a provided cronExpression.
   const explicitType = params.triggerType?.trim().toLowerCase();
+  if (
+    !["once", "interval", "cron"].includes(explicitType ?? "") &&
+    params.delaySeconds === undefined &&
+    params.delayMinutes === undefined &&
+    params.intervalMs === undefined &&
+    !readString(params.scheduledAtIso) &&
+    !readString(params.cronExpression)
+  ) {
+    return failed(
+      "create",
+      "Provide an explicit schedule before creating a trigger.",
+      "MISSING_SCHEDULE",
+    );
+  }
+
   const cronExpression = readString(params.cronExpression);
   const explicitScheduledAtIso = readString(params.scheduledAtIso);
   const wantsCron =
