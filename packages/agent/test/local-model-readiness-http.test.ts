@@ -11,10 +11,12 @@ import {
 } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import WebSocket from "ws";
 import { detectRuntimeModel } from "../src/api/agent-model.ts";
 import {
   type CloudModelReadinessView,
   computeCanRespond,
+  responseReadinessFields,
 } from "../src/api/health-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 
@@ -24,6 +26,12 @@ class Loader extends Service {
   path: string | null = null;
   currentModelPath() {
     return this.path;
+  }
+  async loadModel() {
+    throw new Error("Status must not load weights");
+  }
+  async unloadModel() {
+    throw new Error("Status must not unload weights");
   }
   static async start(runtime: IAgentRuntime) {
     return new Loader(runtime);
@@ -58,6 +66,7 @@ beforeAll(async () => {
   vi.stubEnv("ELIZA_API_TOKEN", token);
   vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
   directory = await mkdtemp(join(tmpdir(), "local-model-readiness-"));
+  vi.stubEnv("ELIZA_STATE_DIR", directory);
   runtime = new AgentRuntime({
     character: { name: "Local readiness", bio: [] },
   });
@@ -121,7 +130,9 @@ it("reports local load/unload through authenticated HTTP and does not label a co
     noInference,
     "eliza-local-inference",
   );
-  expect(computeCanRespond(other, "running")).toBe(false);
+  expect((await responseReadinessFields(other, "running")).canRespond).toBe(
+    false,
+  );
   loader.path = null;
   expect((await status()).canRespond).toBe(false);
 });
@@ -133,14 +144,14 @@ it.each(["custom-provider", "ollama", "openai", "elizaOSCloud"])(
       character: { name: provider, bio: [] },
     });
     runtime.registerModel(ModelType.TEXT_LARGE, noInference, provider);
-    expect(computeCanRespond(runtime, "running")).toBe(true);
+    expect(computeCanRespond(runtime, "running", null)).toBe(true);
     runtime.registerModel(
       ModelType.TEXT_SMALL,
       noInference,
       "eliza-local-inference",
     );
-    expect(computeCanRespond(runtime, "running")).toBe(true);
-    expect(computeCanRespond(runtime, "stopped")).toBe(false);
+    expect(computeCanRespond(runtime, "running", null)).toBe(true);
+    expect(computeCanRespond(runtime, "stopped", null)).toBe(false);
   },
 );
 
@@ -163,7 +174,7 @@ it("preserves Cloud unknown, explicit unavailable, and fallback-provider behavio
     CloudRegistry.serviceType,
   );
   if (!cloudRegistry) throw new Error("Cloud registry did not start");
-  expect(computeCanRespond(cloud, "running")).toBe(true);
+  expect(computeCanRespond(cloud, "running", null)).toBe(true);
   cloudRegistry.readiness = {
     status: "model_not_available",
     code: "MODEL_NOT_AVAILABLE",
@@ -171,8 +182,44 @@ it("preserves Cloud unknown, explicit unavailable, and fallback-provider behavio
     message: "Model missing",
     checkedAt: Date.now(),
   };
-  expect(computeCanRespond(cloud, "running")).toBe(false);
+  expect(computeCanRespond(cloud, "running", null)).toBe(false);
   cloud.registerModel(ModelType.TEXT_LARGE, noInference, "custom-fallback");
-  expect(computeCanRespond(cloud, "running")).toBe(true);
+  expect(computeCanRespond(cloud, "running", null)).toBe(true);
   await cloud.stop();
 });
+
+it("includes the local readiness reason on initial and periodic WebSocket status", async () => {
+  loader.path = null;
+  const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  try {
+    const statuses: Array<Record<string, unknown>> = [];
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Missing initial and periodic status")),
+        15_000,
+      );
+      ws.on("error", reject);
+      ws.on("message", (raw) => {
+        const event = JSON.parse(raw.toString());
+        if (event.type !== "status") return;
+        statuses.push(event);
+        if (statuses.length === 2) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    for (const status of statuses)
+      expect(status).toMatchObject({
+        canRespond: false,
+        localModelReadiness: {
+          provider: "eliza-local-inference",
+          status: "model_not_loaded",
+        },
+      });
+  } finally {
+    ws.close();
+  }
+}, 20_000);
