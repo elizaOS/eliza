@@ -477,7 +477,36 @@ const optionalPluginStubs = {
   // routes instead, so stub the whole package like WhatsApp above.
   "@elizaos/plugin-meetings": path.join(stubsDir, "null-plugin.ts"),
 };
-const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
+// Platform-neutral remote-control protocol modules. #32865 moved them into
+// plugin-browser, and the mobile remote-target plugin
+// (packages/app/src/mobile-remote-target.ts) and the UI cloud client import
+// them through `@elizaos/plugin-browser/remote-control/*`. They depend only on
+// node:crypto, @elizaos/core and the elizacloud domain contract, so they
+// resolve to source. The longest-alias match keeps them out of the
+// plugin-browser mobile stub; browser-controller stays stubbed because it
+// drives the desktop BrowserService.
+const pluginBrowserRemoteControlSources = Object.fromEntries(
+  [
+    "cloud-client",
+    "cloud-endpoints",
+    "controller",
+    "crypto",
+    "runtime-store",
+    "secure-store-contract",
+  ].map((name) => [
+    `@elizaos/plugin-browser/remote-control/${name}`,
+    path.join(
+      repoRoot,
+      "plugins/plugin-browser/src/remote-control",
+      `${name}.ts`,
+    ),
+  ]),
+);
+const stubAliases = {
+  ...nativeStubs,
+  ...optionalPluginStubs,
+  ...pluginBrowserRemoteControlSources,
+};
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
   setup(build) {

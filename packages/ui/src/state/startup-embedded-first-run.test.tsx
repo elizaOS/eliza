@@ -382,4 +382,78 @@ describe("desktop embedded first-run startup gating (#30744)", () => {
       expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
     });
   });
+
+  describe("starting-runtime for the packaged embedded agent", () => {
+    function createRuntimeDeps(): StartingRuntimeDeps {
+      return {
+        setAgentStatus: vi.fn(),
+        setConnected: vi.fn(),
+        setStartupError: vi.fn(),
+        setFirstRunLoading: vi.fn(),
+        setFirstRunComplete: vi.fn(),
+        setAuthRequired: vi.fn(),
+        setPairingEnabled: vi.fn(),
+        setPairingExpiresAt: vi.fn(),
+        setPendingRestart: vi.fn(),
+        setPendingRestartReasons: vi.fn(),
+      };
+    }
+
+    async function runEmbeddedRuntime(): Promise<StartupEvent[]> {
+      const events: StartupEvent[] = [];
+      await runStartingRuntime(
+        createRuntimeDeps(),
+        (event) => events.push(event),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        "embedded-local",
+      );
+      return events;
+    }
+
+    // The app server host projects every serving phase as agent state
+    // "running" but never reports the legacy "running" phase itself.
+    it.each(["ready", "runtime-ready", "features-starting", "degraded"])(
+      "declares ready when the shell launch snapshot reports runtime phase %s",
+      async (runtimePhase) => {
+        clientMock.getStatus.mockResolvedValue({ state: "running" });
+        clientMock.getLaunchProgress.mockResolvedValue({
+          phase: "agent-api-ready",
+          agent: {
+            state: "running",
+            port: 31339,
+            apiBase: "http://127.0.0.1:31339",
+            startedAt: 1,
+            error: null,
+          },
+          boot: { runtimePhase },
+          auth: { checked: true, required: false, error: null },
+          firstRun: { checked: true, complete: true, error: null },
+          localModel: { backgroundDownloadQueued: false, blocking: false },
+        });
+
+        const events = await runEmbeddedRuntime();
+
+        expect(clientMock.startAgent).not.toHaveBeenCalled();
+        expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+      },
+    );
+
+    it("declares ready from boot progress in the app server host's ready phase", async () => {
+      clientMock.getStatus.mockResolvedValue({ state: "running" });
+      clientMock.getLaunchProgress.mockResolvedValue(null);
+      clientMock.getBootProgress.mockResolvedValue({
+        state: "running",
+        phase: "ready",
+        port: 31339,
+        startedAt: 1,
+      });
+
+      const events = await runEmbeddedRuntime();
+
+      expect(events).toEqual([{ type: "AGENT_RUNNING" }]);
+    });
+  });
 });

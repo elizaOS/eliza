@@ -1,14 +1,16 @@
 /** Owns connector descriptors and account-scoped transport dispatch for one runtime.
  * The send-handler map is shared with existing plugin-lifecycle and host consumers.
  * Hooks receive the original runtime, including through the outbound voice and envelope gates. */
+import { ElizaError } from "../errors.ts";
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
 import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
 import { ensureAgentVoice } from "../security/voice-gate.ts";
 import type { Memory } from "../types/memory.js";
-import type {
-	SendHandlerFunction,
-	SendHandlerResult,
-	TargetInfo,
+import {
+	SEND_HANDLER_NOT_FOUND,
+	type SendHandlerFunction,
+	type SendHandlerResult,
+	type TargetInfo,
 } from "../types/messaging.js";
 import type { Content } from "../types/primitives.js";
 import type {
@@ -293,7 +295,10 @@ export class RuntimeConnectorRegistry {
 				},
 				"Send handler not found",
 			);
-			throw new Error(errorMsg);
+			throw new ElizaError(errorMsg, {
+				code: SEND_HANDLER_NOT_FOUND,
+				context: { source, ...(accountId ? { accountId } : {}) },
+			});
 		}
 		// Humanness voice gate (#14873): this is the connector-transport chokepoint
 		// for every agent-initiated outbound message (scheduled dispatches,
