@@ -68,6 +68,7 @@ import {
 import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { RemindersFeed } from "./RemindersFeed";
 import { ScheduledTaskEditor } from "./ScheduledTaskEditor";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
@@ -96,6 +97,10 @@ export interface AutomationsFeedProps {
 
 const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   {
+    reminders: {
+      key: "common.reminders",
+      defaultLabel: "Reminders",
+    },
     all: { key: "automationsfeed.filterAll", defaultLabel: "All" },
     prompts: { key: "automationsfeed.filterPrompts", defaultLabel: "Prompts" },
     workflows: {
@@ -549,7 +554,7 @@ export function AutomationsFeed({
     return allRows.filter((r) => passesFilter(r, filter));
   }, [allRows, filter]);
 
-  const filterCounts = useMemo<Record<FeedFilter, number>>(
+  const filterCounts = useMemo<Partial<Record<FeedFilter, number>>>(
     () => ({
       all: allRows.length,
       prompts: allRows.filter((r) => r.kind === "task").length,
@@ -719,16 +724,14 @@ export function AutomationsFeed({
             </DropdownMenu>
           }
         />
-        {data && !(workflowServiceIssue && rows.length === 0) ? (
-          <FramedPageNavigation className="flex items-center justify-between gap-3">
-            <span className="text-sm text-muted">Show</span>
-            <AutomationFilterMenu
-              filter={filter}
-              counts={filterCounts}
-              onSelect={setFilter}
-            />
-          </FramedPageNavigation>
-        ) : null}
+        <FramedPageNavigation className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted">Show</span>
+          <AutomationFilterMenu
+            filter={filter}
+            counts={filterCounts}
+            onSelect={setFilter}
+          />
+        </FramedPageNavigation>
         <FramedPageBody
           scroll="page"
           data-testid="automations-scroll-region"
@@ -763,97 +766,101 @@ export function AutomationsFeed({
               />
             )}
 
-            <div className="border-y border-border/50">
-              {(loading || dataState.cacheKey !== cacheKey) && !data ? (
-                <PagePanel.Loading
-                  heading={t("common.loading", { defaultValue: "Loading…" })}
-                />
-              ) : workflowServiceIssue && rows.length === 0 ? (
-                <WorkflowServiceIssuePanel
-                  issue={workflowServiceIssue}
-                  onRetry={() => void refresh()}
-                  onUpgrade={openDedicatedUpgrade}
-                  full
-                />
-              ) : loadErrorIssue && rows.length === 0 ? (
-                <WorkflowServiceIssuePanel
-                  issue={loadErrorIssue}
-                  onRetry={() => void refresh()}
-                  onUpgrade={openDedicatedUpgrade}
-                  full
-                />
-              ) : rows.length === 0 ? (
-                // Designed-empty render only. A default workflow is seeded on first
-                // run so this state is unreachable in practice (#13597); it exists
-                // for the deleted-everything edge. NO create CTA — the agent offers
-                // to re-create a workflow from chat instead.
-                <div
-                  data-testid="automations-empty-state"
-                  role="status"
-                  aria-label={workflowOnlyEmpty ? emptyStateLabel : undefined}
-                  className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
-                >
-                  <AutomationEmptyIllustration />
-                  <p
-                    className={
-                      workflowOnlyEmpty
-                        ? "sr-only"
-                        : "text-sm font-medium text-txt"
-                    }
+            {filter === "reminders" ? (
+              <RemindersFeed key={cacheKey} />
+            ) : (
+              <div className="border-y border-border/50">
+                {(loading || dataState.cacheKey !== cacheKey) && !data ? (
+                  <PagePanel.Loading
+                    heading={t("common.loading", { defaultValue: "Loading…" })}
+                  />
+                ) : workflowServiceIssue && rows.length === 0 ? (
+                  <WorkflowServiceIssuePanel
+                    issue={workflowServiceIssue}
+                    onRetry={() => void refresh()}
+                    onUpgrade={openDedicatedUpgrade}
+                    full
+                  />
+                ) : loadErrorIssue && rows.length === 0 ? (
+                  <WorkflowServiceIssuePanel
+                    issue={loadErrorIssue}
+                    onRetry={() => void refresh()}
+                    onUpgrade={openDedicatedUpgrade}
+                    full
+                  />
+                ) : rows.length === 0 ? (
+                  // Designed-empty render only. A default workflow is seeded on first
+                  // run so this state is unreachable in practice (#13597); it exists
+                  // for the deleted-everything edge. NO create CTA — the agent offers
+                  // to re-create a workflow from chat instead.
+                  <div
+                    data-testid="automations-empty-state"
+                    role="status"
+                    aria-label={workflowOnlyEmpty ? emptyStateLabel : undefined}
+                    className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
                   >
-                    {emptyStateLabel}
-                  </p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/40">
-                  {rows.map((row) => (
-                    <FeedRowItem
-                      key={row.key}
-                      row={row}
-                      connectedCredTypes={connectedCredTypes}
-                      registerRef={(el) => {
-                        const id = row.source.workflowId ?? row.source.id;
-                        if (el) rowRefs.current.set(id, el);
-                        else rowRefs.current.delete(id);
-                      }}
-                      isRunning={
-                        row.source.workflowId
-                          ? runningWorkflowIds.has(row.source.workflowId)
-                          : false
+                    <AutomationEmptyIllustration />
+                    <p
+                      className={
+                        workflowOnlyEmpty
+                          ? "sr-only"
+                          : "text-sm font-medium text-txt"
                       }
-                      onOpen={() => {
-                        if (row.source.source === "scheduled_task") {
-                          setEditor({
-                            kind: "scheduled",
-                            itemId: row.source.id,
-                          });
-                        } else if (row.kind === "task") {
-                          // A prompt-kind trigger has no backing workbench task —
-                          // key the editor by its trigger id instead.
-                          setEditor({
-                            kind: "task",
-                            taskId:
-                              row.source.task?.id ??
-                              row.source.triggerId ??
-                              null,
-                          });
-                        } else {
-                          setEditor({
-                            kind: "workflow",
-                            workflowId: row.source.workflowId ?? null,
-                          });
+                    >
+                      {emptyStateLabel}
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-border/40">
+                    {rows.map((row) => (
+                      <FeedRowItem
+                        key={row.key}
+                        row={row}
+                        connectedCredTypes={connectedCredTypes}
+                        registerRef={(el) => {
+                          const id = row.source.workflowId ?? row.source.id;
+                          if (el) rowRefs.current.set(id, el);
+                          else rowRefs.current.delete(id);
+                        }}
+                        isRunning={
+                          row.source.workflowId
+                            ? runningWorkflowIds.has(row.source.workflowId)
+                            : false
                         }
-                      }}
-                      onRunNow={async () => {
-                        if (row.kind !== "workflow" || !row.source.workflowId)
-                          return;
-                        await runWorkflowNow(row.source.workflowId);
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
+                        onOpen={() => {
+                          if (row.source.source === "scheduled_task") {
+                            setEditor({
+                              kind: "scheduled",
+                              itemId: row.source.id,
+                            });
+                          } else if (row.kind === "task") {
+                            // A prompt-kind trigger has no backing workbench task —
+                            // key the editor by its trigger id instead.
+                            setEditor({
+                              kind: "task",
+                              taskId:
+                                row.source.task?.id ??
+                                row.source.triggerId ??
+                                null,
+                            });
+                          } else {
+                            setEditor({
+                              kind: "workflow",
+                              workflowId: row.source.workflowId ?? null,
+                            });
+                          }
+                        }}
+                        onRunNow={async () => {
+                          if (row.kind !== "workflow" || !row.source.workflowId)
+                            return;
+                          await runWorkflowNow(row.source.workflowId);
+                        }}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </FramedPageBody>
       </FramedPage>
@@ -925,7 +932,7 @@ function AutomationFilterMenu({
   onSelect,
 }: {
   filter: FeedFilter;
-  counts: Readonly<Record<FeedFilter, number>>;
+  counts: Readonly<Partial<Record<FeedFilter, number>>>;
   onSelect: (filter: FeedFilter) => void;
 }) {
   const { t } = useTranslation();
@@ -952,7 +959,9 @@ function AutomationFilterMenu({
           {...agentProps}
         >
           <span>{selectedLabel}</span>
-          <span className="tabular-nums text-muted">({counts[filter]})</span>
+          {counts[filter] !== undefined && (
+            <span className="tabular-nums text-muted">({counts[filter]})</span>
+          )}
           <ChevronDown className="size-4" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
@@ -971,7 +980,11 @@ function AutomationFilterMenu({
                   defaultValue: FILTER_LABELS[option].defaultLabel,
                 })}
               </span>
-              <span className="tabular-nums text-muted">{counts[option]}</span>
+              {counts[option] !== undefined && (
+                <span className="tabular-nums text-muted">
+                  {counts[option]}
+                </span>
+              )}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

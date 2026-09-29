@@ -383,6 +383,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/email-unsubscribe/unsubscribe" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
   { type: "POST", path: "/api/lifeops/seed" },
+  { type: "GET", path: "/api/lifeops/reminders" },
   { type: "GET", path: "/api/lifeops/definitions" },
   { type: "POST", path: "/api/lifeops/definitions" },
   { type: "GET", path: "/api/lifeops/goals" },

@@ -29,6 +29,7 @@ const SECOND_AGENT_BASE =
   "https://api.elizacloud.ai/api/v1/eliza/agents/9b0deccb-a884-4149-b91d-328004ac108d";
 
 const clientMock = vi.hoisted(() => ({
+  getBaseUrl: () => "http://localhost",
   baseUrl:
     "https://api.elizacloud.ai/api/v1/eliza/agents/de42b5ff-72d3-4a1a-8a16-19aee293bfea",
   listAutomations: vi.fn(),
@@ -637,4 +638,46 @@ describe("AutomationsFeed", () => {
       screen.queryByRole("button", { name: "Upgrade to Dedicated" }),
     ).toBeNull();
   });
+});
+
+it("does not display a fabricated zero count when Reminders contains a saved reminder", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        reminders: [
+          {
+            definition: {
+              id: "saved-reminder",
+              title: "One saved reminder",
+              status: "active",
+              timezone: "UTC",
+              cadence: { kind: "once", dueAt: "2026-10-01T12:00:00Z" },
+            },
+            occurrence: null,
+            latestAttempt: null,
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ),
+  );
+  try {
+    render(<AutomationsFeed />);
+    await screen.findByText("Nightly review");
+    act(() =>
+      window.dispatchEvent(
+        new CustomEvent("eliza:automations:setFilter", {
+          detail: { filter: "reminders" },
+        }),
+      ),
+    );
+    await screen.findByText("One saved reminder");
+    const filter = screen.getByRole("button", {
+      name: /Filter automations, Reminders selected/i,
+    });
+    expect(filter.textContent).not.toContain("0");
+    expect(filter.textContent).not.toContain("(");
+  } finally {
+    fetchMock.mockRestore();
+  }
 });

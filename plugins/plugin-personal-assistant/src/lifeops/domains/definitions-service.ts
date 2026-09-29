@@ -167,6 +167,81 @@ export class DefinitionsDomain {
     }));
   }
 
+  /** Owner reminder read-model; retains occurrence/attempt identity for existing verbs. */
+  async listReminders() {
+    const definitions = (
+      await listCallerDefinitions(this.ctx.repository, this.ctx, {
+        activeOnly: false,
+      })
+    ).filter(
+      (definition) => definition.metadata?.ownerSurface === "OWNER_REMINDERS",
+    );
+    const occurrences = await this.ctx.repository.listOccurrencesForDefinitions(
+      this.ctx.agentId(),
+      definitions.map((definition) => definition.id),
+    );
+    const occurrencesByDefinition = new Map<string, LifeOpsOccurrence[]>();
+    const ownedOccurrenceIds = new Set(occurrences.map((row) => row.id));
+    for (const row of occurrences) {
+      const list = occurrencesByDefinition.get(row.definitionId) ?? [];
+      list.push(row);
+      occurrencesByDefinition.set(row.definitionId, list);
+    }
+    const attempts = await this.ctx.repository.listReminderAttempts(
+      this.ctx.agentId(),
+      { ownerType: "occurrence" },
+    );
+    const latestByOccurrence = new Map<string, (typeof attempts)[number]>();
+    for (const attempt of attempts) {
+      if (!ownedOccurrenceIds.has(attempt.ownerId)) continue;
+      const previous = latestByOccurrence.get(attempt.ownerId);
+      if (
+        !previous ||
+        Date.parse(attempt.attemptedAt ?? attempt.scheduledFor) >
+          Date.parse(previous.attemptedAt ?? previous.scheduledFor)
+      )
+        latestByOccurrence.set(attempt.ownerId, attempt);
+    }
+    const now = Date.now();
+    return definitions.map((definition) => {
+      const rows = occurrencesByDefinition.get(definition.id) ?? [];
+      const pending = rows
+        .filter(
+          (row) =>
+            !["completed", "skipped", "expired", "muted"].includes(row.state),
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(
+              a.snoozedUntil ?? a.dueAt ?? a.scheduledAt ?? a.createdAt,
+            ) -
+            Date.parse(
+              b.snoozedUntil ?? b.dueAt ?? b.scheduledAt ?? b.createdAt,
+            ),
+        );
+      const occurrence =
+        pending.find(
+          (row) =>
+            Date.parse(
+              row.snoozedUntil ?? row.dueAt ?? row.scheduledAt ?? row.createdAt,
+            ) >= now,
+        ) ??
+        pending[0] ??
+        rows.sort(
+          (a, b) =>
+            Date.parse(b.dueAt ?? b.scheduledAt ?? b.createdAt) -
+            Date.parse(a.dueAt ?? a.scheduledAt ?? a.createdAt),
+        )[0];
+      return {
+        definition,
+        occurrence: occurrence ?? null,
+        latestAttempt: occurrence
+          ? (latestByOccurrence.get(occurrence.id) ?? null)
+          : null,
+      };
+    });
+  }
+
   async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
     return this.deps.getDefinitionRecord(definitionId);
   }

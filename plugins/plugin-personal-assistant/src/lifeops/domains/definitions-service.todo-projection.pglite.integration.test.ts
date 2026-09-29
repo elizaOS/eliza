@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
 import { LifeOpsService } from "../service.js";
+import { buildReminderBody } from "./reminders-service.js";
 
 it("excludes owner reminders from todos without changing their stored occurrences or notification plan", async () => {
   const fixture = await createLifeOpsTestRuntime();
@@ -57,6 +58,36 @@ it("excludes owner reminders from todos without changing their stored occurrence
     expect(after.definition).toEqual(reminder.definition);
     expect(after.reminderPlan?.steps).toEqual(reminder.reminderPlan?.steps);
     expect(before).toHaveLength(1);
+    const reminders = await service.listReminders();
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]).toMatchObject({
+      definition: { id: reminder.definition.id },
+      occurrence: { id: before[0].id, dueAt },
+      latestAttempt: null,
+    });
+    await service.updateDefinition(reminder.definition.id, {
+      title: "Updated notification message",
+    });
+    const edited = await service.repository.getOccurrenceView(
+      runtime.agentId,
+      before[0].id,
+    );
+    expect(edited?.title).toBe("Updated notification message");
+    expect(
+      buildReminderBody({
+        title: edited!.title,
+        scheduledFor: dueAt,
+        dueAt,
+        channel: "in_app",
+        lifecycle: "plan",
+      }),
+    ).toContain("Updated notification message");
+    await service.updateDefinition(reminder.definition.id, {
+      status: "archived",
+    });
+    expect((await service.listReminders())[0].definition.status).toBe(
+      "archived",
+    );
   } finally {
     await fixture.cleanup();
   }
