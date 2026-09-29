@@ -644,11 +644,7 @@ export function AutoTopUpCard() {
               "When on, your saved card is charged automatically when credits dip below the threshold. When off, the card is not charged automatically.",
           })}
           checked={enabled}
-          disabled={
-            saving ||
-            !!noPaymentMethod ||
-            (enabled && !amountError && !currentChargePreview)
-          }
+          disabled={saving || !!noPaymentMethod}
           onCheckedChange={setEnabled}
           testId="cloud-billing-auto-top-up"
         />
