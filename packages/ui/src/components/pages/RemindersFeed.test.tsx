@@ -33,8 +33,7 @@ vi.mock("../../state/TranslationContext.hooks", () => ({
   }),
 }));
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock("../../api", () => ({ client: { getBaseUrl: () => "http://agent" } }));
-vi.mock("../../api/csrf-client", () => ({ fetchWithCsrf: mocks.fetch }));
+vi.mock("../../api", () => ({ client: { rawRequest: mocks.fetch } }));
 const row = {
   definition: {
     id: "reminder-1",
@@ -65,7 +64,7 @@ it("shows exact reminder and uses existing snooze/cancel verbs", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Snooze 10 minutes" }));
   await waitFor(() =>
     expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://agent/api/lifeops/occurrences/occ-1/snooze",
+      "/api/lifeops/occurrences/occ-1/snooze",
       expect.objectContaining({ method: "POST", body: '{"minutes":10}' }),
     ),
   );
@@ -77,7 +76,7 @@ it("shows exact reminder and uses existing snooze/cancel verbs", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Cancel reminder" }));
   await waitFor(() =>
     expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://agent/api/lifeops/definitions/reminder-1",
+      "/api/lifeops/definitions/reminder-1",
       expect.objectContaining({ method: "PUT", body: '{"status":"archived"}' }),
     ),
   );

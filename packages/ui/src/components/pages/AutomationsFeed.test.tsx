@@ -29,7 +29,7 @@ const SECOND_AGENT_BASE =
   "https://api.elizacloud.ai/api/v1/eliza/agents/9b0deccb-a884-4149-b91d-328004ac108d";
 
 const clientMock = vi.hoisted(() => ({
-  getBaseUrl: () => "http://localhost",
+  rawRequest: vi.fn(),
   baseUrl:
     "https://api.elizacloud.ai/api/v1/eliza/agents/de42b5ff-72d3-4a1a-8a16-19aee293bfea",
   listAutomations: vi.fn(),
@@ -641,7 +641,7 @@ describe("AutomationsFeed", () => {
 });
 
 it("does not display a fabricated zero count when Reminders contains a saved reminder", async () => {
-  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+  const requestMock = clientMock.rawRequest.mockResolvedValue(
     new Response(
       JSON.stringify({
         reminders: [
@@ -678,6 +678,6 @@ it("does not display a fabricated zero count when Reminders contains a saved rem
     expect(filter.textContent).not.toContain("0");
     expect(filter.textContent).not.toContain("(");
   } finally {
-    fetchMock.mockRestore();
+    requestMock.mockReset();
   }
 });

@@ -5,7 +5,6 @@ import type {
 } from "@elizaos/core/contracts/personal-assistant";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
-import { fetchWithCsrf } from "../../api/csrf-client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 
@@ -19,14 +18,11 @@ async function request<T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
-  const res = await fetchWithCsrf(
-    `${client.getBaseUrl()}/api/lifeops/${path}`,
-    {
-      method,
-      headers: { "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    },
-  );
+  const res = await client.rawRequest(`/api/lifeops/${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
   if (!res.ok) throw Error(`Reminder request failed (${res.status})`);
   return res.json();
 }
