@@ -5,7 +5,8 @@
  * packages/agent/test/remote-agent-pairing-http.test.ts.
  */
 import { buildRemoteAgentPairingUri } from "@elizaos/core/contracts/remote-agent-pairing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { ElizaClient } from "../api/client";
 import {
   exchangeRemoteAgentPairing,
   parseRemoteAgentPairingDeepLink,
@@ -25,7 +26,8 @@ function agent(instanceId: string) {
       calls.push("status");
       return { instanceId, pairingEnabled: true };
     },
-    pair: async (code) => {
+    pair: async (code, expectedInstanceId) => {
+      expect(expectedInstanceId).toBe(INSTANCE);
       calls.push(`pair:${code}`);
       return { token: "server-issued", instanceId };
     },
@@ -102,6 +104,37 @@ describe("remote agent pairing exchange", () => {
       "status",
       "pair:ABCD-EFGH",
     ]);
+  });
+
+  it("does not submit a code if the agent restarts between status reads", async () => {
+    const client = new ElizaClient(ORIGIN);
+    const status = vi
+      .spyOn(client, "getAuthStatus")
+      .mockResolvedValueOnce({
+        required: true,
+        pairingEnabled: true,
+        expiresAt: null,
+        instanceId: INSTANCE,
+      })
+      .mockResolvedValueOnce({
+        required: true,
+        pairingEnabled: true,
+        expiresAt: null,
+        instanceId: "0f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
+      });
+    const network = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Unexpected pairing request"));
+    try {
+      await expect(
+        exchangeRemoteAgentPairing(payload, client, () => true),
+      ).rejects.toMatchObject({ code: "PAIRING_INSTANCE_MISMATCH" });
+      expect(status).toHaveBeenCalledTimes(2);
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      status.mockRestore();
+      network.mockRestore();
+    }
   });
 
   it("refuses an untrusted origin before any request", async () => {

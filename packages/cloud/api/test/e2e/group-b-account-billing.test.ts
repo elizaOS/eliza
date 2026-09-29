@@ -682,7 +682,9 @@ describeE2E("GET /api/stats/account", () => {
 
 describeE2E("GET /api/stripe/credit-packs", () => {
   test("retired: fixed credit packs are no longer served", async () => {
-    const res = await api.get("/api/stripe/credit-packs");
+    const res = await api.get("/api/stripe/credit-packs", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(404);
   });
 });

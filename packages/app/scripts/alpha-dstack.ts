@@ -6,7 +6,7 @@
  * are printed. API tokens are read from ELIZA_ALPHA_API_TOKEN, never argv.
  */
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -123,6 +123,7 @@ async function main(command: string | undefined): Promise<void> {
         await readFile(absolute("authority-pub"), "utf8"),
       );
       const out = absolute("out");
+      await mkdir(out, { recursive: true, mode: 0o700 });
       await writeNew(`${out}/app-compose.json`, rendered.appCompose);
       await writeNew(
         `${out}/release.json`,
