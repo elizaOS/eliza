@@ -6703,14 +6703,14 @@ export function ChatOverlay({
                                   : noProviderConfigured
                                     ? "Connect a model provider in Settings to chat"
                                     : localTextModelNotLoaded
-                                      ? "Text model is not loaded on the connected agent"
+                                      ? "Text model not loaded — check Settings"
                                       : modelBlocksSend
-                                      ? modelStatus?.kind === "downloading"
-                                        ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                                        : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                                      : booting
-                                        ? `Message ${agentName} — waking up…`
-                                        : "Hey Eliza…"
+                                        ? modelStatus?.kind === "downloading"
+                                          ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                          : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                                        : booting
+                                          ? `Message ${agentName} — waking up…`
+                                          : "Hey Eliza…"
                         }
                         aria-label="message"
                         data-testid="chat-composer-textarea"
@@ -6732,6 +6732,7 @@ export function ChatOverlay({
                     )}
                     {!transcriptionComposerActive &&
                     booting &&
+                    !localTextModelNotLoaded &&
                     !noProviderConfigured &&
                     !firstRunOpen ? (
                       <span id="cc-booting-hint" className="sr-only">
