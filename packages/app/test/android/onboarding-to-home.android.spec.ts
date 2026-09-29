@@ -99,10 +99,9 @@ test.describe
                     expect(dialog.message()).toContain(
                       new URL(HOST_AGENT_BASE).host,
                     );
-                    // Keep the listener to prevent CDP auto-dismissal, but
-                    // accept through Android itself: CDP acceptance can leave
-                    // WebChromeClient's native AlertDialog covering the app.
-                    await device.tap({ text: "OK" });
+                    // Handle the WebView dialog through its owning CDP session.
+                    // Waiting for a native OK button first can leave the dialog
+                    // unresolved when no Android AlertDialog is exposed.
                     await dialog.accept();
                     resolve();
                   } catch (error) {
