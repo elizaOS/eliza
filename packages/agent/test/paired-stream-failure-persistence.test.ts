@@ -20,8 +20,13 @@ import {
   setAgentHostBridge,
 } from "../src/runtime/host-bridge.ts";
 
-it.each(["provider failure", "generation timeout", "session revoked"] as const)(
-  "persists %s after transport loss and replays it without another model call",
+it.each([
+  "provider failure",
+  "generation timeout",
+  "session revoked",
+  "unpaired disconnect",
+] as const)(
+  "handles %s through real HTTP, cancellation, and persistence",
   async (failure) => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "paired-stream-failure-"),
@@ -128,7 +133,7 @@ it.each(["provider failure", "generation timeout", "session revoked"] as const)(
       });
       const origin = `http://127.0.0.1:${server.port}`;
       const headers = {
-        Authorization: `Bearer ${session.id}`,
+        Authorization: `Bearer ${failure === "unpaired disconnect" ? process.env.ELIZA_API_TOKEN : session.id}`,
         "content-type": "application/json",
       };
       const create = await fetch(`${origin}/api/conversations`, {
@@ -155,6 +160,11 @@ it.each(["provider failure", "generation timeout", "session revoked"] as const)(
       controller.abort();
       await reader.cancel().catch(() => undefined);
       await transportClosed.promise;
+      if (failure === "unpaired disconnect") {
+        release.resolve();
+        await observedAbort.promise;
+        return;
+      }
       if (failure === "session revoked") {
         expect(
           await revokeSession(session.id, {
