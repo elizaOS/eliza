@@ -518,6 +518,7 @@
       "default": "./dist/services/steward-sidecar/helpers.js"
     },
     "./services/task-host-capabilities": {
+      "eliza-source": "./src/services/task-host-capabilities.ts",
       "types": "./dist/services/task-host-capabilities.d.ts",
       "import": "./dist/services/task-host-capabilities.js",
       "default": "./dist/services/task-host-capabilities.js"

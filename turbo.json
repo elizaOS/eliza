@@ -149,7 +149,8 @@
         "^build",
         "@elizaos/core#build",
         "@elizaos/plugin-inbox#build",
-        "@elizaos/plugin-knowledge#build"
+        "@elizaos/plugin-knowledge#build",
+        "@elizaos/plugin-pdf#build"
       ]
     },
     "@elizaos/app#typecheck": {
