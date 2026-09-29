@@ -378,7 +378,7 @@ if $REMOTE; then
     --exclude='./coverage' \
     --exclude='./.avatar-clone-tmp' \
     -czf '${TARBALL}' ."
-  
+
   if ! $DRY_RUN; then
     TARBALL_SIZE=$(du -sh "${TARBALL}" | cut -f1)
     ok "Build context: ${TARBALL_SIZE}"
