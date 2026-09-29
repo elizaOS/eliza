@@ -3252,6 +3252,10 @@ export async function ensureOwnerConversation(
   runtime: AgentRuntime,
 ): Promise<ConversationMeta> {
   await waitForConversationRestore(state);
+  // A registered provisional conversation is not ready until room setup settles.
+  const pending = ownerConversationCreations.get(state.conversations);
+  if (pending) return pending;
+
   const active = state.activeConversationId
     ? state.conversations.get(state.activeConversationId)
     : undefined;
@@ -3261,8 +3265,6 @@ export async function ensureOwnerConversation(
     .sort(compareConversationsByRecency)[0];
   if (recent) return recent;
 
-  const pending = ownerConversationCreations.get(state.conversations);
-  if (pending) return pending;
   const creation = (async () => {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
