@@ -38,7 +38,7 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     ALTER TABLE organizations ADD COLUMN is_active boolean NOT NULL DEFAULT true, ADD COLUMN account_deletion_request_id uuid, ADD COLUMN credit_balance numeric(16,6) NOT NULL DEFAULT 0, ADD COLUMN balance_revision bigint NOT NULL DEFAULT 0, ADD COLUMN settings jsonb NOT NULL DEFAULT '{}';
     ALTER TABLE org_storage_quota ADD COLUMN created_at timestamp DEFAULT now(), ADD COLUMN updated_at timestamp DEFAULT now(), ADD COLUMN native_catalog_reconciled_at timestamptz;
-    ALTER TABLE credit_transactions ADD COLUMN amount numeric(16,6), ADD COLUMN type text, ADD COLUMN metadata jsonb;
+    ALTER TABLE credit_transactions ADD COLUMN amount numeric(16,6), ADD COLUMN type text, ADD COLUMN metadata jsonb, ADD COLUMN stripe_payment_intent_id text;
     CREATE TABLE organization_config(organization_id uuid PRIMARY KEY, settings jsonb NOT NULL DEFAULT '{}');
     CREATE TABLE org_rate_limit_overrides(id uuid PRIMARY KEY,organization_id uuid,completions_rpm integer,embeddings_rpm integer,standard_rpm integer,strict_rpm integer);
   `);

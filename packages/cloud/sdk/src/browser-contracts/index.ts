@@ -7,3 +7,4 @@ export * from "./analytics-display.js";
 export * from "./default-avatar.js";
 export * from "./markup.js";
 export * from "./organization-credits.js";
+export * from "./personal-fallback.js";

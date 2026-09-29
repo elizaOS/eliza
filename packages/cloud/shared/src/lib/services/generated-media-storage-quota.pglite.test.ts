@@ -98,6 +98,11 @@ beforeAll(async () => {
   closeDb = client.closeDatabaseConnectionsForTests;
   dbWrite = client.dbWrite;
   await dbWrite.execute(sql.raw("CREATE TABLE organizations (id uuid PRIMARY KEY)"));
+  await dbWrite.execute(
+    sql.raw(
+      "CREATE TABLE generations (id uuid PRIMARY KEY, organization_id uuid NOT NULL, status text NOT NULL, updated_at timestamp DEFAULT now())",
+    ),
+  );
   const migration = readFileSync(
     join(import.meta.dir, "../../db/migrations/0102_add_org_storage_quota.sql"),
     "utf8",
@@ -125,6 +130,7 @@ beforeEach(async () => {
   generations.length = 0;
   admitted = 0;
   failDelete = false;
+  await dbWrite.execute(sql`DELETE FROM generations`);
   await dbWrite.execute(sql`DELETE FROM org_storage_quota`);
   await dbWrite.execute(sql`DELETE FROM organizations`);
   await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${ORG})`);
@@ -166,6 +172,55 @@ describe("generated media and the storage quota (#20956)", () => {
     await quota.setBytesLimit(ORG, 1_000n, "admin:test");
     await expect(run(1, { failHistory: true })).rejects.toThrow("history unavailable");
     expect(objects.size).toBe(0);
+    expect(await bytesUsed()).toBe(0n);
+  });
+
+  test("deletion and quota release roll back together and a retry releases exactly once", async () => {
+    const { generationsRepository } = await import("../../db/repositories/generations");
+    const id = "00000000-0000-4000-8000-000000020957";
+    await quota.setBytesLimit(ORG, 1000n, "admin:test");
+    await quota.tryReserveBytes(ORG, 200n);
+    await dbWrite.execute(
+      sql`INSERT INTO generations (id, organization_id, status) VALUES (${id}, ${ORG}, 'completed')`,
+    );
+    await dbWrite.execute(
+      sql.raw(
+        "ALTER TABLE org_storage_quota ADD CONSTRAINT simulate_release_failure CHECK (bytes_used >= 200)",
+      ),
+    );
+    await expect(generationsRepository.markDeletedOnce(id, "100")).rejects.toThrow();
+    expect(await bytesUsed()).toBe(200n);
+    await dbWrite.execute(
+      sql.raw("ALTER TABLE org_storage_quota DROP CONSTRAINT simulate_release_failure"),
+    );
+    expect(await generationsRepository.markDeletedOnce(id, "100")).toBe(true);
+    expect(await bytesUsed()).toBe(100n);
+    expect(await generationsRepository.markDeletedOnce(id, "100")).toBe(false);
+    expect(await bytesUsed()).toBe(100n);
+  });
+
+  test("a failed put compensates through the same quota that reserved the bytes", async () => {
+    await quota.setBytesLimit(ORG, 1000n, "admin:test");
+    let releases = 0;
+    const customQuota = {
+      hasHeadroom: (org: string) => quota.hasHeadroom(org),
+      tryReserveBytes: (org: string, bytes: bigint) => quota.tryReserveBytes(org, bytes),
+      releaseBytes: async (org: string, bytes: bigint) => {
+        releases++;
+        await quota.releaseBytes(org, bytes);
+      },
+    };
+    await expect(
+      media.putGeneratedMediaObject(
+        bindings,
+        { organizationId: ORG, key: "failed", body: new Uint8Array(100), contentType: "image/png" },
+        customQuota,
+        async () => {
+          throw new Error("put failed");
+        },
+      ),
+    ).rejects.toThrow("put failed");
+    expect(releases).toBe(1);
     expect(await bytesUsed()).toBe(0n);
   });
 

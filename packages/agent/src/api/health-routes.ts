@@ -10,7 +10,8 @@
  * Read-only introspection; both status endpoints treat optional local-inference
  * and cloud health as best-effort and degrade rather than 500. Also exports
  * `computeCanRespond`, the shared "first-turn capability online" predicate
- * (live runtime AND `running` AND a registered text-generation handler AND no
+ * (live runtime AND `running` AND a registered text-generation handler AND available
+ * weights when the sole provider is local inference AND no
  * cached Cloud catalog answer that the only text provider's model is gone) reused
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
@@ -18,6 +19,7 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,
+  ModelType,
   parseCanonicalInteger,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -449,7 +451,7 @@ export function serializeForRuntimeDebug(
  * Distinct from `ready` (which is `true` even for stopped/error/paused states —
  * it only negates `starting`/`restarting`). `canRespond` ANDs a live runtime, a
  * `running` state, AND a registered TEXT_GENERATION handler — so it is `false`
- * when no model provider is wired (local-inference is optional) and only flips
+ * when no model provider is wired or the sole local handler has no usable weights, and only flips
  * `true` at the exact moment the agent can answer a first turn. This is the
  * signal the UI uses to fade in first-turn capability: the shell paints early
  * (agentState "starting"), and the composer goes live when this flips.
@@ -457,16 +459,77 @@ export function serializeForRuntimeDebug(
 export function computeCanRespond(
   runtime: AgentRuntime | null,
   agentState: string,
+  localModelReadiness: Awaited<ReturnType<typeof readLocalTextModelReadiness>>,
 ): boolean {
   if (!runtime || agentState !== "running") {
     return false;
   }
   try {
     if (!hasTextGenerationHandler(runtime)) return false;
+    if (localModelReadiness?.status === "model_not_loaded") return false;
   } catch {
     return false;
   }
   return !isCloudTextModelUnavailable(runtime);
+}
+
+/** Readiness of this runtime's sole local text provider, without loading models. */
+export async function readLocalTextModelReadiness(
+  runtime: AgentRuntime | null,
+): Promise<{
+  provider: "eliza-local-inference";
+  status: "available" | "model_not_loaded";
+} | null> {
+  if (!runtime) return null;
+  try {
+    const textTypes: ReadonlySet<string> = new Set([
+      ModelType.TEXT_LARGE,
+      ModelType.TEXT_SMALL,
+      ModelType.TEXT_MEDIUM,
+      ModelType.TEXT_NANO,
+      ModelType.TEXT_MEGA,
+      ModelType.ACTION_PLANNER,
+      ModelType.RESPONSE_HANDLER,
+    ]);
+    const registrations = runtime
+      .getModelRegistrations()
+      .filter((entry) => textTypes.has(entry.modelType));
+    if (
+      !registrations.length ||
+      registrations.some((entry) => entry.provider !== "eliza-local-inference")
+    )
+      return null;
+    const { hasLocalTextModelAvailable } = await loadLocalInferenceRouteApi();
+    const available = await hasLocalTextModelAvailable(
+      runtime,
+      registrations.map((entry) => entry.modelType),
+    );
+    return {
+      provider: "eliza-local-inference",
+      status: available ? "available" : "model_not_loaded",
+    };
+  } catch (error) {
+    // error-policy:J7 An unreadable readiness source is unknown, not evidence
+    // of missing weights or permission to block another provider.
+    runtime.logger.warn(
+      { src: "health-routes", error },
+      "Local model readiness unavailable",
+    );
+    return null;
+  }
+}
+
+/** One readiness snapshot for HTTP and WebSocket status payloads. */
+export async function responseReadinessFields(
+  runtime: AgentRuntime | null,
+  agentState: string,
+) {
+  const localModelReadiness = await readLocalTextModelReadiness(runtime);
+  return {
+    canRespond: computeCanRespond(runtime, agentState, localModelReadiness),
+    ...cloudModelReadinessField(runtime),
+    localModelReadiness,
+  };
 }
 
 /**
@@ -639,8 +702,7 @@ export async function handleHealthRoutes(
       state: state.agentState,
       agentName: state.agentName,
       model,
-      canRespond: computeCanRespond(state.runtime, state.agentState),
-      ...cloudModelReadinessField(state.runtime),
+      ...(await responseReadinessFields(state.runtime, state.agentState)),
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
@@ -710,10 +772,8 @@ export async function handleHealthRoutes(
       res,
       {
         ready,
-        canRespond: databaseLiveness.terminal
-          ? false
-          : computeCanRespond(runtime, state.agentState),
-        ...cloudModelReadinessField(runtime),
+        ...(await responseReadinessFields(runtime, state.agentState)),
+        ...(databaseLiveness.terminal ? { canRespond: false } : {}),
         runtime: runtime ? "ok" : "not_initialized",
         database: databaseLiveness.ok
           ? runtime

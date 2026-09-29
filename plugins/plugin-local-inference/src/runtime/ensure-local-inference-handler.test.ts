@@ -51,7 +51,7 @@ const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
 	available: vi.fn(async () => true),
 	conversation: vi.fn(() => null),
-	currentModelPath: vi.fn(() => null),
+	currentModelPath: vi.fn<() => string | null>(() => null),
 	ensureActiveBundleAsrReady: vi.fn(async () => undefined),
 	ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
 	generate: vi.fn(async () => "ok"),
@@ -94,6 +94,7 @@ vi.mock("../services/active-model", () => ({
 vi.mock("../services/assignments", () => ({
 	autoAssignAtBoot: vi.fn(async () => null),
 	readEffectiveAssignments: vi.fn(async () => assignmentsState.assignments),
+	isEmbeddingModelId: (id: string) => id === "embedding-model",
 }));
 
 vi.mock("../services/cache-bridge", () => ({
@@ -104,7 +105,7 @@ vi.mock("../services/cache-bridge", () => ({
 
 vi.mock("../services/device-bridge", () => ({
 	deviceBridge: {
-		currentModelPath: vi.fn(() => null),
+		currentModelPath: vi.fn<() => string | null>(() => null),
 		embed: vi.fn(),
 		generate: vi.fn(),
 		loadModel: vi.fn(),
@@ -156,7 +157,10 @@ import {
 } from "../services/runtime-services";
 import { VoiceStartupError } from "../services/voice/errors";
 import { registerLocalInferenceBoot } from "./boot";
-import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
+import {
+	ensureLocalInferenceHandler,
+	hasLocalTextModelAvailable,
+} from "./ensure-local-inference-handler";
 
 interface Registration {
 	modelType: string | number;
@@ -1049,4 +1053,68 @@ it("does not unload the chat assignment when a dedicated embedding assignment is
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+describe("text readiness follows generation ownership", () => {
+	it("allows an idle-unloaded assigned model without loading or generating", async () => {
+		const { runtime } = makeRuntime();
+		assignmentsState.assignments = { TEXT_LARGE: "chat-model" };
+		registryState.installed = [{ id: "chat-model", path: "/test/chat.gguf" }];
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_LARGE]),
+		).toBe(true);
+		expect(engineState.load).not.toHaveBeenCalled();
+		expect(engineState.generate).not.toHaveBeenCalled();
+		registryState.installed = [];
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_LARGE]),
+		).toBe(false);
+	});
+	it("uses the desktop engine only when this runtime has no loader", async () => {
+		const { runtime } = makeRuntime();
+		engineState.currentModelPath.mockReturnValue("/test/desktop.gguf");
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_LARGE]),
+		).toBe(true);
+		const loader = {
+			currentModelPath: () => null,
+			loadModel: vi.fn(),
+			unloadModel: vi.fn(),
+		};
+		vi.mocked(runtime.getService).mockReturnValue(loader as unknown as Service);
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_LARGE]),
+		).toBe(false);
+		assignmentsState.assignments = { TEXT_LARGE: "chat-model" };
+		registryState.installed = [{ id: "chat-model", path: "/test/chat.gguf" }];
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_LARGE]),
+		).toBe(true);
+		expect(loader.loadModel).not.toHaveBeenCalled();
+	});
+	it("does not count loaded embedding weights or a different slot's assignment as chat readiness", async () => {
+		const { runtime } = makeRuntime();
+		registryState.installed = [
+			{ id: "embedding-model", path: "/test/embedding.gguf" },
+		];
+		engineState.currentModelPath.mockReturnValue("/test/embedding.gguf");
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_SMALL]),
+		).toBe(false);
+		assignmentsState.assignments = { TEXT_SMALL: "embedding-model" };
+		expect(
+			await hasLocalTextModelAvailable(runtime, [ModelType.TEXT_SMALL]),
+		).toBe(false);
+		assignmentsState.assignments = {
+			TEXT_SMALL: "chat-model",
+			TEXT_LARGE: "missing-model",
+		};
+		registryState.installed = [{ id: "chat-model", path: "/test/chat.gguf" }];
+		expect(
+			await hasLocalTextModelAvailable(runtime, [
+				ModelType.TEXT_SMALL,
+				ModelType.TEXT_LARGE,
+			]),
+		).toBe(false);
+	});
 });

@@ -393,6 +393,8 @@ export function ChatView({
     agentStatus?.modelReadiness?.status === "model_not_available"
       ? agentStatus.modelReadiness.missing[0]
       : undefined;
+  const localTextModelNotLoaded =
+    agentStatus?.localModelReadiness?.status === "model_not_loaded";
   const composerPlaceholderOverride = !isMissingInferenceProvider
     ? undefined
     : unavailableModel
@@ -404,9 +406,12 @@ export function ChatView({
             unavailableModel.configKey ??
             `default ${unavailableModel.modelType}`,
         })
-      : t("chat.setupProviderToChat", {
-          defaultValue: "Set up an LLM provider in Settings to start chatting",
-        });
+      : localTextModelNotLoaded
+        ? "Text model not loaded. Check model settings to start chatting"
+        : t("chat.setupProviderToChat", {
+            defaultValue:
+              "Set up an LLM provider in Settings to start chatting",
+          });
   // Resolve the realtime-voice mint inputs (agent UUID + consent nonce) from the
   // same auth/runtime source the app uses for every other /api/v1 call. A
   // self-hosted runtime arms only when its gateway proves the active

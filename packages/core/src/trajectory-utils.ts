@@ -520,6 +520,8 @@ type TrajectoryLoggerLike = {
 };
 
 type StandaloneTrajectoryOptions = {
+	/** Defer capture writes until an actual model invocation in this task. */
+	deferUntilModelCall?: boolean;
 	source: string;
 	metadata?: Record<string, unknown>;
 	successStatus?: TrajectoryFinalStatus;
@@ -1038,6 +1040,19 @@ export function resolveTrajectoryLogger(
 	return bestScore > 0 ? best : null;
 }
 
+/** Activate an inherited task capture before invoking a provider, never at the synchronous sink. */
+export async function ensureTaskTrajectory(): Promise<void> {
+	const context = getTrajectoryContext();
+	if (
+		!context ||
+		context.trajectoryStepId?.trim() ||
+		!context.activateTaskCapture
+	)
+		return;
+	const owner = await context.activateTaskCapture();
+	if (owner) Object.assign(context, owner);
+}
+
 export async function withStandaloneTrajectory<T>(
 	runtime: IAgentRuntime | null | undefined,
 	options: StandaloneTrajectoryOptions,
@@ -1051,104 +1066,126 @@ export async function withStandaloneTrajectory<T>(
 		return callback();
 	}
 
-	let trajectoryLogger: TrajectoryLoggerLike | null;
-	try {
-		trajectoryLogger = resolveTrajectoryLogger(runtime);
-	} catch (error) {
-		// error-policy:J7 capture setup is diagnostic; a host without the full
-		// service-registry surface still runs the business callback uncaptured.
-		runtime.reportError?.("StandaloneTrajectory.resolve", error, {
-			source: options.source,
-			diagnosticOnly: true,
-		});
-		return callback();
-	}
-	if (
-		!trajectoryLogger ||
-		typeof trajectoryLogger.startTrajectory !== "function" ||
-		typeof trajectoryLogger.endTrajectory !== "function" ||
-		(typeof trajectoryLogger.isEnabled === "function" &&
-			!trajectoryLogger.isEnabled())
-	) {
-		return callback();
-	}
-
-	let trajectoryId: string;
-	try {
-		trajectoryId = String(
-			await trajectoryLogger.startTrajectory(runtime.agentId, {
-				source: options.source,
-				metadata: options.metadata,
-			}),
-		).trim();
-	} catch (error) {
-		// error-policy:J7 standalone capture setup is diagnostic; without a
-		// durable trajectory owner the business callback runs uncaptured.
-		runtime.reportError("StandaloneTrajectory.start", error, {
-			source: options.source,
-			diagnosticOnly: true,
-		});
-		return callback();
-	}
-	if (!trajectoryId) {
-		return callback();
-	}
-
-	let stepId = trajectoryId;
-	if (typeof trajectoryLogger.startStep === "function") {
+	const context = { ...getTrajectoryContext() };
+	const capture: { logger: TrajectoryLoggerLike | null } = { logger: null };
+	let trajectoryId: string | undefined;
+	let activation:
+		| Promise<{ trajectoryId: string; trajectoryStepId: string } | undefined>
+		| undefined;
+	let closed = false;
+	const initialize = async () => {
+		let trajectoryLogger: TrajectoryLoggerLike | null;
 		try {
-			stepId =
-				String(
-					trajectoryLogger.startStep(trajectoryId, {
-						timestamp: Date.now(),
-					}),
-				).trim() || trajectoryId;
+			trajectoryLogger = resolveTrajectoryLogger(runtime);
 		} catch (error) {
-			// error-policy:J7 the parent already exists, so retain its correlation
-			// as the fallback step and close it after the callback finishes.
-			runtime.reportError("StandaloneTrajectory.startStep", error, {
-				trajectoryId,
+			// error-policy:J7 capture setup is diagnostic; a host without the full
+			// service-registry surface still runs the business callback uncaptured.
+			runtime.reportError?.("StandaloneTrajectory.resolve", error, {
+				source: options.source,
 				diagnosticOnly: true,
 			});
+			return;
 		}
-	}
+		if (
+			!trajectoryLogger ||
+			typeof trajectoryLogger.startTrajectory !== "function" ||
+			typeof trajectoryLogger.endTrajectory !== "function" ||
+			(typeof trajectoryLogger.isEnabled === "function" &&
+				!trajectoryLogger.isEnabled())
+		) {
+			return;
+		}
 
-	let completed = false;
-	try {
-		const result = await runWithTrajectoryContext(
-			{ trajectoryId, trajectoryStepId: stepId },
-			() => callback(),
-		);
-		completed = true;
-		return result;
-	} finally {
-		if (typeof trajectoryLogger.flushWriteQueue === "function") {
+		try {
+			trajectoryId = String(
+				await trajectoryLogger.startTrajectory(runtime.agentId, {
+					source: options.source,
+					metadata: options.metadata,
+				}),
+			).trim();
+		} catch (error) {
+			// error-policy:J7 standalone capture setup is diagnostic; without a
+			// durable trajectory owner the business callback runs uncaptured.
+			runtime.reportError("StandaloneTrajectory.start", error, {
+				source: options.source,
+				diagnosticOnly: true,
+			});
+			return;
+		}
+		if (!trajectoryId) {
+			return;
+		}
+
+		let stepId = trajectoryId;
+		if (typeof trajectoryLogger.startStep === "function") {
 			try {
-				await trajectoryLogger.flushWriteQueue(trajectoryId);
+				stepId =
+					String(
+						trajectoryLogger.startStep(trajectoryId, {
+							timestamp: Date.now(),
+						}),
+					).trim() || trajectoryId;
 			} catch (error) {
-				// error-policy:J7 standalone trajectory persistence is diagnostic;
-				// a successful wrapped operation remains authoritative.
-				runtime.reportError("StandaloneTrajectory.flush", error, {
+				// error-policy:J7 the parent already exists, so retain its correlation
+				// as the fallback step and close it after the callback finishes.
+				runtime.reportError("StandaloneTrajectory.startStep", error, {
 					trajectoryId,
 					diagnosticOnly: true,
 				});
 			}
 		}
-		try {
-			await trajectoryLogger.endTrajectory(
-				trajectoryId,
-				completed
-					? (options.successStatus ?? "completed")
-					: (options.errorStatus ?? "error"),
-			);
-		} catch (error) {
-			// error-policy:J7 terminal telemetry failure cannot replace the
-			// callback's result or error at this wrapper boundary.
-			runtime.reportError("StandaloneTrajectory.end", error, {
-				trajectoryId,
-				diagnosticOnly: true,
-			});
-			trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId);
+		capture.logger = trajectoryLogger;
+		const owner = { trajectoryId, trajectoryStepId: stepId };
+		Object.assign(context, owner);
+		return owner;
+	};
+	context.activateTaskCapture = () => {
+		if (closed) return Promise.resolve(undefined);
+		activation ??= initialize();
+		return activation;
+	};
+	if (!options.deferUntilModelCall) await context.activateTaskCapture();
+
+	let completed = false;
+	try {
+		const result = await runWithTrajectoryContext(context, () => callback());
+		completed = true;
+		return result;
+	} finally {
+		closed = true;
+		// Await initialization already admitted by a concurrent model call, but
+		// never create an owner merely to finalize a no-model worker.
+		await activation;
+		const trajectoryLogger = capture.logger;
+		if (trajectoryId && trajectoryLogger) {
+			if (typeof trajectoryLogger.flushWriteQueue === "function") {
+				try {
+					await trajectoryLogger.flushWriteQueue(trajectoryId);
+				} catch (error) {
+					// error-policy:J7 standalone trajectory persistence is diagnostic;
+					// a successful wrapped operation remains authoritative.
+					runtime.reportError("StandaloneTrajectory.flush", error, {
+						trajectoryId,
+						diagnosticOnly: true,
+					});
+				}
+			}
+			try {
+				await trajectoryLogger.endTrajectory?.(
+					trajectoryId,
+					completed
+						? (options.successStatus ?? "completed")
+						: (options.errorStatus ?? "error"),
+				);
+			} catch (error) {
+				// error-policy:J7 terminal telemetry failure cannot replace the
+				// callback's result or error at this wrapper boundary.
+				runtime.reportError("StandaloneTrajectory.end", error, {
+					trajectoryId,
+					diagnosticOnly: true,
+				});
+				trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId);
+			}
 		}
 	}
 }
@@ -1250,6 +1287,7 @@ export async function recordLlmCall<T>(
 	details: RecordLlmCallDetails,
 	fn: () => Promise<T> | T,
 ): Promise<T> {
+	await ensureTaskTrajectory();
 	assertActiveTrajectoryForLlmCall({
 		actionType: details.actionType,
 		model: details.model,

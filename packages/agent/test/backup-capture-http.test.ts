@@ -1,15 +1,18 @@
-/** Exercises both backup formats over the real host HTTP server and filesystem-backed PGlite, including complete file bytes, empty files, admission failures, tamper rejection and the actionable local-backup size refusal. */
+/** Exercises backup capture and local restore over the real host HTTP server and filesystem-backed PGlite, including complete file bytes, admission failures, tamper rejection, size refusal, and storage failure. */
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
   readFile,
   rm,
+  stat,
   truncate,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
@@ -170,7 +173,7 @@ it("rejects unauthenticated, wrong-agent and expired captures before streaming",
   expect(expired.status, await expired.text()).toBe(408);
 });
 
-it("answers an over-limit local backup with an actionable 413 and creates it once the state fits", async () => {
+it("distinguishes size and storage failures, then creates and restores a complete local backup", async () => {
   // A sparse file declares 1.5 GiB without allocating it. The in-memory format
   // refuses it from its stat size, and so does the streamed format that takes
   // over above that ceiling (its limit is the capture-v2 1 GiB plaintext cap),
@@ -195,8 +198,93 @@ it("answers an over-limit local backup with an actionable 413 and creates it onc
     await rm(oversized, { force: true });
   }
 
+  const backupDirectory = path.join(directory, "backups");
+  await writeFile(backupDirectory, "not a directory");
+  try {
+    const failed = await request("/api/backups");
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toEqual({ error: "Backup failed" });
+    // The refusal happens at the storage boundary: the blocking file is intact
+    // and no partial backup directory was created in its place.
+    expect((await stat(backupDirectory)).isFile()).toBe(true);
+    expect(await readFile(backupDirectory, "utf8")).toBe("not a directory");
+  } finally {
+    await rm(backupDirectory, { force: true });
+  }
+
   const created = await request("/api/backups");
   expect(created.status, await created.clone().text()).toBe(200);
-  const { backup } = (await created.json()) as { backup: { fileName: string } };
-  expect(backup.fileName).toBeTruthy();
+  const { backup } = (await created.json()) as {
+    backup: { fileName: string; sizeBytes: number };
+  };
+  const artifact = await readFile(path.join(backupDirectory, backup.fileName));
+  expect(artifact.length).toBe(backup.sizeBytes);
+  const envelope = JSON.parse(artifact.toString("utf8")) as {
+    format: string;
+    agentId: string;
+    encryption: { algorithm: string; ciphertext: string };
+  };
+  expect(envelope.format).toBe("elizaos.agent-backup-file");
+  expect(envelope.agentId).toBe(fixture.runtime.agentId);
+  expect(envelope.encryption.algorithm).toBe("kms-aes-256-gcm");
+  expect(envelope.encryption.ciphertext.length).toBeGreaterThan(0);
+  // Plaintext state stores file bytes as base64; neither form may appear.
+  const artifactText = artifact.toString("utf8");
+  expect(artifact.includes(media)).toBe(false);
+  expect(
+    artifactText.includes(media.subarray(0, 3072).toString("base64")),
+  ).toBe(false);
+  expect(artifactText.includes("complete state tail")).toBe(false);
+  const artifactHash = createHash("sha256").update(artifact).digest("hex");
+
+  const originalName = fixture.runtime.character.name;
+  const changedName = `${originalName}-after-backup`;
+  expect(
+    await fixture.runtime.updateAgent(fixture.runtime.agentId, {
+      name: changedName,
+    }),
+  ).toBe(true);
+  expect((await fixture.runtime.getAgent(fixture.runtime.agentId))?.name).toBe(
+    changedName,
+  );
+  await writeFile(path.join(directory, "media", "complete.bin"), "changed");
+  await writeFile(path.join(directory, "media", "empty.bin"), "changed");
+  await writeFile(path.join(directory, "notes.txt"), "changed");
+  // Restore stops the shared runtime and closes its adapter, so this must stay
+  // the final scenario that uses `fixture.runtime` or the server.
+  const restored = await request("/api/backups/restore", {
+    fileName: backup.fileName,
+  });
+  expect(restored.status, await restored.clone().text()).toBe(200);
+  expect(await restored.json()).toEqual({
+    restored: true,
+    requiresRestart: true,
+  });
+  expect(await readFile(path.join(directory, "media", "complete.bin"))).toEqual(
+    media,
+  );
+  expect(await readFile(path.join(directory, "media", "empty.bin"))).toEqual(
+    Buffer.alloc(0),
+  );
+  expect(await readFile(path.join(directory, "notes.txt"), "utf8")).toBe(
+    "complete state tail",
+  );
+  expect(
+    createHash("sha256")
+      .update(await readFile(path.join(backupDirectory, backup.fileName)))
+      .digest("hex"),
+  ).toBe(artifactHash);
+
+  const database = new PGlite(fixture.pgliteDir, { extensions: { vector } });
+  try {
+    const result = await database.query<{ id: string; name: string }>(
+      "SELECT id, name FROM agents WHERE id = $1",
+      [fixture.runtime.agentId],
+    );
+    expect(result.rows).toEqual([
+      { id: fixture.runtime.agentId, name: originalName },
+    ]);
+  } finally {
+    await database.close();
+  }
 }, 120_000);
