@@ -210,6 +210,7 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
+  hasExplicitReminderEscalationProfile,
   isReminderChannel,
   isReminderReviewClosed,
   normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
@@ -3760,6 +3761,7 @@ export class RemindersDomain {
             priority: occurrence.priority,
           }),
           intensity: preference?.effective.intensity ?? args.defaultIntensity,
+          intensitySource: preference?.effective.source,
           quietHours: plan.quietHours,
           attemptedAt: nowIso,
           now: args.now,
@@ -3850,6 +3852,7 @@ export class RemindersDomain {
     dueAt: string | null;
     urgency: LifeOpsReminderUrgency;
     intensity: LifeOpsReminderIntensity;
+    intensitySource?: LifeOpsReminderPreference["effective"]["source"];
     quietHours: LifeOpsReminderPlan["quietHours"];
     attemptedAt: string;
     now: Date;
@@ -3868,7 +3871,10 @@ export class RemindersDomain {
     acknowledged: boolean;
     nearbyReminderTitles?: string[];
     timezone: string;
-    definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    definition:
+      | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
+          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+      | null;
     reviewAttempt?: LifeOpsReminderAttempt | null;
   }): Promise<LifeOpsReminderAttempt | null> {
     if (!shouldDeliverReminderForIntensity(args.intensity, args.urgency)) {
@@ -3912,6 +3918,52 @@ export class RemindersDomain {
     );
     const nowMs = args.now.getTime();
     const planExhausted = nowMs >= lastScheduledPlanTime;
+    const persistentOptIn =
+      args.intensity === "persistent" &&
+      args.intensitySource !== undefined &&
+      args.intensitySource !== "default";
+    if (
+      planExhausted &&
+      args.ownerType === "occurrence" &&
+      args.subjectType === "owner" &&
+      args.definition?.cadence?.kind === "once" &&
+      args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+      !persistentOptIn &&
+      !hasExplicitReminderEscalationProfile(args.definition)
+    ) {
+      const deliveredPlanSteps = new Set(
+        ownerAttempts
+          .filter(
+            (attempt) =>
+              readReminderAttemptLifecycle(attempt) === "plan" &&
+              isDeliveredReminderOutcome(attempt.outcome),
+          )
+          .map((attempt) =>
+            JSON.stringify([
+              attempt.planId,
+              attempt.stepIndex,
+              attempt.channel,
+              attempt.scheduledFor,
+            ]),
+          ),
+      );
+      if (
+        schedule.every((entry) =>
+          deliveredPlanSteps.has(
+            JSON.stringify([
+              args.plan.id,
+              entry.stepIndex,
+              entry.channel,
+              entry.scheduledFor,
+            ]),
+          ),
+        )
+      ) {
+        // Saved one-shot reminders finish their configured delivery plan. Reading
+        // is not acknowledgement/completion; no occurrence state is changed.
+        return null;
+      }
+    }
     const reviewAttempt =
       args.reviewAttempt ??
       readLatestPendingReminderReviewAttempt(ownerAttempts);
@@ -5537,6 +5589,9 @@ export class RemindersDomain {
         intensity:
           definitionPreferencesById.get(occurrence.definitionId)?.effective
             ?.intensity ?? globalReminderPreference.effective.intensity,
+        intensitySource:
+          definitionPreferencesById.get(occurrence.definitionId)?.effective
+            .source ?? globalReminderPreference.effective.source,
         quietHours: plan.quietHours,
         attemptedAt: now.toISOString(),
         now,
