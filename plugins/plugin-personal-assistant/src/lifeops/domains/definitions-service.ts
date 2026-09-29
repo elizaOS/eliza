@@ -179,10 +179,19 @@ export class DefinitionsDomain {
       this.ctx,
       { activeOnly: false },
     );
+    const reminderDefinitionIds = new Set(
+      definitions
+        .filter(
+          (definition) =>
+            definition.metadata?.ownerSurface === "OWNER_REMINDERS",
+        )
+        .map((definition) => definition.id),
+    );
     const unscheduled: LifeOpsTodoView[] = definitions
       .filter(
         (definition) =>
           definition.subjectType === "owner" &&
+          !reminderDefinitionIds.has(definition.id) &&
           definition.kind === "task" &&
           definition.cadence.kind === "unscheduled" &&
           ["active", "completed"].includes(definition.status),
@@ -196,21 +205,25 @@ export class DefinitionsDomain {
         progress: null,
       }));
     return [
-      ...occurrences.map(
-        (occurrence): LifeOpsTodoView => ({
-          id: occurrence.id,
-          targetKind: "occurrence",
-          title: occurrence.title,
-          status:
-            occurrence.state === "completed"
-              ? "completed"
-              : occurrence.state === "snoozed"
-                ? "in_progress"
-                : "pending",
-          dueDate: occurrence.dueAt,
-          progress: occurrence.progress,
-        }),
-      ),
+      ...occurrences
+        .filter(
+          (occurrence) => !reminderDefinitionIds.has(occurrence.definitionId),
+        )
+        .map(
+          (occurrence): LifeOpsTodoView => ({
+            id: occurrence.id,
+            targetKind: "occurrence",
+            title: occurrence.title,
+            status:
+              occurrence.state === "completed"
+                ? "completed"
+                : occurrence.state === "snoozed"
+                  ? "in_progress"
+                  : "pending",
+            dueDate: occurrence.dueAt,
+            progress: occurrence.progress,
+          }),
+        ),
       ...unscheduled,
     ];
   }
