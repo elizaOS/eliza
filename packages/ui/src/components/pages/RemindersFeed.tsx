@@ -159,7 +159,9 @@ export function RemindersFeed() {
               (row.definition.cadence.kind === "once"
                 ? row.definition.cadence.dueAt
                 : null);
-            const cancelled = ["archived", "completed"].includes(row.definition.status);
+            const cancelled = ["archived", "completed"].includes(
+              row.definition.status,
+            );
             return (
               <li key={row.definition.id} className="space-y-2 py-4">
                 <p className="font-medium break-words">
