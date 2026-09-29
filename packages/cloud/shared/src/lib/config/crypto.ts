@@ -233,6 +233,9 @@ export function validatePaymentAmount(amount: Decimal): {
   valid: boolean;
   error?: string;
 } {
+  if (!amount.isFinite() || amount.decimalPlaces() > 2) {
+    return { valid: false, error: "Amount must be a finite USD amount in whole cents" };
+  }
   if (amount.lessThan(MIN_PAYMENT_AMOUNT)) {
     return {
       valid: false,

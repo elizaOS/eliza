@@ -98,3 +98,27 @@ make -C packages/os/android bootanimation
 ```
 
 The rendered frames and `bootanimation.zip` are gitignored build outputs.
+
+## Downstream launcher APKs
+
+Stage an independently built HOME application without replacing the Eliza runtime
+or inheriting its privileged permission list:
+
+```bash
+node packages/os/scripts/distro-android/stage-launcher-overlay.ts \
+  --descriptor /absolute/launcher.json --apk /absolute/launcher.apk \
+  --output /absolute/new-vendor-directory
+```
+
+The descriptor contains `schemaVersion: 1`, a lowercase underscore-separated
+`brand`, alphanumeric `moduleName` beginning with a capital, Android `packageName`,
+and lowercase `apkSha256` and `certificateSha256` hashes. SDK `aapt` and
+`apksigner` must be on PATH or supplied with `--aapt` / `--apksigner`. Debug APKs
+require `--development`; signer and byte hashes are enforced in both modes.
+
+Copy the new directory under the AOSP vendor tree and inherit its `product.mk`
+from the selected product. The generated Soong import is presigned, nonprivileged,
+and additive. Device provisioning must select the HOME role. The helper does not
+replace the full local-agent APK contract, grant roles, build an image, or qualify
+boot, OTA, Chromium signer admission, or physical hardware. Keep those checks
+separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts`.

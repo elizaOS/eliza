@@ -166,10 +166,7 @@ import {
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
 } from "./event-hub.ts";
-import {
-  cloudModelReadinessField,
-  computeCanRespond,
-} from "./health-routes.ts";
+import { responseReadinessFields } from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
@@ -4379,26 +4376,42 @@ export async function startApiServer(opts?: {
         "server",
         "websocket",
       ]);
+      const sendInitialStatus = async () => {
+        try {
+          const runtime = state.runtime;
+          const agentState = state.agentState;
+          const readiness = await responseReadinessFields(runtime, agentState);
+          if (!wsClients.has(ws) || !isAuthenticated) return;
+          if (runtime === state.runtime && agentState === state.agentState)
+            sendWebSocket(
+              ws,
+              JSON.stringify({
+                type: "status",
+                state: state.agentState,
+                agentName: state.agentName,
+                model: state.model,
+                // Same server-authoritative readiness signal as broadcastStatus and
+                // /api/status. Without it on the initial-connect status, every WS
+                // (re)connect delivers canRespond: undefined and re-gates the chat
+                // composer back to "waking up" until the next 5s broadcast.
+                ...readiness,
+                startedAt: state.startedAt,
+                startup: state.startup,
+                pendingRestart: state.pendingRestartReasons.length > 0,
+                pendingRestartReasons: state.pendingRestartReasons,
+              }),
+            );
+        } catch (error) {
+          logger.warn(
+            { error, src: "eliza-api" },
+            "Initial WebSocket status unavailable",
+          );
+        }
+      };
+      void sendInitialStatus();
+      // Replay stays synchronous so newer live events cannot overtake history
+      // while the optional model-readiness probe reads the local registry.
       try {
-        sendWebSocket(
-          ws,
-          JSON.stringify({
-            type: "status",
-            state: state.agentState,
-            agentName: state.agentName,
-            model: state.model,
-            // Same server-authoritative readiness signal as broadcastStatus and
-            // /api/status. Without it on the initial-connect status, every WS
-            // (re)connect delivers canRespond: undefined and re-gates the chat
-            // composer back to "waking up" until the next 5s broadcast.
-            canRespond: computeCanRespond(state.runtime, state.agentState),
-            ...cloudModelReadinessField(state.runtime),
-            startedAt: state.startedAt,
-            startup: state.startup,
-            pendingRestart: state.pendingRestartReasons.length > 0,
-            pendingRestartReasons: state.pendingRestartReasons,
-          }),
-        );
         const replay = selectReplayEvents(
           state.eventBuffer,
           replayCursor,
@@ -4742,7 +4755,8 @@ export async function startApiServer(opts?: {
     });
   });
   // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
-  const broadcastStatus = () => {
+  let statusReadinessSequence = 0;
+  const broadcastStatus = async () => {
     // The existing five-second status cadence detects revocations/expiry from
     // other processes. One coalesced lookup gates all queued frames per socket.
     for (const session of wsSessions.values()) session.checkedAt = 0;
@@ -4756,6 +4770,16 @@ export async function startApiServer(opts?: {
     if (wsClients.size === 0) {
       return;
     }
+    const sequence = ++statusReadinessSequence;
+    const runtime = state.runtime;
+    const agentState = state.agentState;
+    const readiness = await responseReadinessFields(runtime, agentState);
+    if (
+      sequence !== statusReadinessSequence ||
+      runtime !== state.runtime ||
+      agentState !== state.agentState
+    )
+      return;
     broadcastWs({
       type: "status",
       state: state.agentState,
@@ -4765,8 +4789,7 @@ export async function startApiServer(opts?: {
       // returns. Without it, every 5s WS status broadcast resets the client's
       // `agentStatus.canRespond` to undefined, re-gating the chat composer back
       // to "waking up" even though the agent is fully ready and replying.
-      canRespond: computeCanRespond(state.runtime, state.agentState),
-      ...cloudModelReadinessField(state.runtime),
+      ...readiness,
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,

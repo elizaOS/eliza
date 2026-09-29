@@ -13,12 +13,17 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { executePlannedToolCall } from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  executePlannedToolCall,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   OWNER_OPERATION_TAGS,
   runLifeOperationHandler,
 } from "../src/actions/life.js";
+import * as appleReminders from "../src/lifeops/apple-reminders.js";
+import { materializeDefinitionOccurrences } from "../src/lifeops/engine.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   createLifeOpsTestRuntime,
@@ -42,6 +47,7 @@ function receipt(result: ActionResult): EffectReceipt {
 async function invoke(
   params: Record<string, unknown>,
   text: string,
+  internalFailure = false,
 ): Promise<{
   callback: ReturnType<typeof vi.fn<HandlerCallback>>;
   result: ActionResult;
@@ -66,8 +72,17 @@ async function invoke(
     { parameters: params },
     callback,
   );
-  expect(callback).toHaveBeenCalledOnce();
-  expect(callback.mock.calls[0]?.[0]).toEqual({ text: result.text });
+  if (internalFailure) {
+    expect(result).toMatchObject({
+      success: false,
+      transcriptVisibility: "internal",
+    });
+    expect(result.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+  } else {
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toEqual({ text: result.text });
+  }
   return { callback, result };
 }
 
@@ -119,12 +134,14 @@ describe("owner life action effect receipts — real PGlite", () => {
       id: crypto.randomUUID() as UUID,
       agentId: runtime.agentId,
       entityId: runtime.agentId,
-      roomId: crypto.randomUUID() as UUID,
+      // The initialized SELF room supplies canonical owner-private membership.
+      roomId: runtime.agentId,
       content: {
         source: "autonomy",
         text: "Create an executor-backed daily receipt task",
       },
     } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
     const result = await executePlannedToolCall(
       runtime,
       {
@@ -152,6 +169,7 @@ describe("owner life action effect receipts — real PGlite", () => {
       },
     );
 
+    expect(result.success, JSON.stringify(result)).toBe(true);
     const applied = receipt(result);
     expect(applied).toMatchObject({
       outcome: "applied",
@@ -412,9 +430,11 @@ describe("owner life action effect receipts — real PGlite", () => {
         details: { occurrenceId: "missing-occurrence" },
       },
       "Complete a missing occurrence",
+      true,
     );
-    expect(failed.result.success).toBe(false);
-    expect(receipt(failed.result)).toMatchObject({
+    expect(failed.result.effectReceipts).toHaveLength(1);
+    expect(failed.result.userFacingEffectReceiptIds).toBeUndefined();
+    expect(failed.result.effectReceipts?.[0]).toMatchObject({
       outcome: "failed",
       operation: "lifeops.owner.complete",
       failure: {
@@ -425,3 +445,167 @@ describe("owner life action effect receipts — real PGlite", () => {
     });
   }, 120_000);
 });
+
+it("anchors an explicit one-shot reminder at its requested due time", async () => {
+  const created = await invoke(
+    {
+      action: "create",
+      kind: "definition",
+      confirmed: true,
+      intent: "Remind me in 2 minutes to check the notification",
+      createPlan: {
+        mode: "create",
+        requestKind: "reminder",
+        title: "Two-minute notification",
+        cadenceKind: "once",
+        dueInMinutes: 2,
+        multiStep: false,
+      },
+    },
+    "Remind me in 2 minutes to check the notification",
+  );
+  expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+  const id = created.result.effectReceipts?.[0]?.resource.id;
+  if (!id) throw new Error("Missing created definition receipt");
+  const service = new LifeOpsService(runtime);
+  const definition = await service.repository.getDefinition(
+    runtime.agentId,
+    id,
+  );
+  if (definition?.cadence.kind !== "once")
+    throw new Error("Missing once definition");
+  const occurrence = materializeDefinitionOccurrences(definition, [])[0];
+  expect(occurrence.relevanceStartAt).toBe(definition.cadence.dueAt);
+  const schedule = service.remindersDomain.buildReminderPlanSchedule({
+    ownerType: "occurrence",
+    ownerId: occurrence.id,
+    occurrenceId: occurrence.id,
+    title: definition.title,
+    occurrence,
+    plan: { steps: [{ channel: "in_app", offsetMinutes: 0 }] } as never,
+  });
+  expect(schedule[0].scheduledFor).toBe(definition.cadence.dueAt);
+  const explicit = materializeDefinitionOccurrences(
+    {
+      ...definition,
+      cadence: { ...definition.cadence, visibilityLeadMinutes: 7 },
+    },
+    [],
+  )[0];
+  const offsetSchedule = service.remindersDomain.buildReminderPlanSchedule({
+    ownerType: "occurrence",
+    ownerId: explicit.id,
+    occurrenceId: explicit.id,
+    title: definition.title,
+    occurrence: explicit,
+    plan: { steps: [{ channel: "in_app", offsetMinutes: 3 }] } as never,
+  });
+  expect(Date.parse(offsetSchedule[0].scheduledFor)).toBe(
+    Date.parse(definition.cadence.dueAt) - 4 * 60_000,
+  );
+  const generic = materializeDefinitionOccurrences(
+    {
+      ...definition,
+      cadence: { kind: "once", dueAt: definition.cadence.dueAt },
+    },
+    [],
+  )[0];
+  expect(Date.parse(generic.relevanceStartAt)).toBe(
+    Date.parse(definition.cadence.dueAt) - 15 * 60_000,
+  );
+}, 120000);
+
+it("persists an explicit in-app-only reminder without native projection", async () => {
+  const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
+  try {
+    const created = await invoke(
+      {
+        action: "create",
+        kind: "definition",
+        confirmed: true,
+        details: {
+          metadata: {
+            nativeAppleReminder: {
+              kind: "reminder",
+              provider: "apple_reminders",
+              source: "llm",
+            },
+          },
+        },
+        intent: "Remind me in 2 minutes, in-app only",
+        createPlan: {
+          mode: "create",
+          requestKind: "reminder",
+          nativeProjection: "in_app_only",
+          title: "In-app only QA",
+          cadenceKind: "once",
+          dueInMinutes: 2,
+          multiStep: false,
+        },
+      },
+      "Remind me in 2 minutes, in-app only",
+    );
+    expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+    const id = created.result.effectReceipts?.[0]?.resource.id;
+    if (!id) throw Error("Missing receipt");
+    const definition = await new LifeOpsService(
+      runtime,
+    ).repository.getDefinition(runtime.agentId, id);
+    expect(definition?.metadata?.nativeAppleReminder).toBeUndefined();
+    expect(definition?.metadata?.nativeProjection).toBe("in_app_only");
+    expect(definition?.reminderPlanId).toBeTruthy();
+    expect(native).not.toHaveBeenCalled();
+  } finally {
+    native.mockRestore();
+  }
+}, 120000);
+it.each([undefined, "apple_reminders"])(
+  "preserves native projection for legacy/Apple preference %s",
+  async (nativeProjection) => {
+    const native = vi
+      .spyOn(appleReminders, "createNativeAppleReminderLikeItem")
+      .mockResolvedValue({
+        ok: false,
+        reason: "unsupported",
+        message: "test native boundary",
+      } as never);
+    try {
+      const created = await invoke(
+        {
+          action: "create",
+          kind: "definition",
+          confirmed: true,
+          intent: "Remind me in 2 minutes",
+          ...(nativeProjection
+            ? { details: { metadata: { nativeProjection: "in_app_only" } } }
+            : {}),
+          createPlan: {
+            mode: "create",
+            requestKind: "reminder",
+            ...(nativeProjection ? { nativeProjection } : {}),
+            title: `Native projection ${nativeProjection ?? "legacy"}`,
+            cadenceKind: "once",
+            dueInMinutes: 2,
+            multiStep: false,
+          },
+        },
+        "Remind me in 2 minutes",
+      );
+      expect(created.result.success).toBe(true);
+      const id = created.result.effectReceipts?.[0]?.resource.id;
+      if (!id) throw Error("Missing receipt");
+      const definition = await new LifeOpsService(
+        runtime,
+      ).repository.getDefinition(runtime.agentId, id);
+      expect(definition?.metadata?.nativeAppleReminder).toMatchObject({
+        provider: "apple_reminders",
+        kind: "reminder",
+      });
+      expect(definition?.metadata?.nativeProjection).toBe(nativeProjection);
+      expect(native).toHaveBeenCalledOnce();
+    } finally {
+      native.mockRestore();
+    }
+  },
+  120000,
+);

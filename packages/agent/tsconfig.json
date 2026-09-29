@@ -14,6 +14,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
+      "@elizaos/app/services/task-host-capabilities": [
+        "../app/src/services/task-host-capabilities.ts"
+      ],
+      "@elizaos/plugin-pdf": ["../../plugins/plugin-pdf/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/app/services/task-host-capabilities": [
         "../app/src/services/task-host-capabilities.ts"
