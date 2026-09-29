@@ -65,8 +65,7 @@ export function validateInspection(
       continue;
     }
     const indent = element[1].length;
-    while ((ancestors.at(-1)?.indent ?? -1) >= indent)
-      ancestors.pop();
+    while ((ancestors.at(-1)?.indent ?? -1) >= indent) ancestors.pop();
     const parent = ancestors.at(-1);
     if (element[2] === "intent-filter" && parent?.name === "activity") {
       const attributes = parent.attributes.join("\n");
