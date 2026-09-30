@@ -16,6 +16,7 @@ import { detectRuntimeModel } from "../src/api/agent-model.ts";
 import {
   type CloudModelReadinessView,
   computeCanRespond,
+  readLocalTextModelReadiness,
   responseReadinessFields,
 } from "../src/api/health-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -57,6 +58,17 @@ class CloudRegistry extends Service {
 const noInference = async () => {
   throw new Error("Status must never invoke inference");
 };
+/** Mirrors `installRouterHandler`: `eliza-router` on each text slot at top priority. */
+function registerLocalRouter(target: AgentRuntime) {
+  for (const modelType of [ModelType.TEXT_SMALL, ModelType.TEXT_LARGE]) {
+    target.registerModel(
+      modelType,
+      noInference,
+      "eliza-router",
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+}
 let runtime: AgentRuntime;
 let directory: string;
 let server: Awaited<ReturnType<typeof startApiServer>>;
@@ -87,6 +99,9 @@ beforeAll(async () => {
     services: [Loader],
   });
   await runtime.initialize({ skipMigrations: true });
+  // The real plugin also fronts its text slots with the prefer-local router
+  // (plugin-local-inference router-handler.ts `installRouterHandler`).
+  registerLocalRouter(runtime);
   await runtime.getServiceLoadPromise(Loader.serviceType);
   const service = runtime.getService<Loader>(Loader.serviceType);
   if (!service) throw new Error("Loader did not initialize");
@@ -135,6 +150,31 @@ it("reports local load/unload through authenticated HTTP and does not label a co
   );
   loader.path = null;
   expect((await status()).canRespond).toBe(false);
+});
+
+it("treats the local router as part of the local provider, not as a second provider", async () => {
+  const routed = new AgentRuntime({
+    character: { name: "Routed local", bio: [] },
+  });
+  routed.registerModel(
+    ModelType.TEXT_LARGE,
+    noInference,
+    "eliza-local-inference",
+  );
+  registerLocalRouter(routed);
+  expect(await readLocalTextModelReadiness(routed)).toEqual({
+    provider: "eliza-local-inference",
+    status: "model_not_loaded",
+  });
+  expect((await responseReadinessFields(routed, "running")).canRespond).toBe(
+    false,
+  );
+  // A real remote provider behind the router can answer without weights.
+  routed.registerModel(ModelType.TEXT_LARGE, noInference, "openai");
+  expect(await readLocalTextModelReadiness(routed)).toBeNull();
+  expect((await responseReadinessFields(routed, "running")).canRespond).toBe(
+    true,
+  );
 });
 
 it.each(["custom-provider", "ollama", "openai", "elizaOSCloud"])(
