@@ -623,6 +623,32 @@ describe("useChatSend stop handling", () => {
     expect(listPendingChatTurns("conv-1")).toHaveLength(0);
   });
 
+  it("warns when explicit Stop cannot reach a paired host", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    mocks.client.abortConversationTurn.mockRejectedValueOnce(
+      new Error("host unreachable"),
+    );
+    const deps = makeActiveConversationDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+    act(() => result.current.handleChatStop());
+    await act(async () => {
+      await sendPromise;
+    });
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("may still finish"),
+      "error",
+      12000,
+    );
+  });
+
   it("aborts a newly created conversation by the room id returned from creation", async () => {
     const started = deferred();
     mockStreamingUntilAbort(started);

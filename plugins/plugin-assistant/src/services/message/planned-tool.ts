@@ -20,6 +20,7 @@ import type {
 } from "@elizaos/core";
 import {
   actionGateFailure,
+  bindTaskExtractionContext,
   buildPlannerToolsFromTieredActions,
   CORE_PLANNER_TERMINALS,
   completionContextSources,
@@ -284,11 +285,14 @@ export async function executeV5PlannedToolCall(
           },
         }
       : args.plannerContext;
+  const selectedActionContext = selectCompletionContext(actionContext);
+  const projectedActionContext = selectedActionContext.applied
+    ? selectedActionContext.context
+    : projectBackgroundHistory(actionContext).context;
   const actionConversation = boundToRequest
-    ? completionContextSources(
-        projectBackgroundHistory(selectCompletionContext(actionContext).context)
-          .context,
-      ).sources.map(({ event }) => event)
+    ? completionContextSources(projectedActionContext).sources.map(
+        ({ event }) => event,
+      )
     : [];
   const executorCtx = {
     ...routedExecutorCtx,
@@ -302,6 +306,14 @@ export async function executeV5PlannedToolCall(
         }
       : undefined,
   };
+  if (executorCtx.state) {
+    bindTaskExtractionContext(
+      executorCtx.state,
+      executorCtx.message,
+      actionContext,
+      projectedActionContext,
+    );
+  }
   if (
     action &&
     actionHasSubActions(action) &&
