@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { RemindersFeed } from "./RemindersFeed";
+import { ReminderEditor, RemindersFeed } from "./RemindersFeed";
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("../../api", async () => {
@@ -63,6 +63,7 @@ afterEach(() => {
 it("loads and edits paired reminders through the installed client transport", async () => {
   render(<RemindersFeed />);
   await screen.findByText("Call dentist", {}, { timeout: 10000 });
+  fireEvent.click(screen.getByRole("button", { name: "Call dentist" }));
   expect(mocks.request).toHaveBeenCalledWith(
     "eliza-remote://session/reminder-relay/api/lifeops/reminders",
     expect.objectContaining({ method: "GET" }),
@@ -107,3 +108,38 @@ it("loads and edits paired reminders through the installed client transport", as
   );
   expect(fetch).not.toHaveBeenCalled();
 }, 60000);
+
+it("creates a manual reminder through the installed paired relay transport", async () => {
+  const saved = vi.fn();
+  mocks.request.mockResolvedValueOnce(
+    new Response(JSON.stringify({ definition: { id: "created-reminder" } }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  render(<ReminderEditor onSaved={saved} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Reminder message"), {
+    target: { value: "Drink water" },
+  });
+  fireEvent.change(screen.getByLabelText(/Due time/), {
+    target: { value: "2030-10-01T12:30" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "common.create" }));
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  const [url, init] = mocks.request.mock.calls[0];
+  expect(url).toBe(
+    "eliza-remote://session/reminder-relay/api/lifeops/definitions",
+  );
+  expect(init.method).toBe("POST");
+  expect(JSON.parse(init.body)).toMatchObject({
+    title: "Drink water",
+    cadence: { kind: "once", visibilityLeadMinutes: 0 },
+    metadata: {
+      ownerSurface: "OWNER_REMINDERS",
+      nativeProjection: "in_app_only",
+    },
+    reminderPlan: { steps: [{ channel: "in_app", offsetMinutes: 0 }] },
+  });
+  expect(JSON.parse(init.body).idempotencyKey).toBeTruthy();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+});

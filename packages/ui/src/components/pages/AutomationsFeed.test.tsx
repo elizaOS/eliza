@@ -29,7 +29,11 @@ const SECOND_AGENT_BASE =
   "https://api.elizacloud.ai/api/v1/eliza/agents/9b0deccb-a884-4149-b91d-328004ac108d";
 
 const clientMock = vi.hoisted(() => ({
-  rawRequest: vi.fn(),
+  getBaseUrl() {
+    return this.baseUrl;
+  },
+  rawRequest: (path: string, init?: RequestInit) =>
+    globalThis.fetch(path, init),
   baseUrl:
     "https://api.elizacloud.ai/api/v1/eliza/agents/de42b5ff-72d3-4a1a-8a16-19aee293bfea",
   listAutomations: vi.fn(),
@@ -173,6 +177,12 @@ function seedLinkedCloudAgentProfile(): void {
 }
 
 beforeEach(() => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ reminders: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
   window.location.hash = "#automations";
   window.localStorage.clear();
   platformMock.platform = "web";
@@ -194,6 +204,7 @@ afterEach(() => {
   invalidate(automationListCacheKey(SECOND_AGENT_BASE));
   invalidate(automationListCacheKey(MOBILE_IPC_BASE));
   invalidate(automationListCacheKey(LINKED_SHARED_CLOUD_BASE));
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -641,7 +652,7 @@ describe("AutomationsFeed", () => {
 });
 
 it("does not display a fabricated zero count when Reminders contains a saved reminder", async () => {
-  const requestMock = clientMock.rawRequest.mockResolvedValue(
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(
       JSON.stringify({
         reminders: [
@@ -675,9 +686,192 @@ it("does not display a fabricated zero count when Reminders contains a saved rem
     const filter = screen.getByRole("button", {
       name: /Filter automations, Reminders selected/i,
     });
-    expect(filter.textContent).not.toContain("0");
-    expect(filter.textContent).not.toContain("(");
+    expect(filter.textContent).toContain("1");
   } finally {
-    requestMock.mockReset();
+    fetchMock.mockRestore();
   }
+});
+
+it("includes saved reminders in All and counts them without a false empty state", async () => {
+  clientMock.listAutomations.mockResolvedValue({
+    ...responseFixture(),
+    automations: [],
+  });
+  vi.mocked(globalThis.fetch).mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        reminders: [
+          {
+            definition: {
+              id: "r-all",
+              title: "Included reminder",
+              status: "active",
+              timezone: "UTC",
+              cadence: { kind: "once", dueAt: "2026-10-01T12:00:00Z" },
+            },
+            occurrence: null,
+            latestAttempt: null,
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ),
+  );
+  render(<AutomationsFeed />);
+  await screen.findByText("Included reminder");
+  expect(screen.queryByText("Nothing scheduled yet")).toBeNull();
+  expect(screen.queryByText("Show")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Filter automations, All selected" })
+      .textContent,
+  ).toContain("1");
+});
+
+it("uses one global refresh to update automation and reminder rows and combined counts", async () => {
+  const firstReminder = {
+    definition: {
+      id: "refresh-reminder-1",
+      title: "First reminder",
+      status: "active",
+      timezone: "UTC",
+      cadence: { kind: "once", dueAt: "2030-10-01T12:00:00Z" },
+    },
+    occurrence: null,
+    latestAttempt: null,
+  };
+  let reminderRows = [firstReminder];
+  vi.mocked(globalThis.fetch).mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ reminders: reminderRows }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  );
+  render(<AutomationsFeed />);
+  await screen.findByText("Nightly review");
+  await screen.findByText("First reminder");
+  expect(screen.queryByRole("heading", { name: "Reminders" })).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Filter automations, All selected" })
+        .textContent,
+    ).toContain("4"),
+  );
+  reminderRows = [
+    firstReminder,
+    {
+      ...firstReminder,
+      definition: {
+        ...firstReminder.definition,
+        id: "refresh-reminder-2",
+        title: "Newly saved reminder",
+      },
+    },
+  ];
+  clientMock.listAutomations.mockResolvedValue({
+    ...responseFixture(),
+    automations: [automationItem({ title: "Updated workflow" })],
+  });
+  let resolveReminders: ((response: Response) => void) | undefined;
+  vi.mocked(globalThis.fetch).mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        resolveReminders = resolve;
+      }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await screen.findByText("Updated workflow");
+  expect(screen.getByRole("button", { name: "Refresh" })).toHaveProperty(
+    "disabled",
+    true,
+  );
+  if (!resolveReminders) throw Error("Reminder refresh was not dispatched");
+  await act(async () => {
+    resolveReminders?.(
+      new Response(JSON.stringify({ reminders: reminderRows }), {
+        status: 200,
+      }),
+    );
+  });
+  await screen.findByText("Newly saved reminder");
+  expect(screen.getByRole("button", { name: "Refresh" })).toHaveProperty(
+    "disabled",
+    false,
+  );
+  expect(screen.queryByText("Nightly review")).toBeNull();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Filter automations, All selected" })
+        .textContent,
+    ).toContain("3"),
+  );
+  expect(clientMock.listAutomations).toHaveBeenCalledTimes(2);
+  expect(clientMock.listScheduledTasks).toHaveBeenCalledTimes(2);
+  expect(
+    vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([url]) =>
+        String(url).endsWith("/api/lifeops/reminders"),
+      ),
+  ).toHaveLength(2);
+});
+
+it("refreshes reminder counts while workflows are selected without exposing hidden reminder controls", async () => {
+  let reminders: unknown[] = [];
+  vi.mocked(globalThis.fetch).mockImplementation(
+    async () => new Response(JSON.stringify({ reminders }), { status: 200 }),
+  );
+  render(<AutomationsFeed />);
+  await screen.findByText("Nightly review");
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent("eliza:automations:setFilter", {
+        detail: { filter: "workflows" },
+      }),
+    ),
+  );
+  reminders = [
+    {
+      definition: {
+        id: "hidden-refresh",
+        title: "Refreshed reminder",
+        status: "active",
+        timezone: "UTC",
+        cadence: { kind: "once", dueAt: "2030-10-01T12:00:00Z" },
+      },
+      occurrence: null,
+      latestAttempt: null,
+    },
+  ];
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([url]) =>
+          String(url).endsWith("/api/lifeops/reminders"),
+        ),
+    ).toHaveLength(2),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Refreshed reminder" }),
+  ).toBeNull();
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent("eliza:automations:setFilter", {
+        detail: { filter: "reminders" },
+      }),
+    ),
+  );
+  await screen.findByRole("button", { name: "Refreshed reminder" });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", {
+        name: "Filter automations, Reminders selected",
+      }).textContent,
+    ).toContain("1"),
+  );
+  expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
 });

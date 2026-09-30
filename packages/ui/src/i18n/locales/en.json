@@ -8829,5 +8829,13 @@
   "automationsreminders.status.duplicate": "Duplicate skipped",
   "automationsreminders.status.unknown": "Delivery status unavailable",
   "automationsreminders.status.scheduled": "Scheduled",
-  "automationsreminders.status.unscheduled": "No scheduled occurrence"
+  "automationsreminders.status.unscheduled": "No scheduled occurrence",
+  "automationsreminders.unavailable": "Reminders are unavailable on this agent. Choose an agent with reminders enabled, then refresh.",
+  "automationsreminders.permissionRequired": "You do not have permission to manage this agent’s reminders. Check your agent access, then refresh.",
+  "automationsreminders.loadFailed": "Could not load reminders. Your saved reminders are unchanged. Refresh to try again.",
+  "automationsreminders.agentChanged": "The selected agent changed. Reopen this reminder before saving.",
+  "automationsreminders.newReminder": "Reminder",
+  "automationsreminders.inAppDelivery": "One-time reminder. Delivered in Notifications.",
+  "automationsreminders.futureTime": "Enter a message and a future due time.",
+  "automationsreminders.createFailed": "Could not confirm creation. Retry with the same message and time."
 }
