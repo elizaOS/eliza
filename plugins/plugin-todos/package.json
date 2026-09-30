@@ -38,7 +38,7 @@
   "license": "MIT",
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {

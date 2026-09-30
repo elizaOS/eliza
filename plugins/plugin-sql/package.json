@@ -50,7 +50,7 @@
     "@noble/hashes": "2.2.0",
     "@electric-sql/pglite": "^0.4.0",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "pg": "^8.23.0",
     "uuid": "^14.0.0",
     "@elizaos/core": "workspace:*"

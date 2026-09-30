@@ -93,7 +93,7 @@
     "@octokit/rest": "^22.0.0",
     "smthrs": "0.35.0",
     "coding-agent-adapters": "0.17.0",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "effect": "4.0.0-beta.105",
     "smol-toml": "^1.8.0",
     "@elizaos/auth": "workspace:*",

@@ -95,7 +95,7 @@
     "@elizaos/plugin-vision": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",

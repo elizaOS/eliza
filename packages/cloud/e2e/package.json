@@ -28,7 +28,7 @@
     "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "@playwright/test": "^1.63.0",
     "bun-types": "1.4.2",
     "@types/node": "^22.0.0",
