@@ -2,6 +2,7 @@
  * Crypto payment configuration and constants.
  */
 import Decimal from "decimal.js";
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "../../billing/organization-credits";
 
 /**
  * OxaPay merchant fee percentage (1.5%).
@@ -127,14 +128,13 @@ export const PAYMENT_EXPIRATION_MS = 30 * 60 * 1000;
 export const PAYMENT_EXPIRATION_SECONDS = PAYMENT_EXPIRATION_MS / 1000;
 
 /**
- * Minimum payment amount in USD ($1).
+ * Crypto top-ups use the same pay-as-you-go bounds as card checkout (#22963):
+ * $5 minimum and $1,000 maximum per payment.
  */
-export const MIN_PAYMENT_AMOUNT = new Decimal("1");
+export const MIN_PAYMENT_AMOUNT = new Decimal(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd);
 
-/**
- * Maximum payment amount in USD ($10,000).
- */
-export const MAX_PAYMENT_AMOUNT = new Decimal("10000");
+/** Maximum crypto top-up per payment, shared with card checkout. */
+export const MAX_PAYMENT_AMOUNT = new Decimal(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd);
 
 /**
  * Network-specific configurations
@@ -233,6 +233,9 @@ export function validatePaymentAmount(amount: Decimal): {
   valid: boolean;
   error?: string;
 } {
+  if (!amount.isFinite() || amount.decimalPlaces() > 2) {
+    return { valid: false, error: "Amount must be a finite USD amount in whole cents" };
+  }
   if (amount.lessThan(MIN_PAYMENT_AMOUNT)) {
     return {
       valid: false,

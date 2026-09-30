@@ -1,5 +1,8 @@
 /**
  * GET /api/v1/redemptions/balance — user's redeemable earnings balance.
+ *
+ * Read-only. Creator payouts are retired (#23022), so `eligibility.canRedeem`
+ * is always false; the frozen statement lives at GET /api/v1/earnings/statement.
  */
 
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -12,17 +15,12 @@ import {
 import { tokenRedemptions } from "@/db/schemas/token-redemptions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { SUPPLY_SHOCK_PROTECTION } from "@/lib/config/redemption-security";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import {
-  calculateDailyLimitRemaining,
-  evaluateRedemptionEligibility,
-} from "./eligibility";
 
 interface EarningsBySource {
   source: "miniapp" | "agent" | "mcp";
@@ -113,38 +111,6 @@ app.get("/", async (c) => {
 
     const totalRedeemed = Number(redeemedResult[0]?.total || 0);
 
-    const lastRedemption = await dbRead.query.tokenRedemptions.findFirst({
-      where: eq(tokenRedemptions.user_id, user.id),
-      orderBy: (r, { desc: d }) => [d(r.created_at)],
-    });
-
-    const cooldownMs = SUPPLY_SHOCK_PROTECTION.USER_COOLDOWN_MS;
-    const lastRedemptionTime = lastRedemption
-      ? lastRedemption.created_at instanceof Date
-        ? lastRedemption.created_at.getTime()
-        : new Date(lastRedemption.created_at).getTime()
-      : null;
-    const cooldownEndsAt = lastRedemptionTime
-      ? new Date(lastRedemptionTime + cooldownMs)
-      : null;
-    const isInCooldown = cooldownEndsAt && cooldownEndsAt > new Date();
-
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-
-    const dailyRedeemedResult = await dbRead.execute(sql`
-      SELECT COALESCE(SUM(CAST(usd_value AS DECIMAL)), 0) as total
-      FROM token_redemptions
-      WHERE user_id = ${user.id}
-      AND status IN ('completed', 'approved', 'processing')
-      AND created_at >= ${todayStart}
-    `);
-
-    const dailyLimitRemaining = calculateDailyLimitRemaining(
-      SUPPLY_SHOCK_PROTECTION.USER_DAILY_LIMIT_USD,
-      (dailyRedeemedResult.rows[0] as { total?: string })?.total ?? "0",
-    );
-
     const availableBalance = earningsRecord
       ? Number(earningsRecord.available_balance)
       : 0;
@@ -160,14 +126,6 @@ app.get("/", async (c) => {
     const totalConvertedToCredits = earningsRecord
       ? Number(earningsRecord.total_converted_to_credits)
       : 0;
-
-    const { canRedeem, reason } = evaluateRedemptionEligibility({
-      availableBalance,
-      minimumRedemptionUsd: SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD,
-      isInCooldown: Boolean(isInCooldown),
-      cooldownEndsAt,
-      dailyLimitRemaining,
-    });
 
     const bySource: EarningsBySource[] = earningsBySource.map((e) => ({
       source: (e.source || "miniapp") as "miniapp" | "agent" | "mcp",
@@ -202,18 +160,10 @@ app.get("/", async (c) => {
       },
       bySource,
       recentEarnings: formattedRecentEarnings,
-      limits: {
-        minRedemptionUsd: SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD,
-        maxSingleRedemptionUsd:
-          SUPPLY_SHOCK_PROTECTION.MAX_SINGLE_REDEMPTION_USD,
-        userDailyLimitUsd: SUPPLY_SHOCK_PROTECTION.USER_DAILY_LIMIT_USD,
-        userHourlyLimitUsd: SUPPLY_SHOCK_PROTECTION.USER_HOURLY_LIMIT_USD,
-      },
+      payoutsRetired: true,
       eligibility: {
-        canRedeem,
-        reason,
-        cooldownEndsAt: cooldownEndsAt?.toISOString(),
-        dailyLimitRemaining,
+        canRedeem: false,
+        reason: "Creator payouts have been retired.",
       },
     });
   } catch (error) {

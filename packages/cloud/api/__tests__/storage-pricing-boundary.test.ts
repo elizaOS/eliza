@@ -1,17 +1,8 @@
 import { afterAll, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
 
-let prices: Record<string, string> = {};
 const effects: Array<{ kind: string; priceUsd: number }> = [];
-const methods = [
-  "put",
-  "put_per_byte",
-  "get",
-  "head",
-  "delete",
-  "list",
-  "presign",
-];
+let servicePricingReads = 0;
 mock.module("@/api-app/lib/paid-route-standing", () => ({
   requirePaidRouteStanding: async () => ({
     user: { id: "user", organization_id: "org" },
@@ -21,8 +12,10 @@ mock.module("@/db/repositories", () => ({
   StoragePutConflictError: class extends Error {},
   StorageQuotaExceededError: class extends Error {},
   servicePricingRepository: {
-    listByService: async () =>
-      Object.entries(prices).map(([method, cost]) => ({ method, cost })),
+    listByService: async () => {
+      servicePricingReads += 1;
+      return [];
+    },
   },
 }));
 mock.module("@/lib/cache/client", () => ({
@@ -32,22 +25,40 @@ mock.module("@/lib/utils/logger", () => ({
   logger: { error() {}, warn() {}, info() {} },
 }));
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: (c: Context) => c.json({ error: "invalid pricing" }, 500),
+  failureResponse: (c: Context) => c.json({ error: "unexpected" }, 500),
 }));
 mock.module("@/lib/services/credits", () => ({
   InsufficientCreditsError: class extends Error {},
 }));
 const effect = (kind: string) => async (args: { priceUsd: number }) => {
   effects.push({ kind, priceUsd: args.priceUsd });
-  return { operation: { id: "receipt" }, body: { items: [] } };
+  return {
+    status: 200,
+    operation: {
+      id: "receipt",
+      capability_id: "cap",
+      capability_issued_at: new Date(),
+      capability_expires_at: new Date(Date.now() + 60_000),
+    },
+    body: { items: [] },
+    headers: {
+      contentType: "text/plain",
+      size: 3,
+      etag: "etag",
+      lastModified: new Date(0).toUTCString(),
+    },
+    stream: new ReadableStream(),
+  };
 };
+const putPriceInputs: Array<[number, number, number]> = [];
 mock.module("@/lib/services/storage/native-storage-put", () => ({
   NativeStoragePutError: class extends Error {},
   resolveNativeStorageObject: async () => ({
     provider_key: "immutable-generation",
   }),
-  calculateStoragePutPrice: () => {
-    throw new Error("Missing PUT prices must fail before arithmetic");
+  calculateStoragePutPrice: (flat: number, perByte: number, bytes: number) => {
+    putPriceInputs.push([flat, perByte, bytes]);
+    return flat + perByte * bytes;
   },
   executeNativeStoragePut: effect("put"),
   executeNativeStorageDelete: effect("delete"),
@@ -61,28 +72,22 @@ mock.module("@/lib/services/storage/native-storage-read", () => ({
 mock.module("@/api-app/storage-read-capability", () => ({
   StorageReadCapabilityConfigurationError: class extends Error {},
   validateStorageReadCapabilityConfiguration: () => "https://storage.example",
-  mintStorageReadCapabilityUrl: () => {
-    throw new Error("No capability without a price");
-  },
+  mintStorageReadCapabilityUrl: async () => "https://storage.example/cap",
 }));
 const { default: objects } = await import(
   "../v1/apis/storage/objects/[...key]/route"
 );
 const { default: list } = await import("../v1/apis/storage/list/route");
 const { default: presign } = await import("../v1/apis/storage/presign/route");
-const { requireServiceMethodCost } = await import(
-  "@/lib/services/proxy/pricing"
-);
-const noProvider = () => {
-  throw new Error("Provider must not run before pricing");
-};
+const { STORAGE_PRICING, STORAGE_PRICED_OPERATIONS, storageOperationPriceUsd } =
+  await import("@/lib/constants/pricing");
 const env = {
   BLOB: {
-    put: noProvider,
-    get: noProvider,
-    head: noProvider,
-    list: noProvider,
-    delete: noProvider,
+    put: async () => ({}),
+    get: async () => null,
+    head: async () => null,
+    list: async () => ({ objects: [] }),
+    delete: async () => {},
   },
   R2_PUBLIC_HOST: "https://storage.example",
   STORAGE_READ_SIGNING_SECRETS: "fixture",
@@ -93,65 +98,66 @@ const headers = {
   "X-Content-SHA256": "a".repeat(64),
   "Idempotency-Key": "test-operation",
 };
-const cases = [
-  { method: "PUT", price: "put" },
-  { method: "PUT", price: "put_per_byte" },
-  { method: "GET", price: "get" },
-  { method: "HEAD", price: "head" },
-  { method: "DELETE", price: "delete" },
-  { method: "GET", price: "list" },
-  { method: "POST", price: "presign" },
-];
 afterAll(() => mock.restore());
 
-test("all seven required storage prices fail before provider or billing effects", async () => {
-  for (const item of cases) {
-    for (const empty of [true, false]) {
-      prices = empty
-        ? {}
-        : Object.fromEntries(
-            methods.filter((m) => m !== item.price).map((m) => [m, "0.000001"]),
-          );
-      const app =
-        item.price === "list"
-          ? list
-          : item.price === "presign"
-            ? presign
-            : objects;
-      const response = await app.request(
-        item.price === "list" || item.price === "presign" ? "/" : "/_",
-        {
-          method: item.method,
-          headers: { ...headers, "Content-Type": "application/json" },
-          ...(item.method === "PUT"
-            ? { body: "abc" }
-            : item.method === "POST"
-              ? { body: JSON.stringify({ operation: "get" }) }
-              : {}),
-        },
-        env,
-      );
-      expect(response.status).toBe(503);
-      expect(response.headers.get("Retry-After")).toBe("30");
-      expect(effects).toEqual([]);
-    }
+test("the ratified storage catalogue is pinned exactly (#22956)", () => {
+  expect(STORAGE_PRICING).toEqual({
+    put: "0.0001",
+    put_per_byte: "0.000000001",
+    get: "0.00005",
+    head: "0.00005",
+    list: "0.00005",
+    presign: "0.00005",
+    delete: "0",
+  });
+  expect(Object.isFrozen(STORAGE_PRICING)).toBe(true);
+  expect([...STORAGE_PRICED_OPERATIONS].sort() as string[]).toEqual(
+    ["delete", "get", "head", "list", "presign", "put", "put_per_byte"].sort(),
+  );
+  for (const operation of STORAGE_PRICED_OPERATIONS) {
+    expect(storageOperationPriceUsd(operation)).toBe(
+      Number(STORAGE_PRICING[operation]),
+    );
   }
 });
 
-test("catalog recovery preserves decimal and configured zero prices", async () => {
-  prices = { list: "0.000000001", delete: "0.000000000000" };
-  expect((await list.request("/", { headers }, env)).status).toBe(200);
+test("every storage route charges the catalogue price without a DB pricing read", async () => {
+  effects.length = 0;
+  putPriceInputs.length = 0;
+  servicePricingReads = 0;
+  const put = await objects.request(
+    "/_",
+    {
+      method: "PUT",
+      headers: { ...headers, "Content-Type": "text/plain" },
+      body: "abc",
+    },
+    env,
+  );
+  expect(put.status).toBe(201);
+  await objects.request("/_", { method: "GET", headers }, env);
+  await objects.request("/_", { method: "HEAD", headers }, env);
   expect(
     (await objects.request("/_", { method: "DELETE", headers }, env)).status,
   ).toBe(204);
+  expect((await list.request("/", { headers }, env)).status).toBe(200);
+  await presign.request(
+    "/",
+    {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "get" }),
+    },
+    env,
+  );
   expect(effects).toEqual([
-    { kind: "list", priceUsd: 1e-9 },
+    { kind: "put", priceUsd: 0.0001 + 0.000000001 * 3 },
+    { kind: "read", priceUsd: 0.00005 },
+    { kind: "read", priceUsd: 0.00005 },
     { kind: "delete", priceUsd: 0 },
+    { kind: "list", priceUsd: 0.00005 },
+    { kind: "presign", priceUsd: 0.00005 },
   ]);
-  for (const value of ["-1", "NaN", "Infinity", "1oops", "0x10", " "]) {
-    prices = { put_per_byte: value };
-    await expect(
-      requireServiceMethodCost("storage", "put_per_byte"),
-    ).rejects.toMatchObject({ code: "INVALID_SERVICE_PRICING" });
-  }
+  expect(putPriceInputs).toEqual([[0.0001, 0.000000001, 3]]);
+  expect(servicePricingReads).toBe(0);
 });

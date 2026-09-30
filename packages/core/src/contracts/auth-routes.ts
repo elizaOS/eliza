@@ -2,7 +2,12 @@
  * Zod schemas for the auth HTTP routes.
  *
  * Routes covered:
- *   POST /api/auth/pair   body: { code: string }   → { token: string }
+ *   POST /api/auth/pair   body: { code: string, instanceId?: uuid }
+ *                         → { token: string, instanceId?: uuid }
+ *
+ * `instanceId` binds the exchange to the server process that issued the code
+ * (see `remote-agent-pairing.ts`); a mismatch fails instead of pairing a
+ * restarted or different replica.
  *
  * The pairing code is whatever the user typed in the device-pairing
  * flow; the server already normalises it via `normalizePairingCode`
@@ -17,12 +22,14 @@ import z from "zod";
 export const PostAuthPairRequestSchema = z
 	.object({
 		code: z.string().min(1, "code is required"),
+		instanceId: z.uuid().optional(),
 	})
 	.strict();
 
 export const PostAuthPairResponseSchema = z
 	.object({
 		token: z.string(),
+		instanceId: z.uuid().optional(),
 	})
 	.strict();
 

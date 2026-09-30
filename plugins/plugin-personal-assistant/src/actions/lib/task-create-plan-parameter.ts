@@ -20,6 +20,10 @@ const schema = {
       type: "string" as const,
       enum: ["alarm", "reminder", "unspecified"],
     },
+    nativeProjection: {
+      type: "string" as const,
+      enum: ["in_app_only", "apple_reminders"],
+    },
     title: { type: "string" as const, minLength: 1 },
     description: { type: "string" as const, minLength: 1 },
     cadenceKind: {

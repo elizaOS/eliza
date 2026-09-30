@@ -51,8 +51,9 @@ test.describe("cloud-frontend monetization pages", () => {
         await expect(
           page.getByRole("tab", { name: "Earnings", exact: true }),
         ).toBeVisible();
+        // Creator payouts are retired (#23022): the tab is a read-only statement.
         await expect(
-          page.getByText("Available to Redeem", { exact: true }),
+          page.getByTestId("creator-earnings-statement"),
         ).toBeVisible();
       }
       expect(
@@ -80,7 +81,7 @@ test.describe("cloud-frontend monetization pages", () => {
       await visit(
         from,
         "/cloud/monetization",
-        ["/api/v1/redemptions/balance"],
+        ["/api/v1/earnings/statement"],
         "earnings",
       );
     }

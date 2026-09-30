@@ -32,7 +32,13 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
     "/api/cron/reclaim-stale-domains",
   ],
-  "0 * * * *": ["/api/cron/agent-billing", "/api/cron/process-account-deletions"],
+  "0 * * * *": [
+    "/api/cron/agent-billing",
+    "/api/cron/process-account-deletions",
+    // #22967: funding-stop retention clock (notices, 30-day container
+    // deletion, 90-day backup pin).
+    "/api/cron/agent-funding-retention",
+  ],
   "*/5 * * * *": [
     // Keep the cache-only shared first-turn gates warm for recently active
     // agents (admission snapshot / pricing / character projection) so idle
@@ -42,7 +48,6 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/shared-agent-keepwarm",
     "/api/cron/social-automation",
     "/api/cron/sample-eliza-price",
-    "/api/cron/process-redemptions",
     "/api/cron/reconcile-domain-purchases",
     "/api/cron/cleanup-stuck-provisioning",
     // #14808 CLOUD lane: drain pending pii_scrub jobs (content-hash-idempotent,

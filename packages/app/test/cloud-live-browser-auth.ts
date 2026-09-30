@@ -1,14 +1,25 @@
 /** Test-only browser credential handoff for the opt-in real Cloud Playwright lane. */
 
+import { resolveCloudLiveOriginContract } from "./cloud-live-origin";
+
 export const CLOUD_LIVE_STEWARD_TOKEN_KEY = "steward_session_token";
+export const CLOUD_LIVE_STEWARD_TOKEN_SCOPE_KEY = "steward_session_token_scope";
 
 type CloudLiveAuthEnv = Partial<
-  Pick<NodeJS.ProcessEnv, "ELIZA_UI_SMOKE_CLOUD_LIVE" | "ELIZAOS_CLOUD_API_KEY">
+  Pick<
+    NodeJS.ProcessEnv,
+    | "ELIZA_UI_SMOKE_CLOUD_LIVE"
+    | "ELIZAOS_CLOUD_API_KEY"
+    | "ELIZAOS_CLOUD_BASE_URL"
+    | "ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV"
+  >
 >;
 
 type BrowserAuthSeed = {
   storageKey: string;
   token: string;
+  scopeStorageKey: string;
+  scope: string;
 };
 
 export type CloudLiveInitScriptTarget = {
@@ -26,7 +37,18 @@ export function resolveCloudLiveBrowserAuthSeed(
   }
 
   const token = env.ELIZAOS_CLOUD_API_KEY?.trim();
-  return token ? { storageKey: CLOUD_LIVE_STEWARD_TOKEN_KEY, token } : null;
+  if (!token) return null;
+  const origin = resolveCloudLiveOriginContract(env);
+  if (!origin.ok) throw new Error(origin.reason);
+  return {
+    storageKey: CLOUD_LIVE_STEWARD_TOKEN_KEY,
+    token,
+    scopeStorageKey: CLOUD_LIVE_STEWARD_TOKEN_SCOPE_KEY,
+    scope:
+      origin.environment === "custom"
+        ? `origin:${origin.origin}`
+        : `eliza-cloud:${origin.environment}`,
+  };
 }
 
 /**
@@ -47,8 +69,14 @@ export async function seedCloudLiveBrowserAuth(
     return false;
   }
 
-  await target.addInitScript(({ storageKey, token }) => {
-    localStorage.setItem(storageKey, token);
-  }, seed);
+  await target.addInitScript(
+    ({ storageKey, token, scopeStorageKey, scope }) => {
+      localStorage.setItem(storageKey, token);
+      // Loopback storage spans Cloud environments; pair the test credential
+      // with its validated target just as the canonical login writer does.
+      localStorage.setItem(scopeStorageKey, scope);
+    },
+    seed,
+  );
   return true;
 }

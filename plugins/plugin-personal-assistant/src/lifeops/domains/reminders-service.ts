@@ -18,12 +18,14 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import {
+  createReminderPresentation,
   ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
   ModelType,
   parseJsonModelRecord,
+  type ReminderPresentation,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
   ServiceType,
@@ -744,6 +746,7 @@ export function readLadderRungTitle(
 }
 
 export function buildReminderBody(args: {
+  timezone?: string;
   title: string;
   scheduledFor: string;
   dueAt: string | null;
@@ -760,7 +763,9 @@ export function buildReminderBody(args: {
     parts.push(`Reminder: ${focus}`);
   }
   if (args.dueAt) {
-    parts.push(`Due: ${new Date(args.dueAt).toLocaleString()}`);
+    parts.push(
+      `Due: ${args.timezone ? new Date(args.dueAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.dueAt).toLocaleString()}`,
+    );
   }
   return parts.join("\n");
 }
@@ -1181,6 +1186,7 @@ export class RemindersDomain {
 
   protected async emitInAppReminderNudge(args: {
     text: string;
+    presentation?: ReminderPresentation;
     ownerType: "occurrence" | "calendar_event";
     ownerId: string;
     subjectType: LifeOpsSubjectType;
@@ -1195,7 +1201,16 @@ export class RemindersDomain {
       dueAt: args.dueAt,
     };
     const chatText = appendReminderChoiceChips(args.text, args);
-    this.ctx.emitAssistantEvent(chatText, "reminder", metadata);
+    this.ctx.emitAssistantEvent(
+      args.presentation?.chatText ?? chatText,
+      "reminder",
+      {
+        ...metadata,
+        ...(args.presentation
+          ? { reminderPresentation: args.presentation }
+          : {}),
+      },
+    );
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
     // just the in-app assistant stream. groupKey collapses repeat nudges for
@@ -1205,15 +1220,17 @@ export class RemindersDomain {
     } | null;
     if (notifier?.notify) {
       try {
-        const title = await renderOwnerNotificationTitle(this.ctx.runtime, {
-          body: args.text,
-          fallbackTitle: "Reminder",
-          firedAtIso: args.scheduledFor,
-          errorContext: {
-            ownerType: args.ownerType,
-            ownerId: args.ownerId,
-          },
-        });
+        const title =
+          args.presentation?.title ??
+          (await renderOwnerNotificationTitle(this.ctx.runtime, {
+            body: args.text,
+            fallbackTitle: "Reminder",
+            firedAtIso: args.scheduledFor,
+            errorContext: {
+              ownerType: args.ownerType,
+              ownerId: args.ownerId,
+            },
+          }));
         await notifier.notify({
           title,
           body: args.text,
@@ -4364,26 +4381,18 @@ export class RemindersDomain {
     activityProfile?: ReminderActivityProfileSnapshot | null;
     nearbyReminderTitles?: string[];
     timezone: string;
-    definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    definition:
+      | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
+          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+      | null;
     derivedTarget?: Record<string, unknown> | null;
     bodyOverride?: string;
   }): Promise<LifeOpsReminderAttempt> {
     const attemptedAt = args.attemptedAt;
     const attemptedAtDate = new Date(attemptedAt);
     const lifecycle = args.lifecycle ?? "plan";
-    const reminderBody =
-      args.bodyOverride ??
-      (await this.renderReminderBody({
-        title: args.title,
-        scheduledFor: args.scheduledFor,
-        dueAt: args.dueAt,
-        channel: args.channel,
-        lifecycle,
-        urgency: args.urgency,
-        subjectType: args.subjectType,
-        nearbyReminderTitles: args.nearbyReminderTitles,
-        derivedTarget: args.derivedTarget,
-      }));
+    let reminderBody = "";
+    let presentation: ReminderPresentation | undefined;
     let outcome: LifeOpsReminderAttemptOutcome = "delivered";
     let connectorRef: string | null = null;
     const deliveryMetadata: Record<string, unknown> = {
@@ -4446,174 +4455,205 @@ export class RemindersDomain {
     ) {
       outcome = "blocked_quiet_hours";
       deliveryMetadata.reason = "quiet_hours";
-    } else if (args.channel === "in_app") {
-      connectorRef = "system:in_app";
-      deliveryMetadata.message = reminderBody;
-    } else {
-      const policy = await this.resolvePrimaryChannelPolicy(args.channel);
-      const runtimeTarget =
-        args.channel === "sms" || args.channel === "voice"
-          ? null
-          : await this.resolveRuntimeReminderTarget(args.channel, policy);
-      const requiresEscalationPermission = args.stepIndex > 0;
-      if (policy && !policy.allowReminders) {
-        outcome = "blocked_policy";
-        deliveryMetadata.reason = "channel_policy";
-      } else if (
-        (lifecycle === "escalation" || requiresEscalationPermission) &&
-        policy &&
-        !policy.allowEscalation
-      ) {
-        outcome = "blocked_policy";
-        deliveryMetadata.reason = "channel_escalation_policy";
-      } else if (
-        (args.channel === "sms" || args.channel === "voice") &&
-        !policy
-      ) {
-        outcome = "blocked_policy";
-        deliveryMetadata.reason = "channel_policy";
-      } else if (args.channel === "sms" || args.channel === "voice") {
-        const credentials = readTwilioCredentialsFromEnv();
-        const twilioPolicy = policy;
-        if (!credentials) {
-          outcome = "blocked_connector";
-          deliveryMetadata.reason = "twilio_missing";
-        } else if (!twilioPolicy) {
+    }
+    if (outcome === "delivered") {
+      const exactReminder =
+        args.ownerType === "occurrence" &&
+        args.subjectType === "owner" &&
+        args.channel === "in_app" &&
+        lifecycle === "plan" &&
+        args.definition?.cadence?.kind === "once" &&
+        args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+        args.bodyOverride === undefined;
+      reminderBody = exactReminder
+        ? buildReminderBody({ ...args, lifecycle })
+        : (args.bodyOverride ??
+          (await this.renderReminderBody({
+            title: args.title,
+            scheduledFor: args.scheduledFor,
+            dueAt: args.dueAt,
+            channel: args.channel,
+            lifecycle,
+            urgency: args.urgency,
+            subjectType: args.subjectType,
+            nearbyReminderTitles: args.nearbyReminderTitles,
+            derivedTarget: args.derivedTarget,
+          })));
+      if (exactReminder)
+        presentation = createReminderPresentation(
+          reminderBody,
+          appendReminderChoiceChips(reminderBody, args),
+          "Reminder",
+        );
+      if (args.channel === "in_app") {
+        connectorRef = "system:in_app";
+        deliveryMetadata.message = reminderBody;
+      } else {
+        const policy = await this.resolvePrimaryChannelPolicy(args.channel);
+        const runtimeTarget =
+          args.channel === "sms" || args.channel === "voice"
+            ? null
+            : await this.resolveRuntimeReminderTarget(args.channel, policy);
+        const requiresEscalationPermission = args.stepIndex > 0;
+        if (policy && !policy.allowReminders) {
           outcome = "blocked_policy";
           deliveryMetadata.reason = "channel_policy";
         } else if (
           (lifecycle === "escalation" || requiresEscalationPermission) &&
-          !twilioPolicy.allowEscalation
+          policy &&
+          !policy.allowEscalation
         ) {
           outcome = "blocked_policy";
           deliveryMetadata.reason = "channel_escalation_policy";
-        } else {
-          connectorRef = `twilio:${twilioPolicy.channelRef}`;
-          if (args.channel === "sms") {
-            const result = await sendTwilioSms({
-              credentials,
-              to: twilioPolicy.channelRef,
-              body: reminderBody,
-            });
-            if (!result.ok) {
-              outcome = "blocked_connector";
-              deliveryMetadata.error = result.error ?? "sms delivery failed";
-              deliveryMetadata.status = result.status;
-            } else {
-              deliveryMetadata.sid = result.sid ?? null;
-              deliveryMetadata.status = result.status;
-            }
+        } else if (
+          (args.channel === "sms" || args.channel === "voice") &&
+          !policy
+        ) {
+          outcome = "blocked_policy";
+          deliveryMetadata.reason = "channel_policy";
+        } else if (args.channel === "sms" || args.channel === "voice") {
+          const credentials = readTwilioCredentialsFromEnv();
+          const twilioPolicy = policy;
+          if (!credentials) {
+            outcome = "blocked_connector";
+            deliveryMetadata.reason = "twilio_missing";
+          } else if (!twilioPolicy) {
+            outcome = "blocked_policy";
+            deliveryMetadata.reason = "channel_policy";
+          } else if (
+            (lifecycle === "escalation" || requiresEscalationPermission) &&
+            !twilioPolicy.allowEscalation
+          ) {
+            outcome = "blocked_policy";
+            deliveryMetadata.reason = "channel_escalation_policy";
           } else {
-            const result = await sendTwilioVoiceCall({
-              credentials,
-              to: twilioPolicy.channelRef,
-              message: reminderBody,
-            });
-            if (!result.ok) {
-              outcome = "blocked_connector";
-              deliveryMetadata.error = result.error ?? "voice delivery failed";
-              deliveryMetadata.status = result.status;
+            connectorRef = `twilio:${twilioPolicy.channelRef}`;
+            if (args.channel === "sms") {
+              const result = await sendTwilioSms({
+                credentials,
+                to: twilioPolicy.channelRef,
+                body: reminderBody,
+              });
+              if (!result.ok) {
+                outcome = "blocked_connector";
+                deliveryMetadata.error = result.error ?? "sms delivery failed";
+                deliveryMetadata.status = result.status;
+              } else {
+                deliveryMetadata.sid = result.sid ?? null;
+                deliveryMetadata.status = result.status;
+              }
             } else {
-              deliveryMetadata.sid = result.sid ?? null;
-              deliveryMetadata.status = result.status;
+              const result = await sendTwilioVoiceCall({
+                credentials,
+                to: twilioPolicy.channelRef,
+                message: reminderBody,
+              });
+              if (!result.ok) {
+                outcome = "blocked_connector";
+                deliveryMetadata.error =
+                  result.error ?? "voice delivery failed";
+                deliveryMetadata.status = result.status;
+              } else {
+                deliveryMetadata.sid = result.sid ?? null;
+                deliveryMetadata.status = result.status;
+              }
             }
           }
-        }
-      } else if (runtimeTarget) {
-        connectorRef = runtimeTarget.connectorRef;
-        deliveryMetadata.routeSource = runtimeTarget.source;
-        deliveryMetadata.routeResolution = runtimeTarget.resolution;
-        deliveryMetadata.routeEndpoint =
-          runtimeTarget.target.channelId ??
-          runtimeTarget.target.roomId ??
-          runtimeTarget.target.entityId ??
-          null;
-        deliveryMetadata.deliveryRoomId = runtimeTarget.target.roomId ?? null;
-        deliveryMetadata.deliveryChannelId =
-          runtimeTarget.target.channelId ?? null;
-        deliveryMetadata.deliveryEntityId =
-          runtimeTarget.target.entityId ?? null;
-        const sendPayload = {
-          text: reminderBody,
-          source: runtimeTarget.source,
-          metadata: {
-            channelType: args.channel,
-            lifeopsReminder: true,
-            ownerType: args.ownerType,
-            ownerId: args.ownerId,
-            urgency: args.urgency,
-            scheduledFor: args.scheduledFor,
-            routeSource: runtimeTarget.source,
-            routeEndpoint:
-              runtimeTarget.target.channelId ??
-              runtimeTarget.target.roomId ??
-              runtimeTarget.target.entityId ??
-              null,
-            routeResolution: runtimeTarget.resolution,
-          },
-        };
-        const acceptRuntimeSendResult = (
-          result: Awaited<
-            ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
-          >,
-        ): boolean => {
-          const disposition = inspectSendHandlerResult(result);
-          if (
-            disposition.kind === "delivered" &&
-            (!disposition.receipt ||
-              disposition.receipt.persistence.status === "persisted" ||
-              disposition.receipt.persistence.status === "not_attempted")
-          ) {
-            deliveryMetadata.responseMessageId =
-              disposition.providerMessageId ?? null;
-            deliveryMetadata.replayed = disposition.replayed;
-            return true;
+        } else if (runtimeTarget) {
+          connectorRef = runtimeTarget.connectorRef;
+          deliveryMetadata.routeSource = runtimeTarget.source;
+          deliveryMetadata.routeResolution = runtimeTarget.resolution;
+          deliveryMetadata.routeEndpoint =
+            runtimeTarget.target.channelId ??
+            runtimeTarget.target.roomId ??
+            runtimeTarget.target.entityId ??
+            null;
+          deliveryMetadata.deliveryRoomId = runtimeTarget.target.roomId ?? null;
+          deliveryMetadata.deliveryChannelId =
+            runtimeTarget.target.channelId ?? null;
+          deliveryMetadata.deliveryEntityId =
+            runtimeTarget.target.entityId ?? null;
+          const sendPayload = {
+            text: reminderBody,
+            source: runtimeTarget.source,
+            metadata: {
+              channelType: args.channel,
+              lifeopsReminder: true,
+              ownerType: args.ownerType,
+              ownerId: args.ownerId,
+              urgency: args.urgency,
+              scheduledFor: args.scheduledFor,
+              routeSource: runtimeTarget.source,
+              routeEndpoint:
+                runtimeTarget.target.channelId ??
+                runtimeTarget.target.roomId ??
+                runtimeTarget.target.entityId ??
+                null,
+              routeResolution: runtimeTarget.resolution,
+            },
+          };
+          const acceptRuntimeSendResult = (
+            result: Awaited<
+              ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
+            >,
+          ): boolean => {
+            const disposition = inspectSendHandlerResult(result);
+            if (
+              disposition.kind === "delivered" &&
+              (!disposition.receipt ||
+                disposition.receipt.persistence.status === "persisted" ||
+                disposition.receipt.persistence.status === "not_attempted")
+            ) {
+              deliveryMetadata.responseMessageId =
+                disposition.providerMessageId ?? null;
+              deliveryMetadata.replayed = disposition.replayed;
+              return true;
+            }
+            outcome = "blocked_connector";
+            deliveryMetadata.reason =
+              disposition.kind === "partially_delivered"
+                ? "runtime_send_partially_delivered"
+                : disposition.kind === "delivered"
+                  ? "runtime_send_persistence_failed"
+                  : `runtime_send_${disposition.kind}`;
+            deliveryMetadata.error =
+              disposition.kind === "delivered"
+                ? `Provider acceptance was confirmed, but local persistence is ${disposition.receipt?.persistence.status ?? "unknown"}. Do not retry blindly.`
+                : disposition.message;
+            if (
+              disposition.kind === "partially_delivered" ||
+              disposition.kind === "delivered"
+            ) {
+              deliveryMetadata.providerMessageIds =
+                disposition.receipt?.providerMessageIds ?? [];
+              deliveryMetadata.persistenceStatus =
+                disposition.receipt?.persistence.status ?? null;
+            }
+            return false;
+          };
+          try {
+            acceptRuntimeSendResult(
+              await this.ctx.runtime.sendMessageToTarget(
+                runtimeTarget.target,
+                sendPayload,
+              ),
+            );
+          } catch (error) {
+            // error-policy:J1 reminder dispatch boundary treats a thrown
+            // connector result as acceptance-unknown. Retrying without an
+            // explicit zero-accept receipt can duplicate an external message.
+            outcome = "blocked_connector";
+            deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
+            deliveryMetadata.reason = "runtime_send_acceptance_unknown";
           }
+        } else {
           outcome = "blocked_connector";
-          deliveryMetadata.reason =
-            disposition.kind === "partially_delivered"
-              ? "runtime_send_partially_delivered"
-              : disposition.kind === "delivered"
-                ? "runtime_send_persistence_failed"
-                : `runtime_send_${disposition.kind}`;
-          deliveryMetadata.error =
-            disposition.kind === "delivered"
-              ? `Provider acceptance was confirmed, but local persistence is ${disposition.receipt?.persistence.status ?? "unknown"}. Do not retry blindly.`
-              : disposition.message;
-          if (
-            disposition.kind === "partially_delivered" ||
-            disposition.kind === "delivered"
-          ) {
-            deliveryMetadata.providerMessageIds =
-              disposition.receipt?.providerMessageIds ?? [];
-            deliveryMetadata.persistenceStatus =
-              disposition.receipt?.persistence.status ?? null;
-          }
-          return false;
-        };
-        try {
-          acceptRuntimeSendResult(
-            await this.ctx.runtime.sendMessageToTarget(
-              runtimeTarget.target,
-              sendPayload,
-            ),
-          );
-        } catch (error) {
-          // error-policy:J1 reminder dispatch boundary treats a thrown
-          // connector result as acceptance-unknown. Retrying without an
-          // explicit zero-accept receipt can duplicate an external message.
-          outcome = "blocked_connector";
-          deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
-          deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+          deliveryMetadata.reason = policy
+            ? "target_missing"
+            : "unconfigured_channel";
         }
-      } else {
-        outcome = "blocked_connector";
-        deliveryMetadata.reason = policy
-          ? "target_missing"
-          : "unconfigured_channel";
       }
     }
-
     if (
       outcome === "delivered" &&
       (args.urgency === "high" || args.urgency === "critical")
@@ -4698,6 +4738,7 @@ export class RemindersDomain {
     if (outcome === "delivered" && args.channel === "in_app") {
       await this.emitInAppReminderNudge({
         text: reminderBody,
+        presentation,
         ownerType: args.ownerType,
         ownerId: args.ownerId,
         subjectType: args.subjectType,

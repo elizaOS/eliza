@@ -121,6 +121,7 @@ function adaptInvoice(
     hosted_invoice_url: payload.hostedInvoiceUrl,
     credits_added: payload.creditsAdded ?? null,
     metadata: payload.metadata ?? {},
+    charge_breakdown: payload.chargeBreakdown ?? null,
     created_at: payload.createdAt,
     updated_at: payload.updatedAt,
     due_date: payload.dueDate ?? null,

@@ -423,6 +423,13 @@ export function requireConfirmedSendHandlerDelivery(
 	return disposition;
 }
 
+/**
+ * `ElizaError.code` thrown by `sendMessageToTarget` when no send handler is
+ * registered for the target source, so callers can distinguish an absent
+ * delivery surface from a failed delivery.
+ */
+export const SEND_HANDLER_NOT_FOUND = "SEND_HANDLER_NOT_FOUND" as const;
+
 export type SendHandlerFunction = (
 	runtime: IAgentRuntime,
 	target: TargetInfo,

@@ -37,6 +37,17 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
 
 import { AutoTopUpCard } from "./auto-top-up-card";
 
+interface ChargePreviewPayload {
+  attribution: "none" | "affiliate" | "unavailable";
+  breakdown: {
+    creditedBaseUsd: string;
+    affiliateMarkupUsd: string;
+    platformFeeUsd: string;
+    totalChargeUsd: string;
+    surchargeApplies: boolean;
+  };
+}
+
 interface BillingSettingsPayload {
   settings: {
     autoTopUp: {
@@ -44,6 +55,7 @@ interface BillingSettingsPayload {
       amount: number;
       threshold: number;
       hasPaymentMethod: boolean;
+      chargePreview?: ChargePreviewPayload | null;
     };
     limits: {
       minAmount: number;
@@ -61,6 +73,16 @@ const loadedSettings: BillingSettingsPayload = {
       amount: 25,
       threshold: 10,
       hasPaymentMethod: true,
+      chargePreview: {
+        attribution: "none",
+        breakdown: {
+          creditedBaseUsd: "25.00",
+          affiliateMarkupUsd: "0.00",
+          platformFeeUsd: "0.00",
+          totalChargeUsd: "25.00",
+          surchargeApplies: false,
+        },
+      },
     },
     limits: {
       minAmount: 5,
@@ -477,6 +499,21 @@ describe("AutoTopUpCard", () => {
     const firstSave = deferred<ReturnType<typeof savedSettings>>();
     apiMock
       .mockResolvedValueOnce(settings(false))
+      .mockResolvedValueOnce(
+        settings({
+          amount: 30,
+          chargePreview: {
+            attribution: "none",
+            breakdown: {
+              creditedBaseUsd: "30.00",
+              affiliateMarkupUsd: "0.00",
+              platformFeeUsd: "0.00",
+              totalChargeUsd: "30.00",
+              surchargeApplies: false,
+            },
+          },
+        }),
+      )
       .mockImplementationOnce(() => firstSave.promise)
       .mockResolvedValueOnce(
         savedSettings({ enabled: true, amount: 30, threshold: 12 }),
@@ -489,6 +526,7 @@ describe("AutoTopUpCard", () => {
     fireEvent.change(amount, { target: { value: "30" } });
     fireEvent.change(threshold, { target: { value: "12" } });
     const save = screen.getByRole("button", { name: "Save auto top-up" });
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
     fireEvent.click(save);
 
     await act(async () => {
@@ -503,7 +541,7 @@ describe("AutoTopUpCard", () => {
     expect(save).toHaveProperty("disabled", false);
 
     fireEvent.click(save);
-    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(4));
     expect(apiMock).toHaveBeenLastCalledWith("/api/v1/billing/settings", {
       method: "PUT",
       json: {
@@ -532,5 +570,190 @@ describe("AutoTopUpCard", () => {
     });
     expect(toastMocks.success).not.toHaveBeenCalled();
     expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+  describe("affiliate surcharge disclosure (#23020)", () => {
+    const affiliatePreview: ChargePreviewPayload = {
+      attribution: "affiliate",
+      breakdown: {
+        creditedBaseUsd: "25.00",
+        affiliateMarkupUsd: "2.50",
+        platformFeeUsd: "5.00",
+        totalChargeUsd: "32.50",
+        surchargeApplies: true,
+      },
+    };
+
+    it("shows the credited base, markup, platform fee and total from the server", async () => {
+      apiMock.mockResolvedValueOnce(
+        settings({ enabled: true, chargePreview: affiliatePreview }),
+      );
+
+      render(<AutoTopUpCard />);
+
+      const breakdown = await screen.findByTestId(
+        "cloud-billing-auto-top-up-breakdown",
+      );
+      expect(breakdown.textContent).toContain("Credits added");
+      expect(breakdown.textContent).toContain("$25.00");
+      expect(breakdown.textContent).toContain("Affiliate markup");
+      expect(breakdown.textContent).toContain("$2.50");
+      expect(breakdown.textContent).toContain("Platform fee");
+      expect(breakdown.textContent).toContain("$5.00");
+      expect(breakdown.textContent).toContain("Total card charge");
+      expect(breakdown.textContent).toContain("$32.50");
+      expect(apiMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("never presents the credited amount as the total without a surcharge line when none applies", async () => {
+      apiMock.mockResolvedValueOnce(
+        settings({
+          enabled: true,
+          chargePreview: {
+            attribution: "none",
+            breakdown: {
+              creditedBaseUsd: "25.00",
+              affiliateMarkupUsd: "0.00",
+              platformFeeUsd: "0.00",
+              totalChargeUsd: "25.00",
+              surchargeApplies: false,
+            },
+          },
+        }),
+      );
+
+      render(<AutoTopUpCard />);
+
+      const breakdown = await screen.findByTestId(
+        "cloud-billing-auto-top-up-breakdown",
+      );
+      expect(breakdown.textContent).not.toContain("Affiliate markup");
+      expect(breakdown.textContent).not.toContain("Platform fee");
+      expect(breakdown.textContent).toContain("Total card charge");
+    });
+
+    it("blocks saving while a replacement quote is pending or fails", async () => {
+      const quote = deferred<BillingSettingsPayload>();
+      apiMock
+        .mockResolvedValueOnce(
+          settings({ enabled: true, chargePreview: affiliatePreview }),
+        )
+        .mockImplementationOnce(() => quote.promise);
+      render(<AutoTopUpCard />);
+      await screen.findByTestId("cloud-billing-auto-top-up-breakdown");
+      fireEvent.change(screen.getByTestId("cloud-billing-auto-top-up-amount"), {
+        target: { value: "50" },
+      });
+      expect(
+        screen.queryByTestId("cloud-billing-auto-top-up-breakdown"),
+      ).toBeNull();
+      const save = screen.getByRole("button", { name: "Save auto top-up" });
+      expect(save).toHaveProperty("disabled", true);
+      await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        quote.reject(new Error("quote unavailable"));
+        await expect(quote.promise).rejects.toThrow();
+      });
+      expect(save).toHaveProperty("disabled", true);
+      fireEvent.click(save);
+      expect(apiMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("allows disabling auto top-up after a replacement quote fails", async () => {
+      const quote = deferred<BillingSettingsPayload>();
+      apiMock
+        .mockResolvedValueOnce(
+          settings({ enabled: true, chargePreview: affiliatePreview }),
+        )
+        .mockImplementationOnce(() => quote.promise)
+        .mockResolvedValueOnce(savedSettings({ enabled: false, amount: 50 }));
+      render(<AutoTopUpCard />);
+      await screen.findByTestId("cloud-billing-auto-top-up-breakdown");
+      fireEvent.change(screen.getByTestId("cloud-billing-auto-top-up-amount"), {
+        target: { value: "50" },
+      });
+      const toggle = screen.getByRole("switch");
+      expect(toggle).toHaveProperty("disabled", false);
+      await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        quote.reject(new Error("quote unavailable"));
+        await expect(quote.promise).rejects.toThrow();
+      });
+      expect(toggle).toHaveProperty("disabled", false);
+      fireEvent.click(toggle);
+      expect(isChecked(toggle)).toBe(false);
+      const save = screen.getByRole("button", { name: "Save auto top-up" });
+      expect(save).toHaveProperty("disabled", false);
+      fireEvent.click(save);
+      await waitFor(() =>
+        expect(apiMock).toHaveBeenLastCalledWith("/api/v1/billing/settings", {
+          method: "PUT",
+          json: { autoTopUp: { enabled: false, amount: 50, threshold: 10 } },
+        }),
+      );
+      await waitFor(() => expect(toastMocks.success).toHaveBeenCalled());
+    });
+
+    it("re-quotes an edited amount on the server before it is saved", async () => {
+      apiMock
+        .mockResolvedValueOnce(
+          settings({ enabled: true, chargePreview: affiliatePreview }),
+        )
+        .mockResolvedValueOnce(
+          settings({
+            enabled: true,
+            chargePreview: {
+              attribution: "affiliate",
+              breakdown: {
+                creditedBaseUsd: "50.00",
+                affiliateMarkupUsd: "5.00",
+                platformFeeUsd: "10.00",
+                totalChargeUsd: "65.00",
+                surchargeApplies: true,
+              },
+            },
+          }),
+        );
+
+      render(<AutoTopUpCard />);
+      const amount = await screen.findByTestId(
+        "cloud-billing-auto-top-up-amount",
+      );
+      fireEvent.change(amount, { target: { value: "50" } });
+
+      await waitFor(() =>
+        expect(apiMock).toHaveBeenLastCalledWith(
+          "/api/v1/billing/settings?previewAmount=50",
+        ),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("cloud-billing-auto-top-up-breakdown").textContent,
+        ).toContain("$65.00"),
+      );
+    });
+
+    it("explains that no surcharge applies while referral details are unavailable", async () => {
+      apiMock.mockResolvedValueOnce(
+        settings({
+          enabled: true,
+          chargePreview: {
+            attribution: "unavailable",
+            breakdown: {
+              creditedBaseUsd: "25.00",
+              affiliateMarkupUsd: "0.00",
+              platformFeeUsd: "0.00",
+              totalChargeUsd: "25.00",
+              surchargeApplies: false,
+            },
+          },
+        }),
+      );
+
+      render(<AutoTopUpCard />);
+
+      expect(
+        await screen.findByText(/Referral details are temporarily unavailable/),
+      ).toBeTruthy();
+    });
   });
 });

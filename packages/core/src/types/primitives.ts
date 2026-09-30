@@ -139,6 +139,7 @@ export interface Content {
 	 * output, and raw error strings leave this unset for rephrasing.
 	 */
 	agentVoiced?: boolean;
+	reminderPresentation?: import("./reminder-presentation").ReminderPresentation;
 
 	/** Target/destination for responses */
 	target?: string;

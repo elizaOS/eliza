@@ -8,6 +8,11 @@ state transitions, registries, and execution. Edge hosts inject the SQL executor
 the package root. Connector delivery uses typed DispatchResult and must not record failed
 delivery as success.
 
+Opt-in default packs are selected with `ELIZA_SCHEDULING_DEFAULT_PACKS`
+(comma-separated). `alpha-routines` seeds a morning brief, reminders and nudge,
+all disabled (`manual`) until enabled with their `metadata.enableTrigger`
+owner-local cron; they seed with or without a consumer host's pack.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

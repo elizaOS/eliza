@@ -37,7 +37,7 @@ export async function withOrganizationPolicyAdmission<T>(
 export async function withOrganizationPolicyReadAdmission<T>(
   organizationId: string,
   expected: OrganizationPolicyStamp | undefined,
-  operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  operation: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return admitUnderPolicyLock(organizationId, expected, operation, lockOrganizationPolicyForRead);
 }

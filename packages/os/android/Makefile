@@ -75,7 +75,7 @@ help:
 	@echo "  make build ARCH=x86_64|arm64|riscv64   # build + launch + boot-validate"
 	@echo "  make build-e1                           # build + validate the pinned E1 Cuttlefish simulator"
 	@echo "  make sim   ARCH=<arch>                  # validate an already-built image"
-	@echo "  make splash                             # render elizaOS blue boot splash (uses sharp)"
+	@echo "  make splash                             # render the boot splash (ELIZA_WHITELABEL_DIR brands it)"
 	@echo "  make bootanimation                      # pack splash frames into bootanimation.zip"
 	@echo ""
 	@echo "Run 'make bootanimation' before 'make build'"

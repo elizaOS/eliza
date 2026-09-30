@@ -9,6 +9,7 @@ import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
 import { getEmailMessages, interpolateMessage } from "../email/messages";
 import type {
+  AgentRetentionDeletionNoticeEmailData,
   AutoTopUpDisabledEmailData,
   AutoTopUpSuccessEmailData,
   ContainerShutdownWarningEmailData,
@@ -450,6 +451,31 @@ export class EmailService {
       to: data.email,
       subject: interpolateMessage(messages.containerShutdownWarning.subject, {
         containerName: data.containerName,
+      }),
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Sends the agent funding-retention deletion notice (#22967).
+   *
+   * @returns True if sent successfully.
+   */
+  async sendAgentRetentionDeletionNoticeEmail(
+    data: AgentRetentionDeletionNoticeEmailData,
+  ): Promise<boolean> {
+    const { renderAgentRetentionDeletionNoticeTemplate } = await import(
+      "../email/utils/template-renderer"
+    );
+    const { html, text } = renderAgentRetentionDeletionNoticeTemplate(data);
+    const messages = getEmailMessages(data.locale);
+
+    return this.send({
+      to: data.email,
+      subject: interpolateMessage(messages.agentRetentionDeletionNotice.subject, {
+        agentName: data.agentName,
+        daysRemaining: String(data.daysRemaining),
       }),
       html,
       text,

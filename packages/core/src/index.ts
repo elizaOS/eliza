@@ -211,6 +211,10 @@ export {
 	promotedSubactionParent,
 } from "./actions/promote-subactions.ts";
 export {
+	bindTaskExtractionContext,
+	readTaskExtractionContext,
+} from "./actions/task-extraction-context";
+export {
 	actionToTool,
 	buildPlannerToolsFromActions,
 	buildPlannerToolsFromTieredActions,
@@ -2127,6 +2131,16 @@ export {
 	PostRelationshipLinkRequestSchema,
 } from "./contracts/relationships-routes.js";
 export {
+	buildRemoteAgentPairingUri,
+	normalizeRemoteAgentOrigin,
+	parseRemoteAgentPairingUri,
+	REMOTE_AGENT_ENDPOINTS,
+	REMOTE_AGENT_PAIRING_HOST,
+	REMOTE_AGENT_PAIRING_PATH,
+	REMOTE_AGENT_PAIRING_VERSION,
+	type RemoteAgentPairingPayload,
+} from "./contracts/remote-agent-pairing.js";
+export {
 	classifyRemoteAgentRequestPath,
 	parseRemoteAgentRequest,
 	REMOTE_AGENT_CHAT_TIMEOUT_MS,
@@ -3525,6 +3539,11 @@ export * from "./types/prompt-optimization-score-card.js";
 export * from "./types/prompt-optimization-trace.js";
 export * from "./types/prompts.js";
 export * from "./types/provider-integrations.js";
+export {
+	createReminderPresentation,
+	type ReminderPresentation,
+	readReminderPresentation,
+} from "./types/reminder-presentation";
 export type {
 	ConnectorAccountCapability,
 	ConnectorAccountRef,

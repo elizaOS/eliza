@@ -1,8 +1,6 @@
 /**
- * Shared helpers for the creator-monetization e2e specs.
+ * Shared authenticated API client helpers for the cloud e2e specs.
  */
-
-import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 
 export interface AuthedResponse<T> {
   status: number;
@@ -44,37 +42,6 @@ export function authedClient(api: string, apiKey: string) {
     const json = (await res.json().catch(() => ({}) as T)) as T;
     return { status: res.status, json };
   };
-}
-
-/**
- * Open the app review gate after a monetization spec has proved drafts are
- * rejected. Use the service boundary so its read caches cannot retain the
- * draft row after this deterministic test-only approval.
- */
-export async function approveAppForMonetizationTest(
-  appId: string,
-  client: AuthedClient,
-): Promise<void> {
-  const approved = await appsService.update(appId, {
-    review_status: "approved",
-    review_content_hash: null,
-    reviewed_at: new Date(),
-  });
-
-  if (!approved) {
-    throw new Error(`Cannot approve missing monetization test app: ${appId}`);
-  }
-
-  // The e2e test and API Worker are separate processes. Cross the API boundary
-  // with a benign update so the Worker's appsService evicts its cached draft.
-  const cacheBust = await client("PATCH", `/api/v1/apps/${appId}`, {
-    logo_url: "https://example.com/monetization-test-app.png",
-  });
-  if (cacheBust.status !== 200) {
-    throw new Error(
-      `Cannot invalidate monetization test app cache: ${appId} (${cacheBust.status})`,
-    );
-  }
 }
 
 /**
