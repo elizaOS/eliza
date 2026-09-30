@@ -138,13 +138,13 @@ export async function debitAffiliatePayout(params: {
   metadata?: Record<string, unknown>;
 }): Promise<{ newBalance: number; deduplicated: boolean; ledgerEntryId?: string }> {
   const amount = new Decimal(params.amountUsd);
-  if (!amount.isFinite() || !amount.gt(0)) {
-    throw new ApiError(400, "validation_error", "Payout amount must be positive");
+  if (!amount.isFinite() || !amount.gt(0) || !amount.times(100).isInteger()) {
+    throw new ApiError(400, "validation_error", "Payout amount must be positive whole cents");
   }
   return dbWrite.transaction(async (tx) => {
     await lockUser(tx, params.userId);
     const [existing] = await tx
-      .select({ id: redeemableEarningsLedger.id })
+      .select({ id: redeemableEarningsLedger.id, amount: redeemableEarningsLedger.amount })
       .from(redeemableEarningsLedger)
       .where(
         and(
@@ -155,6 +155,13 @@ export async function debitAffiliatePayout(params: {
         ),
       )
       .limit(1);
+    if (existing && !new Decimal(existing.amount).equals(amount.negated())) {
+      throw new ApiError(
+        409,
+        "billing_state_conflict",
+        "Payout idempotency key was already used for a different amount",
+      );
+    }
     if (!existing) {
       const payable = await payableInTransaction(tx, params.userId);
       if (amount.gt(payable.payableUsd)) {

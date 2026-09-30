@@ -4954,8 +4954,27 @@ async function runLifeOperationHandlerInner(
         }
       }
       const timedRequestKind = llmRequestKind;
+      // A one-shot reminder fires at its requested time, not the generic
+      // task visibility window. Preserve explicitly configured lead time.
+      if (timedRequestKind === "reminder" && cadence?.kind === "once") {
+        cadence = {
+          ...cadence,
+          visibilityLeadMinutes: cadence.visibilityLeadMinutes ?? 0,
+        };
+      }
+
+      const draftProjection =
+        deferredDefinitionDraft?.request.metadata?.nativeProjection;
+      const nativeProjection =
+        llmPlan?.nativeProjection ??
+        (draftProjection === "in_app_only" ||
+        draftProjection === "apple_reminders"
+          ? draftProjection
+          : undefined);
       const nativeAppleMetadata =
-        timedRequestKind && cadence?.kind === "once"
+        nativeProjection !== "in_app_only" &&
+        timedRequestKind &&
+        cadence?.kind === "once"
           ? buildNativeAppleReminderMetadata({
               kind: timedRequestKind,
               source: "llm",
@@ -4964,7 +4983,7 @@ async function runLifeOperationHandlerInner(
       const surfaceMetadata = ownerDefinitionSurface(ownerSurfaceActionName)
         ? { ownerSurface: ownerSurfaceActionName }
         : undefined;
-      const definitionMetadata = editingDeferredDefinitionDraft
+      let definitionMetadata = editingDeferredDefinitionDraft
         ? mergeMetadataRecords(
             deferredDefinitionDraft.request.metadata,
             explicitMetadata,
@@ -4977,6 +4996,13 @@ async function runLifeOperationHandlerInner(
             nativeAppleMetadata,
             surfaceMetadata,
           );
+
+      if (nativeProjection !== undefined) {
+        definitionMetadata = { ...definitionMetadata, nativeProjection };
+        if (nativeProjection === "in_app_only") {
+          delete definitionMetadata.nativeAppleReminder;
+        }
+      }
 
       if (!title) {
         const fallback = "What should I call it?";

@@ -126,6 +126,115 @@ beforeEach(() => {
 });
 
 describe("useViewCatalog authority isolation", () => {
+  it("loads and retries only views when installable apps are excluded", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.routableViews.views = [
+        {
+          id: "notes",
+          label: "Notes",
+          path: "/notes",
+          pluginName: "notes",
+          available: true,
+        },
+      ];
+      mocks.loadAppsCatalog.mockRejectedValue(new Error("catalog unavailable"));
+      mocks.client.listInstalledApps.mockRejectedValue(
+        new Error("installed endpoint retired"),
+      );
+      const { result, rerender } = renderHook(() =>
+        useViewCatalog({ includeApps: false }),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "notes",
+      ]);
+      expect(result.current.error).toBeNull();
+      expect(result.current.loading).toBe(false);
+      act(() => {
+        result.current.refresh();
+        publishRuntimeStatus("running", 100);
+      });
+      expect(mocks.refreshViews).toHaveBeenCalledOnce();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
+      expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
+      mocks.routableViews.error = new Error("views unavailable");
+      rerender();
+      expect(result.current.error?.message).toBe("views unavailable");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not carry app data or failures through view-only mode and authority changes", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("agent-a-app")]);
+      mocks.client.listInstalledApps.mockRejectedValue(
+        new Error("agent A installed unavailable"),
+      );
+      const { result, rerender } = renderHook(
+        ({ includeApps }) => useViewCatalog({ includeApps }),
+        { initialProps: { includeApps: true } },
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(result.current.error?.message).toBe(
+        "agent A installed unavailable",
+      );
+      expect(result.current.entries.map((entry) => entry.id)).toContain(
+        "agent-a-app",
+      );
+      const appCalls = mocks.client.listInstalledApps.mock.calls.length;
+      rerender({ includeApps: false });
+      expect(result.current.entries).toEqual([]);
+      expect(result.current.error).toBeNull();
+      await act(async () => {
+        mocks.authority.value = "https://agent-b.test";
+        for (const listener of mocks.authority.listeners) listener();
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(appCalls);
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledOnce();
+      expect(result.current.error).toBeNull();
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("agent-b-app")]);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+      rerender({ includeApps: true });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.error).toBeNull();
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "agent-b-app",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores an app request completing after switching to view-only mode", async () => {
+    const pending = deferred<RegistryAppInfo[]>();
+    mocks.loadAppsCatalog.mockReturnValue(pending.promise);
+    mocks.client.listInstalledApps.mockResolvedValue([]);
+    const { result, rerender } = renderHook(
+      ({ includeApps }) => useViewCatalog({ includeApps }),
+      { initialProps: { includeApps: true } },
+    );
+    rerender({ includeApps: false });
+    await act(async () => {
+      pending.resolve([catalogApp("late-app")]);
+    });
+    expect(result.current.entries).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
   it("uses readiness already published before the launcher mounts", async () => {
     publishRuntimeStatus("running", 100);
     mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);

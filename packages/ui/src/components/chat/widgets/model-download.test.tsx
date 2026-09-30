@@ -6,6 +6,7 @@ import type {
   ModelHubSnapshot,
 } from "@elizaos/core/contracts/local-inference";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -13,6 +14,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../../events";
 import { ModelDownloadWidget } from "./model-download";
 
 // Auth gate (#11084) — mutable so tests can flip the session state. Default
@@ -35,6 +37,13 @@ const { runtimeModeMock } = vi.hoisted(() => ({
 }));
 vi.mock("../../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock,
+}));
+const mobileRuntimeModeMock = vi.hoisted(() => ({
+  value: null as "local" | "remote-mac" | "tunnel-to-mobile" | null,
+}));
+vi.mock("../../../first-run/mobile-runtime-mode", async (importOriginal) => ({
+  ...(await importOriginal()),
+  readPersistedMobileRuntimeMode: () => mobileRuntimeModeMock.value,
 }));
 // The widget reads routing, hub readiness, and retry through the typed client.
 // Routing + hub responses vary per test; the download spy proves retry owns the
@@ -145,6 +154,7 @@ describe("ModelDownloadWidget", () => {
     expect(getHubMock).not.toHaveBeenCalled();
   });
   beforeEach(() => {
+    mobileRuntimeModeMock.value = null;
     authMock.authenticated = true;
     Object.assign(runtimeModeMock, {
       state: { phase: "ready", snapshot: { mode: "local" } },
@@ -166,6 +176,35 @@ describe("ModelDownloadWidget", () => {
     startDownloadMock.mockResolvedValue({ job: {} });
   });
   afterEach(cleanup);
+  it.each(["remote-mac", "tunnel-to-mobile"] as const)(
+    "hides local-model routing errors for %s phone placement on a Mac host",
+    async (mode) => {
+      mobileRuntimeModeMock.value = mode;
+      getModelsConfigMock.mockRejectedValue(new Error("route unavailable"));
+      const { container } = render(<ModelDownloadWidget />);
+      await waitFor(() =>
+        expect(
+          container.querySelector('[data-testid="chat-widget-model-download"]'),
+        ).toBeNull(),
+      );
+      expect(getModelsConfigMock).not.toHaveBeenCalled();
+      expect(getHubMock).not.toHaveBeenCalled();
+    },
+  );
+  it("clears a local routing warning when the phone selects remote Mac", async () => {
+    getModelsConfigMock.mockRejectedValue(new Error("route unavailable"));
+    const { container } = render(<ModelDownloadWidget />);
+    await screen.findByText("Model route unavailable");
+    act(() => {
+      mobileRuntimeModeMock.value = "remote-mac";
+      document.dispatchEvent(new Event(MOBILE_RUNTIME_MODE_CHANGED_EVENT));
+    });
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="chat-widget-model-download"]'),
+      ).toBeNull(),
+    );
+  });
   it("self-hides (null) when no local text slot is assigned (cloud/remote)", async () => {
     getHubMock.mockResolvedValue(hub({}));
     const { container } = render(<ModelDownloadWidget />);

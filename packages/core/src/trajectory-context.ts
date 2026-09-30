@@ -18,6 +18,10 @@ export interface TrajectoryContext {
 	/** Active trajectory identifier, when the logger separates trajectory and step ids. */
 	trajectoryId?: string;
 	trajectoryStepId?: string;
+	/** Task-local, single-flight capture activation; idle workers allocate no rows. */
+	activateTaskCapture?: () => Promise<
+		{ trajectoryId: string; trajectoryStepId: string } | undefined
+	>;
 	/**
 	 * Root-turn correlation id (#13775). Minted at the message.ts turn boundary
 	 * so DB persistence and sub-agent spawns downstream can read one shared

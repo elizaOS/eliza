@@ -304,6 +304,8 @@ export interface ShellController {
    *  showing the "Waking …" boot indicator and to explain the real cause instead.
    *  The controller also auto-navigates to Settings on its rising edge. */
   noProviderConfigured?: boolean;
+  /** Sole local text provider is registered but has no loaded model on this agent. */
+  localTextModelNotLoaded?: boolean;
   /**
    * A monotonically-changing token that advances whenever fresh boot progress
    * is observed while the agent is still waking (#14040 sub-defect 3) — e.g. a
@@ -2073,6 +2075,8 @@ export function useShellController(): ShellController {
   // no-provider gate.
   const noProviderConfigured =
     latestAssistantNoProvider && agentStatus?.canRespond === false;
+  const localTextModelNotLoaded =
+    agentStatus?.localModelReadiness?.status === "model_not_loaded";
   // On the false→true edge, route the user straight to Settings — where the
   // model provider is configured — instead of leaving them staring at a chat
   // that can never answer. The in-transcript no-provider gate remains the error
@@ -2852,5 +2856,6 @@ export function useShellController(): ShellController {
     // into a never-resolving loader.
     conversationLoading,
     noProviderConfigured,
+    localTextModelNotLoaded,
   };
 }

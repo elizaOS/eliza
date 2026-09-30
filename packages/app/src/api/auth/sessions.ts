@@ -41,6 +41,31 @@ import {
   closeSessionSockets,
 } from "./session-sockets.js";
 import { extractHeaderValue, tokenMatches } from "./tokens.js";
+
+// A successful durable revoke invalidates live transports before the HTTP
+// response. Other processes converge through their bounded session rechecks.
+const sessionRevocationListeners = new Set<
+  (sessionId: string | null) => void
+>();
+export function subscribeSessionRevocations(
+  listener: (sessionId: string | null) => void,
+): () => void {
+  sessionRevocationListeners.add(listener);
+  return () => {
+    sessionRevocationListeners.delete(listener);
+  };
+}
+function notifySessionRevocation(sessionId: string | null): void {
+  for (const listener of sessionRevocationListeners) {
+    try {
+      listener(sessionId);
+    } catch (error) {
+      // error-policy:J7 a failed live-socket notification cannot undo the
+      // durable revoke; the next session check still denies that bearer.
+      logger.warn({ error }, "[Auth] live session revocation notice failed");
+    }
+  }
+}
 // ── TTLs (plan §1.3, §4.4) ───────────────────────────────────────────────────
 /** Browser session sliding window: 12h. */
 export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -397,6 +422,7 @@ export async function revokeSession(
   const ok = await options.store.revokeSession(sessionId, now);
   // Open WebSockets admitted by this session end now, not at next handshake.
   closeSessionSockets(sessionId);
+  if (ok) notifySessionRevocation(sessionId);
   const audit: AppendAuditEventInput = {
     id: crypto.randomUUID(),
     ts: now,
@@ -429,6 +455,7 @@ export async function revokeAllSessionsForIdentity(
     options.exceptSessionId,
   );
   closeIdentitySockets(options.identityId, options.exceptSessionId);
+  if (count > 0) notifySessionRevocation(null);
   await appendAuditEvent(
     {
       actorIdentityId: options.identityId,

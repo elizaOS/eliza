@@ -92,10 +92,11 @@ beforeEach(async () => {
     INSERT INTO organizations (id) VALUES ('${ORG}'), ('${OTHER_ORG}');
     INSERT INTO crypto_payments (id, organization_id, payment_address, token, network, expected_amount, credits_to_add, status, metadata)
     VALUES
-      ('${WALLET_PAYMENT}', '${ORG}', '0xreceive', 'BNB', 'bsc', '10', '15.00', 'failed',
+      ('${WALLET_PAYMENT}', '${ORG}', '0xreceive', 'BNB', 'bsc', '10', '15.00', 'confirmed',
         '{"provider":"wallet_native","paid_amount_usd":"10.00","bonus_credits":5}'),
       ('${X402_PAYMENT}', '${ORG}', '0xpayto', 'USDC', 'eip155:8453', '2000000', '2.0000', 'confirmed',
         '{"kind":"x402_payment_request","totalChargedUsd":2}');
+    UPDATE crypto_payments SET confirmed_at = now();
   `);
 });
 
@@ -112,6 +113,18 @@ describe("crypto and x402 refunds (#22968)", () => {
         expect(error).toMatchObject({ code: "CRYPTO_REFUND_DESTINATION_NOT_ALLOWED" });
       }
     }
+    expect(await query("SELECT id FROM credit_transactions")).toEqual([]);
+  });
+
+  test("quoted but unsettled payments cannot mint refund credits", async () => {
+    for (const status of ["pending", "broadcast", "failed", "expired"]) {
+      await exec(`UPDATE crypto_payments SET status = '${status}' WHERE id = '${WALLET_PAYMENT}'`);
+      await expect(refund()).rejects.toMatchObject({ code: "CRYPTO_REFUND_PAYMENT_NOT_CONFIRMED" });
+    }
+    await exec(
+      `UPDATE crypto_payments SET status = 'confirmed', confirmed_at = NULL WHERE id = '${WALLET_PAYMENT}'`,
+    );
+    await expect(refund()).rejects.toMatchObject({ code: "CRYPTO_REFUND_PAYMENT_NOT_CONFIRMED" });
     expect(await query("SELECT id FROM credit_transactions")).toEqual([]);
   });
 

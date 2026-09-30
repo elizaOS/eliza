@@ -81,3 +81,64 @@ describe("RemindersDomain.emitInAppReminderNudge", () => {
     expect(notify.mock.calls[0]?.[0].body).not.toContain("[CHOICE");
   });
 });
+
+it.each([true, false])(
+  "renders only an admitted in-app reminder (sleeping=%s)",
+  async (sleeping) => {
+    const createReminderAttempt = vi.fn(async () => undefined);
+    const runtime = {
+      sendMessageToTarget: vi.fn(async () => {
+        throw new Error("No external dispatch expected");
+      }),
+      useModel: vi.fn(async () => "Reminder body"),
+      reportError: vi.fn(),
+    };
+    const domain = new RemindersDomain(
+      {
+        agentId: () => "agent",
+        runtime,
+        repository: { createReminderAttempt },
+      } as never,
+      makeDeps(),
+    );
+    const audit = vi
+      .spyOn(domain, "recordReminderAudit")
+      .mockResolvedValue(undefined);
+    vi.spyOn(domain, "renderReminderBody").mockImplementation(async () =>
+      runtime.useModel(),
+    );
+    const emit = vi
+      .spyOn(domain, "emitInAppReminderNudge")
+      .mockResolvedValue(undefined);
+    const attempt = await domain.dispatchReminderAttempt({
+      plan: { id: "plan" } as never,
+      ownerType: "occurrence",
+      ownerId: "occurrence",
+      occurrenceId: "occurrence",
+      subjectType: "owner",
+      title: "Reminder",
+      channel: "in_app",
+      stepIndex: 0,
+      scheduledFor: "2026-09-28T19:04:00Z",
+      dueAt: "2026-09-28T19:04:00Z",
+      urgency: "medium",
+      quietHours: {},
+      acknowledged: false,
+      attemptedAt: "2026-09-28T19:04:01Z",
+      activityProfile: {
+        circadianState: sleeping ? "sleeping" : "awake",
+        stateConfidence: 0.99,
+      } as never,
+      timezone: "UTC",
+      definition: null,
+    });
+    expect(attempt.outcome).toBe(
+      sleeping ? "blocked_quiet_hours" : "delivered",
+    );
+    expect(runtime.useModel).toHaveBeenCalledTimes(sleeping ? 0 : 1);
+    expect(createReminderAttempt).toHaveBeenCalledWith(attempt);
+    expect(audit).toHaveBeenCalledTimes(2);
+    expect(emit).toHaveBeenCalledTimes(sleeping ? 0 : 1);
+    expect(runtime.sendMessageToTarget).not.toHaveBeenCalled();
+  },
+);
