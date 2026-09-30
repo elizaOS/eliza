@@ -777,8 +777,17 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       }
     );
   }
-  if (terminationCause === 'abort') {
-    return { runId: request.runId, status: 'cancelled', events };
+  const receivedTerminalResult =
+    result && ['finished', 'failed', 'continued', 'cancelled', 'canceled'].includes(result.status);
+  // Abort may release slow event delivery after the worker already committed
+  // and emitted its terminal receipt. Do not discard that receipt's payload.
+  if (terminationCause === 'abort' && !receivedTerminalResult) {
+    return {
+      runId: request.runId,
+      status: 'cancelled',
+      events,
+      ...(workerError ? { error: workerError } : {}),
+    };
   }
   if (terminationCause === 'timeout') {
     throw new ElizaError(`Smithers workflow timed out after ${timeoutMs}ms`, {

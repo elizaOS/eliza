@@ -692,10 +692,33 @@ export class EmbeddedWorkflowService extends Service {
       runId,
     });
     const current = await this.getExecution(runId);
-    if (receipt.status === null && controller && current.status === 'cancelled') return current;
+    // An aborted queued worker may never create its native run row. Its
+    // persisted terminal cancellation remains idempotent on later requests.
+    if (receipt.status === null && current.finished && current.status === 'cancelled')
+      return current;
     if (!receipt.status)
       throw new WorkflowApiError('Workflow run has no durable cancellation receipt', 409);
     if (current.finished && current.status === receipt.status) return current;
+    if (receipt.status !== 'cancelled') {
+      // The native commit can precede emission of its result. Without that
+      // matching receipt, status alone cannot recover output/error/nextRunId.
+      const message = `Native workflow ${receipt.status}, but its terminal result was not captured; the workflow was not resumed.`;
+      await this.saveExecution(
+        {
+          ...current,
+          status: 'failed',
+          finished: true,
+          stoppedAt: current.stoppedAt ?? nowIso(),
+          error: { message },
+        },
+        true
+      );
+      throw new WorkflowApiError(message, 409, {
+        code: 'WORKFLOW_TERMINAL_RESULT_UNAVAILABLE',
+        nativeStatus: receipt.status,
+        executionId: runId,
+      });
+    }
     await this.saveExecution(
       {
         ...current,
