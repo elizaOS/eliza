@@ -5,6 +5,7 @@ import {
   createLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
+import { resolveOwnerTimeZone } from "./owner/fact-store.js";
 import { createLifeOpsReminderAttempt } from "./repository.js";
 import { LifeOpsService } from "./service.js";
 import {
@@ -110,6 +111,154 @@ it.each([
   },
   120000,
 );
+
+it("explicit post-fire snooze crosses the original window and displays its saved deadline without default escalation", async () => {
+  const f = await createLifeOpsTestRuntime();
+  const model = vi
+    .spyOn(f.runtime, "useModel")
+    .mockRejectedValue(Error("No inference"));
+  try {
+    let service = new LifeOpsService(f.runtime);
+    const due = Date.now() + 1000;
+    const record = await service.createDefinition({
+      title: "Explicit snooze deadline",
+      kind: "habit",
+      cadence: {
+        kind: "once",
+        dueAt: new Date(due).toISOString(),
+        visibilityLeadMinutes: 0,
+        visibilityLagMinutes: 1,
+      },
+      timezone: "UTC",
+      priority: 3,
+      metadata: {
+        ownerSurface: "OWNER_REMINDERS",
+        nativeProjection: "in_app_only",
+      },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    if (!record.reminderPlan) throw Error("Missing saved reminder plan");
+    await service.processReminders({
+      now: new Date(due).toISOString(),
+      scope: "definitions",
+    });
+    const firstAttempts = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(firstAttempts).toHaveLength(1);
+    await service.remindersDomain.scanReadReceipts(
+      firstAttempts,
+      { lastSeenAt: due + 1 } as never,
+      new Date(due + 1),
+    );
+    const [firstReceipt] = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    const firstSnapshot = structuredClone(firstReceipt);
+    expect(firstReceipt.outcome).toBe("delivered_read");
+    const original = await service.repository.getOccurrence(
+      f.runtime.agentId,
+      firstReceipt.ownerId,
+    );
+    if (!original) throw Error("Missing original occurrence");
+    const timezone = await resolveOwnerTimeZone(f.runtime, new Date(due));
+    const firstBody = getRecordedTestNotifications(f.runtime)[0].body;
+    expect(firstBody).toBe(
+      `Reminder: Explicit snooze deadline\nDue: ${new Date(due).toLocaleString("en-US", { timeZone: timezone })}`,
+    );
+    const snoozed = await service.snoozeOccurrence(
+      original.id,
+      { minutes: 10 },
+      new Date(due + 2000),
+    );
+    if (!snoozed.snoozedUntil) throw Error("Missing committed snooze deadline");
+    const newDue = Date.parse(snoozed.snoozedUntil);
+    expect(newDue).toBe(due + 602000);
+    expect(snoozed).toMatchObject({
+      id: original.id,
+      definitionId: record.definition.id,
+      occurrenceKey: original.occurrenceKey,
+      dueAt: original.dueAt,
+    });
+    expect(snoozed.metadata.reminderAcknowledgedAt).toBeUndefined();
+    service = new LifeOpsService(f.runtime);
+    await service.processReminders({
+      now: new Date(newDue - 1).toISOString(),
+      scope: "definitions",
+    });
+    expect(getRecordedTestNotifications(f.runtime)).toHaveLength(1);
+    await service.processReminders({
+      now: new Date(newDue).toISOString(),
+      scope: "definitions",
+    });
+    const notifications = getRecordedTestNotifications(f.runtime);
+    expect(notifications).toHaveLength(2);
+    expect(notifications[1].body).toBe(
+      `Reminder: Explicit snooze deadline\nDue: ${new Date(newDue).toLocaleString("en-US", { timeZone: timezone })}`,
+    );
+    expect(notifications[1].body).not.toBe(firstBody);
+    const atDeadline = await service.repository.getOccurrence(
+      f.runtime.agentId,
+      original.id,
+    );
+    expect(atDeadline).toMatchObject({
+      id: original.id,
+      occurrenceKey: original.occurrenceKey,
+      dueAt: original.dueAt,
+      relevanceStartAt: original.relevanceStartAt,
+      relevanceEndAt: new Date(newDue + 60000).toISOString(),
+      state: "visible",
+    });
+    for (const minutes of [0, 30, 54, 55, 90, 121])
+      await service.processReminders({
+        now: new Date(newDue + minutes * 60000).toISOString(),
+        scope: "definitions",
+      });
+    const attempts = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(attempts).toHaveLength(2);
+    expect(attempts.find((a) => a.id === firstReceipt.id)).toEqual(
+      firstSnapshot,
+    );
+    expect(attempts[1]).toMatchObject({
+      planId: record.reminderPlan.id,
+      ownerId: original.id,
+      scheduledFor: snoozed.snoozedUntil,
+    });
+    expect(attempts[1].scheduledFor).not.toBe(firstReceipt.scheduledFor);
+    expect(attempts.every((a) => a.deliveryMetadata.lifecycle === "plan")).toBe(
+      true,
+    );
+    expect(getRecordedTestNotifications(f.runtime)).toHaveLength(2);
+    expect(
+      await service.repository.listOccurrencesForDefinition(
+        f.runtime.agentId,
+        record.definition.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      (await service.repository.getOccurrence(f.runtime.agentId, original.id))
+        ?.metadata.reminderAcknowledgedAt,
+    ).toBeUndefined();
+    await expect(
+      service.snoozeOccurrence(
+        original.id,
+        { minutes: 10 },
+        new Date(newDue + 121 * 60000),
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(model).not.toHaveBeenCalled();
+    process.stdout.write(
+      `INDEPENDENT_POST_FIRE_SNOOZE_EVIDENCE ${JSON.stringify({ definitionId: record.definition.id, planId: record.reminderPlan.id, occurrenceId: original.id, originalDue: original.dueAt, snoozedUntil: snoozed.snoozedUntil, firstBody, secondBody: notifications[1].body, attempts: attempts.map((a) => ({ id: a.id, scheduledFor: a.scheduledFor, outcome: a.outcome, lifecycle: a.deliveryMetadata.lifecycle })), notifications: notifications.length, throughMinutes: 121, modelCalls: model.mock.calls.length })}\n`,
+    );
+  } finally {
+    model.mockRestore();
+    await f.cleanup();
+  }
+}, 120000);
 
 it.each(["planned", "definition-persistent", "global-persistent"])(
   "preserves explicit follow-up plan %s without converting read to completion",

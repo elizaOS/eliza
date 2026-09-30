@@ -4423,6 +4423,7 @@ export class RemindersDomain {
     stepIndex: number;
     scheduledFor: string;
     dueAt: string | null;
+    snoozedUntil?: string | null;
     urgency: LifeOpsReminderUrgency;
     quietHours: LifeOpsReminderPlan["quietHours"];
     acknowledged: boolean;
@@ -4518,7 +4519,11 @@ export class RemindersDomain {
         args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
         args.bodyOverride === undefined;
       reminderBody = exactReminder
-        ? buildReminderBody({ ...args, lifecycle })
+        ? buildReminderBody({
+            ...args,
+            dueAt: args.snoozedUntil ?? args.dueAt,
+            lifecycle,
+          })
         : (args.bodyOverride ??
           (await this.renderReminderBody({
             title: args.title,
@@ -5469,6 +5474,7 @@ export class RemindersDomain {
         stepIndex: reminder.stepIndex,
         scheduledFor: reminder.scheduledFor,
         dueAt: occurrence.dueAt,
+        snoozedUntil: occurrence.snoozedUntil,
         urgency,
         quietHours: plan.quietHours,
         acknowledged,
