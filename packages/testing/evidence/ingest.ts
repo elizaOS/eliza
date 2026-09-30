@@ -376,7 +376,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "android-native-sms",
     source: "android-native-sms",
-    producedBy: "packages/app/scripts/android-native-sms.mjs",
+    producedBy: "packages/app/scripts/android-native-sms.ts",
     lane: "native",
     namespaceRoot: true,
     roots: [{ label: "sms", dir: "test-results/android-native-sms" }],

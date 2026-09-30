@@ -12,7 +12,12 @@ import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { type ContentValue, logger, resolveStateDir } from "@elizaos/core";
+import {
+	type ContentValue,
+	type IAgentRuntime,
+	logger,
+	resolveStateDir,
+} from "@elizaos/core";
 import {
 	readJsonBody,
 	sendJson,
@@ -1765,4 +1770,13 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	return false;
+}
+
+/** Runtime-specific readiness uses the generation backend, including lazy reload. */
+export async function hasLocalTextModelAvailable(
+	runtime: IAgentRuntime,
+	modelTypes: readonly string[],
+): Promise<boolean> {
+	const provider = await import("./runtime/ensure-local-inference-handler.js");
+	return provider.hasLocalTextModelAvailable(runtime, modelTypes);
 }

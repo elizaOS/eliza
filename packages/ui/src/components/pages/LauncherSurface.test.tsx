@@ -230,6 +230,8 @@ describe("LauncherSurface", () => {
 
     render(<LauncherSurface catalogMode="demo" />);
 
+    expect(useViewCatalogMock).toHaveBeenLastCalledWith({ includeApps: false });
+
     expect(
       screen.queryByTestId("launcher-tile-@elizaos/plugin-birdclaw"),
     ).toBeNull();
@@ -239,6 +241,7 @@ describe("LauncherSurface", () => {
 
   it("collapses duplicate wallet registrations to a single tile", () => {
     render(<LauncherSurface />);
+    expect(useViewCatalogMock).toHaveBeenLastCalledWith({ includeApps: true });
     expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
   });
 

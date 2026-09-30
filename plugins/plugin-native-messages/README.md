@@ -27,7 +27,7 @@ rows; other apps leave platform-owned persistence alone.
 
 ## Android modem verification
 
-`node packages/app/scripts/android-native-sms.mjs --sender emulator-5580 --receiver emulator-5582`
+`node packages/app/scripts/android-native-sms.ts --sender emulator-5580 --receiver emulator-5582`
 leases two isolated stock emulators, sends through the real WebView bridge, checks
 the sent-row receipt and received content, then removes its messages and APKs.
 Set each emulator's `-phone-number` to `1555521` followed by its console port.
