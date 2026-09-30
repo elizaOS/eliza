@@ -278,7 +278,16 @@ export function redactSensitiveLogText(text: string): string {
  * (e.g. React DevTools' patched console methods during startup logging).
  */
 function createRedactClone(): Record<string, unknown> {
-	return {};
+	const clone = {};
+	protectCloneCoercion(clone, "[object Object]");
+	return clone;
+}
+
+/** Keep source data named toString/valueOf without executing it during coercion. */
+function protectCloneCoercion(clone: object, text: string): void {
+	Object.defineProperty(clone, Symbol.toPrimitive, {
+		value: (hint: string) => (hint === "number" ? Number.NaN : text),
+	});
 }
 
 export function redactLogValue(
@@ -300,6 +309,7 @@ export function redactLogValue(
 		const clone = new Error(redactSensitiveLogText(value.message));
 		clone.name = redactSensitiveLogText(value.name);
 		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
+		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
 		if (value.cause !== undefined) {
 			clone.cause = redactLogValue(value.cause, seen, depth + 1);
 		}

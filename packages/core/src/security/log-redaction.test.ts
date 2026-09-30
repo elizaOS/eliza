@@ -14,6 +14,31 @@ import {
 } from "./log-redaction.js";
 
 describe("log-redaction clone coercion", () => {
+	it("preserves non-callable coercion fields without allowing them to break sinks", () => {
+		const [clone] = redactTrailingArgs([
+			{ toString: "source data", valueOf: { apiKey: "fixture-secret" } },
+		]);
+		expect(String(clone)).toBe("[object Object]");
+		expect(`${clone}`).toBe("[object Object]");
+		expect(Number(clone)).toBeNaN();
+		expect(clone).toEqual({
+			toString: "source data",
+			valueOf: { apiKey: "[REDACTED]" },
+		});
+	});
+
+	it("keeps sanitized Error coercion when an own field shadows toString", () => {
+		const error = new Error("fixture");
+		Object.defineProperty(error, "toString", {
+			value: "source data",
+			enumerable: true,
+		});
+		const [clone] = redactTrailingArgs([error]);
+		expect(String(clone)).toBe("Error: fixture");
+		expect(clone).toBeInstanceOf(Error);
+		expect(JSON.stringify(clone)).toContain('"toString":"source data"');
+	});
+
 	it("redactTrailingArgs clones survive String() coercion", () => {
 		const [clone] = redactTrailingArgs([{ phase: "restoring-session" }]);
 		expect(() => String(clone)).not.toThrow();
