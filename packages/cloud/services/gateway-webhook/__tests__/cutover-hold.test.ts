@@ -275,6 +275,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(providerSends).toHaveLength(1);
   }, 60_000);
@@ -388,6 +389,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(await first).toMatchObject({ delivered: 1 });
     expect(cloud.turns.length - heldTurns).toBe(1);
@@ -468,6 +470,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(recordAfterFirst).toBeNull();
     expect(second).toEqual({
@@ -475,7 +478,69 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
+    expect(await redis.get(dedupKey)).toBe("delivered");
+  }, 60_000);
+
+  test("a hold settled while another replica owned the lease is not redelivered once that lease lapses", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_8";
+    const recordKey = `webhook:cutover-hold:${dedupKey}`;
+    const leaseKey = `webhook:cutover-hold-lease:${dedupKey}`;
+
+    await handleWebhook(
+      blooioWebhook("msg_cutover_8"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const heldTurns = cloud.turns.length;
+
+    // Renewal lapsed mid-turn and another replica took the lease, then died
+    // without draining. This drainer still delivers the turn but must leave
+    // the record to the lease owner.
+    cloud.state.attested = true;
+    cloud.state.onAttestedTurn = async () => {
+      await redis.set(leaseKey, "another-replica", { ex: 180 });
+    };
+    const first = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 60_000 },
+    );
+    cloud.state.onAttestedTurn = undefined;
+    const recordAfterFirst = await redis.get(recordKey);
+
+    // The dead replica's lease lapses. The next drainer finds a settled
+    // ledger and must drop the record instead of running the turn again.
+    await redis.del(leaseKey);
+    const second = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 120_000 },
+    );
+
+    expect(recordAfterFirst).not.toBeNull();
+    expect(first).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+      stale: 0,
+    });
+    expect(second).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+      stale: 1,
+    });
+    expect(cloud.turns.length - heldTurns).toBe(1);
+    expect(providerSends).toHaveLength(1);
+    expect(await redis.get(recordKey)).toBeNull();
     expect(await redis.get(dedupKey)).toBe("delivered");
   }, 60_000);
 
@@ -515,6 +580,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 1,
       expired: 0,
+      stale: 0,
     });
     // Settled like a first-delivery pre-egress failure: the ledger reopens.
     expect(ledgerAfterRefusal).toBeNull();
@@ -524,6 +590,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(cloud.turns.length - heldTurns).toBe(1);
     expect(providerSends).toEqual([]);

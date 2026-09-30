@@ -169,6 +169,8 @@ export interface CutoverHoldDrainStats {
   rescheduled: number;
   released: number;
   expired: number;
+  /** Records another drainer had already settled; removed without redelivery. */
+  stale: number;
 }
 
 /**
@@ -229,6 +231,7 @@ export async function drainCutoverHolds(
     rescheduled: 0,
     released: 0,
     expired: 0,
+    stale: 0,
   };
   const due = await redis.zrangebyscore(
     HOLD_INDEX_KEY,
@@ -269,6 +272,22 @@ export async function drainCutoverHolds(
       const held = parseHeldWebhook(await redis.get(recordKey(dedupKey)));
       if (!held || held.dedupKey !== dedupKey) {
         await removeHeldRecord();
+        continue;
+      }
+      // The ledger leaves "held" only when a drainer settles the turn. If it
+      // did so while another replica owned the lease, the record survived the
+      // fenced removal; now that lease has lapsed, redelivering would run the
+      // Cloud turn and the provider send again.
+      const ledger = await redis.get<string>(dedupKey);
+      if (ledger !== CONNECTOR_HELD) {
+        if (await removeHeldRecord()) stats.stale += 1;
+        logger.info(
+          "Cutover hold record was already settled by another drainer",
+          {
+            dedupKey,
+            ledger,
+          },
+        );
         continue;
       }
       if (now - held.heldAt > CUTOVER_HOLD_MAX_MS) {
