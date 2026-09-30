@@ -2817,7 +2817,7 @@ async function runPlannerLoopIterations(
       );
     }
 
-    if (
+    const needsModelReply =
       latestResult?.success === true &&
       latestResult.modelReplyRequired === true &&
       !requiresIntentEvaluation &&
@@ -2825,8 +2825,15 @@ async function runPlannerLoopIterations(
       failures.length === 0 &&
       lastPlannerExplicitCompleted === true &&
       completedToolStepCount(trajectory) === 1 &&
-      !latestUnresolvedFailedNonTerminalToolStep(trajectory)
-    ) {
+      !latestUnresolvedFailedNonTerminalToolStep(trajectory);
+    // The message host requires receipt-bound evaluation of internal results.
+    // Do not generate unbound planner prose first or gate on pre-tool prose.
+    // Standalone callers retain their existing reply-only planner path.
+    const evaluateSettledReply =
+      needsModelReply &&
+      params.deferInternalReplyRecoveryToCaller === true &&
+      latestResult?.transcriptVisibility === "internal";
+    if (needsModelReply && !evaluateSettledReply) {
       pendingRequiredModelReply = true;
       continue;
     }
@@ -2836,21 +2843,22 @@ async function runPlannerLoopIterations(
     // action-owned completion. Falls through on any ambiguity. See
     // `tryGateEvaluator` for the full contract.
     const gateStartedAt = Date.now();
-    const gatedDecision =
-      trySubPlannerVerdictGate({
-        trajectory,
-        failures,
-        lastPlannerExplicitCompleted,
-        declaredIntentCount,
-      }) ??
-      (requiresIntentEvaluation
-        ? null
-        : tryGateEvaluator({
-            trajectory,
-            failures,
-            lastPlannerExplicitMessageToUser,
-            lastPlannerExplicitCompleted,
-          }));
+    const gatedDecision = evaluateSettledReply
+      ? null
+      : (trySubPlannerVerdictGate({
+          trajectory,
+          failures,
+          lastPlannerExplicitCompleted,
+          declaredIntentCount,
+        }) ??
+        (requiresIntentEvaluation
+          ? null
+          : tryGateEvaluator({
+              trajectory,
+              failures,
+              lastPlannerExplicitMessageToUser,
+              lastPlannerExplicitCompleted,
+            })));
     if (gatedDecision) {
       const { output: gated, reason } = gatedDecision;
       trajectory.evaluatorOutputs.push(

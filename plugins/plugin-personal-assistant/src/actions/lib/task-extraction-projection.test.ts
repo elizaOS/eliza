@@ -8,7 +8,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { completionContextSources } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  completionContextSources,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { executeV5PlannedToolCall } from "../../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { extractTaskCreatePlanWithLlm } from "./extract-task-plan";
@@ -22,6 +26,8 @@ const create = JSON.stringify({
 });
 async function run(mode: string, outputs: string[]) {
   const prompts: string[] = [];
+  const systems: Array<string | undefined> = [];
+  const character = { name: "QA", system: "TRUSTED_SYSTEM_PREFIX", bio: [] };
   let effects = 0;
   const rows = [
     {
@@ -46,6 +52,13 @@ async function run(mode: string, outputs: string[]) {
   const original: ContextObject = {
     id: "turn",
     metadata: { roomId: "room", messageId: "turn" },
+    staticPrefix: {
+      systemPrompt: {
+        content: buildCanonicalSystemPrompt({ character, userRole: "OWNER" }),
+        stable: true,
+      },
+      characterPrompt: { content: "STYLE_DIRECTION_RETAINED", stable: true },
+    },
     events: [
       ...[
         "user: in-app only, never native",
@@ -106,6 +119,7 @@ async function run(mode: string, outputs: string[]) {
   };
   const runtime = {
     actions: [action],
+    character,
     agentId: "agent",
     getRoom: async () => ({ id: "room", worldId: "world" }),
     getWorld: async () => ({
@@ -121,33 +135,45 @@ async function run(mode: string, outputs: string[]) {
     reportError: vi.fn(),
     getMemories: vi.fn(async () => structuredClone(rows)),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    useModel: vi.fn(async (_type: unknown, params: { prompt: string }) => {
-      prompts.push(params.prompt);
-      expect(effects).toBe(0);
-      return outputs.shift() ?? '{"restoreContext":true}';
-    }),
+    useModel: vi.fn(
+      async (_type: unknown, params: { prompt: string; system?: string }) => {
+        prompts.push(params.prompt);
+        systems.push(params.system);
+        expect(effects).toBe(0);
+        return outputs.shift() ?? '{"restoreContext":true}';
+      },
+    ),
   } as unknown as IAgentRuntime;
   if (mode === "wrong-request") message.id = "wrong" as Memory["id"];
   const before = JSON.stringify(original);
-  const result = await executeV5PlannedToolCall({
-    runtime,
-    plannerRuntime: runtime as never,
-    plannerContext: original,
-    toolCall: {
-      name: action.name,
-      params: {},
-      completionContext: selection as never,
-    },
-    executorCtx: {
-      message,
-      state,
-      userRoles: ["OWNER"],
-      activeContexts: ["general"],
-    },
-    executorOptions: { actions: [action] },
-  });
+  const result = await runWithTrajectoryContext({ userRole: "OWNER" }, () =>
+    executeV5PlannedToolCall({
+      runtime,
+      plannerRuntime: runtime as never,
+      plannerContext: original,
+      toolCall: {
+        name: action.name,
+        params: {},
+        completionContext: selection as never,
+      },
+      executorCtx: {
+        message,
+        state,
+        userRoles: ["OWNER"],
+        activeContexts: ["general"],
+      },
+      executorOptions: { actions: [action] },
+    }),
+  );
   expect(JSON.stringify(original)).toBe(before);
-  return { prompts, effects, runtime, result };
+  return {
+    prompts,
+    systems,
+    effects,
+    runtime,
+    result,
+    expectedSystem: original.staticPrefix?.systemPrompt?.content,
+  };
 }
 describe("task extractor reviewed action handoff", () => {
   it("uses actual producer projection, retaining referent/standing constraints/current receipt, without DB duplication", async () => {
@@ -159,6 +185,9 @@ describe("task extractor reviewed action handoff", () => {
     expect(r.prompts[0]).not.toContain("FULL_ONLY");
     expect(r.runtime.getMemories).not.toHaveBeenCalled();
     expect(r.effects).toBe(1);
+    expect(r.systems).toEqual([r.expectedSystem]);
+    expect(r.prompts[0]).not.toContain("TRUSTED_SYSTEM_PREFIX");
+    expect(r.prompts[0]).toContain("STYLE_DIRECTION_RETAINED");
   });
   it.each(["null", "full", "stale", "incomplete", "wrong-request"])(
     "falls back to complete legacy input for %s",
@@ -168,6 +197,7 @@ describe("task extractor reviewed action handoff", () => {
       expect(r.prompts[0]).toContain("FULL_ONLY");
       expect(r.prompts[0]).toContain("FULL_STATE");
       expect(r.runtime.getMemories).toHaveBeenCalledOnce();
+      expect(r.systems).toEqual([undefined]);
     },
   );
   it("restores complete original history once before any create effect", async () => {
@@ -181,6 +211,10 @@ describe("task extractor reviewed action handoff", () => {
     expect(r.prompts[1]).toContain("assistant: saved title");
     expect(r.runtime.getMemories).toHaveBeenCalledOnce();
     expect(r.effects).toBe(1);
+    expect(r.systems).toEqual([r.expectedSystem, r.expectedSystem]);
+    expect(
+      r.prompts.every((prompt) => !prompt.includes("TRUSTED_SYSTEM_PREFIX")),
+    ).toBe(true);
   });
   it.each([
     ['{"restoreContext":true}', '{"restoreContext":true}'],
@@ -199,6 +233,7 @@ describe("task extractor reviewed action handoff", () => {
     expect(r.prompts).toHaveLength(2);
     expect(r.prompts[1]).toContain("Standing constraint: no native grants");
     expect(r.effects).toBe(1);
+    expect(r.systems).toEqual([r.expectedSystem, r.expectedSystem]);
   });
 });
 
