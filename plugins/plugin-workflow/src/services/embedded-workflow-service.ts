@@ -255,6 +255,8 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   private async resumeExecution(execution: WorkflowExecution): Promise<void> {
+    // A control request may have read its snapshot before a concurrent cancel.
+    execution = await this.getExecution(execution.id);
     if (execution.finished || this.running.has(execution.id)) return;
     const workflow = await this.workflowVersionForExecution(execution);
     const controller = new AbortController();
@@ -588,6 +590,10 @@ export class EmbeddedWorkflowService extends Service {
         runId: pending.id,
         mode: pending.mode,
         input: pending.input,
+        eventSequenceOffset: (pending.events ?? []).reduce(
+          (max, event) => Math.max(max, event.sequence),
+          0
+        ),
         signal: controller.signal,
         onEvent: (event) => this.recordEvent(running, event),
         generate: async ({ prompt, messages, signal }) => {
@@ -606,7 +612,8 @@ export class EmbeddedWorkflowService extends Service {
         stoppedAt: ['cancelled', 'continued', 'failed', 'finished'].includes(result.status)
           ? nowIso()
           : null,
-        events: result.events,
+        // recordEvent already appended this invocation's events to the
+        // persisted history. result.events contains only this new batch.
         ...(result.output !== undefined ? { output: result.output } : {}),
         ...(result.error ? { error: result.error } : {}),
         ...(result.nextRunId ? { nextRunId: result.nextRunId } : {}),
@@ -672,7 +679,32 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   async cancelExecution(runId: string): Promise<WorkflowExecution> {
-    this.controllers.get(runId)?.abort();
+    const execution = await this.getExecution(runId);
+    if (execution.finished && execution.status !== 'cancelled') return execution;
+    const controller = this.controllers.get(runId);
+    const running = this.running.get(runId);
+    controller?.abort();
+    // Preserve active-worker teardown, then use the same durable cancellation
+    // policy for a parked run whose worker/controller has already exited.
+    if (running) await running;
+    const receipt = await controlSmithersRun(this.tenantId, execution.workflowId, {
+      kind: 'cancel',
+      runId,
+    });
+    const current = await this.getExecution(runId);
+    if (receipt.status === null && controller && current.status === 'cancelled') return current;
+    if (!receipt.status)
+      throw new WorkflowApiError('Workflow run has no durable cancellation receipt', 409);
+    if (current.finished && current.status === receipt.status) return current;
+    await this.saveExecution(
+      {
+        ...current,
+        status: receipt.status,
+        finished: true,
+        stoppedAt: current.stoppedAt ?? nowIso(),
+      },
+      true
+    );
     return this.getExecution(runId);
   }
 
@@ -684,6 +716,8 @@ export class EmbeddedWorkflowService extends Service {
     options: { note?: string; decidedBy?: string; decision?: unknown } = {}
   ): Promise<WorkflowExecution> {
     const execution = await this.getExecution(runId);
+    if (execution.finished)
+      throw new WorkflowApiError('Workflow execution is already terminal', 409);
     const pending = (execution.approvals ?? []).find(
       (approval) => approval.nodeId === nodeId && approval.iteration === iteration
     );
@@ -714,7 +748,7 @@ export class EmbeddedWorkflowService extends Service {
     ];
     await this.saveExecution(execution);
     await this.resumeExecution(execution);
-    return execution;
+    return this.getExecution(runId);
   }
 
   async signalExecution(
@@ -725,6 +759,8 @@ export class EmbeddedWorkflowService extends Service {
   ): Promise<WorkflowExecution> {
     if (!signal.trim()) throw new WorkflowApiError('Signal name is required', 400);
     const execution = await this.getExecution(runId);
+    if (execution.finished)
+      throw new WorkflowApiError('Workflow execution is already terminal', 409);
     await controlSmithersRun(this.tenantId, execution.workflowId, {
       kind: 'signal',
       runId,
@@ -733,10 +769,13 @@ export class EmbeddedWorkflowService extends Service {
       ...(receivedBy ? { receivedBy } : {}),
     });
     await this.resumeExecution(execution);
-    return execution;
+    return this.getExecution(runId);
   }
 
-  private async saveExecution(execution: WorkflowExecution): Promise<void> {
+  private async saveExecution(
+    execution: WorkflowExecution,
+    reconcileDurableTerminal = false
+  ): Promise<void> {
     const existing = await this.getDb()
       .select({ id: embeddedExecutions.id })
       .from(embeddedExecutions)
@@ -760,7 +799,11 @@ export class EmbeddedWorkflowService extends Service {
         .where(
           and(
             eq(embeddedExecutions.agentId, this.tenantId),
-            eq(embeddedExecutions.id, execution.id)
+            eq(embeddedExecutions.id, execution.id),
+            // Late event/control snapshots cannot resurrect terminal runs.
+            // Only a validated Smithers cancellation receipt may reconcile
+            // the durable finish/cancel winner across the two stores.
+            ...(reconcileDurableTerminal ? [] : [eq(embeddedExecutions.finished, false)])
           )
         );
       return;

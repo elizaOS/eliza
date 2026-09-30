@@ -100,6 +100,8 @@ export interface SmithersRunRequest {
   mode: WorkflowExecutionMode;
   input: Record<string, unknown>;
   timeoutMs?: number;
+  /** Continue the host's persisted event sequence across parked-run resumes. */
+  eventSequenceOffset?: number;
   signal?: AbortSignal;
   onEvent?: (event: WorkflowRunEvent) => void | Promise<void>;
   generate: (request: {
@@ -137,7 +139,8 @@ export type SmithersControlRequest =
       decidedBy?: string;
       decision?: unknown;
     }
-  | { kind: 'signal'; runId: string; signal: string; payload?: unknown; receivedBy?: string };
+  | { kind: 'signal'; runId: string; signal: string; payload?: unknown; receivedBy?: string }
+  | { kind: 'cancel'; runId: string };
 
 function safePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'workflow';
@@ -312,12 +315,17 @@ export function createSmithersControlScript(): string {
     import { readFileSync } from 'node:fs';
     import { Effect } from 'effect';
     import { approveNode, denyNode, signalRun } from 'smthrs';
+    import { cancelRunSubtree } from '@smthrs/engine/cancel-subtree';
     import { openSmithersStore } from 'smthrs/openSmithersStore';
 
     const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, 'utf8'));
     const store = await openSmithersStore({ mode: 'write', backend: 'sqlite', dbPath: payload.dbPath });
     try {
-      if (payload.kind === 'approve') {
+      let status;
+      if (payload.kind === 'cancel') {
+        await cancelRunSubtree(store.adapter, payload.runId);
+        status = (await Effect.runPromise(store.adapter.getRun(payload.runId)))?.status ?? null;
+      } else if (payload.kind === 'approve') {
         await Effect.runPromise(approveNode(store.adapter, payload.runId, payload.nodeId, payload.iteration, payload.note, payload.decidedBy, payload.decision));
       } else if (payload.kind === 'deny') {
         await Effect.runPromise(denyNode(store.adapter, payload.runId, payload.nodeId, payload.iteration, payload.note, payload.decidedBy, payload.decision));
@@ -326,7 +334,7 @@ export function createSmithersControlScript(): string {
       } else {
         throw new Error('Unknown Smithers control request');
       }
-      process.stdout.write(JSON.stringify({ ok: true }));
+      process.stdout.write('${PROTOCOL_PREFIX}control:' + JSON.stringify({ ok: true, ...(payload.kind === 'cancel' ? { status } : {}) }) + '\\n');
     } finally {
       await store.cleanup();
     }
@@ -337,7 +345,7 @@ export async function controlSmithersRun(
   tenantId: string,
   workflowId: string,
   request: SmithersControlRequest
-): Promise<void> {
+): Promise<{ status?: WorkflowExecutionStatus | null }> {
   const rootDir = resolveSmithersWorkflowDir(tenantId, workflowId);
   await mkdir(rootDir, { recursive: true });
   const payloadPath = join(rootDir, `.control-${randomUUID()}.json`);
@@ -359,6 +367,12 @@ export async function controlSmithersRun(
       MSGPACKR_NATIVE_ACCELERATION_DISABLED: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  child.stdout?.setEncoding('utf8');
+  child.stdout?.on('data', (chunk: string) => {
+    stdout += chunk;
+    if (stdout.length > MAX_PROTOCOL_LINE_BYTES) child.kill('SIGTERM');
   });
   let stderr = '';
   child.stderr?.setEncoding('utf8');
@@ -382,6 +396,38 @@ export async function controlSmithersRun(
       context: { exitCode, workflowId, runId: request.runId, kind: request.kind },
     });
   }
+  if (request.kind !== 'cancel') return {};
+  const controlPrefix = `${PROTOCOL_PREFIX}control:`;
+  const receiptLine = stdout
+    .split('\n')
+    .reverse()
+    .find((line) => line.startsWith(controlPrefix));
+  let response: unknown;
+  try {
+    response = JSON.parse(receiptLine?.slice(controlPrefix.length) ?? '');
+  } catch (cause) {
+    throw new ElizaError('Smithers control returned an invalid receipt', {
+      code: 'SMTHRS_CONTROL_RECEIPT_INVALID',
+      cause,
+    });
+  }
+  if (!response || typeof response !== 'object' || !('ok' in response) || response.ok !== true) {
+    throw new ElizaError('Smithers control returned an invalid receipt', {
+      code: 'SMTHRS_CONTROL_RECEIPT_INVALID',
+    });
+  }
+  const status = 'status' in response ? response.status : undefined;
+  if (status === null) return { status: null };
+  if (
+    typeof status !== 'string' ||
+    !['cancelled', 'canceled', 'finished', 'failed', 'continued'].includes(status)
+  ) {
+    throw new ElizaError('Smithers cancellation did not reach a durable terminal state', {
+      code: 'SMTHRS_CANCEL_NOT_TERMINAL',
+      context: { runId: request.runId },
+    });
+  }
+  return { status: statusFromSmithers(status) };
 }
 
 function statusFromSmithers(status: string): WorkflowExecutionStatus {
@@ -421,6 +467,12 @@ function errorPayload(error: unknown): { message: string; stack?: string } {
 }
 
 export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<SmithersRunResult> {
+  const eventSequenceOffset = request.eventSequenceOffset ?? 0;
+  if (!Number.isSafeInteger(eventSequenceOffset) || eventSequenceOffset < 0) {
+    throw new ElizaError('Invalid persisted workflow event sequence', {
+      code: 'SMTHRS_EVENT_SEQUENCE_INVALID',
+    });
+  }
   validateSmithersSource(request.workflow.source);
   const rootDir = resolveSmithersWorkflowDir(request.tenantId, request.workflow.id);
   const sourcePath = join(
@@ -462,7 +514,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   });
 
   const events: WorkflowRunEvent[] = [];
-  let sequence = 0;
+  let sequence = eventSequenceOffset;
   let result: WorkerResultMessage['result'] | undefined;
   let workerError: WorkerErrorMessage['error'] | undefined;
   let stderr = '';

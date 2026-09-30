@@ -3025,6 +3025,7 @@
       "name": "@elizaos/plugin-workflow",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@smthrs/engine": "0.35.0",
         "drizzle-orm": "0.45.2",
         "effect": "4.0.0-beta.105",
         "smthrs": "0.35.0",
