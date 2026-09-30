@@ -63,7 +63,19 @@ mock.module("@/lib/services/characters/characters", () => ({
     getById: async () => agent,
     getByIdCacheOnly: async () => ({ kind: "ready", character: agent }),
     invalidateCache: async () => {},
+    listPublic: async () => [agent],
+    countPublicCatalog: async () => 1,
   },
+}));
+mock.module("@/lib/services/user-mcps", () => ({
+  userMcpsService: {
+    listPublic: async () => [],
+    countPublic: async () => 0,
+    getPublicProxyUrl: () => "",
+  },
+}));
+mock.module("@/lib/cache/client", () => ({
+  cache: { get: async () => null, set: async () => {} },
 }));
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   asGenerativeCacheApiError: () => null,
@@ -135,6 +147,7 @@ const { default: a2aRoute } = await import("../agents/[id]/a2a/route");
 const { default: mcpRoute, handleToolCall } = await import(
   "../agents/[id]/mcp/route"
 );
+const { default: discoveryRoute } = await import("../v1/discovery/route");
 afterAll(() => mock.restore());
 
 beforeEach(() => {
@@ -190,10 +203,20 @@ test("the refusal also answers an already-public agent instead of reporting succ
   expect(publishWrites).toHaveLength(0);
 });
 
+test("a requested markup is refused too, instead of being silently dropped", async () => {
+  agent = storedMonetizedAgent({ is_public: false });
+  const response = await publish({ markupPercentage: 250 });
+  expect(response.status).toBe(410);
+  expect(await response.json()).toMatchObject({
+    code: "creator_monetization_retired",
+  });
+  expect(publishWrites).toHaveLength(0);
+});
+
 test("an ordinary publish writes no monetization option and reports markup off", async () => {
   agent = storedMonetizedAgent({ is_public: false });
 
-  const response = await publish({ markupPercentage: 250, mcpEnabled: false });
+  const response = await publish({ markupPercentage: 0, mcpEnabled: false });
 
   expect(response.status).toBe(200);
   expect(publishWrites).toEqual([
@@ -316,5 +339,23 @@ test("agent cards and info calls advertise no creator markup for a stored moneti
   expect(JSON.parse(getInfo.result.content[0]?.text ?? "{}")).toMatchObject({
     monetization: false,
     markup: "0",
+  });
+});
+
+test("discovery lists a stored monetized agent at the standard metered price it is billed", async () => {
+  const listing = await json<{
+    services: Array<{ id: string; pricing?: unknown }>;
+  }>(
+    mounted(discoveryRoute, "/discovery").request(
+      "/discovery?types=agent",
+      {},
+      env,
+    ),
+  );
+  expect(listing.services.map((service) => service.id)).toEqual(["agent-1"]);
+  // Metered at the base inference cost: neither a markup nor "free".
+  expect(listing.services[0]?.pricing).toEqual({
+    type: "credits",
+    description: "Standard inference costs",
   });
 });

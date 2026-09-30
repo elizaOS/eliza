@@ -5,7 +5,8 @@
  * DELETE /api/v1/agents/[agentId]/publish — make private + disable monetization
  *
  * Creator inference markup is retired (#22961): publishing never enables it,
- * and a request that asks for it is refused with the typed 410.
+ * and a request that asks for it (or for a markup) is refused with the typed
+ * 410.
  */
 
 import { Hono } from "hono";
@@ -63,8 +64,9 @@ app.post("/", async (c) => {
       // empty body is fine
     }
     // Same fence as agentMonetizationService.updateSettings: unpublishing and
-    // publishing again must not turn a retired markup back on.
-    if (body.enableMonetization) {
+    // publishing again must not turn a retired markup back on, and a markup
+    // the request asks for is refused rather than silently dropped.
+    if (body.enableMonetization || body.markupPercentage > 0) {
       throw new CreatorMonetizationRetiredError("agent_inference_markup");
     }
 

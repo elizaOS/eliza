@@ -531,8 +531,9 @@ async function fetchLocalAgents(
       x402Support: false,
       verified: false,
       slug,
-      // Creator markup is retired (#22961): agents bill base inference cost.
-      pricing: { type: "free", description: "Free to use" },
+      // Agent A2A/MCP chat bills the caller's credits at the base inference
+      // cost; creator markup is retired (#22961), so no agent adds a surcharge.
+      pricing: { type: "credits", description: "Standard inference costs" },
     };
   });
   return { rows, truncated };
