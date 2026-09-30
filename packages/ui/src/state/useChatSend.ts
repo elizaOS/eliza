@@ -80,6 +80,7 @@ import {
 } from "./internal";
 import {
   clearPendingChatTurn,
+  listPendingChatTurns,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
 import {
@@ -311,11 +312,14 @@ function hasNewerUserTurn(
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
+  onFailure?: () => void,
 ): void {
   if (!roomId) return;
   // error-policy:J6 best-effort abort signal for a turn the user already
-  // stopped locally; the server also ends the turn when the SSE closes.
+  // stopped locally. Paired remote turns continue after transport loss, so
+  // the explicit abort route is the server-side Stop boundary.
   void client.abortConversationTurn(roomId, reason).catch((err) => {
+    onFailure?.();
     logger.warn(
       `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -596,6 +600,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     pollCloudCredits,
   } = deps;
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
@@ -1208,7 +1213,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
       );
       if (activeTurn?.roomId) {
-        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
+        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop", () => {
+          setActionNotice(
+            "Stop could not reach the connected host. This turn may still finish; check its history before retrying.",
+            "error",
+            12000,
+          );
+        });
       }
       if (activeTurn?.abortServerTurn) {
         activeTurn.controller.signal.removeEventListener(
@@ -1235,6 +1246,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatFirstTokenReceived,
       setServerTurnStatus,
       setChatSending,
+      setActionNotice,
     ]);
   const interruptActiveChatPipeline = useCallback((): string => {
     return interruptActiveChatPipelineWithDraft().text;
@@ -2731,15 +2743,27 @@ export function useChatSend(deps: UseChatSendDeps) {
         setChatReplyTarget(null);
       }
       const identityOverride = options?.[CHAT_SEND_IDENTITY_OVERRIDE];
+      const conversationId =
+        options?.conversationId ?? activeConversationIdRef.current ?? null;
+      const recoveredClientMessageId =
+        conversationId && !hasAttachedImages
+          ? listPendingChatTurns(conversationId).find(
+              (receipt) =>
+                receipt.restoredToDraft === true &&
+                receipt.text === rawInput.trim() &&
+                !admittedSendKeysRef.current.has(
+                  JSON.stringify([conversationId, receipt.clientMessageId]),
+                ),
+            )?.clientMessageId
+          : undefined;
       const clientMessageId =
         identityOverride?.clientMessageId ??
         options?.clientMessageId ??
+        recoveredClientMessageId ??
         generateChatClientMessageId();
       const optimisticTurn =
         identityOverride?.optimisticTurn ??
         createOptimisticTurn(clientMessageId);
-      const conversationId =
-        options?.conversationId ?? activeConversationIdRef.current ?? null;
       const queuedTurn = {
         rawInput,
         channelType: options?.channelType ?? "DM",
@@ -2783,15 +2807,30 @@ export function useChatSend(deps: UseChatSendDeps) {
           optimisticTurn.userMsgId,
         ]);
       }
-      await new Promise<void>((resolve, reject) => {
-        chatSendQueueRef.current.push({
-          ...queuedTurn,
-          resolve,
-          reject,
+      // Keep queued and active retries distinct from new identical messages.
+      // Release only when this admission settles, including cancellation.
+      const admissionKey = JSON.stringify([conversationId, clientMessageId]);
+      admittedSendKeysRef.current.set(
+        admissionKey,
+        (admittedSendKeysRef.current.get(admissionKey) ?? 0) + 1,
+      );
+      try {
+        await new Promise<void>((resolve, reject) => {
+          chatSendQueueRef.current.push({
+            ...queuedTurn,
+            resolve,
+            reject,
+          });
+          setChatSending(true);
+          void flushQueuedChatSends();
         });
-        setChatSending(true);
-        void flushQueuedChatSends();
-      });
+      } finally {
+        const remaining =
+          (admittedSendKeysRef.current.get(admissionKey) ?? 1) - 1;
+        if (remaining > 0)
+          admittedSendKeysRef.current.set(admissionKey, remaining);
+        else admittedSendKeysRef.current.delete(admissionKey);
+      }
     },
     [
       flushQueuedChatSends,
