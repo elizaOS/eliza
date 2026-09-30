@@ -454,3 +454,44 @@ test(
   },
   TEST_TIMEOUT,
 );
+
+test(
+  "monetization settings refuse a positive markup instead of storing an uncharged price",
+  async () => {
+    const account = await seedAccount();
+    const [agent] = await dbWrite
+      .insert(userCharacters)
+      .values({
+        user_id: account.user.id,
+        organization_id: account.organization.id,
+        name: "Public agent",
+        bio: "bio",
+        character_data: {},
+        is_public: true,
+        monetization_enabled: false,
+        inference_markup_percentage: "0",
+      } as never)
+      .returning();
+
+    const { agentMonetizationService } = await import("../agent-monetization");
+    const { CreatorMonetizationRetiredError } = await import("../creator-monetization-retirement");
+    await expect(
+      agentMonetizationService.updateSettings(agent.id, account.user.id, {
+        markupPercentage: 250,
+      }),
+    ).rejects.toBeInstanceOf(CreatorMonetizationRetiredError);
+    const [unchanged] = await dbWrite
+      .select()
+      .from(userCharacters)
+      .where(eq(userCharacters.id, agent.id));
+    expect(Number(unchanged?.inference_markup_percentage)).toBe(0);
+
+    // A zero markup is not the retired surcharge and is still accepted.
+    await expect(
+      agentMonetizationService.updateSettings(agent.id, account.user.id, {
+        markupPercentage: 0,
+      }),
+    ).resolves.toMatchObject({ success: true });
+  },
+  TEST_TIMEOUT,
+);

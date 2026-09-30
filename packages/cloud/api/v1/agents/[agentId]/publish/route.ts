@@ -17,6 +17,7 @@ import {
   ForbiddenError,
   failureResponse,
   NotFoundError,
+  ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
@@ -34,6 +35,21 @@ const PublishSchema = z.object({
   mcpEnabled: z.boolean().optional().default(true),
 });
 
+/** Whether a raw publish body asks for the retired markup, in any shape. */
+function requestsCreatorMarkup(raw: unknown): boolean {
+  if (typeof raw !== "object" || raw === null) return false;
+  const { enableMonetization, markupPercentage } = raw as Record<
+    string,
+    unknown
+  >;
+  const enabled =
+    enableMonetization !== undefined &&
+    enableMonetization !== null &&
+    enableMonetization !== false &&
+    enableMonetization !== "false";
+  return enabled || Number(markupPercentage) > 0;
+}
+
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -50,25 +66,26 @@ app.post("/", async (c) => {
       throw ForbiddenError("Not authorized to publish this agent");
     }
 
-    let body: z.infer<typeof PublishSchema> = {
-      enableMonetization: false,
-      markupPercentage: 0,
-      a2aEnabled: true,
-      mcpEnabled: true,
-    };
+    let raw: unknown = {};
     try {
-      const raw = await c.req.json();
-      const validation = PublishSchema.safeParse(raw);
-      if (validation.success) body = validation.data;
+      raw = await c.req.json();
     } catch {
       // empty body is fine
     }
     // Same fence as agentMonetizationService.updateSettings: unpublishing and
-    // publishing again must not turn a retired markup back on, and a markup
-    // the request asks for is refused rather than silently dropped.
-    if (body.enableMonetization || body.markupPercentage > 0) {
+    // publishing again must not turn a retired markup back on. It reads the
+    // raw request, so a markup asked for in any shape is refused rather than
+    // silently dropped by validation.
+    if (requestsCreatorMarkup(raw)) {
       throw new CreatorMonetizationRetiredError("agent_inference_markup");
     }
+    const validation = PublishSchema.safeParse(raw);
+    if (!validation.success) {
+      throw ValidationError("Invalid publish request", {
+        issues: validation.error.issues,
+      });
+    }
+    const body = validation.data;
 
     logger.info("[Agent Publish API] Publishing agent", {
       agentId,

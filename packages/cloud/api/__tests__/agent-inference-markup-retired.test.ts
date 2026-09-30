@@ -213,6 +213,30 @@ test("a requested markup is refused too, instead of being silently dropped", asy
   expect(publishWrites).toHaveLength(0);
 });
 
+test.each([
+  ["an out-of-range markup", { markupPercentage: 5000 }],
+  ["a string markup", { markupPercentage: "250" }],
+  ["a string enable flag", { enableMonetization: "true" }],
+])(
+  "%s that fails validation is still refused, not published with defaults",
+  async (_label, body) => {
+    agent = storedMonetizedAgent({ is_public: false });
+    const response = await publish(body);
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({
+      code: "creator_monetization_retired",
+    });
+    expect(publishWrites).toHaveLength(0);
+  },
+);
+
+test("any other invalid publish body is a typed 400, not a publish with defaults", async () => {
+  agent = storedMonetizedAgent({ is_public: false });
+  const response = await publish({ a2aEnabled: "yes" });
+  expect(response.status).toBe(400);
+  expect(publishWrites).toHaveLength(0);
+});
+
 test("an ordinary publish writes no monetization option and reports markup off", async () => {
   agent = storedMonetizedAgent({ is_public: false });
 
