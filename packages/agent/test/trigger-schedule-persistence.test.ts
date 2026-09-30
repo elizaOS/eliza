@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
-import type { JsonObject, Memory, Task, UUID } from "@elizaos/core";
+import {
+  type JsonObject,
+  type Memory,
+  resolveOwnerEntityIdOrDefault,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
@@ -140,6 +146,8 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         method: "PUT",
         pathname: `/api/triggers/${triggerId}`,
         runtime: fixture.runtime,
+        ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+        localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         req: {} as http.IncomingMessage,
         res: {} as http.ServerResponse,
         readJsonBody: async () => ({ enabled }),
