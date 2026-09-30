@@ -197,6 +197,19 @@ afterEach(() => {
 });
 
 describe("AutomationsFeed", () => {
+  it("shows a cancelled run separately from a failed run", async () => {
+    const response = responseFixture();
+    response.automations[0].lastExecution = {
+      status: "cancelled",
+      startedAt: "2026-06-20T12:00:00.000Z",
+      stoppedAt: "2026-06-20T12:00:01.000Z",
+    };
+    clientMock.listAutomations.mockResolvedValue(response);
+    render(<AutomationsFeed />);
+    expect(await screen.findByText("cancelled")).toBeTruthy();
+    expect(screen.getByText("Failed: HTTP request failed")).toBeTruthy();
+  });
+
   it("shows a visual filter strip and truthful workflow run action", async () => {
     render(<AutomationsFeed />);
 
