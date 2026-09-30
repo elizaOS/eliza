@@ -9,12 +9,13 @@ import { expect, it, vi } from "vitest";
 import { persistConversationReplyRecovery } from "../src/api/conversation-routes";
 
 it.each([
-  { approved: true, uncertain: false },
-  { approved: false, uncertain: false },
-  { approved: true, uncertain: true },
+  { approved: true, uncertain: false, mutation: true },
+  { approved: false, uncertain: false, mutation: true },
+  { approved: true, uncertain: true, mutation: true },
+  { approved: true, uncertain: false, mutation: false },
 ])(
   "preserves projection authority and recovery safety: %j",
-  async ({ approved, uncertain }) => {
+  async ({ approved, uncertain, mutation }) => {
     const agentId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
     const scope = "test-owner-turn";
@@ -53,7 +54,9 @@ it.each([
       id: userId,
       roomId,
       content: {
-        text: "Open Notes and save the note",
+        text: mutation
+          ? "Open Notes and save the note"
+          : "Open Notes and read the note",
         chatIdempotency: {
           version: 1,
           scope,
@@ -102,25 +105,28 @@ it.each([
           {
             success: true,
             data: {
-              actionName: "NOTES_CREATE",
+              actionName: mutation ? "NOTES_CREATE" : "NOTES_LIST",
+              ...(!mutation ? { readOnlyOperation: true } : {}),
               note: { title: "Saved title", body: "Keep two  spaces." },
             },
-            effectReceipts: [
-              {
-                receiptId: "saved-note-proof",
-                operation: "notes.note.create",
-                resource: { kind: "notes.note", id: "saved-note" },
-                artifacts: [],
-                idempotency: { key: null, replayed: false },
-                observedAt: "2026-09-30T18:39:00.000Z",
-                outcome: "applied" as const,
-                commit: {
-                  kind: "durable" as const,
-                  id: "saved-note",
-                  committedAt: "2026-09-30T18:39:00.000Z",
-                },
-              },
-            ],
+            effectReceipts: mutation
+              ? [
+                  {
+                    receiptId: "saved-note-proof",
+                    operation: "notes.note.create",
+                    resource: { kind: "notes.note", id: "saved-note" },
+                    artifacts: [],
+                    idempotency: { key: null, replayed: false },
+                    observedAt: "2026-09-30T18:39:00.000Z",
+                    outcome: "applied" as const,
+                    commit: {
+                      kind: "durable" as const,
+                      id: "saved-note",
+                      committedAt: "2026-09-30T18:39:00.000Z",
+                    },
+                  },
+                ]
+              : [],
           },
         ],
       },
@@ -141,8 +147,9 @@ it.each([
       expect(runtime.reportError).toHaveBeenCalled();
       return;
     }
-    expect(ok).toBe(!uncertain);
-    expect(updates).toHaveLength(uncertain ? 1 : 2);
+    const eligible = mutation && !uncertain;
+    expect(ok).toBe(eligible);
+    expect(updates).toHaveLength(eligible ? 2 : 1);
     const marker = updates[0].content.chatIdempotency as {
       replyRecoveryJson: string;
     };
@@ -156,15 +163,16 @@ it.each([
     expect(saved.actionResults[0].values).toEqual(action.values);
     expect(saved.actionResults[0].text).toBe(action.text);
     expect(saved.actionResults[1].data.note.body).toBe("Keep two  spaces.");
-    expect(saved.actionResults[1].effectReceipts[0]).toMatchObject({
-      receiptId: "saved-note-proof",
-      outcome: "applied",
-      resource: { kind: "notes.note", id: "saved-note" },
-      commit: { kind: "durable", id: "saved-note" },
-      idempotency: { replayed: false },
-    });
+    if (mutation)
+      expect(saved.actionResults[1].effectReceipts[0]).toMatchObject({
+        receiptId: "saved-note-proof",
+        outcome: "applied",
+        resource: { kind: "notes.note", id: "saved-note" },
+        commit: { kind: "durable", id: "saved-note" },
+        idempotency: { replayed: false },
+      });
+    else expect(saved.actionResults[1].effectReceipts).toEqual([]);
     expect(saved.assistantMessageId).toBe(assistantId);
-    if (!uncertain)
-      expect(updates[1].content.replyRecoveryAvailable).toBe(true);
+    if (eligible) expect(updates[1].content.replyRecoveryAvailable).toBe(true);
   },
 );
