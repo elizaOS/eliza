@@ -314,6 +314,22 @@ test(
       description: "test payout",
     });
     expect(replay.deduplicated).toBe(true);
+    await expect(
+      debitAffiliatePayout({
+        userId: unpaid.user.id,
+        amountUsd: 6,
+        idempotencyKey: key,
+        description: "changed retry",
+      }),
+    ).rejects.toMatchObject({ code: "billing_state_conflict" });
+    await expect(
+      debitAffiliatePayout({
+        userId: unpaid.user.id,
+        amountUsd: 0.001,
+        idempotencyKey: unique("fractional-payout"),
+        description: "fractional payout",
+      }),
+    ).rejects.toMatchObject({ code: "validation_error" });
     expect((await getAffiliatePayableBalance(unpaid.user.id)).payableUsd).toBe("2.0000");
 
     // $3 would reach the frozen creator balance.

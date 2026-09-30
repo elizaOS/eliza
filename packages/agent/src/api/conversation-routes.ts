@@ -96,7 +96,10 @@ import {
 } from "@elizaos/plugin-scheduling";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import {
+  type AgentHttpRequestAuthorization,
+  getAgentHostBridge,
+} from "../runtime/host-bridge.ts";
 import {
   deleteConversationMemories,
   deleteConversationMessage,
@@ -599,6 +602,7 @@ type StreamSocketLike = StreamEventSource & {
 };
 interface ConversationStreamDisconnectTracker {
   signal: AbortSignal;
+  authorityReady: Promise<boolean>;
   abort: (reason?: unknown) => void;
   checkConnectionClosed: () => boolean;
   dispose: () => void;
@@ -684,16 +688,22 @@ function createRequestDisconnectAbortTracker({
     },
   };
 }
-function createConversationStreamDisconnectTracker({
+export function createConversationStreamDisconnectTracker({
   req,
   res,
   conversationId,
   roomId,
+  continueOnDisconnect,
+  pairedSessionToken,
+  runtime,
 }: {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   conversationId: string;
   roomId: UUID;
+  continueOnDisconnect: boolean;
+  pairedSessionToken?: string;
+  runtime?: AgentRuntime | null;
 }): ConversationStreamDisconnectTracker {
   const abortController = new AbortController();
   const registrations: Array<{
@@ -702,6 +712,7 @@ function createConversationStreamDisconnectTracker({
     listener: StreamEventListener;
   }> = [];
   let aborted = false;
+  let transportClosed = false;
   let completed = false;
   const requestSocket = isStreamSocketLike(
     (
@@ -737,8 +748,70 @@ function createConversationStreamDisconnectTracker({
         }
       ).writableEnded,
     );
+  const cancelGeneration = () => {
+    if (completed || aborted) return;
+    aborted = true;
+    transportClosed = true;
+    abortController.abort(new Error("Paired session revoked"));
+  };
+  const bridge = getAgentHostBridge();
+  const revalidatePairedSession = (): Promise<boolean> => {
+    if (!pairedSessionToken) return Promise.resolve(true);
+    return Promise.resolve()
+      .then(() =>
+        bridge.resolveSessionTokenAuthorization?.(
+          pairedSessionToken,
+          runtime ?? null,
+        ),
+      )
+      .then((authorization) => {
+        if (!authorization?.ok) cancelGeneration();
+        return authorization?.ok === true;
+      })
+      .catch(() => {
+        cancelGeneration();
+        return false;
+      });
+  };
+  const unsubscribeRevocations = pairedSessionToken
+    ? bridge.subscribeSessionRevocations?.((sessionId) => {
+        if (sessionId === pairedSessionToken) {
+          cancelGeneration();
+        } else if (sessionId === null) {
+          // A bulk revoke can except one device. Recheck its live authority
+          // before canceling the turn; a failed check denies continuation.
+          void revalidatePairedSession();
+        }
+      })
+    : undefined;
+  if (pairedSessionToken && !unsubscribeRevocations) cancelGeneration();
+  // Subscribe first, then close the gap from HTTP authorization to tracker
+  // creation. A revoke in that interval must not own a queued turn.
+  const authorityReady = revalidatePairedSession();
+  // Revocation notifications are process-local. Recheck the durable session
+  // while an offline turn is running so expiry or another host's revocation
+  // cancels generation too, matching the WebSocket authority interval.
+  let authorityCheckPending = false;
+  const authorityInterval = pairedSessionToken
+    ? setInterval(() => {
+        if (completed || aborted || authorityCheckPending) return;
+        authorityCheckPending = true;
+        void revalidatePairedSession().finally(() => {
+          authorityCheckPending = false;
+        });
+      }, 5_000)
+    : undefined;
+  authorityInterval?.unref();
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
+    if (continueOnDisconnect) {
+      // A paired remote device may disappear after its turn was accepted.
+      // Stop writing to its SSE socket, but keep the room lease and generation
+      // alive so the durable reply can be read after reconnect. An explicit
+      // chat Stop still uses /api/turns/:roomId/abort.
+      transportClosed = true;
+      return;
+    }
     aborted = true;
     logger.info(
       { conversationId, roomId },
@@ -747,6 +820,7 @@ function createConversationStreamDisconnectTracker({
     abortController.abort(reason ?? new Error("Client disconnected"));
   };
   const checkConnectionClosed = () => {
+    if (transportClosed) return true;
     const socketClosed =
       requestSocket?.destroyed === true ||
       responseSocket?.destroyed === true ||
@@ -795,15 +869,18 @@ function createConversationStreamDisconnectTracker({
   }
   return {
     signal: abortController.signal,
+    authorityReady,
     abort,
     checkConnectionClosed,
     dispose: () => {
+      if (authorityInterval) clearInterval(authorityInterval);
+      unsubscribeRevocations?.();
       for (const { source, event, listener } of registrations) {
         source.off?.(event, listener);
       }
       registrations.length = 0;
     },
-    isAborted: () => aborted,
+    isAborted: () => aborted || transportClosed,
     markCompleted: () => {
       completed = true;
     },
@@ -4884,12 +4961,31 @@ async function streamConversationMessage(
   if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
     return true;
   }
+  const pairedSessionToken =
+    trustedApiPrincipal.kind === "service_gateway" &&
+    trustedApiPrincipal.sessionRole === "USER" &&
+    trustedApiPrincipal.sessionIdentityId
+      ? /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1]
+      : undefined;
   const disconnectTracker = createConversationStreamDisconnectTracker({
     req,
     res,
     conversationId: conv.id,
     roomId: conv.roomId,
+    // Only a revocable, DB-backed paired session gets offline delivery.
+    // Other callers retain the existing disconnect-as-cancel behavior.
+    continueOnDisconnect: Boolean(pairedSessionToken),
+    pairedSessionToken,
+    runtime: state.runtime,
   });
+  if (
+    !(await disconnectTracker.authorityReady) ||
+    disconnectTracker.signal.aborted
+  ) {
+    disconnectTracker.dispose();
+    error(res, "Paired session ended", 401);
+    return true;
+  }
   const finishStreamResponse = () => {
     disconnectTracker.markCompleted();
     disconnectTracker.dispose();
@@ -5546,13 +5642,13 @@ async function streamConversationMessage(
             onChunk: (chunk, origin) => {
               if (!chunk) return;
               assertCurrentGenerationOwner();
-              if (
-                disconnectTracker.isAborted() ||
-                disconnectTracker.checkConnectionClosed()
-              ) {
-                return;
-              }
+              const connectionClosed =
+                disconnectTracker.checkConnectionClosed();
+              if (disconnectTracker.signal.aborted) return;
+              // Keep the durable candidate complete even when a paired client
+              // has gone offline. Transport closure only suppresses writes.
               streamedText += chunk;
+              if (connectionClosed || disconnectTracker.isAborted()) return;
               // Action-callback text is provisional on the wire: the final reply
               // may replace it wholesale, and a voice client must not speak text
               // it cannot retract. Text rendering remains unchanged.
@@ -5563,12 +5659,9 @@ async function streamConversationMessage(
             onSnapshot: (text, origin) => {
               if (!text) return;
               assertCurrentGenerationOwner();
-              if (
-                disconnectTracker.isAborted() ||
-                disconnectTracker.checkConnectionClosed()
-              ) {
-                return;
-              }
+              const connectionClosed =
+                disconnectTracker.checkConnectionClosed();
+              if (disconnectTracker.signal.aborted) return;
               // Action callbacks may be the first visible source for a turn. An
               // authoritative snapshot therefore has to be able to establish the
               // stream, not merely revise text emitted by a model-token source.
@@ -5584,6 +5677,7 @@ async function streamConversationMessage(
                 return;
               }
               streamedText = text;
+              if (connectionClosed || disconnectTracker.isAborted()) return;
               tokenWriter.writeSnapshot(res, streamedText, {
                 provisional: origin === "action_callback",
               });
@@ -5737,7 +5831,7 @@ async function streamConversationMessage(
               ),
             });
           }
-        } else if (!disconnectTracker.isAborted()) {
+        } else if (!disconnectTracker.signal.aborted) {
           // If text was already streamed to the client (e.g. the initial
           // response succeeded but planner follow-up failed), use the
           // streamed text as the final reply instead of replacing it with a
@@ -5778,13 +5872,28 @@ async function streamConversationMessage(
                 userMessageId: messageToStore.id,
               };
               await settleTurnReservation(outcome);
-              writeConversationDoneSse(res, outcome);
+              if (!disconnectTracker.isAborted()) {
+                writeConversationDoneSse(res, outcome);
+              }
             } catch (persistErr) {
+              if (disconnectTracker.isAborted()) {
+                runtime.reportError(
+                  "ConversationStream.offlineFailurePersistence",
+                  persistErr,
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    clientMessageId,
+                  },
+                );
+              }
               releaseTurnReservation();
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(persistErr),
-              });
+              if (!disconnectTracker.isAborted()) {
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+              }
             }
           } else {
             logger.warn(
@@ -5890,18 +5999,33 @@ async function streamConversationMessage(
                   state.runtime,
                   connectionDescriptor,
                 );
-                writeConversationDoneSse(res, outcome);
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, outcome);
+                }
                 return true;
               }
             } catch (salvageErr) {
+              if (disconnectTracker.isAborted()) {
+                runtime.reportError(
+                  "ConversationStream.offlineFailurePersistence",
+                  salvageErr,
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    clientMessageId,
+                  },
+                );
+              }
               // error-policy:J1 route boundary — this code already runs inside
               // the generation catch, so exact-row salvage failures require
               // their own observable SSE terminal instead of escaping silently.
               releaseTurnReservation();
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(salvageErr),
-              });
+              if (!disconnectTracker.isAborted()) {
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(salvageErr),
+                });
+              }
               return true;
             }
             const providerIssueReply = getChatFailureReply(
@@ -5941,13 +6065,28 @@ async function streamConversationMessage(
                 failureKind,
               };
               await settleTurnReservation(outcome);
-              writeConversationDoneSse(res, outcome);
+              if (!disconnectTracker.isAborted()) {
+                writeConversationDoneSse(res, outcome);
+              }
             } catch (persistErr) {
+              if (disconnectTracker.isAborted()) {
+                runtime.reportError(
+                  "ConversationStream.offlineFailurePersistence",
+                  persistErr,
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    clientMessageId,
+                  },
+                );
+              }
               releaseTurnReservation();
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(persistErr),
-              });
+              if (!disconnectTracker.isAborted()) {
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+              }
             }
           }
         } else {

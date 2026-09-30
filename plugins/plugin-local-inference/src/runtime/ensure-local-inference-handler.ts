@@ -253,6 +253,41 @@ function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
 	return null;
 }
 
+/** Inspect the same assignments and backend used by generation, without loading weights.
+ * An installed assignment remains usable after the idle timer unloads it.
+ */
+export async function hasLocalTextModelAvailable(
+	runtime: IAgentRuntime,
+	modelTypes: readonly string[],
+): Promise<boolean> {
+	const loader = getLoader(runtime);
+	const [assignments, installed] = await Promise.all([
+		readEffectiveAssignments(),
+		listInstalledModels(),
+	]);
+	const currentPath = loader
+		? loader.currentModelPath()
+		: localInferenceEngine.currentModelPath();
+	const current = installed.find((model) => model.path === currentPath);
+	return (
+		modelTypes.length > 0 &&
+		modelTypes.every((modelType) => {
+			const slot =
+				modelType === ModelType.TEXT_LARGE ? "TEXT_LARGE" : "TEXT_SMALL";
+			const assignedId = assignments[slot];
+			if (assignedId) {
+				return (
+					!isEmbeddingModelId(assignedId) &&
+					installed.some((model) => model.id === assignedId)
+				);
+			}
+			return Boolean(
+				currentPath && (!current || !isEmbeddingModelId(current.id)),
+			);
+		})
+	);
+}
+
 /**
  * Look up the model assigned to a given agent slot and ensure it's the
  * one loaded before generation runs. Loads lazily on first call; swaps

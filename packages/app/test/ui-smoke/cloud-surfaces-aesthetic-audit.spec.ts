@@ -1232,6 +1232,107 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     }
   }
 
+  for (const viewport of VIEWPORTS) {
+    test(`disable auto top-up after quote failure ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedStewardToken(page);
+      await installCloudApiStubs(page);
+      const saved: unknown[] = [];
+      await page.route("**/api/v1/billing/settings**", async (route) => {
+        if (route.request().method() === "PUT") {
+          const body = route.request().postDataJSON();
+          saved.push(body);
+          await route.fulfill({
+            json: {
+              settings: {
+                autoTopUp: {
+                  ...body.autoTopUp,
+                  hasPaymentMethod: true,
+                },
+              },
+            },
+          });
+          return;
+        }
+        if (new URL(route.request().url()).search) {
+          await route.fulfill({
+            status: 503,
+            json: { error: "Quote unavailable" },
+          });
+          return;
+        }
+        await route.fulfill({
+          json: {
+            settings: {
+              autoTopUp: {
+                enabled: true,
+                amount: 25,
+                threshold: 10,
+                hasPaymentMethod: true,
+                chargePreview: {
+                  attribution: "none",
+                  breakdown: {
+                    creditedBaseUsd: "25.00",
+                    affiliateMarkupUsd: "0.00",
+                    platformFeeUsd: "0.00",
+                    totalChargeUsd: "25.00",
+                    surchargeApplies: false,
+                  },
+                },
+              },
+              limits: {
+                minAmount: 5,
+                maxAmount: 500,
+                minThreshold: 1,
+                maxThreshold: 200,
+              },
+            },
+          },
+        });
+      });
+      await openAppPath(page, "/cloud/billing");
+      await expect(
+        page.getByTestId("cloud-billing-auto-top-up-breakdown"),
+      ).toBeVisible();
+      const quoteFailure = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/v1/billing/settings" &&
+          response.status() === 503,
+      );
+      await page.getByTestId("cloud-billing-auto-top-up-amount").fill("50");
+      await quoteFailure;
+      const save = page.getByRole("button", {
+        name: "Save auto top-up",
+        exact: true,
+      });
+      await expect(save).toBeDisabled();
+      const toggle = page.getByTestId("cloud-billing-auto-top-up");
+      await expect(toggle).toBeEnabled();
+      await toggle.scrollIntoViewIfNeeded();
+      await mkdir(path.join(outputDir, viewport.name), { recursive: true });
+      await page.screenshot({
+        path: path.join(
+          outputDir,
+          viewport.name,
+          "auto-top-up-quote-failed.png",
+        ),
+      });
+      await toggle.click();
+      await expect(save).toBeEnabled();
+      await save.click();
+      await expect
+        .poll(() => saved)
+        .toEqual([
+          { autoTopUp: { enabled: false, amount: 50, threshold: 10 } },
+        ]);
+      await page.screenshot({
+        path: path.join(outputDir, viewport.name, "auto-top-up-disabled.png"),
+      });
+    });
+  }
+
   for (const viewport of TRANSITION_VIEWPORTS) {
     test(`Shared to Dedicated transition ${viewport.name}`, async ({
       page,

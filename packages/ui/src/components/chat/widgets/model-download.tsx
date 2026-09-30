@@ -9,10 +9,18 @@
 import type { LocalInferenceSlotReadiness } from "@elizaos/core/contracts/local-inference";
 import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import { Download, Loader2, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../../events";
+import { readPersistedMobileRuntimeMode } from "../../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../../hooks/useRuntimeMode";
 import { cn } from "../../../lib/utils";
@@ -37,6 +45,15 @@ const HUB_TIMEOUT_MS = 6000;
 // useHomeModelStatus cadence (the stream carries deltas, not recomputed
 // readiness, so we refetch the authoritative `textReadiness`).
 const STREAM_REFETCH_DEBOUNCE_MS = 400;
+function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+  document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, onStoreChange);
+  return () =>
+    document.removeEventListener(
+      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+      onStoreChange,
+    );
+}
 // Local-inference settings surface — the AI-model settings section hosts the
 // LocalInferencePanel (model catalog / downloads / active). Selected via the
 // settings hash (`#ai-model`), which SettingsView reads on mount + hashchange.
@@ -133,6 +150,11 @@ function rowsFromReadiness(
 export function useLocalModelDownloads(): LocalModelDownloads {
   const [state, setState] = useState<LocalModelDownloads>(INITIAL);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileRuntimeMode = useSyncExternalStore(
+    subscribeToMobileRuntimeMode,
+    readPersistedMobileRuntimeMode,
+    () => null,
+  );
   // Auth gate (#11084): the home surface mounts this widget before the auth
   // probe resolves, so the hub fetch + download SSE stream must stay dormant
   // until the session is authenticated (mirrors useHomeModelStatus).
@@ -146,6 +168,8 @@ export function useLocalModelDownloads(): LocalModelDownloads {
     if (
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
+      mobileRuntimeMode === "remote-mac" ||
+      mobileRuntimeMode === "tunnel-to-mobile" ||
       !supportsLocalInferenceStatus()
     ) {
       setState(SETTLED_NOT_REQUIRED);
@@ -209,6 +233,7 @@ export function useLocalModelDownloads(): LocalModelDownloads {
     };
   }, [
     authenticated,
+    mobileRuntimeMode,
     runtimeMode.isCloudMode,
     runtimeMode.isRemoteMode,
     runtimeMode.state.phase,

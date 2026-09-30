@@ -336,7 +336,11 @@ async function openProtectedCloudBlankStart(
   expectedApiOrigin: string,
 ): Promise<ProtectedCloudBlankStart> {
   await seedProtectedCloudBlankStart(page);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // Hosted Cloud opens Personal Eliza through its post-login join route. The
+  // root is the account dashboard and does not start the identity trajectory.
+  await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
+    waitUntil: "domcontentloaded",
+  });
   const publicIdentity = await requireDeployedRendererIdentity(page, baseURL);
   const publicApiOrigin = await requireRendererCloudApiOrigin(
     page,

@@ -27,6 +27,9 @@ import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearPendingChatTurn,
   listPendingChatTurns,
+  markPendingChatTurnRestored,
+  PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
+  PENDING_CHAT_TURN_SETTLED_EVENT,
 } from "./pending-chat-turns";
 
 /**
@@ -205,6 +208,30 @@ export function useChatComposerDraftPersistence({
   // Track the conversation we last restored from so we don't immediately
   // overwrite the restored draft with the previous conversation's input.
   const lastRestoredRef = useRef<string | null>(null);
+  const chatInputRef = useRef(chatInput);
+  chatInputRef.current = chatInput;
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const onSettled = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { conversationId?: string; text?: string }
+        | undefined;
+      if (
+        detail?.conversationId !== activeConversationId ||
+        typeof detail.text !== "string" ||
+        chatInputRef.current !== detail.text ||
+        readChatDraft(activeConversationId) !== detail.text
+      ) {
+        return;
+      }
+      clearChatDraft(activeConversationId);
+      setChatInput("");
+    };
+    window.addEventListener(PENDING_CHAT_TURN_SETTLED_EVENT, onSettled);
+    return () =>
+      window.removeEventListener(PENDING_CHAT_TURN_SETTLED_EVENT, onSettled);
+  }, [activeConversationId, setChatInput]);
 
   // Restore on mount / conversation change.
   useEffect(() => {
@@ -227,19 +254,36 @@ export function useChatComposerDraftPersistence({
         (pending) => pending.clientMessageId === receipt.clientMessageId,
       );
       if (!stillPending) return;
-      if (readChatDraft(activeConversationId) !== null) {
-        clearPendingChatTurn(activeConversationId, receipt.clientMessageId);
+      const existingDraft = readChatDraft(activeConversationId);
+      if (existingDraft !== null) {
+        // A prior cold launch may have restored this same uncertain send. Keep
+        // its id across subsequent launches; only a different edited draft
+        // supersedes it.
+        if (existingDraft !== receipt.text) {
+          clearPendingChatTurn(activeConversationId, receipt.clientMessageId);
+        }
         return;
       }
+      if (
+        !markPendingChatTurnRestored(
+          activeConversationId,
+          receipt.clientMessageId,
+        )
+      )
+        return;
       writeChatDraft(activeConversationId, receipt.text);
       setChatInput(receipt.text);
-      clearPendingChatTurn(activeConversationId, receipt.clientMessageId);
+      // Keep the original id until canonical history settles this send. If the
+      // user submits this recovered draft while offline, the server can dedupe
+      // the same logical turn instead of running it twice.
     };
-    const delay = Math.max(0, receipt.restoreAt - Date.now());
-    if (delay === 0) {
-      restore();
-      return;
-    }
+    // A cold launch may happen long after restoreAt. Give canonical history a
+    // fresh window to arrive and clear this receipt before restoring a prompt
+    // the host already accepted; restoring immediately duplicates its draft.
+    const delay = Math.max(
+      PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
+      receipt.restoreAt - Date.now(),
+    );
     const timer = window.setTimeout(restore, delay);
     return () => window.clearTimeout(timer);
   }, [activeConversationId, setChatInput]);
