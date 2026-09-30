@@ -86,6 +86,7 @@ import {
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
   parseReplyRecoveryHistorySelection,
+  projectToolResultForModel,
   resolvePlannedReplyEgress,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
@@ -1686,7 +1687,7 @@ function conversationReplyRecoveryIsEligible(
     )
   );
 }
-async function persistConversationReplyRecovery(
+export async function persistConversationReplyRecovery(
   runtime: AgentRuntime,
   roomId: UUID,
   userMessageId: UUID | undefined,
@@ -1734,12 +1735,37 @@ async function persistConversationReplyRecovery(
           ...assistant.content,
           replyRecoveryAvailable: true,
         }),
-        actionResults: result.replyRecovery.actionResults.map((action) => ({
-          ...action,
-          ...(action.error instanceof Error
-            ? { error: action.error.stack ?? action.error.message }
-            : {}),
-        })),
+        actionResults: result.replyRecovery.actionResults.map((action) => {
+          const modelResult = projectToolResultForModel(action);
+          return {
+            // Persist the producer's authoritative model projection, not live
+            // registry handles (for example a view's executable component).
+            // Context, receipts, values and the in-flight result stay intact.
+            ...modelResult,
+            // These runtime markers veto recovery even when the model-facing
+            // producer projection omits them. Never hide an uncertain commit.
+            ...(action.data?.reconciliationRequired !== undefined ||
+            action.data?.committed !== undefined
+              ? {
+                  data: {
+                    ...modelResult.data,
+                    ...(action.data.reconciliationRequired !== undefined
+                      ? {
+                          reconciliationRequired:
+                            action.data.reconciliationRequired,
+                        }
+                      : {}),
+                    ...(action.data.committed !== undefined
+                      ? { committed: action.data.committed }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(action.error instanceof Error
+              ? { error: action.error.stack ?? action.error.message }
+              : {}),
+          };
+        }),
       },
       composeToolDiagnosticRedactor(runtime),
     );
