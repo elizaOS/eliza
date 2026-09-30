@@ -1,8 +1,11 @@
 /**
  * Agent Publish API
  *
- * POST   /api/v1/agents/[agentId]/publish — make public + (optionally) enable monetization/A2A/MCP
+ * POST   /api/v1/agents/[agentId]/publish — make public + enable A2A/MCP
  * DELETE /api/v1/agents/[agentId]/publish — make private + disable monetization
+ *
+ * Creator inference markup is retired (#22961): publishing never enables it,
+ * and a request that asks for it is refused with the typed 410.
  */
 
 import { Hono } from "hono";
@@ -16,6 +19,7 @@ import {
 } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
+import { CreatorMonetizationRetiredError } from "@/lib/services/creator-monetization-retirement";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -58,12 +62,15 @@ app.post("/", async (c) => {
     } catch {
       // empty body is fine
     }
+    // Same fence as agentMonetizationService.updateSettings: unpublishing and
+    // publishing again must not turn a retired markup back on.
+    if (body.enableMonetization) {
+      throw new CreatorMonetizationRetiredError("agent_inference_markup");
+    }
 
     logger.info("[Agent Publish API] Publishing agent", {
       agentId,
       userId: user.id,
-      enableMonetization: body.enableMonetization,
-      markupPercentage: body.markupPercentage,
     });
 
     const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
@@ -82,7 +89,11 @@ app.post("/", async (c) => {
       });
     }
 
-    await userCharactersRepository.publish(agentId, body);
+    await userCharactersRepository.publish(agentId, {
+      payoutWalletAddress: body.payoutWalletAddress,
+      a2aEnabled: body.a2aEnabled,
+      mcpEnabled: body.mcpEnabled,
+    });
 
     await charactersService.invalidateCache(agentId);
 
@@ -98,8 +109,8 @@ app.post("/", async (c) => {
         id: agentId,
         name: agent.name,
         isPublic: true,
-        monetizationEnabled: body.enableMonetization,
-        markupPercentage: body.markupPercentage,
+        monetizationEnabled: false,
+        markupPercentage: 0,
         a2aEnabled: body.a2aEnabled,
         mcpEnabled: body.mcpEnabled,
         a2aEndpoint: `${baseUrl}/api/agents/${agentId}/a2a`,

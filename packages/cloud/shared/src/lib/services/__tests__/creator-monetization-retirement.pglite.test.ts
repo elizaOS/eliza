@@ -420,3 +420,37 @@ test(
   },
   TEST_TIMEOUT,
 );
+
+test(
+  "publishing an agent never re-enables a retired creator markup",
+  async () => {
+    const account = await seedAccount();
+    // A row that still carries a markup, as the publish route could write
+    // after migration 0500 by unpublishing and publishing again.
+    const [agent] = await dbWrite
+      .insert(userCharacters)
+      .values({
+        user_id: account.user.id,
+        organization_id: account.organization.id,
+        name: "Republished agent",
+        bio: "bio",
+        character_data: {},
+        is_public: false,
+        monetization_enabled: true,
+        inference_markup_percentage: "250.00",
+      } as never)
+      .returning();
+
+    const { userCharactersRepository } = await import("../../../db/repositories/characters");
+    await userCharactersRepository.publish(agent.id, { a2aEnabled: true, mcpEnabled: true });
+
+    const [after] = await dbWrite
+      .select()
+      .from(userCharacters)
+      .where(eq(userCharacters.id, agent.id));
+    expect(after?.is_public).toBe(true);
+    expect(after?.monetization_enabled).toBe(false);
+    expect(Number(after?.inference_markup_percentage)).toBe(0);
+  },
+  TEST_TIMEOUT,
+);

@@ -531,12 +531,8 @@ async function fetchLocalAgents(
       x402Support: false,
       verified: false,
       slug,
-      pricing: char.monetization_enabled
-        ? {
-            type: "credits",
-            description: `${char.inference_markup_percentage}% markup on inference costs`,
-          }
-        : { type: "free", description: "Free to use" },
+      // Creator markup is retired (#22961): agents bill base inference cost.
+      pricing: { type: "free", description: "Free to use" },
     };
   });
   return { rows, truncated };
