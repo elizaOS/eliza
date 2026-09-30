@@ -1,7 +1,8 @@
 /**
  * Cleans assistant text for display by detecting and stripping roleplay stage
- * directions (`*beams*`, `*blushes*`, …). The leading-word set gates which
- * asterisk-wrapped spans are treated as stage directions rather than emphasis.
+ * directions (`*beams*`, `*blushes*`, ?). The leading-word set gates which
+ * asterisk-wrapped spans are treated as stage directions rather than emphasis,
+ * while fenced code blocks are scanned and preserved byte-for-byte.
  */
 const STAGE_DIRECTION_FIRST_WORDS = new Set([
 	"beam",
@@ -150,10 +151,10 @@ function stripWrappedStageDirections(input: string, pattern: RegExp): string {
 			const prev = source[offset - 1] ?? "";
 			const next = source[offset + match.length] ?? "";
 			const hasSafeLeftBoundary =
-				offset === 0 || /[\s([{>"'“‘.!?,;:-]/.test(prev);
+				offset === 0 || /[\s([{>"'"`.!?,;:-]/.test(prev);
 			const hasSafeRightBoundary =
 				offset + match.length >= source.length ||
-				/[\s)\]}<"'”’.!?,;:-]/.test(next);
+				/[\s)\]}<"'"`.!?,;:-]/.test(next);
 			if (
 				!hasSafeLeftBoundary ||
 				!hasSafeRightBoundary ||
@@ -174,6 +175,26 @@ function tidyAssistantTextSpacing(input: string): string {
 		.replace(/ ?([,.;!?])/g, "$1")
 		.replace(/\(\s+/g, "(")
 		.replace(/\s+\)/g, ")");
+}
+
+function calcIndent(str: string): number {
+	let col = 0;
+	for (let i = 0; i < str.length; i++) {
+		if (str[i] === "\t") {
+			col += 4 - (col % 4);
+		} else {
+			col++;
+		}
+	}
+	return col;
+}
+
+function normalizeProse(input: string): string {
+	let normalized = input;
+	normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
+	normalized = stripWrappedStageDirections(normalized, /_([^_
+]+)_/g);
+	return normalized === input ? input : tidyAssistantTextSpacing(normalized);
 }
 
 function tryParseObject(input: string): Record<string, unknown> | null {
@@ -204,12 +225,6 @@ function isResponseHandlerPayload(
 	);
 }
 
-// Structural keys an elizaOS reply object may legitimately carry alongside the
-// user-facing `reply`. When a parsed object's keys are ALL within this set and
-// it has a string `reply`, the model emitted its whole response object as text
-// (e.g. `{"reply":"107"}` or `{"reply":"…","action":"NONE"}`) — unwrap it. The
-// allow-list keeps us from stripping real chat content that merely happens to be
-// JSON with a `reply` field plus unrelated data.
 const REPLY_PAYLOAD_KEYS = new Set([
 	"reply",
 	"response",
@@ -225,12 +240,6 @@ const REPLY_PAYLOAD_KEYS = new Set([
 	"attachments",
 ]);
 
-// The model wraps its answer under `reply` or `response` (the key drifts by
-// model/image — both observed on cloud agents). Return the primitive value from
-// whichever is present, but only when EVERY key is a known response-shape key,
-// so ordinary chat text that merely contains JSON is never rewritten. Allows a
-// primitive value (`{"reply":42}` / `{"response":true}`), not just strings;
-// objects/arrays aren't user-facing text and are rejected.
 const PRIMARY_REPLY_KEYS = ["reply", "response"] as const;
 
 function getSimpleReplyValue(value: Record<string, unknown>): string | null {
@@ -267,7 +276,7 @@ export function extractAssistantReplyText(input: string): string | null {
 	if (typeof input !== "string") return null;
 	const trimmed = input.trim();
 
-	// Shape 1: a leaked response-handler payload keyed by `replyText` — either the
+	// Shape 1: a leaked response-handler payload keyed by `replyText` - either the
 	// full object or a bare argument fragment (`"RESPOND", "replyText": "Hi"`).
 	if (trimmed.includes("replyText")) {
 		const candidates = [trimmed];
@@ -288,7 +297,7 @@ export function extractAssistantReplyText(input: string): string | null {
 	}
 
 	// Shape 2: the model emitted its whole reply object as text, e.g.
-	// `{"reply":"107"}`, `{"response":"54"}`, or `{"reply":"…","action":"NONE"}`
+	// `{"reply":"107"}`, `{"response":"54"}`, or `{"reply":".","action":"NONE"}`
 	// (observed from gpt-oss/glm on cloud agents; the wrapper key drifts between
 	// `reply` and `response`). Only unwrap a well-formed object whose keys are all
 	// known response-shape keys, so ordinary chat text that merely contains JSON
@@ -310,12 +319,263 @@ export function extractAssistantReplyText(input: string): string | null {
 	return null;
 }
 
+/**
+ * Scans markdown text for fenced code blocks (both backtick and tilde fences)
+ * according to CommonMark rules:
+ * 1. An opening fence begins at a line start with 0 or more spaces of indentation
+ *    (or container markers such as blockquotes `> `), followed by 3 or more
+ *    backticks (`) or tildes (~).
+ * 2. Leading line indentation is included in the preserved block so that
+ *    list-nested code blocks retain their indentation symmetrically.
+ * 3. The closing fence must match the opening delimiter character and have at
+ *    least as many delimiter characters as the opening fence.
+ * 4. Closing fences can be indented at most 3 spaces beyond the opening fence's
+ *    container/line indentation (CommonMark ?4.5, Example 137). Deeper lines
+ *    are preserved as literal code body.
+ * 5. Fences inside container blocks (e.g. blockquotes) terminate if the container
+ *    boundary ends or closes.
+ * 6. Unterminated / streaming code blocks extend to the end of the input.
+ *
+ * Normalizes stage directions and spacing exclusively in prose segments while
+ * preserving code blocks byte-for-byte without placeholders or sentinel tokens.
+ */
 export function stripAssistantStageDirections(input: string): string {
 	if (typeof input !== "string") return "";
-	let normalized = input;
-	normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
-	normalized = stripWrappedStageDirections(normalized, /_([^_\n]+)_/g);
-	// Ordinary replies may contain exact quotes or code indentation. Only tidy
-	// spacing introduced when a stage direction was actually removed.
-	return normalized === input ? input : tidyAssistantTextSpacing(normalized);
+
+	const len = input.length;
+	let out = "";
+	let lastIdx = 0;
+	let idx = 0;
+
+	while (idx < len) {
+		const lineStart = idx;
+		let pos = idx;
+
+		// Check for optional blockquote container prefix: up to 3 spaces, '>', optional space, repeated
+		let hasBlockquote = false;
+		let bqCheck = pos;
+		while (bqCheck < len) {
+			let cur = bqCheck;
+			let sp = 0;
+			while (cur < len && sp < 3 && input[cur] === " ") {
+				cur++;
+				sp++;
+			}
+			if (cur < len && input[cur] === ">") {
+				cur++;
+				if (cur < len && input[cur] === " ") {
+					cur++;
+				}
+				hasBlockquote = true;
+				bqCheck = cur;
+			} else {
+				break;
+			}
+		}
+
+		if (hasBlockquote) {
+			pos = bqCheck;
+		}
+
+		// Capture leading whitespace on the line after any blockquote prefix
+		const indentStart = pos;
+		while (pos < len && (input[pos] === " " || input[pos] === "\t")) {
+			pos++;
+		}
+		const openIndent = calcIndent(input.slice(indentStart, pos));
+
+		if (pos < len && (input[pos] === "`" || input[pos] === "~")) {
+			const fenceChar = input[pos];
+			let fenceCount = 0;
+			while (pos < len && input[pos] === fenceChar) {
+			fenceCount++;
+			pos++;
+			}
+
+			if (fenceCount >= 3) {
+				// In CommonMark ?4.5, backtick fences cannot have backticks in the info string
+				let infoPos = pos;
+				let hasBacktickInInfo = false;
+				while (infoPos < len && input[infoPos] !== "\n") {
+					if (fenceChar === "`" && input[infoPos] === "`") {
+						hasBacktickInInfo = true;
+					}
+					infoPos++;
+				}
+
+				if (!hasBacktickInInfo) {
+					// Valid opening fence. Read the rest of the opening line.
+					pos = infoPos;
+					if (pos < len && input[pos] === "\n") {
+						pos++;
+					}
+
+					let blockClosed = false;
+					let blockEnd = pos;
+
+					while (pos < len) {
+						const lineScanStart = pos;
+
+						if (hasBlockquote) {
+							// Blockquote continuation: line must include the container prefix
+							let bqScan = lineScanStart;
+							let sp = 0;
+							while (bqScan < len && sp < 3 && input[bqScan] === " ") {
+								bqScan++;
+								sp++;
+							}
+							if (bqScan >= len || input[bqScan] !== ">") {
+								// Blockquote ended; fenced code block terminates at end of preceding line
+								blockClosed = true;
+								blockEnd = lineScanStart;
+								break;
+							}
+							// Consume all '>' markers
+							while (bqScan < len) {
+								let cur = bqScan;
+								let s = 0;
+								while (cur < len && s < 3 && input[cur] === " ") {
+									cur++;
+									s++;
+								}
+								if (cur < len && input[cur] === ">") {
+									cur++;
+									if (cur < len && input[cur] === " ") {
+										cur++;
+									}
+									bqScan = cur;
+								} else {
+									break;
+								}
+							}
+
+							// After blockquote marker, check indentation and closing fence
+							const closeIndentStart = bqScan;
+							let cur = bqScan;
+							while (cur < len && (input[cur] === " " || input[cur] === "\t")) {
+								cur++;
+							}
+							const closeIndent = calcIndent(
+								input.slice(closeIndentStart, cur),
+							);
+
+							if (cur < len && input[cur] === fenceChar) {
+								let closeCount = 0;
+								let checkCur = cur;
+								while (checkCur < len && input[checkCur] === fenceChar) {
+									closeCount++;
+									checkCur++;
+								}
+
+								if (closeCount >= fenceCount) {
+									while (
+										checkCur < len &&
+										(input[checkCur] === " " ||
+											input[checkCur] === "\t" ||
+											input[checkCur] === "\r")
+									) {
+										checkCur++;
+									}
+									if (checkCur >= len || input[checkCur] === "\n") {
+										// CommonMark ?4.5: closing fence allows at most 3 spaces beyond opener
+										if (closeIndent <= openIndent + 3) {
+											blockClosed = true;
+											blockEnd = checkCur;
+											break;
+										}
+									}
+								}
+							}
+
+							// Advance to next line
+							while (pos < len && input[pos] !== "\n") {
+								pos++;
+							}
+							if (pos < len && input[pos] === "\n") {
+								pos++;
+							}
+							blockEnd = pos;
+							continue;
+						}
+
+						// Top-level or list-nested fence
+						let cur = lineScanStart;
+						const closeIndentStart = cur;
+						while (cur < len && (input[cur] === " " || input[cur] === "\t")) {
+							cur++;
+						}
+						const closeIndent = calcIndent(input.slice(closeIndentStart, cur));
+
+					if (cur < len && input[cur] === fenceChar) {
+						let closeCount = 0;
+						let checkCur = cur;
+						while (checkCur < len && input[checkCur] === fenceChar) {
+							closeCount++;
+							checkCur++;
+						}
+
+						if (closeCount >= fenceCount) {
+							while (
+								checkCur < len &&
+								(input[checkCur] === " " ||
+									input[checkCur] === "\t" ||
+									input[checkCur] === "\r")
+							) {
+								checkCur++;
+							}
+							if (checkCur >= len || input[checkCur] === "\n") {
+								// CommonMark ?4.5 (Example 137): closing fence indentation limit
+								if (closeIndent <= openIndent + 3) {
+									blockClosed = true;
+									blockEnd = checkCur;
+									break;
+								}
+							}
+						}
+					}
+
+					// Advance to next line
+					while (pos < len && input[pos] !== "\n") {
+						pos++;
+					}
+					if (pos < len && input[pos] === "\n") {
+						pos++;
+					}
+					blockEnd = pos;
+				}
+
+				if (!blockClosed && !hasBlockquote) {
+					blockEnd = len;
+				}
+
+				// Normalize prose segment preceding this code block
+				if (lineStart > lastIdx) {
+					out += normalizeProse(input.slice(lastIdx, lineStart));
+				}
+
+				// Preserve code block byte-for-byte without placeholders or sentinels
+				out += input.slice(lineStart, blockEnd);
+
+				lastIdx = blockEnd;
+				idx = blockEnd;
+				continue;
+			}
+		}
+	}
+
+		// Move to next line
+		while (idx < len && input[idx] !== "\n") {
+			idx++;
+		}
+		if (idx < len && input[idx] === "\n") {
+			idx++;
+		}
+	}
+
+	// Normalize remaining prose segment
+	if (lastIdx < len) {
+		out += normalizeProse(input.slice(lastIdx));
+	}
+
+	return out;
 }
