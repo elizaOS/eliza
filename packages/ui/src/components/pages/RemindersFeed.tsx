@@ -79,7 +79,7 @@ export function canSnoozeReminder(row: ReminderRow): boolean {
     row.definition.status === "active" &&
     !!row.occurrence &&
     ["pending", "visible", "snoozed"].includes(row.occurrence.state) &&
-    !row.latestAttempt?.outcome.startsWith("delivered")
+    !row.occurrence.metadata?.reminderAcknowledgedAt
   );
 }
 export type ReminderCounts = { all: number; active: number; inactive: number };

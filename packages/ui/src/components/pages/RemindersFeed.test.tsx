@@ -141,10 +141,70 @@ it.each(["completed", "skipped", "expired", "muted"])(
     expect(canSnoozeReminder(value)).toBe(false);
   },
 );
-it("does not offer unproven redelivery snooze on a delivered reminder", () => {
-  const value = { ...row, latestAttempt: { outcome: "delivered" } } as never;
-  expect(reminderDeliveryLabel(value)).toBe("delivered");
-  expect(canSnoozeReminder(value)).toBe(false);
+it.each(["delivered", "delivered_read"])(
+  "snoozes a %s reminder through the same occurrence API",
+  async (outcome) => {
+    const delivered = {
+      ...row,
+      occurrence: { ...row.occurrence, state: "visible", metadata: {} },
+      latestAttempt: { outcome },
+    };
+    mocks.fetch.mockImplementation(
+      async (_url, init) =>
+        new Response(
+          JSON.stringify(
+            init.method === "GET" ? { reminders: [delivered] } : {},
+          ),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    render(<RemindersFeed />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Call dentist" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Snooze 10 minutes" }));
+    await waitFor(() =>
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        "/api/lifeops/occurrences/occ-1/snooze",
+        expect.objectContaining({ method: "POST", body: '{"minutes":10}' }),
+      ),
+    );
+    expect(
+      mocks.fetch.mock.calls.filter(([, init]) => init.method === "POST"),
+    ).toHaveLength(1);
+  },
+);
+it.each(["pending", "visible", "snoozed"])(
+  "allows an eligible %s occurrence regardless of its delivered/read receipt",
+  (state) => {
+    for (const outcome of ["delivered", "delivered_read"]) {
+      const value = {
+        ...row,
+        occurrence: { ...row.occurrence, state },
+        latestAttempt: { outcome },
+      } as never;
+      expect(canSnoozeReminder(value)).toBe(true);
+    }
+  },
+);
+it("keeps explicit acknowledgement, inactive definitions and absent occurrences ineligible", () => {
+  expect(
+    canSnoozeReminder({
+      ...row,
+      occurrence: {
+        ...row.occurrence,
+        metadata: { reminderAcknowledgedAt: "2026-09-30T15:01:00Z" },
+      },
+    } as never),
+  ).toBe(false);
+  for (const status of ["archived", "paused", "completed"])
+    expect(
+      canSnoozeReminder({
+        ...row,
+        definition: { ...row.definition, status },
+      } as never),
+    ).toBe(false);
+  expect(canSnoozeReminder({ ...row, occurrence: null } as never)).toBe(false);
 });
 it("does not label unrecognized delivery failures as Scheduled", () => {
   expect(
