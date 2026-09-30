@@ -140,7 +140,11 @@ it("persists the timezone through pause and re-enable and schedules in that zone
     metadata: metadata as Task["metadata"],
   });
   try {
-    for (const enabled of [false, true]) {
+    for (const { body, enabled } of [
+      { body: { enabled: false }, enabled: false },
+      { body: { displayName: "Renamed while paused" }, enabled: false },
+      { body: { enabled: true }, enabled: true },
+    ]) {
       let status: number | undefined;
       const context = {
         method: "PUT",
@@ -150,7 +154,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         req: {} as http.IncomingMessage,
         res: {} as http.ServerResponse,
-        readJsonBody: async () => ({ enabled }),
+        readJsonBody: async () => body,
         json: (_res: http.ServerResponse, _body: unknown, code?: number) => {
           status = code ?? 200;
         },
