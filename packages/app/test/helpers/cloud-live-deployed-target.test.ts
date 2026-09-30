@@ -8,7 +8,7 @@ import {
 describe("deployed Cloud smoke target", () => {
   it("pins production and staging to distinct first-party origins", () => {
     expect(cloudLiveDeployedRendererOrigin("production")).toBe(
-      "https://eliza.app",
+      "https://cloud.eliza.app",
     );
     expect(cloudLiveDeployedRendererOrigin("staging")).toBe(
       "https://staging.eliza-app.pages.dev",

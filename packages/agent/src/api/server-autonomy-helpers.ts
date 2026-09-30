@@ -49,5 +49,10 @@ export async function maybeRouteAutonomyEventToConversation(
     return;
   }
 
-  await routeAutonomyTextToUser(state, text, source);
+  await routeAutonomyTextToUser(
+    state,
+    text,
+    source,
+    payload?.reminderPresentation,
+  );
 }

@@ -282,9 +282,9 @@ jobs:
       # cannot silently retarget the production lane.
       ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: production
       ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
-      # Prefer the variable named for the runtime contract, but retain the
-      # repository's established ELIZACLOUD_API_KEY as the canonical fallback.
-      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+      # Hosted browser auth requires a real Steward session JWT. Existing keys
+      # remain usable for the explicitly requested read-only API preflight.
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_BROWSER_SESSION || secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       # Suppress Playwright's automatic full-page ARIA snapshot. Credentialed
       # Playwright output is not uploaded by this job.
       PLAYWRIGHT_NO_COPY_PROMPT: "1"
@@ -321,20 +321,29 @@ jobs:
 
       - name: Inspect production credential expiry
         shell: bash
+        env:
+          REQUIRE_BROWSER_SESSION: ${{ !inputs.production_credential_preflight_only }}
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           const token = process.env.ELIZAOS_CLOUD_API_KEY.trim();
           let expiry;
+          let hasSessionIdentity = false;
           try {
             const parts = token.split(".");
             if (parts.length === 3) {
               const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
               if (typeof payload?.exp === "number" && Number.isFinite(payload.exp)) expiry = payload.exp;
+              const identity = payload?.userId || payload?.sub;
+              hasSessionIdentity = typeof identity === "string" && identity.trim().length > 0;
             }
           } catch {
             // error-policy:J3 opaque credentials have no locally inspectable expiry; the live auth path must verify them.
             expiry = undefined;
+          }
+          if (process.env.REQUIRE_BROWSER_SESSION === "true" && (expiry === undefined || !hasSessionIdentity)) {
+            console.error("::error::Production browser smoke requires a valid Steward session JWT in ELIZAOS_CLOUD_BROWSER_SESSION. An opaque API key can pass the account API preflight but cannot authenticate the hosted app. Configure the Actions secret; do not paste it into logs or PRs.");
+            process.exit(1);
           }
           if (expiry !== undefined && expiry <= Date.now() / 1000 + 10) {
             console.error("::error::Production Cloud test credential contains an expired session JWT; replace the test credential before retrying. No bearer or claims were logged.");
@@ -398,7 +407,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync } from "node:fs";
-          const response = await fetch("https://eliza.app/eliza-renderer-build.json", {
+          const response = await fetch("https://cloud.eliza.app/eliza-renderer-build.json", {
             redirect: "error", cache: "no-store", signal: AbortSignal.timeout(20_000),
           });
           if (!response.ok) throw new Error("Production renderer manifest unavailable");

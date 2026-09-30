@@ -661,7 +661,13 @@ describe("Android hosted probe diagnostics", () => {
                     results: [
                       {
                         status: "timedOut",
-                        error: { message: canary },
+                        error: {
+                          message: canary,
+                          location: {
+                            file: "/private/test/android/onboarding-to-home.android.spec.ts",
+                            line: 137,
+                          },
+                        },
                         stdout: [canary],
                       },
                     ],
@@ -674,7 +680,11 @@ describe("Android hosted probe diagnostics", () => {
                 tests: [
                   {
                     results: [
-                      { status: "passed", attachments: [{ body: canary }] },
+                      {
+                        status: "passed",
+                        error: { location: { file: canary, line: 999 } },
+                        attachments: [{ body: canary }],
+                      },
                     ],
                   },
                 ],
@@ -700,7 +710,7 @@ describe("Android hosted probe diagnostics", () => {
       createAndroidEvidenceBoundary({ write: (chunk) => chunks.push(chunk) }),
     );
     expect(chunks).toEqual([
-      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_TIMED_OUT specId=1 sourceLine=95\n",
+      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_TIMED_OUT specId=1 sourceLine=137\n",
       "[android-e2e] phase=route-capture status=passed code=PLAYWRIGHT_PASSED specId=2 sourceLine=82\n",
     ]);
     expect(chunks.join("")).not.toContain(canary);

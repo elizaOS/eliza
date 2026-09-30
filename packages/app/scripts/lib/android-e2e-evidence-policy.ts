@@ -208,6 +208,18 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
             ).slice(0, 16)) {
               const code = statuses.get(result.status);
               if (!code || emitted >= 2048) continue;
+              const location = result.error?.location;
+              const sourceFile =
+                typeof location?.file === "string"
+                  ? location.file.replaceAll("\\", "/")
+                  : "";
+              const sourceLine =
+                (sourceFile === spec.file ||
+                  sourceFile.endsWith(`/test/android/${spec.file}`)) &&
+                Number.isSafeInteger(location?.line) &&
+                location.line > 0
+                  ? location.line
+                  : spec.line;
               boundary.event(
                 "route-capture",
                 result.status === "passed"
@@ -216,7 +228,7 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                     ? "skipped"
                     : "failed",
                 code,
-                { specId: specId + 1, sourceLine: spec.line },
+                { specId: specId + 1, sourceLine },
               );
               emitted += 1;
             }

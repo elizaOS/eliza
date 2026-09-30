@@ -44,7 +44,9 @@ export const LauncherSurface = React.memo(function LauncherSurface({
   layout = "page",
   catalogMode = "all",
 }: LauncherSurfaceProps): React.JSX.Element {
-  const { entries, get, loading, error, refresh } = useViewCatalog();
+  const { entries, get, loading, error, refresh } = useViewCatalog({
+    includeApps: catalogMode !== "demo",
+  });
   const enabledKinds = useEnabledViewKinds();
   const { appRuns, setActionNotice, setState, setTab, t } =
     useAppSelectorShallow((state) => ({
