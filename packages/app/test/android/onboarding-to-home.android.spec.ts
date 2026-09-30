@@ -22,6 +22,7 @@
 // the final turn to the shared liveness assertion (non-empty, non-stub reply).
 
 import path from "node:path";
+import { errors } from "@playwright/test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidScreenshot,
@@ -103,6 +104,24 @@ test.describe
                     // Waiting for a native OK button first can leave the dialog
                     // unresolved when no Android AlertDialog is exposed.
                     await dialog.accept();
+                    // Capacitor's WebChromeClient may retain its native modal
+                    // after CDP resolves the JavaScript confirmation. Close only
+                    // the app's positive dialog button when Android exposes it.
+                    const nativeConfirm = {
+                      pkg: APP_ID,
+                      res: "android:id/button1",
+                      text: "OK",
+                    };
+                    let nativeConfirmVisible = false;
+                    try {
+                      await device.wait(nativeConfirm, { timeout: 1_000 });
+                      nativeConfirmVisible = true;
+                    } catch (error) {
+                      if (!(error instanceof errors.TimeoutError)) throw error;
+                    }
+                    if (nativeConfirmVisible) {
+                      await device.tap(nativeConfirm, { timeout: 5_000 });
+                    }
                     resolve();
                   } catch (error) {
                     reject(error);
