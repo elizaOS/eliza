@@ -3099,6 +3099,10 @@ export {
 	type Tier0Span,
 } from "./security/pii-scrub-seam.js";
 export {
+	isProcessOnlyEnvKey,
+	PROCESS_ONLY_ENV_KEY_PREFIXES,
+} from "./security/process-env-policy.js";
+export {
 	isProcessingPolicyDenial,
 	PROCESSING_POLICY_DENIED,
 	type ProcessingActionEffect,
@@ -3531,6 +3535,7 @@ export type {
 } from "./types/surface-manifest.js";
 export * from "./types/surface-manifest.js";
 export * from "./types/swarm-coordinator.js";
+export * from "./types/system-notice.js";
 export * from "./types/task.js";
 export * from "./types/tee.js";
 export type { TestCase, TestSuite } from "./types/testing.js";

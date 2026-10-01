@@ -36,6 +36,7 @@ import { readActionReplyFailure } from "../types/action-reply.ts";
 import { ModelType } from "../types/model.ts";
 import type { Content } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
+import { readSystemNotice, systemNoticeText } from "../types/system-notice.ts";
 import { stripReasoningBlocks } from "./model-failure.ts";
 
 export interface EnsureAgentVoiceOptions {
@@ -166,6 +167,11 @@ export async function ensureAgentVoice(
 		} = content;
 		return { ...rest, text: reminder.chatText };
 	}
+	const notice = readSystemNotice(content.systemNotice);
+	if (notice) {
+		const { agentVoiced: _provenance, ...status } = content;
+		return { ...status, text: systemNoticeText(notice) };
+	}
 	const rewriteOverride = runtime.getSetting?.("OUTBOUND_VOICE_REWRITE");
 	if (
 		rewriteOverride !== undefined &&
@@ -181,12 +187,17 @@ export async function ensureAgentVoice(
 	if (content.agentVoiced === true) return content;
 	if (typeof runtime.useModel !== "function") return content;
 
-	const key = `${runtime.agentId} ${options.source} ${hashText(raw)}`;
+	const key = `${runtime.agentId}\u0000${options.source}\u0000${hashText(raw)}`;
 	const cached = cacheGet(key);
 	if (cached !== undefined) {
 		return { ...content, text: cached, agentVoiced: true };
 	}
 
+	const escalationDiagnostic =
+		content.metadata !== null &&
+		typeof content.metadata === "object" &&
+		"escalation" in content.metadata &&
+		content.metadata.escalation === true;
 	let rephrased = "";
 	try {
 		const prompt = buildVoiceGatePrompt(runtime.character, raw);
@@ -203,6 +214,7 @@ export async function ensureAgentVoice(
 		runtime.reportError("voice-gate", error, {
 			source: options.source,
 			agentId: runtime.agentId,
+			...(escalationDiagnostic ? { diagnosticOnly: true } : {}),
 		});
 		return content;
 	}
@@ -213,7 +225,11 @@ export async function ensureAgentVoice(
 		runtime.reportError(
 			"voice-gate",
 			new Error("voice-gate rephrase returned empty output"),
-			{ source: options.source, agentId: runtime.agentId },
+			{
+				source: options.source,
+				agentId: runtime.agentId,
+				...(escalationDiagnostic ? { diagnosticOnly: true } : {}),
+			},
 		);
 		return content;
 	}

@@ -230,6 +230,8 @@ export interface BrowserWorkspaceEventLogSnapshot {
   events: BrowserWorkspaceEvent[];
   latestSequence: number;
   limit: number;
+  /** Events evicted from the bounded log since it was created or cleared. */
+  droppedEvents?: number;
 }
 
 export interface BrowserWorkspaceBridgeConfig {

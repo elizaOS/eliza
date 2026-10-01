@@ -304,8 +304,8 @@ export class FirstRunService {
   /**
    * Idempotent, boot-safe seeder for the first-run defaults pack.
    *
-   * Runs on EVERY boot (not gated behind first-run completion) so existing
-   * devices that predate the defaults pack still receive it. For each pack
+   * Runs after owner setup is complete. Booting or foregrounding a fresh
+   * profile does not authorize proactive routines. For each pack
    * item: if its idempotency key has NEVER been seeded on this device, the
    * task is created and the key is recorded; if the key was already seeded
    * once, the item is skipped — so a default the user later deleted is not
@@ -320,6 +320,8 @@ export class FirstRunService {
     seeded: ScheduledTask[];
     skipped: string[];
   }> {
+    const record = await this.stateStore.read();
+    if (record.status !== "complete") return { seeded: [], skipped: [] };
     const facts = await this.factStore.read();
     const morningWindow = facts.morningWindow?.value ?? DEFAULT_MORNING_WINDOW;
     const timezone =

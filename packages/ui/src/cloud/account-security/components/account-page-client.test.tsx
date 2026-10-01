@@ -26,6 +26,8 @@ vi.mock("./profile-form", () => ({
   ProfileForm: () => <div>profile form</div>,
 }));
 
+// PrivacyPanel's API, auth and translation providers are exercised by its
+// owning tests; this page-composition fixture mocks each lower panel.
 vi.mock("./privacy-panel", () => ({
   PrivacyPanel: () => <div>privacy controls</div>,
 }));

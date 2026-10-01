@@ -877,7 +877,8 @@ export function bindReadyPhase(
             if (
               existing.text === msg.text &&
               existing.timestamp === msg.timestamp &&
-              existing.source === msg.source
+              existing.source === msg.source &&
+              existing.failureKind === msg.failureKind
             ) {
               return prev;
             }

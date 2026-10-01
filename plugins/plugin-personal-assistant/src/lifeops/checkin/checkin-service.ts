@@ -6,15 +6,16 @@
  */
 
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarFeed,
+import type {
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarFeed,
 } from "@elizaos/core/contracts/calendar";
 import {
   type GetLifeOpsGmailTriageRequest,
@@ -36,25 +37,29 @@ import {
   computeOccurrenceStreaks,
 } from "../service-helpers-occurrence.js";
 import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../time.js";
 import {
   type BriefingEngagement,
   buildBriefingSignals,
   sortBriefingItems,
   toFiniteNonNegativeNumber,
 } from "./checkin-briefing-ranking.js";
-import {
-  type CheckinBriefingSection,
-  type CheckinKind,
-  type CheckinReport,
-  type EscalationLevel,
-  type HabitSummary,
-  type MeetingEntry,
-  type OverdueTodo,
-  type RecentWin,
-  type RecordAcknowledgementRequest,
-  type RunCheckinRequest,
-  type SleepRecap,
+import type {
+  CheckinBriefingSection,
+  CheckinKind,
+  CheckinReport,
+  EscalationLevel,
+  HabitSummary,
+  MeetingEntry,
+  OverdueTodo,
+  RecentWin,
+  RecordAcknowledgementRequest,
+  RunCheckinRequest,
+  SleepRecap,
 } from "./types.js";
 /**
  * Check-in engine (T9f). Assembles morning/night reports from existing LifeOps data
@@ -165,7 +170,24 @@ function formatPromptScalar(value: unknown): string {
 function formatCheckinReportForPrompt(
   report: Omit<CheckinReport, "summaryText">,
 ): string {
-  return JSON.stringify(report, (_key, value: unknown) => {
+  const modelReport = {
+    ...report,
+    overdueTodos:
+      report.collectorErrors.overdueTodos === null ? report.overdueTodos : null,
+    todaysMeetings:
+      report.collectorErrors.todaysMeetings === null
+        ? report.todaysMeetings
+        : null,
+    yesterdaysWins:
+      report.collectorErrors.yesterdaysWins === null
+        ? report.yesterdaysWins
+        : null,
+    habitSummaries:
+      report.collectorErrors.habitSummaries === null
+        ? report.habitSummaries
+        : null,
+  };
+  return JSON.stringify(modelReport, (_key, value: unknown) => {
     if (value instanceof Date) {
       return value.toISOString();
     }
@@ -266,12 +288,16 @@ function summarizeCount(
 function localDayWindow(
   date: Date,
   timezone: string,
+  dayOffset = 0,
 ): {
   start: Date;
   end: Date;
   key: string;
 } {
-  const parts = getZonedDateParts(date, timezone);
+  const parts = addDaysToLocalDate(
+    getZonedDateParts(date, timezone),
+    dayOffset,
+  );
   const start = buildUtcDateFromLocalParts(timezone, {
     year: parts.year,
     month: parts.month,
@@ -281,9 +307,7 @@ function localDayWindow(
     second: 0,
   });
   const end = buildUtcDateFromLocalParts(timezone, {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day + 1,
+    ...addDaysToLocalDate(parts, 1),
     hour: 0,
     minute: 0,
     second: 0,
@@ -631,10 +655,7 @@ async function collectCompletedWins(
   timezone: string,
 ): Promise<CollectorResult<RecentWin>> {
   const agentId = String(runtime.agentId);
-  const day =
-    kind === "morning"
-      ? localDayWindow(new Date(now.getTime() - 24 * 60 * 60 * 1000), timezone)
-      : localDayWindow(now, timezone);
+  const day = localDayWindow(now, timezone, kind === "morning" ? -1 : 0);
   const start = day.start;
   const end = kind === "morning" ? day.end : now;
   try {
@@ -1355,6 +1376,7 @@ export class CheckinService {
       briefingSections,
       sleepRecap,
       collectorErrors: {
+        habitSummaries: habitCollector.error,
         overdueTodos: overdueTodos.error,
         todaysMeetings: todaysMeetings.error,
         yesterdaysWins: completedWins.error,
@@ -1375,45 +1397,30 @@ export class CheckinService {
   ): Promise<void> {
     await this.persistReport(report, now);
   }
-  private fallbackSummary(report: Omit<CheckinReport, "summaryText">): string {
-    const prefix =
-      report.kind === "morning" ? "Morning check-in" : "Night check-in";
-    const winsLabel =
-      report.kind === "morning" ? "yesterday's wins" : "wins today";
-    const sourceLine = report.briefingSections
-      .map((section) =>
-        section.error
-          ? `${section.title}: unavailable`
-          : `${section.title}: ${section.summary}`,
-      )
-      .join(" ");
-    return `${prefix}: ${summarizeCount(report.overdueTodos.length, "overdue todo")}, ${summarizeCount(report.todaysMeetings.length, "meeting")} today, ${summarizeCount(report.yesterdaysWins.length, winsLabel, winsLabel)}, and ${summarizeCount(report.habitSummaries.length, "tracked habit")}. ${sourceLine}`.trim();
-  }
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
-    const fallback = this.fallbackSummary(report);
     if (typeof this.runtime.useModel !== "function") {
-      return fallback;
-    }
-    const prompt = buildCheckinSummaryPrompt(report);
-    try {
-      const response = await runWithTrajectoryPurpose(
-        getCheckinSummaryTrajectoryPurpose(report.kind),
-        () =>
-          this.runtime.useModel(ModelType.TEXT_LARGE, {
-            prompt,
-          }),
+      throw new ElizaError(
+        "Check-in summary requires a configured text model",
+        {
+          code: "CHECKIN_MODEL_UNAVAILABLE",
+        },
       );
-      const text = typeof response === "string" ? response.trim() : "";
-      return text.length > 0 ? text : fallback;
-    } catch (error) {
-      logMissingOnce(
-        "checkin-summary-model",
-        `summary model unavailable: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return fallback;
     }
+    const response = await runWithTrajectoryPurpose(
+      getCheckinSummaryTrajectoryPurpose(report.kind),
+      () =>
+        this.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: buildCheckinSummaryPrompt(report),
+        }),
+    );
+    if (typeof response !== "string" || !response.trim()) {
+      throw new ElizaError("Check-in summary model returned no text", {
+        code: "CHECKIN_SUMMARY_EMPTY",
+      });
+    }
+    return response.trim();
   }
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
@@ -1425,6 +1432,8 @@ export class CheckinService {
       habitEscalationLevel: report.habitEscalationLevel,
       briefingSections: report.briefingSections,
       summaryText: report.summaryText,
+      collectorErrors: report.collectorErrors,
+      sleepRecap: report.sleepRecap,
     }).replace(/'/g, "''");
     await executeRawSql(
       this.runtime,

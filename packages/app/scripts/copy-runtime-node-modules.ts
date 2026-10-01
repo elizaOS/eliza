@@ -25,6 +25,16 @@ function envInt(raw: string | undefined, fallback: number): number {
 
 import { fileURLToPath } from "node:url";
 
+/**
+ * Blocks the current thread for `ms` milliseconds. The runtime copy is a
+ * synchronous pipeline (lock polling and ENOENT copy retries), so the wait
+ * uses Atomics.wait on a private SharedArrayBuffer instead of a busy loop.
+ */
+export function sleepSync(ms: number): void {
+  if (!Number.isFinite(ms) || ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 import {
   BASELINE_BUNDLED_RUNTIME_PACKAGES,
   discoverAlwaysBundledPackages,
@@ -375,7 +385,7 @@ function rmRecursive(pathToRemove: string): void {
   }
 }
 
-function acquireRuntimeCopyLock(targetDist: string): () => void {
+export function acquireRuntimeCopyLock(targetDist: string): () => void {
   const lockDir = path.join(targetDist, ".runtime-copy.lock");
   const startedAt = Date.now();
 

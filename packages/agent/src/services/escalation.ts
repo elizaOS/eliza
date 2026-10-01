@@ -18,11 +18,13 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type OwnerContactEntry,
   type OwnerContactsConfig,
+  readSystemNotice,
   requireConfirmedSendHandlerDelivery,
   resolveOwnerEntityId,
+  type SystemNotice,
+  systemNoticeText,
   type UUID,
 } from "@elizaos/core";
-
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -30,6 +32,7 @@ import {
   resolveOwnerContactWithFallback,
   resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
+import { projectLegacySystemNotice } from "../runtime/legacy-system-notice.ts";
 import {
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,
@@ -39,6 +42,9 @@ export interface EscalationState {
   id: string;
   reason: string;
   text: string;
+  systemNotice?: SystemNotice;
+  /** Kept separately so typed system copy never consumes an ordinary alert. */
+  ordinaryText?: string;
   currentStep: number;
   channelsSent: string[];
   startedAt: number;
@@ -190,10 +196,36 @@ async function loadActiveFromCache(
   runtime: IAgentRuntime,
 ): Promise<EscalationState | null> {
   try {
-    return (
-      (await runtime.getCache<EscalationState>(escalationCacheKey(runtime))) ??
-      null
+    const state = await runtime.getCache<EscalationState>(
+      escalationCacheKey(runtime),
     );
+    if (!state) return null;
+    const notice = readSystemNotice(state.systemNotice);
+    if (notice) {
+      const ordinaryText =
+        typeof state.ordinaryText === "string" ? state.ordinaryText : undefined;
+      return {
+        ...state,
+        systemNotice: notice,
+        ordinaryText,
+        text: [systemNoticeText(notice), ordinaryText]
+          .filter((part) => part !== undefined)
+          .join("\n---\n"),
+      };
+    }
+    const legacy = state.reason
+      .split("; ")
+      .some((reason) => reason.startsWith("Systemic failure "))
+      ? projectLegacySystemNotice(state.text)
+      : undefined;
+    return legacy
+      ? {
+          ...state,
+          text: legacy.text,
+          systemNotice: legacy.escalationNotice,
+          ordinaryText: legacy.ordinaryText,
+        }
+      : state;
   } catch (cause) {
     // error-policy:J2 An unavailable cache is not evidence of no active escalation.
     throw new ElizaError("Escalation state could not be loaded", {
@@ -346,6 +378,8 @@ async function sendToChannel(
   ownerContacts: OwnerContactsConfig,
   routingHints: Record<string, OwnerContactRoutingHint>,
   ownerEntityId: string | null,
+  systemNotice?: SystemNotice,
+  ordinaryText?: string,
 ): Promise<boolean> {
   const hint = routingHints[channel] ?? null;
   const resolvedContact =
@@ -394,30 +428,38 @@ async function sendToChannel(
       return false;
     }
 
-    requireConfirmedSendHandlerDelivery(
-      await runtime.sendMessageToTarget(
-        {
-          source: targetSource,
-          entityId: contact.entityId as UUID | undefined,
-          channelId: contact.channelId,
-          roomId: contact.roomId as UUID | undefined,
-        } as Parameters<typeof runtime.sendMessageToTarget>[0],
-        {
-          text,
-          source: targetSource,
-          metadata: {
-            urgency: "urgent",
-            escalation: true,
-            routeSource: targetSource,
-            routeResolution: hint?.resolvedFrom,
-            routeEndpoint:
-              contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
-            routeLastResponseAt: hint?.lastResponseAt ?? null,
-            routeLastResponseChannel: hint?.lastResponseChannel ?? null,
+    const messages = systemNotice
+      ? [
+          { text: systemNoticeText(systemNotice), systemNotice },
+          ...(ordinaryText !== undefined ? [{ text: ordinaryText }] : []),
+        ]
+      : [{ text }];
+    for (const message of messages) {
+      requireConfirmedSendHandlerDelivery(
+        await runtime.sendMessageToTarget(
+          {
+            source: targetSource,
+            entityId: contact.entityId as UUID | undefined,
+            channelId: contact.channelId,
+            roomId: contact.roomId as UUID | undefined,
+          } as Parameters<typeof runtime.sendMessageToTarget>[0],
+          {
+            ...message,
+            source: targetSource,
+            metadata: {
+              urgency: "urgent",
+              escalation: true,
+              routeSource: targetSource,
+              routeResolution: hint?.resolvedFrom,
+              routeEndpoint:
+                contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
+              routeLastResponseAt: hint?.lastResponseAt ?? null,
+              routeLastResponseChannel: hint?.lastResponseChannel ?? null,
+            },
           },
-        },
-      ),
-    );
+        ),
+      );
+    }
     return true;
   } catch (err) {
     // error-policy:J1 escalation delivery boundary returns an explicit false
@@ -511,9 +553,10 @@ export class EscalationService {
     runtime: IAgentRuntime,
     reason: string,
     text: string,
+    systemNotice?: SystemNotice,
   ): Promise<EscalationState> {
     return transition(agentIdOf(runtime), () =>
-      EscalationService.start(runtime, reason, text),
+      EscalationService.start(runtime, reason, text, systemNotice),
     );
   }
 
@@ -521,6 +564,7 @@ export class EscalationService {
     runtime: IAgentRuntime,
     reason: string,
     text: string,
+    systemNotice?: SystemNotice,
   ): Promise<EscalationState> {
     if (stoppedRuntimes.has(runtime)) {
       throw new ElizaError("Cannot start escalation after runtime shutdown", {
@@ -535,10 +579,32 @@ export class EscalationService {
         ?.has(existing.id)
         ? undefined
         : resolveWaitMs(loadEscalationSettings().config);
+      const combinedNotice =
+        systemNotice !== undefined && existing.systemNotice !== undefined
+          ? existing.systemNotice === systemNotice
+            ? systemNotice
+            : ("model-and-runtime-error" as const)
+          : (systemNotice ?? existing.systemNotice);
+      const ordinaryText = [
+        existing.systemNotice ? existing.ordinaryText : existing.text,
+        systemNotice ? undefined : text,
+      ]
+        .filter((part): part is string => part !== undefined)
+        .join("\n---\n");
       const updated = {
         ...existing,
-        reason: `${existing.reason}; ${reason}`,
-        text: `${existing.text}\n---\n${text}`,
+        reason:
+          existing.reason === reason
+            ? existing.reason
+            : `${existing.reason}; ${reason}`,
+        text: combinedNotice
+          ? [
+              systemNoticeText(combinedNotice),
+              ...(ordinaryText ? [ordinaryText] : []),
+            ].join("\n---\n")
+          : ordinaryText,
+        systemNotice: combinedNotice,
+        ordinaryText: combinedNotice && ordinaryText ? ordinaryText : undefined,
       };
       await persistState(runtime, updated);
       Object.assign(existing, updated);
@@ -573,7 +639,8 @@ export class EscalationService {
     const state: EscalationState = {
       id: escalationId,
       reason,
-      text,
+      text: systemNotice ? systemNoticeText(systemNotice) : text,
+      ...(systemNotice ? { systemNotice } : {}),
       currentStep: 0,
       channelsSent: [],
       startedAt: now,
@@ -592,10 +659,12 @@ export class EscalationService {
       const sent = await sendToChannel(
         runtime,
         channel,
-        text,
+        state.text,
         ownerContacts,
         routingHints,
         ownerEntityId,
+        state.systemNotice,
+        state.ordinaryText,
       );
       if (sent) {
         state.channelsSent.push(channel);
@@ -686,6 +755,8 @@ export class EscalationService {
         ownerContacts,
         routingHints,
         ownerEntityId,
+        state.systemNotice,
+        state.ordinaryText,
       );
       if (sent) {
         state.channelsSent.push(nextChannel);

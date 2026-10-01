@@ -9,7 +9,10 @@
 
 import { normalizeApiBase, resolveInitialApiBase } from "./api-base";
 import { getBrandConfig } from "./brand-config";
-import { buildMainApiHeaders } from "./cloud-disconnect-from-main";
+import {
+	createMainApiHeaderBuilder,
+	resolveMainLocalAgentOrigins,
+} from "./cloud-disconnect-from-main";
 import {
 	buildMainMenuResetApiCandidates,
 	type FetchLike,
@@ -44,7 +47,10 @@ export async function postAgentResetFromMain(options?: {
 		}
 	}
 
-	const buildHeaders = () => buildMainApiHeaders(undefined, bearer);
+	const buildHeaders = createMainApiHeaderBuilder({
+		bearerTokenOverride: bearer,
+		localAgentOrigins: resolveMainLocalAgentOrigins(),
+	});
 	const apiBase = await pickReachableMenuResetApiBase({
 		candidates,
 		fetchImpl,
@@ -57,11 +63,12 @@ export async function postAgentResetFromMain(options?: {
 		};
 	}
 
+	const resetUrl = `${apiBase}/api/agent/reset`;
 	let res: Response;
 	try {
-		res = await fetchImpl(`${apiBase}/api/agent/reset`, {
+		res = await fetchImpl(resetUrl, {
 			method: "POST",
-			headers: buildMainApiHeaders("application/json", bearer),
+			headers: buildHeaders(resetUrl, "application/json"),
 			body: "{}",
 			signal: AbortSignal.timeout(timeoutMs),
 		});

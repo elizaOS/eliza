@@ -2224,7 +2224,8 @@ function verifyPostgresDump(dump: AgentBackupPostgresDump): void {
     );
   }
 }
-async function restorePostgresRows(
+/** @internal Exported for restore-transaction regression tests. */
+export async function restorePostgresRows(
   postgresUrl: string,
   agentId: string,
   dump: AgentBackupPostgresDump,
@@ -2238,8 +2239,23 @@ async function restorePostgresRows(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client
-      .query(
+    // A failed statement aborts the whole transaction, so optional tables are
+    // probed up front instead of attempting a DELETE and discarding its error.
+    // Every statement failure propagates and rolls the restore back.
+    const existing = await client.query<{
+      embeddings: boolean;
+      agents: boolean;
+    }>(
+      `SELECT to_regclass($1) IS NOT NULL AS embeddings,
+              to_regclass($2) IS NOT NULL AS agents`,
+      [
+        `public.${quoteIdentifier(POSTGRES_EMBEDDINGS_TABLE)}`,
+        `public.${quoteIdentifier(POSTGRES_AGENT_TABLE)}`,
+      ],
+    );
+    const presentTables = existing.rows[0];
+    if (presentTables?.embeddings) {
+      await client.query(
         `DELETE FROM ${quoteIdentifier(POSTGRES_EMBEDDINGS_TABLE)}
        WHERE ${quoteIdentifier("memory_id")} IN (
          SELECT ${quoteIdentifier("id")}
@@ -2247,8 +2263,8 @@ async function restorePostgresRows(
          WHERE ${quoteIdentifier("agent_id")} = $1
        )`,
         [agentId],
-      )
-      .catch(() => undefined);
+      );
+    }
     for (const table of sortedTablesForDelete(dump.tables)) {
       if (table.name === POSTGRES_EMBEDDINGS_TABLE) continue;
       if (table.name === POSTGRES_AGENT_TABLE) continue;
@@ -2260,12 +2276,12 @@ async function restorePostgresRows(
         [agentId],
       );
     }
-    await client
-      .query(
+    if (presentTables?.agents) {
+      await client.query(
         `DELETE FROM ${quoteIdentifier(POSTGRES_AGENT_TABLE)} WHERE ${quoteIdentifier("id")} = $1`,
         [agentId],
-      )
-      .catch(() => undefined);
+      );
+    }
     for (const table of sortedTablesForRestore(dump.tables)) {
       if (table.rows.length === 0) continue;
       const quotedColumns = table.columns.map(quoteIdentifier);
@@ -2281,6 +2297,8 @@ async function restorePostgresRows(
     }
     await client.query("COMMIT");
   } catch (error) {
+    // error-policy:J2 Preserve the statement failure if ROLLBACK also fails;
+    // releasing the client below discards the aborted transaction either way.
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {

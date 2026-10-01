@@ -11,9 +11,7 @@ import {
 } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
-  firstWinningEnvString,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
+  resolveSelfApiBaseUrl,
 } from "@elizaos/core/runtime-env";
 import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-protocol";
 import { listViews } from "../api/views-registry.ts";
@@ -127,12 +125,10 @@ export const viewsAction: Action = {
       );
     const handoffId = randomUUID();
     const delivery = "originating-client";
-    const port = firstWinningEnvString(process.env, ["ELIZA_API_PORT"])
-      ? resolveDesktopApiPort(process.env)
-      : resolveServerOnlyPort(process.env);
+    const apiBase = resolveSelfApiBaseUrl(process.env);
     try {
       const response = await fetch(
-        `http://127.0.0.1:${port}/api/views/${encodeURIComponent(view.id)}/navigate`,
+        `${apiBase}/api/views/${encodeURIComponent(view.id)}/navigate`,
         {
           method: "POST",
           redirect: "error",

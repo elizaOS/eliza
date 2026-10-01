@@ -38,7 +38,7 @@
     "@fal-ai/server-proxy": "^1.2.1",
     "@upstash/redis": "^1.37.0",
     "ai": "^6.0.170",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "file-type": "^22.0.1",
     "hono": "4.13.8",
     "jose": "^6.0.0",

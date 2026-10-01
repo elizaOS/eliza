@@ -192,7 +192,11 @@ export async function createV5MessageContextObject(args: {
         return [
           ...(parameter.schema?.enum ?? []),
           ...(parameter.schema?.enumValues ?? []),
-        ].some((value) => normalizeActionIdentifier(value) === "SEARCH");
+        ].some(
+          (value) =>
+            typeof value === "string" &&
+            normalizeActionIdentifier(value) === "SEARCH",
+        );
       });
       return (
         (actionName === "MEMORYSEARCH" || searchDiscriminator === true) &&

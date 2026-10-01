@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveApk } from "./lib/android-device.ts";
+import { resolveApk, verifyInstalledApkHash } from "./lib/android-device.ts";
 import { assertAndroidApkRendererFresh } from "./lib/android-renderer-stamp.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -227,24 +227,38 @@ if (packageCheck.status !== 0 || !packageCheck.stdout.includes(appId)) {
 // Verify the bytes actually landed: the on-device base.apk must hash-match the
 // APK we just installed. This is the definitive "the install is what we expect"
 // check — a stale/cached/redirected install fails here instead of silently
-// running old code.
+// running old code. A missing base.apk path or an unreadable device hash is a
+// failure, not a skipped check.
 const onDevicePath = packageCheck.stdout
   .split("\n")
   .map((line) => line.replace("package:", "").trim())
   .find((line) => line.endsWith("base.apk"));
-if (onDevicePath) {
-  const deviceHash = run("adb", adbArgs(["shell", "sha256sum", onDevicePath]))
-    .stdout?.trim()
-    .split(/\s+/)[0];
-  const localHash = sha256File(apkPath);
-  if (deviceHash && deviceHash !== localHash) {
-    fail(
-      `on-device APK does not match the installed file`,
-      `device sha256=${deviceHash}\nlocal  sha256=${localHash}\nThe install did not replace the on-device APK (storage/permission/installer issue).`,
-    );
-  }
-  console.log(
-    `Verified on-device APK hash matches (${localHash.slice(0, 12)}…).`,
+if (!onDevicePath) {
+  fail(
+    `installed package ${appId} has no base APK path; cannot verify the install`,
+    packageCheck.stdout,
+  );
+}
+const deviceHashResult = run(
+  "adb",
+  adbArgs(["shell", "sha256sum", onDevicePath]),
+);
+if (deviceHashResult.status !== 0) {
+  fail(
+    `could not hash on-device APK ${onDevicePath}`,
+    `${deviceHashResult.stderr ?? ""}${deviceHashResult.stdout ?? ""}`,
+  );
+}
+try {
+  const { sha256 } = verifyInstalledApkHash({
+    localHash: sha256File(apkPath),
+    deviceHash: deviceHashResult.stdout?.trim().split(/\s+/)[0],
+  });
+  console.log(`Verified on-device APK hash matches (${sha256.slice(0, 12)}…).`);
+} catch (error) {
+  fail(
+    "on-device APK hash verification failed",
+    `${error instanceof Error ? error.message : String(error)}\nThe install did not replace the on-device APK (storage/permission/installer issue).`,
   );
 }
 

@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readDesktopEnvFlag } from "./desktop-env-flags";
 
 /**
  * Brand configuration for the elizaOS desktop shell.
@@ -74,16 +75,6 @@ export interface DesktopBrandConfig {
 
 function env(key: string): string {
 	return (process.env[key] ?? "").trim();
-}
-
-function isTruthyFlag(value: string): boolean {
-	const normalized = value.toLowerCase();
-	return (
-		normalized === "1" ||
-		normalized === "true" ||
-		normalized === "yes" ||
-		normalized === "on"
-	);
 }
 
 function envFallback(...keys: string[]): string {
@@ -193,7 +184,7 @@ function resolveBrandConfig(): DesktopBrandConfig {
 				? "store"
 				: "direct",
 		cloudOnly:
-			isTruthyFlag(envFallback("ELIZA_DESKTOP_CLOUD_ONLY")) ||
+			readDesktopEnvFlag(process.env, "ELIZA_DESKTOP_CLOUD_ONLY", false) ||
 			fileConfig.cloudOnly === true,
 		cloudApiBase:
 			envFallback("ELIZA_DESKTOP_API_BASE") ||

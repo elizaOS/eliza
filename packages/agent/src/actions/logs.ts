@@ -17,8 +17,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  resolveServerOnlyPort,
 } from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 const LOGS_OPS = ["search", "delete", "set_level"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];
@@ -77,7 +77,7 @@ type RuntimeWithOverrides = IAgentRuntime & {
 };
 
 function getApiBase(): string {
-  return `http://localhost:${resolveServerOnlyPort(process.env)}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 
 function parseSince(since: string | undefined): number | undefined {

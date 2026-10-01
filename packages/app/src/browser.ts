@@ -65,7 +65,6 @@ export {
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "./runtime/desktop";
-export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
 
 import { ElizaError } from "@elizaos/core/errors";

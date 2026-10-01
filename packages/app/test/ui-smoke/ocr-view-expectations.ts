@@ -112,8 +112,9 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-automations": expected({
-    requireAll: ["Show"],
+    requireAll: ["All"],
     requireAny: [
+      "Reminders",
       "Nothing scheduled yet",
       "Active",
       "Prompts",

@@ -149,6 +149,7 @@ import {
   writeAgentBackupJsonResponse,
 } from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
+import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { replaceConfigInPlace } from "./config-state.ts";
@@ -610,7 +611,7 @@ const optionalPluginSpecifiers = {
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
-  workflow: "@elizaos/plugin-workflow",
+  workflow: "@elizaos/plugin-workflow/trigger-routes",
 } as const;
 const optionalPluginImports = {
   capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
@@ -1724,6 +1725,67 @@ async function handleRequestForViewClient(
     json(res, { error: "Owner role required" }, 403);
     return;
   }
+  let automationOwnerEntityId: string | undefined;
+  // Trigger definitions and the unified automation feed contain owner-private
+  // prompts. Resolve a presented credential without ambient loopback promotion:
+  // a paired USER bearer stays USER even when the request arrives locally.
+  if (
+    method !== "OPTIONS" &&
+    (pathname.startsWith("/api/triggers") || pathname === "/api/automations")
+  ) {
+    const cookie = req.headers.cookie;
+    const registeredAccess = resolveRegisteredTokenRoleAccess(req);
+    const hasPresentedCredential =
+      [
+        "authorization",
+        "x-eliza-token",
+        "x-elizaos-token",
+        "x-waifu-chat-access-token",
+        "x-api-key",
+        "x-api-token",
+        "x-server-token",
+      ].some((name) => Object.hasOwn(req.headers, name)) ||
+      (typeof cookie === "string" && /(?:^|;\s*)eliza_session=/.test(cookie)) ||
+      registeredAccess !== null;
+    const strictResolver = getAgentHostBridge().resolveHttpRequestAuthorization;
+    const ownerAuthorization = hasPresentedCredential
+      ? strictResolver
+        ? await strictResolver(req, state.runtime, {
+            allowCookieAuth: allowHostCookieAuth,
+            allowTrustedLocalBypass: false,
+            allowBearerAuth: true,
+          })
+        : ({ ok: false, role: "NONE" } as const)
+      : await resolveHostSessionAuthorization();
+    if (
+      !isTrajectoryOwnerRequest(
+        req,
+        method,
+        pathname,
+        ownerAuthorization,
+        !hasPresentedCredential,
+      )
+    ) {
+      json(res, { error: "Owner role required" }, 403);
+      return;
+    }
+    if (state.runtime) {
+      const localOwnerEntityId = resolveOwnerEntityIdOrDefault(state.runtime);
+      const trustedAccess = ownerAuthorization.ok
+        ? resolveHostSessionAccessContext(ownerAuthorization, state.runtime)
+        : resolveHttpAccessContext(req);
+      const requesterEntityId =
+        trustedAccess?.requesterEntityId ?? localOwnerEntityId;
+      // Legacy Node plugin routes cannot carry a distinct requester principal.
+      // Keep this owner-only local surface closed to such principals rather than
+      // silently reading or mutating the canonical local owner's records.
+      if (requesterEntityId !== localOwnerEntityId) {
+        json(res, { error: "Owner role required" }, 403);
+        return;
+      }
+      automationOwnerEntityId = requesterEntityId;
+    }
+  }
   // Remote-mode cloud mutations are forwarded only after the request passes
   // the normal API auth gate; the forwarder attaches the controller's target
   // token, so pre-auth forwarding would let an unauthenticated caller mutate
@@ -2162,6 +2224,10 @@ async function handleRequestForViewClient(
       method,
       pathname,
       runtime: state.runtime,
+      ownerEntityId: automationOwnerEntityId,
+      localOwnerEntityId: state.runtime
+        ? resolveOwnerEntityIdOrDefault(state.runtime)
+        : undefined,
       readJsonBody,
       json,
       error,

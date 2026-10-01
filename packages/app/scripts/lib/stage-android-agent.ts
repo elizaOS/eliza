@@ -842,12 +842,27 @@ async function ensureAlpineApkExtracted({ cacheDir, alpineArch, log }) {
       await downloadFile(url, apkPath, { log });
     }
     // Alpine apks are gzipped tarballs with a small leading signature
-    // section; GNU tar happily skips it and extracts the data section.
-    await run("tar", ["-xzf", apkPath, "-C", extractDir]).catch(() => {
-      // Some apks (notably musl) emit warnings on the signature header but
-      // still extract the data correctly. Re-check via the expected files
-      // below before treating this as a hard failure.
-    });
+    // section; tar skips it and extracts the data section. Header warnings
+    // (e.g. unknown APK-TOOLS pax keywords) do not change tar's exit status, so
+    // a non-zero exit is a real extraction failure and must not be cached.
+    try {
+      await run("tar", ["-xzf", apkPath, "-C", extractDir]);
+    } catch (error) {
+      throw new Error(
+        `Failed to extract Alpine ${pkg} (${alpineArch}) from ${apkPath}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+  for (const required of [
+    path.join(extractDir, "lib"),
+    path.join(extractDir, "usr", "lib"),
+  ]) {
+    if (!fs.existsSync(required)) {
+      throw new Error(
+        `Alpine apk extraction for ${alpineArch} is missing ${required}`,
+      );
+    }
   }
   fs.writeFileSync(sentinel, "ok");
   return extractDir;
@@ -1827,6 +1842,7 @@ export async function stageAndroidAgentRuntime({
 }
 
 export const __testables = {
+  ensureAlpineApkExtracted,
   stageNativeLlamaAssetsForAbi,
   deduplicateProvenanceFiles,
   BUN_VERSION,

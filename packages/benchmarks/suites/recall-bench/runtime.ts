@@ -23,10 +23,10 @@ import { join } from "node:path";
 import {
   AgentRuntime,
   type Character,
-  DocumentService,
   ModelType,
   type UUID,
 } from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,

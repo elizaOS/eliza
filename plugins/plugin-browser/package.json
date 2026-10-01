@@ -70,7 +70,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "linkify-it": "5.0.2",
     "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",

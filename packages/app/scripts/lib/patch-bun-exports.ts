@@ -16,7 +16,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
-import ts from "typescript";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const ELIZA_CORE_RUNTIME_FILES = ["dist/index.js"];
@@ -700,103 +699,6 @@ export function patchMissingLifecycleScript(
       );
     }
   }
-  return patched;
-}
-
-function loadElizaCharacterPresetsSource(root, targetPath) {
-  const sourcePath = resolve(
-    root,
-    "eliza/packages/core/src/character-presets.ts",
-  );
-  const source = readFileSync(sourcePath, "utf8");
-  if (!targetPath?.endsWith(".js")) {
-    return source;
-  }
-
-  return ts.transpileModule(source, {
-    fileName: sourcePath,
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-  }).outputText;
-}
-
-/**
- * Eliza owns the character preset roster, but the published autonomous
- * package still serves upstream style presets. Replace the installed module
- * with Eliza's local preset source so the first-run API and runtime expose
- * the same Eliza-specific characters that app is patched to display.
- */
-export function applyAutonomousElizaCharacterPresetsPatch(filePath, source) {
-  if (!existsSync(filePath)) return false;
-
-  // When writing to a .js file, strip TypeScript-only syntax so Bun can
-  // parse it as plain JavaScript. The source is always loaded from the
-  // local .ts file which may contain `as const`, type annotations, etc.
-  let output = source;
-  if (filePath.endsWith(".js")) {
-    output = stripTypeScriptSyntax(output);
-  }
-
-  const compatSource = readFileSync(filePath, "utf8");
-  if (compatSource === output) return false;
-
-  writeFileSync(filePath, output, "utf8");
-  return true;
-}
-
-/**
- * Naively strip TypeScript-only syntax from a source string so it can be
- * loaded as plain JavaScript by Bun. Handles the patterns used in
- * character-presets.ts:
- *   - `] as const;`  →  `];`
- *   - `export const FOO: Type<...> = {`  →  `export const FOO = {`
- *   - Interface-style property lines inside a Record<> type block
- */
-function stripTypeScriptSyntax(src) {
-  // Remove `as const` assertions
-  src = src.replace(/\]\s+as\s+const\s*;/g, "];");
-
-  // Remove inline type annotations on const declarations:
-  //   export const FOO: Record<\n  string,\n  {\n    ...\n  }\n> = {
-  // Matches `: <type>` between the variable name and ` = `.
-  src = src.replace(
-    /^(export\s+const\s+\w+)\s*:\s*Record<[\s\S]*?>\s*=/gm,
-    "$1 =",
-  );
-
-  return src;
-}
-
-export function patchAutonomousElizaCharacterPresets(
-  root,
-  log = console.log,
-  source,
-) {
-  const candidates = [
-    ...findPackageFilePaths(
-      root,
-      "@elizaos/agent",
-      "eliza/agent/src/character-presets.js",
-    ),
-    ...findPackageFilePaths(root, "@elizaos/agent", "src/character-presets.js"),
-    ...findPackageFilePaths(root, "@elizaos/agent", "src/character-presets.ts"),
-  ];
-
-  let patched = false;
-  for (const filePath of candidates) {
-    const nextSource =
-      source ?? loadElizaCharacterPresetsSource(root, filePath);
-    if (!applyAutonomousElizaCharacterPresetsPatch(filePath, nextSource)) {
-      continue;
-    }
-    patched = true;
-    log(
-      "[patch-deps] Patched @elizaos/agent character presets: character presets now derive from Eliza.",
-    );
-  }
-
   return patched;
 }
 

@@ -1582,6 +1582,10 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.definitionsDomain.getDefinition(definitionId);
   }
 
+  listReminders() {
+    return this.definitionsDomain.listReminders();
+  }
+
   async getTodos(): Promise<LifeOpsTodoView[]> {
     const overview = await this.getOverview();
     return this.definitionsDomain.getTodos(overview.owner.occurrences);

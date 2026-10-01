@@ -95,9 +95,12 @@ async function open(): Promise<Harness> {
 function request(
   method: string,
   headers: Record<string, string>,
+  local = false,
 ): http.IncomingMessage {
   const socket = new Socket();
-  Object.defineProperty(socket, "remoteAddress", { value: "203.0.113.10" });
+  Object.defineProperty(socket, "remoteAddress", {
+    value: local ? "127.0.0.1" : "203.0.113.10",
+  });
   const req = new http.IncomingMessage(socket);
   req.method = method;
   for (const [name, value] of Object.entries(headers)) {
@@ -126,15 +129,17 @@ describe("installed host bridge binds cookie auth to credentialed CORS trust", (
     method: string,
     headers: Record<string, string>,
     allowCookieAuth: boolean,
+    local = false,
+    allowTrustedLocalBypass = true,
   ) {
     const bridge = getAgentHostBridge();
     if (!bridge.resolveHttpRequestAuthorization) {
       throw new Error("installed bridge exposes no authorization resolver");
     }
     return bridge.resolveHttpRequestAuthorization(
-      request(method, headers),
+      request(method, headers, local),
       harness?.runtime as never,
-      { allowCookieAuth },
+      { allowCookieAuth, allowTrustedLocalBypass, allowBearerAuth: true },
     );
   }
 
@@ -211,5 +216,65 @@ describe("installed host bridge binds cookie auth to credentialed CORS trust", (
     await expect(
       resolve("POST", { cookie, [CSRF_HEADER_NAME]: csrfToken }, true),
     ).resolves.toMatchObject({ ok: true, role: "OWNER" });
+  }, 60_000);
+
+  it("keeps paired USER and invalid bearer credentials below OWNER on loopback when bypass is disabled", async () => {
+    if (!harness) throw new Error("harness");
+    const owner = await harness.store.createIdentity({
+      id: "owner-identity",
+      kind: "owner",
+      displayName: "Owner",
+      createdAt: Date.now(),
+      passwordHash: null,
+    });
+    const machine = await harness.store.createIdentity({
+      id: "paired-device",
+      kind: "machine",
+      displayName: "Paired device",
+      createdAt: Date.now(),
+      passwordHash: null,
+    });
+    const ownerBrowser = await createBrowserSession(harness.store, {
+      identityId: owner.id,
+      ip: null,
+      userAgent: null,
+      rememberDevice: false,
+    });
+    const userMachine = await createMachineSession(harness.store, {
+      identityId: machine.id,
+      scopes: [],
+    });
+    const ownerCookie = `${SESSION_COOKIE_NAME}=${ownerBrowser.session.id}`;
+    const userBearer = { authorization: `Bearer ${userMachine.session.id}` };
+
+    await expect(resolve("GET", {}, true, true)).resolves.toMatchObject({
+      ok: true,
+      role: "OWNER",
+    });
+    await expect(
+      resolve("GET", userBearer, true, true, false),
+    ).resolves.toMatchObject({
+      ok: true,
+      role: "USER",
+    });
+    await expect(
+      resolve("GET", { ...userBearer, cookie: ownerCookie }, true, true, false),
+    ).resolves.toMatchObject({ ok: true, role: "OWNER" });
+    await expect(
+      resolve(
+        "GET",
+        { authorization: "Bearer invalid-token" },
+        true,
+        true,
+        false,
+      ),
+    ).resolves.toMatchObject({ ok: false, role: "NONE" });
+    await harness.store.revokeSession(userMachine.session.id, Date.now());
+    await expect(
+      resolve("GET", userBearer, true, true, false),
+    ).resolves.toMatchObject({
+      ok: false,
+      role: "NONE",
+    });
   }, 60_000);
 });

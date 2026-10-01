@@ -8,15 +8,18 @@ import { resolveApiToken } from "@elizaos/core/runtime-env";
 import {
 	normalizeApiBase,
 	resolveDesktopRuntimeMode,
+	resolveHttpLoopbackRendererOriginForApiClient,
 	resolveInitialApiBase,
 } from "./api-base";
 import { getBrandConfig } from "./brand-config";
 import {
 	buildMainMenuResetApiCandidates,
 	type FetchLike,
+	type MainApiHeaderBuilder,
 	pickReachableMenuResetApiBase,
 } from "./menu-reset-from-main";
 import { configureDesktopLocalApiAuth, getAgentManager } from "./native/agent";
+import { resolveDesktopApiRequestToken } from "./runtime-preflight";
 export type CloudDisconnectMainResult =
 	| {
 			ok: true;
@@ -25,32 +28,73 @@ export type CloudDisconnectMainResult =
 			ok: false;
 			error: string;
 	  };
-export function buildMainApiHeaders(
-	contentType?: string,
-	bearerTokenOverride?: string | null,
-): Record<string, string> {
-	const headers: Record<string, string> = { Accept: "application/json" };
-	if (contentType) {
-		headers["Content-Type"] = contentType;
-	}
-	const override = bearerTokenOverride?.trim();
-	if (override) {
-		headers.Authorization = `Bearer ${override}`;
-		return headers;
-	}
-	let apiToken = resolveApiToken(process.env);
-	if (!apiToken) {
-		const rt = resolveDesktopRuntimeMode(
-			process.env as Record<string, string | undefined>,
-		);
-		if (rt.mode === "local") {
-			apiToken = configureDesktopLocalApiAuth().trim();
+/**
+ * Origins the main process itself knows to be the local agent: the embedded
+ * agent's loopback port, the env-configured base, and the loopback dev-server
+ * origin that proxies `/api` to the embedded agent. The local API bearer is
+ * only ever attached to these; a renderer-supplied `apiBase` outside this set
+ * never receives it.
+ */
+export function resolveMainLocalAgentOrigins(): string[] {
+	const env = process.env as Record<string, string | undefined>;
+	const origins: string[] = [];
+	for (const raw of [
+		...buildMainMenuResetApiCandidates({
+			embeddedPort: getAgentManager().getPort(),
+			configuredBase: resolveInitialApiBase(env),
+		}),
+		resolveHttpLoopbackRendererOriginForApiClient(env),
+	]) {
+		const origin = normalizeApiBase(raw ?? undefined);
+		if (origin && !origins.includes(origin)) {
+			origins.push(origin);
 		}
 	}
-	if (apiToken) {
-		headers.Authorization = `Bearer ${apiToken}`;
-	}
-	return headers;
+	return origins;
+}
+/**
+ * Target-scoped header builder for main-process API calls. A renderer-provided
+ * bearer is forwarded as-is (the renderer already holds it for that base).
+ * Otherwise the main-process token goes through the origin-scoped
+ * `resolveDesktopApiRequestToken` (external: only the configured external
+ * origin; disabled: never) and, in local mode, only to a known local agent
+ * origin.
+ */
+export function createMainApiHeaderBuilder(options: {
+	bearerTokenOverride?: string | null;
+	localAgentOrigins: readonly string[];
+}): MainApiHeaderBuilder {
+	return (targetUrl, contentType) => {
+		const headers: Record<string, string> = { Accept: "application/json" };
+		if (contentType) {
+			headers["Content-Type"] = contentType;
+		}
+		const override = options.bearerTokenOverride?.trim();
+		if (override) {
+			headers.Authorization = `Bearer ${override}`;
+			return headers;
+		}
+		const env = process.env as Record<string, string | undefined>;
+		const resolution = resolveDesktopRuntimeMode(env);
+		if (resolution.mode === "local") {
+			const targetOrigin = normalizeApiBase(targetUrl);
+			if (!targetOrigin || !options.localAgentOrigins.includes(targetOrigin)) {
+				return headers;
+			}
+		}
+		let apiToken = resolveDesktopApiRequestToken({
+			resolution,
+			targetUrl,
+			configuredToken: resolveApiToken(process.env),
+		});
+		if (!apiToken && resolution.mode === "local") {
+			apiToken = configureDesktopLocalApiAuth().trim() || undefined;
+		}
+		if (apiToken) {
+			headers.Authorization = `Bearer ${apiToken}`;
+		}
+		return headers;
+	};
 }
 export async function postCloudDisconnectFromMain(options?: {
 	fetchImpl?: FetchLike;
@@ -78,12 +122,14 @@ export async function postCloudDisconnectFromMain(options?: {
 			candidates.push(c);
 		}
 	}
-	const buildHeaders = (contentType?: string) =>
-		buildMainApiHeaders(contentType, bearer);
+	const buildHeaders = createMainApiHeaderBuilder({
+		bearerTokenOverride: bearer,
+		localAgentOrigins: resolveMainLocalAgentOrigins(),
+	});
 	const apiBase = await pickReachableMenuResetApiBase({
 		candidates,
 		fetchImpl,
-		buildHeaders: () => buildHeaders(),
+		buildHeaders,
 	});
 	if (!apiBase) {
 		return {
@@ -91,11 +137,12 @@ export async function postCloudDisconnectFromMain(options?: {
 			error: `Could not reach the ${getBrandConfig().appName} API.`,
 		};
 	}
+	const disconnectUrl = `${apiBase}/api/cloud/disconnect`;
 	let res: Response;
 	try {
-		res = await fetchImpl(`${apiBase}/api/cloud/disconnect`, {
+		res = await fetchImpl(disconnectUrl, {
 			method: "POST",
-			headers: buildHeaders("application/json"),
+			headers: buildHeaders(disconnectUrl, "application/json"),
 			body: "{}",
 			signal: AbortSignal.timeout(timeoutMs),
 		});

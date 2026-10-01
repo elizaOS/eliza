@@ -4,10 +4,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { fusedExtraCmakeFlags } from "../build-helpers/omnivoice-merged.ts";
 import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.ts";
 import {
+  buildLibllamaForAbi,
   describeAndroidTargetDryRun,
   ensureZigDrivers,
+  libllamaCmakeConfigureArgs,
   resetIncompatibleCmakeArchiverCache,
   stageStaticFusedRuntimeBackendLibs,
 } from "./compile-libllama.ts";
@@ -175,6 +178,67 @@ describe("compile-libllama Android assets dir resolution", () => {
     );
   });
 
+  test("uses the canonical platforms/android tree when packages/app has no android/", () => {
+    const root = makeTmpDir();
+    fs.mkdirSync(path.join(root, "packages", "app", "platforms", "android"), {
+      recursive: true,
+    });
+    fs.writeFileSync(path.join(root, "packages", "app", "package.json"), "{}");
+
+    expect(resolveDefaultAndroidAssetsDir({ root })).toBe(
+      path.join(
+        root,
+        "packages",
+        "app",
+        "platforms",
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      ),
+    );
+  });
+
+  test("defaults to an Android project that exists in this checkout", () => {
+    const assetsDir = resolveDefaultAndroidAssetsDir({ root: repoRoot });
+    // <android>/app/src/main/assets/agent → <android>
+    const androidProject = path.resolve(
+      assetsDir,
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+    );
+    expect(fs.existsSync(androidProject)).toBe(true);
+  });
+
+  test("targets a host apps/app shell's own android/ before cap add android, not the nested template", () => {
+    const root = makeTmpDir();
+    fs.mkdirSync(path.join(root, "apps", "app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "apps", "app", "package.json"), "{}");
+    fs.mkdirSync(
+      path.join(root, "eliza", "packages", "app", "platforms", "android"),
+      { recursive: true },
+    );
+
+    expect(resolveDefaultAndroidAssetsDir({ root })).toBe(
+      path.join(
+        root,
+        "apps",
+        "app",
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      ),
+    );
+  });
+
   test("falls back to nested eliza/packages/app shell", () => {
     const root = makeTmpDir();
     fs.mkdirSync(path.join(root, "eliza", "packages", "app", "android"), {
@@ -316,5 +380,115 @@ describe("compile-libllama static-fused runtime backend staging", () => {
         fusedLibPath: null,
       }),
     ).toThrow(/libggml-vulkan\.so/);
+  });
+});
+
+describe("compile-libllama dry-run CMake plan parity", () => {
+  const dryRunCmakeLine = (target, { srcDir, cacheDir, abiAssetDir }) => {
+    const logs = [];
+    describeAndroidTargetDryRun({
+      target,
+      srcDir,
+      cacheDir,
+      abiAssetDir,
+      jobs: 2,
+      log: (line) => logs.push(line),
+    });
+    const line = logs.find((entry) => entry.startsWith("  cmake -S "));
+    expect(line).toBeDefined();
+    return line.slice("  cmake ".length);
+  };
+
+  test("prints exactly the configure argv the real x86_64 build passes", () => {
+    const srcDir = makeTmpDir();
+    const cacheDir = makeTmpDir();
+    const abiAssetDir = makeTmpDir();
+    const driverDir = path.join(cacheDir, "zig-driver", "x86_64");
+    for (const fused of [false, true]) {
+      const target = `android-x86_64-cpu${fused ? "-fused" : ""}`;
+      const real = libllamaCmakeConfigureArgs({
+        srcDir,
+        buildDir: path.join(srcDir, "build-x86_64"),
+        abi: "x86_64",
+        drivers: {
+          ccPath: path.join(driverDir, "zig-cc"),
+          cxxPath: path.join(driverDir, "zig-cxx"),
+          arPath: path.join(driverDir, "zig-ar"),
+          ranlibPath: path.join(driverDir, "zig-ranlib"),
+        },
+        extraCmakeFlags: fused ? fusedExtraCmakeFlags() : [],
+      });
+      expect(real).toContain("-DGGML_AVX2=ON");
+      expect(dryRunCmakeLine(target, { srcDir, cacheDir, abiAssetDir })).toBe(
+        real.join(" "),
+      );
+    }
+  });
+
+  test("includes the GGML_VULKAN flag set for Android Vulkan targets", () => {
+    const srcDir = makeTmpDir();
+    const cacheDir = makeTmpDir();
+    const abiAssetDir = makeTmpDir();
+    const line = dryRunCmakeLine("android-arm64-vulkan-fused", {
+      srcDir,
+      cacheDir,
+      abiAssetDir,
+    });
+    expect(line).toContain("-DGGML_VULKAN=ON");
+    expect(line).toContain(
+      `-DVulkan_INCLUDE_DIR=${path.join(cacheDir, "vulkan-headers")}`,
+    );
+    expect(line).toContain("-DVulkan_GLSLC_EXECUTABLE=");
+    expect(line).toContain("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH");
+  });
+});
+
+describe("compile-libllama llama-server build failure", () => {
+  const failingServerSpawn = (_cmd, args) => {
+    if (args.includes("llama-server")) {
+      throw new Error("cmake --build --target llama-server exited 2");
+    }
+  };
+
+  test("is fatal for fused targets, which verifyFusedSymbols requires it for", () => {
+    const srcDir = makeTmpDir();
+    const cacheDir = makeTmpDir();
+    const abiAssetDir = makeTmpDir();
+    expect(() =>
+      buildLibllamaForAbi({
+        srcDir,
+        cacheDir,
+        abi: "x86_64",
+        abiAssetDir,
+        jobs: 1,
+        log: () => {},
+        spawn: failingServerSpawn,
+        targetName: "android-x86_64-cpu-fused",
+        llamaServerRequired: true,
+      }),
+    ).toThrow(/llama-server failed to build for android-x86_64-cpu-fused/);
+  });
+
+  test("warns and continues for non-fused builds", () => {
+    const srcDir = makeTmpDir();
+    const cacheDir = makeTmpDir();
+    const abiAssetDir = makeTmpDir();
+    const logs = [];
+    // With no real build tree the later libllama staging fails; the point is
+    // that the server failure itself did not stop the build.
+    expect(() =>
+      buildLibllamaForAbi({
+        srcDir,
+        cacheDir,
+        abi: "x86_64",
+        abiAssetDir,
+        jobs: 1,
+        log: (line) => logs.push(line),
+        spawn: failingServerSpawn,
+      }),
+    ).toThrow();
+    expect(
+      logs.some((line) => line.includes("WARN: llama-server failed to build")),
+    ).toBe(true);
   });
 });

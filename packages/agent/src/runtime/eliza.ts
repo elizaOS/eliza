@@ -2895,11 +2895,20 @@ export function isFatalPgliteStartupError(err: unknown): boolean {
     code === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED
   );
 }
-function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
+/**
+ * The PGlite data directory the runtime uses for `config`, or null when the
+ * effective provider is not PGlite. Mirrors `applyDatabaseConfigToEnv`
+ * precedence (`config.database.pglite.dataDir` > `PGLITE_DATA_DIR` > the
+ * `<workspace>/.elizadb` default) so callers outside startup (e.g. the
+ * `eliza db reset` CLI) resolve the same directory without mutating env.
+ */
+export function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
   const provider = resolveEffectiveDbProvider(config);
   if (provider !== "pglite") return null;
-  const configured = process.env.PGLITE_DATA_DIR?.trim();
-  const dataDir = configured || resolveDefaultPgliteDataDir(config);
+  const configuredDataDir = config.database?.pglite?.dataDir?.trim();
+  if (configuredDataDir) return resolveUserPath(configuredDataDir);
+  const envDataDir = process.env.PGLITE_DATA_DIR?.trim();
+  const dataDir = envDataDir || resolveDefaultPgliteDataDir(config);
   return resolveUserPath(dataDir);
 }
 /** Call whichever init method the adapter exposes (.init or .initialize). */
