@@ -47,7 +47,7 @@
     "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "lucide-react": "^1.0.0",
     "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*"

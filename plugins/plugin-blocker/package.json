@@ -43,7 +43,7 @@
     "@capacitor/core": "8.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
