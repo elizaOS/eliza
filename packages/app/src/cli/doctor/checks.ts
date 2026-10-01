@@ -1,22 +1,25 @@
 /**
  * Health check functions for `eliza doctor`.
  *
- * All functions are pure / injectable — no top-level side effects — so they
- * can be unit-tested without touching the filesystem or network.
+ * Checks take injectable env/paths and have no top-level side effects. Port
+ * checks bind sockets and may exec `lsof`/`ps`.
  */
 import {
   accessSync,
   constants,
   existsSync,
   readFileSync,
-  realpathSync,
   statfsSync,
 } from "node:fs";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { resolveConfigPath } from "@elizaos/agent";
+import {
+  collectConfigEnvVars,
+  loadElizaConfig,
+  resolveConfigPath,
+} from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
 import {
   resolveApiSecurityConfig,
@@ -199,6 +202,7 @@ export function checkConfigFile(
 }
 export function checkModelKey(
   env: Record<string, string | undefined> = process.env,
+  configEnvError?: string,
 ): CheckResult {
   for (const entry of MODEL_KEY_VARS) {
     // Cloud API key may have been scrubbed from process.env into the
@@ -227,6 +231,18 @@ export function checkModelKey(
         detail: `${entry.alias} set (${entry.label})`,
       };
     }
+  }
+  if (configEnvError) {
+    // The config's env section could not be read, so a saved key may exist.
+    // `eliza setup` would hit the same load failure, so it is not the fix.
+    return {
+      label: "Model API key",
+      category: "config",
+      status: "fail",
+      detail: `No model provider API key found; could not read config env: ${configEnvError}`,
+      fix: "Fix the configuration load error, then re-run `eliza doctor`",
+      autoFixable: false,
+    };
   }
   return {
     label: "Model API key",
@@ -460,64 +476,6 @@ export async function checkPort(port: number): Promise<CheckResult> {
   };
 }
 // ---------------------------------------------------------------------------
-// Eliza workspace checks
-// ---------------------------------------------------------------------------
-export function checkElizaWorkspace(projectRoot?: string): CheckResult {
-  const root =
-    projectRoot ??
-    path.resolve(process.env.ELIZA_PROJECT_ROOT ?? process.cwd());
-  const elizaRoot = path.join(root, "eliza");
-  const pluginsRoot = path.join(elizaRoot, "plugins");
-  const hasElizaRoot = existsSync(path.join(elizaRoot, "package.json"));
-  const hasPluginsRoot = existsSync(pluginsRoot);
-  if (!hasElizaRoot && !hasPluginsRoot) {
-    return {
-      label: "Local upstreams",
-      category: "system",
-      status: "warn",
-      detail:
-        "Vendored source workspace not found at ./eliza (needed only for repo-local @elizaos development)",
-      fix: "bun run setup:upstreams",
-    };
-  }
-  if (existsSync(elizaRoot) && !hasElizaRoot) {
-    return {
-      label: "Local upstreams",
-      category: "system",
-      status: "warn",
-      detail: `${elizaRoot} exists but missing package.json`,
-      fix: "bun run setup:upstreams",
-    };
-  }
-  const coreLink = path.join(root, "node_modules", "@elizaos", "core");
-  try {
-    const realTarget = realpathSync(coreLink);
-    if (realTarget.startsWith(elizaRoot)) {
-      return {
-        label: "Local upstreams",
-        category: "system",
-        status: "pass",
-        detail:
-          "Vendored @elizaos/core workspace is active (includes the orchestrator runtime)",
-      };
-    }
-  } catch {
-    // Not a symlink or can't resolve — that's fine
-  }
-  const foundLocations = [
-    hasElizaRoot ? "./eliza" : null,
-    hasPluginsRoot ? "./eliza/plugins" : null,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(" and ");
-  return {
-    label: "Local upstreams",
-    category: "system",
-    status: "pass",
-    detail: `Found vendored sources at ${foundLocations} (run setup:upstreams to refresh workspace links)`,
-  };
-}
-// ---------------------------------------------------------------------------
 // Run all checks
 // ---------------------------------------------------------------------------
 export interface DoctorOptions {
@@ -528,6 +486,51 @@ export interface DoctorOptions {
   apiPort?: number;
   uiPort?: number;
 }
+interface ConfigEnvOverlay {
+  env: Record<string, string | undefined>;
+  /** Why the config env could not be read; absent when it was read (or absent). */
+  error?: string;
+}
+/**
+ * Overlay the config file's `env` section on `env`, the way the runtime does
+ * at boot. `eliza setup` / `auth dev-login` persist provider keys there, so a
+ * model-key check that only reads the process env would report a saved key as
+ * missing (and `doctor --fix` would loop on `eliza setup`). An explicit
+ * `configPath` is read as-is; otherwise the canonical loader resolves the
+ * persist path, bind-mount overlay, and `$include`s. A load failure is
+ * returned with the process env so the model-key check can name it.
+ */
+function withConfigEnv(
+  env: Record<string, string | undefined>,
+  configPath?: string,
+): ConfigEnvOverlay {
+  let configEnv: Record<string, string>;
+  try {
+    if (configPath) {
+      if (!existsSync(configPath)) return { env };
+      configEnv = collectConfigEnvVars(
+        JSON5.parse(readFileSync(configPath, "utf-8")),
+      );
+    } else {
+      configEnv = collectConfigEnvVars(loadElizaConfig());
+    }
+  } catch (error) {
+    // error-policy:J2 the canonical loader reads files `checkConfigFile` does
+    // not (persist path, overlay, includes); carry its failure to the report.
+    return {
+      env,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return { env: { ...env, ...configEnv } };
+}
+function checkModelKeyWithConfig(
+  env: Record<string, string | undefined>,
+  configPath?: string,
+): CheckResult {
+  const overlay = withConfigEnv(env, configPath);
+  return checkModelKey(overlay.env, overlay.error);
+}
 export async function runAllChecks(
   opts: DoctorOptions = {},
 ): Promise<CheckResult[]> {
@@ -537,10 +540,9 @@ export async function runAllChecks(
     checkRuntime(),
     checkNodeModules(opts.projectRoot),
     checkBuildArtifacts(opts.projectRoot),
-    checkElizaWorkspace(opts.projectRoot),
     // config
     checkConfigFile(opts.configPath, env),
-    checkModelKey(env),
+    checkModelKeyWithConfig(env, opts.configPath),
     checkHostConfig(env),
     // storage
     checkStateDir(env),

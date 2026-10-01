@@ -16,14 +16,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { rankByKeyword } from "@elizaos/agent/api";
+import type { Memory, State, UUID } from "@elizaos/core";
 import {
   bm25Scores,
   factsProvider,
-  type Memory,
   normalizeBm25Scores,
-  type State,
-  type UUID,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import budgets from "./budgets.json" with { type: "json" };
 import {
   buildCorpus,

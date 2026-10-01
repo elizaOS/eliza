@@ -78,38 +78,41 @@ export function resolveHomebrewFormulaIncludeDirs(
   return includeDirs;
 }
 
+/**
+ * Default `--assets-dir` for the Android agent runtime: `<android>/app/src/main/
+ * assets/agent`, where `<android>` is the Android project the mobile build
+ * actually uses. Candidates are checked in order across the flat elizaOS layout
+ * (`packages/app`), a host `apps/app` shell, and a nested `eliza/` checkout:
+ * - an existing `<app>/android` (whitelabel `ELIZA_ANDROID_USE_APP_DIR=1`
+ *   builds) wins, then an existing `<app>/platforms/android`;
+ * - a host `apps/app` shell (it has `package.json`) that has not run
+ *   `cap add android` yet still owns the build, so it resolves to its own
+ *   `<app>/android` rather than falling through to the shared nested
+ *   `platforms/android` template, which whitelabel builds must not write.
+ * With nothing matched, the canonical `packages/app/platforms/android` is used.
+ */
 export function resolveDefaultAndroidAssetsDir({ root = process.cwd() } = {}) {
-  const appRelativeCandidates = [
-    path.join("packages", "app"),
-    path.join("apps", "app"),
-    path.join("eliza", "packages", "app"),
+  const appCandidates = [
+    { appRelative: path.join("packages", "app"), hostShell: false },
+    { appRelative: path.join("apps", "app"), hostShell: true },
+    { appRelative: path.join("eliza", "packages", "app"), hostShell: false },
   ];
-  for (const appRelative of appRelativeCandidates) {
+  const assetsAgentDir = (androidDir) =>
+    path.join(androidDir, "app", "src", "main", "assets", "agent");
+  for (const { appRelative, hostShell } of appCandidates) {
     const appRoot = path.join(root, appRelative);
-    if (
-      fs.existsSync(path.join(appRoot, "android")) ||
-      fs.existsSync(path.join(appRoot, "package.json"))
-    ) {
-      return path.join(
-        appRoot,
-        "android",
-        "app",
-        "src",
-        "main",
-        "assets",
-        "agent",
-      );
+    const appAndroidDir = path.join(appRoot, "android");
+    for (const androidDir of [
+      appAndroidDir,
+      path.join(appRoot, "platforms", "android"),
+    ]) {
+      if (fs.existsSync(androidDir)) return assetsAgentDir(androidDir);
+    }
+    if (hostShell && fs.existsSync(path.join(appRoot, "package.json"))) {
+      return assetsAgentDir(appAndroidDir);
     }
   }
-  return path.join(
-    root,
-    "packages",
-    "app",
-    "android",
-    "app",
-    "src",
-    "main",
-    "assets",
-    "agent",
+  return assetsAgentDir(
+    path.join(root, "packages", "app", "platforms", "android"),
   );
 }

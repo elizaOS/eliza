@@ -2719,6 +2719,11 @@ export async function handleLifeOpsRoutes(
   // Routine seeding is handled via the FIRST_RUN customize path
   // (see `src/lifeops/first-run/service.ts`) and the migrator at
   // `src/lifeops/seed-routine-migration/migrator.ts`.
+  if (method === "GET" && pathname === "/api/lifeops/reminders") {
+    return runRoute(ctx, async (service) => {
+      json(res, { reminders: await service.listReminders() });
+    });
+  }
   if (method === "GET" && pathname === "/api/lifeops/definitions") {
     return runRoute(ctx, async (service) => {
       json(res, { definitions: await service.listDefinitions() });

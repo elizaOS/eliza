@@ -206,7 +206,9 @@ function budgetFromCall(call: unknown): ContextInspectorBudget | null {
     usedTokens: used,
     limitTokens: limit,
     reservedTokens: reserved,
-    state: budget.shouldReject === true ? "rejected" : "within-budget",
+    // Core estimates are diagnostic only and never reject model input, so a
+    // recorded budget cannot mark a dispatched call as rejected.
+    state: "within-budget",
   };
 }
 

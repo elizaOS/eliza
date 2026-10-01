@@ -6,7 +6,8 @@
  * service credential forms reach the owning agent handlers.
  */
 import type { startApiServer as startApiServerType } from "@elizaos/agent";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as authStores from "../services/auth-store";
 import { startApiServer } from "./server";
 
 const ENV_KEYS = [
@@ -68,6 +69,48 @@ describe("per-agent compat pass-through auth", { concurrent: false }, () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+  });
+
+  it.each<[Record<string, string>]>([
+    [{ authorization: "Bearer fixture-machine-session" }],
+    [{ cookie: "eliza_session=fixture-machine-session" }],
+  ])(
+    "keeps unavailable session auth distinct from invalid credentials: %j",
+    async (headers) => {
+      const response = await fetch(`${baseUrl}/api/status`, { headers });
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(await response.json()).toMatchObject({ error: "db_unavailable" });
+    },
+  );
+
+  it("preserves status access for known bootstrap credentials during startup", async () => {
+    const response = await fetch(`${baseUrl}/api/status`, {
+      headers: { authorization: `Bearer ${OWNER_TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("does not make a known bootstrap credential depend on auth-store startup", async () => {
+    const lookup = vi
+      .spyOn(authStores, "authStoreForRuntime")
+      .mockImplementation(() => {
+        throw new Error("Auth store is still starting");
+      });
+    try {
+      const response = await fetch(`${baseUrl}/api/status`, {
+        headers: { authorization: `Bearer ${OWNER_TOKEN}` },
+      });
+      expect(response.status).toBe(200);
+      expect(lookup).not.toHaveBeenCalled();
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  it("keeps an uncredentialed status request denied during startup", async () => {
+    const response = await fetch(`${baseUrl}/api/status`);
+    expect(response.status).toBe(401);
   });
 
   for (const route of ["message", "event"] as const) {

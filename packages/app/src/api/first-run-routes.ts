@@ -15,7 +15,7 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
-import { type FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
+import type { FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
 import { prepareFirstRunConnectors } from "@elizaos/agent/first-run-config";
 import { ElizaError, logger } from "@elizaos/core";
 import { readRequestBody } from "@elizaos/core/api/http-helpers";
@@ -481,10 +481,10 @@ export async function handleFirstRunRoute(
       body.credentialInputs,
     )?.llmApiKey;
     const rollback = async (): Promise<void> => {
-      const owned = adoption;
-      if (!owned) return;
       // Restore only values still equal to our writes; concurrent settings own
-      // their newer values. Keep the account until durable/live state agrees.
+      // their newer values. Config, pending name and environment are restored
+      // for every failed commit (e.g. a failed loopback sync after the config
+      // save); only direct-account adoption cleanup is conditional.
       if (configRollback.hasWrites) {
         const restoredConfig = configRollback.restore(loadElizaConfig());
         saveElizaConfig(restoredConfig);
@@ -505,6 +505,9 @@ export async function handleFirstRunRoute(
         state.pendingAgentName = previousPendingAgentName;
       }
       configRollback.restoreEnvironment();
+      const owned = adoption;
+      if (!owned) return;
+      // Keep the account until durable/live state agrees.
       const currentConfig = loadElizaConfig();
       const routes = normalizeServiceRoutingConfig(
         currentConfig.serviceRouting,

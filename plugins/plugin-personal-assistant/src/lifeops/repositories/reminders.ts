@@ -158,6 +158,35 @@ export class ReminderRepository {
     return rows.map(parseReminderAttempt);
   }
 
+  /** Projection only: retain history, but read one latest attempt per displayed occurrence. */
+  async listLatestReminderAttemptsForOccurrences(
+    agentId: string,
+    occurrenceIds: string[],
+  ): Promise<LifeOpsReminderAttempt[]> {
+    if (occurrenceIds.length === 0) return [];
+    const ownerList = [...new Set(occurrenceIds)]
+      .map((id) => sqlQuote(id))
+      .join(", ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `
+      SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY owner_id
+          ORDER BY COALESCE(attempted_at, scheduled_for)::timestamptz DESC,
+                   scheduled_for ASC, step_index ASC, id ASC
+        ) AS occurrence_attempt_rank
+        FROM app_reminders.life_reminder_attempts
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND owner_type = 'occurrence'
+          AND owner_id IN (${ownerList})
+      ) AS ranked_attempts
+      WHERE occurrence_attempt_rank = 1
+    `,
+    );
+    return rows.map(parseReminderAttempt);
+  }
+
   async listDueReminderReviewAttempts(
     agentId: string,
     nowIso: string,

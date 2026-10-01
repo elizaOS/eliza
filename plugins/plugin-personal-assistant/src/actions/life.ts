@@ -63,7 +63,6 @@ import {
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
-  readNativeAppleReminderMetadata,
 } from "../lifeops/apple-reminders.js";
 import {
   resolveDefaultTimeZone,
@@ -73,6 +72,11 @@ import {
   DEFINITION_CREATION_OPERATION,
   definitionCreationIdentity,
 } from "../lifeops/definition-creation-identity.js";
+import {
+  type OwnerDefinitionSurface,
+  ownerDefinitionSurface,
+  resolveOwnerDefinitionSurface,
+} from "../lifeops/definition-owner-surface.js";
 import {
   dayRange,
   detailArray,
@@ -3616,45 +3620,6 @@ function ownerSurfaceActionNameFromOptions(
     : "OWNER_TODOS";
 }
 
-const OWNER_DEFINITION_SURFACES = [
-  "OWNER_TODOS",
-  "OWNER_REMINDERS",
-  "OWNER_ALARMS",
-  "OWNER_ROUTINES",
-] as const;
-
-type OwnerDefinitionSurface = (typeof OWNER_DEFINITION_SURFACES)[number];
-
-function ownerDefinitionSurface(value: unknown): OwnerDefinitionSurface | null {
-  return typeof value === "string" &&
-    OWNER_DEFINITION_SURFACES.includes(value as OwnerDefinitionSurface)
-    ? (value as OwnerDefinitionSurface)
-    : null;
-}
-
-function definitionReviewSurface(
-  record: LifeOpsDefinitionRecord,
-): OwnerDefinitionSurface | null {
-  const persisted = ownerDefinitionSurface(
-    record.definition.metadata.ownerSurface,
-  );
-  if (persisted) return persisted;
-
-  const nativeReminder = readNativeAppleReminderMetadata(
-    record.definition.metadata,
-  );
-  if (nativeReminder?.kind === "alarm") return "OWNER_ALARMS";
-  if (nativeReminder?.kind === "reminder") return "OWNER_REMINDERS";
-  if (record.definition.kind === "task") return "OWNER_TODOS";
-  if (
-    record.definition.kind === "habit" ||
-    record.definition.kind === "routine"
-  ) {
-    return "OWNER_ROUTINES";
-  }
-  return null;
-}
-
 function definitionReviewSurfaceLabel(surface: OwnerDefinitionSurface): string {
   switch (surface) {
     case "OWNER_TODOS":
@@ -6590,7 +6555,7 @@ async function runLifeOperationHandlerInner(
               record.definition.status === "completed" &&
               record.definition.id === targetName)) &&
           record.definition.domain === reviewDomain &&
-          definitionReviewSurface(record) === surface,
+          resolveOwnerDefinitionSurface(record.definition) === surface,
       );
       const active = scoped.filter(
         (record) => record.definition.status === "active",

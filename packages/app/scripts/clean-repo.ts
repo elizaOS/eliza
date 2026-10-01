@@ -104,27 +104,40 @@ function rmPluginDists() {
   }
 }
 
+/**
+ * Top-level build output directories removed by a standard clean, as
+ * `[label, absolutePath]` pairs relative to `repoRoot`.
+ */
+export function buildOutputCleanTargets(
+  repoRoot: string,
+): Array<[label: string, abs: string]> {
+  const rel = (...segments: string[]): [string, string] => [
+    segments.join("/"),
+    path.join(repoRoot, ...segments),
+  ];
+  return [
+    rel("dist"),
+    rel("packages", "app", "dist"),
+    rel("packages", "app", "web-dist"),
+    rel("packages", "app", ".vite"),
+    rel("packages", "homepage", "dist"),
+    rel("packages", "homepage", ".vite"),
+    rel("eliza", "packages", "app", "dist"),
+    rel("eliza", "packages", "app", "web-dist"),
+  ];
+}
+
+/** Remove every {@link buildOutputCleanTargets} entry under `repoRoot`. */
+export function removeBuildOutputs(repoRoot: string): void {
+  for (const [label, abs] of buildOutputCleanTargets(repoRoot)) {
+    rmPath(label, abs);
+  }
+}
+
 function main() {
   console.log(`[clean] repo root: ${root}${deep ? " (deep)" : ""}\n`);
 
-  rmPath("dist", path.join(root, "dist"));
-  rmPath("packages/app/dist", path.join(root, "packages", "app", "dist"));
-  rmPath(
-    "packages/app/web-dist",
-    path.join(root, "packages", "app", "web-dist"),
-  );
-  rmPath("packages/app/.vite", path.join(root, "packages", "app", ".vite"));
-  rmPath(path.join(root, "packages", "homepage", "dist"));
-  rmPath(path.join(root, "packages", "homepage", ".vite"));
-
-  rmPath(
-    "eliza/packages/app/dist",
-    path.join(root, "eliza", "packages", "app", "dist"),
-  );
-  rmPath(
-    "eliza/packages/app/web-dist",
-    path.join(root, "eliza", "packages", "app", "web-dist"),
-  );
+  removeBuildOutputs(root);
 
   rmPluginDists();
 
@@ -193,4 +206,9 @@ function main() {
   );
 }
 
-main();
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}

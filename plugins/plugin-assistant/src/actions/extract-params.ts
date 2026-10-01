@@ -23,7 +23,7 @@ export interface ParamSchemaDescriptor {
   description: string;
   required?: boolean;
   schema?: Omit<ActionParameterSchema, "enum"> & {
-    enum?: readonly string[];
+    enum?: Readonly<NonNullable<ActionParameterSchema["enum"]>>;
   };
 }
 export interface ExtractActionParamsArgs<
@@ -196,7 +196,7 @@ function buildExtractionPrompt(args: {
   const schemaLines = paramSchema
     .map((p) => {
       const enumPart = p.schema?.enum
-        ? ` [one of: ${(p.schema.enum as readonly string[]).join(" | ")}]`
+        ? ` [one of: ${p.schema.enum.map((value) => (typeof value === "string" ? value : JSON.stringify(value))).join(" | ")}]`
         : "";
       const typePart = p.schema?.type ? ` (${p.schema.type})` : "";
       const requiredPart = missingFields.includes(p.name) ? " [REQUIRED]" : "";

@@ -24,9 +24,9 @@ import {
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
-  resolveServerOnlyPort,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 
@@ -106,8 +106,9 @@ type DnsLookupAllFn = (
 
 let dnsLookupImpl: DnsLookupAllFn = dnsLookup as DnsLookupAllFn;
 
+/** Port of this process's own API listener (same resolver as self-calls). */
 function getApiPort(): string {
-  return String(resolveServerOnlyPort(process.env));
+  return new URL(resolveSelfApiBaseUrl(process.env)).port;
 }
 
 async function fetchWithTimeout(
@@ -848,7 +849,7 @@ function buildHandler(
         }
 
         const response = await fetchWithTimeout(
-          `http://localhost:${getApiPort()}/api/terminal/run`,
+          `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
           {
             method: "POST",
             headers: {

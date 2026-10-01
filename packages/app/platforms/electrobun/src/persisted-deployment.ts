@@ -1,18 +1,22 @@
 /** Implements Electrobun desktop persisted deployment ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir, resolveUserPath } from "@elizaos/core";
+import { resolveUserPath } from "@elizaos/core";
 import { normalizeDeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
 import type { PersistedDeployment } from "./api-base";
 import { logger } from "./logger";
+import {
+	resolveBrandAwareNamespace,
+	resolveStateDir,
+} from "./native/auth-bridge";
 
-const CONFIG_FILENAME = "eliza.json";
 /**
- * Resolve the canonical `eliza.json` path the agent persists its config to.
- * Mirrors `@elizaos/agent`'s `resolveConfigPath` (state-dir + filename, with
- * the `ELIZA_CONFIG_PATH` override) without importing the agent boot module,
- * so the desktop main process can read the persisted deployment target without
- * pulling the agent into the static boot graph.
+ * Resolve the config file the agent persists its config to. Mirrors
+ * `@elizaos/agent`'s `resolveConfigPath` (the `ELIZA_CONFIG_PATH` override,
+ * else the first existing of `${namespace}.json` then `eliza.json` under the
+ * state dir, defaulting to `${namespace}.json`) without importing the agent,
+ * which the desktop shell bundle keeps external. The namespace and state dir
+ * are brand-aware, matching the env the desktop hands the agent child.
  */
 function resolveElizaConfigPath(
 	env: Record<string, string | undefined>,
@@ -21,10 +25,17 @@ function resolveElizaConfigPath(
 	if (override) {
 		return resolveUserPath(override);
 	}
-	return path.join(resolveStateDir(env as NodeJS.ProcessEnv), CONFIG_FILENAME);
+	const stateDir = resolveStateDir(env as NodeJS.ProcessEnv);
+	const namespace = resolveBrandAwareNamespace(env.ELIZA_NAMESPACE);
+	const primary = path.join(stateDir, `${namespace}.json`);
+	const candidates =
+		namespace === "eliza"
+			? [primary]
+			: [primary, path.join(stateDir, "eliza.json")];
+	return candidates.find((candidate) => fs.existsSync(candidate)) ?? primary;
 }
 /**
- * Read the persisted `deploymentTarget` from `eliza.json` as a
+ * Read the persisted `deploymentTarget` from the agent config as a
  * {@link PersistedDeployment} (runtime plus the cloud-hosted/external agent's
  * API base and bound access token). Best-effort and fail-safe: any missing
  * file, parse error, or absent deployment target resolves to `null`, which the

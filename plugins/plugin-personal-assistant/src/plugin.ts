@@ -20,12 +20,12 @@ import {
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
 } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import {
-  type IPermissionsRegistry,
-  type PermissionState,
-  type Platform,
-  type Prober,
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type {
+  IPermissionsRegistry,
+  PermissionState,
+  Platform,
+  Prober,
 } from "@elizaos/core/contracts/permissions";
 import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
 import {
@@ -1234,9 +1234,8 @@ const rawPersonalAssistantPlugin: Plugin = {
       // out — see src/default-packs/spine-registration.ts for the upgrade
       // story.
       registerDefaultPackCatalog(runtime);
-      // Seed the first-run defaults pack idempotently on EVERY boot — not
-      // gated behind first-run completion — so devices that predate the pack
-      // still receive the paused weekly-review starter + default routines.
+      // Reconcile defaults only after LifeOps owner setup is complete. Fresh
+      // profiles must not acquire proactive routines just by booting.
       // The per-key seeded marker makes this seed-once: a default the user
       // deletes is never recreated, and fresh first-run installs are covered
       // by the same marker so there is no double-seed. Uses the production

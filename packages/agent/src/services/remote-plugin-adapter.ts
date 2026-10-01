@@ -64,6 +64,12 @@ import {
   RemoteCapabilityRouterService,
   resolveRemoteCapabilityRouterConfig,
 } from "./remote-capability-router.ts";
+import {
+  CapabilityRouterSettingError,
+  type CapabilityRouterTrustPolicySettingValue,
+  parseCapabilityRouterModuleAllowlistSetting,
+  parseCapabilityRouterTrustPolicySetting,
+} from "./remote-capability-router-settings.ts";
 export type RemotePluginAdapterOptions = {
   modules?: RemotePluginModuleManifest[];
   reloadExisting?: boolean;
@@ -75,6 +81,11 @@ export type RemotePluginBootstrapOptions = RemotePluginAdapterOptions & {
   unloadMissing?: boolean;
 };
 export type RemotePluginTrustPolicy = {
+  /** Additional constraints belonging only to the supplying endpoint. */
+  endpointPolicies?: Record<
+    string,
+    Omit<RemotePluginTrustPolicy, "endpointPolicies">
+  >;
   allowedEndpointIds?: string[];
   allowedModuleIds?: string[];
   allowedProvenanceIssuers?: string[];
@@ -1029,6 +1040,15 @@ function evaluateRemotePluginTrustPolicy(
         details: { trustDecision: decision },
       });
     }
+    const endpointPolicy =
+      endpointId === undefined
+        ? undefined
+        : policy.endpointPolicies?.[endpointId];
+    if (endpointPolicy) {
+      // A sibling endpoint's modules, issuers and keys never grant authority here.
+      // Evaluate both constraints: global policy cannot be weakened by an endpoint.
+      evaluateRemotePluginTrustPolicy([module], endpointPolicy);
+    }
     if (allowedModuleIds && !allowedModuleIds.has(module.id)) {
       const decision = trustDecision(
         module,
@@ -1451,21 +1471,104 @@ function trustDecision(
     reason,
   };
 }
-function resolveConfiguredRemotePluginTrustPolicy(
+export type RemotePluginTrustPolicySettingKey =
+  | "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES"
+  | "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY";
+/**
+ * Thrown when a configured trust-policy setting is present but malformed.
+ * A set-but-unparseable policy must fail closed: silently treating it as
+ * unset would drop the module allowlist and signature requirements.
+ */
+export class RemotePluginTrustPolicyConfigError extends Error {
+  readonly setting: RemotePluginTrustPolicySettingKey;
+  constructor(
+    setting: RemotePluginTrustPolicySettingKey,
+    detail: string,
+    options?: {
+      cause?: unknown;
+    },
+  ) {
+    super(`Invalid ${setting}: ${detail}`, options);
+    this.name = "RemotePluginTrustPolicyConfigError";
+    this.setting = setting;
+  }
+}
+function readRemotePluginTrustPolicySetting<T>(
+  setting: RemotePluginTrustPolicySettingKey,
+  runtime: IAgentRuntime,
+  parse: (raw: string | undefined) => T,
+): T {
+  const configured = runtime.getSetting?.(setting);
+  if (
+    configured !== null &&
+    configured !== undefined &&
+    typeof configured !== "string"
+  ) {
+    throw new RemotePluginTrustPolicyConfigError(
+      setting,
+      "expected a JSON string",
+    );
+  }
+  const raw =
+    typeof configured === "string" && configured.trim()
+      ? configured
+      : process.env[setting];
+  try {
+    return parse(typeof raw === "string" ? raw : undefined);
+  } catch (error) {
+    if (error instanceof CapabilityRouterSettingError) {
+      throw new RemotePluginTrustPolicyConfigError(setting, error.reason, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+/**
+ * Builds the remote plugin trust policy from router settings. Unset policy
+ * settings keep the default (endpoint allowlist only); a malformed allowlist
+ * or trust policy (including any per-endpoint entry of the wrong type) throws
+ * {@link RemotePluginTrustPolicyConfigError}, and malformed endpoint URLs throw
+ * {@link CapabilityRouterSettingError}.
+ */
+export function resolveConfiguredRemotePluginTrustPolicy(
   runtime: IAgentRuntime,
 ): RemotePluginTrustPolicy | undefined {
   const routerConfig = resolveRemoteCapabilityRouterConfig(runtime);
   const endpointIds = configuredEndpointIds(routerConfig);
   if (endpointIds.length === 0) return undefined;
-  const allowedModuleIds = configuredAllowedModuleIds(runtime, endpointIds);
-  const trustPolicy = configuredRemotePluginTrustPolicyOptions(
+  const moduleSetting = readRemotePluginTrustPolicySetting(
+    "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
     runtime,
-    endpointIds,
+    parseCapabilityRouterModuleAllowlistSetting,
   );
+  const trustSetting = readRemotePluginTrustPolicySetting(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+    runtime,
+    parseCapabilityRouterTrustPolicySetting,
+  );
+  const endpointPolicies: NonNullable<
+    RemotePluginTrustPolicy["endpointPolicies"]
+  > = Object.create(null);
+  for (const endpointId of endpointIds) {
+    const endpointPolicy = mergeConfiguredTrustPolicyOptions([
+      trustSetting?.endpoints[endpointId] ?? {},
+    ]);
+    const modules =
+      moduleSetting?.kind === "endpoints"
+        ? moduleSetting.endpoints[endpointId]
+        : undefined;
+    if (modules?.length) endpointPolicy.allowedModuleIds = modules;
+    if (Object.keys(endpointPolicy).length)
+      endpointPolicies[endpointId] = endpointPolicy;
+  }
+  const globalModules =
+    moduleSetting?.kind === "global" ? moduleSetting.moduleIds : [];
   return {
     allowedEndpointIds: endpointIds,
-    ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
-    ...trustPolicy,
+    ...(globalModules.length ? { allowedModuleIds: globalModules } : {}),
+    ...mergeConfiguredTrustPolicyOptions([trustSetting?.global ?? {}]),
+    ...(Object.keys(endpointPolicies).length ? { endpointPolicies } : {}),
     requireEndpointId: true,
   };
 }
@@ -1482,99 +1585,23 @@ function configuredEndpointIds(config: {
   }
   return [...ids];
 }
-function configuredAllowedModuleIds(
-  runtime: IAgentRuntime,
-  endpointIds: string[],
-): string[] {
-  const configured = runtime.getSetting?.(
-    "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
-  );
-  const raw =
-    typeof configured === "string" && configured.trim()
-      ? configured
-      : process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
-  if (typeof raw !== "string" || !raw.trim()) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return uniqueStrings(parsed);
-    }
-    if (!parsed || typeof parsed !== "object") return [];
-    const modules = new Set<string>();
-    for (const endpointId of endpointIds) {
-      const value = (parsed as Record<string, unknown>)[endpointId];
-      for (const moduleId of uniqueStrings(value)) {
-        modules.add(moduleId);
-      }
-    }
-    return [...modules];
-  } catch {
-    return [];
-  }
-}
-function configuredRemotePluginTrustPolicyOptions(
-  runtime: IAgentRuntime,
-  endpointIds: string[],
-): RemotePluginTrustPolicy {
-  const configured = runtime.getSetting?.(
-    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
-  );
-  const raw =
-    typeof configured === "string" && configured.trim()
-      ? configured
-      : process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
-  if (typeof raw !== "string" || !raw.trim()) return {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const record = parsed as Record<string, unknown>;
-    const candidates = endpointIds
-      .map((endpointId) => record[endpointId])
-      .filter(
-        (value): value is Record<string, unknown> =>
-          !!value && typeof value === "object" && !Array.isArray(value),
-      );
-    const globalCandidate =
-      "allowedProvenanceIssuers" in record ||
-      "trustedProvenancePublicKeys" in record ||
-      "requireSignedProvenance" in record ||
-      "requireVerifiedProvenance" in record ||
-      "requireProvenanceDigestMatch" in record
-        ? [record]
-        : [];
-    return mergeConfiguredTrustPolicyOptions([
-      ...globalCandidate,
-      ...candidates,
-    ]);
-  } catch {
-    return {};
-  }
-}
 function mergeConfiguredTrustPolicyOptions(
-  values: Array<Record<string, unknown>>,
+  values: CapabilityRouterTrustPolicySettingValue[],
 ): RemotePluginTrustPolicy {
   const allowedProvenanceIssuers = new Set<string>();
-  const trustedProvenancePublicKeys: Record<string, string> = {};
+  const trustedProvenancePublicKeys: Record<string, string> =
+    Object.create(null);
   let requireSignedProvenance = false;
   let requireVerifiedProvenance = false;
   let requireProvenanceDigestMatch = false;
   for (const value of values) {
-    for (const issuer of uniqueStrings(value.allowedProvenanceIssuers)) {
+    for (const issuer of value.allowedProvenanceIssuers ?? []) {
       allowedProvenanceIssuers.add(issuer);
     }
-    const keys = value.trustedProvenancePublicKeys;
-    if (keys && typeof keys === "object" && !Array.isArray(keys)) {
-      for (const [issuer, publicKey] of Object.entries(keys)) {
-        if (typeof publicKey !== "string") continue;
-        const nextIssuer = issuer.trim();
-        const nextPublicKey = publicKey.trim();
-        if (nextIssuer && nextPublicKey) {
-          trustedProvenancePublicKeys[nextIssuer] = nextPublicKey;
-        }
-      }
-    }
+    Object.assign(
+      trustedProvenancePublicKeys,
+      value.trustedProvenancePublicKeys ?? {},
+    );
     requireSignedProvenance ||= value.requireSignedProvenance === true;
     requireVerifiedProvenance ||= value.requireVerifiedProvenance === true;
     requireProvenanceDigestMatch ||=
@@ -1597,17 +1624,6 @@ function mergeConfiguredTrustPolicyOptions(
       ? { requireProvenanceDigestMatch: true }
       : {}),
   };
-}
-function uniqueStrings(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [
-    ...new Set(
-      value
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  ];
 }
 function validateRemotePluginComponentCollisions(
   runtime: IAgentRuntime,

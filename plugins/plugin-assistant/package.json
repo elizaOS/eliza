@@ -64,7 +64,7 @@
     "@ai-sdk/openai": "^3.0.9",
     "@openrouter/ai-sdk-provider": "^2.0.0",
     "ai": "^6.0.30",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "dedent": "^1.7.1",
     "mammoth": "^1.9.0",
     "unpdf": "^1.4.0",

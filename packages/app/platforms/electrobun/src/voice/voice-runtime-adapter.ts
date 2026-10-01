@@ -410,8 +410,10 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
 	 * Streaming runtime handoff: consumes the `/messages/stream` SSE endpoint and
 	 * fires `onTextDelta` per token as the reply streams, so the caller can begin
 	 * phrase-by-phrase synthesis before the whole reply is generated (vs.
-	 * `sendRuntimeMessage`, which awaits the full JSON body). Falls back to the
-	 * buffered path at the call site if this throws.
+	 * `sendRuntimeMessage`, which awaits the full JSON body). Throws
+	 * `VOICE_RUNTIME_STREAM_UNAVAILABLE` only when the stream route is not served
+	 * (the message was never accepted); the call site falls back to the buffered
+	 * path for that code alone.
 	 */
 	async sendRuntimeMessageStream(
 		params: VoiceRuntimeHandoffParams,
@@ -431,8 +433,18 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
 		);
 		if (!response.ok || !response.body) {
 			const text = await response.text().catch(() => "");
+			// Only a route-level rejection (the stream route is not served) proves
+			// the runtime never accepted the message, so only that is safe for the
+			// caller to retry over the buffered route. Any other failure may have
+			// already started a turn.
+			const routeUnavailable =
+				response.status === 404 ||
+				response.status === 405 ||
+				response.status === 501;
 			throw new VoiceError(
-				"VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+				routeUnavailable
+					? "VOICE_RUNTIME_STREAM_UNAVAILABLE"
+					: "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
 				`Voice runtime stream route failed: ${response.status}`,
 				{ status: response.status, body: text },
 			);

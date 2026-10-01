@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
-import type { JsonObject, Memory, Task, UUID } from "@elizaos/core";
+import {
+  type JsonObject,
+  type Memory,
+  resolveOwnerEntityIdOrDefault,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
@@ -134,15 +140,21 @@ it("persists the timezone through pause and re-enable and schedules in that zone
     metadata: metadata as Task["metadata"],
   });
   try {
-    for (const enabled of [false, true]) {
+    for (const { body, enabled } of [
+      { body: { enabled: false }, enabled: false },
+      { body: { displayName: "Renamed while paused" }, enabled: false },
+      { body: { enabled: true }, enabled: true },
+    ]) {
       let status: number | undefined;
       const context = {
         method: "PUT",
         pathname: `/api/triggers/${triggerId}`,
         runtime: fixture.runtime,
+        ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+        localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         req: {} as http.IncomingMessage,
         res: {} as http.ServerResponse,
-        readJsonBody: async () => ({ enabled }),
+        readJsonBody: async () => body,
         json: (_res: http.ServerResponse, _body: unknown, code?: number) => {
           status = code ?? 200;
         },

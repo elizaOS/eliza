@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { GatewayContractDriftError } from "./lib/cloud-api-gateway-contract.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
@@ -290,7 +291,7 @@ async function main() {
     );
   }
   if (first.gatewayDeviceRegistered !== true) {
-    throw new Error(
+    throw new GatewayContractDriftError(
       `Gateway device was not registered on first webhook: ${JSON.stringify(first)}`,
     );
   }
@@ -305,7 +306,7 @@ async function main() {
     );
   }
   if (second.gatewayDeviceRegistered !== true) {
-    throw new Error(
+    throw new GatewayContractDriftError(
       `Gateway device was not registered on second webhook: ${JSON.stringify(second)}`,
     );
   }
@@ -356,17 +357,17 @@ async function main() {
 
 function assertGatewayIdentity(label, body, args) {
   if (body.gatewayDevicePhoneNumber !== args.gatewayPhone) {
-    throw new Error(
+    throw new GatewayContractDriftError(
       `${label} webhook registered unexpected gateway number: ${JSON.stringify(body)}`,
     );
   }
   if (body.gatewayDeviceBridgeId !== args.bridge) {
-    throw new Error(
+    throw new GatewayContractDriftError(
       `${label} webhook registered unexpected gateway bridge: ${JSON.stringify(body)}`,
     );
   }
   if (body.gatewayDeviceProvider !== "blooio") {
-    throw new Error(
+    throw new GatewayContractDriftError(
       `${label} webhook registered unexpected gateway provider: ${JSON.stringify(body)}`,
     );
   }
@@ -376,5 +377,5 @@ main().catch((error) => {
   process.stderr.write(
     `[cloud-sms-onboarding] ${error instanceof Error ? error.message : String(error)}\n`,
   );
-  process.exit(1);
+  process.exit(error instanceof GatewayContractDriftError ? error.exitCode : 1);
 });

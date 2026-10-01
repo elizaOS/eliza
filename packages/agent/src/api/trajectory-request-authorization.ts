@@ -2,6 +2,7 @@ import type http from "node:http";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import {
+  isDirectOwnerApiTokenAuthorized,
   isServerTokenAuthorized,
   resolveBoundaryRole,
 } from "./server-helpers-auth.ts";
@@ -12,6 +13,7 @@ export function isTrajectoryOwnerRequest(
   method: string,
   pathname: string,
   hostAuthorization: AgentHttpRequestAuthorization,
+  allowAmbientLocal = true,
 ): boolean {
   if (isServerTokenAuthorized(req)) return false;
   if (hostAuthorization.ok) return hostAuthorization.role === "OWNER";
@@ -23,5 +25,6 @@ export function isTrajectoryOwnerRequest(
       (access.isAdmin || access.isRouteInScope(method, pathname))
     );
   }
+  if (!allowAmbientLocal) return isDirectOwnerApiTokenAuthorized(req);
   return resolveBoundaryRole(req) === "OWNER";
 }

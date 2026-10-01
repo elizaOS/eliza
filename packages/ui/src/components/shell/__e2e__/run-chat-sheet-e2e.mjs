@@ -2662,8 +2662,8 @@ try {
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
     assert(
-      (await p.getByTestId("chat-composer-textarea").getAttribute("placeholder"))?.includes("waking up"),
-      "BOOTING: composer placeholder says 'waking up'",
+      (await p.getByTestId("chat-composer-textarea").getAttribute("placeholder"))?.includes("connecting"),
+      "BOOTING: composer placeholder says 'connecting'",
     );
     assert(
       (await p.getByTestId("chat-composer-plus").getAttribute("aria-disabled")) !== "true",

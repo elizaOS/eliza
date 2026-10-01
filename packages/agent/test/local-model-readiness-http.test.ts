@@ -12,6 +12,7 @@ import {
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import { installRouterHandler } from "../../../plugins/plugin-local-inference/src/services/router-handler.ts";
 import { detectRuntimeModel } from "../src/api/agent-model.ts";
 import {
   type CloudModelReadinessView,
@@ -57,6 +58,10 @@ class CloudRegistry extends Service {
 const noInference = async () => {
   throw new Error("Status must never invoke inference");
 };
+/** Install the production router; readiness must not invoke its handlers. */
+function registerLocalRouter(target: AgentRuntime) {
+  installRouterHandler(target);
+}
 let runtime: AgentRuntime;
 let directory: string;
 let server: Awaited<ReturnType<typeof startApiServer>>;
@@ -87,6 +92,9 @@ beforeAll(async () => {
     services: [Loader],
   });
   await runtime.initialize({ skipMigrations: true });
+  // The real plugin also fronts its text slots with the prefer-local router
+  // (plugin-local-inference router-handler.ts `installRouterHandler`).
+  registerLocalRouter(runtime);
   await runtime.getServiceLoadPromise(Loader.serviceType);
   const service = runtime.getService<Loader>(Loader.serviceType);
   if (!service) throw new Error("Loader did not initialize");
@@ -136,6 +144,56 @@ it("reports local load/unload through authenticated HTTP and does not label a co
   loader.path = null;
   expect((await status()).canRespond).toBe(false);
 });
+
+it("reports the actual local router and a remote fallback through authenticated HTTP", async () => {
+  const routed = new AgentRuntime({
+    character: { name: "Routed local", bio: [] },
+  });
+  routed.registerDatabaseAdapter(
+    SQLiteDatabaseAdapter.create(
+      join(directory, "routed.sqlite"),
+      routed.agentId,
+    ),
+  );
+  routed.registerModel(
+    ModelType.TEXT_LARGE,
+    noInference,
+    "eliza-local-inference",
+  );
+  await routed.initialize({ skipMigrations: true });
+  registerLocalRouter(routed);
+  let routedServer: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    routedServer = await startApiServer({
+      port: 0,
+      runtime: routed,
+      skipDeferredStartupWork: true,
+    });
+    const status = async () => {
+      const response = await fetch(
+        `http://127.0.0.1:${routedServer?.port}/api/status`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    expect(await status()).toMatchObject({
+      canRespond: false,
+      localModelReadiness: {
+        provider: "eliza-local-inference",
+        status: "model_not_loaded",
+      },
+    });
+    // Registration readiness is not a claim of external provider availability.
+    routed.registerModel(ModelType.TEXT_LARGE, noInference, "openai");
+    const mixed = await status();
+    expect(mixed.canRespond).toBe(true);
+    expect(mixed.localModelReadiness).toBeNull();
+  } finally {
+    if (routedServer) await routedServer.close();
+    await routed.stop();
+  }
+}, 120_000);
 
 it.each(["custom-provider", "ollama", "openai", "elizaOSCloud"])(
   "preserves mixed and independent %s providers",

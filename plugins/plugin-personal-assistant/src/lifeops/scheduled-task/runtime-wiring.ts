@@ -580,31 +580,18 @@ export async function composeOwnerFacingScheduledTaskText(
   );
 
   if (delegatesAssemblyTo === "lifeops:checkin:morning") {
-    try {
-      const assembled = await assembleMorningBrief(runtime, {
-        timezone: resolveDefaultTimeZone(),
-        now: new Date(record.firedAtIso),
-      });
-      const summaryText = assembled.report.summaryText.trim();
-      if (record.metadata) {
-        record.metadata.checkinReportId = assembled.report.reportId;
-        record.metadata.checkinKind = assembled.report.kind;
-      }
-      if (summaryText.length > 0) return summaryText;
+    const assembled = await assembleMorningBrief(runtime, {
+      timezone: resolveDefaultTimeZone(),
+      now: new Date(record.firedAtIso),
+    });
+    const summaryText = assembled.report.summaryText.trim();
+    if (!summaryText)
       throw new Error("Morning check-in assembler returned empty summaryText");
-    } catch (error) {
-      // error-policy:J4 designed degrade — the scheduled check-in still
-      // reaches the owner with an honest "couldn't assemble" message instead
-      // of silently dropping the fire; the assembly failure is surfaced via
-      // reportError for RECENT_ERRORS/escalation.
-      runtime.reportError("lifeops:scheduled-task:owner-facing-copy", error, {
-        agentId: runtime.agentId,
-        taskId: record.taskId,
-        firedAtIso: record.firedAtIso,
-        delegatesAssemblyTo,
-      });
-      return "Your morning check-in is ready, but I couldn't assemble the full brief right now.";
+    if (record.metadata) {
+      record.metadata.checkinReportId = assembled.report.reportId;
+      record.metadata.checkinKind = assembled.report.kind;
     }
+    return summaryText;
   }
 
   const resolvedContext = hasScheduledDispatchModel(runtime)

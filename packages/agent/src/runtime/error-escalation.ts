@@ -17,6 +17,7 @@ import {
   EventType,
   logger,
   QUIET_ERROR_CODES,
+  systemNoticeText,
 } from "@elizaos/core";
 import { EscalationService } from "../services/escalation.ts";
 
@@ -151,13 +152,21 @@ export function createErrorReportedEscalationHandler(
     if (!shouldEscalate) return;
 
     const reason = `Systemic failure ${payload.code} reported ${count} times within ${windowMinutes}m`;
-    const context = payload.context
-      ? ` ${JSON.stringify(payload.context)}`
-      : "";
-    const text = `Repeated runtime failure "${payload.code}" from [${payload.scope}]: ${payload.message}${context}`;
+    const notice =
+      (payload.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
+        payload.context?.reason === "backend_unavailable") ||
+      (payload.code === "NO_MODEL_PROVIDER_CONFIGURED" &&
+        payload.context?.reason !== "capability-disabled")
+        ? "model-unavailable"
+        : "runtime-error";
 
     try {
-      await EscalationService.startEscalation(runtime, reason, text);
+      await EscalationService.startEscalation(
+        runtime,
+        reason,
+        systemNoticeText(notice),
+        notice,
+      );
       logger.warn(
         { src: "agent", code: payload.code, count },
         `[ErrorEscalation] Escalated systemic failure ${payload.code}`,

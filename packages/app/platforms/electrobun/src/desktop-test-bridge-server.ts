@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import { invokeApplicationMenuAction } from "./application-menu-action-registry";
+import { readDesktopEnvFlag } from "./desktop-env-flags";
 import {
 	evaluateInCurrentMainWindow,
 	getCurrentMainWindowSnapshot,
@@ -66,11 +67,6 @@ function isAuthorized(req: http.IncomingMessage, token: string): boolean {
 	return req.headers.authorization === `Bearer ${token}`;
 }
 
-function isTruthyEnv(value: string | undefined): boolean {
-	const normalized = value?.trim().toLowerCase();
-	return normalized === "1" || normalized === "true" || normalized === "yes";
-}
-
 function pickFiniteNumber(
 	value: unknown,
 	fallback: number,
@@ -89,7 +85,11 @@ export async function startDesktopTestBridgeServer(): Promise<
 	(() => void) | undefined
 > {
 	if (
-		!isTruthyEnv(process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED) &&
+		!readDesktopEnvFlag(
+			process.env,
+			"ELIZA_DESKTOP_TEST_BRIDGE_ENABLED",
+			false,
+		) &&
 		!process.env.ELIZA_DESKTOP_TEST_BRIDGE_PORT &&
 		!process.env.ELIZA_DESKTOP_TEST_BRIDGE_TOKEN
 	) {

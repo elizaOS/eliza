@@ -4,6 +4,7 @@
  * messages and custom-action params). No React, no I/O.
  */
 
+import { parseChatFailureKind } from "@elizaos/core/contracts/chat";
 import type {
   AgentModelReadiness,
   AgentStartupDiagnostics,
@@ -244,6 +245,8 @@ export function parseConversationMessageEvent(
     return null;
   }
   const parsed: ConversationMessage = { id, role, text, timestamp };
+  const failureKind = parseChatFailureKind(value.failureKind);
+  if (role === "assistant" && failureKind) parsed.failureKind = failureKind;
   if (
     role === "assistant" &&
     typeof value.planningAcknowledgment === "string" &&

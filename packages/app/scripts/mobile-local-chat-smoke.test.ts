@@ -915,3 +915,23 @@ describe("mobile smoke numeric env CLI boundary", () => {
     expect(combined).not.toContain("[local-chat-smoke]");
   });
 });
+
+describe("mobile smoke delegated test invocations", () => {
+  it("only runs unit-test files that exist", () => {
+    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+    const source = fs.readFileSync(
+      path.join(scriptDir, "mobile-local-chat-smoke.ts"),
+      "utf8",
+    );
+    const repoRoot = path.resolve(scriptDir, "..", "..", "..");
+    const referenced = [
+      ...source.matchAll(/"([^"\s]+\.test\.[cm]?[jt]sx?)"/g),
+    ].map((match) => match[1]);
+    const missing = referenced.filter(
+      (file) =>
+        !fs.existsSync(path.join(repoRoot, "packages", "ui", file)) &&
+        !fs.existsSync(path.join(repoRoot, file)),
+    );
+    expect(missing).toEqual([]);
+  });
+});

@@ -68,6 +68,7 @@ import {
   SensitiveRequestDispatchRegistryService,
   type ServiceClass,
   ServiceType,
+  TargetSourceRegistryService,
   TaskService,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -1356,6 +1357,10 @@ export const basicServices: ServiceClass[] = [
   // surfaces them back into routing via the CHANNEL_TOPICS provider.
   ChannelTopicsService,
   SensitiveRequestDispatchRegistryService,
+  // Connector target-source registry. Connector plugins (e.g. Discord)
+  // register their target enumerators into it at init; the host's
+  // connector-target-catalog drains it for workflow target quick-picks.
+  TargetSourceRegistryService,
 ];
 /**
  * Combined basic capabilities object

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   mergeScheduleObservations,
   recordsFromSyncRequest,
+  scheduleObservationSyncInput,
 } from "./schedule-state";
 
 const now = new Date("2026-09-29T14:00:00Z");
@@ -133,4 +134,106 @@ it("keeps fresh unknown decisions and future signals from resurrecting or suppre
     merge([...sleep, ...observation("awake", "2026-09-29T15:00:00Z")])
       ?.circadianState,
   ).toBe("sleeping");
+});
+
+/**
+ * The Cloud path: a device replays its stored local rows through
+ * `scheduleObservationSyncInput` in one batch sent at `now`, and the Cloud
+ * agent ingests them as `device_sync` rows and merges them.
+ */
+function syncToCloud(rows: ReturnType<typeof observation>) {
+  return recordsFromSyncRequest({
+    agentId: "qa",
+    origin: "device_sync",
+    request: {
+      deviceId: "one",
+      deviceKind: "mac",
+      timezone: "UTC",
+      observedAt: now.toISOString(),
+      observations: rows.map(scheduleObservationSyncInput),
+    },
+  });
+}
+const mergeCloud = (observations: ReturnType<typeof observation>) =>
+  mergeScheduleObservations({
+    agentId: "qa",
+    scope: "cloud",
+    timezone: "UTC",
+    now,
+    observations,
+  });
+/** A stored local state row whose insight also forecasts the next meal. */
+function withMealForecast(rows: ReturnType<typeof observation>) {
+  return rows.map((row) => ({
+    ...row,
+    mealLabel: null,
+    metadata: {
+      ...row.metadata,
+      snapshot: {
+        ...(row.metadata.snapshot as Record<string, unknown>),
+        nextMealLabel: "breakfast",
+      },
+    },
+  }));
+}
+
+it("a synced batch keeps each row's own time, so replayed sleep does not beat the newer wake", () => {
+  const local = [
+    ...observation("sleeping", "2026-09-29T07:00:00Z"),
+    ...observation("waking", "2026-09-29T13:30:00Z"),
+  ];
+  expect(merge(local)?.circadianState).toBe("waking");
+  const cloud = syncToCloud(local);
+  expect(cloud.map((row) => Date.parse(row.observedAt))).toEqual([
+    Date.parse("2026-09-29T07:00:00Z"),
+    Date.parse("2026-09-29T13:30:00Z"),
+  ]);
+  expect(mergeCloud(cloud)).toMatchObject({
+    circadianState: "waking",
+    currentSleepStartedAt: null,
+  });
+});
+
+it("a synced state row does not adopt its snapshot's meal forecast as its own label", () => {
+  const local = [
+    ...observation("sleeping", "2026-09-29T07:00:00Z"),
+    ...withMealForecast(observation("waking", "2026-09-29T13:30:00Z")),
+  ];
+  expect(merge(local)?.circadianState).toBe("waking");
+  const cloud = syncToCloud(local);
+  expect(cloud.map((row) => row.mealLabel)).toEqual([null, null]);
+  expect(mergeCloud(cloud)).toMatchObject({
+    circadianState: "waking",
+    currentSleepStartedAt: null,
+  });
+});
+
+it("an explicit meal row keeps its label through sync", () => {
+  const meal = observation("awake", "2026-09-29T12:00:00Z").map((row) => ({
+    ...row,
+    mealLabel: "lunch" as const,
+  }));
+  expect(syncToCloud(meal).map((row) => row.mealLabel)).toEqual(["lunch"]);
+});
+
+it("a row time after the batch send time falls back to the send time", () => {
+  const [record] = recordsFromSyncRequest({
+    agentId: "qa",
+    origin: "device_sync",
+    request: {
+      deviceId: "one",
+      deviceKind: "mac",
+      timezone: "UTC",
+      observedAt: now.toISOString(),
+      observations: [
+        {
+          observedAt: "2026-09-29T15:00:00Z",
+          circadianState: "awake",
+          stateConfidence: 0.9,
+          windowStartAt: "2026-09-29T13:30:00Z",
+        },
+      ],
+    },
+  });
+  expect(Date.parse(record?.observedAt ?? "")).toBe(now.getTime());
 });

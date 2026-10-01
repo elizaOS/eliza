@@ -5,10 +5,18 @@
  * This proves the deployed Worker returns the gateway identity fields required
  * by the onboarding verifier. When Wrangler auth is available, it also reports
  * the newest visible production Worker version for deployment traceability.
+ *
+ * Exit codes: 0 = contract holds, GATEWAY_CONTRACT_DRIFT_EXIT_CODE = the live
+ * Worker answered with a drifted gateway identity (repairable by redeploy),
+ * 1 = the verifier itself failed (network, auth, crash, signal).
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  GATEWAY_CONTRACT_DRIFT_EXIT_CODE,
+  GatewayContractDriftError,
+} from "./lib/cloud-api-gateway-contract.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
@@ -25,9 +33,16 @@ function run(command, args, options = {}) {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: options.timeout ?? 120_000,
   });
+  // A null status means the child never exited normally (killed by a signal,
+  // timed out, or failed to spawn). That is a failure, never success.
+  const failure = result.error
+    ? `\n${command} failed: ${result.error.message}`
+    : result.status === null
+      ? `\n${command} terminated by ${result.signal ?? "unknown signal"}`
+      : "";
   return {
-    status: result.status ?? (result.error ? 1 : 0),
-    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+    status: result.status ?? 1,
+    output: `${result.stdout ?? ""}${result.stderr ?? ""}${failure}`,
   };
 }
 
@@ -70,6 +85,11 @@ function latestWorkerVersion() {
 function main() {
   const version = latestWorkerVersion();
   const onboarding = run("node", [onboardingVerifier], { timeout: 180_000 });
+  if (onboarding.status === GATEWAY_CONTRACT_DRIFT_EXIT_CODE) {
+    throw new GatewayContractDriftError(
+      onboarding.output.trim() || "cloud onboarding verifier reported drift",
+    );
+  }
   if (onboarding.status !== 0) {
     throw new Error(
       onboarding.output.trim() || "cloud onboarding verifier failed",
@@ -81,7 +101,7 @@ function main() {
     !/device=\+14159611510\/bluebubbles\/blooio/.test(summary) ||
     !/registered=yes/.test(summary)
   ) {
-    throw new Error(
+    throw new GatewayContractDriftError(
       `Cloud onboarding verifier returned unexpected summary: ${summary}`,
     );
   }
@@ -98,5 +118,5 @@ try {
   console.error(
     `[cloud-api-prod] ${error instanceof Error ? error.message : String(error)}`,
   );
-  process.exit(1);
+  process.exit(error instanceof GatewayContractDriftError ? error.exitCode : 1);
 }
