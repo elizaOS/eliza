@@ -30,6 +30,34 @@ function bindings(task: InteractiveTask, contextKey: string, choiceId: string) {
     sourceMessageId: `${task.id}:${task.epoch}:${contextKey}:${choiceId}`,
   };
 }
+function referenceFor(
+  task: InteractiveTask,
+  contextKey: string,
+  block: TaskChoiceWidget["block"],
+) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        task.id,
+        task.owner.actorId,
+        task.owner.agentId,
+        task.owner.connector,
+        task.epoch,
+        task.authorization.decisionId,
+        contextKey,
+        block.id,
+        block.scope,
+        block.prompt ?? null,
+        block.options.map((option) => [
+          option.value,
+          option.label,
+          option.description ?? null,
+        ]),
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 32);
+}
 export class InteractiveTaskChoices {
   constructor(
     private readonly runtime: InteractiveTaskRuntime,
@@ -49,6 +77,7 @@ export class InteractiveTaskChoices {
   ): boolean {
     const meta = session.effect.metadata;
     return (
+      session.authorization.state === "active" &&
       session.effect.kind === "task-choice" &&
       meta?.taskId === task.id &&
       meta.epoch === task.epoch &&
@@ -66,31 +95,11 @@ export class InteractiveTaskChoices {
     contextKey: string,
     block: TaskChoiceWidget["block"],
   ): Promise<TaskChoiceWidget> {
+    block = structuredClone(block);
     const task = this.active(taskId);
     // Identical rerenders reuse one session. Context includes product review facts;
     // epoch and authority prevent reuse after Pause, restart or account changes.
-    const reference = createHash("sha256")
-      .update(
-        JSON.stringify([
-          task.id,
-          task.owner.actorId,
-          task.owner.agentId,
-          task.owner.connector,
-          task.epoch,
-          task.authorization.decisionId,
-          contextKey,
-          block.id,
-          block.scope,
-          block.prompt ?? null,
-          block.options.map((option) => [
-            option.value,
-            option.label,
-            option.description ?? null,
-          ]),
-        ]),
-      )
-      .digest("hex")
-      .slice(0, 32);
+    const reference = referenceFor(task, contextKey, block);
     const widget: TaskChoiceWidget = {
       schemaVersion: 1,
       taskId,
@@ -153,6 +162,32 @@ export class InteractiveTaskChoices {
     widget.expiresAt = session.expiresAt;
     widget.state = session.consume.state;
     return widget;
+  }
+  /** Rehydrate a host-issued presentation without creating a new offer or effect. */
+  async refresh(value: TaskChoiceWidget): Promise<TaskChoiceWidget> {
+    validateTaskChoiceWidget(value);
+    const widget = structuredClone(value);
+    const task = this.active(widget.taskId);
+    const reference = decodeMessageInteractionCallback(widget.callbackData);
+    if (
+      !reference ||
+      widget.epoch !== task.epoch ||
+      reference !== referenceFor(task, widget.contextKey, widget.block)
+    )
+      fail();
+    const session = await this.store.get(reference);
+    const current = this.active(widget.taskId);
+    if (
+      !session ||
+      !this.matches(session, current, widget.contextKey) ||
+      Date.parse(session.expiresAt) <= this.clock()
+    )
+      fail();
+    return {
+      ...widget,
+      expiresAt: session.expiresAt,
+      state: session.consume.state,
+    };
   }
   async respond(args: {
     taskId: string;
