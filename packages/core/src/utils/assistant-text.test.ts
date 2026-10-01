@@ -285,6 +285,15 @@ Hope that helps!`;
 		);
 	});
 
+	it("does not pair backticks across headings or list item boundaries", () => {
+		expect(stripAssistantStageDirections("`example\n# *smiles* title `")).toBe(
+			"`example\n# title `",
+		);
+		expect(stripAssistantStageDirections("`example\n- *waves* item `")).toBe(
+			"`example\n- item `",
+		);
+	});
+
 	it("is null/undefined-safe (e.g. a 202 placeholder body with no text)", () => {
 		expect(
 			extractAssistantReplyText(undefined as unknown as string),

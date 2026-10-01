@@ -237,21 +237,6 @@ function normalizeInlineParagraph(input: string): string {
 	return output;
 }
 
-function normalizeInlineProse(input: string): string {
-	let output = "";
-	let offset = 0;
-	// Inline code can span lines within a paragraph, but not blank lines. Keep
-	// separators verbatim, including CRLF; a CRLF must count as one line ending.
-	for (const separator of input.matchAll(
-		/(?:(?:\r\n|\n|\r(?!\n))[ \t]*){2,}/g,
-	)) {
-		output += normalizeInlineParagraph(input.slice(offset, separator.index));
-		output += separator[0];
-		offset = separator.index + separator[0].length;
-	}
-	return output + normalizeInlineParagraph(input.slice(offset));
-}
-
 function tryParseObject(input: string): Record<string, unknown> | null {
 	try {
 		const parsed = JSON.parse(input);
@@ -397,14 +382,17 @@ export function stripAssistantStageDirections(input: string): string {
 	let output = "";
 	let offset = 0;
 	for (const token of assistantMarkdown.parse(input, {})) {
-		if ((token.type !== "fence" && token.type !== "code_block") || !token.map)
-			continue;
+		const isCode = token.type === "fence" || token.type === "code_block";
+		if ((!isCode && token.type !== "inline") || !token.map) continue;
 		const start = lineOffsets[token.map[0]];
 		const end = lineOffsets[token.map[1]] ?? input.length;
-		output += normalizeInlineProse(input.slice(offset, start));
-		output += input.slice(start, end);
+		// Paragraph/heading/list boundaries also delimit inline code. Preserve
+		// intervening block syntax rather than pairing backticks across blocks.
+		output += input.slice(offset, start);
+		const source = input.slice(start, end);
+		output += isCode ? source : normalizeInlineParagraph(source);
 		offset = end;
 	}
-	output += normalizeInlineProse(input.slice(offset));
+	output += input.slice(offset);
 	return output;
 }
