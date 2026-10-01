@@ -114,7 +114,9 @@ describe("strict-tool omitted-optional null restoration", () => {
               type: "object" as const,
               properties: {
                 action: { type: "string" as const },
-                extra: { nullable: true, type: "string" as const },
+                extra: {
+                  anyOf: [{ type: "string" as const }, { type: "null" as const }],
+                },
               },
               required: ["action"],
               additionalProperties: false as const,
@@ -126,6 +128,193 @@ describe("strict-tool omitted-optional null restoration", () => {
     );
     // Nothing needs inversion, so no transform is recorded for the tool.
     expect(normalized.recordArgTransformsByTool.NULLABLE).toBeUndefined();
+
+    const oneOfOnly = normalizeNativeToolsForCall(
+      [
+        {
+          type: "function" as const,
+          function: {
+            name: "ONEOF_NULLABLE",
+            strict: true,
+            parameters: {
+              type: "object" as const,
+              properties: {
+                action: { type: "string" as const },
+                extra: {
+                  oneOf: [{ type: "string" as const }, { type: "null" as const }],
+                },
+              },
+              required: ["action"],
+              additionalProperties: false as const,
+            },
+          },
+        },
+      ],
+      { cerebrasMode: false }
+    );
+    expect(oneOfOnly.recordArgTransformsByTool.ONEOF_NULLABLE).toBeUndefined();
+  });
+
+  it("treats provider-nullable optionals as strict-wire artifacts because core never reads `nullable`", () => {
+    // Core's validateSchema has no `nullable` handling, so a null at a
+    // `{ nullable: true, type: "string" }` node is rejected at runtime. The
+    // strict wire forced that null; restoration must drop it or every call
+    // carrying it would fail validation.
+    const normalized = normalizeNativeToolsForCall(
+      [
+        {
+          type: "function" as const,
+          function: {
+            name: "PROVIDER_NULLABLE",
+            strict: true,
+            parameters: {
+              type: "object" as const,
+              properties: {
+                action: { type: "string" as const },
+                extra: { nullable: true, type: "string" as const },
+              },
+              required: ["action"],
+              additionalProperties: false as const,
+            },
+          },
+        },
+      ],
+      { cerebrasMode: false }
+    );
+    expect(normalized.recordArgTransformsByTool.PROVIDER_NULLABLE).toEqual([
+      { path: "$", omittedKeys: ["extra"] },
+    ]);
+
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          type: "tool-call",
+          toolCallId: "provider-nullable-1",
+          toolName: "PROVIDER_NULLABLE",
+          input: { action: "remember", extra: null },
+        },
+      ],
+      normalized.recordArgTransformsByTool
+    );
+    expect(restored?.[0].arguments).toEqual({ action: "remember" });
+  });
+
+  it("preserves anyOf-declared nulls while stripping plain-optional artifact nulls", () => {
+    // The exact shape core declares in nullable-schema.integration.test.ts:
+    // an optional whose nullability is an anyOf branch. #32991 admits that
+    // null, so the strict-wire artifact drop must not delete it.
+    const tools = [
+      {
+        type: "function" as const,
+        function: {
+          name: "SCHEDULE",
+          description: "Schedule work",
+          strict: true,
+          parameters: {
+            type: "object" as const,
+            properties: {
+              action: { type: "string" as const },
+              recurrence: {
+                anyOf: [
+                  { type: "string" as const, enum: ["daily", "weekly"] },
+                  { type: "null" as const },
+                ],
+              },
+              note: { type: "string" as const },
+            },
+            required: ["action"],
+            additionalProperties: false as const,
+          },
+        },
+      },
+    ];
+    const normalized = normalizeNativeToolsForCall(tools, {
+      cerebrasMode: false,
+    });
+    // Only the plain optional `note` is an artifact carrier; `recurrence`
+    // admits null, so it is never recorded.
+    expect(normalized.recordArgTransformsByTool.SCHEDULE).toEqual([
+      { path: "$", omittedKeys: ["note"] },
+    ]);
+
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          type: "tool-call",
+          toolCallId: "anyof-null-1",
+          toolName: "SCHEDULE",
+          input: { action: "create", recurrence: null, note: null },
+        },
+      ],
+      normalized.recordArgTransformsByTool
+    );
+    expect(restored?.[0].arguments).toEqual({
+      action: "create",
+      recurrence: null,
+    });
+    const errors: string[] = [];
+    validateSchema(tools[0].function.parameters, restored?.[0].arguments, "", errors);
+    expect(errors).toEqual([]);
+  });
+
+  it("restores open-map entries after the omitted-null pass so entry nulls survive", () => {
+    // Same-path transform collision: an open-map root records BOTH an
+    // omittedKeys pass and an entriesKey restore at `$`. The stable sort keeps
+    // push order — omitted nulls drop first, then entries fold in — so an
+    // entry whose value is null (a legitimate open-map value) cannot be
+    // deleted by the artifact pass even when its key matches an omitted key.
+    const normalized = normalizeNativeToolsForCall(
+      [
+        {
+          type: "function" as const,
+          function: {
+            name: "RECORD",
+            description: "Record with arbitrary fields",
+            strict: true,
+            parameters: {
+              type: "object" as const,
+              properties: {
+                action: { type: "string" as const },
+                note: { type: "string" as const },
+              },
+              required: ["action"],
+              additionalProperties: { type: "string" as const },
+            },
+          },
+        },
+      ],
+      { cerebrasMode: false }
+    );
+    expect(normalized.recordArgTransformsByTool.RECORD).toEqual([
+      { path: "$", omittedKeys: ["note"] },
+      {
+        path: "$",
+        entriesKey: "__eliza_record_entries",
+        valueMode: "schema",
+      },
+    ]);
+
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          type: "tool-call",
+          toolCallId: "same-path-1",
+          toolName: "RECORD",
+          input: {
+            action: "create",
+            note: null,
+            __eliza_record_entries: [{ key: "note", value: null }],
+          },
+        },
+      ],
+      normalized.recordArgTransformsByTool
+    );
+    // The artifact null at the declared optional is dropped with the sibling,
+    // and the entry (same key, null value) is folded back afterwards.
+    expect(restored?.[0].arguments).toEqual({
+      action: "create",
+      note: null,
+    });
   });
 
   it("leaves the Cerebras optional-preserving contract without forced-null transforms", () => {

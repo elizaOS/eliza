@@ -186,20 +186,34 @@ interface NativeGenerateTextResult {
 type NativeTextModelResult = string & NativeGenerateTextResult;
 type RecordArgValueMode = "json-string" | "schema";
 
-interface RecordArgTransform {
-  path: string;
-  /** Present only for declared open-map record transforms. */
-  entriesKey?: string;
-  valueMode?: RecordArgValueMode;
-  /**
-   * Property keys that the strict wire forced the model to include even though
-   * the caller's original schema left them optional. Strict providers encode
-   * "omitted optional" as an explicit null at these keys, so restoration drops
-   * the null before runtime validation (the inverse of the forced-required
-   * wire encoding, mirroring the `entriesKey` record restore).
-   */
-  omittedKeys?: string[];
-}
+/**
+ * One strict-wire inversion recorded while normalizing a tool schema. Exactly
+ * one variant applies per node: an open-map record restore (`entriesKey`) or
+ * an omitted-optional null drop (`omittedKeys`). The union keeps the invalid
+ * "neither field" state unrepresentable, so restore can never silently no-op
+ * on a malformed transform.
+ */
+type RecordArgTransform =
+  | {
+      path: string;
+      entriesKey: string;
+      valueMode: RecordArgValueMode;
+      omittedKeys?: never;
+    }
+  | {
+      path: string;
+      /**
+       * Property keys that the strict wire forced the model to include even
+       * though the caller's original schema left them optional. Strict
+       * providers encode "omitted optional" as an explicit null at these keys,
+       * so restoration drops the null before runtime validation (the inverse
+       * of the forced-required wire encoding, mirroring the `entriesKey`
+       * record restore).
+       */
+      omittedKeys: string[];
+      entriesKey?: never;
+      valueMode?: never;
+    };
 
 interface ResponseSchemaTransform {
   restoreText(text: string): string;
@@ -1581,19 +1595,28 @@ function additionalPropertiesHint(additionalProperties: unknown): string | null 
 }
 
 /**
- * True when the schema already admits an explicit null value (declared null
- * type, null in a type array, or the provider `nullable` flag). Such a null is
- * a declared value, not a strict-mode "omitted optional" artifact, so it is
- * preserved for the runtime validator (#32991).
+ * True when the runtime validator (core `validateSchema`) admits an explicit
+ * null at this schema node: a declared `type: "null"`, or an `anyOf`/`oneOf`
+ * branch that itself admits null — exactly the null spellings #32991 preserves.
+ * Core never reads the provider `nullable` flag, and a `type` array reaches
+ * core's unsupported-type error, so nulls at those nodes are strict-wire
+ * artifacts and must be stripped like plain optionals. When unsure the
+ * predicate preserves: a wrongly preserved null fails validation visibly,
+ * while a wrongly stripped one silently deletes a declared value.
  */
 function schemaAdmitsNull(schema: unknown): boolean {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return false;
   }
   const record = schema as Record<string, unknown>;
-  if (record.nullable === true) return true;
   if (record.type === "null") return true;
-  return Array.isArray(record.type) && record.type.includes("null");
+  for (const keyword of ["anyOf", "oneOf"] as const) {
+    const branches = record[keyword];
+    if (Array.isArray(branches) && branches.some((branch) => schemaAdmitsNull(branch))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const STRICT_SAFE_RECORD_ENTRIES_KEY = "__eliza_record_entries";
