@@ -117,7 +117,19 @@ test.describe
                       await device.wait(nativeConfirm, { timeout: 1_000 });
                       nativeConfirmVisible = true;
                     } catch (error) {
-                      if (!(error instanceof errors.TimeoutError)) throw error;
+                      // The Android driver serializes selector absence as a
+                      // plain Error rather than Playwright's TimeoutError.
+                      const selectorAbsent =
+                        error instanceof Error &&
+                        /^(?:androidDevice\.wait: )?(?:java\.lang\.RuntimeException: )?Timed out waiting for selector$/.test(
+                          error.message,
+                        );
+                      if (
+                        !(error instanceof errors.TimeoutError) &&
+                        !selectorAbsent
+                      ) {
+                        throw error;
+                      }
                     }
                     if (nativeConfirmVisible) {
                       await device.tap(nativeConfirm, { timeout: 5_000 });
