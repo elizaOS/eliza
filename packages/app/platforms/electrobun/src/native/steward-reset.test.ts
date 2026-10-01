@@ -35,6 +35,10 @@ const ENV_KEYS = [
 	"STEWARD_DATA_DIR",
 ] as const;
 
+// Successful resets load the real sidecar module graph before exercising the
+// filesystem operation; cold imports can exceed Vitest's five-second default.
+const RESET_TIMEOUT_MS = 60_000;
+
 describe("resetSteward", () => {
 	let root: string;
 	const saved: Partial<Record<(typeof ENV_KEYS)[number], string>> = {};
@@ -71,38 +75,50 @@ describe("resetSteward", () => {
 		return credentials;
 	}
 
-	it("wipes the steward data under the state dir the sidecar writes to", async () => {
-		const dataDir = path.join(root, "state", "acme", "steward");
-		const credentials = seedStewardData(dataDir);
+	it(
+		"wipes the steward data under the state dir the sidecar writes to",
+		async () => {
+			const dataDir = path.join(root, "state", "acme", "steward");
+			const credentials = seedStewardData(dataDir);
 
-		await resetSteward();
+			await resetSteward();
 
-		expect(fs.existsSync(credentials)).toBe(false);
-		expect(fs.existsSync(dataDir)).toBe(false);
-	});
+			expect(fs.existsSync(credentials)).toBe(false);
+			expect(fs.existsSync(dataDir)).toBe(false);
+		},
+		RESET_TIMEOUT_MS,
+	);
 
-	it("accepts STEWARD_DATA_DIR pointing at the real state location", async () => {
-		const dataDir = path.join(root, "state", "acme", "steward");
-		seedStewardData(dataDir);
-		process.env.STEWARD_DATA_DIR = dataDir;
+	it(
+		"accepts STEWARD_DATA_DIR pointing at the real state location",
+		async () => {
+			const dataDir = path.join(root, "state", "acme", "steward");
+			seedStewardData(dataDir);
+			process.env.STEWARD_DATA_DIR = dataDir;
 
-		await resetSteward();
+			await resetSteward();
 
-		expect(fs.existsSync(dataDir)).toBe(false);
-	});
+			expect(fs.existsSync(dataDir)).toBe(false);
+		},
+		RESET_TIMEOUT_MS,
+	);
 
-	it("deletes the sidecar dir, not ELIZA_STATE_DIR/steward, when ELIZA_STATE_DIR is set", async () => {
-		const sidecarDir = path.join(root, "state", "acme", "steward");
-		const sidecarCredentials = seedStewardData(sidecarDir);
-		const stateDirSteward = path.join(root, "custom-state", "steward");
-		const unrelated = seedStewardData(stateDirSteward);
-		process.env.ELIZA_STATE_DIR = path.join(root, "custom-state");
+	it(
+		"deletes the sidecar dir, not ELIZA_STATE_DIR/steward, when ELIZA_STATE_DIR is set",
+		async () => {
+			const sidecarDir = path.join(root, "state", "acme", "steward");
+			const sidecarCredentials = seedStewardData(sidecarDir);
+			const stateDirSteward = path.join(root, "custom-state", "steward");
+			const unrelated = seedStewardData(stateDirSteward);
+			process.env.ELIZA_STATE_DIR = path.join(root, "custom-state");
 
-		await resetSteward();
+			await resetSteward();
 
-		expect(fs.existsSync(sidecarCredentials)).toBe(false);
-		expect(fs.existsSync(unrelated)).toBe(true);
-	});
+			expect(fs.existsSync(sidecarCredentials)).toBe(false);
+			expect(fs.existsSync(unrelated)).toBe(true);
+		},
+		RESET_TIMEOUT_MS,
+	);
 
 	it("refuses to delete a directory that holds no steward data", async () => {
 		const notSteward = path.join(root, "state", "acme", "projects");
