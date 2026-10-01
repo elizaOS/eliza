@@ -14,6 +14,10 @@ import { fileURLToPath } from "node:url";
 import { dstackEvidenceConfiguration } from "@elizaos/agent/services/tee-dstack-evidence";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildTdxQuote,
+  packMsgpack,
+} from "../../../agent/test/support/dstack-tdx-harness.ts";
+import {
   signAlphaProcessorPolicy,
   verifyAlphaAttestation,
 } from "./alpha-dstack-attestation.ts";
@@ -264,13 +268,33 @@ describe("Alpha attestation appraisal", () => {
       verifierPath: verifier,
       verifierConfigPath: config,
     };
+    const attestationKey = generateKeyPairSync("ec", {
+      namedCurve: "P-256",
+    }).privateKey;
     const requestEvidence = async (nonce: string) => {
       const { dstackOperatorReportData } = await import(
         "@elizaos/agent/api/tee-attestation-routes"
       );
       const reportData = dstackOperatorReportData(nonce);
       await writeFile(reportFile, JSON.stringify(verifierReport(reportData)));
-      return { nonce, reportData, attestation: "abcd" };
+      const paddedReportData = Buffer.from(reportData.padEnd(128, "0"), "hex");
+      const quote = buildTdxQuote({
+        reportData: paddedReportData,
+        attestationKey,
+      });
+      const attestation = packMsgpack({
+        version: 1,
+        platform: { kind: "tdx", data: { quote, event_log: [] } },
+        stack: {
+          kind: "dstack",
+          data: {
+            report_data: paddedReportData,
+            runtime_events: [],
+            config: "{}",
+          },
+        },
+      }).toString("hex");
+      return { nonce, reportData, attestation };
     };
     return { inputs, rendered, deployment, requestEvidence };
   }
@@ -313,6 +337,17 @@ describe("Alpha attestation appraisal", () => {
       appId: rendered.appId,
       measurements: { compose: rendered.composeHash },
       approvedRoutes: ["https://api.cerebras.ai/v1"],
+    });
+
+    // A positive verifier report cannot admit malformed raw evidence.
+    await expect(
+      verifyAlphaAttestation(inputs, async (nonce) => ({
+        ...(await requestEvidence(nonce)),
+        attestation: "abcd",
+      })),
+    ).rejects.toMatchObject({
+      code: "TEE_DSTACK_EVIDENCE_REJECTED",
+      cause: { message: "Attestation is not a MessagePack V1 map" },
     });
 
     // A different (e.g. rolled-back or tampered) compose is rejected.

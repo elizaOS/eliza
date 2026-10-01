@@ -214,16 +214,19 @@ function installMocks() {
     configurable: true,
     value: FakeUtterance,
   });
-  if (typeof URL.createObjectURL !== "function") {
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:playback-worklet"),
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
-  }
+  // Vitest's jsdom URL adapter reads private Blob internals. Keep report
+  // downloads real while pairing Node's Blob with its own object-URL store.
+  const { Blob: NativeBlob } = process.getBuiltinModule("buffer");
+  const { URL: NativeURL } = process.getBuiltinModule("url");
+  vi.stubGlobal("Blob", NativeBlob);
+  vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+    if (!(blob instanceof NativeBlob))
+      throw new TypeError("Expected a native Blob");
+    return NativeURL.createObjectURL(blob);
+  });
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(
+    NativeURL.revokeObjectURL,
+  );
   window.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) =>
     window.setTimeout(() => cb(performance.now()), 16),
   ) as typeof window.requestAnimationFrame;
@@ -260,6 +263,7 @@ describe("useVoiceChat TTS playback across providers", () => {
     });
     setBootConfig(DEFAULT_BOOT_CONFIG);
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("joins full provider bytes and decoded channels to actual source retirement without exposing credentials or mutable playback memory", async () => {
@@ -581,6 +585,23 @@ describe("useVoiceChat TTS playback across providers", () => {
         return;
       }
       expect(turn?.status).toBe("pass");
+      const download = view.container.querySelector<HTMLAnchorElement>(
+        'a[download="voice-workbench-evidence.json"]',
+      );
+      if (!download) throw new Error("Missing complete evidence download");
+      const artifact = process
+        .getBuiltinModule("buffer")
+        .resolveObjectURL(download.href);
+      if (!artifact)
+        throw new Error("Evidence object URL has no registered bytes");
+      const downloaded = JSON.parse(await artifact.text());
+      expect(downloaded.schema).toBe("eliza.voice-workbench.playback.v1");
+      expect(downloaded.report.turns[0].playbackEvidence).toContainEqual(
+        expect.objectContaining({
+          kind: "encoded",
+          bytes: expect.objectContaining({ data: "AQIDBA==", length: 4 }),
+        }),
+      );
       expect(turn?.detail.textDelivery).toBe("streaming-queue");
       expect(turn?.detail.ttsSegments).toBe(2);
       const queued = turn?.playbackEvidence?.filter(
