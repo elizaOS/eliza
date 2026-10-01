@@ -159,11 +159,12 @@ describe("patch-ios-plist module import", () => {
         "--input-type=module",
         "-e",
         `await import(${JSON.stringify(moduleUrl)}); console.log("IMPORTED");`,
+        "--",
         "--check",
       ],
       { encoding: "utf8" },
     );
-    expect(child.status).toBe(0);
+    expect(child.status, child.stderr).toBe(0);
     expect(child.stdout.trim()).toBe("IMPORTED");
     expect(child.stderr).not.toContain("[patch-ios-plist]");
   });

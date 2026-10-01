@@ -124,7 +124,6 @@ export default defineConfig({
       "scripts/mobile-local-chat-smoke.test.ts",
       "scripts/mvp-visual-verify.test.ts",
       "scripts/ocr-real-engine.test.ts",
-      "scripts/patch-ios-plist.test.ts",
       "scripts/playwright-audit-projects.test.ts",
       "scripts/playwright-test-match.test.ts",
       "scripts/run-ui-playwright-node-resolution.test.ts",
