@@ -53,6 +53,35 @@ describe("Gmail attachments", () => {
       expect(capabilities).toEqual(["gmail.read"]);
     }
   });
+  it("reads a small attachment from a message with a larger unrelated body", async () => {
+    const f = fixture();
+    const message = {
+      id: "message1",
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [
+          {
+            partId: "0",
+            mimeType: "text/html",
+            body: {
+              data: Buffer.from("x".repeat(80 * 1024)).toString("base64url"),
+              size: 80 * 1024,
+            },
+          },
+          descriptor,
+        ],
+      },
+    };
+    f.get.mockImplementation(async (_input: unknown, options: { maxContentLength: number }) => {
+      if (Buffer.byteLength(JSON.stringify(message)) > options.maxContentLength)
+        throw new Error("Provider response exceeds configured limit");
+      return { data: message };
+    });
+    expect(Buffer.from((await f.client.getGmailAttachment(params)).data)).toEqual(data);
+    expect(f.attachment.mock.calls[0]?.[1]).toEqual({
+      maxContentLength: Math.ceil(params.maxBytes / 3) * 4 + 65536,
+    });
+  });
   it("reads inline attachment data without inventing an attachment ID", async () => {
     const f = fixture();
     f.get.mockResolvedValue({

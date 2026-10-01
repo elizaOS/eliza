@@ -262,7 +262,11 @@ function startCutoverHoldDrain(): void {
     })
       .then((stats) => {
         if (
-          stats.delivered + stats.rescheduled + stats.released + stats.expired >
+          stats.delivered +
+            stats.rescheduled +
+            stats.released +
+            stats.expired +
+            stats.stale >
           0
         ) {
           logger.info("Cutover hold drain completed", { ...stats });

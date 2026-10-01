@@ -351,6 +351,7 @@ export async function handleImageDescription(
     signal?.throwIfAborted();
     return parseImageDescriptionResponse(content);
   } catch (error) {
+    signal?.throwIfAborted();
     // error-policy:J2 Preserve typed provider failures for the caller's boundary.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`Error analyzing image (failing closed): ${message}`);

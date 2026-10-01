@@ -91,6 +91,96 @@ function goal(goalRef: string) {
 }
 
 describe("interactive task HTTP host", () => {
+  it.each([
+    { status: "succeeded" },
+    { status: "failed" },
+    { status: "succeeded", evidenceRef: "invalid evidence" },
+    { status: "unexpected" },
+  ])("journals an invalid actuator reply as uncertain: %j", async (reply) => {
+    const storage = setup();
+    let effects = 0;
+    let version = 0;
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: {
+        capabilities: ["fill"],
+        async observe() {
+          return {
+            id: "view",
+            pageId: "page",
+            origin: "https://example.org",
+            version: ++version,
+            inputRevision: 0,
+            observedAt: Date.now(),
+          };
+        },
+        async execute() {
+          effects++;
+          // A JavaScript/native adapter can violate the TypeScript contract.
+          return reply as Awaited<
+            ReturnType<InteractiveTaskActuator["execute"]>
+          >;
+        },
+      },
+    });
+    const http = await listen(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      expect((await http.call("/tasks", { goalRef: "message" })).status).toBe(
+        201,
+      );
+      const observed = await runtime.observe("task-1", 0);
+      const result = await runtime.execute("task-1", observed.revision, {
+        id: "operation",
+        taskId: "task-1",
+        epoch: observed.epoch,
+        observationId: "view",
+        observationVersion: 1,
+        inputRevision: 0,
+        targetRef: "field",
+        capability: "fill",
+        authorizationId: "grant",
+        expiresAt: Date.now() + 10000,
+      });
+      expect(effects).toBe(1);
+      expect(result.status).toBe("blocked");
+      expect(result.operations[0].status).toBe("unknown");
+      expect(result.operations[0].evidenceRef).toBeUndefined();
+      expect(
+        (await (await http.call("/tasks/task-1")).json()).task.status,
+      ).toBe("blocked");
+      expect(runtime.events("task-1").events.at(-1)?.kind).toBe("result");
+      const reconciled = storage.store.transition(
+        "task-1",
+        {
+          owner,
+          expectedRevision: result.revision,
+          now: Date.now(),
+        },
+        {
+          type: "reconcile",
+          operationId: "operation",
+          status: "succeeded",
+          evidenceRef: "readback",
+        },
+      ).task;
+      expect(reconciled.status).toBe("paused");
+      expect(
+        (await runtime.observe("task-1", reconciled.revision, true)).status,
+      ).toBe("active");
+      expect(effects).toBe(1);
+    } finally {
+      await http.close();
+      storage.close();
+    }
+  });
+
   it("authenticates controls, commits before dispatch, and fences a late result after pause", async () => {
     const storage = setup();
     const entered =

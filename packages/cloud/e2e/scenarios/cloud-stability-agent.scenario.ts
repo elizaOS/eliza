@@ -25,6 +25,7 @@ const reminderArgs = {
   title: "Review the synthetic Cloud inbox",
   details: {
     kind: "task",
+    timezone: "UTC",
     cadence: {
       kind: "once",
       dueAt,
@@ -214,8 +215,9 @@ async function assertCloudReadback(): Promise<string | undefined> {
   if (
     notification?.category !== "reminder" ||
     notification?.source !== "lifeops" ||
-    typeof notification?.body !== "string" ||
-    !notification.body.includes("synthetic Cloud inbox") ||
+    notification?.title !== "Reminder" ||
+    notification?.body !==
+      `Reminder: ${reminderArgs.title}\nDue: ${new Date(dueAt).toLocaleString("en-US", { timeZone: "UTC" })}` ||
     typeof notification?.groupKey !== "string" ||
     !notification.groupKey.startsWith("reminder:")
   ) {
@@ -385,34 +387,6 @@ const definition = scenario({
           toolNames: [],
         },
         response: { json: { mode: "confirm" } },
-        cardinality: 1,
-      },
-      {
-        name: "cloud-reminder-dispatch-body",
-        match: {
-          modelType: "TEXT_SMALL",
-          input: {
-            includes:
-              "Current reminder:\n- title: Review the synthetic Cloud inbox",
-          },
-          toolNames: [],
-        },
-        response: {
-          text: "Time to review the synthetic Cloud inbox.",
-        },
-        cardinality: 1,
-      },
-      {
-        name: "cloud-reminder-dispatch-title",
-        match: {
-          modelType: "TEXT_SMALL",
-          input: {
-            includes:
-              "Message body:\nTime to review the synthetic Cloud inbox.",
-          },
-          toolNames: [],
-        },
-        response: { text: "Synthetic Cloud reminder" },
         cardinality: 1,
       },
       {
