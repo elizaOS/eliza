@@ -3,6 +3,9 @@
 	"$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
 	"files": {
 		"includes": [
+			"src/lib/config-env.ts",
+			"src/lib/config-env.test.ts",
+			"vitest.config.ts",
 			"__tests__/**",
 			"actions/**",
 			"cloud-providers/**",

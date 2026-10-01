@@ -334,7 +334,10 @@ function readProfileNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function readProfileBoolean(value: unknown, fallback: boolean): boolean {
+function readProfileBoolean<T extends boolean | undefined>(
+  value: unknown,
+  fallback: T,
+): boolean | T {
   return typeof value === "boolean" ? value : fallback;
 }
 
@@ -411,6 +414,39 @@ function readForceChannelProfile(
       base.requireAvailable,
     ),
   };
+}
+
+/** Presence alone is not an escalation opt-in: use the same field validators
+ * as the profile reader, rejecting empty/unknown/malformed profile objects. */
+export function hasExplicitReminderEscalationProfile(
+  definition: Pick<LifeOpsTaskDefinition, "metadata"> | null | undefined,
+): boolean {
+  const raw = definition?.metadata?.[REMINDER_ESCALATION_PROFILE_METADATA_KEY];
+  if (!isRecord(raw)) return false;
+  if (
+    readProfileBoolean(raw.activeWindowOnly, undefined) !== undefined ||
+    readProfileBoolean(raw.requireRoutineDefinition, undefined) !== undefined
+  )
+    return true;
+  if (raw.delayCompression === null || raw.forceChannel === null) return true;
+  const delayCompression = raw.delayCompression;
+  if (
+    isRecord(delayCompression) &&
+    ["afterMinutes", "factor", "minMinutes"].some((key) =>
+      Number.isFinite(readProfileNumber(delayCompression[key], NaN)),
+    )
+  )
+    return true;
+  if (isRecord(raw.forceChannel)) {
+    return (
+      isReminderChannel(raw.forceChannel.channel) ||
+      Number.isFinite(readProfileNumber(raw.forceChannel.afterMinutes, NaN)) ||
+      readProfileBoolean(raw.forceChannel.requireAvailable, undefined) !==
+        undefined ||
+      readProfileUrgencies(raw.forceChannel.urgencies, []).length > 0
+    );
+  }
+  return false;
 }
 
 export function readReminderEscalationProfile(

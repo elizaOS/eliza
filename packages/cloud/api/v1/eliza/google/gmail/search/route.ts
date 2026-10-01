@@ -23,6 +23,12 @@ app.get("/", async (c) => {
     const rawSide = c.req.query("side") ?? null;
     const grantId = c.req.query("grantId")?.trim();
     const rawQuery = c.req.query("query") ?? null;
+    const pageToken = c.req.query("pageToken");
+    if (
+      pageToken !== undefined &&
+      (!pageToken.length || pageToken.length > 4096)
+    )
+      return c.json({ error: "Invalid Gmail page token." }, 400);
     const rawMaxResults = c.req.query("maxResults") ?? null;
 
     if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
@@ -45,6 +51,7 @@ app.get("/", async (c) => {
       grantId: grantId && grantId.length > 0 ? grantId : undefined,
       query,
       maxResults,
+      pageToken,
     });
     return c.json(result);
   } catch (error) {

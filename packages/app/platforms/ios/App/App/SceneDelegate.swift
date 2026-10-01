@@ -53,19 +53,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             options: options
         )
 
-        var pluginOptions: [String: Any?] = [
-            UIApplication.OpenURLOptionsKey.openInPlace.rawValue: context.options.openInPlace
-        ]
-        if let sourceApplication = context.options.sourceApplication {
-            pluginOptions[UIApplication.OpenURLOptionsKey.sourceApplication.rawValue] = sourceApplication
-        }
-        if let annotation = context.options.annotation {
-            pluginOptions[UIApplication.OpenURLOptionsKey.annotation.rawValue] = annotation
-        }
-        NotificationCenter.default.post(name: .capacitorOpenURL, object: [
-            "url": context.url as NSURL,
-            "options": pluginOptions
-        ])
+        // The proxy posts capacitorOpenURL and records the launch URL itself.
     }
 
     private func forwardUserActivity(_ userActivity: NSUserActivity) {
@@ -74,10 +62,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             continue: userActivity,
             restorationHandler: { _ in }
         )
-        if let webpageURL = userActivity.webpageURL {
-            NotificationCenter.default.post(name: .capacitorOpenUniversalLink, object: [
-                "url": webpageURL as NSURL
-            ])
-        }
+        // The proxy posts capacitorOpenUniversalLink for browsing activities.
     }
 }

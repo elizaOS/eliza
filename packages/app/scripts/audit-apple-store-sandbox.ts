@@ -107,12 +107,26 @@ function walkFiles(root) {
   return out;
 }
 
-function nmUndefinedSymbols(filePath) {
+/**
+ * Undefined (imported) symbols of a Mach-O, or null when `nm` could not read
+ * it. A failed `nm` is an audit failure, never "no JIT symbols": treating it as
+ * empty output would let an unreadable binary pass App Review checks.
+ */
+function nmUndefinedSymbols(filePath, rel) {
   const result = spawnSync("nm", ["-u", filePath], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  if (result.status !== 0) return "";
+  if (result.error || result.status !== 0) {
+    const reason = result.error
+      ? result.error.message
+      : `exit ${result.status ?? `signal ${result.signal}`}`;
+    const detail = `${result.stderr ?? ""}`.trim();
+    fail(
+      `nm -u failed for ${rel} (${reason}); cannot verify it does not import Apple JIT APIs${detail ? `: ${detail}` : ""}`,
+    );
+    return null;
+  }
   return `${result.stdout}\n${result.stderr}`;
 }
 
@@ -125,7 +139,8 @@ function auditBuiltApp(appPath) {
   for (const filePath of walkFiles(appPath)) {
     if (!isMachO(filePath)) continue;
     const rel = path.relative(appPath, filePath).split(path.sep).join("/");
-    const symbols = nmUndefinedSymbols(filePath);
+    const symbols = nmUndefinedSymbols(filePath, rel);
+    if (symbols === null) continue;
     const importsJit = jitSymbols.some((symbol) => symbols.includes(symbol));
     if (importsJit && rel !== "Contents/MacOS/bun") {
       fail(`${rel} imports Apple JIT APIs; only Contents/MacOS/bun may do so`);

@@ -297,7 +297,7 @@ export function readUiLanguageHeader(
     return undefined;
   }
   const header =
-    req.headers["x-eliza-ui-language"] ?? req.headers["x-eliza-ui-language"];
+    req.headers["x-elizaos-ui-language"] ?? req.headers["x-eliza-ui-language"];
   if (Array.isArray(header)) {
     return header.find((value) => value.trim())?.trim();
   }

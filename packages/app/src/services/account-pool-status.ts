@@ -19,7 +19,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountUsage,
+} from "@elizaos/core/contracts/service-routing";
 import {
   type AccountPool,
   getDefaultAccountPool,
@@ -35,16 +38,6 @@ import {
 
 type PublicAccountState = "serving" | "draining" | "exhausted";
 type CapacityState = "EXHAUSTED" | "BURNING HOT" | "OK" | "FRESH";
-interface WeeklyModelBucketCompat {
-  pct?: unknown;
-  utilization?: unknown;
-  resetsAt?: unknown;
-}
-type UsageCompat = NonNullable<LinkedAccountConfig["usage"]> & {
-  sessionResetsAt?: unknown;
-  weeklyResetsAt?: unknown;
-  weeklyModelBuckets?: Record<string, WeeklyModelBucketCompat>;
-};
 export interface PublicPoolModelBucket {
   usedPct: number;
 }
@@ -78,8 +71,6 @@ interface InternalPoolStatusAccount {
   accountState: PublicAccountState;
   sessionUsedPct: number | null;
   sessionHeadroomPct: number | null;
-  sessionResetAt: number | null;
-  sessionResetIn: string | null;
   weeklyUsedPct: number | null;
   weeklyHeadroomPct: number | null;
   weeklyResetAt: number | null;
@@ -98,7 +89,6 @@ export interface PublicPoolStatusAccount {
   accountState: PublicAccountState;
   sessionUsedPct: number | null;
   sessionHeadroomPct: number | null;
-  sessionResetIn: string | null;
   weeklyUsedPct: number | null;
   weeklyHeadroomPct: number | null;
   weeklyResetIn: string | null;
@@ -323,12 +313,19 @@ function appendSnapshot(status: InternalPoolStatus): void {
     atomicWriteText(file, `${lines.slice(-max).join("\n")}\n`);
   }
 }
-function getModelBuckets(usage: UsageCompat): InternalPoolModelBuckets {
+/**
+ * Reads only the fields usage producers write (`pollAnthropicUsage` /
+ * `pollCodexUsage` in account-usage.ts, persisted through core's
+ * `normalizeLinkedAccountUsage`): `sessionPct`, `weeklyPct`, `resetsAt`,
+ * `refreshedAt`, and `weeklyModelBuckets` entries of `{ pct, resetsAt? }`.
+ * No producer reports a session-window reset, so none is published.
+ */
+function getModelBuckets(usage: LinkedAccountUsage): InternalPoolModelBuckets {
   const source = usage.weeklyModelBuckets ?? {};
   let fable: InternalPoolModelBucket | null = null;
   let sonnet: InternalPoolModelBucket | null = null;
   for (const [key, value] of Object.entries(source)) {
-    const usedPct = clampPct(value?.pct ?? value?.utilization);
+    const usedPct = clampPct(value.pct);
     if (usedPct === null) continue;
     const bucket: InternalPoolModelBucket = {
       usedPct: round2(usedPct),
@@ -401,8 +398,6 @@ function applyUrgency(
       burn.sampleHours === null ? null : round2(burn.sampleHours);
     const resetMs = row.weeklyResetAt === null ? null : row.weeklyResetAt - now;
     row.weeklyResetIn = resetText(resetMs);
-    row.sessionResetIn =
-      row.sessionResetAt === null ? null : resetText(row.sessionResetAt - now);
     const exhaustMs =
       row.fableUsedPct !== null && rate !== null && rate > 0
         ? ((100 - row.fableUsedPct) / rate) * 3600000
@@ -538,7 +533,7 @@ function buildStatus(
   let fableFromBucket = true;
   let lastRefreshed = 0;
   const rows: InternalPoolStatusAccount[] = accounts.map((account, index) => {
-    const usage = (account.usage ?? { refreshedAt: 0 }) as UsageCompat;
+    const usage: LinkedAccountUsage = account.usage ?? { refreshedAt: 0 };
     if (typeof usage.refreshedAt === "number") {
       lastRefreshed = Math.max(lastRefreshed, usage.refreshedAt);
     }
@@ -560,12 +555,9 @@ function buildStatus(
       allLeft += 100 - weeklyAll;
       allModelsKnownAccounts += 1;
     }
+    // Anthropic producers write the all-model seven-day reset as `resetsAt`.
     const fallbackWeeklyResetAt =
-      typeof usage.resetsAt === "number"
-        ? usage.resetsAt
-        : typeof usage.weeklyResetsAt === "number"
-          ? usage.weeklyResetsAt
-          : null;
+      typeof usage.resetsAt === "number" ? usage.resetsAt : null;
     const weeklyResetAt =
       modelBuckets.available && modelBuckets.fable
         ? (modelBuckets.fable.resetAt ?? fallbackWeeklyResetAt)
@@ -580,11 +572,6 @@ function buildStatus(
       accountState: exhausted ? "exhausted" : serving ? "serving" : "draining",
       sessionUsedPct: sessionPct === null ? null : round2(sessionPct),
       sessionHeadroomPct: sessionPct === null ? null : round2(100 - sessionPct),
-      sessionResetAt:
-        typeof usage.sessionResetsAt === "number"
-          ? usage.sessionResetsAt
-          : null,
-      sessionResetIn: null,
       weeklyUsedPct: weeklyAll === null ? null : round2(weeklyAll),
       weeklyHeadroomPct: weeklyAll === null ? null : round2(100 - weeklyAll),
       weeklyResetAt,
@@ -691,7 +678,6 @@ export function serializePublicPoolStatus(
       accountState: account.accountState,
       sessionUsedPct: account.sessionUsedPct,
       sessionHeadroomPct: account.sessionHeadroomPct,
-      sessionResetIn: account.sessionResetIn,
       weeklyUsedPct: account.weeklyUsedPct,
       weeklyHeadroomPct: account.weeklyHeadroomPct,
       weeklyResetIn: account.weeklyResetIn,

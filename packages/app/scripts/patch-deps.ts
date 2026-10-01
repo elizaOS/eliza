@@ -1,13 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 /**
  * Post-install patches for third-party/runtime packaging issues.
  *
@@ -19,10 +12,8 @@ import {
  * Current responsibilities:
  *   1. Bun/runtime packaging compatibility (broken export maps, stale
  *      cache repairs, nested package skew, platform shims).
- *   2. Dependency compatibility fixes (@noble/*, cssstyle, @ai-sdk/groq,
- *      proper-lockfile, pty-manager).
- *   3. Startup noise / native loader suppression (bigint-buffer, sharp,
- *      jsdom).
+ *   2. Dependency compatibility fixes (@noble/*, pty-manager).
+ *   3. Startup noise / native loader suppression (bigint-buffer, jsdom).
  *
  * History of retired patches lives in
  * docs/retired-patches.md — do not add new memorial comments in this
@@ -31,7 +22,6 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  patchAutonomousElizaCharacterPresets,
   patchBrokenElizaCoreRuntimeDists,
   patchCodexFolderApprovalPromptCompat,
   patchExtensionlessJsExports,
@@ -113,11 +103,6 @@ patchGitWorkspaceServiceEsmRequireCompat(root);
 patchTsTsxJsGlobs(root, "@elizaos/agent");
 patchTsTsxJsGlobs(root, "@elizaos/ui");
 pruneNestedElizaPluginCoreCopies(root);
-try {
-  patchAutonomousElizaCharacterPresets(root);
-} catch {
-  // Source file may not exist (moved to @elizaos/core).
-}
 function uniqueResolvedPaths(paths) {
   return [...new Set(paths.map((candidate) => resolve(candidate)))];
 }
@@ -254,92 +239,6 @@ function patchBigintBufferNativeFallbackNoise() {
   }
 }
 patchBigintBufferNativeFallbackNoise();
-/**
- * Force Baileys to reuse the repo root sharp package.
- *
- * Bun's virtual store can leave nested sharp copies under Baileys cache entries.
- * If both a nested sharp and the repo root sharp load in the same process, macOS
- * ends up with duplicate libvips dylibs and Objective-C class warnings. Replace
- * Baileys' nested sharp copies with a symlink to the canonical root package so
- * the process only loads one sharp/libvips pair.
- */
-function patchBaileysNestedSharpCopies() {
-  const bunCacheDir = resolve(root, "node_modules/.bun");
-  const rootSharp = resolve(root, "node_modules/sharp");
-  if (!existsSync(bunCacheDir) || !existsSync(rootSharp)) {
-    return;
-  }
-  const rootSharpRealPath = realpathSync(rootSharp);
-  const linkType = process.platform === "win32" ? "junction" : "dir";
-  let patched = 0;
-  try {
-    for (const entry of readdirSync(bunCacheDir)) {
-      if (!entry.startsWith("@whiskeysockets+baileys@")) continue;
-      const nestedSharp = resolve(bunCacheDir, entry, "node_modules/sharp");
-      removePathRecursive(nestedSharp);
-      symlinkSync(rootSharpRealPath, nestedSharp, linkType);
-      patched++;
-      console.log(
-        `[patch-deps] Linked Baileys nested sharp to root sharp: ${nestedSharp} -> ${rootSharpRealPath}`,
-      );
-    }
-  } catch (error) {
-    console.warn(
-      `[patch-deps] Failed to normalize Baileys sharp dependency: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (patched > 0) {
-    console.log(
-      `[patch-deps] Baileys: normalized ${patched} nested sharp path(s) to the root sharp package.`,
-    );
-  }
-}
-patchBaileysNestedSharpCopies();
-/**
- * Normalize stale Bun sharp store aliases to the canonical root sharp version.
- *
- * Bun can retain older sharp store entries after dependency upgrades. If any
- * import path still resolves to the stale 0.33.5 store while the repo root
- * uses 0.34.5, macOS ends up loading both libvips 1.0.4 and 1.2.4 into the
- * same process. Alias the stale store entries to the canonical ones so every
- * resolution path lands on the same sharp/libvips build.
- */
-function patchLegacySharpStoreAliases() {
-  const bunCacheDir = resolve(root, "node_modules/.bun");
-  if (!existsSync(bunCacheDir)) {
-    return;
-  }
-  const linkType = process.platform === "win32" ? "junction" : "dir";
-  const aliasPairs = [
-    ["sharp@0.33.5", "sharp@0.34.5"],
-    ["@img+sharp-darwin-arm64@0.33.5", "@img+sharp-darwin-arm64@0.34.5"],
-    [
-      "@img+sharp-libvips-darwin-arm64@1.0.4",
-      "@img+sharp-libvips-darwin-arm64@1.2.4",
-    ],
-  ];
-  let patched = 0;
-  for (const [staleEntry, canonicalEntry] of aliasPairs) {
-    const stalePath = resolve(bunCacheDir, staleEntry);
-    const canonicalPath = resolve(bunCacheDir, canonicalEntry);
-    if (!existsSync(stalePath) || !existsSync(canonicalPath)) continue;
-    const canonicalRealPath = realpathSync(canonicalPath);
-    const staleRealPath = realpathSync(stalePath);
-    if (staleRealPath === canonicalRealPath) continue;
-    removePathRecursive(stalePath);
-    symlinkSync(canonicalRealPath, stalePath, linkType);
-    patched++;
-    console.log(
-      `[patch-deps] Aliased stale sharp store entry ${staleEntry} -> ${canonicalRealPath}`,
-    );
-  }
-  if (patched > 0) {
-    console.log(
-      `[patch-deps] sharp: normalized ${patched} stale Bun store alias(es) to the canonical sharp version.`,
-    );
-  }
-}
-patchLegacySharpStoreAliases();
 /**
  * Keep jsdom from eagerly requiring node-canvas on startup.
  *
@@ -520,50 +419,3 @@ function patchLlamaCppCapacitorAndroidEmbeddingParams() {
   }
 }
 patchLlamaCppCapacitorAndroidEmbeddingParams();
-/**
- * Patch cssstyle's CommonJS parser bundle to use a CJS-compatible css-color.
- *
- * cssstyle@6.2.0 still calls require("@asamuzakjp/css-color"), but the 5.x
- * css-color line is ESM-only. Under some CI Node/Vitest fork-worker runs this
- * trips ERR_REQUIRE_ASYNC_MODULE before jsdom-based tests even start.
- *
- * We install a root alias pinned to @asamuzakjp/css-color@4.1.2, whose exports
- * still provide a require-compatible CJS entry point, then rewrite cssstyle's
- * require() to target that alias.
- *
- * Remove once cssstyle ships a compatible CommonJS import path or the test
- * stack stops loading it via require().
- */
-function patchCssstyleColorCompat() {
-  const relPath = "lib/parsers.js";
-  const searchDirs = [resolve(root, "node_modules/cssstyle")];
-  const bunCacheDir = resolve(root, "node_modules/.bun");
-  if (existsSync(bunCacheDir)) {
-    try {
-      for (const entry of readdirSync(bunCacheDir)) {
-        if (entry.startsWith("cssstyle@")) {
-          searchDirs.push(resolve(bunCacheDir, entry, "node_modules/cssstyle"));
-        }
-      }
-    } catch {}
-  }
-  const needle = 'require("@asamuzakjp/css-color")';
-  const replacement = 'require("@elizaos/css-color-cjs")';
-  let patched = 0;
-  for (const dir of searchDirs) {
-    const target = resolve(dir, relPath);
-    if (!existsSync(target)) continue;
-    let src = readFileSync(target, "utf8");
-    if (!src.includes(needle)) continue;
-    src = src.replaceAll(needle, replacement);
-    writeFileSync(target, src, "utf8");
-    patched++;
-    console.log(`[patch-deps] Applied cssstyle color compat fix: ${target}`);
-  }
-  if (patched > 0) {
-    console.log(
-      `[patch-deps] cssstyle: fixed ${patched} parser require path(s).`,
-    );
-  }
-}
-patchCssstyleColorCompat();

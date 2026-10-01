@@ -3099,6 +3099,10 @@ export {
 	type Tier0Span,
 } from "./security/pii-scrub-seam.js";
 export {
+	isProcessOnlyEnvKey,
+	PROCESS_ONLY_ENV_KEY_PREFIXES,
+} from "./security/process-env-policy.js";
+export {
 	isProcessingPolicyDenial,
 	PROCESSING_POLICY_DENIED,
 	type ProcessingActionEffect,
@@ -3724,6 +3728,7 @@ export {
 export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
+export { sleepWithAbort } from "./utils/retry";
 export { createSerialise } from "./utils/serialise.js";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";

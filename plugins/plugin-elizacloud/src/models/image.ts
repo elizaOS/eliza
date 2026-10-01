@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
-import { ElizaError, logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType, sleepWithAbort } from "@elizaos/core";
 import { resolveCloudBillingUrl } from "../cloud/base-url";
 import {
   getBaseURL,
@@ -103,6 +103,8 @@ export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
 ): Promise<{ title: string; description: string }> {
+  const signal = typeof params === "string" ? undefined : params.signal;
+  signal?.throwIfAborted();
   // Honour `DISABLE_IMAGE_DESCRIPTION` (set by the runtime when
   // `features.vision === false`). The runtime exposes it via getSetting; some
   // hosts only set it in process.env. Check both before burning a quota slot.
@@ -185,10 +187,13 @@ export async function handleImageDescription(
     let attemptedRetry = false;
     let warmingRetries = 0;
     for (let attempt = 0; attempt < 4; attempt++) {
+      signal?.throwIfAborted();
       const attemptResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
+        signal,
         timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_IMAGE_TIMEOUT_MS", 120_000),
       });
+      signal?.throwIfAborted();
       if (!attemptResponse) {
         continue;
       }
@@ -232,7 +237,7 @@ export async function handleImageDescription(
           logger.warn(
             `[ELIZAOS_CLOUD] Image analysis cold-cache warming (503), retry ${warmingRetries}/2 after ${warmingWait}s...`
           );
-          await new Promise((r) => setTimeout(r, warmingWait * 1000));
+          await sleepWithAbort(warmingWait * 1000, signal);
           continue;
         }
       }
@@ -265,7 +270,7 @@ export async function handleImageDescription(
         logger.warn(
           `[ELIZAOS_CLOUD] Image analysis rate-limited (429), retrying once after ${retryAfter}s...`
         );
-        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+        await sleepWithAbort(retryAfter * 1000, signal);
         attemptedRetry = true;
         continue;
       }
@@ -310,6 +315,7 @@ export async function handleImageDescription(
     };
 
     const typedResult = (await finalResponse.json()) as OpenAIResponseType;
+    signal?.throwIfAborted();
     const content = typedResult.choices?.[0]?.message?.content;
 
     if (typedResult.usage) {
@@ -342,8 +348,10 @@ export async function handleImageDescription(
       );
     }
 
+    signal?.throwIfAborted();
     return parseImageDescriptionResponse(content);
   } catch (error) {
+    signal?.throwIfAborted();
     // error-policy:J2 Preserve typed provider failures for the caller's boundary.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`Error analyzing image (failing closed): ${message}`);

@@ -13,6 +13,8 @@ export type VoiceErrorCode =
 	| "VOICE_TURN_NOT_FOUND"
 	| "VOICE_RECENT_TURNS_LIMIT_INVALID"
 	| "VOICE_REQUEST_FAILED"
+	/** The streaming runtime route is not served; the message was not accepted. */
+	| "VOICE_RUNTIME_STREAM_UNAVAILABLE"
 	| "VOICE_UNKNOWN";
 
 export class VoiceError extends Error {

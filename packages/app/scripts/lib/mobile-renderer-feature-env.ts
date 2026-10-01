@@ -8,7 +8,15 @@
  * authoritative.
  * Lanes with feature values that remain unstamped start from a fresh renderer,
  * and explicit reuse requires a stale-risk acknowledgement.
+ * Android LP3 / VPS-sidecar flags are read through the same predicates the
+ * native build policy uses, so renderer and native artifacts always agree.
  */
+
+import {
+  isAndroidLp3ColorPolicyEnabled,
+  isAndroidLp3RemoteFallbackRequired,
+  isAndroidVpsSidecarBuild,
+} from "../mobile/android/cloud-policy.ts";
 
 const ANDROID_CLOUD_DEBUG = "android-cloud-debug";
 const ANDROID_CLOUD = "android-cloud";
@@ -31,20 +39,11 @@ export function resolveMobileRendererFeatureEnv({
   }
   const cloudAndroid =
     platform === ANDROID_CLOUD || platform === ANDROID_CLOUD_DEBUG;
-  const isLp3Debug =
-    platform === ANDROID_CLOUD_DEBUG &&
-    env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED === "1";
   if (!cloudAndroid) return {};
-  const isLp3RemoteFallback = ["1", "true", "yes"].includes(
-    String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
-      .trim()
-      .toLowerCase(),
-  );
-  const isVpsSidecar = ["1", "true", "yes"].includes(
-    String(env.ELIZA_ANDROID_VPS_SIDECAR ?? "")
-      .trim()
-      .toLowerCase(),
-  );
+  const isLp3Debug =
+    platform === ANDROID_CLOUD_DEBUG && isAndroidLp3ColorPolicyEnabled(env);
+  const isLp3RemoteFallback = isAndroidLp3RemoteFallbackRequired(env);
+  const isVpsSidecar = isAndroidVpsSidecarBuild(env);
   return {
     VITE_VOICE_REALTIME_WS: "1",
     // A production self-hosted artifact may arm realtime only after its paired

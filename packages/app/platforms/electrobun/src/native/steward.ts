@@ -16,12 +16,47 @@
  *   4. Stops the sidecar on app shutdown
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	StewardSidecar,
 	StewardSidecarStatus,
 } from "../../../../src/services/steward-sidecar";
-import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
+import { resolveStateDir } from "./auth-bridge";
+
+function isStrictlyInside(dir: string, root: string): boolean {
+	const relative = path.relative(path.resolve(root), dir);
+	return (
+		relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+	);
+}
+
+/**
+ * Guard the recursive delete in `resetSteward`: the directory must sit inside
+ * the sidecar's own state root or the app state dir (so a stray
+ * STEWARD_DATA_DIR cannot point the delete elsewhere), and an existing
+ * directory must hold steward state (`credentials.json` or `data/`).
+ */
+function assertStewardDataDirDeletable(
+	dataDir: string,
+	allowedRoots: readonly string[],
+): void {
+	if (!allowedRoots.some((root) => isStrictlyInside(dataDir, root))) {
+		throw new Error(
+			`[Steward] Refusing to delete ${dataDir}: outside ${allowedRoots.join(" and ")}`,
+		);
+	}
+	if (
+		fs.existsSync(dataDir) &&
+		!fs.existsSync(path.join(dataDir, "credentials.json")) &&
+		!fs.existsSync(path.join(dataDir, "data"))
+	) {
+		throw new Error(
+			`[Steward] Refusing to delete ${dataDir}: it does not contain steward data`,
+		);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -248,31 +283,18 @@ export async function restartSteward(): Promise<StewardSidecarStatus> {
 export async function resetSteward(): Promise<StewardSidecarStatus> {
 	logger.info("[Steward] Resetting steward data...");
 
-	// Stop the sidecar first
-	await stopSteward();
-
-	// Delete credentials and data directory
-	const fs = await import("node:fs");
-	const path = await import("node:path");
-	const home = process.env.HOME || process.env.USERPROFILE || "";
-	const dataDir =
-		process.env.STEWARD_DATA_DIR ||
-		path.join(home, `.${getBrandConfig().namespace}`, "steward");
-
-	// Safety: ensure dataDir resolves inside the app namespace dir to prevent accidental
-	// deletion of unrelated directories via env var manipulation.
-	const resolvedDataDir = path.resolve(dataDir);
-	const stateBase = path.resolve(
-		path.join(home, `.${getBrandConfig().namespace}`),
+	// Delete exactly the directory the sidecar is configured to use, so reset
+	// and the running sidecar can never disagree about where the wallet lives.
+	const resolvedDataDir = path.resolve(
+		(await getStewardSidecar()).getDataDir(),
 	);
-	if (
-		!resolvedDataDir.startsWith(stateBase + path.sep) &&
-		resolvedDataDir !== stateBase
-	) {
-		throw new Error(
-			`[Steward] Refusing to delete dataDir outside ~/.${getBrandConfig().namespace}/: ${resolvedDataDir}`,
-		);
-	}
+	const { resolveDesktopStewardStateRoot } = await loadStewardSidecarModule();
+	assertStewardDataDirDeletable(resolvedDataDir, [
+		resolveDesktopStewardStateRoot(),
+		resolveStateDir(),
+	]);
+
+	await stopSteward();
 
 	if (fs.existsSync(resolvedDataDir)) {
 		logger.info(`[Steward] Removing data directory: ${resolvedDataDir}`);

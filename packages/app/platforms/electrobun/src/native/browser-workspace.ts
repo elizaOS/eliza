@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getBrandConfig } from "../brand-config";
+import { logger } from "../logger";
 import { getCurrentMainWindowSnapshot } from "../main-window-runtime";
 import type { SendToWebview } from "../types.js";
 
@@ -62,9 +63,23 @@ export interface ListBrowserWorkspaceEventsOptions {
 }
 
 export interface BrowserWorkspaceEventLogSnapshot {
+	/**
+	 * Matching events, oldest first: the first `limit` after the cursor when
+	 * `after` is given, otherwise the newest `limit` retained events.
+	 */
 	events: BrowserWorkspaceEvent[];
+	/**
+	 * Resume cursor: pass it back as `after` to continue without skipping.
+	 * Equals the last returned event's `seq` when a cursor page was truncated
+	 * by `limit`, otherwise the newest recorded sequence.
+	 */
 	latestSequence: number;
 	limit: number;
+	/**
+	 * Total events evicted from the bounded log since creation. A cursor older
+	 * than the oldest retained event has missed evicted events.
+	 */
+	droppedEvents: number;
 }
 
 export interface OpenBrowserWorkspaceTabOptions {
@@ -413,12 +428,29 @@ $bmp.Dispose()`;
 
 let browserWorkspaceCounter = 0;
 
+/** Retained browser workspace diagnostics events (count-based ring). */
+export const DEFAULT_BROWSER_WORKSPACE_MAX_EVENTS = 1000;
+const DROPPED_EVENT_LOG_INTERVAL = 1000;
+
 export class BrowserWorkspaceManager {
 	private sendToWebview: SendToWebview | null = null;
 	private rendererCaller: BrowserWorkspaceRendererCaller | null = null;
 	private readonly tabs = new Map<string, BrowserWorkspaceTab>();
 	private readonly events: BrowserWorkspaceEvent[] = [];
 	private eventSequence = 0;
+	private droppedEvents = 0;
+	private readonly maxEvents: number;
+
+	constructor(options?: { maxEvents?: number }) {
+		const maxEvents =
+			options?.maxEvents ?? DEFAULT_BROWSER_WORKSPACE_MAX_EVENTS;
+		if (!Number.isInteger(maxEvents) || maxEvents <= 0) {
+			throw new TypeError(
+				"Browser workspace maxEvents must be a positive integer",
+			);
+		}
+		this.maxEvents = maxEvents;
+	}
 
 	setSendToWebview(fn: SendToWebview | null): void {
 		this.sendToWebview = fn;
@@ -452,6 +484,21 @@ export class BrowserWorkspaceManager {
 			...(scrubbedPayload ? { payload: scrubbedPayload } : {}),
 		};
 		this.events.push(event);
+		if (this.events.length > this.maxEvents) {
+			const evicted = this.events.length - this.maxEvents;
+			this.events.splice(0, evicted);
+			const before = this.droppedEvents;
+			this.droppedEvents += evicted;
+			if (
+				before === 0 ||
+				Math.floor(before / DROPPED_EVENT_LOG_INTERVAL) !==
+					Math.floor(this.droppedEvents / DROPPED_EVENT_LOG_INTERVAL)
+			) {
+				logger.warn(
+					`[BrowserWorkspace] Event log at capacity (${this.maxEvents}); evicted ${this.droppedEvents} oldest event(s) in total. Oldest retained seq: ${this.events[0]?.seq ?? event.seq}.`,
+				);
+			}
+		}
 		return event;
 	}
 
@@ -494,10 +541,9 @@ export class BrowserWorkspaceManager {
 	async listEvents(
 		options: ListBrowserWorkspaceEventsOptions = {},
 	): Promise<BrowserWorkspaceEventLogSnapshot> {
-		const after =
-			typeof options.after === "number" && Number.isFinite(options.after)
-				? options.after
-				: 0;
+		const cursor = options.after;
+		const hasCursor = typeof cursor === "number" && Number.isFinite(cursor);
+		const after = hasCursor ? cursor : 0;
 		const limit = options.limit;
 		if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
 			throw new TypeError(
@@ -510,12 +556,23 @@ export class BrowserWorkspaceManager {
 			.filter((event) => event.seq > after)
 			.filter((event) => !tabId || event.tabId === tabId)
 			.filter((event) => !type || event.type === type);
-		const events =
-			limit === undefined ? matchingEvents : matchingEvents.slice(-limit);
+		const truncated = limit !== undefined && matchingEvents.length > limit;
+		// Without a cursor the caller wants a tail: the newest `limit` events,
+		// resuming from the head. With a cursor, page forward from it and
+		// resume after the last returned event so nothing is skipped.
+		const pagingForward = hasCursor && truncated;
+		const events = !truncated
+			? matchingEvents
+			: pagingForward
+				? matchingEvents.slice(0, limit)
+				: matchingEvents.slice(-limit);
 		return {
 			events,
-			latestSequence: this.eventSequence,
+			latestSequence: pagingForward
+				? (events.at(-1)?.seq ?? this.eventSequence)
+				: this.eventSequence,
 			limit: limit ?? events.length,
+			droppedEvents: this.droppedEvents,
 		};
 	}
 
@@ -799,6 +856,7 @@ export class BrowserWorkspaceManager {
 		this.tabs.clear();
 		this.events.length = 0;
 		this.eventSequence = 0;
+		this.droppedEvents = 0;
 		this.sendToWebview = null;
 		this.rendererCaller = null;
 	}

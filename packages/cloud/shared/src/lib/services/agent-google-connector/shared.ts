@@ -1,7 +1,9 @@
+import type { GoogleGmailAttachment } from "@elizaos/plugin-google-workspace/types";
 // Coordinates cloud service shared behavior behind route handlers.
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
+import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import { googleFetchWithToken } from "../../utils/google-mcp-shared";
 import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
@@ -99,11 +101,13 @@ export interface ManagedGoogleGmailMessage {
 }
 
 export interface ManagedGoogleGmailReadResult {
+  attachments?: GoogleGmailAttachment[];
   message: ManagedGoogleGmailMessage;
   bodyText: string;
 }
 
 export interface ManagedGoogleGmailSearchResult {
+  nextPageToken?: string | null;
   messages: ManagedGoogleGmailMessage[];
   syncedAt: string;
 }
@@ -358,9 +362,23 @@ export async function googleFetch(args: {
   grantId?: string;
   url: string;
   options?: RequestInit;
+  maxResponseBytes?: number;
 }): Promise<Response> {
   const { accessToken } = await getGoogleAccessToken(args);
   try {
+    if (args.maxResponseBytes !== undefined) {
+      const response = await boundedProviderFetch(
+        args.url,
+        {
+          ...args.options,
+          redirect: "error",
+          headers: { ...args.options?.headers, Authorization: `Bearer ${accessToken}` },
+        },
+        { provider: "google", timeoutMs: 30000, maxResponseBytes: args.maxResponseBytes },
+      );
+      if (!response.ok) fail(502, "Google request failed.");
+      return response;
+    }
     return await googleFetchWithToken(accessToken, args.url, args.options);
   } catch (error) {
     // error-policy:J1 translate a Google API transport/timeout failure into a 502 boundary error

@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: os-verification-${{ github.ref }}
-  cancel-in-progress: true
+  group: os-verification-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 defaults:
   run:

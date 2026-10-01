@@ -17,6 +17,7 @@ import type {
 	IStreamExtractor,
 	StructuredFieldEventCallbacks,
 } from "../types/streaming";
+import { REASONING_TAG_NAMES } from "./reasoning-tags";
 import { toWellFormedUnicode } from "./unicode";
 
 /**
@@ -623,7 +624,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private emittedContent: Map<string, string> = new Map();
 	private reasoningFilters: Map<
 		string,
-		{ mode: "outside" | "inside"; pending: string }
+		{ mode: "outside" | "inside"; pending: string; closeTag: string }
 	> = new Map();
 	private state: ExtractorState = "streaming";
 	private formatDecided = false;
@@ -1157,12 +1158,11 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		value: string,
 		final: boolean,
 	): string {
-		const filter =
-			this.reasoningFilters.get(field) ??
-			({ mode: "outside", pending: "" } as {
-				mode: "outside" | "inside";
-				pending: string;
-			});
+		const filter = this.reasoningFilters.get(field) ?? {
+			mode: "outside" as "outside" | "inside",
+			pending: "",
+			closeTag: "",
+		};
 		const source = `${filter.pending}${value}`;
 		filter.pending = "";
 		const parts: string[] = [];
@@ -1178,13 +1178,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				if (candidate > index) {
 					parts.push(source.slice(index, candidate));
 				}
-				const open = matchTagAt(source, candidate, "<think>");
-				if (open === "full") {
+				const open = matchReasoningOpenTagAt(source, candidate);
+				if (open.kind === "full") {
 					filter.mode = "inside";
-					index = candidate + "<think>".length;
+					filter.closeTag = `</${open.name}>`;
+					index = candidate + open.name.length + 2;
 					continue;
 				}
-				if (open === "partial") {
+				if (open.kind === "partial") {
 					filter.pending = source.slice(candidate);
 					break;
 				}
@@ -1197,10 +1198,11 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (candidate === -1) {
 				break;
 			}
-			const close = matchTagAt(source, candidate, "</think>");
+			const close = matchTagAt(source, candidate, filter.closeTag);
 			if (close === "full") {
 				filter.mode = "outside";
-				index = candidate + "</think>".length;
+				index = candidate + filter.closeTag.length;
+				filter.closeTag = "";
 				continue;
 			}
 			if (close === "partial") {
@@ -1237,10 +1239,32 @@ function decodeJsonEscape(raw: string): string {
 	}
 }
 
+/**
+ * Match any canonical reasoning open tag (`<think>`, `<thinking>`, ...) at
+ * `index`. `partial` means the source ends inside a prefix of at least one
+ * tag, so the caller must hold the remainder until more input arrives.
+ */
+function matchReasoningOpenTagAt(
+	source: string,
+	index: number,
+): { kind: "full"; name: string } | { kind: "partial" } | { kind: "none" } {
+	let partial = false;
+	for (const name of REASONING_TAG_NAMES) {
+		const match = matchTagAt(source, index, `<${name}>`);
+		if (match === "full") {
+			return { kind: "full", name };
+		}
+		if (match === "partial") {
+			partial = true;
+		}
+	}
+	return partial ? { kind: "partial" } : { kind: "none" };
+}
+
 function matchTagAt(
 	source: string,
 	index: number,
-	tag: "<think>" | "</think>",
+	tag: string,
 ): "full" | "partial" | "none" {
 	const remainingLen = source.length - index;
 	if (remainingLen <= 0) {

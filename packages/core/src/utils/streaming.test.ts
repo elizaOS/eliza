@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { REASONING_TAG_NAMES } from "./reasoning-tags";
 import { ResponseSkeletonStreamExtractor } from "./streaming";
 
 const skeleton = {
@@ -59,4 +60,42 @@ describe("ResponseSkeletonStreamExtractor surrogate pairs (#30904)", () => {
 			expect(run(pushes)).toEqual({ text: expected, final: expected });
 		},
 	);
+});
+
+describe("ResponseSkeletonStreamExtractor reasoning tags", () => {
+	it.each(REASONING_TAG_NAMES.map((name) => [name] as const))(
+		"hides streamed <%s> reasoning blocks",
+		(name) => {
+			const expected = "Hello there";
+			expect(
+				run([`${head}Hello <${name}>secret plan</${name}>there"}`]),
+			).toEqual({ text: expected, final: expected });
+		},
+	);
+
+	it.each(REASONING_TAG_NAMES.map((name) => [name] as const))(
+		"hides <%s> reasoning split across pushes",
+		(name) => {
+			const expected = "Hi ok";
+			const raw = `Hi <${name}>private</${name.toUpperCase()}>ok`;
+			const pushes = [...`${head}${raw}"}`];
+			expect(run(pushes)).toEqual({ text: expected, final: expected });
+		},
+	);
+
+	it("only closes a reasoning block with its own tag name", () => {
+		const expected = "A B";
+		expect(run([`${head}A <thinking>x</think>y</thinking>B"}`])).toEqual({
+			text: expected,
+			final: expected,
+		});
+	});
+
+	it("keeps non-reasoning angle-bracket text visible", () => {
+		const expected = "1 <thin 2 <b>x</b>";
+		expect(run([`${head}${expected}"}`])).toEqual({
+			text: expected,
+			final: expected,
+		});
+	});
 });

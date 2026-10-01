@@ -45,7 +45,8 @@ jobs:
         run: bun run build:core
       - name: Repository verification
         env:
-          RUN_TURBO_CONCURRENCY: "2"
+          # Root verification gives each Node task an 8 GB heap on a 16 GB runner.
+          RUN_TURBO_CONCURRENCY: "1"
         run: bun run verify
       - name: Formatting
         run: bun run format:check

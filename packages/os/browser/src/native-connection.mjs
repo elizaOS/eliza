@@ -16,6 +16,8 @@ export class NativeConnection {
     nativeHost,
     hello,
     onCommand,
+    onDisconnect = () => {},
+    beforeConnect = async () => {},
     report,
     now = Date.now,
     nonce = () => crypto.randomUUID(),
@@ -27,6 +29,8 @@ export class NativeConnection {
       nativeHost,
       hello,
       onCommand,
+      onDisconnect,
+      beforeConnect,
       report,
       now,
       nonce,
@@ -132,6 +136,9 @@ export class NativeConnection {
   close(state, error) {
     if (state.closed) return;
     state.closed = true;
+    Promise.resolve()
+      .then(() => this.onDisconnect())
+      .catch((failure) => this.diagnose(failure));
     this.acknowledged(state);
     state.sender.close(error);
     if (this.current === state) this.current = null;
@@ -148,6 +155,7 @@ export class NativeConnection {
     if (this.current || this.connecting || this.stopped) return;
     this.connecting = true;
     try {
+      await this.beforeConnect();
       const hello = await this.hello();
       if (this.stopped) return;
       const port = this.browser.runtime.connectNative(this.nativeHost);

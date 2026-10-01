@@ -15,7 +15,10 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
-import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
+import {
+  buildContextInspectorResponse,
+  handleContextInspectorRoute,
+} from "./context-inspector-routes.ts";
 
 const ROOM = "00000000-0000-4000-8000-000000000101" as UUID;
 const OTHER_ROOM = "00000000-0000-4000-8000-000000000102" as UUID;
@@ -265,6 +268,38 @@ describe("context inspector HTTP integration", () => {
       state: "available",
     });
     expect(app.counts().roomReads).toBe(1);
+  });
+
+  it("never reports a recorded diagnostic budget estimate as a rejection", () => {
+    const detail = trajectory(ROOM);
+    const call = detail.steps?.[0]?.llmCalls?.[0];
+    if (!call) throw new Error("fixture must include an LLM call");
+    call.providerOptions = {
+      eliza: {
+        modelInputBudget: {
+          estimatedInputTokens: 300,
+          dispatchThresholdTokens: 900,
+          reserveOutputTokens: 100,
+          shouldReject: true,
+        },
+      },
+    };
+    const response = buildContextInspectorResponse({
+      trajectories: [detail],
+      offset: 0,
+      limit: 20,
+      total: 1,
+      now: Date.parse("2026-08-24T00:00:00.000Z"),
+      redactReference: () => "ctx_0123456789abcdef0123",
+    });
+    expect(response.tokenBudgets).toEqual([
+      {
+        usedTokens: 312,
+        limitTokens: 900,
+        reservedTokens: 100,
+        state: "within-budget",
+      },
+    ]);
   });
 
   it("resolves a public conversation id to its distinct runtime room", async () => {

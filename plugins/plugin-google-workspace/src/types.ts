@@ -163,9 +163,24 @@ export interface GoogleGmailMessageSummary {
   metadata: Record<string, unknown>;
 }
 
+export interface GoogleGmailAttachment {
+  partId: string;
+  attachmentId: string | null;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface GoogleGmailAttachmentContent extends GoogleGmailAttachment {
+  messageId: string;
+  sha256: string;
+  data: Uint8Array;
+}
+
 export interface GoogleGmailMessageDetail {
   message: GoogleGmailMessageSummary;
   bodyText: string;
+  attachments?: GoogleGmailAttachment[];
 }
 
 export interface GoogleGmailUnrespondedThread {
@@ -871,6 +886,9 @@ export interface IGoogleGmailService extends Service {
   getGmailMessageDetail(
     params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageDetail | null>;
+  getGmailAttachment(
+    params: GoogleAccountRef & { messageId: string; partId: string; maxBytes: number }
+  ): Promise<GoogleGmailAttachmentContent>;
   getGmailMessageRevision(params: GoogleAccountRef & { messageId: string }): Promise<string | null>;
   listGmailUnrespondedThreads(
     params: GoogleAccountRef & {

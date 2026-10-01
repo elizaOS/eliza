@@ -3,13 +3,32 @@
  * from the loaded Eliza config, `path` prints the resolved config file path, and
  * `show` renders all values grouped by section (honoring UI hints for labels,
  * grouping, sensitive-value masking, and advanced/hidden fields), with a
- * `--json` raw dump. Helpers flatten the nested config and infer group names.
+ * `--json` dump. Every output mode redacts secrets with the agent's canonical
+ * config redactor (`redactConfigSecrets` / `isSensitiveConfigKey`), so dynamic
+ * `env.*` secrets and keys like `cloud.apiKey` never print in clear text.
+ * Helpers flatten the nested config and infer group names.
  */
 
-import { type ElizaConfig } from "@elizaos/agent";
 import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
-import { type Command } from "commander";
+import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
+
+const MASKED_VALUE = "●●●●●●●●";
+
+async function loadRedactedConfig(): Promise<Record<string, unknown>> {
+  const { loadElizaConfig } = await import("@elizaos/agent");
+  const { redactConfigSecrets } = await import(
+    "@elizaos/agent/api/server-helpers-config"
+  );
+  return redactConfigSecrets(
+    loadElizaConfig() as unknown as Record<string, unknown>,
+  );
+}
+
+function isRedacted(value: unknown): boolean {
+  return value === "[REDACTED]";
+}
+
 export function registerConfigCli(program: Command) {
   const config = program
     .command("config")
@@ -18,10 +37,9 @@ export function registerConfigCli(program: Command) {
     .command("get <key>")
     .description("Get a config value")
     .action(async (key: string) => {
-      const { loadElizaConfig } = await import("@elizaos/agent");
-      let elizaConfig: ReturnType<typeof loadElizaConfig> | undefined;
+      let elizaConfig: Record<string, unknown> | undefined;
       try {
-        elizaConfig = loadElizaConfig();
+        elizaConfig = await loadRedactedConfig();
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         console.error(`${getLogPrefix()} Could not load config: ${detail}`);
@@ -39,6 +57,8 @@ export function registerConfigCli(program: Command) {
       }
       if (value === undefined) {
         console.log(`${theme.muted("(not set)")}`);
+      } else if (isRedacted(value)) {
+        console.log(MASKED_VALUE);
       } else {
         console.log(
           typeof value === "object"
@@ -60,11 +80,10 @@ export function registerConfigCli(program: Command) {
     .option("-a, --all", "Include advanced/hidden fields")
     .option("--json", "Output as raw JSON")
     .action(async (opts: { all?: boolean; json?: boolean }) => {
-      const { loadElizaConfig } = await import("@elizaos/agent");
       const { buildConfigSchema } = await import("@elizaos/agent");
-      let config: ElizaConfig | undefined;
+      let config: Record<string, unknown> | undefined;
       try {
-        config = loadElizaConfig();
+        config = await loadRedactedConfig();
       } catch (err) {
         console.error(
           theme.error(
@@ -152,13 +171,13 @@ function displayConfig(
     for (const [key, value] of fields) {
       const hint = uiHints[key];
       const label = hint?.label ?? key;
-      const isSensitive = hint?.sensitive ?? false;
+      const isSensitive = (hint?.sensitive ?? false) || isRedacted(value);
       const isSet = value !== undefined && value !== null && value !== "";
       let displayValue: string;
       if (!isSet) {
         displayValue = theme.muted("(not set)");
       } else if (isSensitive) {
-        displayValue = theme.muted("●●●●●●●●");
+        displayValue = theme.muted(MASKED_VALUE);
       } else if (typeof value === "object") {
         displayValue = JSON.stringify(value);
       } else {

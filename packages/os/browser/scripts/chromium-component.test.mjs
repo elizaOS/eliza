@@ -31,8 +31,11 @@ const certificate = "A".repeat(64);
 function assets() {
   return {
     "background.mjs": Buffer.from('import "./commands.mjs";\n'),
+    "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
     "native-connection.mjs": Buffer.from("export const recovery = true;\n"),
+    "task-guidance.mjs": Buffer.from("export const admission = true;\n"),
+    "page-guidance.mjs": Buffer.from("export const annotation = true;\n"),
     "protocol.mjs": Buffer.from("export const protocol = 2;\n"),
     "runtime-config.mjs": Buffer.from(
       `export const nativeHost = ${JSON.stringify({ application: "ai.elizaos.app", androidCertificates: [certificate] })};\n`,
@@ -349,5 +352,24 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
   );
   assert.ok(allocation);
   assert.ok(count <= Number(allocation[2]) - Number(allocation[1]));
-  assert.equal(count, 17); // Includes both optional Hangouts entries, conservatively.
+  assert.equal(count, 20); // Includes both optional Hangouts entries, conservatively.
+});
+
+test("a different Android host must match the component assets and build certificate", async () => {
+  const input = request();
+  input.application = "org.example.helper";
+  await assert.rejects(
+    generateComponentOverlay(input),
+    /Native host configuration/,
+  );
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    `export const nativeHost = ${JSON.stringify({ application: input.application, androidCertificates: [certificate] })};\n`,
+  );
+  const result = await generateComponentOverlay(input);
+  assert.equal(result.report.nativeHost.application, input.application);
+  assert.deepEqual(result.report.nativeHost.androidCertificates, [certificate]);
+  await assert.rejects(
+    generateComponentOverlay({ ...input, certificate: "B".repeat(64) }),
+    /Native host configuration/,
+  );
 });
