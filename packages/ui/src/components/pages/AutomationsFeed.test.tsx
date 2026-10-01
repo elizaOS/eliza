@@ -197,6 +197,71 @@ afterEach(() => {
 });
 
 describe("AutomationsFeed", () => {
+  it("keeps system heartbeat rows read-only while ordinary prompts open the editor", async () => {
+    const response = responseFixture();
+    response.automations = [
+      automationItem({
+        id: "trigger:system-heartbeat",
+        type: "coordinator_text",
+        source: "trigger",
+        title: "System heartbeat",
+        status: "system",
+        enabled: true,
+        system: true,
+        hasBackingWorkflow: false,
+        workflowId: undefined,
+        triggerId: "system-heartbeat",
+        lastExecution: undefined,
+        schedules: [],
+      }),
+      automationItem({
+        id: "trigger:user-prompt",
+        type: "coordinator_text",
+        source: "trigger",
+        title: "User prompt",
+        status: "paused",
+        enabled: false,
+        system: false,
+        hasBackingWorkflow: false,
+        workflowId: undefined,
+        triggerId: "user-prompt",
+        trigger: {
+          id: "user-prompt",
+          taskId: "user-prompt-task",
+          displayName: "User prompt",
+          instructions: "Return a short answer",
+          triggerType: "cron",
+          cronExpression: "0 12 28 9 *",
+          enabled: false,
+          wakeMode: "inject_now",
+          createdBy: "api",
+          kind: "prompt",
+          runCount: 0,
+        },
+        lastExecution: undefined,
+        schedules: [],
+      }),
+    ];
+    clientMock.listAutomations.mockResolvedValue(response);
+    render(<AutomationsFeed />);
+
+    const system = await screen.findByText("System heartbeat");
+    const systemButton = system.closest("button");
+    expect(systemButton?.disabled).toBe(true);
+    if (systemButton) fireEvent.click(systemButton);
+    expect(screen.queryByTestId("task-editor-name")).toBeNull();
+
+    const userButton = screen.getByText("User prompt").closest("button");
+    expect(userButton?.disabled).toBe(false);
+    if (userButton) fireEvent.click(userButton);
+    expect(
+      (await screen.findByTestId("task-editor-name")).getAttribute("value"),
+    ).toBe("User prompt");
+    expect(
+      screen.getByRole("button", { name: "Save prompt automation" }),
+    ).toBeTruthy();
+  });
+
   it("shows a cancelled run separately from a failed run", async () => {
     const response = responseFixture();
     response.automations[0].lastExecution = {
