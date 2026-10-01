@@ -80,6 +80,53 @@ it("exposes the complete plan only on definition creation and validates native f
   expect(validateToolArgs(remove, { createPlan }).valid).toBe(false);
 });
 
+it("keeps creation and snooze arguments on their owning promoted operations", () => {
+  const promoted = promoteSubactionsToActions(ownerRemindersAction);
+  const create = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_CREATE",
+  );
+  const snooze = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_SNOOZE",
+  );
+  const update = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_UPDATE",
+  );
+  if (!create || !snooze || !update)
+    throw new Error("Expected owner reminder operations");
+  expect(
+    validateToolArgs(create, {
+      title: "Check notebook",
+      confirmed: true,
+      idempotencyKey: "save-one",
+    }).valid,
+  ).toBe(true);
+  expect(validateToolArgs(create, { minutes: 10 }).valid).toBe(false);
+  expect(
+    validateToolArgs(snooze, { target: "saved-reminder", minutes: 10 }).valid,
+  ).toBe(true);
+  for (const operation of [snooze, update]) {
+    expect(validateToolArgs(operation, { confirmed: true }).valid).toBe(false);
+    expect(
+      validateToolArgs(operation, { idempotencyKey: "save-one" }).valid,
+    ).toBe(false);
+  }
+  expect(
+    ownerRemindersAction.parameters?.find(
+      (parameter) => parameter.name === "minutes",
+    ),
+  ).toBeDefined();
+  expect(
+    ownerRemindersAction.parameters?.find(
+      (parameter) => parameter.name === "confirmed",
+    ),
+  ).toBeDefined();
+  expect(
+    ownerRemindersAction.parameters?.find(
+      (parameter) => parameter.name === "idempotencyKey",
+    ),
+  ).toBeDefined();
+});
+
 describe("OWNER_REMINDERS non-command mutation defense", () => {
   it.each([
     "Remind me to inspect PR19250 tomorrow appears on the whiteboard.",
