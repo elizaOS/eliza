@@ -100,6 +100,8 @@ jobs:
             test-results/cloud-stability/keyless/stability.json
             test-results/cloud-stability/keyless/stability.sha256
             test-results/cloud-stability/keyless/manifest.json
+            test-results/cloud-stability/keyless/attempt-*/*/scenario.stdout.log
+            test-results/cloud-stability/keyless/attempt-*/*/scenario.stderr.log
           retention-days: 14
           if-no-files-found: error
       - name: Upload deterministic trajectories and ledgers
@@ -191,6 +193,8 @@ jobs:
             test-results/cloud-stability/real/stability.json
             test-results/cloud-stability/real/stability.sha256
             test-results/cloud-stability/real/manifest.json
+            test-results/cloud-stability/real/attempt-*/*/scenario.stdout.log
+            test-results/cloud-stability/real/attempt-*/*/scenario.stderr.log
           retention-days: 30
           if-no-files-found: error
       - name: Upload real-model trajectories and mock-service ledgers
