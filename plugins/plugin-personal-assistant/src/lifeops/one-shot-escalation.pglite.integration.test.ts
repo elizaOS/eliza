@@ -30,6 +30,16 @@ async function createLifeOpsTestRuntime() {
   const fixture = await createBaseLifeOpsTestRuntime();
   // Each case drives processReminders explicitly, without competing real ticks.
   await TaskService.stop(fixture.runtime);
+  // A clock alone is not evidence of wakefulness. Persist the owner's awake
+  // signal through the real admission path for this delivery scenario.
+  vi.setSystemTime(Date.now() + 1);
+  const awake = await new LifeOpsService(fixture.runtime).captureManualOverride(
+    {
+      kind: "just_woke_up",
+      occurredAt: new Date().toISOString(),
+    },
+  );
+  expect(awake.circadianState).toBe("awake");
   return fixture;
 }
 
@@ -642,8 +652,8 @@ it.each([1, 2])(
         f.runtime.agentId,
       );
       expect(reviewed.reviewStatus).toBe("resolved");
-      expect(reviewed.deliveryMetadata.reviewReason).toBe(
-        "one_shot_plan_delivered",
+      expect(reviewed.deliveryMetadata.reminderReviewDecision).toBe(
+        "no_response",
       );
       expect(
         await service.repository.claimDueReminderReviewAttempts(
@@ -688,16 +698,19 @@ it("processes a persisted owner snooze reply after the one-shot delivery", async
       type: ChannelType.DM,
       channelId: roomId,
     });
-    const service = new LifeOpsService(f.runtime);
+    await f.runtime.ensureParticipantInRoom(f.runtime.agentId, roomId);
+    await f.runtime.ensureParticipantInRoom(ownerId, roomId);
+    const service = new LifeOpsService(f.runtime, { ownerEntityId: ownerId });
     const due = Date.now() + 1000;
     await service.createDefinition({
       title: "Review notebook",
       kind: "habit",
-      priority: 3,
+      priority: 2,
       cadence: {
         kind: "once",
         dueAt: new Date(due).toISOString(),
         visibilityLeadMinutes: 0,
+        visibilityLagMinutes: 120,
       },
       timezone: "UTC",
       metadata: {
@@ -716,7 +729,14 @@ it("processes a persisted owner snooze reply after the one-shot delivery", async
       f.runtime.agentId,
     );
     expect(delivered.outcome).toBe("delivered");
-    const repliedAt = due + 89 * 60000;
+    // Bind the transport receipt to the conversation where the owner replies.
+    await service.repository.updateReminderAttemptOutcome(
+      delivered.id,
+      delivered.outcome,
+      { deliveryRoomId: roomId },
+    );
+    delivered.deliveryMetadata.deliveryRoomId = roomId;
+    const repliedAt = due + 6 * 60000;
     await f.runtime.createMemory(
       {
         id: randomUUID() as UUID,
@@ -724,26 +744,37 @@ it("processes a persisted owner snooze reply after the one-shot delivery", async
         entityId: ownerId,
         roomId,
         createdAt: repliedAt,
-        content: { text: "Snooze Review notebook for 30 minutes" },
+        content: { text: "30 minutes" },
       },
       "messages",
     );
+    expect(
+      await service.reviewOwnerResponseAfterReminderAttempt({
+        subjectType: "owner",
+        attempt: delivered,
+        competingAttempts: [delivered],
+        now: new Date(due + 7 * 60000),
+      }),
+    ).toMatchObject({ decision: "explicit_resolution", resolution: "snoozed" });
     await service.processReminders({
-      now: new Date(due + 91 * 60000).toISOString(),
+      now: new Date(due + 7 * 60000).toISOString(),
       scope: "definitions",
     });
     const occurrence = await service.repository.getOccurrence(
       f.runtime.agentId,
       delivered.ownerId,
     );
-    expect(occurrence?.snoozedUntil).toBe(
-      new Date(repliedAt + 30 * 60000).toISOString(),
-    );
+    expect(
+      occurrence?.snoozedUntil,
+      JSON.stringify(
+        await service.repository.listReminderAttempts(f.runtime.agentId),
+      ),
+    ).toBe(new Date(repliedAt + 30 * 60000).toISOString());
     const [reviewed] = await service.repository.listReminderAttempts(
       f.runtime.agentId,
     );
     expect(reviewed.reviewStatus).toBe("resolved");
-    expect(reviewed.deliveryMetadata.reviewDecision).toBe("snoozed");
+    expect(reviewed.deliveryMetadata.reminderReviewDecision).toBe("snoozed");
     expect(getRecordedTestNotifications(f.runtime)).toHaveLength(1);
     expect(model).not.toHaveBeenCalled();
   } finally {
