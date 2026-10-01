@@ -80,10 +80,23 @@ test("nullable schedule update crosses planner, wire JSON and admission without 
 		{ title: "Reviewed", recurrence: [] },
 		{ title: "Reviewed", recurrence: "invalid" },
 		{ title: null, recurrence: null },
-		{ title: "Reviewed", recurrence: null, fallback: null },
 	]) {
 		expect(validateToolArgs(action, { schedule }).valid).toBe(false);
 	}
+	// Strict native-tool wires encode an omitted optional argument as explicit
+	// null; `fallback` does not declare nullability, so its null is the absence
+	// encoding and resolves to the declared default instead of failing admission.
+	const wireNullOptional = validateToolArgs(action, {
+		schedule: { title: "Reviewed", recurrence: null, fallback: null },
+	});
+	expect(wireNullOptional.valid).toBe(true);
+	expect(wireNullOptional.args).toEqual({
+		schedule: {
+			title: "Reviewed",
+			recurrence: null,
+			fallback: "default value",
+		},
+	});
 });
 
 // Retain an explicitly declared nullable enum at both schema and admission boundaries.
