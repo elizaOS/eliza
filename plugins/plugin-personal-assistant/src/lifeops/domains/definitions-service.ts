@@ -184,29 +184,13 @@ export class DefinitionsDomain {
       definitions.map((definition) => definition.id),
     );
     const occurrencesByDefinition = new Map<string, LifeOpsOccurrence[]>();
-    const ownedOccurrenceIds = new Set(occurrences.map((row) => row.id));
     for (const row of occurrences) {
       const list = occurrencesByDefinition.get(row.definitionId) ?? [];
       list.push(row);
       occurrencesByDefinition.set(row.definitionId, list);
     }
-    const attempts = await this.ctx.repository.listReminderAttempts(
-      this.ctx.agentId(),
-      { ownerType: "occurrence" },
-    );
-    const latestByOccurrence = new Map<string, (typeof attempts)[number]>();
-    for (const attempt of attempts) {
-      if (!ownedOccurrenceIds.has(attempt.ownerId)) continue;
-      const previous = latestByOccurrence.get(attempt.ownerId);
-      if (
-        !previous ||
-        Date.parse(attempt.attemptedAt ?? attempt.scheduledFor) >
-          Date.parse(previous.attemptedAt ?? previous.scheduledFor)
-      )
-        latestByOccurrence.set(attempt.ownerId, attempt);
-    }
     const now = Date.now();
-    return definitions.map((definition) => {
+    const views = definitions.map((definition) => {
       const rows = occurrencesByDefinition.get(definition.id) ?? [];
       const pending = rows
         .filter(
@@ -238,11 +222,22 @@ export class DefinitionsDomain {
       return {
         definition,
         occurrence: occurrence ?? null,
-        latestAttempt: occurrence
-          ? (latestByOccurrence.get(occurrence.id) ?? null)
-          : null,
       };
     });
+    const attempts =
+      await this.ctx.repository.listLatestReminderAttemptsForOccurrences(
+        this.ctx.agentId(),
+        views.flatMap(({ occurrence }) => (occurrence ? [occurrence.id] : [])),
+      );
+    const latestByOccurrence = new Map(
+      attempts.map((attempt) => [attempt.ownerId, attempt]),
+    );
+    return views.map((view) => ({
+      ...view,
+      latestAttempt: view.occurrence
+        ? (latestByOccurrence.get(view.occurrence.id) ?? null)
+        : null,
+    }));
   }
 
   async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {

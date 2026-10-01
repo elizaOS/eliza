@@ -891,6 +891,15 @@ export class LifeOpsRepository {
   ): ReturnType<ReminderRepository["listReminderAttempts"]> {
     return this.reminders.listReminderAttempts(...args);
   }
+  listLatestReminderAttemptsForOccurrences(
+    ...args: Parameters<
+      ReminderRepository["listLatestReminderAttemptsForOccurrences"]
+    >
+  ): ReturnType<
+    ReminderRepository["listLatestReminderAttemptsForOccurrences"]
+  > {
+    return this.reminders.listLatestReminderAttemptsForOccurrences(...args);
+  }
   listDueReminderReviewAttempts(
     ...args: Parameters<ReminderRepository["listDueReminderReviewAttempts"]>
   ): ReturnType<ReminderRepository["listDueReminderReviewAttempts"]> {

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
 import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
 import { buildNativeAppleReminderMetadata } from "../apple-reminders.js";
+import { createLifeOpsReminderAttempt } from "../repository.js";
 import { LifeOpsService } from "../service.js";
 import { buildReminderBody } from "./reminders-service.js";
 
@@ -75,9 +76,10 @@ it("excludes owner reminders from todos without changing their stored occurrence
       before[0].id,
     );
     expect(edited?.title).toBe("Updated notification message");
+    if (!edited) throw new Error("Updated occurrence was not persisted");
     expect(
       buildReminderBody({
-        title: edited!.title,
+        title: edited.title,
         scheduledFor: dueAt,
         dueAt,
         channel: "in_app",
@@ -150,3 +152,97 @@ it("uses legacy native reminder classification while preserving an explicit owne
     await fixture.cleanup();
   }
 }, 120000);
+
+it("projects only the latest attempt for each displayed reminder while retaining all history", async () => {
+  const fixture = await createLifeOpsTestRuntime();
+  try {
+    const service = new LifeOpsService(fixture.runtime);
+    const dueAt = new Date(Date.now() + 120_000).toISOString();
+    const record = await service.createDefinition({
+      title: "Scoped reminder",
+      kind: "habit",
+      cadence: { kind: "once", dueAt },
+      timezone: "UTC",
+      metadata: { ownerSurface: "OWNER_REMINDERS" },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    const [occurrence] = await service.repository.listOccurrencesForDefinition(
+      fixture.runtime.agentId,
+      record.definition.id,
+    );
+    if (!occurrence || !record.reminderPlan)
+      throw new Error("Reminder fixture missing durable occurrence or plan");
+    const attempts = [];
+    for (const [agentId, ownerType, ownerId, attemptedAt] of [
+      [
+        fixture.runtime.agentId,
+        "occurrence",
+        occurrence.id,
+        "2026-10-01T10:00:00.000Z",
+      ],
+      [
+        fixture.runtime.agentId,
+        "occurrence",
+        occurrence.id,
+        "2026-10-01T08:00:00.000-04:00",
+      ],
+      [
+        fixture.runtime.agentId,
+        "occurrence",
+        "unrelated-occurrence",
+        "2026-10-01T12:00:00.000Z",
+      ],
+      [
+        fixture.runtime.agentId,
+        "definition",
+        occurrence.id,
+        "2026-10-01T13:00:00.000Z",
+      ],
+      ["other-agent", "occurrence", occurrence.id, "2026-10-01T14:00:00.000Z"],
+    ] as const) {
+      const attempt = createLifeOpsReminderAttempt({
+        agentId,
+        planId: record.reminderPlan.id,
+        ownerType,
+        ownerId,
+        occurrenceId: occurrence.id,
+        channel: "in_app",
+        stepIndex: 0,
+        scheduledFor: "2026-10-01T09:00:00.000Z",
+        attemptedAt,
+        outcome: "delivered",
+        connectorRef: null,
+        deliveryMetadata: {},
+      });
+      await service.repository.createReminderAttempt(attempt);
+      attempts.push(attempt);
+    }
+    expect(
+      await service.repository.listLatestReminderAttemptsForOccurrences(
+        fixture.runtime.agentId,
+        [],
+      ),
+    ).toEqual([]);
+    expect(
+      await service.repository.listLatestReminderAttemptsForOccurrences(
+        fixture.runtime.agentId,
+        [occurrence.id],
+      ),
+    ).toEqual([expect.objectContaining({ id: attempts[1].id })]);
+    expect(await service.listReminders()).toEqual([
+      expect.objectContaining({
+        latestAttempt: expect.objectContaining({ id: attempts[1].id }),
+      }),
+    ]);
+    expect(
+      await service.repository.listReminderAttempts(fixture.runtime.agentId),
+    ).toHaveLength(4);
+    expect(
+      await service.repository.listReminderAttempts("other-agent"),
+    ).toHaveLength(1);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);
