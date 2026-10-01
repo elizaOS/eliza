@@ -16,7 +16,11 @@ import {
 } from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import type { NewInvoice } from "../../db/schemas/invoices";
-import { PAYMENT_EXPIRATION_SECONDS, validatePaymentAmount } from "../config/crypto";
+import {
+  PAYMENT_EXPIRATION_SECONDS,
+  type PaymentAmountRejection,
+  validatePaymentAmount,
+} from "../config/crypto";
 import { createCryptoCustomerId, createCryptoInvoiceId } from "../constants/invoice-ids";
 import { logger, redact } from "../utils/logger";
 import { creditsService } from "./credits";
@@ -32,6 +36,7 @@ export type CryptoPaymentErrorCode =
   | "INVALID_UUID"
   | "AMOUNT_TOO_SMALL"
   | "AMOUNT_TOO_LARGE"
+  | "AMOUNT_INVALID"
   | "INVALID_CURRENCY"
   | "SERVICE_NOT_CONFIGURED"
   | "PAYMENT_NOT_FOUND"
@@ -56,6 +61,13 @@ export class CryptoPaymentError extends ElizaError {
     super(message, { code, severity: "fatal" });
   }
 }
+
+/** Error code for each reason `validatePaymentAmount` can reject a checkout amount. */
+const AMOUNT_REJECTION_CODES = {
+  not_whole_cents: "AMOUNT_INVALID",
+  below_minimum: "AMOUNT_TOO_SMALL",
+  above_maximum: "AMOUNT_TOO_LARGE",
+} as const satisfies Record<PaymentAmountRejection, CryptoPaymentErrorCode>;
 
 export interface CreatePaymentParams {
   organizationId: string;
@@ -314,10 +326,7 @@ class CryptoPaymentsService {
     const validation = validatePaymentAmount(amountDecimal);
 
     if (!validation.valid) {
-      const errorCode = validation.error?.includes("at least")
-        ? "AMOUNT_TOO_SMALL"
-        : "AMOUNT_TOO_LARGE";
-      throw new CryptoPaymentError(errorCode, validation.error || "Invalid amount");
+      throw new CryptoPaymentError(AMOUNT_REJECTION_CODES[validation.reason], validation.error);
     }
 
     // OXAPAY_CALLBACK_URL: Override for local development with ngrok.

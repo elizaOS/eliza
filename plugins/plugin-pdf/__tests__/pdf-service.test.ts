@@ -760,6 +760,7 @@ describe("PdfService", () => {
   it("does not dispatch OCR or vision after ownership is revoked during rendering", async () => {
     getDocumentProxyMock.mockResolvedValue(makeDeclaredPdf(2));
     let active = true;
+    const ownershipError = new Error("Task ownership expired");
     renderPageAsImageMock.mockImplementation(async () => {
       active = false;
       return "data:image/png;base64,cGFnZQ==";
@@ -768,8 +769,8 @@ describe("PdfService", () => {
     const useModel = vi.fn(async () => ({ title: "page", description: "text" }));
     await expect(service({ useModel }).extractCompleteDocument(validPdfBuffer(), {
       ocrPage,
-      assertActive: () => { if (!active) throw new Error("Task ownership expired"); },
-    })).rejects.toThrow("Task ownership expired");
+      assertActive: () => { if (!active) throw ownershipError; },
+    })).rejects.toBe(ownershipError);
     expect(ocrPage).not.toHaveBeenCalled();
     expect(useModel).not.toHaveBeenCalled();
   });

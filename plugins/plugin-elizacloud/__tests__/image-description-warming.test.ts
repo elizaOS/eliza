@@ -96,14 +96,15 @@ describe("handleImageDescription warming-503 retry", () => {
   it("cancellation interrupts a warming delay without retrying", async () => {
     const controller = new AbortController();
     postRaw.mockResolvedValueOnce(warming503());
-    const timer = setTimeout(() => controller.abort(), 20);
+    const reason = new Error("Task cancelled during warming");
+    const timer = setTimeout(() => controller.abort(reason), 20);
     try {
       await expect(
         handleImageDescription(runtime(), {
           imageUrl: "data:image/png;base64,cGFnZQ==",
           signal: controller.signal,
         })
-      ).rejects.toThrow();
+      ).rejects.toBe(reason);
       expect(postRaw).toHaveBeenCalledTimes(1);
     } finally {
       clearTimeout(timer);
