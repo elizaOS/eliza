@@ -5,12 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { InteractiveTaskChoices } from "../src/services/interactive-task-choices.ts";
 import { createInteractiveTaskHandler } from "../src/services/interactive-task-http.ts";
+import { SqliteTaskPresentation } from "../src/services/interactive-task-presentation.ts";
 import {
   type InteractiveTaskActuator,
   InteractiveTaskRuntime,
 } from "../src/services/interactive-task-runtime.ts";
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
+import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
 
 const owner = {
   actorId: "actor",
@@ -29,6 +32,7 @@ function setup() {
   const db = new DatabaseSync(join(directory, "host.sqlite"));
   db.exec("PRAGMA synchronous = FULL");
   return {
+    db,
     store: new SqliteInteractiveTaskStore(db),
     close() {
       db.close();
@@ -490,5 +494,74 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     release.resolve();
     await http.close();
     f.close();
+  }
+});
+
+it("does not deliver a choice when an authenticated pause finishes during refresh", async () => {
+  const storage = setup();
+  const runtime = new InteractiveTaskRuntime({
+    owner,
+    store: storage.store,
+    actuator: {
+      capabilities: [],
+      observe: async () => {
+        throw new Error("Presentation read must not observe");
+      },
+      execute: async () => {
+        throw new Error("Presentation read must not execute");
+      },
+    },
+  });
+  const http = await listen(
+    createInteractiveTaskHandler({
+      runtime,
+      authenticate: async () => owner,
+      authorizeGoal: async (ref) => ({ ...goal(ref), allowedCapabilities: [] }),
+    }),
+  );
+  let pauseAfterRefresh = false;
+  // Preserve the actual refresh and disk read; interleave a real HTTP control
+  // before its caller resumes, as can happen across an asynchronous boundary.
+  class ControlledRefresh extends InteractiveTaskChoices {
+    override async refresh(
+      value: Parameters<InteractiveTaskChoices["refresh"]>[0],
+    ) {
+      const current = await super.refresh(value);
+      if (pauseAfterRefresh) {
+        pauseAfterRefresh = false;
+        const paused = await http.call("/tasks/task-1/pause", {
+          expectedRevision: runtime.get("task-1").revision,
+        });
+        expect(paused.status).toBe(200);
+        expect(runtime.get("task-1").status).toBe("paused");
+      }
+      return current;
+    }
+  }
+  try {
+    expect((await http.call("/tasks", { goalRef: "message" })).status).toBe(
+      201,
+    );
+    const choices = new ControlledRefresh(
+      runtime,
+      new SqliteMessageInteractionSessionStore(storage.db),
+    );
+    const presentation = new SqliteTaskPresentation(
+      storage.db,
+      runtime,
+      choices,
+    );
+    await presentation.publish("task-1", "a".repeat(64), {
+      kind: "choice",
+      id: "method",
+      scope: "review",
+      options: [{ value: "existing", label: "Use existing method" }],
+    });
+    pauseAfterRefresh = true;
+    expect(await presentation.read("task-1")).toBeNull();
+    expect(runtime.get("task-1").status).toBe("paused");
+  } finally {
+    await http.close();
+    storage.close();
   }
 });

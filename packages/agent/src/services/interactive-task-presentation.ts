@@ -116,6 +116,13 @@ export class SqliteTaskPresentation {
           "SELECT document FROM interactive_task_presentation_v1 WHERE owner_key=? AND task_id=?",
         )
         .get(this.ownerKey, taskId) as { document: unknown } | undefined;
+      const task = this.runtime.get(taskId);
+      if (
+        task.epoch !== current.epoch ||
+        task.status !== "active" ||
+        task.authorization.state !== "active"
+      )
+        return null;
       return latest?.document === row.document ? current : null;
     } catch (error) {
       // error-policy:J4 Pause, expiry and ownership changes remove an obsolete presentation.
