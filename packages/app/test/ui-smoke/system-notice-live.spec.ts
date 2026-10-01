@@ -81,6 +81,13 @@ for (const viewport of ["desktop", "mobile"] as const) {
     await expect(page.locator('[data-failure="no_provider"]')).toContainText(
       message.text,
     );
+    await page.getByTestId("chat-sheet-grabber").press("ArrowUp");
+    await expect(
+      page.getByText("Connect a provider to chat", { exact: true }),
+    ).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId("chat-no-provider-settings")).toBeInViewport({
+      ratio: 1,
+    });
     const directory = testOutputPath(
       "nubscarson-review",
       "live-notice",
