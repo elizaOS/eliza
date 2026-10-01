@@ -8,7 +8,10 @@ import {
   type TransactionalDb,
 } from "../approval/sql.ts";
 import { PgApprovalQueue } from "../approval/store.ts";
-import type { ApprovalRequest } from "../approval/types.ts";
+import type {
+  ApprovalEnqueueResult,
+  ApprovalRequest,
+} from "../approval/types.ts";
 import {
   CALENDAR_CAPABILITY,
   isCalendarOperation,
@@ -218,6 +221,24 @@ export class DeviceActionService {
     reason: string,
     observation?: unknown,
   ): Promise<ApprovalRequest> {
+    return (
+      await this.proposeWithOutcome(
+        c,
+        operation,
+        operationKey,
+        reason,
+        observation,
+      )
+    ).request;
+  }
+  /** Replay identity comes from the same durable queue transaction as insertion. */
+  async proposeWithOutcome(
+    c: DeviceCredential,
+    operation: unknown,
+    operationKey: string,
+    reason: string,
+    observation?: unknown,
+  ): Promise<ApprovalEnqueueResult> {
     const validated = validateDeviceOperation(operation);
     if (isMapsOperation(validated)) {
       if (!c.capabilities?.includes(MAPS_CAPABILITY))
@@ -311,7 +332,7 @@ export class DeviceActionService {
         },
         tx,
       );
-      return result.request;
+      return result;
     });
   }
   private async requireActiveWorkflow(

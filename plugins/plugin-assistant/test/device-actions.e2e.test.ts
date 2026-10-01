@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Memory } from "@elizaos/core";
+import {
+  type ActionResult,
+  activeCommittedEffectReceipts,
+  type Memory,
+} from "@elizaos/core";
 import { expect, test } from "vitest";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
 import { readChatRequestPayload } from "../../../packages/agent/src/api/chat-routes.ts";
@@ -20,6 +24,7 @@ import {
   type DrizzleDatabase,
 } from "../../../packages/app/src/services/auth-store.ts";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+import { runEvaluator } from "../src/runtime/evaluator.ts";
 import {
   APPROVAL_SERVICE,
   ApprovalService,
@@ -273,8 +278,87 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           { parameters },
         );
       });
-    await propose();
-    await propose();
+    const firstProposal = await propose();
+    const repeatedProposal = await propose();
+    expect(firstProposal && firstProposal.effectReceipts).toMatchObject([
+      {
+        operation: "device.create_note",
+        outcome: "preview",
+        idempotency: { replayed: false },
+      },
+    ]);
+    expect(repeatedProposal && repeatedProposal.effectReceipts).toMatchObject([
+      {
+        operation: "device.create_note",
+        outcome: "preview",
+        idempotency: { replayed: false },
+      },
+    ]);
+    expect(firstProposal && firstProposal.data).toMatchObject({
+      executed: false,
+      awaitingUserInput: true,
+      approvalRequired: true,
+    });
+    expect(
+      firstProposal && firstProposal.data?.approvalPersistence,
+    ).toMatchObject({
+      operation: "device.approval.create",
+      outcome: "applied",
+    });
+    expect(
+      repeatedProposal && repeatedProposal.data?.approvalPersistence,
+    ).toMatchObject({
+      operation: "device.approval.create",
+      outcome: "noop",
+      idempotency: { replayed: true },
+    });
+    const evaluate = async (
+      result: ActionResult,
+      applied: boolean,
+      receiptId?: string,
+    ) => {
+      const context = { id: "device-receipt-evaluator", events: [] };
+      return runEvaluator({
+        runtime: {
+          redactSecrets: (text) => text,
+          useModel: async () =>
+            JSON.stringify({
+              thought: "Evaluate the recorded device operation.",
+              success: true,
+              decision: "FINISH",
+              replyEffectStatus: applied ? "applied" : "non_applied",
+              messageToUser: applied
+                ? "Your note was created."
+                : "Review and approve the pending request on your phone.",
+              ...(receiptId ? { effectReceiptIds: [receiptId] } : {}),
+            }),
+        },
+        context,
+        trajectory: {
+          context,
+          steps: [{ iteration: 1, result }],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+    };
+    if (!firstProposal || !repeatedProposal)
+      throw new Error("Missing real proposal result");
+    for (const pending of [firstProposal, repeatedProposal]) {
+      const spoofed = await evaluate(
+        pending,
+        true,
+        pending.effectReceipts?.[0]?.receiptId,
+      );
+      expect(spoofed.success).toBe(false);
+      expect(spoofed.decision).toBe("CONTINUE");
+      expect(spoofed.messageToUser).toBeUndefined();
+      const review = await evaluate(pending, false);
+      expect(review.decision).toBe("FINISH");
+      expect(review.messageToUser).toContain("Review and approve");
+    }
+
     let proposals = (await request("/proposals")).body.proposals;
     expect(proposals).toHaveLength(1);
     const { id, digest } = proposals[0];
@@ -333,6 +417,13 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     expect(claims.map((result) => result.status).sort()).toEqual([200, 409]);
     const claim = claims.find((result) => result.status === 200)!.body.proposal;
     expect(claim.execution.dispatchStartedAt).toBeTruthy();
+    const uncompleted = await propose();
+    expect(
+      activeCommittedEffectReceipts(
+        uncompleted ? (uncompleted.effectReceipts ?? []) : [],
+      ),
+    ).toEqual([]);
+
     const receipt = {
       digest,
       attemptId: claim.execution.attemptId,
@@ -371,6 +462,31 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         "bad",
       ),
     ).rejects.toThrow();
+    const completedLegacy = await propose();
+    if (!completedLegacy) throw new Error("Missing completed legacy result");
+    expect(completedLegacy.data).toMatchObject({
+      executed: false,
+      historicalCompletion: true,
+      operationType: "create_note",
+      nativeOperationId: "fixture-native-note-1",
+    });
+    const grounded = await evaluate(
+      completedLegacy,
+      true,
+      completedLegacy.effectReceipts?.[0]?.receiptId,
+    );
+    expect(grounded.success).toBe(true);
+    expect(grounded.decision).toBe("FINISH");
+
+    expect(completedLegacy && completedLegacy.effectReceipts).toMatchObject([
+      {
+        operation: "device.create_note",
+        outcome: "applied",
+        resource: { kind: "device.operation", id: "fixture-native-note-1" },
+        idempotency: { replayed: true },
+        commit: { kind: "provider_accepted", id: "fixture-native-note-1" },
+      },
+    ]);
     const service = new DeviceActionService(runtimeState.runtime);
     await expect(
       service.propose(
@@ -460,6 +576,36 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       receipt: { outcome: "unknown", code: "claim_response_lost" },
     });
     expect(uncertain.body.proposal.state).toBe("reconciliation_required");
+    const unknownOutcome = await withDeviceActionTurn(
+      runtimeState.runtime,
+      credentials,
+      () =>
+        proposeDeviceAction.handler(runtimeState.runtime, memory, undefined, {
+          parameters: {
+            operation: {
+              type: "browser_navigate",
+              url: "https://example.com/",
+            },
+            operationKey: "browser-1",
+            reason: "Fixture",
+          },
+        }),
+    );
+    if (!unknownOutcome) throw new Error("Missing uncertain result");
+    expect(unknownOutcome.effectReceipts).toMatchObject([
+      {
+        outcome: "failed",
+        failure: { acceptance: "unknown", retryable: false },
+      },
+    ]);
+    const falseUnknownClaim = await evaluate(
+      unknownOutcome,
+      true,
+      unknownOutcome.effectReceipts?.[0]?.receiptId,
+    );
+    expect(falseUnknownClaim.success).toBe(false);
+    expect(falseUnknownClaim.messageToUser).toBeUndefined();
+
     expect(
       (
         await request(`/proposals/${browser.id}/claim`, {
@@ -617,6 +763,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             parameters: { operation, operationKey: kind, reason: "fixture" },
           }),
       );
+      expect(
+        activeCommittedEffectReceipts(
+          retrieved ? (retrieved.effectReceipts ?? []) : [],
+        ),
+      ).toHaveLength(kind.endsWith("_read_selected") ? 0 : 1);
       expect(retrieved && retrieved.data).toMatchObject({
         proposalId: item.id,
         executed: false,
@@ -763,6 +914,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
               },
             ),
         );
+        expect(
+          activeCommittedEffectReceipts(
+            retrieved ? (retrieved.effectReceipts ?? []) : [],
+          ),
+        ).toHaveLength(kind.endsWith("_read_selected") ? 0 : 1);
         expect(retrieved && retrieved.data).toMatchObject({
           proposalId: item.id,
           executed: false,
@@ -1021,6 +1177,19 @@ test("device approval REST lifecycle survives restart and never duplicates claim
               },
             ),
         );
+        expect(
+          activeCommittedEffectReceipts(
+            recovered ? (recovered.effectReceipts ?? []) : [],
+          ),
+        ).toHaveLength(0);
+        if (!recovered) throw new Error("Missing selected Maps observation");
+        const falseReadClaim = await evaluate(
+          recovered,
+          true,
+          recovered.effectReceipts?.[0]?.receiptId,
+        );
+        expect(falseReadClaim.success).toBe(false);
+        expect(falseReadClaim.messageToUser).toBeUndefined();
         expect(recovered && recovered.data).toMatchObject({
           proposalId: item.id,
           executed: false,
@@ -1194,6 +1363,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
               },
             ),
         );
+        expect(
+          activeCommittedEffectReceipts(
+            retrieved ? (retrieved.effectReceipts ?? []) : [],
+          ),
+        ).toHaveLength(kind.endsWith("_read_selected") ? 0 : 1);
         expect(retrieved && retrieved.data).toMatchObject({
           proposalId: item.id,
           executed: false,
