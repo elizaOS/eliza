@@ -6,6 +6,15 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
+  openSync,
+  writeFileSync,
+} from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -365,6 +374,45 @@ const childProcessEnvironment = modelProxy
   : process.env;
 let cliStdout = "";
 let cliStderr = "";
+const explicitSecrets = [
+  realModelCredential,
+  meterAttestationKey,
+  process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
+].filter(
+  (value): value is string => typeof value === "string" && value.length > 0,
+);
+const redact = (value: string): string =>
+  explicitSecrets
+    .reduce((result, secret) => result.split(secret).join("[REDACTED]"), value)
+    .replace(
+      /(?:\/Users\/[^/\s]+)?\/Library\/Messages\/chat\.db/gu,
+      "[REDACTED_HOST_MESSAGES_DB]",
+    )
+    .replace(/\bROWID\s+\d+/gu, "ROWID [REDACTED]");
+function persistScenarioLogs(): void {
+  // Parent-owned redacted evidence must survive interruption and stack teardown.
+  for (const [name, content] of [
+    ["scenario.stdout.log", cliStdout],
+    ["scenario.stderr.log", cliStderr],
+  ] as const) {
+    const descriptor = openSync(
+      path.join(outputDir, name),
+      constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600,
+    );
+    try {
+      const identity = fstatSync(descriptor);
+      if (!identity.isFile() || identity.uid !== process.getuid?.()) {
+        throw new Error("scenario log is not a parent-owned regular file");
+      }
+      fchmodSync(descriptor, 0o600);
+      ftruncateSync(descriptor, 0);
+      writeFileSync(descriptor, redact(content), "utf8");
+    } finally {
+      closeSync(descriptor);
+    }
+  }
+}
 let cliCode: number | null = null;
 let cliClosedAt = 0;
 let sandboxEnvironmentPath: string | undefined;
@@ -375,6 +423,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   const handler = (): void => {
     if (handlingSignal) return;
     handlingSignal = true;
+    persistScenarioLogs();
     const reraise = (): void => {
       for (const [registeredSignal, registeredHandler] of signalHandlers) {
         process.removeListener(registeredSignal, registeredHandler);
@@ -503,6 +552,7 @@ try {
   if (escalation) clearTimeout(escalation);
   await terminateGroup(childProcessGroupId);
 } finally {
+  persistScenarioLogs();
   for (const [signal, handler] of signalHandlers) {
     process.removeListener(signal, handler);
   }
@@ -516,36 +566,14 @@ try {
   await stack.stop();
 }
 
-const explicitSecrets = [
-  realModelCredential,
-  meterAttestationKey,
-  process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
-].filter(
-  (value): value is string => typeof value === "string" && value.length > 0,
-);
 const ambientServiceLogEvidence = [cliStdout, cliStderr].filter((value) =>
   /(?:Initializing iMessage plugin|chat\.db opened|Library\/Messages\/chat\.db|\bROWID\s+\d+)/u.test(
     value,
   ),
 ).length;
-const redact = (value: string): string =>
-  explicitSecrets
-    .reduce((result, secret) => result.split(secret).join("[REDACTED]"), value)
-    .replace(
-      /(?:\/Users\/[^/\s]+)?\/Library\/Messages\/chat\.db/gu,
-      "[REDACTED_HOST_MESSAGES_DB]",
-    )
-    .replace(/\bROWID\s+\d+/gu, "ROWID [REDACTED]");
 cliStdout = redact(cliStdout);
 cliStderr = redact(cliStderr);
-await writeFile(path.join(outputDir, "scenario.stdout.log"), cliStdout, {
-  encoding: "utf8",
-  mode: 0o600,
-});
-await writeFile(path.join(outputDir, "scenario.stderr.log"), cliStderr, {
-  encoding: "utf8",
-  mode: 0o600,
-});
+persistScenarioLogs();
 const scenarioReport = JSON.parse(
   await readFile(scenarioReportPath, "utf8"),
 ) as {

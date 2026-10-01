@@ -89,6 +89,7 @@ interface AttemptBoundary {
   session: SyntheticControlSession;
   child: ChildProcess | null;
   processGroupId: number | null;
+  terminationGraceMs: number;
 }
 
 interface DirectoryIdentity {
@@ -538,6 +539,7 @@ export class ScenarioStabilitySubprocessAdapter
     const boundary: AttemptBoundary = {
       session,
       child: null,
+      terminationGraceMs: Math.min(15_000, input.budgets.timeoutMs / 2),
       processGroupId: null,
     };
     this.#boundaries.set(input.attemptId, boundary);
@@ -935,7 +937,19 @@ export class ScenarioStabilitySubprocessAdapter
     const failures: Error[] = [];
     try {
       signalProcessGroup(boundary.processGroupId, "SIGTERM");
-      signalProcessGroup(boundary.processGroupId, "SIGKILL");
+      // Let the trusted harness finish its nested UID/firewall/ACL teardown.
+      // Reserve the remaining teardown budget for escalation and world reset.
+      const gracefulDeadline = Date.now() + boundary.terminationGraceMs;
+      while (
+        processGroupExists(boundary.processGroupId) &&
+        !input.signal.aborted &&
+        Date.now() < gracefulDeadline
+      ) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+      if (processGroupExists(boundary.processGroupId)) {
+        signalProcessGroup(boundary.processGroupId, "SIGKILL");
+      }
       const deadline = Date.now() + 2_000;
       while (
         processGroupExists(boundary.processGroupId) &&

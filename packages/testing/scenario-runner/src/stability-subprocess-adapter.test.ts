@@ -270,95 +270,118 @@ describe("scenario stability subprocess adapter", () => {
     }
   });
 
-  it("kills a SIGTERM-resistant descendant group before resetting every attempt", async () => {
-    const outputRoot = root();
-    const manifest = {
-      version: 1 as const,
-      namespace: "descendant-test",
-      manifestId: "descendant-test-v1",
-      domains: {},
-    };
-    let generation = 0;
-    let closed = 0;
-    const descendantScript = `
+  it.each(["cooperative", "resistant"])(
+    "finishes %s descendant teardown before resetting every attempt",
+    async (teardownMode) => {
+      const outputRoot = root();
+      const manifest = {
+        version: 1 as const,
+        namespace: "descendant-test",
+        manifestId: "descendant-test-v1",
+        domains: {},
+      };
+      let generation = 0;
+      let closed = 0;
+      const descendantScript = `
       const { spawn } = require("node:child_process");
       const { writeFileSync } = require("node:fs");
-      const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { stdio: "ignore" });
+      const cooperative = ${JSON.stringify(teardownMode === "cooperative")};
+      const child = spawn(process.execPath, ["-e", (cooperative ? "" : "process.on('SIGTERM', () => {}); ") + "setInterval(() => {}, 1000)"], { stdio: "ignore" });
       writeFileSync(process.env.ELIZA_STABILITY_OUTPUT_DIR + "/grandchild.pid", String(child.pid));
-      process.on("SIGTERM", () => {});
+      process.on("SIGTERM", () => {
+        if (!cooperative) return;
+        setTimeout(() => {
+          writeFileSync(process.env.ELIZA_STABILITY_OUTPUT_DIR + "/cleanup.completed", "complete");
+          process.exit(0);
+        }, 100);
+      });
       setInterval(() => {}, 1000);
     `;
-    const adapter = new ScenarioStabilitySubprocessAdapter({
-      command: process.execPath,
-      args: () => ["-e", descendantScript],
-      cwd: outputRoot,
-      modelMode: {
-        kind: "deterministic-mock",
-        fixtureManifestFingerprint: "f".repeat(64),
-      },
-      syntheticControl: {
-        controlUrl: "http://127.0.0.1:43191",
-        controlToken: "internal-control-token",
-        manifest,
-      },
-      openSession: async () => {
-        generation += 1;
-        return {
-          manifest,
-          generation,
-          async execute() {
-            return { ready: true };
-          },
-          async close() {
-            closed += 1;
-          },
-        } as unknown as SyntheticControlSession;
-      },
-    });
-    const plan = createScenarioStabilityPlan({
-      runId: "descendant-timeout",
-      outputRoot,
-    });
-    const report = await executeScenarioStability({
-      plan,
-      targets: [
-        {
-          scenarioId: "hang",
-          model: { provider: "deterministic", model: "strict" },
+      const adapter = new ScenarioStabilitySubprocessAdapter({
+        command: process.execPath,
+        args: () => ["-e", descendantScript],
+        cwd: outputRoot,
+        modelMode: {
+          kind: "deterministic-mock",
+          fixtureManifestFingerprint: "f".repeat(64),
         },
-      ],
-      budgets: {
-        timeoutMs: 1_000,
-        maxInputTokens: 10,
-        maxOutputTokens: 10,
-        maxToolCalls: 1,
-      },
-      adapter,
-    });
+        syntheticControl: {
+          controlUrl: "http://127.0.0.1:43191",
+          controlToken: "internal-control-token",
+          manifest,
+        },
+        openSession: async () => {
+          generation += 1;
+          return {
+            manifest,
+            generation,
+            async execute() {
+              return { ready: true };
+            },
+            async close() {
+              closed += 1;
+            },
+          } as unknown as SyntheticControlSession;
+        },
+      });
+      const plan = createScenarioStabilityPlan({
+        runId: "descendant-timeout",
+        outputRoot,
+      });
+      const report = await executeScenarioStability({
+        plan,
+        targets: [
+          {
+            scenarioId: "hang",
+            model: { provider: "deterministic", model: "strict" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 1_000,
+          maxInputTokens: 10,
+          maxOutputTokens: 10,
+          maxToolCalls: 1,
+        },
+        adapter,
+      });
 
-    expect(report.cells[0]).toMatchObject({ tier: "0/3", strictPassed: false });
-    expect(
-      closed,
-      JSON.stringify(report.cells[0]?.attempts.map((attempt) => attempt.error)),
-    ).toBe(3);
-    for (const attempt of report.cells[0]?.attempts ?? []) {
-      const pid = Number(
-        readFileSync(path.join(attempt.outputDir, "grandchild.pid"), "utf8"),
-      );
-      const deadline = Date.now() + 2_000;
-      let absent = false;
-      while (!absent && Date.now() < deadline) {
-        try {
-          process.kill(pid, 0);
-        } catch {
-          // error-policy:J1 ESRCH is the process-boundary's expected absence proof.
-          absent = true;
+      expect(report.cells[0]).toMatchObject({
+        tier: "0/3",
+        strictPassed: false,
+      });
+      expect(
+        closed,
+        JSON.stringify(
+          report.cells[0]?.attempts.map((attempt) => attempt.error),
+        ),
+      ).toBe(3);
+      for (const attempt of report.cells[0]?.attempts ?? []) {
+        if (teardownMode === "cooperative") {
+          expect(
+            readFileSync(
+              path.join(attempt.outputDir, "cleanup.completed"),
+              "utf8",
+            ),
+          ).toBe("complete");
         }
-        if (!absent) await new Promise((resolve) => setTimeout(resolve, 10));
+        const pid = Number(
+          readFileSync(path.join(attempt.outputDir, "grandchild.pid"), "utf8"),
+        );
+        const deadline = Date.now() + 2_000;
+        let absent = false;
+        while (!absent && Date.now() < deadline) {
+          try {
+            process.kill(pid, 0);
+          } catch {
+            // error-policy:J1 ESRCH is the process-boundary's expected absence proof.
+            absent = true;
+          }
+          if (!absent) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(absent).toBe(true);
       }
-      expect(absent).toBe(true);
-    }
-  });
+    },
+  );
 
   it("rejects duplicate deterministic receipts and pre-existing output symlinks", async () => {
     const outputRoot = root();
