@@ -1336,8 +1336,10 @@ function captureConversationConnection(
 }
 async function establishConversationConnection(
   descriptor: ConversationConnectionDescriptor,
+  roomName: string,
 ): Promise<void> {
   await descriptor.runtime.ensureConnection({
+    roomName,
     entityId: descriptor.callerEntityId,
     roomId: descriptor.roomId,
     worldId: descriptor.worldId,
@@ -1380,7 +1382,7 @@ export async function ensureConversationRoom(
     caller,
   );
   await scheduleConversationConnectionEnsure(descriptor, () =>
-    establishConversationConnection(descriptor),
+    establishConversationConnection(descriptor, conv.title),
   );
   assertConversationConnectionRuntime(state.runtime, descriptor);
   return descriptor;
@@ -5343,7 +5345,7 @@ async function streamConversationMessage(
       );
       try {
         await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
-          establishConversationConnection(connectionDescriptor),
+          establishConversationConnection(connectionDescriptor, conv.title),
         );
         assertConversationConnectionRuntime(
           state.runtime,
