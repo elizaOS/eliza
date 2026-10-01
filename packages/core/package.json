@@ -1342,6 +1342,18 @@
 			"import": "./dist/inference-trace.js",
 			"default": "./dist/inference-trace.js"
 		},
+		"./messaging/task-events": {
+			"eliza-source": "./src/messaging/task-events.ts",
+			"types": "./dist/messaging/task-events.d.ts",
+			"import": "./dist/messaging/task-events.js",
+			"default": "./dist/messaging/task-events.js"
+		},
+		"./messaging/interactive-task": {
+			"eliza-source": "./src/messaging/interactive-task.ts",
+			"types": "./dist/messaging/interactive-task.d.ts",
+			"import": "./dist/messaging/interactive-task.js",
+			"default": "./dist/messaging/interactive-task.js"
+		},
 		"./messaging/interactions/parse": {
 			"eliza-source": "./src/messaging/interactions/parse.ts",
 			"types": "./dist/messaging/interactions/parse.d.ts",
@@ -1437,6 +1449,30 @@
 			"types": "./dist/utils/deterministic.d.ts",
 			"import": "./dist/utils/deterministic.js",
 			"default": "./dist/utils/deterministic.js"
+		},
+		"./messaging/interactions/sessions": {
+			"eliza-source": "./src/messaging/interactions/sessions.ts",
+			"types": "./dist/messaging/interactions/sessions.d.ts",
+			"import": "./dist/messaging/interactions/sessions.js",
+			"default": "./dist/messaging/interactions/sessions.js"
+		},
+		"./messaging/task-widgets": {
+			"eliza-source": "./src/messaging/task-widgets.ts",
+			"types": "./dist/messaging/task-widgets.d.ts",
+			"import": "./dist/messaging/task-widgets.js",
+			"default": "./dist/messaging/task-widgets.js"
+		},
+		"./messaging/interactions/profiles": {
+			"eliza-source": "./src/messaging/interactions/profiles.ts",
+			"types": "./dist/messaging/interactions/profiles.d.ts",
+			"import": "./dist/messaging/interactions/profiles.js",
+			"default": "./dist/messaging/interactions/profiles.js"
+		},
+		"./messaging/interactions/profile-catalog": {
+			"eliza-source": "./src/messaging/interactions/profile-catalog.ts",
+			"types": "./dist/messaging/interactions/profile-catalog.d.ts",
+			"import": "./dist/messaging/interactions/profile-catalog.js",
+			"default": "./dist/messaging/interactions/profile-catalog.js"
 		}
 	},
 	"files": [

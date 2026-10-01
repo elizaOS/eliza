@@ -54,3 +54,11 @@ bun run --cwd packages/core test   # tests
 
 View declaration types remain in core; browser-safe visibility and surface-policy
 helpers live in `@elizaos/core/views/*`; renderers import those leaves directly.
+
+`@elizaos/core/messaging/interactions/sessions` is a Node host leaf for durable
+interaction authorities and pure store transitions; it uses Node cryptography.
+Browser surfaces should consume the interaction types, not this authority module.
+
+`messaging/task-widgets` validates browser-safe task choice envelopes. The shared
+UI leaf `components/interactive-task/TaskChoice` renders those envelopes without
+choosing transport, business policy, or product styling.
