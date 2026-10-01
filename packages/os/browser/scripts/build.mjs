@@ -1,7 +1,9 @@
 /** Builds the Chromium MV3 extension with the exact native host identity for its platform. */
+
 import { spawnSync } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { androidNativeHost } from "./android-host.mjs";
 
 const root = new URL("../", import.meta.url);
 const identity = JSON.parse(
@@ -12,6 +14,14 @@ if (certificate && !/^[a-fA-F0-9]{64}$/.test(certificate))
   throw new Error(
     "ELIZA_BROWSER_ANDROID_CERTIFICATE must be a SHA-256 hex digest.",
   );
+if (process.env.ELIZA_BROWSER_ANDROID_APPLICATION && !certificate)
+  throw new Error("Android application requires its signing certificate");
+const nativeHost = certificate
+  ? androidNativeHost(
+      certificate,
+      process.env.ELIZA_BROWSER_ANDROID_APPLICATION,
+    )
+  : "ai.elizaos.browser";
 const out = new URL(certificate ? "dist/android/" : "dist/chrome/", root);
 await mkdir(out, { recursive: true });
 await writeFile(
@@ -41,9 +51,16 @@ await writeFile(
 );
 await writeFile(
   new URL("runtime-config.mjs", out),
-  `export const nativeHost = ${JSON.stringify(certificate ? { application: "ai.elizaos.app", androidCertificates: [certificate.toUpperCase()] } : "ai.elizaos.browser")};\n`,
+  `export const nativeHost = ${JSON.stringify(nativeHost)};\n`,
 );
-for (const file of ["background.mjs", "commands.mjs", "native-connection.mjs"])
+for (const file of [
+  "background.mjs",
+  "command-handler.mjs",
+  "commands.mjs",
+  "native-connection.mjs",
+  "task-guidance.mjs",
+  "page-guidance.mjs",
+])
   await copyFile(new URL(`src/${file}`, root), new URL(file, out));
 process.stdout.write(`${fileURLToPath(out)}\n`);
 

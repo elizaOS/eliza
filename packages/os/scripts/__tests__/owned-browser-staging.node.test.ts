@@ -23,7 +23,7 @@ const reviewed = JSON.parse(
 const identity = JSON.parse(
   fs.readFileSync(new URL("identity.json", rootUrl), "utf8"),
 );
-function fixture(t) {
+function fixture(t, application = "ai.elizaos.app") {
   const root = testOutputPath("owned-browser-staging");
   fs.mkdirSync(root, { recursive: true });
   const vendorDir = fs.mkdtempSync(path.join(root, "case-"));
@@ -49,6 +49,7 @@ function fixture(t) {
     chromiumRevision: reviewed.revision,
     extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
     launcherSignerSha256: "a".repeat(64),
+    launcherApplication: application,
     qualification: null,
   };
   pin.component = component;
@@ -67,6 +68,9 @@ function fixture(t) {
     "manifest.json",
     "background.mjs",
     "commands.mjs",
+    "command-handler.mjs",
+    "task-guidance.mjs",
+    "page-guidance.mjs",
     "protocol.mjs",
     "runtime-config.mjs",
     "native-connection.mjs",
@@ -79,10 +83,19 @@ function fixture(t) {
       text = JSON.stringify({
         manifest_version: 3,
         key: identity.chromeDevManifestKey,
+        permissions: [
+          "alarms",
+          "nativeMessaging",
+          "scripting",
+          "storage",
+          "tabs",
+          "webNavigation",
+        ],
+        host_permissions: ["http://*/*", "https://*/*"],
         background: { service_worker: "background.mjs", type: "module" },
       });
     if (name === "runtime-config.mjs")
-      text = `export const nativeHost = ${JSON.stringify({ application: "ai.elizaos.app", androidCertificates: ["A".repeat(64)] })};\n`;
+      text = `export const nativeHost = ${JSON.stringify({ application, androidCertificates: ["A".repeat(64)] })};\n`;
     resources[name] = ref(`resources/${name}`, text);
     resourceHashes[name] = {
       sha256: hash(text),
@@ -94,6 +107,7 @@ function fixture(t) {
     chromiumRevision: reviewed.revision,
     extensionId: component.extensionId,
     platform: "android",
+    nativeHost: { application, androidCertificates: ["A".repeat(64)] },
     unrestrictedAllowlistBypass: false,
     inputs: reviewed.sha256,
     outputs: { "chrome/fixture.cc": "b".repeat(64) },
@@ -114,6 +128,7 @@ function fixture(t) {
     chromiumRevision: reviewed.revision,
     extensionId: component.extensionId,
     launcherSignerSha256: component.launcherSignerSha256,
+    launcherApplication: application,
     apk: binding,
     overlay: ref("overlay.json", JSON.stringify(overlay)),
     patch,
@@ -466,4 +481,73 @@ test("preparation CLI reaches the reviewed component generator revision guard", 
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /revision must match the reviewed component pin/);
   assert.equal(fs.existsSync(`${f.vendorDir}-overlay`), false);
+});
+
+test("owned admission binds a consumer application across pin, provenance, overlay and resources", (t) => {
+  const f = fixture(t, "org.example.helper");
+  assert.equal(stageBrowserApps(f.options).releaseQualified, false);
+  f.provenance.launcherApplication = "org.example.other";
+  f.save();
+  assert.throws(() => stageBrowserApps(f.options), /identity binding/);
+  f.provenance.launcherApplication = "org.example.helper";
+  f.overlay.nativeHost.application = "org.example.other";
+  f.provenance.overlay = f.ref("overlay.json", JSON.stringify(f.overlay));
+  f.save();
+  assert.throws(() => stageBrowserApps(f.options), /overlay launcher identity/);
+  f.overlay.nativeHost.application = "org.example.helper";
+  const text = `export const nativeHost = ${JSON.stringify({ application: "org.example.other", androidCertificates: ["A".repeat(64)] })};\n`;
+  f.provenance.resources["runtime-config.mjs"] = f.ref(
+    "resources/runtime-config.mjs",
+    text,
+  );
+  f.overlay.resources["runtime-config.mjs"] = {
+    sha256: hash(text),
+    bytes: Buffer.byteLength(text),
+  };
+  f.provenance.overlay = f.ref("overlay.json", JSON.stringify(f.overlay));
+  f.save();
+  assert.throws(() => stageBrowserApps(f.options), /Native host configuration/);
+});
+
+test("owned admission requires an explicit valid launcher identity", (t) => {
+  const f = fixture(t);
+  for (const application of [
+    undefined,
+    "bad",
+    "org.example/escape",
+    "a." + "b".repeat(80),
+  ]) {
+    f.pin.component.launcherApplication = application;
+    f.save();
+    assert.throws(
+      () => stageBrowserApps(f.options),
+      /Invalid owned component pin|valid application ID/,
+    );
+  }
+});
+
+test("owned admission checks the full guidance resource inventory and bytes", (t) => {
+  const f = fixture(t);
+  for (const name of [
+    "command-handler.mjs",
+    "task-guidance.mjs",
+    "page-guidance.mjs",
+  ]) {
+    const ref = f.provenance.resources[name];
+    delete f.provenance.resources[name];
+    f.save();
+    assert.throws(() => stageBrowserApps(f.options), /resource inventory/);
+    f.provenance.resources[name] = ref;
+    f.write(ref.path, "corrupted guidance");
+    f.save();
+    assert.throws(() => stageBrowserApps(f.options), /hash mismatch/);
+    f.write(ref.path, "// synthetic reviewed resource\n");
+  }
+  f.overlay.resources["unexpected.mjs"] = { sha256: "a".repeat(64), bytes: 1 };
+  f.provenance.overlay = f.ref("overlay.json", JSON.stringify(f.overlay));
+  f.save();
+  assert.throws(
+    () => stageBrowserApps(f.options),
+    /overlay resource inventory/,
+  );
 });

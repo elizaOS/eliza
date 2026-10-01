@@ -17,3 +17,8 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-pdf build  # build
 bun run --cwd plugins/plugin-pdf test   # tests
 ```
+
+Complete extraction accepts an AbortSignal and a host-supplied `assertActive`
+authorization check. Options are captured at entry; ownership is rechecked before
+OCR/model dispatch and result publication. Cancellation is forwarded to the model
+provider and late results are discarded. Hosts still own task/account policy.

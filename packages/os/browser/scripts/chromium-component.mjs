@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { androidNativeHost } from "./android-host.mjs";
 import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
 import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
 import { applyStandaloneCredManTests } from "./chromium/standalone-credman-tests.mjs";
@@ -25,17 +26,23 @@ export const pin = JSON.parse(
 export const EXTENSION_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 export const assetNames = [
   "background.mjs",
+  "command-handler.mjs",
   "commands.mjs",
   "manifest.json",
   "native-connection.mjs",
+  "task-guidance.mjs",
+  "page-guidance.mjs",
   "protocol.mjs",
   "runtime-config.mjs",
 ];
 const resourceIds = {
   "background.mjs": "IDR_ELIZA_BROWSER_BACKGROUND",
+  "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
   "manifest.json": "IDR_ELIZA_BROWSER_MANIFEST",
   "native-connection.mjs": "IDR_ELIZA_BROWSER_CONNECTION",
+  "task-guidance.mjs": "IDR_ELIZA_BROWSER_TASK_GUIDANCE",
+  "page-guidance.mjs": "IDR_ELIZA_BROWSER_PAGE_GUIDANCE",
   "protocol.mjs": "IDR_ELIZA_BROWSER_PROTOCOL",
   "runtime-config.mjs": "IDR_ELIZA_BROWSER_NATIVE_CONFIG",
 };
@@ -52,7 +59,12 @@ function insertInclude(source, include) {
   if (first < 0) throw new Error("Missing Chromium include boundary");
   return `${source.slice(0, first)}#include "${include}"\n${source.slice(first)}`;
 }
-export function validateAssets(assets, platform, certificate) {
+export function validateAssets(
+  assets,
+  platform,
+  certificate,
+  application = "ai.elizaos.app",
+) {
   if (!["linux", "android"].includes(platform))
     throw new Error("Platform must be linux or android");
   if (
@@ -110,10 +122,7 @@ export function validateAssets(assets, platform, certificate) {
     );
   const expectedHost =
     platform === "android"
-      ? {
-          application: "ai.elizaos.app",
-          androidCertificates: [String(certificate).toUpperCase()],
-        }
+      ? androidNativeHost(certificate, application)
       : "ai.elizaos.browser";
   if (platform === "android" && !/^[0-9a-f]{64}$/i.test(certificate ?? ""))
     throw new Error("Android app signing certificate SHA-256 is required");
@@ -132,6 +141,7 @@ export async function generateComponentOverlay({
   assets,
   platform,
   certificate,
+  application = "ai.elizaos.app",
   revision,
 }) {
   if (revision !== pin.revision)
@@ -141,7 +151,7 @@ export async function generateComponentOverlay({
   for (const [filename, expected] of Object.entries(pin.sha256))
     if (sha256(sources[filename] ?? "") !== expected)
       throw new Error(`Chromium source integrity mismatch: ${filename}`);
-  validateAssets(assets, platform, certificate);
+  validateAssets(assets, platform, certificate, application);
   const files = {};
   const edit = (filename, transform) => {
     files[filename] = transform(files[filename] ?? sources[filename]);
@@ -321,6 +331,10 @@ export async function generateComponentOverlay({
       chromiumRevision: pin.revision,
       extensionId: EXTENSION_ID,
       platform,
+      nativeHost:
+        platform === "android"
+          ? androidNativeHost(certificate, application)
+          : "ai.elizaos.browser",
       resources: Object.fromEntries(
         assetNames.map((name) => [
           name,
@@ -449,6 +463,9 @@ async function main(args) {
     assets,
     revision,
     platform: option("--platform"),
+    application: args.includes("--application")
+      ? option("--application")
+      : "ai.elizaos.app",
     certificate: args.includes("--certificate")
       ? option("--certificate")
       : undefined,

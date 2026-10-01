@@ -47,6 +47,8 @@ test("returns every frame when both inventories and script documents agree", asy
     command,
   );
   assert.equal(result.frames.length, 2);
+  assert.equal(result.frames[0].documentId, "main-document");
+  assert.equal(result.frames[1].documentId, "child-document");
   assert.deepEqual(
     result.frames.map((frame) => frame.text),
     ["all text", "all text"],
@@ -101,4 +103,108 @@ test("new background tabs bind to a regular window even when a Custom Tab is foc
   });
   assert.equal(result.completed, false);
   assert.equal(result.requiresReadback, true);
+});
+
+for (const subaction of [
+  "navigate",
+  "click",
+  "fill",
+  "scroll",
+  "close",
+  "back",
+  "forward",
+  "reload",
+  "snapshot",
+]) {
+  test(`a context ending during tab lookup prevents ${subaction} dispatch`, async () => {
+    let current = true;
+    let effects = 0;
+    const noEffect = async () => {
+      effects++;
+      return [];
+    };
+    const api = {
+      tabs: {
+        get: async () => {
+          current = false;
+          return { url: "https://example.test/", status: "complete" };
+        },
+        update: noEffect,
+        remove: noEffect,
+        goBack: noEffect,
+        goForward: noEffect,
+        reload: noEffect,
+      },
+      webNavigation: { getAllFrames: noEffect },
+      scripting: { executeScript: noEffect },
+    };
+    await assert.rejects(
+      executeCommand(
+        api,
+        {
+          subaction,
+          id: "42",
+          selector: "12345678-1234-1234-1234-123456789012:0:1",
+          url: "https://example.test/next",
+          text: "value",
+        },
+        undefined,
+        () => current,
+      ),
+      (error) => error.kind === "STALE_REF",
+    );
+    assert.equal(effects, 0);
+  });
+}
+
+test("a context ending during window lookup cannot open a new tab", async () => {
+  let current = true;
+  let created = false;
+  const api = {
+    windows: {
+      getAll: async () => {
+        current = false;
+        return [{ id: 1, type: "normal" }];
+      },
+    },
+    tabs: {
+      create: async () => {
+        created = true;
+      },
+    },
+  };
+  await assert.rejects(
+    executeCommand(
+      api,
+      { subaction: "open", url: "https://example.test/" },
+      undefined,
+      () => current,
+    ),
+    (error) => error.kind === "STALE_REF",
+  );
+  assert.equal(created, false);
+});
+
+test("a context ending after effect dispatch reports an uncertain outcome", async () => {
+  let current = true;
+  let effects = 0;
+  const api = {
+    tabs: {
+      get: async () => ({ url: "https://example.test/" }),
+      update: async () => {
+        effects++;
+        current = false;
+      },
+    },
+  };
+  await assert.rejects(
+    executeCommand(
+      api,
+      { subaction: "navigate", id: "42", url: "https://example.test/next" },
+      undefined,
+      () => current,
+    ),
+    (error) => error.kind === "UNCERTAIN_OUTCOME",
+  );
+  assert.equal(effects, 1);
 });

@@ -6,19 +6,53 @@ authenticated device registration and routes authorized commands to this profile
 
 Build with `bun run --cwd packages/os build:browser`. Android builds
 require `ELIZA_BROWSER_ANDROID_CERTIFICATE` containing the launcher's public signing
-certificate SHA-256. The Android host is `ai.elizaos.app`; Linux uses
+certificate SHA-256. The Android host defaults to `ai.elizaos.app`; set
+`ELIZA_BROWSER_ANDROID_APPLICATION` to a different host application ID and pass
+the same `--application` to the component generator. Each host requires its own
+matching certificate-pinned component build. Linux uses
 `ai.elizaos.browser`. Chromium must allow the extension to use that native host.
 
 Commands address explicit tab IDs. Snapshots return complete per-frame text and
 snapshot-bound element selectors. Any effect invalidates that frame's references.
 A dispatch receipt requires fresh observation to establish the website result.
+Snapshots include document identity, target bounds, viewport, DOM revision and
+input revision. Effects reject changed URLs, page mutations, user input, field
+values or target geometry; read again after manual progress. Form/editable values
+are excluded from snapshot text and labels. The value comparison stays inside
+the isolated page realm. These freshness checks do not classify a button as safe
+for a particular task or replace the host's action policy.
 Large native messages use ordered lossless chunks below the Android Binder limit.
 Incomplete or out-of-order messages never execute. Repeated
 request IDs fail closed; interrupted effects are never replayed automatically.
+The native `cancel` capability fences a request by ID without waiting for the
+command queue. Cancellation records survive worker restart. Context is checked
+after browser lookups and before effect dispatch; a context change after dispatch
+returns an uncertain outcome, not a claim that the effect was undone.
+
+The optional `task-bind` native capability binds a tab to actor, account, agent,
+task, epoch, expiry and an increasing per-tab binding revision. Only the trusted
+host can issue `NativeSocketBrowserTarget.bindTask`; it is not a model-facing
+browser subaction. Scoped `execute` calls pass that context explicitly. A bound
+tab rejects raw commands, other origins/frames and stale contexts. After worker
+restart it remains blocked until a higher binding is established. Revocation
+fences pending lookups; a dispatched effect can still have an uncertain outcome.
+
+The host supplies reviewed CSS target/action permissions. Main-frame execution
+rechecks those permissions, excludes password/payment/OTP fields from ordinary
+fills, and rejects submit controls and explicit sign-in/verification/payment
+labels even if accidentally allowed. This is an additional guard, not semantic
+proof about arbitrary JavaScript: a reviewed ordinary button or field can run
+site code. Qualify each supported page and its consequences. Protected OTP fills,
+complete sensitive-page policy, and installed Android task binding remain separate
+work. Binding metadata and target rules must never come from model or page text.
 
 Run `bun run --cwd packages/os test:browser` for protocol tests.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
+
+Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
+test:browser:page` for real isolated-world DOM freshness tests. This uses a fresh
+test profile and local controlled page, not the installed native-message path.
 
 
 Owned Chromium component builds can preserve the extension ID without the old
@@ -67,3 +101,61 @@ Chromium executable and run `node --conditions=eliza-source
 packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
 component and installed `/usr/libexec/elizaos-browser-native-host` relay without
 unpacked-extension or allowlist-bypass flags.
+
+
+The `pageGuidance` isolated-world renderer uses existing snapshot target identity
+for a single ring and dismissible label without changing provider element styles.
+Scroll/viewport movement hides the annotation until stable geometry returns;
+DOM changes and manual input require a fresh host observation. Same-step dismissal
+survives repeated offers; restore must be explicit. Labels are excluded from the
+page snapshot by a closed shadow tree. The trusted `task-guide` native capability admits ordered, task-bound annotations
+through `NativeSocketBrowserTarget.guideTask`, never a model browser action.
+Cancellation, rebinding and detected transport disconnect remove the annotation.
+Before native registration, worker recovery clears guides listed in a durable
+tab-ID-only index and revokes old bindings. Removal requires a page receipt;
+failure prevents registration until recovery succeeds. Closed tabs are retired.
+Owner-bound removal remains available after lease expiry or origin navigation;
+it does not grant page-read or action authority. Closed-tab receipts require a
+successful live-tab inventory, including a second read after an injection race.
+Inventory or injection errors on a live tab retain the cleanup record for retry.
+The observation monitor excludes only mount/removal records for its private
+guide host nodes. Provider insertions and edits still invalidate observations;
+showing a guide does not itself make the guarded action stale.
+Bound click/fill/scroll commands validate before showing an action pointer and
+short instruction. After 800 ms of stable visibility, the effect rechecks page,
+input, target, binding and per-command expiry. Cancel/dismissal or stale context
+prevents dispatch. The brief tap marker represents dispatch, not verified success;
+normal readback still determines the outcome. Raw task-guide calls cannot request
+an action pointer. Cleanup uses the same acknowledged removal/recovery path.
+Product Pause/Close integration remains required before enabling it in a product.
+Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
+test:browser:guidance` for actual Chromium renderer tests. These do not establish
+native-host, Android or pre-action pointer integration.
+
+Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
+test:browser:task-guidance` for actual Chromium binding/removal checks. Socket
+framing is covered by the browser plugin tests; installed native transport and
+Android are separate acceptance gates.
+
+Task snapshots now attach `manualActivity` from a value-free extension journal.
+The isolated main-frame listener records a form-submit attempt following recent
+trusted click/keyboard activity; it never captures form values or treats the
+attempt as provider success. The receiver checks extension identity, frame,
+origin and current binding revision. Acknowledged records survive worker restart
+and task epoch changes for the same owner/task. Repeated IDs are deduplicated;
+capacity overflow and in-page transport failures are explicit flags. The listener
+is installed during an authorized snapshot, so activity before that snapshot or
+lost before storage acknowledgment is not covered. Product consumers must treat
+attempts as uncertain and reconcile observed provider status. They must not infer
+payment success or human intent solely from a form event. Run
+`node packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
+semantics using a simulated message transport; installed transport/device
+qualification and product consumption remain separate gates.
+
+`task-protected-fill` is a separate native capability. A protected verification
+value requires the host's marker plus a dedicated `fill-code` target permission
+and a matching OTP input. It does not allow password fields or Verify/submit
+activation. Run `node --conditions=eliza-source
+packages/os/browser/scripts/test-protected-fill.mjs` for controlled Chromium
+field-policy and snapshot-redaction checks; native transport and provider
+qualification remain separate.

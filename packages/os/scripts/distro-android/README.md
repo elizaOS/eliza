@@ -9,7 +9,12 @@ consume its staged privileged APK.
 Browser staging binds the launcher package and certificate to one reviewed APK
 pin. Upstream snapshots use `org.chromium.chrome`; owned components use
 `ai.elizaos.chromium` and require the matching `chrome_public_manifest_package`
-GN argument. The owned package starts a new profile; retain the upstream app for
+GN argument. Owned pins and build provenance must explicitly carry
+`launcherApplication` and `launcherSignerSha256`; the overlay and all current
+component resources must bind to the same launcher. Missing identities, stale
+resource inventories and conflicting host configurations are rejected. This
+admission checks build evidence, not installed native-channel behavior.
+The owned package starts a new profile; retain the upstream app for
 rollback and select the new profile explicitly rather than copying profile grants.
 
 Use `node packages/os/scripts/distro-android/sim.ts --aosp-root /path/to/aosp`

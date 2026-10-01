@@ -6,6 +6,12 @@
  * refund is bound to one `crypto_payments` record, capped at the USD actually
  * paid for it (never a promotional bonus), idempotent per refund key, and
  * written to the ledger as a `refund` row so it never qualifies an RPM tier.
+ *
+ * An x402 payment request's record belongs to the payee (the organization
+ * that created the request, whose creator is paid at settlement); the payer
+ * is an external wallet with no organization. Until a payer can be bound to
+ * an organization, those refunds are refused rather than credited to the
+ * payee.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -33,6 +39,7 @@ export type CryptoRefundErrorCode =
   | "CRYPTO_REFUND_PAYMENT_NOT_FOUND"
   | "CRYPTO_REFUND_PAYMENT_NOT_CONFIRMED"
   | "CRYPTO_REFUND_RECIPIENT_MISMATCH"
+  | "CRYPTO_REFUND_X402_PAYER_UNBOUND"
   | "CRYPTO_REFUND_INVALID_AMOUNT"
   | "CRYPTO_REFUND_EXCEEDS_PAYMENT";
 
@@ -140,6 +147,15 @@ export class CryptoPaymentRefundsService {
       // Policy first: an on-chain or fiat request is refused before any read
       // of refund state or ledger write.
       assertCryptoRefundDestination(rail, input.destination);
+      if (rail === "x402") {
+        // `organization_id` is the payee; crediting it would pay the creator
+        // twice and leave the payer (`metadata.payer`, a wallet) with nothing.
+        throw new CryptoRefundError(
+          "CRYPTO_REFUND_X402_PAYER_UNBOUND",
+          "x402 payment requests cannot be refunded as Cloud credits: the payer has no organization to credit",
+          { paymentId: input.paymentId },
+        );
+      }
       if (payment.organization_id !== input.organizationId) {
         throw new CryptoRefundError(
           "CRYPTO_REFUND_RECIPIENT_MISMATCH",
@@ -203,7 +219,7 @@ export class CryptoPaymentRefundsService {
       const refund = await creditsService.refundCredits({
         organizationId: input.organizationId,
         amount: amount.toFixed(6),
-        description: `${rail === "x402" ? "x402" : "Crypto"} payment refund as Cloud credits`,
+        description: "Crypto payment refund as Cloud credits",
         metadata: {
           type: "crypto_payment_refund",
           payment_rail: rail,

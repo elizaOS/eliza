@@ -566,7 +566,36 @@ export function saveElizaConfig(config: ElizaConfig): void {
     stripWalletPrivateKeysFromConfig(sanitized as ElizaConfig);
   }
 
-  const content = `${JSON.stringify(sanitized, null, 2)}\n`;
+  // Host-managed credentials may be hydrated in memory, but stay outside disk config.
+  const externalNames = process.env.ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS;
+  const names =
+    externalNames === undefined || externalNames === ""
+      ? []
+      : externalNames.split(",");
+  if (
+    names.length > 32 ||
+    names.some((name) => !/^[A-Z][A-Z0-9_]{0,127}$/.test(name))
+  ) {
+    throw new ElizaError("Invalid external config secret policy", {
+      code: "CONFIG_EXTERNAL_SECRET_POLICY_INVALID",
+    });
+  }
+  const externalSecrets = new Set(
+    names
+      .map((name) => process.env[name])
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      ),
+  );
+  const content = `${JSON.stringify(
+    sanitized,
+    (_key, value) =>
+      typeof value === "string" && externalSecrets.has(value)
+        ? undefined
+        : value,
+    2,
+  )}\n`;
 
   // Atomic write: write to a temp file then rename. If the process crashes
   // during writeFileSync, only the temp file is corrupted — the original
