@@ -10,11 +10,11 @@ import { stripAssistantStageDirections } from "@elizaos/core";
 export { stripAssistantStageDirections };
 
 export function isNoResponsePlaceholder(text: string): boolean {
-	const trimmed = text.trim();
-	return trimmed.length === 0 || /^\(?no response\)?$/i.test(trimmed);
+  const trimmed = text.trim();
+  return trimmed.length === 0 || /^\(?no response\)?$/i.test(trimmed);
 }
 
 export function isClientVisibleNoResponse(text: string): boolean {
-	if (isNoResponsePlaceholder(text)) return true;
-	return isNoResponsePlaceholder(stripAssistantStageDirections(text));
+  if (isNoResponsePlaceholder(text)) return true;
+  return isNoResponsePlaceholder(stripAssistantStageDirections(text));
 }
