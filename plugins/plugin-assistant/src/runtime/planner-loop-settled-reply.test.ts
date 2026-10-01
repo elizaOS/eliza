@@ -12,6 +12,92 @@ const settled = {
 };
 
 describe("settled navigation reply recovery", () => {
+  it.each([
+    { preToolProse: false, deferred: true, verified: true, expectedPlans: 1 },
+    { preToolProse: true, deferred: true, verified: true, expectedPlans: 1 },
+    { preToolProse: true, deferred: true, verified: false, expectedPlans: 1 },
+    { preToolProse: false, deferred: false, verified: true, expectedPlans: 2 },
+  ])(
+    "preserves settled internal result verification and legacy caller behavior: %j",
+    async ({ preToolProse, deferred, verified, expectedPlans }) => {
+      const receipt = {
+        receiptId: "reminder-commit",
+        operation: "lifeops.owner.create",
+        resource: { kind: "definition", id: "reminder-1" },
+        artifacts: [],
+        idempotency: { key: null, replayed: false },
+        observedAt: "2026-09-30T11:31:00.000Z",
+        outcome: "applied" as const,
+        commit: {
+          kind: "durable" as const,
+          id: "reminder-1",
+          committedAt: "2026-09-30T11:31:00.000Z",
+        },
+      };
+      let plans = 0;
+      const execute = vi.fn(async () => ({
+        success: true,
+        transcriptVisibility: "internal" as const,
+        modelReplyRequired: true,
+        text: "Reminder saved for 4:33.",
+        effectReceipts: [receipt],
+      }));
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: verified,
+        messageToUser: verified
+          ? "Reminder set for 4:33."
+          : "I could not verify the requested time.",
+        effectReceiptIds: [receipt.receiptId],
+      }));
+      const result = await runPlannerLoop({
+        context,
+        deferInternalReplyRecoveryToCaller: deferred,
+        tools: [{ name: "OWNER_REMINDERS" }],
+        runtime: {
+          useModel: async () => {
+            plans++;
+            if (plans > 1)
+              return JSON.stringify({
+                completed: true,
+                toolCalls: [],
+                messageToUser: "Reminder set for 4:33.",
+              });
+            return preToolProse
+              ? JSON.stringify({
+                  completed: true,
+                  toolCalls: [{ name: "OWNER_REMINDERS", params: {} }],
+                  messageToUser: "Reminder set for 2:27.",
+                })
+              : {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: "create",
+                      name: "OWNER_REMINDERS",
+                      arguments: { eliza_turn_scope: "final" },
+                    },
+                  ],
+                };
+          },
+        },
+        executeToolCall: execute,
+        evaluate,
+      });
+      expect(plans).toBe(expectedPlans);
+      expect(execute).toHaveBeenCalledTimes(1);
+      if (deferred) expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(result.finalMessage).toBe(
+        verified
+          ? "Reminder set for 4:33."
+          : "I could not verify the requested time.",
+      );
+      if (!verified) expect(result.evaluator?.success).toBe(false);
+      expect(result.trajectory.steps[0].result?.effectReceipts).toEqual([
+        receipt,
+      ]);
+    },
+  );
   it("allows requested technical evidence in settled replies without authorizing tool execution", async () => {
     const execute = vi.fn();
     const result = await runPlannerLoop({

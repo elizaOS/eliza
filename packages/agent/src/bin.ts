@@ -17,6 +17,7 @@ import {
 } from "@elizaos/core";
 
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
+import { captureProtectedProfile } from "./security/protected-profile-state.ts";
 
 // Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
 // boot-config alias table — the reader path, with no process.env mirror
@@ -26,6 +27,9 @@ import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 // Establish the host executable-search authority before the CLI dynamically
 // imports runtime configuration or any plugin code.
 captureHostExecutionBaseline();
+// Capture the protected profile from the entry environment before any command
+// can load configuration that mutates process.env.
+captureProtectedProfile();
 // Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
 // the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
 // source. Anchored to <stateDir>/cache/node-compile — the SAME dir the dev

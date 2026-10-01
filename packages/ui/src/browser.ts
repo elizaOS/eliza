@@ -57,8 +57,6 @@ export {
 } from "./agent-surface/useAgentElement.ts";
 export * from "./api/android-native-agent-transport.ts";
 export * from "./api/index.ts";
-export * from "./api/response.ts";
-export { sendJson, sendJsonError } from "./api/response.ts";
 export { registerAppShellPage } from "./app-shell-registry.ts";
 export {
   getAppDetailExtension,

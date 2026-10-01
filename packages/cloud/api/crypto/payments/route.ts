@@ -93,6 +93,10 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
         INVALID_UUID: { status: 400, message: "Invalid request format" },
         AMOUNT_TOO_SMALL: { status: 400, message: "Amount too small" },
         AMOUNT_TOO_LARGE: { status: 400, message: "Amount too large" },
+        AMOUNT_INVALID: {
+          status: 400,
+          message: "Amount must be a USD value in whole cents",
+        },
         INVALID_CURRENCY: { status: 400, message: "Currency must be USD" },
         SERVICE_NOT_CONFIGURED: {
           status: 503,

@@ -179,13 +179,27 @@ export interface AppendAuditEventInput {
 }
 
 interface DrizzleRunResult {
+  /** node-postgres. */
   rowCount?: number | null;
+  /** PGlite. */
+  affectedRows?: number | null;
 }
 
-function readRunRowCount(result: unknown): number | null {
-  if (!result || typeof result !== "object") return null;
-  const rowCount = (result as DrizzleRunResult).rowCount;
-  return typeof rowCount === "number" ? rowCount : null;
+/**
+ * Rows affected by an UPDATE/DELETE. node-postgres reports `rowCount`,
+ * PGlite `affectedRows`. A result carrying neither is an unsupported driver:
+ * throw rather than guess, so a no-op write is never reported as success.
+ */
+function readRunRowCount(result: unknown, operation: string): number {
+  if (result && typeof result === "object") {
+    const { rowCount, affectedRows } = result as DrizzleRunResult;
+    if (typeof rowCount === "number") return rowCount;
+    if (typeof affectedRows === "number") return affectedRows;
+  }
+  throw new ElizaError("Authentication store write reported no row count", {
+    code: "AUTH_STORE_ROW_COUNT_UNAVAILABLE",
+    context: { operation },
+  });
 }
 
 function nullableString(value: string | null | undefined): string | null {
@@ -371,8 +385,7 @@ export class AuthStore {
       .where(
         and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)),
       );
-    const rowCount = readRunRowCount(result);
-    return rowCount === null ? true : rowCount > 0;
+    return readRunRowCount(result, "revokeSession") > 0;
   }
 
   /**
@@ -419,7 +432,7 @@ export class AuthStore {
       .update(authSessionTable)
       .set({ revokedAt: now })
       .where(condition);
-    return readRunRowCount(result) ?? 0;
+    return readRunRowCount(result, "revokeAllSessionsForIdentity");
   }
 
   /**
@@ -635,8 +648,7 @@ export class AuthStore {
     const result = await this.db
       .delete(authOwnerBindingTable)
       .where(eq(authOwnerBindingTable.id, id));
-    const rowCount = readRunRowCount(result);
-    return rowCount === null ? true : rowCount > 0;
+    return readRunRowCount(result, "deleteOwnerBinding") > 0;
   }
 
   async createOwnerLoginToken(input: {
@@ -689,8 +701,7 @@ export class AuthStore {
           isNull(authOwnerLoginTokenTable.consumedAt),
         ),
       );
-    const rowCount = readRunRowCount(result);
-    return rowCount === null ? true : rowCount > 0;
+    return readRunRowCount(result, "consumeOwnerLoginToken") > 0;
   }
 }
 

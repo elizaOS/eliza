@@ -7,8 +7,6 @@
  */
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
-import { ElizaError } from "../errors";
-import { checkSenderRole } from "../roles";
 import { isSensitiveKeyName } from "../security/redact";
 import {
 	composeToolDiagnosticRedactor,
@@ -45,16 +43,17 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state";
 import { withActiveRoutingContexts } from "../utils/context-routing";
 import { resolveActionEventWorldId } from "./action-event-world";
-import { actionGateFailure } from "./action-gate";
+import {
+	actionGateFailure,
+	actionGateNeedsCallerRoles,
+	resolveActionCallerRoles,
+} from "./action-gate";
 import {
 	actionFailureResult as failureResult,
 	settleActionHandler,
 	stringifyActionError as stringifyError,
 } from "./action-handler-settlement";
-import {
-	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
-	resolveActionRolePolicyRole,
-} from "./action-role-policy";
+import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import type { PlannerToolCall } from "./planner-types.ts";
 import {
@@ -899,15 +898,9 @@ export async function executePlannedToolCall(
 							// stored authority again at the effect boundary, never caller snapshots.
 							const currentGateFailure = actionGateFailure(action, {
 								...executorCtx,
-								userRoles:
-									action.roleGate ||
-									action.contextGate?.roleGate ||
-									resolveActionRolePolicyRole(action)
-										? await resolveToolCallUserRoles(
-												runtime,
-												executorCtx.message,
-											)
-										: executorCtx.userRoles,
+								userRoles: actionGateNeedsCallerRoles(action)
+									? await resolveActionCallerRoles(runtime, executorCtx.message)
+									: executorCtx.userRoles,
 							});
 							if (currentGateFailure)
 								return failureResult(action.name, currentGateFailure);
@@ -1113,43 +1106,8 @@ async function withResolvedUserRoles(
 	}
 	return {
 		...ctx,
-		userRoles: await resolveToolCallUserRoles(runtime, ctx.message),
+		userRoles: await resolveActionCallerRoles(runtime, ctx.message),
 	};
-}
-
-async function resolveToolCallUserRoles(
-	runtime: IAgentRuntime,
-	message: Memory,
-): Promise<RoleGateRole[]> {
-	if (
-		typeof message.entityId === "string" &&
-		message.entityId === runtime.agentId
-	) {
-		return ["OWNER"];
-	}
-
-	try {
-		const result = await checkSenderRole(runtime, message);
-		if (result?.role) {
-			return [result.role as RoleGateRole];
-		}
-	} catch (error) {
-		// error-policy:J2 A role-store failure cannot be converted into a role
-		// because doing so would authorize actions without canonical evidence.
-		throw new ElizaError("Failed to resolve the tool caller's role", {
-			code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
-			cause: error,
-			context: {
-				messageId: message.id,
-				roomId: message.roomId,
-				entityId: message.entityId,
-			},
-		});
-	}
-
-	// A missing canonical room/world is not evidence of an authenticated user.
-	// GUEST is the non-authorizing floor for actions that require USER or above.
-	return ["GUEST"];
 }
 
 function plannedToolCallToStreamingToolCall(

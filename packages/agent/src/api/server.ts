@@ -5,7 +5,6 @@
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
  * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.ts).
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import {
@@ -90,6 +89,7 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.ts";
+import { ensureProtectedProfileAdmission } from "../security/protected-profile.ts";
 import {
   type AgentBackupStateData,
   AgentSnapshotBudgetExceededError,
@@ -178,7 +178,7 @@ import {
   loadLocalInferenceRouteApi,
   loadLocalInferenceVoiceRouteApi,
 } from "./local-inference-server-api.ts";
-import { serveMediaFile } from "./media-store.ts";
+import { isMediaAuthRequired, serveMediaFile } from "./media-store.ts";
 import {
   getModelOptions,
   getOrFetchAllProviders,
@@ -265,6 +265,7 @@ import {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
+  tokenMatches,
   tryAcquirePendingWebSocket,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
@@ -390,14 +391,6 @@ import {
 import type { X402PluginModule } from "./x402-contract.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
-function tokenMatches(expected: string, provided: string): boolean {
-  const expectedBuf = Buffer.from(expected);
-  const providedBuf = Buffer.from(provided);
-  return (
-    expectedBuf.length === providedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, providedBuf)
-  );
-}
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -1660,8 +1653,9 @@ async function handleRequestForViewClient(
     if (serveStaticUi(req, res, pathname)) return;
     // Chat media (uploaded + generated). Content-addressed sha256 filenames act
     // as unguessable capabilities, so media loads from <img>/<audio> without an
-    // auth header — same rationale as static assets above.
-    if (serveMediaFile(req, res, pathname)) return;
+    // auth header — same rationale as static assets above. The protected
+    // profile serves media only after the auth gate below.
+    if (!isMediaAuthRequired() && serveMediaFile(req, res, pathname)) return;
   }
   // ── Runtime-mode visibility gate ────────────────────────────────────────
   // Enforced here, in the server every host shares, so the bare agent
@@ -1703,6 +1697,15 @@ async function handleRequestForViewClient(
     !isBoundaryRoleAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+  // Protected profile: authenticated media (same-origin <img>/<audio> GETs
+  // carry the session cookie, which the gate above accepts without CSRF).
+  if (
+    (method === "GET" || method === "HEAD") &&
+    isMediaAuthRequired() &&
+    serveMediaFile(req, res, pathname)
+  ) {
     return;
   }
   // Complete trajectory inputs and outputs belong to the owner's developer
@@ -3417,6 +3420,8 @@ export async function startApiServer(opts?: {
     },
   ) => void;
 }> {
+  // Hosts that listen before startEliza must still pass protected admission.
+  await ensureProtectedProfileAdmission();
   const apiStartTime = Date.now();
   const hostAdmission = opts?.hostAdmission;
   const hostConfig =
@@ -3782,12 +3787,77 @@ export async function startApiServer(opts?: {
     getBufferedAmount: (ws) =>
       ws.bufferedAmount + (wsQueuedSendBytes.get(ws) ?? 0),
   });
+  const wsSessions = new Map<
+    WebSocket,
+    {
+      token: string;
+      checkedAt: number;
+      pending?: Promise<boolean>;
+      revoked: boolean;
+      generation: number;
+    }
+  >();
+  const invalidateSessionSocket = (
+    ws: WebSocket,
+    reason = "session_invalid",
+  ) => {
+    const session = wsSessions.get(ws);
+    if (session) session.revoked = true;
+    wsClients.delete(ws);
+    ws.close(1008, reason);
+  };
+  const validateSessionSocket = async (ws: WebSocket): Promise<boolean> => {
+    const session = wsSessions.get(ws);
+    if (!session) return true;
+    if (session.revoked) return false;
+    if (session.pending) return session.pending;
+    if (Date.now() - session.checkedAt < 5_000) return true;
+    session.pending = (async () => {
+      for (;;) {
+        const generation = session.generation;
+        const authorized = await isWebSocketSessionTokenAuthorized(
+          session.token,
+          state.runtime,
+        );
+        if (
+          !authorized ||
+          session.revoked ||
+          ws.readyState !== WebSocket.OPEN
+        ) {
+          invalidateSessionSocket(ws);
+          return false;
+        }
+        // A bulk revoke can commit while this read is in flight. Re-read
+        // before releasing queued frames; the excepted session stays usable.
+        if (generation !== session.generation) continue;
+        session.checkedAt = Date.now();
+        return true;
+      }
+    })().finally(() => {
+      delete session.pending;
+    });
+    return session.pending;
+  };
+  const unsubscribeSessionRevocations =
+    getAgentHostBridge().subscribeSessionRevocations?.((sessionId) => {
+      for (const [ws, session] of wsSessions) {
+        if (sessionId === session.token)
+          invalidateSessionSocket(ws, "session_revoked");
+        else if (sessionId === null) {
+          // Bulk revoke preserves the excepted session: re-resolve each bearer.
+          session.checkedAt = 0;
+          session.generation += 1;
+          void validateSessionSocket(ws);
+        }
+      }
+    });
   const admitWebSocket = async (
     ws: WebSocket,
     request: http.IncomingMessage,
     boundary: "websocket-send" | "websocket-message",
   ): Promise<boolean> => {
     if (ws.readyState !== WebSocket.OPEN) return false;
+    if (!(await validateSessionSocket(ws))) return false;
     const rejection = await admitHostRequest(request, boundary);
     if (rejection !== null) {
       ws.close(rejection === 403 ? 1008 : 1011, "Host admission rejected");
@@ -3799,7 +3869,7 @@ export async function startApiServer(opts?: {
     if (ws.readyState !== WebSocket.OPEN || !wsBackpressure.admit(ws)) {
       return false;
     }
-    if (!hostAdmission) {
+    if (!hostAdmission && !wsSessions.has(ws)) {
       ws.send(message);
       return true;
     }
@@ -4244,6 +4314,16 @@ export async function startApiServer(opts?: {
       hostAuthorized ||
       isWebSocketAuthorized(request, wsUrl) ||
       isWebSocketUpgradeSessionAuthorized(request);
+    if (isWebSocketUpgradeSessionAuthorized(request)) {
+      const token = extractWebSocketHandshakeToken(request, wsUrl);
+      if (token)
+        wsSessions.set(ws, {
+          token,
+          checkedAt: 0,
+          revoked: false,
+          generation: 0,
+        });
+    }
     // Serializes in-band machine-session lookups for this socket (see the
     // auth branch of the message handler).
     let inBandSessionLookupInFlight = false;
@@ -4408,7 +4488,7 @@ export async function startApiServer(opts?: {
     ws.on("message", async (data: unknown) => {
       try {
         if (
-          hostAdmission &&
+          (hostAdmission || wsSessions.has(ws)) &&
           !(await admitWebSocket(ws, request, "websocket-message"))
         )
           return;
@@ -4441,6 +4521,13 @@ export async function startApiServer(opts?: {
                 providedToken,
                 state.runtime,
               );
+              if (authorized)
+                wsSessions.set(ws, {
+                  token: providedToken,
+                  checkedAt: 0,
+                  revoked: false,
+                  generation: 0,
+                });
             } finally {
               inBandSessionLookupInFlight = false;
             }
@@ -4641,6 +4728,7 @@ export async function startApiServer(opts?: {
       clearAuthGraceTimer();
       releasePendingSlot();
       wsClients.delete(ws);
+      wsSessions.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up any PTY output subscriptions for this client
       const subs = wsClientPtySubscriptions.get(ws);
@@ -4674,6 +4762,9 @@ export async function startApiServer(opts?: {
   // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
   let statusReadinessSequence = 0;
   const broadcastStatus = async () => {
+    // The existing five-second status cadence detects revocations/expiry from
+    // other processes. One coalesced lookup gates all queued frames per socket.
+    for (const session of wsSessions.values()) session.checkedAt = 0;
     // Skip the payload build + computeCanRespond() when no dashboard is
     // connected. This fires every 5s (statusInterval) plus on every state
     // change for the whole process lifetime; a headless / background agent
@@ -4997,6 +5088,10 @@ export async function startApiServer(opts?: {
     logger.warn({ error, resource }, `[eliza-api] Failed to close ${resource}`);
   });
   for (const resource of [
+    {
+      name: "session revocation listener",
+      dispose: () => unsubscribeSessionRevocations?.(),
+    },
     {
       name: "status interval",
       dispose: () => clearInterval(statusInterval),

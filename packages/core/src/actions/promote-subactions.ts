@@ -533,6 +533,7 @@ export function promoteSubactionsToActions(
 			contextGate: parent.contextGate,
 			roleGate: parent.roleGate,
 			disclosureGate: parent.disclosureGate,
+			egress: parent.egress,
 			historicalObservationOperations: parent.historicalObservationOperations,
 			cacheStable: parent.cacheStable,
 			cacheScope: parent.cacheScope,

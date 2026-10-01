@@ -946,10 +946,15 @@ export async function redeliverHeldWebhook(
       held.agentId,
     );
   } catch (err) {
-    if (err instanceof PersonalSharedPreEgressError) {
-      // The provider already acknowledged this event. A transient transport or
-      // pre-execution failure must stay in the durable retry queue; reopening
-      // the provider dedup key cannot cause a provider retry after its ACK.
+    // The provider already acknowledged this event. A transient transport or
+    // pre-execution failure must stay in the durable retry queue; reopening
+    // the provider dedup key cannot cause a provider retry after its ACK. A
+    // failure Cloud classified as not retryable would only be refused again
+    // until the hold budget ran out, so it settles like the first delivery.
+    if (
+      err instanceof PersonalSharedPreEgressError &&
+      (err.hold !== null || err.failure?.retryable !== false)
+    ) {
       return {
         kind: "held",
         signal: err.hold ?? { code: held.code, retryAfterSeconds: null },

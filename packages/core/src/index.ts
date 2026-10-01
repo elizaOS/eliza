@@ -211,6 +211,10 @@ export {
 	promotedSubactionParent,
 } from "./actions/promote-subactions.ts";
 export {
+	bindTaskExtractionContext,
+	readTaskExtractionContext,
+} from "./actions/task-extraction-context";
+export {
 	actionToTool,
 	buildPlannerToolsFromActions,
 	buildPlannerToolsFromTieredActions,
@@ -746,79 +750,10 @@ export type {
 	VisibilityOperator,
 } from "./config/ui-spec.js";
 export {
-	AudioElevenlabsSfxConfigSchema,
-	AudioGenConfigSchema,
-	AudioGenProviderSchema,
-	AudioSunoConfigSchema,
-	BedrockDiscoverySchema,
-	BlockStreamingChunkSchema,
-	BlockStreamingCoalesceSchema,
-	ChannelHeartbeatVisibilitySchema,
-	CliBackendSchema,
-	CloudMediaConfigSchema,
-	DebounceMsBySurfaceSchema,
-	DmConfigSchema,
-	DmPolicySchema,
-	ExecutableTokenSchema,
-	GroupChatSchema,
-	GroupPolicySchema,
-	HexColorSchema,
-	HumanDelaySchema,
-	IdentitySchema,
-	ImageConfigSchema,
-	ImageFalConfigSchema,
-	ImageGoogleConfigSchema,
-	ImageOpenaiConfigSchema,
-	ImageProviderSchema,
-	ImageXaiConfigSchema,
-	InboundDebounceSchema,
-	LinkModelSchema,
-	MarkdownConfigSchema,
-	MarkdownTableModeSchema,
-	MediaConfigSchema,
-	MediaModeSchema,
-	MediaUnderstandingAttachmentsSchema,
-	MediaUnderstandingCapabilitiesSchema,
-	MediaUnderstandingModelSchema,
-	MediaUnderstandingScopeSchema,
-	MessagePolicySchema,
 	ModelApiSchema,
 	ModelCompatSchema,
 	ModelDefinitionInputSchema,
 	ModelDefinitionSchema,
-	ModelProviderSchema,
-	ModelsConfigSchema,
-	MSTeamsReplyStyleSchema,
-	NativeCommandsSettingSchema,
-	normalizeAllowFrom,
-	ProviderCommandsSchema,
-	QueueDropSchema,
-	QueueModeBySurfaceSchema,
-	QueueModeSchema,
-	QueueSchema,
-	ReplyToModeSchema,
-	RetryConfigSchema,
-	requireOpenAllowFrom,
-	ToolsLinksSchema,
-	ToolsMediaSchema,
-	ToolsMediaUnderstandingSchema,
-	TranscribeAudioSchema,
-	TtsAutoSchema,
-	TtsConfigSchema,
-	TtsModeSchema,
-	TtsProviderSchema,
-	VideoConfigSchema,
-	VideoFalConfigSchema,
-	VideoGoogleConfigSchema,
-	VideoOpenaiConfigSchema,
-	VideoProviderSchema,
-	VisionAnthropicConfigSchema,
-	VisionConfigSchema,
-	VisionGoogleConfigSchema,
-	VisionOllamaConfigSchema,
-	VisionOpenaiConfigSchema,
-	VisionProviderSchema,
-	VisionXaiConfigSchema,
 } from "./config/zod-schema.core.js";
 export {
 	AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
@@ -2789,7 +2724,13 @@ export {
 } from "./restart.js";
 export * from "./retrieval/rerank.js";
 export * from "./retrieval/search.js";
-export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
+export {
+	actionGateFailure,
+	actionGateNeedsCallerRoles,
+	canActionRun,
+	resolveActionCallerRoles,
+	resolveActionGateFailure,
+} from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
 export { resolveActionRolePolicyRole } from "./runtime/action-role-policy.ts";
@@ -2851,6 +2792,13 @@ export {
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
 export { RUNTIME_DEBUG_LOG_ENABLED } from "./runtime/model-diagnostics.ts";
+export {
+	LLM_MODE_OVERRIDE_MODEL_TYPES,
+	modalityForModelType,
+	PII_SWAP_SKIP_MODEL_TYPES,
+	type ProcessingModality,
+	SECRET_SWAP_SKIP_MODEL_TYPES,
+} from "./runtime/model-dispatch/modality.ts";
 export { resolveProviderModelString } from "./runtime/model-dispatch/model-name.ts";
 export {
 	buildModelInputBudget,
@@ -3129,14 +3077,39 @@ export {
 	parsePiiSwapList,
 } from "./security/pii-pseudonymizer.js";
 export {
+	getScrubMarker,
+	hashScrubContent,
+	isScrubDone,
+	markScrubDone,
+	PII_SCRUB_MARKER_PREFIX,
+	type PiiScrubDoneMarker,
+	type ScrubMarkerCache,
+	scrubMarkerKey,
+	scrubMarkerKeyForContent,
+} from "./security/pii-scrub-markers.js";
+export {
 	assertValidScrubResult,
 	PiiScrubFabricationError,
+	partitionScrubCandidates,
+	type ScrubCandidatePartition,
 	type ScrubEscalationRequest,
 	type ScrubEscalationResult,
 	type ScrubResultAssertionOptions,
 	scrubWithEscalation,
 	type Tier0Span,
 } from "./security/pii-scrub-seam.js";
+export {
+	isProcessingPolicyDenial,
+	PROCESSING_POLICY_DENIED,
+	type ProcessingActionEffect,
+	type ProcessingDecision,
+	type ProcessingDenialReason,
+	type ProcessingModelAttempt,
+	type ProcessingPolicy,
+	ProcessingPolicyDeniedError,
+	type ProcessingRequest,
+	type ProcessingScope,
+} from "./security/processing-policy.js";
 export {
 	isSensitiveKeyName,
 	redactLogArgs,
@@ -3274,7 +3247,6 @@ export {
 	stopTaskScheduler,
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
-export * from "./services/tool-policy";
 export {
 	buildElizaNativeTrajectoryRows,
 	iterateTrajectoryLlmCalls,
@@ -3461,14 +3433,6 @@ export {
 	type WordTimingViolation,
 } from "./transcripts.js";
 export * from "./tunnel-service";
-export {
-	asNonEmptyString,
-	asObjectArray,
-	asRecordOrUndefined as asObjectRecordOrUndefined,
-	isPlainObject as hasPlainObjectTag,
-	type UnknownRecord,
-} from "./type-guards.js";
-export { asRecord as asObjectRecord } from "./type-guards.ts";
 // Export everything from types
 export * from "./types/access-context.js";
 export * from "./types/action-failure.js";
@@ -3535,6 +3499,11 @@ export * from "./types/prompt-optimization-score-card.js";
 export * from "./types/prompt-optimization-trace.js";
 export * from "./types/prompts.js";
 export * from "./types/provider-integrations.js";
+export {
+	createReminderPresentation,
+	type ReminderPresentation,
+	readReminderPresentation,
+} from "./types/reminder-presentation";
 export type {
 	ConnectorAccountCapability,
 	ConnectorAccountRef,
@@ -3768,10 +3737,16 @@ export {
 } from "./utils/text-normalize.ts";
 export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export {
+	asNonEmptyString,
+	asObjectArray,
+	asObjectRecord,
+	asObjectRecordOrUndefined,
 	asRecord,
 	asRecordOrUndefined,
+	hasPlainObjectTag,
 	isObjectRecord,
 	isPlainObject,
+	type UnknownRecord,
 } from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
 export { UnionFind } from "./utils/union-find.ts";

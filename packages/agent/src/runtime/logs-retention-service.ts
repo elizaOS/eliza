@@ -5,12 +5,12 @@
  */
 
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { DURABLE_AUDIT_LOG_TYPES } from "../security/audit-log.ts";
 import {
   planRetention,
   policyIsActive,
   type ResolvedRetentionConfig,
   type RetainableRow,
-  resolveRetentionConfigWithPrefix,
 } from "./memory-retention.ts";
 import { RetentionTask } from "./retention-task.ts";
 
@@ -19,7 +19,6 @@ export const LOGS_RETENTION_SERVICE = "eliza_logs_retention";
 /** Env/settings prefix — independent from the memory retention config. */
 export const LOGS_RETENTION_PREFIX = "ELIZA_LOGS_RETENTION";
 
-const DEFAULT_INTERVAL_MINUTES = 360; // 6h
 /** Stable bucket key for logs that carry no roomId (count bound still applies). */
 const NULL_ROOM_KEY = "__no_room__";
 
@@ -64,29 +63,10 @@ export class LogsRetentionService extends Service {
   }
 
   private async init(): Promise<void> {
-    this.retentionConfig = resolveRetentionConfigWithPrefix((key) => {
-      const fromSettings = this.runtime.getSetting(key);
-      if (fromSettings !== undefined && fromSettings !== null) {
-        return String(fromSettings);
-      }
-      return process.env[key];
-    }, LOGS_RETENTION_PREFIX);
-
-    if (!policyIsActive(this.retentionConfig)) {
-      await this.retentionTask.start(undefined);
-      logger.info(
-        "[logs-retention] no active bound (ELIZA_LOGS_RETENTION_DAYS/MAX_ROWS_PER_ROOM unset) — logs retention DISABLED",
-      );
-      return;
-    }
-
-    const intervalMinutes =
-      this.retentionConfig.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
-    logger.info(
-      `[logs-retention] enabled: retentionDays=${this.retentionConfig.retentionDays ?? "off"} maxRowsPerRoom=${this.retentionConfig.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${this.retentionConfig.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
+    this.retentionConfig = await this.retentionTask.startConfigured(
+      LOGS_RETENTION_PREFIX,
+      "logs-retention",
     );
-
-    await this.retentionTask.start(intervalMinutes * 60 * 1000);
   }
 
   async stop(): Promise<void> {
@@ -116,7 +96,9 @@ export class LogsRetentionService extends Service {
 
       const retainable: RetainableRow[] = [];
       for (const r of rows) {
-        if (!r.id) continue;
+        // Durable audit evidence has its own retention authority; lifecycle
+        // log retention never selects it.
+        if (!r.id || DURABLE_AUDIT_LOG_TYPES.has(r.type)) continue;
         retainable.push({
           id: r.id,
           // Bucket per room; null-room logs share one stable bucket so the

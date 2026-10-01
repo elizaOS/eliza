@@ -52,6 +52,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Eliza-UI-Language",
   "X-ElizaOS-UI-Language",
   "X-Eliza-CSRF",
+  "X-Eliza-Last-Activity",
   "X-ElizaOS-Turn-Correlation",
   "X-ElizaOS-Turn-Attempt",
   "X-Eliza-Trace-Id",
@@ -207,11 +208,21 @@ export function applyCors(
 // ---------------------------------------------------------------------------
 // Auth token
 // ---------------------------------------------------------------------------
-function tokenMatches(expected: string, provided: string): boolean {
+/**
+ * Timing-safe token equality for every agent API credential comparison. Both
+ * values are padded to one length so the comparison time does not reveal the
+ * expected token's length.
+ */
+export function tokenMatches(expected: string, provided: string): boolean {
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  const length = Math.max(a.length, b.length);
+  const paddedA = Buffer.alloc(length);
+  const paddedB = Buffer.alloc(length);
+  a.copy(paddedA);
+  b.copy(paddedB);
+  const contentMatches = crypto.timingSafeEqual(paddedA, paddedB);
+  return a.length === b.length && contentMatches;
 }
 export function getConfiguredApiToken(): string | undefined {
   // Deliberately NOT resolveSelfApiCredential: this helper backs isAuthorized,
@@ -686,7 +697,7 @@ export async function isWebSocketSessionTokenAuthorized(
   if (typeof resolveSessionToken !== "function") return false;
   try {
     const resolved = await resolveSessionToken(token, runtime);
-    return resolved.ok === true;
+    return resolved.ok === true && resolved.role === "OWNER";
   } catch (err) {
     // error-policy:J4 session-store failure → fail-closed deny; the outage is
     // surfaced here rather than collapsing silently into a stream of 1008s.

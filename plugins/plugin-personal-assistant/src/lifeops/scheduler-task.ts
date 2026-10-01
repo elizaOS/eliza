@@ -281,6 +281,10 @@ export async function ensureLifeOpsSchedulerTask(
       description: "Process life-ops reminders and scheduled workflows",
       metadata,
     });
+    if (runtime.adapter?.supportsAtomicTaskWake === true)
+      await runtime.patchTaskMetadata(existing.id, {
+        wake: { requestAt: Date.now() },
+      });
     return existing.id;
   }
 
