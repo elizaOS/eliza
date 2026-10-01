@@ -473,6 +473,8 @@ export function computeCanRespond(
   return !isCloudTextModelUnavailable(runtime);
 }
 
+const LOCAL_INFERENCE_ROUTER_PROVIDER = "eliza-router";
+
 /** Readiness of this runtime's sole local text provider, without loading models. */
 export async function readLocalTextModelReadiness(
   runtime: AgentRuntime | null,
@@ -491,9 +493,17 @@ export async function readLocalTextModelReadiness(
       ModelType.ACTION_PLANNER,
       ModelType.RESPONSE_HANDLER,
     ]);
+    // The local-inference plugin fronts its text slots with a prefer-local
+    // router (`ROUTER_PROVIDER` in router-handler.ts). It dispatches to the
+    // other registered handlers and serves nothing itself, so it neither
+    // makes a runtime "mixed" nor needs weights of its own.
     const registrations = runtime
       .getModelRegistrations()
-      .filter((entry) => textTypes.has(entry.modelType));
+      .filter(
+        (entry) =>
+          textTypes.has(entry.modelType) &&
+          entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
+      );
     if (
       !registrations.length ||
       registrations.some((entry) => entry.provider !== "eliza-local-inference")
