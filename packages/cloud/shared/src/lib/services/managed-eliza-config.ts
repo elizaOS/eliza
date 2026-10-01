@@ -7,6 +7,10 @@ import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
+import {
+  MANAGED_CLOUD_OWNER_KEYS,
+  prepareManagedCloudOwnerEnvironment,
+} from "./managed-cloud-owner-config";
 import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
@@ -276,6 +280,7 @@ export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
+  for (const key of MANAGED_CLOUD_OWNER_KEYS) delete existingEnv[key];
   const localDockerDirectInference =
     process.env.ELIZA_LOCAL_DOCKER_PROVIDER === "1" &&
     (existingEnv.ELIZAOS_CLOUD_ENABLED?.trim().toLowerCase() === "false" ||
@@ -295,6 +300,7 @@ export async function prepareManagedElizaBaseEnvironment(
   // DATABASE_URL re-injected by computeManagedAgentDbEnv.
   delete existingEnv.DATABASE_URL;
   delete existingEnv.ELIZA_MANAGED_DATABASE_URL;
+  const cloudOwnerEnvironment = await prepareManagedCloudOwnerEnvironment(params);
   const inferenceDefaults = applyManagedAgentInferenceEnvDefaults(existingEnv);
   const { plainKey: agentApiKey, revokedKeyHashes } = await apiKeysService.createForAgent({
     organizationId: params.organizationId,
@@ -311,6 +317,7 @@ export async function prepareManagedElizaBaseEnvironment(
     revokedKeyHashes,
     environmentVars: {
       ...existingEnv,
+      ...cloudOwnerEnvironment,
       // Hosting-mode marker: this process is a managed Eliza Cloud agent, not a
       // user-owned/self-hosted install. Always forced on for the managed path —
       // callers cannot clear or override it (also in RESERVED_PLATFORM_ENV_KEYS).

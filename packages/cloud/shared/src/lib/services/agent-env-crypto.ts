@@ -67,6 +67,7 @@ const NEVER_ENCRYPT_ENV_KEYS: ReadonlySet<string> = new Set(
 
 /** Whether a caller-supplied env key should be encrypted at rest. */
 export function isSensitiveAgentEnvKey(key: string): boolean {
+  if (key.toUpperCase() === "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET") return true;
   if (NEVER_ENCRYPT_ENV_KEYS.has(key.toUpperCase())) return false;
   return key.toUpperCase() === "ENCRYPTION_SALT" || SENSITIVE_ENV_KEY_PATTERN.test(key);
 }
@@ -98,6 +99,9 @@ export async function encryptAgentEnvVarsForStorage(
   // Same source FieldEncryptionService reads (the Worker populates process.env
   // from bindings under nodejs_compat). No key leaves compatibility plaintext and warns loudly.
   if (!process.env.SECRETS_MASTER_KEY) {
+    if (pending.some(([key]) => key.toUpperCase() === "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET")) {
+      throw new Error("Managed Cloud delegation requires encrypted environment storage");
+    }
     logger.warn(
       "[agent-env-crypto] SECRETS_MASTER_KEY not configured — storing agent environment secrets as PLAINTEXT (legacy behavior). Configure the key on the cloud API and provisioning daemon to encrypt at rest.",
       { organizationId, keys: pending.map(([key]) => key) },

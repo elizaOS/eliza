@@ -471,6 +471,12 @@
 			"import": "./dist/contracts/cloud-coding-containers.js",
 			"default": "./dist/contracts/cloud-coding-containers.js"
 		},
+		"./contracts/cloud-runtime-request": {
+			"eliza-source": "./src/contracts/cloud-runtime-request.ts",
+			"types": "./dist/contracts/cloud-runtime-request.d.ts",
+			"import": "./dist/contracts/cloud-runtime-request.js",
+			"default": "./dist/contracts/cloud-runtime-request.js"
+		},
 		"./contracts/cloud-pair": {
 			"eliza-source": "./src/contracts/cloud-pair.ts",
 			"types": "./dist/contracts/cloud-pair.d.ts",

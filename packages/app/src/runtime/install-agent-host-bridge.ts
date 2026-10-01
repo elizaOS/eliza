@@ -1,3 +1,4 @@
+import { resolveCloudRuntimeOwner } from "../api/cloud-runtime-owner";
 /**
  * Install the app implementation of the agent host bridge.
  *
@@ -62,6 +63,10 @@ export function installAgentHostBridge(): void {
   const resolveHttpRequestAuthorization: NonNullable<
     AgentHostBridge["resolveHttpRequestAuthorization"]
   > = async (req, runtime, options) => {
+    if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
+      if (options.allowBearerAuth === false) return { ok: false, role: "NONE" };
+      return resolveCloudRuntimeOwner(req, runtime);
+    }
     const resolved = await resolveAuthorizedRouteRole(req, {
       allowCookieAuth: options.allowCookieAuth,
       allowTrustedLocalBypass: options.allowTrustedLocalBypass,

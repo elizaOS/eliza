@@ -21,7 +21,9 @@ export type AgentGoogleCapability =
   | "google.calendar.write"
   | "google.gmail.triage"
   | "google.gmail.send"
-  | "google.gmail.manage";
+  | "google.gmail.manage"
+  | "google.gmail.drafts"
+  | "google.gmail.mailbox";
 
 export interface ManagedGoogleConnectorStatus {
   provider: "google";
@@ -190,6 +192,10 @@ export function capabilitiesToScopes(capabilities: readonly AgentGoogleCapabilit
     if (capability === "google.gmail.send") {
       scopes.add("https://www.googleapis.com/auth/gmail.send");
     }
+    if (capability === "google.gmail.drafts")
+      scopes.add("https://www.googleapis.com/auth/gmail.compose");
+    if (capability === "google.gmail.mailbox")
+      scopes.add("https://www.googleapis.com/auth/gmail.modify");
     if (capability === "google.gmail.manage") {
       scopes.add("https://www.googleapis.com/auth/gmail.modify");
       scopes.add("https://www.googleapis.com/auth/gmail.settings.basic");
@@ -232,6 +238,13 @@ function scopesToCapabilities(scopes: readonly string[]): AgentGoogleCapability[
   ) {
     capabilities.push("google.gmail.triage");
   }
+  if (
+    granted.has("https://www.googleapis.com/auth/gmail.compose") ||
+    granted.has("https://www.googleapis.com/auth/gmail.modify")
+  )
+    capabilities.push("google.gmail.drafts");
+  if (granted.has("https://www.googleapis.com/auth/gmail.modify"))
+    capabilities.push("google.gmail.mailbox");
   if (granted.has("https://www.googleapis.com/auth/gmail.send")) {
     capabilities.push("google.gmail.send");
   }

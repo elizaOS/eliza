@@ -144,11 +144,7 @@ function validateObject(
 	const output: Record<string, unknown> = {};
 
 	for (const key of schema.required ?? []) {
-		if (
-			!hasOwn(value, key) ||
-			value[key] === undefined ||
-			value[key] === null
-		) {
+		if (!hasOwn(value, key) || value[key] === undefined) {
 			errors.push(
 				`Missing required argument '${path ? `${path}.${key}` : key}'`,
 			);
@@ -183,7 +179,7 @@ function validateObject(
 	}
 
 	for (const [key, childSchema] of Object.entries(properties)) {
-		if (hasOwn(value, key) && value[key] !== undefined && value[key] !== null) {
+		if (hasOwn(value, key) && value[key] !== undefined) {
 			const childPath = path ? `${path}.${key}` : key;
 			const before = errors.length;
 			const childValue = validateSchema(
@@ -288,6 +284,15 @@ export function validateSchema(
 	}
 
 	switch (schema.type) {
+		case "null":
+			if (value !== null) {
+				errors.push(
+					`Argument '${formatPath(path)}' expected null, got ${describeType(value)}`,
+				);
+				return value;
+			}
+			return validateEnum(schema, value, path, errors);
+
 		case "string": {
 			if (typeof value !== "string") {
 				errors.push(

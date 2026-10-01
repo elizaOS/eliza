@@ -3333,6 +3333,13 @@
       "when": 1796083200123,
       "tag": "0505_api_key_plan_ceilings",
       "breakpoints": true
+    },
+    {
+      "idx": 476,
+      "version": "7",
+      "when": 1796083200124,
+      "tag": "0506_managed_gmail_operation_receipts",
+      "breakpoints": true
     }
   ]
 }

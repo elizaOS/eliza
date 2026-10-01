@@ -11,6 +11,7 @@ import { authSessionTable } from "./schema/authSession";
 import { cacheTable } from "./schema/cache";
 import { channelTable } from "./schema/channel";
 import { channelParticipantsTable } from "./schema/channelParticipant";
+import { clientDeviceTable } from "./schema/clientDevices";
 import { componentTable } from "./schema/component";
 import {
   connectorAccountAuditEventsTable,
@@ -57,6 +58,7 @@ import { worldTable } from "./schema/world";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 
 export const schema = {
+  clientDeviceTable,
   agentTable,
   approvalDispatchControlTable,
   approvalRequestTable,

@@ -5,6 +5,7 @@
  */
 import type http from 'node:http';
 import type { HttpPlugin as Plugin, Route } from '@elizaos/core/api/http-plugin';
+import { getCloudRuntimeRequestIdentity } from '@elizaos/core/contracts/cloud-runtime-request';
 import { handleAutomationsRoutes } from './routes/automations';
 import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
@@ -37,6 +38,7 @@ function makeWorkflowHandler() {
       method,
       pathname: url.pathname,
       runtime: state.current,
+      principalId: getCloudRuntimeRequestIdentity(httpReq),
       json: jsonResponder(httpRes),
     });
   };
@@ -78,6 +80,41 @@ const workflowHandler = makeWorkflowHandler();
 const automationsHandler = makeAutomationsHandler();
 const workbenchTodosHandler = makeWorkbenchTodosHandler();
 const workflowRouteList: Route[] = [
+  {
+    type: 'GET',
+    path: '/api/workflow/executions/:id/phone-review',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/phone/catalog', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/phone/validate', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/phone/workflows', rawPath: true, handler: workflowHandler },
+  {
+    type: 'GET',
+    path: '/api/workflow/phone/mutations/:mutationId',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/phone-spec',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/removed-workflows', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/lifecycle',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/lifecycle-mutations/:mutationId',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+
   // Status surface
   {
     type: 'GET',
@@ -136,7 +173,25 @@ const workflowRouteList: Route[] = [
   },
   {
     type: 'GET',
+    path: '/api/workflow/workflows/:id/submissions/:submissionId',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
     path: '/api/workflow/workflows/:id/executions',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/metadata',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/metadata-mutations/:mutationId',
     rawPath: true,
     handler: workflowHandler,
   },
@@ -161,6 +216,12 @@ const workflowRouteList: Route[] = [
   {
     type: 'POST',
     path: '/api/workflow/executions/:id/cancel',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/executions/:id/approvals',
     rawPath: true,
     handler: workflowHandler,
   },

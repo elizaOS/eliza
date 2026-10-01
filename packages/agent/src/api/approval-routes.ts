@@ -356,7 +356,13 @@ export async function handleApprovalRoute(
   };
 
   const queue = getAgentApprovalQueue(state);
-  const approvals = queue ? await queue.list(filter) : [];
+  // Device payloads require the enrollment credential and are served only by
+  // /api/client-devices; this legacy aggregate has no device authority.
+  const approvals = queue
+    ? (await queue.list(filter)).filter(
+        (approval) => approval.action !== "device_action",
+      )
+    : [];
   const [serviceActions, taskActions, promptActions] = await Promise.all([
     listServicePendingUserActions(state, ServiceType.APPROVAL),
     listApprovalTaskActions(state),

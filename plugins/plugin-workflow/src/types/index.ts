@@ -74,6 +74,8 @@ export interface WorkflowDefinition {
 }
 
 export interface WorkflowDefinitionResponse extends WorkflowDefinition {
+  removed?: boolean;
+  triggerCleanup?: 'pending' | 'complete';
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -154,6 +156,8 @@ export interface WorkflowApproval {
 }
 
 export interface WorkflowExecution {
+  /** Durable best-effort cancellation intent; terminal status remains authoritative. */
+  cancellationRequestedAt?: string;
   id: string;
   workflowId: string;
   workflowVersionId: string;

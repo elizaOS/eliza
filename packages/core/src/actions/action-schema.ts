@@ -35,7 +35,8 @@ export type JsonSchemaPrimitiveType =
 	| "integer"
 	| "boolean"
 	| "object"
-	| "array";
+	| "array"
+	| "null";
 
 export interface JsonSchema {
 	type?: JsonSchemaPrimitiveType;
@@ -70,6 +71,7 @@ const SUPPORTED_SCHEMA_TYPES = new Set<string>([
 	"boolean",
 	"object",
 	"array",
+	"null",
 ]);
 
 type LegacyActionParameterSchema = Omit<

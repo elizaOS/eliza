@@ -1,3 +1,4 @@
+import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
 /**
  * Authentication and proxy boundary for dedicated-agent subdomains.
  *
@@ -73,6 +74,7 @@ const MANAGED_PAIR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS = 60;
 const CLOUD_ONLY_CREDENTIAL_HEADERS = [
   "cookie",
+  "x-eliza-cloud-owner-proof",
   "proxy-authorization",
   "x-bootstrap-secret",
   "x-cron-secret",
@@ -421,12 +423,14 @@ async function proxyToOrigin(
   injectBearer?: string,
   injectQueryCredential?: RealtimeQueryCredentialName | null,
   timing?: DedicatedProxyTiming,
+  ownerProof?: string,
 ): Promise<Response> {
   const targetUrl = new URL(request.url);
   targetUrl.hostname = resolveOriginHost(env);
   const headers = new Headers(request.headers);
   headers.delete("host");
   stripCloudOnlyCredentials(headers);
+  if (ownerProof) headers.set("x-eliza-cloud-owner-proof", ownerProof);
   sanitizeDedicatedTraceHeaders(headers);
   const traceId = headers.get("x-eliza-trace-id");
   headers.set("x-forwarded-host", url.host);
@@ -438,8 +442,10 @@ async function proxyToOrigin(
     // headers on `new WebSocket()`); the container reads it via
     // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
     // too so the upgrade authenticates the same way the header does.
-    for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
-      targetUrl.searchParams.delete(name);
+    if (!ownerProof) {
+      for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+        targetUrl.searchParams.delete(name);
+      }
     }
     if (injectQueryCredential) {
       targetUrl.searchParams.set(injectQueryCredential, injectBearer);
@@ -458,6 +464,7 @@ async function proxyToOrigin(
     originHeadersTimeoutOverrideMs ??
     dedicatedProxyOriginHeadersTimeoutMs(request.method, targetUrl.pathname);
   const controller = new AbortController();
+  if (ownerProof) request.signal.throwIfAborted();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
@@ -469,7 +476,9 @@ async function proxyToOrigin(
     method: request.method,
     headers,
     redirect: "manual",
-    signal: controller.signal,
+    signal: ownerProof
+      ? AbortSignal.any([controller.signal, request.signal])
+      : controller.signal,
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = request.body;
@@ -883,9 +892,16 @@ function applyDedicatedProxyCors(
   );
   headers.set(
     "access-control-allow-headers",
-    ["authorization", "content-type", "x-api-key", "x-eliza-trace-id"].join(
-      ",",
-    ),
+    [
+      "authorization",
+      "content-type",
+      "x-api-key",
+      "x-eliza-trace-id",
+      "x-eliza-device-id",
+      "x-eliza-device-key",
+      "x-eliza-device-capabilities",
+      "x-eliza-phone-protocol",
+    ].join(","),
   );
   headers.set(
     "access-control-expose-headers",
@@ -1164,6 +1180,17 @@ async function proxyDedicatedAgent(
     });
     if (mobileLimitResponse) return mobileLimitResponse;
   }
+  const phoneProtocol = request.headers.get("x-eliza-phone-protocol");
+  if (phoneProtocol !== null && phoneProtocol !== "1")
+    return Response.json(
+      { error: "Unsupported phone protocol" },
+      { status: 400 },
+    );
+  if (phoneProtocol && queryCredentials.values.length > 0)
+    return Response.json(
+      { error: "Phone credentials require headers" },
+      { status: 400 },
+    );
   let orgId: string;
   let userId: string;
   try {
@@ -1180,7 +1207,10 @@ async function proxyDedicatedAgent(
     // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
     // reserved so this boundary remains unambiguous.
     if (error instanceof AuthenticationError) {
-      if (hasCloudCredentialShape(request, queryCredentials.values)) {
+      if (
+        phoneProtocol ||
+        hasCloudCredentialShape(request, queryCredentials.values)
+      ) {
         return Response.json(
           {
             success: false,
@@ -1216,6 +1246,7 @@ async function proxyDedicatedAgent(
     );
   }
   let agentToken: string;
+  let ownerProof: string | undefined;
   try {
     // 2. Ownership — the caller's org MUST own this dedicated agent. Not
     //    owned / not found / shared fails here. Forwarding a known-valid Cloud
@@ -1223,6 +1254,17 @@ async function proxyDedicatedAgent(
     const sandbox = await timing.measure("ownership", () =>
       agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
     );
+    if (phoneProtocol) {
+      if (
+        !sandbox ||
+        sandbox.user_id !== userId ||
+        sandbox.organization_id !== orgId
+      )
+        return Response.json(
+          { error: "Cloud owner required" },
+          { status: 403 },
+        );
+    }
     const routing = await timing.measure(
       "routing",
       async (): Promise<
@@ -1300,6 +1342,8 @@ async function proxyDedicatedAgent(
     );
     if ("response" in routing) return routing.response;
     agentToken = routing.agentToken;
+    if (phoneProtocol)
+      ownerProof = await mintCloudRuntimeProof(request, agentId, userId, orgId);
   } catch (error) {
     // error-policy:J1 a validated Cloud credential never crosses into the
     // container when ownership or credential resolution fails.
@@ -1320,12 +1364,21 @@ async function proxyDedicatedAgent(
   }
   // Keep the origin fetch outside the resolution boundary so transport errors
   // preserve proxy semantics instead of being mistaken for auth failures.
-  return proxyToOrigin(
+  const forwarded = await proxyToOrigin(
     request,
     env,
     url,
     agentToken,
     effectiveQueryCredential?.name ?? null,
     timing,
+    ownerProof,
   );
+  if (ownerProof && forwarded.status >= 300 && forwarded.status < 400) {
+    await forwarded.body?.cancel();
+    return Response.json(
+      { error: "Cloud runtime redirect refused" },
+      { status: 502 },
+    );
+  }
+  return forwarded;
 }
