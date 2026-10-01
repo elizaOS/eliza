@@ -111,14 +111,23 @@ export class LaunchStore {
 		return structuredClone(event);
 	}
 
-	tailEvents(afterSequence = 0, limit = 100): LaunchEventsTailResult {
+	/**
+	 * Without a cursor, returns the most recent `limit` events (diagnostics
+	 * snapshot). With `afterSequence`, returns the oldest `limit` events after
+	 * that cursor in sequence order, and `nextSequence` is the sequence of the
+	 * last returned event so a poller resumes exactly where the page ended.
+	 */
+	tailEvents(afterSequence?: number, limit = 100): LaunchEventsTailResult {
 		const cappedLimit = Math.max(1, Math.min(limit, this.maxEvents));
-		const events = this.events
-			.filter((event) => event.sequence > afterSequence)
-			.slice(-cappedLimit);
+		const events =
+			afterSequence === undefined
+				? this.events.slice(-cappedLimit)
+				: this.events
+						.filter((event) => event.sequence > afterSequence)
+						.slice(0, cappedLimit);
 		return {
 			events: structuredClone(events),
-			nextSequence: this.sequence,
+			nextSequence: events.at(-1)?.sequence ?? this.sequence,
 		};
 	}
 

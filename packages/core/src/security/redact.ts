@@ -5,6 +5,7 @@ import {
 import {
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
 	isSensitiveLogKey,
+	redactTrailingArgs,
 } from "./log-redaction.js";
 /** Masks credential patterns and configured character secrets before logging or display. */
 
@@ -387,108 +388,18 @@ export function redactObjectSecrets<T>(
 // Log-Sink Redaction (applied to every log line, not opt-in per call)
 // ============================================================================
 
-const REDACTED_MASK = "[REDACTED]";
-const MAX_LOG_REDACT_DEPTH = 8;
-
-/**
- * Redact one log argument for output at the sink. A string is scrubbed with the
- * value-shape patterns ({@link redactSensitiveText}); an object/array is walked
- * so any value under a credential-named key ({@link isSensitiveKeyName}) is
- * fully masked and every remaining string is pattern-scrubbed. This is the
- * mechanism that makes redaction structural rather than opt-in: a logger that
- * pipes its arguments through {@link redactLogArgs} masks `{ apiKey }` whether
- * or not the caller wrapped the context first.
- *
- * Function values never survive the walk. They are executable serializer hooks
- * (toJSON/valueOf/toString), and a copied hook re-runs when a JSON sink
- * stringifies the clone, able to reconstitute the very secrets the walk just
- * masked. A bare function argument collapses to null and a function-valued
- * property is dropped outright — matching JSON.stringify, which emits null for
- * array functions and omits object function props. Symbol-keyed hooks such as
- * util.inspect.custom never reach the clone because the walk copies string keys
- * only.
- *
- * Buffer/TypedArray/DataView/ArrayBuffer values collapse to a size-only marker:
- * the indexed walk would otherwise emit the raw bytes as {"0":115,…} under an
- * innocent-looking key, and JSON.stringify would emit them as
- * {"type":"Buffer","data":[…]} — either way secret bytes survive in every sink.
- *
- * Depth is bounded and cycles are broken (returning the mask) so a pathological
- * log payload cannot hang or blow the stack — a redactor must never be the thing
- * that takes the process down.
- */
-function redactLogArg(
-	value: unknown,
-	seen: WeakSet<object>,
-	depth: number,
-): unknown {
-	if (typeof value === "string") {
-		return redactSensitiveText(value);
-	}
-	if (typeof value === "function") {
-		return null;
-	}
-	if (value === null || typeof value !== "object") {
-		return value;
-	}
-	if (depth >= MAX_LOG_REDACT_DEPTH || seen.has(value)) {
-		return REDACTED_MASK;
-	}
-	seen.add(value);
-	if (Array.isArray(value)) {
-		// Do not call value.map: an Array subclass, custom Symbol.species, or own
-		// map property can return caller-owned data carrying a serializer hook.
-		// Index into the input but construct the output with the intrinsic Array
-		// constructor so no caller-controlled method or result prototype survives.
-		const result: unknown[] = [];
-		for (let index = 0; index < value.length; index += 1) {
-			result.push(redactLogArg(value[index], seen, depth + 1));
-		}
-		return result;
-	}
-	if (value instanceof Error) {
-		// Preserve the Error shape (name/stack) callers rely on, but scrub the
-		// message — thrown errors routinely interpolate the offending secret.
-		const redacted = new Error(redactSensitiveText(value.message));
-		redacted.name = value.name;
-		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
-		return redacted;
-	}
-	// Binary payloads carry raw bytes that JSON serializes verbatim
-	// ({"type":"Buffer","data":[...]}); walked as indexed objects they emit the
-	// same bytes as {"0":115,...} under an innocent-looking key, so mask with a
-	// size-only marker (same marker shape as the leaf logger's).
-	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
-		return `[BUFFER REDACTED ${value.byteLength} bytes]`;
-	}
-	// A null-prototype target prevents a __proto__ input key from changing the
-	// clone's prototype and reintroducing inherited serializer behavior.
-	const result = Object.create(null) as Record<string, unknown>;
-	for (const [key, entry] of Object.entries(value)) {
-		if (isSensitiveKeyName(key)) {
-			result[key] = REDACTED_MASK;
-			continue;
-		}
-		// Function-valued properties are executable serializer hooks
-		// (toJSON/valueOf/toString): a copied hook re-runs when a sink
-		// JSON-stringifies the clone and can reconstitute the very secrets the
-		// walk just masked. JSON.stringify omits function props anyway, so
-		// dropping the key matches serialization semantics.
-		if (typeof entry === "function") {
-			continue;
-		}
-		result[key] = redactLogArg(entry, seen, depth + 1);
-	}
-	return result;
-}
-
 /**
  * Redact every argument in a `logger.error(...args)` call before it reaches the
  * transport. Consumed by log sinks so secret masking is structural, not opt-in:
  * `logger.error("msg", { apiKey })` masks the key with no `redact.context()` at
- * the call site. Value-shape and credential-named-key redaction converge here on
- * the one core module ({@link redactSensitiveText} + {@link isSensitiveKeyName}).
+ * the call site.
+ *
+ * Delegates to the single fail-closed log walker in `log-redaction.ts` rather
+ * than keeping a parallel one: a throwing getter or hostile Proxy degrades to
+ * a per-key (or per-argument) redaction-failed marker instead of aborting the
+ * walk, so sibling credentials are never emitted unmasked and logging never
+ * throws into the caller.
  */
 export function redactLogArgs(args: readonly unknown[]): unknown[] {
-	return args.map((arg) => redactLogArg(arg, new WeakSet<object>(), 0));
+	return redactTrailingArgs(args);
 }

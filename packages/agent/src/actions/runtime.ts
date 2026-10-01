@@ -28,11 +28,11 @@ import {
   logger,
   type Memory,
   requireRestartHandler,
-  resolveServerOnlyPort,
   textIncludesKeywordTerm,
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 const RUNTIME_OPS = [
   "status",
@@ -120,7 +120,7 @@ function isAwarenessRegistry(value: unknown): value is AwarenessRegistry {
 }
 
 function getApiBase(): string {
-  return `http://localhost:${resolveServerOnlyPort(process.env)}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 
 function isExplicitRestartRequest(message: Memory | undefined): boolean {

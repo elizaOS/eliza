@@ -857,9 +857,10 @@ export class VoiceService {
 		// Streaming handoff: consume the reply token-by-token so the first_token
 		// mark reflects the true time-to-first-token (not full-reply latency) and
 		// so a future phrase-by-phrase synth can begin before generation finishes.
-		// Gated (default off) + falls back to the buffered handoff on any error,
-		// since the full audio-overlap win is renderer + on-device work. Only the
-		// local-runtime/live-audio modes have a real runtime to stream from.
+		// Gated (default off), since the full audio-overlap win is renderer +
+		// on-device work; falls back to the buffered handoff only when the stream
+		// route is not served. Only the local-runtime/live-audio modes have a real
+		// runtime to stream from.
 		const streamFn = this.runtimeAdapter.sendRuntimeMessageStream;
 		const canStream =
 			(this.mode === "local-runtime" || this.mode === "live-audio") &&
@@ -891,9 +892,18 @@ export class VoiceService {
 					this.recordAgentReply(responseText);
 				}
 				return;
-			} catch {
-				// Streaming endpoint unavailable / transport error — fall through to
-				// the buffered handoff so voice still works.
+			} catch (error) {
+				// Only fall back to the buffered handoff when the stream route is not
+				// served (the runtime never accepted the message). Any other failure —
+				// transport error, mid-stream error frame — may follow an accepted
+				// message and a partially generated reply, so re-sending would create a
+				// duplicate conversation and agent turn.
+				if (
+					!(error instanceof VoiceError) ||
+					error.code !== "VOICE_RUNTIME_STREAM_UNAVAILABLE"
+				) {
+					throw error;
+				}
 			}
 		}
 

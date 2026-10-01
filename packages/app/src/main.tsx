@@ -3487,7 +3487,9 @@ async function main(): Promise<void> {
   // #9947: when served at /embed inside a Telegram Mini App / Discord Activity
   // iframe, exchange the platform's signed launch payload for a scoped session
   // token and install it on the ElizaClient BEFORE any authenticated agent API
-  // call is made. No-op (and never throws) off the /embed route.
+  // call is made. No-op (and never throws) off the /embed route; a failed
+  // handshake is reported through the app logger by runEmbedHandshake and the
+  // app mounts unauthenticated.
   await runEmbedHandshake({ client });
 
   // The headless device gate owns the WebView when requested, so resolve it

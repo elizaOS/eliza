@@ -368,6 +368,30 @@ export function createSelfApiRequestHeaders(
 	return credential ? { Authorization: `Bearer ${credential}` } : {};
 }
 
+/**
+ * Base URL (no trailing slash) for same-process HTTP calls back to this
+ * elizaOS API. Uses the listener's exact port precedence: `ELIZA_API_PORT`
+ * (desktop launcher, synced to the bound port by `syncResolvedApiPort`) wins,
+ * otherwise the single-process port. Wildcard binds are reached via
+ * `127.0.0.1`; every specific interface, including a loopback address,
+ * is reached on that exact interface.
+ */
+export function resolveSelfApiBaseUrl(
+	env: RuntimeEnvRecord = process.env,
+): string {
+	const port = resolveEnvValue(env, "ELIZA_API_PORT")
+		? resolveDesktopApiPort(env)
+		: resolveServerOnlyPort(env);
+	const bindHost = stripOptionalHostPort(resolveApiBindHost(env));
+	let host: string;
+	if (!bindHost || isWildcardBindHost(bindHost)) {
+		host = "127.0.0.1";
+	} else {
+		host = bindHost.includes(":") ? `[${bindHost}]` : bindHost;
+	}
+	return `http://${host}:${port}`;
+}
+
 /** Whether the API process is running under a development file watcher. */
 export function isDevApiWatchEnabled(
 	env: RuntimeEnvRecord = process.env,

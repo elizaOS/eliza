@@ -6,7 +6,14 @@
  * prove the atomic `wx` create admits exactly one winner.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import fs, {
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -237,6 +244,227 @@ describe("device leases", () => {
     const persisted = readDeviceLease("android:contested", { stateDir });
     expect(persisted.pid).toBe(winners[0].handle.lease.pid);
     winners[0].handle.release();
+  });
+
+  it("does not reclaim an unparsable lease inside the grace period", async () => {
+    const stateDir = tempDir();
+    const leasePath = deviceLeasePath("android:garbled", stateDir);
+    writeFileSync(leasePath, '{"pid": 9');
+
+    await expect(
+      acquireDeviceLease("android:garbled", {
+        stateDir,
+        sessionId: "contender",
+        pid: 601,
+        waitMs: 0,
+        isProcessAlive: () => true,
+      }),
+    ).rejects.toThrow(/unparsable lease file/);
+    expect(readdirSync(stateDir)).toEqual(["android_garbled.json"]);
+  });
+
+  it("reclaims an unparsable lease once it is older than the grace period", async () => {
+    const stateDir = tempDir();
+    const leasePath = deviceLeasePath("android:garbled-old", stateDir);
+    writeFileSync(leasePath, "not json");
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    utimesSync(leasePath, old, old);
+
+    const handle = await acquireDeviceLease("android:garbled-old", {
+      stateDir,
+      sessionId: "reclaimer",
+      pid: 602,
+      waitMs: 0,
+      isProcessAlive: () => true,
+    });
+    expect(readDeviceLease("android:garbled-old", { stateDir })).toMatchObject({
+      pid: 602,
+      sessionId: "reclaimer",
+    });
+    handle.release();
+    expect(readdirSync(stateDir)).toEqual([]);
+  });
+
+  it("never deletes a lease re-created after the stale one was observed", async () => {
+    const stateDir = tempDir();
+    const leasePath = deviceLeasePath("android:swap", stateDir);
+    await acquireDeviceLease("android:swap", {
+      stateDir,
+      sessionId: "dead",
+      pid: 701,
+      isProcessAlive: () => true,
+    });
+    const liveLease = {
+      deviceKey: "android:swap",
+      pid: 702,
+      sessionId: "other-reclaimer",
+      acquiredAt: new Date().toISOString(),
+      ttlMs: 60_000,
+    };
+
+    await expect(
+      acquireDeviceLease("android:swap", {
+        stateDir,
+        sessionId: "late-reclaimer",
+        pid: 703,
+        waitMs: 0,
+        isProcessAlive: (pid) => {
+          if (pid === 701) {
+            // Another contender reclaims the dead lease and publishes its own
+            // live lease between our read and our reclaim.
+            unlinkSync(leasePath);
+            writeFileSync(leasePath, JSON.stringify(liveLease));
+            return false;
+          }
+          return true;
+        },
+      }),
+    ).rejects.toThrow(/leased by pid 702/);
+    expect(readDeviceLease("android:swap", { stateDir })).toMatchObject({
+      pid: 702,
+      sessionId: "other-reclaimer",
+    });
+  });
+
+  it("waits for a live mutation-lock owner even when its timestamp is old", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:old-live-lock", {
+      stateDir,
+      sessionId: "holder",
+      pid: 904,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    const raw = JSON.stringify({ pid: process.pid });
+    writeFileSync(lockPath, raw);
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, old, old);
+    let observedOwner = false;
+    const realKill = process.kill.bind(process);
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid === process.pid && signal === 0) {
+        expect(fs.readFileSync(lockPath, "utf8")).toBe(raw);
+        observedOwner = true;
+        unlinkSync(lockPath);
+        return true;
+      }
+      return realKill(pid, signal);
+    });
+    try {
+      handle.release();
+      expect(observedOwner).toBe(true);
+      expect(readdirSync(stateDir)).toEqual([]);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
+  it("preserves an abandoned mutation lock and asks for explicit recovery", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:empty-lock", {
+      stateDir,
+      sessionId: "holder",
+      pid: 901,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    writeFileSync(lockPath, "");
+    const old = new Date(Date.now() - 2_000);
+    utimesSync(lockPath, old, old);
+
+    expect(() => handle.release()).toThrow(
+      /abandoned device lease mutation lock/,
+    );
+    expect(fs.readFileSync(lockPath, "utf8")).toBe("");
+    expect(readDeviceLease("android:empty-lock", { stateDir })?.pid).toBe(901);
+    unlinkSync(lockPath);
+    handle.release();
+    expect(readdirSync(stateDir)).toEqual([]);
+  });
+
+  it("never removes a replacement lock when a dead owner is observed", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:lock-swap", {
+      stateDir,
+      sessionId: "holder",
+      pid: 902,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    const deadPid = 2_147_000_001;
+    writeFileSync(lockPath, JSON.stringify({ pid: deadPid }));
+    const otherLock = JSON.stringify({ pid: process.pid, holder: "other" });
+    const realKill = process.kill.bind(process);
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid === deadPid) {
+        unlinkSync(lockPath);
+        writeFileSync(lockPath, otherLock);
+        throw Object.assign(new Error("no such process"), { code: "ESRCH" });
+      }
+      return realKill(pid, signal);
+    });
+    try {
+      expect(() => handle.release()).toThrow(
+        /abandoned device lease mutation lock/,
+      );
+      expect(fs.readFileSync(lockPath, "utf8")).toBe(otherLock);
+      expect(readDeviceLease("android:lock-swap", { stateDir })?.pid).toBe(902);
+    } finally {
+      kill.mockRestore();
+    }
+    unlinkSync(lockPath);
+    handle.release();
+  });
+
+  it("keeps the original mutation error when releasing the lock also fails", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("android:release-fails", {
+      stateDir,
+      sessionId: "holder",
+      pid: 903,
+      isProcessAlive: () => true,
+    });
+    const lockPath = `${handle.path}.lock`;
+    const unlinkError = Object.assign(new Error("unlink failed"), {
+      code: "EIO",
+    });
+    const releaseError = Object.assign(new Error("lock unlink failed"), {
+      code: "EACCES",
+    });
+    const realUnlink = fs.unlinkSync;
+    const unlink = vi.spyOn(fs, "unlinkSync").mockImplementation((p) => {
+      if (p === handle.path) throw unlinkError;
+      if (p === lockPath) throw releaseError;
+      return realUnlink(p);
+    });
+    let thrown: unknown = null;
+    try {
+      handle.release();
+    } catch (error) {
+      thrown = error;
+    } finally {
+      unlink.mockRestore();
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([
+      unlinkError,
+      releaseError,
+    ]);
+    expect((thrown as AggregateError).cause).toBe(unlinkError);
+  });
+
+  it("publishes leases without leaving temp or lock files behind", async () => {
+    const stateDir = tempDir();
+    const handle = await acquireDeviceLease("ios:clean", {
+      stateDir,
+      sessionId: "clean",
+      pid: 801,
+      isProcessAlive: () => true,
+    });
+    expect(readdirSync(stateDir)).toEqual(["ios_clean.json"]);
+    handle.release();
+    expect(readdirSync(stateDir)).toEqual([]);
   });
 
   it("reports active leases for status tooling", async () => {

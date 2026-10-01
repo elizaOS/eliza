@@ -668,6 +668,7 @@ export async function handleViewsRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
+    if (!body) return true; // readJsonBody already sent the error response
     const parsedNavigateViewType = resolveViewTypePair(
       body?.viewType,
       url.searchParams.get("viewType"),

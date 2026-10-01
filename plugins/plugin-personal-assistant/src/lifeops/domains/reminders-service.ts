@@ -151,6 +151,7 @@ import {
   resolveScheduleDeviceIdentity,
   SCHEDULE_CLOUD_SYNC_TTL_MS,
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
+  scheduleObservationSyncInput,
 } from "../schedule-state.js";
 import { DOSSIER_ACTIVITY_METADATA_KEY } from "../scheduled-task/dossier-activity-policy.js";
 import { admitOwnerDossierActivity } from "../scheduled-task/dossier-activity-runtime.js";
@@ -1999,30 +2000,7 @@ export class RemindersDomain {
   serializeScheduleObservationForSync(
     observation: LifeOpsScheduleObservationRecord,
   ): SyncLifeOpsScheduleObservationInput {
-    const metadata = isRecord(observation.metadata)
-      ? observation.metadata
-      : null;
-    const rawSnapshot = metadata?.snapshot;
-    const snapshot = isRecord(rawSnapshot) ? { ...rawSnapshot } : undefined;
-    const extraMetadata =
-      metadata && typeof metadata === "object"
-        ? Object.fromEntries(
-            Object.entries(metadata).filter(
-              ([key]) => key !== "snapshot" && key !== "source",
-            ),
-          )
-        : {};
-    return {
-      circadianState: observation.circadianState,
-      stateConfidence: observation.stateConfidence,
-      uncertaintyReason: observation.uncertaintyReason,
-      windowStartAt: observation.windowStartAt,
-      windowEndAt: observation.windowEndAt,
-      mealLabel: observation.mealLabel,
-      snapshot,
-      metadata:
-        Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined,
-    };
+    return scheduleObservationSyncInput(observation);
   }
 
   public async refreshLocalMergedScheduleState(args?: {
@@ -2125,6 +2103,11 @@ export class RemindersDomain {
         fail(400, `observations[${index}].stateConfidence must be a number`);
       }
       return {
+        observedAt:
+          normalizeOptionalIsoString(
+            record.observedAt,
+            `observations[${index}].observedAt`,
+          ) ?? undefined,
         circadianState: normalizeEnumValue(
           record.circadianState,
           `observations[${index}].circadianState`,

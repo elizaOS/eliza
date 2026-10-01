@@ -104,6 +104,9 @@ jobs:
       - name: Install workspace
         run: bun install --frozen-lockfile
 
+      - name: Install Playwright Android driver
+        run: bunx --no-install playwright install android
+
       - name: Bound Android build memory
         run: |
           # Leave room for the 6 GiB emulator and renderer build on this runner.

@@ -35,6 +35,7 @@ import {
 	resolveDesktopRuntimeMode,
 	resolveDesktopRuntimeModeSignal,
 } from "../api-base";
+import { readDesktopEnvFlag } from "../desktop-env-flags";
 import { getPersistedDeployment } from "../persisted-deployment";
 import { getStartupTraceConfig } from "../startup-trace";
 
@@ -72,7 +73,11 @@ function shouldInjectRuntimeChooserTestMode(): boolean {
 }
 
 function shouldInjectDesktopTestBridgeMarker(): boolean {
-	return process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED === "1";
+	return readDesktopEnvFlag(
+		process.env,
+		"ELIZA_DESKTOP_TEST_BRIDGE_ENABLED",
+		false,
+	);
 }
 
 function resolveStartupTraceId(): string | null {

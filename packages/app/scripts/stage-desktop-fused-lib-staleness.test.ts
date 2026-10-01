@@ -71,13 +71,14 @@ function currentFork() {
 }
 
 /** Run `--check --out <dir>`; return the process exit code (0 fresh, 2 stale). */
-function checkExitCode(outDir, extraArgs = []) {
+function checkExitCode(outDir, extraArgs = [], env = process.env) {
   try {
     execFileSync(
       process.execPath,
       [script, "--check", "--out", outDir, ...extraArgs],
       {
         stdio: "ignore",
+        env,
       },
     );
     return 0;
@@ -240,5 +241,49 @@ test("--check: a portable CPU stamp is fresh for a portable CPU request", () => 
     assert.equal(checkExitCode(dir, ["--portable-cpu"]), 2);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--check: an unreadable fork commit fails instead of matching an 'unknown' stamp", {
+  skip: process.platform === "win32",
+}, () => {
+  const dir = mkTmp();
+  const shimDir = mkTmp();
+  try {
+    // A git shim that fails only `rev-parse`, so the source fingerprint still
+    // works and the commit read is the sole failure under test.
+    const realGit = execFileSync("sh", ["-c", "command -v git"], {
+      encoding: "utf8",
+    }).trim();
+    const shim = path.join(shimDir, "git");
+    fs.writeFileSync(
+      shim,
+      `#!/bin/sh\nfor a in "$@"; do [ "$a" = rev-parse ] && { echo "fatal: simulated" >&2; exit 128; }; done\nexec ${JSON.stringify(realGit)} "$@"\n`,
+    );
+    fs.chmodSync(shim, 0o755);
+    const bytes = Buffer.from("fake-lib-unknown-commit");
+    fs.writeFileSync(path.join(dir, libName), bytes);
+    fs.writeFileSync(
+      path.join(dir, STAMP),
+      JSON.stringify({
+        platform: process.platform,
+        arch: process.arch,
+        libraries: nativeLibraryInventory(dir),
+        forkCommit: "unknown",
+        forkDirty: "",
+        backend: "test",
+        fusedLib: libName,
+        fusedSha256: createHash("sha256").update(bytes).digest("hex"),
+        builtAt: "now",
+      }),
+    );
+    const env = {
+      ...process.env,
+      PATH: `${shimDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    };
+    assert.equal(checkExitCode(dir, [], env), 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
   }
 });

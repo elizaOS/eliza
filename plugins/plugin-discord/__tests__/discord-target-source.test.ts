@@ -4,9 +4,14 @@
  * Mocked runtime and Discord client.
  */
 import {
+	AgentRuntime,
 	CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+	logger as coreLogger,
 	type IAgentRuntime,
+	type TargetSourceRegistry,
+	TargetSourceRegistryService,
 } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createDiscordSourceCache,
@@ -189,19 +194,94 @@ describe("registerDiscordTargetSource", () => {
 		expect(register.mock.calls[0]?.[0]?.platform).toBe("discord");
 	});
 
-	it("defers one tick when the registry is not yet present", async () => {
+	it("waits for the registry service load promise when it is not yet running", async () => {
 		const register = vi.fn();
-		let present = false;
+		let resolveLoad: (service: unknown) => void = () => {};
 		const runtime = {
-			getService: vi.fn(() => (present ? { register } : null)),
+			getService: vi.fn(() => null),
+			getServiceLoadPromise: vi.fn(
+				() =>
+					new Promise((resolve) => {
+						resolveLoad = resolve;
+					}),
+			),
 		} as unknown as IAgentRuntime;
 
 		registerDiscordTargetSource(runtime);
+		expect(runtime.getServiceLoadPromise).toHaveBeenCalledWith(
+			CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+		);
+		// Several event-loop turns pass before runtime init resolves.
+		for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 		expect(register).not.toHaveBeenCalled();
 
-		present = true;
+		resolveLoad({ register });
 		await new Promise((r) => setImmediate(r));
 		expect(register).toHaveBeenCalledOnce();
+		expect(register.mock.calls[0]?.[0]?.platform).toBe("discord");
+	});
+
+	it("warns instead of throwing when the registry never starts", async () => {
+		const warn = vi.spyOn(coreLogger, "warn").mockImplementation(() => {});
+		try {
+			const runtime = {
+				getService: vi.fn(() => null),
+				getServiceLoadPromise: vi.fn(async () => {
+					throw new Error("Service not found or failed to start");
+				}),
+			} as unknown as IAgentRuntime;
+
+			expect(() => registerDiscordTargetSource(runtime)).not.toThrow();
+			await new Promise((r) => setImmediate(r));
+			expect(warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					err: "Service not found or failed to start",
+				}),
+				expect.stringContaining("Discord target source not registered"),
+			);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("registers from plugin init on a real runtime once the registry starts", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "Discord targets", bio: "Registry wiring" },
+			plugins: [
+				{
+					name: "target-source-registry",
+					services: [TargetSourceRegistryService],
+				},
+				{
+					name: "discord-target-source-init",
+					init: async (_config, rt) => {
+						registerDiscordTargetSource(rt);
+					},
+				},
+				{
+					// Stands in for adapter setup / migrations: init spans many
+					// event-loop turns after Discord's plugin init has run.
+					name: "slow-boot",
+					init: async () => {
+						await new Promise((r) => setTimeout(r, 25));
+					},
+				},
+			],
+			logLevel: "fatal",
+		});
+		Object.assign(runtime, { serverless: true });
+		try {
+			await initializeTestRuntime(runtime, { skipMigrations: true });
+			const registry = (await runtime.getServiceLoadPromise(
+				CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+			)) as unknown as TargetSourceRegistry;
+			await new Promise((r) => setImmediate(r));
+			expect(registry.list().map((source) => source.platform)).toEqual([
+				"discord",
+			]);
+		} finally {
+			await runtime.stop();
+		}
 	});
 });
 

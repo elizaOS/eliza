@@ -4,6 +4,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context";
 import { ElizaError } from "./errors";
 import type { StreamChunkCallback } from "./types/components";
 import type {
@@ -103,18 +104,22 @@ export interface IStreamingContextManager {
 	active(): StreamingContext | undefined;
 }
 
-// Global singleton - auto-configured on first access
-let globalContextManager: IStreamingContextManager | null = null;
+const STREAMING_CONTEXT_MANAGER_KEY = Symbol.for(
+	"elizaos.streamingContextManager",
+);
 
 function initContextManagerSync(): IStreamingContextManager {
 	return new AsyncContextManager<StreamingContext | undefined>();
 }
 
 function getOrCreateContextManager(): IStreamingContextManager {
-	if (!globalContextManager) {
-		globalContextManager = initContextManagerSync();
-	}
-	return globalContextManager;
+	// The shared global slot is the single source of truth (no module-local
+	// cache): under a duplicated core bundle every copy must observe the same
+	// manager, and `setStreamingContextManager` must be visible everywhere.
+	return getAmbientSingleton(
+		STREAMING_CONTEXT_MANAGER_KEY,
+		initContextManagerSync,
+	);
 }
 
 /**
@@ -126,7 +131,7 @@ function getOrCreateContextManager(): IStreamingContextManager {
 export function setStreamingContextManager(
 	manager: IStreamingContextManager,
 ): void {
-	globalContextManager = manager;
+	setAmbientSingleton(STREAMING_CONTEXT_MANAGER_KEY, manager);
 }
 
 /**
@@ -292,7 +297,19 @@ export function getStreamingContext(): StreamingContext | undefined {
 // nested async work stays scoped.
 // See docs/PIPELINE_HOOKS.md § "Stream hook dedupe (Node)".
 
-const modelStreamChunkDeliveryDepthStorage = new AsyncLocalStorage<number>();
+// Shared across duplicated core bundles for the same reason as the streaming
+// context manager: `useModel` and `DefaultMessageService` may come from
+// different copies and must observe the same delivery depth.
+const MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY = Symbol.for(
+	"elizaos.modelStreamChunkDeliveryDepth",
+);
+
+function modelStreamChunkDeliveryDepthStorage(): AsyncLocalStorage<number> {
+	return getAmbientSingleton(
+		MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY,
+		() => new AsyncLocalStorage<number>(),
+	);
+}
 
 /**
  * While `> 0`, the runtime is inside `useModel`'s delivery of one `textStream` chunk to
@@ -301,7 +318,7 @@ const modelStreamChunkDeliveryDepthStorage = new AsyncLocalStorage<number>();
  * this window so the same raw token is not processed twice.
  */
 export function getModelStreamChunkDeliveryDepth(): number {
-	const s = modelStreamChunkDeliveryDepthStorage;
+	const s = modelStreamChunkDeliveryDepthStorage();
 	return s.getStore() ?? 0;
 }
 
@@ -309,7 +326,7 @@ export function getModelStreamChunkDeliveryDepth(): number {
 export function runInsideModelStreamChunkDelivery<T>(
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	const s = modelStreamChunkDeliveryDepthStorage;
+	const s = modelStreamChunkDeliveryDepthStorage();
 	const parent = s.getStore() ?? 0;
 	return s.run(parent + 1, fn);
 }

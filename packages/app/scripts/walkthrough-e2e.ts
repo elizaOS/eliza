@@ -35,14 +35,24 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveRequiredFfmpeg } from "./lib/ffmpeg.ts";
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
 
-function parseArgs(argv) {
+/** Platforms this entrypoint accepts: `web` runs here, the rest are forwarded
+ * to `walkthrough-device-matrix.ts`. */
+export const WALKTHROUGH_PLATFORMS = Object.freeze([
+  "web",
+  "ios",
+  "android",
+  "device",
+  "all",
+]);
+
+export function parseArgs(argv) {
   const a = {
     live: false,
     viewports: "desktop,mobile",
@@ -60,8 +70,15 @@ function parseArgs(argv) {
     else if (arg === "--reuse-server") a.reuseServer = true;
     else if (arg === "--skip-review") a.skipReview = true;
     else if (arg === "--skip-stitch") a.skipStitch = true;
-    else if (arg === "--platform") a.platform = argv[++i];
-    else if (arg === "--viewer-only") a.viewerOnly = argv[++i];
+    else if (arg === "--platform") {
+      const value = argv[++i];
+      if (!WALKTHROUGH_PLATFORMS.includes(value)) {
+        throw new Error(
+          `--platform must be one of ${WALKTHROUGH_PLATFORMS.join("|")} (got ${value === undefined ? "nothing" : JSON.stringify(value)})`,
+        );
+      }
+      a.platform = value;
+    } else if (arg === "--viewer-only") a.viewerOnly = argv[++i];
     else if (arg === "--reviewer-preflighted") a.reviewerPreflighted = true;
   }
   return a;
@@ -113,8 +130,18 @@ function run(cmd, args, opts = {}) {
         process.stderr.write(c);
       });
     }
-    child.on("close", (code) => resolveRun({ code, out }));
+    child.on("close", (code, signal) => resolveRun({ code, signal, out }));
   });
+}
+
+/** Map a child's close status to this process's exit code. A child killed by a
+ * signal closes with `code === null`; that is a failure, never a pass. */
+export function childExitCode({ code, signal }) {
+  if (typeof code === "number") return code;
+  console.error(
+    `[walkthrough] child terminated by signal ${signal ?? "(unknown)"} without an exit code`,
+  );
+  return 1;
 }
 
 /** A usable drawtext font, but only if THIS ffmpeg build actually has the
@@ -435,7 +462,7 @@ async function main() {
 
   if (args.platform !== "web") {
     // Native platforms are driven by the device-matrix runner.
-    const code = await run(
+    const matrix = await run(
       process.execPath,
       [
         join(APP_DIR, "scripts", "walkthrough-device-matrix.ts"),
@@ -443,7 +470,7 @@ async function main() {
       ],
       { cwd: APP_DIR, env: process.env },
     );
-    process.exit(code.code ?? 0);
+    process.exit(childExitCode(matrix));
   }
 
   const lane = args.live ? "live" : "mock";
@@ -664,7 +691,12 @@ async function main() {
   process.exit(specOk && reviewOk ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error("[walkthrough] fatal", err);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((err) => {
+    console.error("[walkthrough] fatal", err);
+    process.exit(1);
+  });
+}

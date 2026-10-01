@@ -10,8 +10,15 @@ import {
   type IAgentRuntime,
   Service,
   ServiceType,
+  type UUID,
 } from "@elizaos/core";
-import { ownerRemindersAction } from "@elizaos/plugin-personal-assistant";
+import {
+  ensureLifeOpsSchedulerTask,
+  LIFEOPS_TASK_NAME,
+  LIFEOPS_TASK_TAGS,
+  ownerRemindersAction,
+  registerLifeOpsTaskWorker,
+} from "@elizaos/plugin-personal-assistant";
 import type { ScenarioContext } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
 
@@ -85,6 +92,7 @@ const syntheticRuntimePolicy = {
 
 const cloudEffects = {
   serverId: null as number | null,
+  schedulerTaskId: null as UUID | null,
   createStatus: 0,
   readStatus: 0,
   notificationPayloads: [] as Array<Record<string, unknown>>,
@@ -125,6 +133,7 @@ async function seedCloudWorld(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
   cloudEffects.serverId = null;
+  cloudEffects.schedulerTaskId = null;
   cloudEffects.createStatus = 0;
   cloudEffects.readStatus = 0;
   cloudEffects.notificationPayloads = [];
@@ -186,6 +195,42 @@ async function seedCloudWorld(
     return "notification sink did not start";
   }
   return undefined;
+}
+
+async function seedReminderScheduler(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const runtime = ctx.runtime as IAgentRuntime | undefined;
+  if (!runtime) return "reminder scheduler runtime is unavailable";
+  // Tick turns own the scenario clock. Register the production worker identity
+  // without allowing wall-clock polling to race those explicit scheduler ticks.
+  registerLifeOpsTaskWorker(runtime, { disabled: true });
+  cloudEffects.schedulerTaskId = await ensureLifeOpsSchedulerTask(runtime);
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...LIFEOPS_TASK_TAGS],
+  });
+  const schedulers = tasks.filter((task) => task.name === LIFEOPS_TASK_NAME);
+  return schedulers.length === 1 &&
+    schedulers[0]?.id === cloudEffects.schedulerTaskId
+    ? undefined
+    : "the reminder world did not seed exactly one production scheduler row";
+}
+
+async function assertReminderWake(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const runtime = ctx.runtime as IAgentRuntime | undefined;
+  if (!runtime || !cloudEffects.schedulerTaskId)
+    return "reminder scheduler identity was not retained";
+  const task = await runtime.getTask(cloudEffects.schedulerTaskId);
+  const metadata = task?.metadata;
+  return task?.name === LIFEOPS_TASK_NAME &&
+    Number.isSafeInteger(metadata?.wakeAt) &&
+    Number.isSafeInteger(metadata?.wakeRevision) &&
+    (metadata?.wakeRevision ?? 0) > 0
+    ? undefined
+    : "saving the reminder did not persist an atomic scheduler wake";
 }
 
 async function assertCloudReadback(): Promise<string | undefined> {
@@ -263,6 +308,11 @@ const definition = scenario({
       type: "custom",
       name: "seed Cloud API and Hetzner mock world",
       apply: seedCloudWorld,
+    },
+    {
+      type: "custom",
+      name: "seed the production reminder scheduler for the controlled clock",
+      apply: seedReminderScheduler,
     },
   ],
   cleanup: [
@@ -493,6 +543,11 @@ const definition = scenario({
       predicate: assertCloudReadback,
     },
     {
+      type: "custom",
+      name: "the reminder save persists a wake on its production scheduler",
+      predicate: assertReminderWake,
+    },
+    {
       type: "actionCalled",
       actionName: "OWNER_REMINDERS",
       status: "success",
@@ -524,7 +579,9 @@ export default Object.assign(definition, {
       "DELETE hetzner /servers/:id",
     ],
     durableEffects: [
+      "LifeOps scheduler bootstrap",
       "OWNER_REMINDERS create",
+      "atomic reminder wake",
       "scheduler notification",
       "OWNER_REMINDERS review",
     ],

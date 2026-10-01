@@ -50,6 +50,14 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
 export const DEFAULT_DURATION_SECONDS = 30;
+/** Accepted `--platform` values. Anything else would select no lane and
+ * produce an empty, vacuously green matrix, so it is rejected up front. */
+export const DEVICE_MATRIX_PLATFORMS = Object.freeze([
+  "ios",
+  "android",
+  "device",
+  "all",
+]);
 
 export function parseArgs(argv, env = process.env) {
   const a = {
@@ -67,6 +75,11 @@ export function parseArgs(argv, env = process.env) {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) {
         throw new Error("--platform requires a value");
+      }
+      if (!DEVICE_MATRIX_PLATFORMS.includes(value)) {
+        throw new Error(
+          `--platform must be one of ${DEVICE_MATRIX_PLATFORMS.join("|")} (got ${JSON.stringify(value)})`,
+        );
       }
       a.platform = value;
     } else if (arg === "--serial") {

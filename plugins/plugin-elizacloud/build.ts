@@ -11,7 +11,30 @@
  * two hand-written alias shims. The emitted dist/ is byte-identical to the
  * previous hand-rolled build.
  */
+import path from "node:path";
 import { buildPlugin } from "../plugin-build";
+
+// `lib/config-env` owns the process-wide config.env write mutex (`writeChain`).
+// The agent imports it through the published `./lib/config-env` subpath, so
+// every other bundle must reach that same module instance instead of inlining
+// a private copy (separate copies mean separate mutexes, interleaved
+// read-modify-write cycles and colliding `config.env.tmp` renames). This
+// plugin rewrites internal relative imports of the writer to the package
+// self-reference and keeps it external; only its own subpath entry bundles it.
+const CONFIG_ENV_SOURCE = path.resolve("src/lib/config-env.ts");
+const CONFIG_ENV_SPECIFIER = "@elizaos/plugin-elizacloud/lib/config-env";
+const sharedConfigEnvWriter: Bun.BunPlugin = {
+  name: "shared-config-env-writer",
+  setup(build) {
+    build.onResolve({ filter: /(^|\/)config-env(\.ts)?$/ }, (args) => {
+      if (!args.importer || !args.path.startsWith(".")) return undefined;
+      const resolved = path.resolve(path.dirname(args.importer), args.path);
+      const candidate = resolved.endsWith(".ts") ? resolved : `${resolved}.ts`;
+      if (candidate !== CONFIG_ENV_SOURCE) return undefined;
+      return { path: CONFIG_ENV_SPECIFIER, external: true };
+    });
+  },
+};
 
 // Browser clients consume these protocol leaves without Node loader helpers.
 function isBrowserProtocolEntry(entry: string): boolean {
@@ -60,6 +83,7 @@ await buildPlugin({
   targets: [
     {
       label: "Node",
+      plugins: [sharedConfigEnvWriter],
       entry: "src/index.node.ts",
       outSubdir: "node",
       target: "node",
@@ -67,6 +91,7 @@ await buildPlugin({
     },
     {
       label: "Node (CJS)",
+      plugins: [sharedConfigEnvWriter],
       entry: "src/index.node.ts",
       outSubdir: "cjs",
       target: "node",
@@ -75,6 +100,7 @@ await buildPlugin({
     },
     {
       label: "Exported subpaths",
+      plugins: [sharedConfigEnvWriter],
       entry: nodeSubpathEntries,
       outSubdir: "",
       target: "node",
@@ -99,6 +125,7 @@ await buildPlugin({
     // single-entry bundle keeps the published agent import executable.
     {
       label: "Host routes",
+      plugins: [sharedConfigEnvWriter],
       entry: "src/host-routes.ts",
       outSubdir: "",
       target: "node",

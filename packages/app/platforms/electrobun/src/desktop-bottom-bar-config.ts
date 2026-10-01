@@ -12,19 +12,8 @@
  * always wins because it owns a fullscreen view-manager surface.
  */
 
+import { readDesktopEnvFlag } from "./desktop-env-flags";
 import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
-
-/** Explicit opt-out values for the bottom-bar default (the kill switch). */
-function parseFalsy(value: string | undefined): boolean {
-	if (value === undefined) return false;
-	const normalized = value.trim().toLowerCase();
-	return (
-		normalized === "0" ||
-		normalized === "false" ||
-		normalized === "no" ||
-		normalized === "off"
-	);
-}
 
 /**
  * Whether the desktop should launch as a chromeless bottom chat bar instead of
@@ -38,7 +27,7 @@ export function shouldStartBottomBar(
 	if (isKioskShellMode(env, argv)) {
 		return false;
 	}
-	return !parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR);
+	return readDesktopEnvFlag(env, "ELIZA_DESKTOP_BOTTOM_BAR", true);
 }
 
 /**

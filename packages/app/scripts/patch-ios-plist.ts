@@ -22,7 +22,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.ts";
 import { readAppIdentity } from "./lib/read-app-identity.ts";
 import {
@@ -198,9 +198,8 @@ function main() {
   );
 }
 
-// Allow `node patch-ios-plist.ts --check` to verify without writing.
-const checkOnly = process.argv.includes("--check");
-if (checkOnly) {
+// `node patch-ios-plist.ts --check` verifies without writing.
+function check() {
   if (!existsSync(TARGET_PATH)) {
     console.log("[patch-ios-plist] no Info.plist; nothing to check.");
     process.exit(0);
@@ -236,7 +235,15 @@ if (checkOnly) {
   process.exit(1);
 }
 
-main();
+// Only the CLI entrypoint patches: importing this module (the unit test does)
+// must never read or write the real Info.plist.
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  if (process.argv.includes("--check")) check();
+  else main();
+}
 
 // Exports for tests.
 export {
