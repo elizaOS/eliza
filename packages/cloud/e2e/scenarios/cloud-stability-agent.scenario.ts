@@ -6,6 +6,7 @@
  */
 
 import {
+  CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
   CORE_PLANNER_TERMINALS,
   type IAgentRuntime,
   Service,
@@ -65,6 +66,7 @@ const syntheticRuntimePolicy = {
     anthropic: "anthropic",
   },
   allowedServiceTypes: [
+    CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
     "CHARACTER_MANAGEMENT",
     "EXPERIENCE",
     "PERSONALITY_STORE",
