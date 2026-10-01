@@ -3,7 +3,7 @@
 import { TaskService } from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
-  createLifeOpsTestRuntime,
+  createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
 import {
@@ -24,10 +24,23 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+async function createLifeOpsTestRuntime() {
+  const fixture = await createBaseLifeOpsTestRuntime();
+  await TaskService.stop(fixture.runtime);
+  // Supersede boot observations with an actual persisted owner wake signal.
+  vi.setSystemTime(Date.now() + 1);
+  const awake = await new LifeOpsService(fixture.runtime).captureManualOverride(
+    {
+      kind: "just_woke_up",
+      occurredAt: new Date().toISOString(),
+    },
+  );
+  expect(awake.circadianState).toBe("awake");
+  return fixture;
+}
+
 it("committed create and snooze reconcile the same task, then deliver once at its due tick without idle full polling", async () => {
   const f = await createLifeOpsTestRuntime();
-  // The virtual clock below is the sole scheduler driving this fixture.
-  await TaskService.stop(f.runtime);
   const runtime = f.runtime;
   const model = vi
     .spyOn(runtime, "useModel")
@@ -121,7 +134,12 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     for (now += 1000; now < newDue; now += 1000) await tick();
     expect(getRecordedTestNotifications(runtime)).toHaveLength(0);
     await tick();
-    expect(getRecordedTestNotifications(runtime)).toHaveLength(1);
+    expect(
+      getRecordedTestNotifications(runtime),
+      JSON.stringify(
+        await service.repository.listReminderAttempts(runtime.agentId),
+      ),
+    ).toHaveLength(1);
     expect(getRecordedTestNotifications(runtime)[0].body).toContain(
       "Exact wake proof",
     );
@@ -173,7 +191,6 @@ it("committed create and snooze reconcile the same task, then deliver once at it
 
 it("concurrent callers retain their own pass deadline and do not hide a later undelivered step", async () => {
   const f = await createLifeOpsTestRuntime();
-  await TaskService.stop(f.runtime);
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
@@ -227,6 +244,7 @@ it("concurrent callers retain their own pass deadline and do not hide a later un
     expect(second.nextWakeAt).toBe(due + 120000);
     expect(
       second.attempts.filter((a) => a.outcome.startsWith("delivered")),
+      JSON.stringify(second.attempts),
     ).toHaveLength(1);
     expect(model).not.toHaveBeenCalled();
   } finally {
@@ -237,7 +255,6 @@ it("concurrent callers retain their own pass deadline and do not hide a later un
 
 it("quiet-blocked due work consumes its wake without a one-second retry loop", async () => {
   const f = await createLifeOpsTestRuntime();
-  await TaskService.stop(f.runtime);
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
