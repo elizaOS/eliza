@@ -457,6 +457,74 @@ test(
   TEST_TIMEOUT,
 );
 
+for (const [fallbackState, runtimeStatus] of [
+  ["shared_active", "running"],
+  ["fallback_pending", "provisioning"],
+] as const) {
+  test(
+    `a lapsed plan found while the Dedicated runtime is still ${runtimeStatus} (${fallbackState}) keeps its clock until the plan is restored`,
+    async () => {
+      const stoppedAt = new Date();
+      const seeded = await seedCreditStoppedAgent(FUNDED, stoppedAt);
+      await dbWrite
+        .update(agentComputeStopIntents)
+        .set({ authorization: "user_request" })
+        .where(eq(agentComputeStopIntents.id, seeded.intentId));
+      // Fallback activation commits `shared_active` in the same transaction
+      // that only enqueues the suspend, and a lifecycle-admission conflict
+      // leaves it `fallback_pending`: either way the runtime is still live.
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: runtimeStatus, billing_status: "active" })
+        .where(eq(agentSandboxes.id, seeded.agentId));
+      const [fallback] = await dbWrite
+        .insert(personalDedicatedFallbacks)
+        .values({
+          organization_id: seeded.orgId,
+          user_id: seeded.userId,
+          source_agent_id: `personal:${seeded.userId}`,
+          dedicated_agent_id: seeded.agentId,
+          generation: 1,
+          state: fallbackState,
+          reason: "subscription_payment_failed",
+          entitlement_revision: 4,
+          retain_until: new Date(stoppedAt.getTime() + 30 * DAY),
+          journal_room_id: unique("fallback-journal"),
+          activated_at: stoppedAt,
+        })
+        .returning();
+
+      const h = harness(new Date(stoppedAt.getTime() + 60 * 1000));
+      const first = await h.retention.reconcile();
+      expect(first).toMatchObject({ discovered: 1, closed: 0 });
+      const [open] = await retentionFor(seeded.agentId);
+      expect(open).toMatchObject({ fallback_id: fallback.id, state: "retained" });
+
+      // The suspend lands; the plan is still withdrawn, so the clock runs on.
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "stopped" })
+        .where(eq(agentSandboxes.id, seeded.agentId));
+      h.at(new Date(stoppedAt.getTime() + 2 * DAY));
+      expect(await h.retention.reconcile()).toMatchObject({ discovered: 0, closed: 0 });
+      expect((await retentionFor(seeded.agentId))[0]?.state).toBe("retained");
+
+      // Only the plan's own recovery closes it.
+      await dbWrite
+        .update(personalDedicatedFallbacks)
+        .set({ state: "recovery_pending", recovery_requested_at: new Date() })
+        .where(eq(personalDedicatedFallbacks.id, fallback.id));
+      h.at(new Date(stoppedAt.getTime() + 3 * DAY));
+      expect(await h.retention.reconcile()).toMatchObject({ closed: 1 });
+      expect((await retentionFor(seeded.agentId))[0]).toMatchObject({
+        state: "closed",
+        closed_reason: "funding_restored",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+}
+
 test(
   "failed notice delivery never becomes deletion authority and can retry",
   async () => {
