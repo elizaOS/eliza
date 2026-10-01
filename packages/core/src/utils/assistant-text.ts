@@ -1,7 +1,10 @@
+import MarkdownIt from "markdown-it";
+
 /**
  * Cleans assistant text for display by detecting and stripping roleplay stage
- * directions (`*beams*`, `*blushes*`, …). The leading-word set gates which
- * asterisk-wrapped spans are treated as stage directions rather than emphasis.
+ * directions (`*beams*`, `*blushes*`, etc.). The leading-word set gates which
+ * asterisk-wrapped spans are treated as stage directions rather than emphasis,
+ * while Markdown code is preserved byte-for-byte.
  */
 const STAGE_DIRECTION_FIRST_WORDS = new Set([
 	"beam",
@@ -176,6 +179,64 @@ function tidyAssistantTextSpacing(input: string): string {
 		.replace(/\s+\)/g, ")");
 }
 
+function normalizeProse(input: string): string {
+	let normalized = stripWrappedStageDirections(
+		input,
+		/(?<!\*)\*([^*\n]+)\*(?!\*)/g,
+	);
+	normalized = stripWrappedStageDirections(
+		normalized,
+		/(?<!_)_([^_\n]+)_(?!_)/g,
+	);
+	return normalized === input ? input : tidyAssistantTextSpacing(normalized);
+}
+
+// Use the same CommonMark parser as core's Markdown rendering. Token line maps
+// identify code in nested lists/quotes and unfinished fences without reimplementing
+// container rules. Slice the original source so CRLF, tabs and indentation survive.
+const assistantMarkdown = new MarkdownIt("commonmark");
+
+function normalizeInlineParagraph(input: string): string {
+	// Backtick runs close only a run of exactly the same length. Index them once
+	// so a long streamed reply with unmatched runs does not trigger quadratic scans.
+	const runs = Array.from(input.matchAll(/`+/g));
+	const byLength = new Map<number, number[]>();
+	for (let index = 0; index < runs.length; index++) {
+		const length = runs[index][0].length;
+		const group = byLength.get(length) ?? [];
+		group.push(index);
+		byLength.set(length, group);
+	}
+	const cursors = new Map<number, number>();
+	let output = "";
+	let offset = 0;
+	for (let index = 0; index < runs.length; index++) {
+		const opener = runs[index];
+		let escapeStart = opener.index;
+		while (escapeStart > 0 && input[escapeStart - 1] === "\\") escapeStart--;
+		if ((opener.index - escapeStart) % 2 !== 0) continue;
+		const length = opener[0].length;
+		const group = byLength.get(length);
+		if (!group) continue;
+		let cursor = cursors.get(length) ?? 0;
+		while (cursor < group.length && group[cursor] <= index) cursor++;
+		cursors.set(length, cursor);
+		const closingIndex = group[cursor];
+		if (closingIndex === undefined) continue;
+		const closer = runs[closingIndex];
+		output += normalizeProse(input.slice(offset, opener.index));
+		const end = closer.index + length;
+		output += input.slice(opener.index, end);
+		offset = end;
+		index = closingIndex;
+	}
+	output += normalizeProse(input.slice(offset));
+	// Remove horizontal padding introduced by a removed direction only at this
+	// prose segment's edges; never trim newlines or whitespace inside code spans.
+	if (output !== input) output = output.replace(/^[ \t]+|[ \t]+$/g, "");
+	return output;
+}
+
 function tryParseObject(input: string): Record<string, unknown> | null {
 	try {
 		const parsed = JSON.parse(input);
@@ -310,12 +371,28 @@ export function extractAssistantReplyText(input: string): string | null {
 	return null;
 }
 
+/** Remove stage directions from prose while preserving Markdown code source. */
 export function stripAssistantStageDirections(input: string): string {
 	if (typeof input !== "string") return "";
-	let normalized = input;
-	normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
-	normalized = stripWrappedStageDirections(normalized, /_([^_\n]+)_/g);
-	// Ordinary replies may contain exact quotes or code indentation. Only tidy
-	// spacing introduced when a stage direction was actually removed.
-	return normalized === input ? input : tidyAssistantTextSpacing(normalized);
+	const lineOffsets = [0];
+	for (const match of input.matchAll(/\r\n|\r|\n/g)) {
+		lineOffsets.push(match.index + match[0].length);
+	}
+	lineOffsets.push(input.length);
+	let output = "";
+	let offset = 0;
+	for (const token of assistantMarkdown.parse(input, {})) {
+		const isCode = token.type === "fence" || token.type === "code_block";
+		if ((!isCode && token.type !== "inline") || !token.map) continue;
+		const start = lineOffsets[token.map[0]];
+		const end = lineOffsets[token.map[1]] ?? input.length;
+		// Paragraph/heading/list boundaries also delimit inline code. Preserve
+		// intervening block syntax rather than pairing backticks across blocks.
+		output += input.slice(offset, start);
+		const source = input.slice(start, end);
+		output += isCode ? source : normalizeInlineParagraph(source);
+		offset = end;
+	}
+	output += input.slice(offset);
+	return output;
 }
