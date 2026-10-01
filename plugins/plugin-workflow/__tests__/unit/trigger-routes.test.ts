@@ -256,36 +256,39 @@ describe('trigger route ownership', () => {
     expect(calls).not.toContain('executeTriggerTask');
   });
 
-  test('allows reading an agent heartbeat but blocks public mutations and execution', async () => {
-    const heartbeat = {
-      id: 'system-heartbeat',
-      agentId: 'agent-id',
-      entityId: 'agent-id',
-      tags: ['queue', 'repeat', 'heartbeat'],
-      metadata: { updateInterval: 60_000 },
-    } as Task;
-    for (const [method, path, expectedStatus] of [
-      ['GET', '/api/triggers/system-heartbeat', 200],
-      ['PUT', '/api/triggers/system-heartbeat', 403],
-      ['DELETE', '/api/triggers/system-heartbeat', 403],
-      ['POST', '/api/triggers/system-heartbeat/execute', 403],
-    ] as const) {
-      const { context, response, calls } = createHarness(method, path);
-      context.runtime = {
+  test.each(['agent-id', undefined, null])(
+    'keeps heartbeat entity %s read-only',
+    async (entityId) => {
+      const heartbeat = {
+        id: 'system-heartbeat',
         agentId: 'agent-id',
-        deleteTask: async () => calls.push('deleteTask'),
-      } as unknown as IAgentRuntime;
-      context.listTriggerTasks = async () => [heartbeat];
-      context.taskToTriggerSummary = () => ({ id: 'system-heartbeat' }) as never;
-      await handleTriggerRoutes(context);
-      expect(response.status ?? 200).toBe(expectedStatus);
-      if (expectedStatus === 403) {
-        expect(response.body).toEqual({ error: 'System trigger is read-only' });
+        entityId,
+        tags: ['queue', 'repeat', 'heartbeat'],
+        metadata: { updateInterval: 60_000 },
+      } as Task;
+      for (const [method, path, expectedStatus] of [
+        ['GET', '/api/triggers/system-heartbeat', 200],
+        ['PUT', '/api/triggers/system-heartbeat', 403],
+        ['DELETE', '/api/triggers/system-heartbeat', 403],
+        ['POST', '/api/triggers/system-heartbeat/execute', 403],
+      ] as const) {
+        const { context, response, calls } = createHarness(method, path);
+        context.runtime = {
+          agentId: 'agent-id',
+          deleteTask: async () => calls.push('deleteTask'),
+        } as unknown as IAgentRuntime;
+        context.listTriggerTasks = async () => [heartbeat];
+        context.taskToTriggerSummary = () => ({ id: 'system-heartbeat' }) as never;
+        await handleTriggerRoutes(context);
+        expect(response.status ?? 200).toBe(expectedStatus);
+        if (expectedStatus === 403) {
+          expect(response.body).toEqual({ error: 'System trigger is read-only' });
+        }
+        expect(calls).not.toContain('deleteTask');
+        expect(calls).not.toContain('executeTriggerTask');
       }
-      expect(calls).not.toContain('deleteTask');
-      expect(calls).not.toContain('executeTriggerTask');
     }
-  });
+  );
 });
 
 describe('partial trigger updates', () => {

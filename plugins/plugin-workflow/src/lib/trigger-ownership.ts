@@ -6,7 +6,7 @@ function ownerId(value: unknown): string | null {
 
 export function isAgentOwnedHeartbeat(task: Task, agentId: string): boolean {
   return (
-    task.entityId === agentId &&
+    (task.entityId == null || task.entityId === agentId) &&
     (!task.agentId || task.agentId === agentId) &&
     ['queue', 'repeat', 'heartbeat'].every((tag) => (task.tags ?? []).includes(tag))
   );
@@ -19,6 +19,7 @@ export function isTriggerTaskOwnedBy(
   localOwnerEntityId: string,
   agentId?: string
 ): boolean {
+  if (agentId && task.agentId && task.agentId !== agentId) return false;
   const metadata = task.metadata;
   const ownership = metadata?.ownership;
   const metadataOwner = ownerId(

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Task } from '@elizaos/core';
-import { isTriggerTaskOwnedBy } from '../../src/lib/trigger-ownership';
+import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from '../../src/lib/trigger-ownership';
 
 const localOwner = 'owner-local';
 const foreignOwner = 'owner-foreign';
@@ -63,4 +63,28 @@ describe('trigger task ownership', () => {
       )
     ).toBe(false);
   });
+  test.each([undefined, null])(
+    'protects legacy heartbeat entity %s and rejects conflicting agents',
+    (entityId) => {
+      const heartbeat = {
+        agentId: 'agent-id',
+        entityId,
+        tags: ['queue', 'repeat', 'heartbeat'],
+      } as Task;
+      expect(isAgentOwnedHeartbeat(heartbeat, 'agent-id')).toBe(true);
+      expect(isTriggerTaskOwnedBy(heartbeat, localOwner, localOwner, 'agent-id')).toBe(true);
+      expect(isTriggerTaskOwnedBy(heartbeat, foreignOwner, localOwner, 'agent-id')).toBe(false);
+      expect(
+        isTriggerTaskOwnedBy(
+          { ...heartbeat, agentId: 'foreign-agent' },
+          localOwner,
+          localOwner,
+          'agent-id'
+        )
+      ).toBe(false);
+      expect(isAgentOwnedHeartbeat({ ...heartbeat, entityId: foreignOwner }, 'agent-id')).toBe(
+        false
+      );
+    }
+  );
 });
