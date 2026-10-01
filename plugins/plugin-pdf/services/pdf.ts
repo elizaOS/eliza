@@ -228,8 +228,23 @@ export class PdfService extends Service {
     pdfBuffer: Buffer | Uint8Array,
     options: PdfCompleteExtractionOptions = {}
   ): Promise<PdfCompleteDocument> {
+    options = { ...options };
     const uint8Array = validatePdfInput(pdfBuffer);
+    let ownershipFailure: { value: unknown } | undefined;
+    const assertActive = async () => {
+      options.signal?.throwIfAborted();
+      try {
+        await options.assertActive?.();
+      } catch (error) {
+        // Keep the host's ownership failure distinct from parser failures.
+        ownershipFailure = { value: error };
+        throw error;
+      }
+      options.signal?.throwIfAborted();
+    };
+    await assertActive();
     const pdf = await getDocumentProxy(uint8Array);
+    await assertActive();
     const pageCount = requirePdfPageCount(pdf.numPages);
     const pdfjs = await getResolvedPDFJS();
     const ops = pdfjs.OPS as Record<string, number>;
@@ -249,6 +264,7 @@ export class PdfService extends Service {
 
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       try {
+        await assertActive();
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1 });
         const textContent = await page.getTextContent();
@@ -263,6 +279,7 @@ export class PdfService extends Service {
         );
         const isParserBlank = nativeText.length === 0 && operatorList.fnArray.length === 0;
         let ocrText: string | null = null;
+        await assertActive();
         const rendered = await renderPageAsImage(pdf, pageNumber, {
           canvasImport: () => import("@napi-rs/canvas"),
           scale: renderScale,
@@ -274,13 +291,16 @@ export class PdfService extends Service {
         const encoded = rendered.slice(rendered.indexOf(",") + 1);
         const binary = atob(encoded);
         const pngBytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        await assertActive();
         if (options.ocrPage) {
           ocrText = this.cleanUpContent(await options.ocrPage({ pageNumber, pngBytes }));
           if (!ocrText) ocrText = null;
         }
+        await assertActive();
         const response = await this.runtime
           .useModel(ModelType.IMAGE_DESCRIPTION, {
             imageUrl: rendered,
+            signal: options.signal,
             stream: false,
             prompt: [
               `Transcribe every visible word on PDF page ${pageNumber} exactly and in reading order.`,
@@ -298,6 +318,7 @@ export class PdfService extends Service {
               .join("\n"),
           })
           .catch((cause) => {
+            options.signal?.throwIfAborted();
             // error-policy:J2 identify a failed transcription dependency without blaming the PDF.
             throw new ElizaError(
               "PDF page transcription is unavailable. Check the model service and retry the upload.",
@@ -309,6 +330,7 @@ export class PdfService extends Service {
               }
             );
           });
+        await assertActive();
         const visionText = response.description.trim();
         if (!visionText) {
           throw new Error("IMAGE_DESCRIPTION returned an empty page transcription");
@@ -342,7 +364,10 @@ export class PdfService extends Service {
         };
         pages.push(result);
         await options.onPageComplete?.(result);
+        await assertActive();
       } catch (error) {
+        options.signal?.throwIfAborted();
+        if (ownershipFailure && Object.is(error, ownershipFailure.value)) throw error;
         // error-policy:J2 preserve typed dependency failures; add provenance to parser failures.
         if (error instanceof ElizaError && error.code === "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE")
           throw error;
@@ -353,6 +378,7 @@ export class PdfService extends Service {
       }
     }
 
+    await assertActive();
     return {
       complete: true,
       pageCount,
