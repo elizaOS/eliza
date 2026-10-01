@@ -171,22 +171,22 @@ export function PrivacyPanel() {
               ) : null}
             </>
           }
-          control={
-            <Button
-              size="sm"
-              variant="outline"
-              data-testid="privacy-export-button"
-              disabled={exportState.kind === "pending"}
-              onClick={() => void onExport()}
-            >
-              {exportState.kind === "pending"
-                ? t("cloud.privacyPanel.exportPreparing", {
-                    defaultValue: "Preparing…",
-                  })
-                : t("cloud.privacyPanel.export", { defaultValue: "Export" })}
-            </Button>
-          }
-        />
+          stacked
+        >
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="privacy-export-button"
+            disabled={exportState.kind === "pending"}
+            onClick={() => void onExport()}
+          >
+            {exportState.kind === "pending"
+              ? t("cloud.privacyPanel.exportPreparing", {
+                  defaultValue: "Preparing…",
+                })
+              : t("cloud.privacyPanel.export", { defaultValue: "Export" })}
+          </Button>
+        </SettingsRow>
         <SettingsRow
           icon={Trash2}
           tone="danger"
@@ -197,8 +197,10 @@ export function PrivacyPanel() {
             defaultValue:
               "Checks whether the verified account-deletion lifecycle is available. Shared resources may need transfer first; unavailable requests are routed to support without changing your account.",
           })}
-          control={<AccountDeletionDialog />}
-        />
+          stacked
+        >
+          <AccountDeletionDialog />
+        </SettingsRow>
       </SettingsGroup>
     </SettingsStack>
   );
