@@ -269,6 +269,30 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       }),
       "messages",
     );
+    const historicalProviderFailures = [] as Array<{ id: UUID; raw: string }>;
+    for (const message of [
+      "This agent has no model provider configured",
+      "No provider registered for TEXT_SMALL",
+    ]) {
+      const record = {
+        id: randomUUID() as UUID,
+        raw: `Repeated runtime failure "UNCLASSIFIED" from [model-router]: ${message}`,
+      };
+      historicalProviderFailures.push(record);
+      await runtime.createMemory(
+        createMessageMemory({
+          id: record.id,
+          entityId: agentId,
+          roomId: conversation.roomId,
+          content: {
+            text: record.raw,
+            source: "client_chat",
+            metadata: { escalation: true },
+          },
+        }),
+        "messages",
+      );
+    }
     const historyResponse = await fetch(
       `${base}/api/conversations/${conversation.id}/messages`,
       { headers },
@@ -284,6 +308,20 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     expect(
       (await runtime.getMemoriesByIds([checkinId], "messages"))[0].content.text,
     ).toBe(rawBrief);
+    for (const record of historicalProviderFailures) {
+      expect(
+        history.messages.find(
+          (message: { id: string }) => message.id === record.id,
+        ),
+      ).toMatchObject({
+        text: systemNoticeText("model-unavailable"),
+        failureKind: "no_provider",
+      });
+      expect(
+        (await runtime.getMemoriesByIds([record.id], "messages"))[0].content
+          .text,
+      ).toBe(record.raw);
+    }
     const legacy = history.messages.find(
       (m: { id: string }) => m.id === legacyId,
     );
@@ -343,6 +381,97 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       "model-unavailable",
     );
     expect(coalesced.text).toBe(systemNoticeText("model-unavailable"));
+    expect(modelCalls).toBe(3);
+    // Mixed alerts retain both parts on disk and deliver them as separate
+    // messages so the system segment keeps its classification and bypass.
+    await EscalationService.resolveEscalation(coalesced.id, runtime);
+    server = await startApiServer({
+      port: 0,
+      runtime,
+      skipDeferredStartupWork: true,
+    });
+    for (const ordinaryFirst of [true, false]) {
+      runtime.setSetting("OUTBOUND_VOICE_REWRITE", false);
+      const ordinaryText = `Appointment confirmation ${ordinaryFirst}`;
+      await EscalationService.startEscalation(
+        runtime,
+        "First mixed alert",
+        ordinaryFirst ? ordinaryText : systemNoticeText("model-unavailable"),
+        ordinaryFirst ? undefined : "model-unavailable",
+      );
+      const mixed = await EscalationService.startEscalation(
+        runtime,
+        "Second mixed alert",
+        ordinaryFirst ? systemNoticeText("model-unavailable") : ordinaryText,
+        ordinaryFirst ? "model-unavailable" : undefined,
+      );
+      if (ordinaryFirst)
+        await EscalationService.startEscalation(
+          runtime,
+          "Additional runtime failure",
+          systemNoticeText("runtime-error"),
+          "runtime-error",
+        );
+      const expectedNotice = ordinaryFirst
+        ? "model-and-runtime-error"
+        : "model-unavailable";
+      expect(mixed).toMatchObject({
+        systemNotice: expectedNotice,
+        ordinaryText,
+      });
+      expect(mixed.text).toContain(ordinaryText);
+      expect(mixed.text).toContain(systemNoticeText("model-unavailable"));
+      await EscalationService.stop(runtime);
+      await server.close();
+      server = undefined;
+      await runtime.close();
+      runtime = await open();
+      runtime.setSetting("OUTBOUND_VOICE_REWRITE", false);
+      server = await startApiServer({
+        port: 0,
+        runtime,
+        skipDeferredStartupWork: true,
+      });
+      expect(
+        await EscalationService.getActiveEscalation(runtime),
+      ).toMatchObject({
+        id: mixed.id,
+        systemNotice: expectedNotice,
+        ordinaryText,
+        text: mixed.text,
+      });
+      const before = new Set(
+        (
+          await runtime.getMemories({
+            roomId: conversation.roomId,
+            tableName: "messages",
+          })
+        ).map((message) => message.id),
+      );
+      await EscalationService.checkEscalation(runtime, mixed.id);
+      const delivered = (
+        await runtime.getMemories({
+          roomId: conversation.roomId,
+          tableName: "messages",
+        })
+      ).filter((message) => !before.has(message.id));
+      expect(delivered).toHaveLength(2);
+      expect(delivered.map((message) => message.content)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: systemNoticeText(expectedNotice),
+            systemNotice: expectedNotice,
+            failureKind: "no_provider",
+          }),
+          expect.objectContaining({ text: ordinaryText }),
+        ]),
+      );
+      expect(
+        delivered.find((message) => message.content.text === ordinaryText)
+          ?.content.systemNotice,
+      ).toBeUndefined();
+      await EscalationService.resolveEscalation(mixed.id, runtime);
+    }
     expect(modelCalls).toBe(3);
   } finally {
     if (runtime) await EscalationService.stop(runtime);
