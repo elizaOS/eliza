@@ -725,6 +725,10 @@ describe("Android hosted probe diagnostics", () => {
       "Error: androidDevice.wait: Device is closed",
       "Error: androidDevice.wait: PRIVATE_CANARY",
       "PRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:1\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:2\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:3\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:99\nPRIVATE_CANARY",
     ];
     fs.writeFileSync(
       reportPath,
@@ -758,6 +762,11 @@ describe("Android hosted probe diagnostics", () => {
       ...[1, 2, 3, 4].map(
         (kind) =>
           `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidWaitErrorKind=${kind}\n`,
+      ),
+      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117\n",
+      ...[1, 2, 3].map(
+        (kind) =>
+          `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidAccessibilityErrorKind=${kind}\n`,
       ),
       "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117\n",
     ]);

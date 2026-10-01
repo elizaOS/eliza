@@ -158,9 +158,19 @@ test.describe
         // Inspect Android's active accessibility window, not just DOM behind
         // a native modal. Native field placeholders are not accessibility text.
         await expect(async () => {
-          const label = await device.info({ text: "Get a one-time code" });
-          expect(label.pkg).toBe(APP_ID);
-          expect(label.bounds.width).toBeGreaterThan(0);
+          let label: Awaited<ReturnType<typeof device.info>>;
+          try {
+            label = await device.info({ text: "Get a one-time code" });
+          } catch (cause) {
+            // Closed diagnostic categories keep native text and UI dumps private.
+            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:1", { cause });
+          }
+          if (label.pkg !== APP_ID) {
+            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:2");
+          }
+          if (!(label.bounds.width > 0)) {
+            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:3");
+          }
         }).toPass({ timeout: 15_000 });
 
         // OS deep links deliberately never carry bearer credentials. Complete

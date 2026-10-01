@@ -39,6 +39,7 @@ const COUNTERS = new Set([
   "sourceLine",
   "specId",
   "androidWaitErrorKind",
+  "androidAccessibilityErrorKind",
 ]);
 
 const CODES = new Set([
@@ -252,6 +253,15 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                 result.status === "failed"
                   ? androidWaitErrorKind(result.error)
                   : undefined;
+              // Only source-authored closed markers may identify the failed
+              // native predicate: lookup, app ownership, or rendered bounds.
+              const accessibilityMarker =
+                result.status === "failed" &&
+                typeof result.error?.message === "string"
+                  ? result.error.message.match(
+                      /(?:^|\n)(?:Error: )?ANDROID_PAIRING_ACCESSIBILITY:([123])(?:\n|$)/,
+                    )
+                  : undefined;
               boundary.event(
                 "route-capture",
                 result.status === "passed"
@@ -265,6 +275,13 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                   sourceLine,
                   ...(waitErrorKind !== undefined
                     ? { androidWaitErrorKind: waitErrorKind }
+                    : {}),
+                  ...(accessibilityMarker
+                    ? {
+                        androidAccessibilityErrorKind: Number(
+                          accessibilityMarker[1],
+                        ),
+                      }
                     : {}),
                 },
               );
