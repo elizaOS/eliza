@@ -297,6 +297,9 @@ describe("web-chat conversation relaunch persistence — real DB (#13689)", () =
           },
         );
         expect(sent.status).toBe(200);
+        expect((await first.runtime.getRoom(conv.roomId))?.name).toBe(
+          "Restart persistence proof",
+        );
       }
 
       const beforeRestart = await first.runtime.getMemories({
@@ -328,6 +331,7 @@ describe("web-chat conversation relaunch persistence — real DB (#13689)", () =
       expect(restored).toBe(1);
       expect(restartedState.conversations.get(conv.id)).toMatchObject({
         id: conv.id,
+        title: "Restart persistence proof",
         roomId: conv.roomId,
         metadata: {
           scope: "general",
