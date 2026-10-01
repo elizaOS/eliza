@@ -37,7 +37,11 @@ import {
   computeOccurrenceStreaks,
 } from "../service-helpers-occurrence.js";
 import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../time.js";
 import {
   type BriefingEngagement,
   buildBriefingSignals,
@@ -284,12 +288,16 @@ function summarizeCount(
 function localDayWindow(
   date: Date,
   timezone: string,
+  dayOffset = 0,
 ): {
   start: Date;
   end: Date;
   key: string;
 } {
-  const parts = getZonedDateParts(date, timezone);
+  const parts = addDaysToLocalDate(
+    getZonedDateParts(date, timezone),
+    dayOffset,
+  );
   const start = buildUtcDateFromLocalParts(timezone, {
     year: parts.year,
     month: parts.month,
@@ -299,9 +307,7 @@ function localDayWindow(
     second: 0,
   });
   const end = buildUtcDateFromLocalParts(timezone, {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day + 1,
+    ...addDaysToLocalDate(parts, 1),
     hour: 0,
     minute: 0,
     second: 0,
@@ -649,10 +655,7 @@ async function collectCompletedWins(
   timezone: string,
 ): Promise<CollectorResult<RecentWin>> {
   const agentId = String(runtime.agentId);
-  const day =
-    kind === "morning"
-      ? localDayWindow(new Date(now.getTime() - 24 * 60 * 60 * 1000), timezone)
-      : localDayWindow(now, timezone);
+  const day = localDayWindow(now, timezone, kind === "morning" ? -1 : 0);
   const start = day.start;
   const end = kind === "morning" ? day.end : now;
   try {

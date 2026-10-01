@@ -10,9 +10,11 @@ describe("check-in source availability and generation failures", () => {
   let db: PGlite;
   let runtime: IAgentRuntime;
   const prompts: string[] = [];
+  const statements: string[] = [];
   let modelResponse: string | undefined;
   beforeEach(async () => {
     prompts.length = 0;
+    statements.length = 0;
     modelResponse = undefined;
     db = await PGlite.create();
     await db.exec(`CREATE SCHEMA app_lifeops;
@@ -26,10 +28,13 @@ describe("check-in source availability and generation failures", () => {
       getService: () => null,
       adapter: {
         db: {
-          execute: (query: RawSqlQuery) =>
-            db.query(
-              query.queryChunks.map((chunk) => chunk.value ?? "").join(""),
-            ),
+          execute: (query: RawSqlQuery) => {
+            const statement = query.queryChunks
+              .map((chunk) => chunk.value ?? "")
+              .join("");
+            statements.push(statement);
+            return db.query(statement);
+          },
         },
       },
       useModel: async (_type: string, params: { prompt: string }) => {
@@ -43,28 +48,82 @@ describe("check-in source availability and generation failures", () => {
     await db.close();
   });
 
-  it("does not persist a successful check-in when generation fails and preserves collector failures in model input", async () => {
-    await expect(
-      new CheckinService(runtime).runMorningCheckin({ timezone: "UTC" }),
-    ).rejects.toThrow("text provider is not configured");
-    expect(prompts).toHaveLength(1);
-    const payload = JSON.parse(
-      prompts[0].split("Report JSON:\n")[1].split("\n\nSummary:")[0],
-    );
-    expect(payload.overdueTodos).toBeNull();
-    expect(payload.todaysMeetings).toBeNull();
-    expect(payload.yesterdaysWins).toBeNull();
-    expect(payload.habitSummaries).toBeNull();
-    expect(payload.collectorErrors.habitSummaries).toContain("does not exist");
-    expect(
-      (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
-    ).toEqual([]);
-  });
+  it.each([
+    [
+      "2026-10-01T12:00:00Z",
+      "UTC",
+      "2026-09-30T00:00:00.000Z",
+      "2026-10-01T00:00:00.000Z",
+    ],
+    [
+      "2026-12-31T12:00:00Z",
+      "UTC",
+      "2026-12-30T00:00:00.000Z",
+      "2026-12-31T00:00:00.000Z",
+    ],
+    [
+      "2027-01-01T12:00:00Z",
+      "UTC",
+      "2026-12-31T00:00:00.000Z",
+      "2027-01-01T00:00:00.000Z",
+    ],
+    [
+      "2028-03-01T12:00:00Z",
+      "UTC",
+      "2028-02-29T00:00:00.000Z",
+      "2028-03-01T00:00:00.000Z",
+    ],
+    [
+      "2026-11-02T04:30:00Z",
+      "America/New_York",
+      "2026-10-31T04:00:00.000Z",
+      "2026-11-01T04:00:00.000Z",
+    ],
+    [
+      "2026-03-09T04:30:00Z",
+      "America/New_York",
+      "2026-03-08T05:00:00.000Z",
+      "2026-03-09T04:00:00.000Z",
+    ],
+  ])(
+    "preserves collector failure and yesterday's local calendar window at %s in %s",
+    async (instant, timezone, start, end) => {
+      await expect(
+        new CheckinService(runtime).runMorningCheckin({
+          timezone,
+          now: new Date(instant),
+        }),
+      ).rejects.toThrow("text provider is not configured");
+      const winsQuery = statements.find((statement) =>
+        statement.includes("AS completed_at"),
+      );
+      expect(winsQuery).toContain(`occ.updated_at >= '${start}'`);
+      expect(winsQuery).toContain(`occ.updated_at <= '${end}'`);
+      expect(prompts).toHaveLength(1);
+      const payload = JSON.parse(
+        prompts[0].split("Report JSON:\n")[1].split("\n\nSummary:")[0],
+      );
+      expect(payload.overdueTodos).toBeNull();
+      expect(payload.todaysMeetings).toBeNull();
+      expect(payload.yesterdaysWins).toBeNull();
+      expect(payload.habitSummaries).toBeNull();
+      expect(payload.collectorErrors.habitSummaries).toContain(
+        "does not exist",
+      );
+      expect(
+        (await db.query("SELECT id FROM app_lifeops.life_checkin_reports"))
+          .rows,
+      ).toEqual([]);
+    },
+  );
 
   it("rejects blank model output without persisting a completion marker", async () => {
     modelResponse = "   ";
     await expect(
-      new CheckinService(runtime).runMorningCheckin({ timezone: "UTC" }),
+      new CheckinService(runtime).runMorningCheckin({
+        timezone: "UTC",
+        now: new Date("2026-10-01T12:00:00Z"),
+      }),
     ).rejects.toMatchObject({ code: "CHECKIN_SUMMARY_EMPTY" });
     expect(
       (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
