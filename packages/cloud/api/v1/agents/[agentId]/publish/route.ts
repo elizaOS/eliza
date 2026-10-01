@@ -68,9 +68,10 @@ app.post("/", async (c) => {
 
     let raw: unknown = {};
     try {
-      raw = await c.req.json();
+      const text = await c.req.text();
+      if (text.trim().length > 0) raw = JSON.parse(text);
     } catch {
-      // empty body is fine
+      throw ValidationError("Invalid JSON publish request");
     }
     // Same fence as agentMonetizationService.updateSettings: unpublishing and
     // publishing again must not turn a retired markup back on. It reads the

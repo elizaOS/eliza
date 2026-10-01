@@ -237,6 +237,50 @@ test("any other invalid publish body is a typed 400, not a publish with defaults
   expect(publishWrites).toHaveLength(0);
 });
 
+test.each(["{", '{"a2aEnabled":', "not JSON"])(
+  "malformed JSON %s never publishes with defaults",
+  async (body) => {
+    agent = storedMonetizedAgent({ is_public: false });
+    const response = await mounted(
+      publishRoute,
+      "/agents/:agentId/publish",
+    ).request(
+      "/agents/agent-1/publish",
+      { method: "POST", headers: { "content-type": "application/json" }, body },
+      env,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "validation_error" });
+    expect(publishWrites).toHaveLength(0);
+  },
+);
+
+test.each(["", " \n\t"])(
+  "an empty publish body %j retains defaults",
+  async (body) => {
+    agent = storedMonetizedAgent({ is_public: false });
+    const response = await mounted(
+      publishRoute,
+      "/agents/:agentId/publish",
+    ).request(
+      "/agents/agent-1/publish",
+      { method: "POST", headers: { "content-type": "application/json" }, body },
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(publishWrites).toEqual([
+      {
+        id: "agent-1",
+        options: {
+          payoutWalletAddress: undefined,
+          a2aEnabled: true,
+          mcpEnabled: true,
+        },
+      },
+    ]);
+  },
+);
+
 test("an ordinary publish writes no monetization option and reports markup off", async () => {
   agent = storedMonetizedAgent({ is_public: false });
 
