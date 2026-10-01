@@ -226,19 +226,29 @@ export function calculateTolerance(amount: Decimal, network: OxaPayNetwork): Dec
   return amount.times(toleranceMultiplier);
 }
 
+/** Why `validatePaymentAmount` rejected an amount; callers map it to their own error codes. */
+export type PaymentAmountRejection = "not_whole_cents" | "below_minimum" | "above_maximum";
+
+export type PaymentAmountValidation =
+  | { valid: true }
+  | { valid: false; reason: PaymentAmountRejection; error: string };
+
 /**
- * Validate that an amount is within acceptable range.
+ * Validate that an amount is a finite whole-cent USD value within the checkout range.
+ * `error` is display text; branch on `reason`.
  */
-export function validatePaymentAmount(amount: Decimal): {
-  valid: boolean;
-  error?: string;
-} {
+export function validatePaymentAmount(amount: Decimal): PaymentAmountValidation {
   if (!amount.isFinite() || amount.decimalPlaces() > 2) {
-    return { valid: false, error: "Amount must be a finite USD amount in whole cents" };
+    return {
+      valid: false,
+      reason: "not_whole_cents",
+      error: "Amount must be a finite USD amount in whole cents",
+    };
   }
   if (amount.lessThan(MIN_PAYMENT_AMOUNT)) {
     return {
       valid: false,
+      reason: "below_minimum",
       error: `Amount must be at least $${MIN_PAYMENT_AMOUNT.toString()}`,
     };
   }
@@ -246,6 +256,7 @@ export function validatePaymentAmount(amount: Decimal): {
   if (amount.greaterThan(MAX_PAYMENT_AMOUNT)) {
     return {
       valid: false,
+      reason: "above_maximum",
       error: `Amount must not exceed $${MAX_PAYMENT_AMOUNT.toString()}`,
     };
   }

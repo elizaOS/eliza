@@ -149,6 +149,10 @@ export interface AgentHostBridge {
     runtime: AgentRuntime | null,
     options: AgentHttpRequestAuthorizationOptions,
   ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
+  /** Subscribe to durable revocations; null means revalidate all sessions after a bulk revoke. */
+  subscribeSessionRevocations?(
+    listener: (sessionId: string | null) => void,
+  ): () => void;
   /**
    * Resolve a bare session-id bearer presented outside an HTTP request —
    * the WebSocket auth paths, where device pairing hands the client a

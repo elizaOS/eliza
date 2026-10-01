@@ -67,15 +67,22 @@ afterEach(() => {
 /**
  * Local Cloud route: holds the turn while `attested` is false. An attested
  * turn can be slowed with `replyDelayMs`; `onAttestedTurn` runs when Cloud
- * starts executing it, before the reply returns.
+ * starts executing it, before the reply returns. `refusedStatus` makes Cloud
+ * reject the turn outright with that status.
  */
 function startCloud() {
   const state: {
     attested: boolean;
     unavailable: boolean;
+    refusedStatus: number | null;
     replyDelayMs: number;
     onAttestedTurn?: () => Promise<void>;
-  } = { attested: false, unavailable: false, replyDelayMs: 0 };
+  } = {
+    attested: false,
+    unavailable: false,
+    refusedStatus: null,
+    replyDelayMs: 0,
+  };
   const turns: Array<Record<string, unknown>> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -88,6 +95,12 @@ function startCloud() {
       turns.push((await request.json()) as Record<string, unknown>);
       if (state.unavailable)
         return new Response("temporarily unavailable", { status: 503 });
+      if (state.refusedStatus !== null) {
+        return Response.json(
+          { success: false, code: "invalid_request", error: "bad request" },
+          { status: state.refusedStatus },
+        );
+      }
       if (!state.attested) {
         return Response.json(
           {
@@ -411,6 +424,109 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     expect(stats).toMatchObject({ delivered: 0 });
     expect(await redis.get(leaseKey)).toBe("other-replica-lease");
     expect(await redis.get(`webhook:cutover-hold:${dedupKey}`)).not.toBeNull();
+  }, 60_000);
+
+  test("a delivered hold whose lease lapsed with no new owner is not replayed", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_6";
+    const recordKey = `webhook:cutover-hold:${dedupKey}`;
+    const leaseKey = `webhook:cutover-hold-lease:${dedupKey}`;
+
+    await handleWebhook(
+      blooioWebhook("msg_cutover_6"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const heldTurns = cloud.turns.length;
+
+    // Renewal failed for a whole lease period, so the lease expired while the
+    // turn ran and no other replica took it. The turn is still delivered.
+    cloud.state.attested = true;
+    cloud.state.onAttestedTurn = async () => {
+      await redis.del(leaseKey);
+    };
+    const first = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 60_000 },
+    );
+    const recordAfterFirst = await redis.get(recordKey);
+    cloud.state.onAttestedTurn = undefined;
+    const second = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 120_000 },
+    );
+
+    expect(cloud.turns.length - heldTurns).toBe(1);
+    expect(providerSends).toHaveLength(1);
+    expect(first).toEqual({
+      delivered: 1,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+    });
+    expect(recordAfterFirst).toBeNull();
+    expect(second).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+    });
+    expect(await redis.get(dedupKey)).toBe("delivered");
+  }, 60_000);
+
+  test("a held turn Cloud refuses as not retryable is released at once, not replayed for the hold budget", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_7";
+
+    await handleWebhook(
+      blooioWebhook("msg_cutover_7"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const heldTurns = cloud.turns.length;
+
+    // Cloud now rejects the turn itself; a 400 is classified retryable: false.
+    cloud.state.refusedStatus = 400;
+    const refused = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 60_000 },
+    );
+    const ledgerAfterRefusal = await redis.get(dedupKey);
+    const recordAfterRefusal = await redis.get(
+      `webhook:cutover-hold:${dedupKey}`,
+    );
+    const afterBudget = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + CUTOVER_HOLD_MAX_MS + 120_000 },
+    );
+
+    expect(refused).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 1,
+      expired: 0,
+    });
+    // Settled like a first-delivery pre-egress failure: the ledger reopens.
+    expect(ledgerAfterRefusal).toBeNull();
+    expect(recordAfterRefusal).toBeNull();
+    expect(afterBudget).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+    });
+    expect(cloud.turns.length - heldTurns).toBe(1);
+    expect(providerSends).toEqual([]);
   }, 60_000);
 
   test("lease release and renewal are atomic compare-and-act on the owner token", async () => {
