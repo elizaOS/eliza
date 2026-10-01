@@ -169,6 +169,8 @@ export interface CutoverHoldDrainStats {
   rescheduled: number;
   released: number;
   expired: number;
+  /** Records another drainer had already settled; removed without redelivery. */
+  stale: number;
 }
 
 /**
@@ -229,6 +231,7 @@ export async function drainCutoverHolds(
     rescheduled: 0,
     released: 0,
     expired: 0,
+    stale: 0,
   };
   const due = await redis.zrangebyscore(
     HOLD_INDEX_KEY,
@@ -246,16 +249,17 @@ export async function drainCutoverHolds(
     if (!leased) continue;
     // Only a different owner fences removal. A lease that lapsed with no new
     // owner must not keep a settled record, or the next drain replays it.
-    const removeHeldRecord = async (): Promise<boolean> =>
+    const removeHeldRecord = async (staleOnly = false): Promise<boolean> =>
       Number(
         await redis.eval(
           `local owner = redis.call('GET', KEYS[1])
        if owner and owner ~= ARGV[1] then return 0 end
+       if ARGV[3] ~= '' and redis.call('GET', KEYS[4]) == ARGV[3] then return 0 end
        redis.call('DEL', KEYS[2])
        redis.call('ZREM', KEYS[3], ARGV[2])
        return 1`,
-          [leaseKey, recordKey(dedupKey), HOLD_INDEX_KEY],
-          [leaseToken, dedupKey],
+          [leaseKey, recordKey(dedupKey), HOLD_INDEX_KEY, dedupKey],
+          [leaseToken, dedupKey, staleOnly ? CONNECTOR_HELD : ""],
         ),
       ) === 1;
     const stopRenewal = renewLeaseWhileRedelivering(
@@ -269,6 +273,25 @@ export async function drainCutoverHolds(
       const held = parseHeldWebhook(await redis.get(recordKey(dedupKey)));
       if (!held || held.dedupKey !== dedupKey) {
         await removeHeldRecord();
+        continue;
+      }
+      // The ledger leaves "held" only when a drainer settles the turn. If it
+      // did so while another replica owned the lease, the record survived the
+      // fenced removal; now that lease has lapsed, redelivering would run the
+      // Cloud turn and the provider send again.
+      const ledger = await redis.get<string>(dedupKey);
+      if (ledger !== CONNECTOR_HELD) {
+        // A provider retry can re-hold the event after the ledger read. Check
+        // again atomically with removal so that fresh hold stays durable.
+        if (!(await removeHeldRecord(true))) continue;
+        stats.stale += 1;
+        logger.info(
+          "Cutover hold record was already settled by another drainer",
+          {
+            dedupKey,
+            ledger,
+          },
+        );
         continue;
       }
       if (now - held.heldAt > CUTOVER_HOLD_MAX_MS) {
