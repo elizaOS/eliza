@@ -1687,7 +1687,7 @@ function conversationReplyRecoveryIsEligible(
     )
   );
 }
-export async function persistConversationReplyRecovery(
+async function persistConversationReplyRecovery(
   runtime: AgentRuntime,
   roomId: UUID,
   userMessageId: UUID | undefined,
