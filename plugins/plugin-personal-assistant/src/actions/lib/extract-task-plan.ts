@@ -13,7 +13,9 @@
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
+  buildCanonicalSystemPrompt,
   ElizaError,
+  getTrajectoryContext,
   ModelType,
   parseJsonModelRecord,
   readTaskExtractionContext,
@@ -507,7 +509,14 @@ export async function extractTaskCreatePlanWithLlm(args: {
     return buildExtractionFailurePlan();
   }
 
-  const managed = readTaskExtractionContext(args.state, args.message);
+  const managed = readTaskExtractionContext(
+    args.state,
+    args.message,
+    buildCanonicalSystemPrompt({
+      character: runtime.character,
+      userRole: getTrajectoryContext()?.userRole,
+    }),
+  );
   const fullConversation = async () =>
     (
       await recentConversationTexts({
@@ -535,6 +544,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
   if (managed !== undefined) {
     const first = await runExtractorPipeline({
       runtime,
+      ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: `${prompt}\n\nHistory was selected by the request-bound planner review. Current provider constraints and receipts remain complete. If a constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
       parser: parsePlan,
     });
@@ -549,6 +559,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       // restore or malformed full response fails without effects or a loop.
       const restored = await runExtractorPipeline({
         runtime,
+        ...(managed.system !== undefined ? { system: managed.system } : {}),
         prompt: buildExtractionPrompt(
           intent,
           recentConversation,
@@ -570,6 +581,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       );
     const repaired = await runExtractorPipeline({
       runtime,
+      ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: buildRepairPrompt({
         intent,
         recentConversation,
