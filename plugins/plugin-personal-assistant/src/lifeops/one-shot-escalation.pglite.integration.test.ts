@@ -1,8 +1,10 @@
 /** Real saved plans, delivered/read receipts and >120 minutes of processing.
  * Reading never acknowledges/completes the occurrence. No live model calls. */
-import { expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { ChannelType, TaskService, type UUID } from "@elizaos/core";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
-  createLifeOpsTestRuntime,
+  createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
 import { resolveOwnerTimeZone } from "./owner/fact-store.js";
@@ -12,6 +14,24 @@ import {
   hasExplicitReminderEscalationProfile,
   resolveReminderEscalationDelayMinutes,
 } from "./service-helpers-reminder.js";
+
+beforeEach(() => {
+  const daytime = new Date();
+  daytime.setDate(daytime.getDate() + 1);
+  daytime.setHours(12, 0, 0, 0);
+  // Keep schedule state captured at boot aligned with the virtual delivery day.
+  // Only Date is frozen; database I/O and timeout timers remain real.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(daytime);
+});
+afterEach(() => vi.useRealTimers());
+
+async function createLifeOpsTestRuntime() {
+  const fixture = await createBaseLifeOpsTestRuntime();
+  // Each case drives processReminders explicitly, without competing real ticks.
+  await TaskService.stop(fixture.runtime);
+  return fixture;
+}
 
 it.each([
   undefined,
@@ -574,3 +594,160 @@ it.each(["retry", "escalation-impostor", "wrong-plan-impostor"])(
   },
   120000,
 );
+
+it.each([1, 2])(
+  "closes a priority %s one-shot review without acknowledging the occurrence",
+  async (priority) => {
+    const f = await createLifeOpsTestRuntime();
+    const model = vi
+      .spyOn(f.runtime, "useModel")
+      .mockRejectedValue(Error("No inference expected"));
+    try {
+      const service = new LifeOpsService(f.runtime);
+      const due = Date.now() + 1000;
+      await service.createDefinition({
+        title: "One-shot review lifecycle",
+        kind: "habit",
+        priority,
+        cadence: {
+          kind: "once",
+          dueAt: new Date(due).toISOString(),
+          visibilityLeadMinutes: 0,
+        },
+        timezone: "UTC",
+        metadata: {
+          ownerSurface: "OWNER_REMINDERS",
+          nativeProjection: "in_app_only",
+        },
+        reminderPlan: {
+          steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+        },
+      });
+      await service.processReminders({
+        now: new Date(due).toISOString(),
+        scope: "definitions",
+      });
+      const [delivered] = await service.repository.listReminderAttempts(
+        f.runtime.agentId,
+      );
+      expect(delivered.outcome).toBe("delivered");
+      expect(delivered.reviewAt).toBeTruthy();
+      if (!delivered.reviewAt) throw Error("Missing persisted review deadline");
+      const reviewTime = Date.parse(delivered.reviewAt);
+      await service.processReminders({
+        now: new Date(reviewTime).toISOString(),
+        scope: "definitions",
+      });
+      const [reviewed] = await service.repository.listReminderAttempts(
+        f.runtime.agentId,
+      );
+      expect(reviewed.reviewStatus).toBe("resolved");
+      expect(reviewed.deliveryMetadata.reviewReason).toBe(
+        "one_shot_plan_delivered",
+      );
+      expect(
+        await service.repository.claimDueReminderReviewAttempts(
+          f.runtime.agentId,
+          new Date(reviewTime + 6 * 60000).toISOString(),
+          10,
+        ),
+      ).toEqual([]);
+      const occurrence = await service.repository.getOccurrence(
+        f.runtime.agentId,
+        delivered.ownerId,
+      );
+      expect(occurrence?.metadata.reminderAcknowledgedAt).toBeUndefined();
+      expect(occurrence?.state).not.toBe("completed");
+      expect(getRecordedTestNotifications(f.runtime)).toHaveLength(1);
+      expect(model).not.toHaveBeenCalled();
+    } finally {
+      model.mockRestore();
+      await f.cleanup();
+    }
+  },
+  120000,
+);
+
+it("processes a persisted owner snooze reply after the one-shot delivery", async () => {
+  const f = await createLifeOpsTestRuntime();
+  const model = vi
+    .spyOn(f.runtime, "useModel")
+    .mockRejectedValue(Error("Explicit snooze needs no inference"));
+  try {
+    const ownerId = randomUUID() as UUID;
+    const roomId = randomUUID() as UUID;
+    f.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId, false);
+    await f.runtime.ensureConnection({
+      entityId: ownerId,
+      roomId,
+      worldId: randomUUID() as UUID,
+      worldName: "Reminder review",
+      userName: "Owner",
+      name: "Owner",
+      source: "test",
+      type: ChannelType.DM,
+      channelId: roomId,
+    });
+    const service = new LifeOpsService(f.runtime);
+    const due = Date.now() + 1000;
+    await service.createDefinition({
+      title: "Review notebook",
+      kind: "habit",
+      priority: 3,
+      cadence: {
+        kind: "once",
+        dueAt: new Date(due).toISOString(),
+        visibilityLeadMinutes: 0,
+      },
+      timezone: "UTC",
+      metadata: {
+        ownerSurface: "OWNER_REMINDERS",
+        nativeProjection: "in_app_only",
+      },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    await service.processReminders({
+      now: new Date(due).toISOString(),
+      scope: "definitions",
+    });
+    const [delivered] = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(delivered.outcome).toBe("delivered");
+    const repliedAt = due + 89 * 60000;
+    await f.runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: f.runtime.agentId,
+        entityId: ownerId,
+        roomId,
+        createdAt: repliedAt,
+        content: { text: "Snooze Review notebook for 30 minutes" },
+      },
+      "messages",
+    );
+    await service.processReminders({
+      now: new Date(due + 91 * 60000).toISOString(),
+      scope: "definitions",
+    });
+    const occurrence = await service.repository.getOccurrence(
+      f.runtime.agentId,
+      delivered.ownerId,
+    );
+    expect(occurrence?.snoozedUntil).toBe(
+      new Date(repliedAt + 30 * 60000).toISOString(),
+    );
+    const [reviewed] = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(reviewed.reviewStatus).toBe("resolved");
+    expect(reviewed.deliveryMetadata.reviewDecision).toBe("snoozed");
+    expect(getRecordedTestNotifications(f.runtime)).toHaveLength(1);
+    expect(model).not.toHaveBeenCalled();
+  } finally {
+    model.mockRestore();
+    await f.cleanup();
+  }
+}, 120000);

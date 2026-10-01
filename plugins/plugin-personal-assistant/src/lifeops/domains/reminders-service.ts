@@ -3918,6 +3918,7 @@ export class RemindersDomain {
     );
     const nowMs = args.now.getTime();
     const planExhausted = nowMs >= lastScheduledPlanTime;
+    let suppressDefaultEscalation = false;
     const persistentOptIn =
       args.intensity === "persistent" &&
       args.intensitySource !== undefined &&
@@ -3959,9 +3960,9 @@ export class RemindersDomain {
           ),
         )
       ) {
-        // Saved one-shot reminders finish their configured delivery plan. Reading
-        // is not acknowledgement/completion; no occurrence state is changed.
-        return null;
+        // Delivery completion suppresses only the automatic follow-up. Owner
+        // replies and due review bookkeeping must still run below.
+        suppressDefaultEscalation = true;
       }
     }
     const reviewAttempt =
@@ -4123,6 +4124,34 @@ export class RemindersDomain {
           semanticReason: reviewTransition.observation.semanticReason,
         });
       }
+    }
+
+    if (suppressDefaultEscalation) {
+      if (
+        reviewDue &&
+        reviewAttempt &&
+        !isReminderReviewClosed(reviewAttempt)
+      ) {
+        // Close the review job, not the occurrence. A delivered/read notification
+        // does not mean the owner acknowledged or completed the reminder.
+        const reviewMetadata = {
+          [REMINDER_REVIEW_STATUS_METADATA_KEY]: "resolved",
+          ...(reviewAttempt.deliveryMetadata[
+            REMINDER_REVIEW_DECISION_METADATA_KEY
+          ] === undefined
+            ? { [REMINDER_REVIEW_DECISION_METADATA_KEY]: "no_response" }
+            : {}),
+          [REMINDER_REVIEW_REASON_METADATA_KEY]: "one_shot_plan_delivered",
+        };
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          reviewAttempt.id,
+          reviewAttempt.outcome,
+          reviewMetadata,
+        );
+        Object.assign(reviewAttempt.deliveryMetadata, reviewMetadata);
+        reviewAttempt.reviewStatus = "resolved";
+      }
+      return null;
     }
 
     if (
