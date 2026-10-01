@@ -17,6 +17,7 @@
 
 import { Hono } from "hono";
 import {
+  getRequestIp,
   moneyRateLimit,
   RateLimitPresets,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -34,14 +35,6 @@ import { logger, redact } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const oxaPayAdapter = createOxaPayPaymentAdapter();
-
-function getClientIp(c: AppContext): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    "unknown"
-  );
-}
 
 function getWebhookAllowedIps(env: AppContext["env"]): string[] {
   const raw = env.OXAPAY_WEBHOOK_IPS;
@@ -72,7 +65,7 @@ export function createOxaPayWebhookApp(
   const app = new Hono<AppEnv>();
 
   app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
-    const ip = getClientIp(c);
+    const ip = getRequestIp(c) ?? "unknown";
     const allowedIps = getWebhookAllowedIps(c.env);
     if (allowedIps.length > 0 && !allowedIps.includes(ip)) {
       logger.warn("[OxaPayWebhook API] Request from non-allowlisted IP", {

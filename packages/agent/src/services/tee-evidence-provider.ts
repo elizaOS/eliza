@@ -4,6 +4,7 @@
  * required boot gate fails closed; conflicting providers reject configuration.
  */
 import { ElizaError } from "@elizaos/core";
+import { isProtectedProfileSelected } from "../security/protected-profile-state.ts";
 import { createDstackEvidenceProvider } from "./tee-dstack-evidence.ts";
 import { resolveDstackEvidenceConfiguration } from "./tee-dstack-release.ts";
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
@@ -18,14 +19,24 @@ export type TeeEvidenceProviderFactory = (
 
 let registeredFactory: TeeEvidenceProviderFactory | undefined;
 
+function rejectUnderProtectedProfile(): void {
+  if (isProtectedProfileSelected()) {
+    throw new ElizaError(
+      "Protected profile admits only the pinned dstack evidence adapter",
+      { code: "TEE_PROTECTED_PROFILE_FACTORY_REJECTED" },
+    );
+  }
+}
+
 /**
  * Register the deployment's TEE evidence-provider factory. Called by the TEE
  * deployment plugin on load. The last registration wins; a CVM image loads
- * exactly one TEE provider plugin.
+ * exactly one TEE provider plugin. The protected profile refuses registration.
  */
 export function registerTeeEvidenceProviderFactory(
   factory: TeeEvidenceProviderFactory,
 ): void {
+  rejectUnderProtectedProfile();
   registeredFactory = factory;
 }
 
@@ -36,6 +47,7 @@ export function hasTeeEvidenceProviderFactory(): boolean {
 
 /** Reset the registration. Tests only — production registers exactly once. */
 export function clearTeeEvidenceProviderFactory(): void {
+  rejectUnderProtectedProfile();
   registeredFactory = undefined;
 }
 

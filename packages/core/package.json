@@ -315,18 +315,6 @@
 			"import": "./dist/config/ui-spec.js",
 			"default": "./dist/config/ui-spec.js"
 		},
-		"./config/zod-schema.agent-runtime": {
-			"eliza-source": "./src/config/zod-schema.agent-runtime.ts",
-			"types": "./dist/config/zod-schema.agent-runtime.d.ts",
-			"import": "./dist/config/zod-schema.agent-runtime.js",
-			"default": "./dist/config/zod-schema.agent-runtime.js"
-		},
-		"./config/zod-schema.core": {
-			"eliza-source": "./src/config/zod-schema.core.ts",
-			"types": "./dist/config/zod-schema.core.d.ts",
-			"import": "./dist/config/zod-schema.core.js",
-			"default": "./dist/config/zod-schema.core.js"
-		},
 		"./connector-account-catalog": {
 			"eliza-source": "./src/connector-account-catalog.ts",
 			"types": "./dist/connector-account-catalog.d.ts",

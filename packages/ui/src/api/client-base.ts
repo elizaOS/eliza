@@ -58,7 +58,8 @@ import {
 } from "../utils/streaming-text.js";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { CSRF_HEADER_NAME } from "./auth/sessions";
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "./auth/sessions";
+import { lastActivityHeadersForUrl } from "./auth/user-activity";
 import {
   type AccountConnectRequest,
   ApiError,
@@ -1986,6 +1987,18 @@ export class ElizaClient {
     ) {
       const csrfToken = readCsrfTokenForUrl(requestUrl);
       if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
+    }
+    if (
+      !isDedicatedCloudRequest &&
+      !isEncryptedRelayRequest &&
+      !Object.keys(headers).some(
+        (name) => name.toLowerCase() === LAST_ACTIVITY_HEADER_NAME,
+      )
+    ) {
+      Object.assign(
+        headers,
+        lastActivityHeadersForUrl(requestUrl, this.baseUrl),
+      );
     }
     const correlation = headers[SHARED_TURN_CORRELATION_HEADER];
     if (correlation) {

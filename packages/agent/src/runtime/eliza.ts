@@ -100,7 +100,17 @@ import {
 import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
 import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
-import { SandboxAuditLog } from "../security/audit-log.ts";
+import {
+  createRuntimeLogAuditSink,
+  reportDetachedAuditRecord,
+  SandboxAuditLog,
+} from "../security/audit-log.ts";
+import {
+  captureProtectedProfile,
+  ensureProtectedProfileAdmission,
+  isProtectedProfileSelected,
+  protectedTeeEnvironment,
+} from "../security/protected-profile.ts";
 import type { AgentBackupRestoreV3RuntimeGeneration } from "../services/agent-backup-restore-v3-runtime-generation";
 import { EscalationService } from "../services/escalation.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
@@ -3861,6 +3871,11 @@ export async function startEliza(
   // Programmatic hosts bypass bin.ts, so establish the same one-shot authority
   // before config loading and static plugin registration here as well.
   captureHostExecutionBaseline();
+  // The protected profile is captured from the entry environment and admitted
+  // before config loading, vault hydration, plugin resolution or any listener.
+  // Admission failure rejects boot; there is no degraded protected mode.
+  captureProtectedProfile();
+  await ensureProtectedProfileAdmission();
   opts?.abortSignal?.throwIfAborted();
   const bootContext =
     opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
@@ -4515,7 +4530,12 @@ export async function startEliza(
   let sandboxAuditLog: SandboxAuditLog | null = null;
   if (isSandboxActive) {
     logger.info(`[eliza] Sandbox mode: ${sandboxMode}`);
-    sandboxAuditLog = new SandboxAuditLog({ console: true });
+    // The protected profile holds audit entries in an ordered outbox until the
+    // runtime-log durable sink attaches after runtime initialization.
+    sandboxAuditLog = new SandboxAuditLog({
+      console: true,
+      requireDurableSink: isProtectedProfileSelected(),
+    });
     // Standard/max modes also start the container sandbox manager
     if (sandboxMode === "standard" || sandboxMode === "max") {
       const dockerSettings = (
@@ -4559,11 +4579,13 @@ export async function startEliza(
         // Non-fatal: light mode fallback
       }
     }
-    sandboxAuditLog.record({
-      type: "sandbox_lifecycle",
-      summary: `Sandbox initialized: mode=${sandboxMode}`,
-      severity: "info",
-    });
+    reportDetachedAuditRecord(
+      sandboxAuditLog.record({
+        type: "sandbox_lifecycle",
+        summary: `Sandbox initialized: mode=${sandboxMode}`,
+        severity: "info",
+      }),
+    );
   }
   // ── End sandbox setup ───────────────────────────────────────────────────
   const pluginsForRuntime = otherPlugins.map((p) => p.plugin);
@@ -4631,10 +4653,12 @@ export async function startEliza(
               sandboxMode: true,
               sandboxAuditHandler: sandboxAuditLog
                 ? (event: SandboxFetchAuditEvent) => {
-                    sandboxAuditLog.recordTokenReplacement(
-                      event.direction,
-                      event.url,
-                      event.tokenIds,
+                    reportDetachedAuditRecord(
+                      sandboxAuditLog.recordTokenReplacement(
+                        event.direction,
+                        event.url,
+                        event.tokenIds,
+                      ),
                     );
                   }
                 : undefined,
@@ -4829,6 +4853,9 @@ export async function startEliza(
     await runRuntimeStartupMaintenance(runtime, opts?.abortSignal);
     opts?.abortSignal?.throwIfAborted();
     bootTimer.lap("svc:startup-maintenance");
+    if (sandboxAuditLog && isProtectedProfileSelected()) {
+      await sandboxAuditLog.addSink(await createRuntimeLogAuditSink(runtime));
+    }
     // Pre-ready hooks are declared in registry data and drained here so every
     // host (including headless agent-server) observes the same fixed point.
     // A declared hook failure rejects boot; readiness must never hide a broken
@@ -4883,19 +4910,23 @@ export async function startEliza(
       // The concrete evidence provider (dstack/CoVE) is registered by the TEE
       // deployment plugin through the host seam; absent that plugin this is
       // undefined and a required policy fails closed (secrets disabled).
-      const evidenceProvider = resolveTeeEvidenceProvider({ env: process.env });
+      const env = protectedTeeEnvironment();
+      const evidenceProvider = resolveTeeEvidenceProvider({ env });
       teeBootGate = await evaluateTeeBootGate({
-        env: process.env,
+        env,
         ...(evidenceProvider ? { evidenceProvider } : {}),
       });
     } catch (err) {
       // A TEE policy was configured but evidence could not be collected or
       // evaluated. Fail closed rather than crash the boot.
+      const productionProfile =
+        protectedTeeEnvironment().ELIZA_TEE_PRODUCTION_PROFILE;
       teeBootGate = {
         policy: undefined,
         teeConfigured: true,
         required: true,
-        productionProfile: process.env.ELIZA_TEE_PRODUCTION_PROFILE === "true",
+        productionProfile:
+          productionProfile === "true" || productionProfile === "dstack-cpu",
         secretsEnabled: false,
       };
       logger.error(
@@ -4942,7 +4973,7 @@ export async function startEliza(
       // the re-attesting provider is simply absent (the gate would not have
       // reached here under a required policy).
       const signingEvidenceProvider = teePolicy?.required
-        ? resolveTeeEvidenceProvider({ env: process.env })
+        ? resolveTeeEvidenceProvider({ env: protectedTeeEnvironment() })
         : undefined;
       const signing = createTeeGatedRemoteSigningService({
         signer,

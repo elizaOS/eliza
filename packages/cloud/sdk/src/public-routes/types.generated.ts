@@ -378,6 +378,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/mcps": Record<never, never>;
   "GET /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "GET /api/v1/me/account-deletion": Record<never, never>;
+  "GET /api/v1/me/consents": Record<never, never>;
   "GET /api/v1/me/mfa": Record<never, never>;
   "GET /api/v1/models": Record<never, never>;
   "GET /api/v1/models/{model}": {
@@ -780,6 +781,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/mcps": Record<never, never>;
   "POST /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "POST /api/v1/me/account-deletion": Record<never, never>;
+  "POST /api/v1/me/consents": Record<never, never>;
+  "POST /api/v1/me/data-export": Record<never, never>;
   "POST /api/v1/messages": Record<never, never>;
   "POST /api/v1/models/status": Record<never, never>;
   "POST /api/v1/oauth-intents": Record<never, never>;
@@ -1144,6 +1147,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/mcps": never;
   "GET /api/v1/mcps/{mcpId}": never;
   "GET /api/v1/me/account-deletion": never;
+  "GET /api/v1/me/consents": never;
   "GET /api/v1/me/mfa": never;
   "GET /api/v1/models": never;
   "GET /api/v1/models/{model}": never;
@@ -1439,6 +1443,8 @@ export interface PublicRouteHeaders {
   "POST /api/v1/mcps": never;
   "POST /api/v1/mcps/{mcpId}/publish": never;
   "POST /api/v1/me/account-deletion": never;
+  "POST /api/v1/me/consents": never;
+  "POST /api/v1/me/data-export": never;
   "POST /api/v1/messages": never;
   "POST /api/v1/models/status": never;
   "POST /api/v1/oauth-intents": never;

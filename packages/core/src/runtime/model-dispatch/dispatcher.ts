@@ -25,6 +25,10 @@ import {
 	collectPiiPromptText,
 	type PseudonymSession,
 } from "../../security/pii-pseudonymizer.js";
+import {
+	admitProcessing,
+	type ProcessingPolicy,
+} from "../../security/processing-policy";
 import type { SecretSwapSession } from "../../security/secret-swap";
 import {
 	getStreamingContext,
@@ -98,6 +102,12 @@ import {
 	omitUnvalidatedProviderSpans,
 } from "../trajectory-provider-attribution";
 import {
+	LLM_MODE_OVERRIDE_MODEL_TYPES,
+	modalityForModelType,
+	PII_SWAP_SKIP_MODEL_TYPES,
+	SECRET_SWAP_SKIP_MODEL_TYPES,
+} from "./modality.js";
+import {
 	assertModelResultPresent,
 	assertRuntimeModelOutputComplete,
 	isTextStreamResult,
@@ -111,6 +121,7 @@ import {
 
 export interface RuntimeModelDispatchHost {
 	confidentialInference(): ConfidentialInferenceAuthority | undefined;
+	processingPolicy(): ProcessingPolicy | undefined;
 	models(): Map<string, ModelHandler[]>;
 	pinnedEmbeddingProvider(): string | undefined;
 	validateEmbeddingOutput(
@@ -916,28 +927,14 @@ export class RuntimeModelDispatch {
 			}
 		}
 
-		let requestedModelKey = String(modelType);
+		// The caller's model type, before any LLM-mode override rewrites it.
+		const callerModelKey = String(modelType);
+		let requestedModelKey = callerModelKey;
 
 		// Apply LLM mode override for text generation models
 		const llmMode = this.runtime.getLLMMode();
 		if (llmMode !== "DEFAULT") {
-			// List of text generation model types that can be overridden
-			const textGenerationModels = [
-				ModelType.TEXT_NANO,
-				ModelType.TEXT_SMALL,
-				ModelType.TEXT_MEDIUM,
-				ModelType.TEXT_LARGE,
-				ModelType.TEXT_MEGA,
-				ModelType.RESPONSE_HANDLER,
-				ModelType.ACTION_PLANNER,
-				ModelType.TEXT_COMPLETION,
-			];
-
-			if (
-				textGenerationModels.includes(
-					requestedModelKey as (typeof textGenerationModels)[number],
-				)
-			) {
+			if (LLM_MODE_OVERRIDE_MODEL_TYPES.has(requestedModelKey)) {
 				const overrideModelKey =
 					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
 				if (requestedModelKey !== overrideModelKey) {
@@ -1023,6 +1020,27 @@ export class RuntimeModelDispatch {
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
+			// Processing admission precedes every payload transformation (secret/PII
+			// swap, hooks) and the handler, so a denied destination receives nothing.
+			// A denial is terminal and keeps any earlier provider failure as cause.
+			await admitProcessing(
+				this.host.processingPolicy(),
+				this.runtime.agentId,
+				{
+					kind: "model_attempt",
+					model: {
+						modelType: String(resolvedModelKey),
+						requestedModelType: callerModelKey,
+						modality: modalityForModelType(String(resolvedModelKey)),
+						provider: resolvedModel.provider,
+						handler,
+						attempt: providerAttempts.length + 1,
+						reason: providerAttempts.length > 0 ? "failover" : "primary",
+					},
+				},
+				lastModelError,
+			);
+			throwIfAborted();
 			providerAttemptStartedOutput = false;
 			const attemptMeta = {
 				modelKey: String(resolvedModelKey),
@@ -1060,32 +1078,17 @@ export class RuntimeModelDispatch {
 
 			try {
 				throwIfAborted();
-				const binaryModels: string[] = [
-					ModelType.TRANSCRIPTION,
-					ModelType.IMAGE,
-					ModelType.AUDIO,
-					ModelType.VIDEO,
-				];
-				// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
-				// (a random per-turn surrogate would destabilize embeddings), but — unlike
-				// the secret gate — swaps IMAGE prompts, whose text can carry real names.
-				const PII_SWAP_SKIP_MODELS: string[] = [
-					ModelType.TRANSCRIPTION,
-					ModelType.AUDIO,
-					ModelType.VIDEO,
-					ModelType.TEXT_EMBEDDING,
-				];
 				const shouldSubstituteSecrets =
 					this.host.isSecretSwapEnabled() &&
-					!binaryModels.includes(resolvedModelKey);
+					!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey);
+				const shouldSubstitutePii =
+					this.host.isPiiSwapEnabled() &&
+					!PII_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey);
 				// Validate the caller-owned graph before `isPlainObject` / object spread
 				// below can reflect it. The later collection still runs after secret swap
 				// so NER never sees raw secrets; this preflight exists to make the earlier
 				// runtime cloning boundary descriptor-safe and fail-closed as well.
-				if (
-					this.host.isPiiSwapEnabled() &&
-					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
-				) {
+				if (shouldSubstitutePii) {
 					collectPiiPromptText(params);
 				}
 				let modelParams: ModelParamsMap[T];
@@ -1413,16 +1416,9 @@ export class RuntimeModelDispatch {
 							: secretSwapSession.substituteText(effectiveSystemPrompt);
 				}
 
-				// Models the PII swap must NOT touch: binary-input modalities (nothing to
-				// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
-				// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
-				// surrogate would embed the same real text differently every turn and wreck
-				// semantic memory retrieval; embeddings stay on the real text).
+				// PII_SWAP_SKIP_MODEL_TYPES documents which slots stay on real text.
 				let piiIngressText = "";
-				if (
-					this.host.isPiiSwapEnabled() &&
-					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
-				) {
+				if (shouldSubstitutePii) {
 					// Turn-scoped like the secret session (same mapping all turn), so the
 					// execution boundary can restore what this call swapped.
 					const trajectoryCtx = getTrajectoryContext();
@@ -1578,7 +1574,7 @@ export class RuntimeModelDispatch {
 					this.freezeAdmittedModelRequest(modelParams);
 				}
 
-				if (!binaryModels.includes(resolvedModelKey)) {
+				if (!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)) {
 					this.runtime.logger.trace(
 						{
 							src: "agent",

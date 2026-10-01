@@ -36,7 +36,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { ElizaError, isBlockedSpawnEnvKey } from "@elizaos/core";
+import { ElizaError, isBlockedSpawnEnvKey, isProcessOnlyEnvKey } from "@elizaos/core";
 
 import { resolveStateDir } from "./state-paths";
 
@@ -68,7 +68,7 @@ const KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
  *    vault reference. Ten of the thirteen match that heuristic
  *    (`ELIZA_API_TOKEN`, `EVM_PRIVATE_KEY`, `GITHUB_TOKEN`, ...), so using the
  *    agent predicate here would reject the very migration the vault bootstrap
- *    exists to perform. Only injection primitives belong on this gate.
+ *    exists to perform. Process-only authority families are guarded separately.
  */
 const BLOCKED_CONFIG_ENV_KEYS: ReadonlySet<string> = new Set([
   "NODE_OPTIONS",
@@ -159,6 +159,12 @@ function validateKey(key: string): void {
     throw new ElizaError(
       `persistConfigEnv: key "${key}" is a shell/runtime hijack vector and cannot be written`,
       { code: "CONFIG_ENV_BLOCKED_KEY" }
+    );
+  }
+  if (isProcessOnlyEnvKey(key)) {
+    throw new ElizaError(
+      `persistConfigEnv: key "${key}" is process-environment only and cannot be written`,
+      { code: "CONFIG_ENV_PROCESS_ONLY_KEY" }
     );
   }
 }

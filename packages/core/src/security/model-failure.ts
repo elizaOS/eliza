@@ -22,6 +22,7 @@ import {
 	stripPairedTagBlocks,
 	stripUnclosedTagSuffix,
 } from "../utils/reasoning-tags.ts";
+import { isProcessingPolicyDenial } from "./processing-policy.ts";
 
 type ErrorWithStatus = {
 	name?: unknown;
@@ -289,6 +290,7 @@ export function isModelProviderFallbackError(
 ): boolean {
 	if (
 		isModelFundingAuthorityError(error) ||
+		isProcessingPolicyDenial(error) ||
 		modelType === ModelType.TEXT_TO_SPEECH
 	) {
 		return false;

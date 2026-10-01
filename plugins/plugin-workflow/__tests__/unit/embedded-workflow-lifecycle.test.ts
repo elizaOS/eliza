@@ -1,11 +1,15 @@
 /** Exercises native workflow persistence, scheduling, revision restore, and deletion against real SQL. */
 
+import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
 import { WORKFLOW_JSON_UNBOUNDED } from '../../src/services/workflow-json';
 import type {
   WorkflowDefinition,
@@ -461,3 +465,268 @@ describe('embedded native workflow lifecycle', () => {
     });
   }, 15_000);
 });
+
+describe('durable cancellation of native Smithers waits', () => {
+  test.each(['approval', 'signal'] as const)(
+    'cancels parked %s without generation or stale resume',
+    async (kind) => {
+      const context = await harness();
+      let service = context.service;
+      const { runtime } = context;
+      let calls = 0;
+      runtime.useModel = (async () => {
+        calls++;
+        return '{"message":"must not run"}';
+      }) as IAgentRuntime['useModel'];
+      const workflow = await service.createWorkflow({
+        name: `Cancel parked ${kind}`,
+        active: false,
+        language: 'tsx',
+        source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { approvalDecisionSchema } from "smthrs";
+import { z } from "zod";
+const { Workflow, Sequence, Approval, Signal, Task, smithers, outputs } = createSmithers({decision:approvalDecisionSchema, signal:z.object({message:z.string()}), output:z.object({message:z.string()})}, {dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+export default smithers(() => <Workflow name="cancel-wait">${kind === 'approval' ? '<Sequence><Approval id="gate" output={outputs.decision} request={{title:"Do not approve"}} /><Task id="work" output={outputs.output} agent={globalThis.__elizaSmithers.agent}>Must not run</Task></Sequence>' : '<Signal id="gate" schema={outputs.signal}>{data => <Task id="work" output={outputs.output} agent={globalThis.__elizaSmithers.agent}>{data.message}</Task>}</Signal>'}</Workflow>);`,
+        steps: [],
+        widgets: [],
+      });
+      const dir = resolveSmithersWorkflowDir(runtime.agentId, workflow.id);
+      try {
+        const parked = await service.executeWorkflow(workflow.id, { mode: 'manual' });
+        expect(parked.status).toBe(kind === 'approval' ? 'waiting-approval' : 'waiting-event');
+        expect(calls).toBe(0);
+        if (kind === 'approval') {
+          const previousEvents = structuredClone(parked.events ?? []);
+          const previousApprovals = structuredClone(parked.approvals);
+          await service.stop();
+          service = await EmbeddedWorkflowService.start(runtime);
+          let resumed = await service.getExecution(parked.id);
+          for (
+            let attempt = 0;
+            attempt < 500 &&
+            (resumed.status !== 'waiting-approval' ||
+              (resumed.events?.length ?? 0) <= previousEvents.length);
+            attempt++
+          ) {
+            await Bun.sleep(10);
+            resumed = await service.getExecution(parked.id);
+          }
+          expect(resumed.status).toBe('waiting-approval');
+          expect(resumed.events?.slice(0, previousEvents.length)).toEqual(previousEvents);
+          expect(resumed.events!.length).toBeGreaterThan(previousEvents.length);
+          expect(new Set(resumed.events!.map((event) => event.id)).size).toBe(
+            resumed.events!.length
+          );
+          expect(resumed.approvals).toEqual(previousApprovals);
+          expect(calls).toBe(0);
+        }
+        const cancelled = await service.cancelExecution(parked.id);
+        expect(cancelled.status).toBe('cancelled');
+        expect(cancelled.finished).toBe(true);
+        expect(cancelled.stoppedAt).toBeTruthy();
+        expect(await service.cancelExecution(parked.id)).toEqual(cancelled);
+        const db = new Database(join(dir, 'runs.sqlite'), { readonly: true });
+        try {
+          expect(
+            db.query('SELECT status FROM _smithers_runs WHERE run_id = ?').get(parked.id)
+          ).toMatchObject({ status: 'cancelled' });
+        } finally {
+          db.close();
+        }
+        await expect(service.decideApproval(parked.id, 'gate', 0, true)).rejects.toMatchObject({
+          statusCode: 409,
+        });
+        await expect(
+          service.signalExecution(parked.id, 'gate', { message: 'late' })
+        ).rejects.toMatchObject({ statusCode: 409 });
+        expect((await service.getExecution(parked.id)).status).toBe('cancelled');
+        // An in-flight control/event may still hold a pre-cancellation snapshot.
+        const internals = service as unknown as {
+          saveExecution(run: WorkflowExecution): Promise<void>;
+        };
+        await internals.saveExecution(parked);
+        expect((await service.getExecution(parked.id)).status).toBe('cancelled');
+        const read = service.getExecution.bind(service);
+        let reads = 0;
+        service.getExecution = async (id) => (reads++ === 0 ? parked : read(id));
+        try {
+          if (kind === 'approval') {
+            await expect(service.decideApproval(parked.id, 'gate', 0, true)).rejects.toBeDefined();
+          } else {
+            expect(
+              (await service.signalExecution(parked.id, 'gate', { message: 'stale in-flight' }))
+                .status
+            ).toBe('cancelled');
+          }
+        } finally {
+          service.getExecution = read;
+        }
+        expect((await service.getExecution(parked.id)).status).toBe('cancelled');
+        expect(calls).toBe(0);
+      } finally {
+        await service.stop();
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    60_000
+  );
+});
+
+test('cancellation still aborts an active native worker and durably fences its run', async () => {
+  const { service, runtime } = await harness();
+  let started!: () => void;
+  const admitted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let calls = 0;
+  runtime.useModel = (async (_type: unknown, options: { signal?: AbortSignal }) => {
+    calls++;
+    started();
+    return new Promise((_resolve, reject) => {
+      const abort = () => reject(new Error('Synthetic generation cancelled'));
+      options.signal?.addEventListener('abort', abort, { once: true });
+      if (options.signal?.aborted) abort();
+    });
+  }) as IAgentRuntime['useModel'];
+  const workflow = await service.createWorkflow({
+    name: 'Cancel active worker',
+    active: false,
+    language: 'tsx',
+    steps: [],
+    widgets: [],
+    source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+const {Workflow,Task,smithers,outputs}=createSmithers({output:z.object({message:z.string()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+export default smithers(()=><Workflow name="active"><Task id="work" output={outputs.output} agent={globalThis.__elizaSmithers.agent}>Controlled local test</Task></Workflow>);`,
+  });
+  const dir = resolveSmithersWorkflowDir(runtime.agentId, workflow.id);
+  try {
+    const queued = await service.startWorkflow(workflow.id);
+    await admitted;
+    const cancelled = await service.cancelExecution(queued.id);
+    expect(cancelled).toMatchObject({ status: 'cancelled', finished: true });
+    expect(calls).toBe(1);
+    const db = new Database(join(dir, 'runs.sqlite'), { readonly: true });
+    try {
+      expect(
+        db.query('SELECT status FROM _smithers_runs WHERE run_id = ?').get(queued.id)
+      ).toMatchObject({ status: 'cancelled' });
+    } finally {
+      db.close();
+    }
+    expect(await service.cancelExecution(queued.id)).toEqual(cancelled);
+  } finally {
+    await service.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test('fails closed when native completion won but its terminal payload was not received', async () => {
+  const { service, runtime, client } = await harness();
+  let calls = 0;
+  runtime.useModel = (async () => {
+    calls++;
+    return '{"message":"Durably finished"}';
+  }) as IAgentRuntime['useModel'];
+  const workflow = await service.createWorkflow({
+    name: 'Finish wins',
+    active: false,
+    language: 'tsx',
+    steps: [],
+    widgets: [],
+    source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+const {Workflow,Task,smithers,outputs}=createSmithers({output:z.object({message:z.string()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+export default smithers(()=><Workflow name="finished"><Task id="work" output={outputs.output} agent={globalThis.__elizaSmithers.agent}>Controlled local test</Task></Workflow>);`,
+  });
+  const dir = resolveSmithersWorkflowDir(runtime.agentId, workflow.id);
+  try {
+    const finished = await service.executeWorkflow(workflow.id);
+    expect(finished.status).toBe('finished');
+    expect(await service.cancelExecution(finished.id)).toEqual(finished);
+    // Model a delayed host projection after Smithers committed the finish winner.
+    await client.query(
+      `UPDATE workflow.embedded_executions SET status='cancelled', finished=true,
+      execution=(execution - 'output' - 'error' - 'nextRunId') || '{"status":"cancelled","finished":true}'::jsonb WHERE id=$1`,
+      [finished.id]
+    );
+    await expect(service.cancelExecution(finished.id)).rejects.toMatchObject({
+      statusCode: 409,
+      response: { code: 'WORKFLOW_TERMINAL_RESULT_UNAVAILABLE', nativeStatus: 'finished' },
+    });
+    const reconciled = await service.getExecution(finished.id);
+    expect(reconciled).toMatchObject({ status: 'failed', finished: true });
+    expect(reconciled.output).toBeUndefined();
+    expect(reconciled.error?.message).toContain('terminal result was not captured');
+    expect(calls).toBe(1);
+    const db = new Database(join(dir, 'runs.sqlite'), { readonly: true });
+    try {
+      expect(
+        db.query('SELECT status FROM _smithers_runs WHERE run_id = ?').get(finished.id)
+      ).toMatchObject({ status: 'finished' });
+    } finally {
+      db.close();
+    }
+    expect(await service.cancelExecution(finished.id)).toEqual(reconciled);
+    await expect(service.decideApproval(finished.id, 'gate', 0, true)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    await expect(service.signalExecution(finished.id, 'gate', {})).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    await service.stop();
+    const restarted = await EmbeddedWorkflowService.start(runtime);
+    try {
+      expect((await restarted.getExecution(finished.id)).status).toBe('failed');
+      expect(calls).toBe(1);
+    } finally {
+      await restarted.stop();
+    }
+  } finally {
+    await service.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test('immediate cancellation before a native run row exists stays idempotent', async () => {
+  const { service, runtime } = await harness();
+  let calls = 0;
+  runtime.useModel = (async () => {
+    calls++;
+    throw new Error('Early cancelled workflow must not generate');
+  }) as IAgentRuntime['useModel'];
+  const workflow = await service.createWorkflow({
+    name: 'Cancel before worker admission',
+    active: false,
+    language: 'tsx',
+    steps: [],
+    widgets: [],
+    source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+const {Workflow,Task,smithers,outputs}=createSmithers({output:z.object({message:z.string()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+export default smithers(()=><Workflow name="immediate"><Task id="work" output={outputs.output} agent={globalThis.__elizaSmithers.agent}>Must not generate</Task></Workflow>);`,
+  });
+  const dir = resolveSmithersWorkflowDir(runtime.agentId, workflow.id);
+  try {
+    const queued = await service.startWorkflow(workflow.id);
+    const cancelled = await service.cancelExecution(queued.id);
+    expect(cancelled).toMatchObject({ status: 'cancelled', finished: true });
+    const db = new Database(join(dir, 'runs.sqlite'), { readonly: true });
+    try {
+      expect(
+        db.query('SELECT status FROM _smithers_runs WHERE run_id = ?').get(queued.id)
+      ).toBeNull();
+    } finally {
+      db.close();
+    }
+    expect(await service.cancelExecution(queued.id)).toEqual(cancelled);
+    expect(calls).toBe(0);
+  } finally {
+    await service.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60_000);

@@ -5,6 +5,7 @@
  */
 
 import z from "zod";
+import { canonicalBackupJson } from "./agent-backup-canonical-json.js";
 
 export const AGENT_BACKUP_MANIFEST_FORMAT = "elizaos.agent-backup" as const;
 export const AGENT_BACKUP_MANIFEST_V2_SCHEMA_VERSION = 2 as const;
@@ -799,34 +800,6 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function canonicalJson(value: unknown): string {
-	if (
-		value === null ||
-		typeof value === "boolean" ||
-		typeof value === "string"
-	) {
-		return JSON.stringify(value);
-	}
-	if (typeof value === "number") {
-		if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
-			throw new TypeError(
-				"Canonical backup JSON only permits safe, non-negative integers",
-			);
-		}
-		return String(value);
-	}
-	if (Array.isArray(value)) {
-		return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
-	}
-	if (!isJsonRecord(value)) {
-		throw new TypeError("Canonical backup JSON contains a non-JSON value");
-	}
-	return `{${Object.keys(value)
-		.sort()
-		.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-		.join(",")}}`;
-}
-
 async function sha256BytesHex(bytes: Uint8Array): Promise<string> {
 	const digest = await globalThis.crypto.subtle.digest(
 		"SHA-256",
@@ -897,7 +870,7 @@ export type AgentBackupDekContextInput = z.infer<
 export function canonicalizeAgentBackupDekContext(
 	input: AgentBackupDekContextInput,
 ): string {
-	return canonicalJson({
+	return canonicalBackupJson({
 		derivation: AGENT_BACKUP_DEK_CONTEXT_DERIVATION,
 		...AgentBackupDekContextInputSchema.parse(input),
 	});
@@ -911,7 +884,7 @@ export function canonicalizeAgentBackupChunkAad(
 	input: AgentBackupChunkAadInput,
 ): string {
 	const parsed = AgentBackupChunkAadInputSchema.parse(input);
-	return canonicalJson({
+	return canonicalBackupJson({
 		format: "elizaos.agent-backup.chunk-aad",
 		version: 1,
 		...parsed,
@@ -975,7 +948,7 @@ function draftFromManifest(
 export function canonicalizeAgentBackupManifestV2(
 	draft: AgentBackupManifestV2Draft,
 ): string {
-	return canonicalJson(AgentBackupManifestV2DraftSchema.parse(draft));
+	return canonicalBackupJson(AgentBackupManifestV2DraftSchema.parse(draft));
 }
 
 export async function computeAgentBackupManifestV2Digest(
@@ -995,7 +968,7 @@ export async function computeAgentBackupManifestV2Digest(
 
 function assertManifestCanonicalBytes(manifest: AgentBackupManifestV2): void {
 	const byteLength = new TextEncoder().encode(
-		canonicalJson(manifest),
+		canonicalBackupJson(manifest),
 	).byteLength;
 	if (byteLength > AGENT_BACKUP_MANIFEST_V2_LIMITS.maxManifestBytes) {
 		throw new RangeError(
@@ -1784,14 +1757,16 @@ function assertManifestLedgerExpectations(
 	},
 ): void {
 	if (
-		canonicalJson(manifest.source) !== canonicalJson(expected.expectedSource)
+		canonicalBackupJson(manifest.source) !==
+		canonicalBackupJson(expected.expectedSource)
 	) {
 		throw new Error(
 			"Backup source provenance does not match trusted authority",
 		);
 	}
 	if (
-		canonicalJson(manifest.runtime) !== canonicalJson(expected.expectedRuntime)
+		canonicalBackupJson(manifest.runtime) !==
+		canonicalBackupJson(expected.expectedRuntime)
 	) {
 		throw new Error("Backup runtime does not match trusted authority");
 	}
@@ -1836,7 +1811,7 @@ function assertSameRestoreLease(
 	actual: AgentBackupManifestV2RestoreLease,
 	expected: AgentBackupManifestV2RestoreLease,
 ): void {
-	if (canonicalJson(actual) !== canonicalJson(expected)) {
+	if (canonicalBackupJson(actual) !== canonicalBackupJson(expected)) {
 		throw new Error("Backup restore lease or catalog epoch changed");
 	}
 }
@@ -1952,7 +1927,7 @@ function assertRestoreChainBudgets(
 		encryptedBytes += entry.manifest.totals.encryptedBytes;
 		chunkCount += entry.manifest.totals.chunkCount;
 		manifestBytes += new TextEncoder().encode(
-			canonicalJson(entry.manifest),
+			canonicalBackupJson(entry.manifest),
 		).byteLength;
 		wrappedDekBytes += entry.manifest.encryption.wrappedDek.bytes;
 		if (
@@ -1982,7 +1957,7 @@ function assertDeltaOverlayChain(
 	let contentAddressing: string | undefined;
 	for (const [manifestIndex, entry] of chain.entries()) {
 		const { manifest } = entry;
-		const currentContentAddressing = canonicalJson(
+		const currentContentAddressing = canonicalBackupJson(
 			manifest.integrity.contentAddressing,
 		);
 		if (
@@ -2808,7 +2783,7 @@ async function sealStaging(
 			internal.control,
 		),
 	);
-	if (canonicalJson(receipt) !== canonicalJson(receiptInput)) {
+	if (canonicalBackupJson(receipt) !== canonicalBackupJson(receiptInput)) {
 		throw new Error("Backup staging returned a mismatched durable receipt");
 	}
 	return deepFreeze(receipt);
@@ -2840,8 +2815,8 @@ function assertCommitReceipt(
 		receipt.operationId !== internal.session.operationId ||
 		receipt.expectedManifestSha256 !==
 			internal.session.expectedManifestSha256 ||
-		canonicalJson(receipt.restoreLease) !==
-			canonicalJson(authority.restoreLease)
+		canonicalBackupJson(receipt.restoreLease) !==
+			canonicalBackupJson(authority.restoreLease)
 	) {
 		throw new Error("Backup commit returned a mismatched durable receipt");
 	}

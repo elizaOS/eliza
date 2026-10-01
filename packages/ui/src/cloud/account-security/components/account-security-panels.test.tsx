@@ -56,13 +56,6 @@ vi.mock("../data/audit-client", () => ({
   emitAuditEvent: vi.fn(),
 }));
 
-vi.mock("../data/consent-store", () => ({
-  getTrajectoryLoggingEnabled: vi.fn(() => false),
-  getVisionEnabled: vi.fn(() => false),
-  setTrajectoryLoggingEnabled: vi.fn(),
-  setVisionEnabled: vi.fn(),
-}));
-
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
@@ -221,12 +214,14 @@ describe("account-security panels", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("keeps export unavailable while wiring the real account-deletion endpoint", () => {
+  it("wires export to the live-account endpoint and deletion to its lifecycle", () => {
     const source = readFileSync(PRIVACY_PANEL_SOURCE, "utf8");
     const deletionDialog = readFileSync(ACCOUNT_DELETION_DIALOG_SOURCE, "utf8");
     const deletionPage = readFileSync(ACCOUNT_DELETION_PAGE_SOURCE, "utf8");
 
-    expect(source).toContain("Export unavailable");
+    expect(source).toContain("downloadAccountDataExport");
+    expect(source).not.toContain("Export unavailable");
+    expect(source).not.toContain("consent-store");
     expect(source).toContain("<AccountDeletionDialog />");
     expect(source).not.toContain("Deletion unavailable");
     expect(deletionDialog).toContain('data-testid="delete-account-trigger"');

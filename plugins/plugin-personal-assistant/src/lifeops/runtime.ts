@@ -53,6 +53,7 @@ export async function executeLifeOpsSchedulerTask(
   options: Record<string, unknown> = {},
 ): Promise<{
   nextInterval: number;
+  nextWakeAt?: number;
   now: string;
   reminderAttempts: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
@@ -158,6 +159,12 @@ export async function executeLifeOpsSchedulerTask(
 
   return {
     nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
+    // Mutation wake requests report unsupported adapters once per mutation;
+    // their regular ticks retain interval cadence without repeated diagnostics.
+    nextWakeAt:
+      runtime.adapter?.supportsAtomicTaskWake === true
+        ? scheduledWork.nextWakeAt
+        : undefined,
     now: scheduledWork.now,
     reminderAttempts: scheduledWork.reminderAttempts,
     workflowRuns: scheduledWork.workflowRuns,

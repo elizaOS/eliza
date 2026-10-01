@@ -63,7 +63,10 @@ if (mode === 'ignore-termination') {
   }, 5);
 } else if (mode === 'event-before-result') {
   emit({ kind: 'event', event: { type: 'TaskStarted' } });
-  emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
+  emit({
+    kind: 'result',
+    result: { runId: payload.runId, status: 'finished', ...payload.input.terminalResult },
+  });
 } else if (mode === 'oversized-stdout-line') {
   process.stdout.write('x'.repeat(Number(payload.input.outputBytes)));
 } else {

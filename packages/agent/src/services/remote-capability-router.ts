@@ -58,9 +58,9 @@ import {
   Service,
   type TerminalCapability,
   type TerminalRunParams,
+  trimEndCharacters,
 } from "@elizaos/core";
 
-import { trimEndCharacters } from "../utils/string-boundaries.ts";
 import { parseCapabilityRouterEndpointsSetting } from "./remote-capability-router-settings.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;

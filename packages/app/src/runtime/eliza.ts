@@ -15,6 +15,7 @@ import process from "node:process";
 import {
   type BootElizaRuntimeOptions,
   CUSTOM_PLUGINS_DIRNAME,
+  ensureProtectedProfileAdmission,
   resolvePackageEntry,
   type StartElizaOptions,
   scanDropInPlugins,
@@ -156,6 +157,8 @@ export { attemptPgliteAutoReset, getPgliteRecoveryRetrySkipPlugins };
 export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
+  // Protected hosts are admitted before any host env or config mutation.
+  await ensureProtectedProfileAdmission();
   // The API binds before the deferred runtime boot, so host-owned HTTP routes
   // must exist before server construction rather than arriving with the model.
   installAgentHostBridge();

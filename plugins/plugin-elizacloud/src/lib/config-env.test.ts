@@ -83,6 +83,39 @@ describe("plugin-elizacloud persistConfigEnv", () => {
     await expect(fs.stat(path.join(stateDir, "config.env"))).rejects.toThrow();
   });
 
+  it(
+    "preserves measured process authority and disk contents when config attempts a write or clear",
+    async () => {
+      const file = path.join(root, "config.env");
+      const contents = "ORDINARY_SETTING=preserved\n";
+      await fs.writeFile(file, contents);
+      for (const prefix of [
+        "ELIZA_TEE_",
+        "ELIZA_DSTACK_",
+        "ELIZA_CONFIDENTIAL_",
+        "ELIZA_PROTECTED_",
+      ]) {
+        const key = `${prefix}TEST_CONFIG_ENV_BOUNDARY`;
+        const previous = process.env[key];
+        process.env[key] = "measured";
+        try {
+          for (const value of ["replacement", ""]) {
+            await expect(persistConfigEnv(key, value, { stateDir: root })).rejects.toMatchObject({
+              code: "CONFIG_ENV_PROCESS_ONLY_KEY",
+            });
+            expect(process.env[key]).toBe("measured");
+            expect(await fs.readFile(file, "utf8")).toBe(contents);
+            expect(await fs.readdir(root)).toEqual(["config.env"]);
+          }
+        } finally {
+          if (previous === undefined) delete process.env[key];
+          else process.env[key] = previous;
+        }
+      }
+    },
+    FS_TIMEOUT_MS
+  );
+
   it.skipIf(process.platform === "win32")(
     "creates and heals the state dir to 0700",
     async () => {
