@@ -3,7 +3,9 @@
  *
  * Crypto and x402 payments are refundable only as Eliza Cloud credits: this
  * credits the organization that owns the payment, capped at the USD it paid,
- * and never sends funds on-chain or to a card or bank account.
+ * and never sends funds on-chain or to a card or bank account. An x402
+ * payment request is owned by its payee, not its payer, so it is refused
+ * (`CRYPTO_REFUND_X402_PAYER_UNBOUND`).
  *
  * Usage:
  *   bun packages/cloud/scripts/admin/refund-crypto-payment.ts \
