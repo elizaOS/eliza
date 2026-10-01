@@ -1,7 +1,7 @@
 /** Same durable scheduler row and real reminder processing, driven by a virtual
  * core clock. Notification sink records deliveries; no network/model inference. */
 import { TaskService } from "@elizaos/core";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
   getRecordedTestNotifications,
@@ -13,8 +13,21 @@ import {
 } from "./scheduler-task.js";
 import { LifeOpsService } from "./service.js";
 
+beforeEach(() => {
+  const daytime = new Date();
+  daytime.setDate(daytime.getDate() + 1);
+  daytime.setHours(12, 0, 0, 0);
+  // Freeze only Date: database I/O and timeout timers remain real. Delivery
+  // admission must not depend on whether CI happens to run during sleep hours.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(daytime);
+});
+afterEach(() => vi.useRealTimers());
+
 it("committed create and snooze reconcile the same task, then deliver once at its due tick without idle full polling", async () => {
   const f = await createLifeOpsTestRuntime();
+  // The virtual clock below is the sole scheduler driving this fixture.
+  await TaskService.stop(f.runtime);
   const runtime = f.runtime;
   const model = vi
     .spyOn(runtime, "useModel")
@@ -160,6 +173,7 @@ it("committed create and snooze reconcile the same task, then deliver once at it
 
 it("concurrent callers retain their own pass deadline and do not hide a later undelivered step", async () => {
   const f = await createLifeOpsTestRuntime();
+  await TaskService.stop(f.runtime);
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
@@ -223,6 +237,7 @@ it("concurrent callers retain their own pass deadline and do not hide a later un
 
 it("quiet-blocked due work consumes its wake without a one-second retry loop", async () => {
   const f = await createLifeOpsTestRuntime();
+  await TaskService.stop(f.runtime);
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
