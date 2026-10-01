@@ -15,6 +15,7 @@
  *   PATCH  /api/conversations/:id         – update/rename
  *   DELETE /api/conversations/:id         – delete
  */
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -69,11 +70,13 @@ import {
   RoomHandlerQueueSaturatedError,
   type RouteRequestContext,
   readDurableConversationChatMarker,
+  readSystemNotice,
   recordOwnerGrant,
   recordRoleGrant,
   resolveAppliedUserFacingEffectReceipts,
   runWithInferenceTiming,
   stringToUuid,
+  systemNoticeText,
   TodoCutoverContractError,
   type TrustedApiPrincipal,
   timeInferenceSpan,
@@ -81,7 +84,6 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-
 import {
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
@@ -101,6 +103,10 @@ import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
 } from "../runtime/host-bridge.ts";
+import {
+  isLegacyUnavailableCheckin,
+  projectLegacySystemNotice,
+} from "../runtime/legacy-system-notice.ts";
 import {
   deleteConversationMemories,
   deleteConversationMessage,
@@ -3519,7 +3525,30 @@ async function listConversationMessages(
             : typeof meta?.chatFailureKind === "string"
               ? meta.chatFailureKind
               : undefined;
-        const failureKind = parseChatFailureKind(rawFailureKind);
+        const legacyNotice =
+          m.entityId === agentId &&
+          content.metadata &&
+          typeof content.metadata === "object" &&
+          "escalation" in content.metadata &&
+          content.metadata.escalation === true &&
+          typeof content.text === "string"
+            ? projectLegacySystemNotice(content.text)
+            : undefined;
+        const systemNotice =
+          m.entityId === agentId
+            ? (readSystemNotice(content.systemNotice) ??
+              legacyNotice?.systemNotice ??
+              (contentSource === "lifeops-scheduled-task" &&
+              typeof content.text === "string" &&
+              isLegacyUnavailableCheckin(content.text)
+                ? "runtime-error"
+                : undefined))
+            : undefined;
+        const failureKind =
+          systemNotice === "model-unavailable" ||
+          systemNotice === "model-and-runtime-error"
+            ? "no_provider"
+            : parseChatFailureKind(rawFailureKind);
         const terminalFailure = parseChatTerminalFailure(
           content.terminalFailure,
         );
@@ -3542,16 +3571,25 @@ async function listConversationMessages(
         // An interrupted receipt may intentionally have no model text. Keep
         // its exact partial reply; the interruption metadata owns its status.
         const text =
-          transcriptVisibility === "internal" ||
-          (role === "assistant" &&
-            isIntentionalNoResponseResult(
-              { responseContent: m.content },
-              rawText,
-            ))
+          transcriptVisibility === "internal"
             ? ""
-            : role === "assistant" && !interrupted
-              ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
-              : rawText;
+            : systemNotice
+              ? systemNoticeText(systemNotice)
+              : legacyNotice
+                ? legacyNotice.text
+                : role === "assistant" &&
+                    isIntentionalNoResponseResult(
+                      { responseContent: m.content },
+                      rawText,
+                    )
+                  ? ""
+                  : role === "assistant" && !interrupted
+                    ? normalizeChatResponseText(
+                        rawText,
+                        state.logBuffer,
+                        runtime,
+                      )
+                    : rawText;
         const attachments = selectAttachmentsForViewer(
           m,
           viewerAccessContext,

@@ -141,6 +141,9 @@ export interface Content {
 	agentVoiced?: boolean;
 	reminderPresentation?: import("./reminder-presentation").ReminderPresentation;
 
+	/** Host-authored status, independent of model prose and safe without inference. */
+	systemNotice?: import("./system-notice").SystemNotice;
+
 	/** Target/destination for responses */
 	target?: string;
 

@@ -144,6 +144,7 @@ export async function routeAutonomyTextToUser(
   // model-composed relays of a sub-agent/coordinator's output, so they skip the
   // gate; the gate fails open and returns the original text on any outage.
   let deliveredText = normalizedText;
+  let agentVoiced = false;
   if (!isEphemeral) {
     const voiced = await ensureAgentVoice(
       runtime,
@@ -159,6 +160,7 @@ export async function routeAutonomyTextToUser(
       },
       { source },
     );
+    agentVoiced = voiced.agentVoiced === true;
     if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
       deliveredText = voiced.text.trim();
     }
@@ -174,7 +176,7 @@ export async function routeAutonomyTextToUser(
       content: {
         text: deliveredText,
         source,
-        agentVoiced: true,
+        ...(agentVoiced ? { agentVoiced: true } : {}),
       },
     });
     await runtime.createMemory(agentMessage, "messages");

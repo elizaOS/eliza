@@ -157,6 +157,11 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
       }
 
       const messageId = crypto.randomUUID() as UUID;
+      const failure =
+        content.systemNotice === "model-unavailable" ||
+        content.systemNotice === "model-and-runtime-error"
+          ? { failureKind: "no_provider" as const }
+          : {};
 
       const agentMessage = createMessageMemory({
         id: messageId,
@@ -164,6 +169,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         roomId: conv.roomId,
         content: {
           ...content,
+          ...failure,
           text: content.text ?? "",
           source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
@@ -178,6 +184,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         message: {
           id: messageId,
           role: "assistant",
+          ...failure,
           text: content.text ?? "",
           timestamp: Date.now(),
           source: MESSAGE_SOURCE_CLIENT_CHAT,
