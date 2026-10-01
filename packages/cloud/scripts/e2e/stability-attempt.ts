@@ -423,7 +423,14 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   const handler = (): void => {
     if (handlingSignal) return;
     handlingSignal = true;
-    persistScenarioLogs();
+    try {
+      persistScenarioLogs();
+    } catch (error) {
+      // error-policy:J7 Evidence failure must not bypass owned process-group cleanup.
+      process.stderr.write(
+        `[cloud-stability] interruption evidence persistence failed: ${String(error)}\n`,
+      );
+    }
     const reraise = (): void => {
       for (const [registeredSignal, registeredHandler] of signalHandlers) {
         process.removeListener(registeredSignal, registeredHandler);
@@ -552,18 +559,22 @@ try {
   if (escalation) clearTimeout(escalation);
   await terminateGroup(childProcessGroupId);
 } finally {
-  persistScenarioLogs();
-  for (const [signal, handler] of signalHandlers) {
-    process.removeListener(signal, handler);
+  try {
+    persistScenarioLogs();
+  } finally {
+    // Cleanup remains mandatory when writing retained evidence fails.
+    for (const [signal, handler] of signalHandlers) {
+      process.removeListener(signal, handler);
+    }
+    if (sandboxEnvironmentPath) {
+      // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
+      await rm(sandboxEnvironmentPath, { force: true });
+    }
+    if (modelProxy) await modelProxy.stop();
+    await cloudApiProxy.stop();
+    await hetznerProxy.stop();
+    await stack.stop();
   }
-  if (sandboxEnvironmentPath) {
-    // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
-    await rm(sandboxEnvironmentPath, { force: true });
-  }
-  if (modelProxy) await modelProxy.stop();
-  await cloudApiProxy.stop();
-  await hetznerProxy.stop();
-  await stack.stop();
 }
 
 const ambientServiceLogEvidence = [cliStdout, cliStderr].filter((value) =>
