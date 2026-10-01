@@ -47,6 +47,7 @@ import {
   COMPLETION_CONTEXT_SCHEMA,
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   captureToolStageIO,
+  compactHistoricalReceiptSegments,
   completionContextSources,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
@@ -126,7 +127,6 @@ import {
   plannerTemplate,
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
-import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import {
   labelHistorySources,
   referenceRepeatedHistory,

@@ -27,6 +27,7 @@ import {
   buildModelInputBudget,
   buildStageChatMessages,
   type ChatMessage,
+  compactHistoricalReceiptSegments,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
   containsToolCallShapedMarkup,
@@ -65,7 +66,6 @@ import {
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
-import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
