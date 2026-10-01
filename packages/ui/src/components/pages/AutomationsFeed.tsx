@@ -782,6 +782,7 @@ export function AutomationsFeed({
               >
                 <DropdownMenuLabel>Create automation</DropdownMenuLabel>
                 <DropdownMenuItem
+                  className="gap-2"
                   onSelect={() => setEditor({ kind: "reminder" })}
                 >
                   <CalendarClock className="size-4" aria-hidden />

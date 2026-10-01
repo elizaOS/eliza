@@ -400,7 +400,9 @@ function ReminderFeedRow({
         <Bell className="size-4 shrink-0 text-accent" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium text-txt">
+            <span
+              className={`max-w-full text-sm font-medium text-txt ${expanded ? "whitespace-pre-wrap break-words" : "truncate"}`}
+            >
               {row.definition.title}
             </span>
             <span
