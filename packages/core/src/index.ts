@@ -3535,6 +3535,7 @@ export type {
 } from "./types/surface-manifest.js";
 export * from "./types/surface-manifest.js";
 export * from "./types/swarm-coordinator.js";
+export * from "./types/system-notice.js";
 export * from "./types/task.js";
 export * from "./types/tee.js";
 export type { TestCase, TestSuite } from "./types/testing.js";

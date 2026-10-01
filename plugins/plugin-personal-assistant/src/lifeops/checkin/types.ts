@@ -90,6 +90,7 @@ export interface CheckinBriefingSection {
 }
 
 export interface CheckinCollectorErrors {
+  readonly habitSummaries: string | null;
   readonly overdueTodos: string | null;
   readonly todaysMeetings: string | null;
   readonly yesterdaysWins: string | null;

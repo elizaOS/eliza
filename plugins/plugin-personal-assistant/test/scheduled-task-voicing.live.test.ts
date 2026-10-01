@@ -192,7 +192,12 @@ await describeLive(
             itemCount: 1,
           },
         ],
-        collectorErrors: {},
+        collectorErrors: {
+          overdueTodos: null,
+          todaysMeetings: null,
+          yesterdaysWins: null,
+          habitSummaries: null,
+        },
         sleepRecap: null,
       });
       const morningBrief = await runWithTrajectoryContext(

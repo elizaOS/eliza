@@ -70,6 +70,28 @@ describe("TaskEditor — cross-boundary migration", () => {
   });
   afterEach(() => cleanup());
 
+  it("keeps prompt activation and wake policy unchanged during text edits", async () => {
+    render(
+      <TaskEditor
+        initial={{
+          triggerId: "paused-prompt",
+          name: "Paused prompt",
+          prompt: "Keep paused",
+          scheduleKind: "recurring",
+          cronExpression: "0 9 * * *",
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Renamed paused prompt" },
+    });
+    save();
+    await waitFor(() => expect(updateTriggerMock).toHaveBeenCalledTimes(1));
+    expect(updateTriggerMock.mock.calls[0][1]).not.toHaveProperty("enabled");
+    expect(updateTriggerMock.mock.calls[0][1]).not.toHaveProperty("wakeMode");
+    expect(createTriggerMock).not.toHaveBeenCalled();
+  });
+
   it("(b) editing a workbench 'once' task into a recurring schedule deletes the stale task and creates a trigger", async () => {
     const onSaved = vi.fn();
     render(
@@ -98,6 +120,8 @@ describe("TaskEditor — cross-boundary migration", () => {
     expect(createTriggerMock.mock.calls[0][0]).toMatchObject({
       kind: "prompt",
       triggerType: "cron",
+      enabled: true,
+      wakeMode: "inject_now",
     });
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });

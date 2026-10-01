@@ -18,6 +18,7 @@ import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
 	createPreparedModelRequestGuard,
+	ElizaError,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -81,8 +82,8 @@ export type LocalInferenceUnavailableReason =
 	| "capability_unavailable"
 	| "invalid_input"
 	| "invalid_output";
-export class LocalInferenceUnavailableError extends Error {
-	readonly code = "LOCAL_INFERENCE_UNAVAILABLE";
+export class LocalInferenceUnavailableError extends ElizaError {
+	override readonly name = "LocalInferenceUnavailableError";
 	readonly provider = LOCAL_INFERENCE_PROVIDER_ID;
 	constructor(
 		readonly modelType: string,
@@ -92,8 +93,11 @@ export class LocalInferenceUnavailableError extends Error {
 			cause?: unknown;
 		},
 	) {
-		super(message, options);
-		this.name = "LocalInferenceUnavailableError";
+		super(message, {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			context: { modelType, reason, provider: LOCAL_INFERENCE_PROVIDER_ID },
+			cause: options?.cause,
+		});
 	}
 	toJSON(): Record<string, string> {
 		return {

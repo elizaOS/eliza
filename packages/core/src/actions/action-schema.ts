@@ -35,12 +35,13 @@ export type JsonSchemaPrimitiveType =
 	| "integer"
 	| "boolean"
 	| "object"
-	| "array";
+	| "array"
+	| "null";
 
 export interface JsonSchema {
 	type?: JsonSchemaPrimitiveType;
 	description?: string;
-	enum?: Array<string | number | boolean>;
+	enum?: Array<string | number | boolean | null>;
 	default?: unknown;
 	properties?: Record<string, JsonSchema>;
 	required?: string[];
@@ -70,6 +71,7 @@ const SUPPORTED_SCHEMA_TYPES = new Set<string>([
 	"boolean",
 	"object",
 	"array",
+	"null",
 ]);
 
 type LegacyActionParameterSchema = Omit<
@@ -85,7 +87,7 @@ type LegacyActionParameterSchema = Omit<
 
 function readEnumValues(
 	source: ActionParameter | ActionParameterSchema,
-): Array<string | number | boolean> | undefined {
+): Array<string | number | boolean | null> | undefined {
 	const schema: LegacyActionParameterSchema =
 		"schema" in source ? source.schema : source;
 	const candidates = [
@@ -105,7 +107,8 @@ function readEnumValues(
 				if (
 					typeof entry === "string" ||
 					typeof entry === "number" ||
-					typeof entry === "boolean"
+					typeof entry === "boolean" ||
+					entry === null
 				) {
 					return entry;
 				}
@@ -114,7 +117,8 @@ function readEnumValues(
 					if (
 						typeof value === "string" ||
 						typeof value === "number" ||
-						typeof value === "boolean"
+						typeof value === "boolean" ||
+						value === null
 					) {
 						return value;
 					}
@@ -122,7 +126,8 @@ function readEnumValues(
 				return undefined;
 			})
 			.filter(
-				(entry): entry is string | number | boolean => entry !== undefined,
+				(entry): entry is string | number | boolean | null =>
+					entry !== undefined,
 			);
 
 		if (values.length > 0) {
@@ -232,10 +237,11 @@ export function actionParameterSchemaToJsonSchema(
 
 	const enumValues =
 		options.enumValues?.filter(
-			(entry): entry is string | number | boolean =>
+			(entry): entry is string | number | boolean | null =>
 				typeof entry === "string" ||
 				typeof entry === "number" ||
-				typeof entry === "boolean",
+				typeof entry === "boolean" ||
+				entry === null,
 		) ?? readEnumValues(schema);
 	if (enumValues && enumValues.length > 0) {
 		jsonSchema.enum = enumValues;
