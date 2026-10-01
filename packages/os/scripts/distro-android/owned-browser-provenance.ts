@@ -2,6 +2,11 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { androidNativeHost } from "../../browser/scripts/android-host.mjs";
+import {
+  assetNames,
+  validateAssets,
+} from "../../browser/scripts/chromium-component.mjs";
 
 export const COMPONENT_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 export const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium";
@@ -9,14 +14,6 @@ export const PUBLIC_CHROMIUM_DEBUG_SIGNER =
   "32a2fc74d731105859e5a85df16d95f102d85b22099b8064c5d8915c61dad1e0";
 const PUBLIC_AOSP_PLATFORM_SIGNER =
   "c8a2e9bccf597c2fb6dc66bee293fc13f2fc47ec77bc6b2b0d52c11f51192ab8";
-const resources = [
-  "manifest.json",
-  "background.mjs",
-  "commands.mjs",
-  "protocol.mjs",
-  "runtime-config.mjs",
-  "native-connection.mjs",
-];
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const digest = (value) =>
   typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
@@ -85,8 +82,13 @@ export function validateOwnedPin(pin, architecture) {
       commit(component.chromiumRevision) &&
       component.extensionId === COMPONENT_ID &&
       digest(component.launcherSignerSha256) &&
+      typeof component.launcherApplication === "string" &&
       component.provenance,
     "Invalid owned component pin.",
+  );
+  androidNativeHost(
+    component.launcherSignerSha256,
+    component.launcherApplication,
   );
   requireProvenance(
     pin.architectures.length === 1 && pin.architectures[0] === architecture,
@@ -123,7 +125,8 @@ export function verifyOwnedProvenance(root, pin, architecture) {
         "https://chromium.googlesource.com/chromium/src" &&
       document.chromiumRevision === component.chromiumRevision &&
       document.extensionId === COMPONENT_ID &&
-      document.launcherSignerSha256 === component.launcherSignerSha256,
+      document.launcherSignerSha256 === component.launcherSignerSha256 &&
+      document.launcherApplication === component.launcherApplication,
     "Owned component source/identity binding mismatch.",
   );
   const binding = {
@@ -167,43 +170,44 @@ export function verifyOwnedProvenance(root, pin, architecture) {
     hash(reference(root, document.patch, architecture)) === overlay.patchSha256,
     "Owned component patch provenance mismatch.",
   );
+  const expectedHost = androidNativeHost(
+    component.launcherSignerSha256,
+    component.launcherApplication,
+  );
+  requireProvenance(
+    JSON.stringify(overlay.nativeHost) === JSON.stringify(expectedHost),
+    "Owned component overlay launcher identity mismatch.",
+  );
+  const inventory = (value) =>
+    Object.keys(value ?? {})
+      .sort()
+      .join(",");
+  requireProvenance(
+    inventory(overlay.resources) === [...assetNames].sort().join(","),
+    "Owned overlay resource inventory mismatch.",
+  );
   requireProvenance(
     Object.keys(document.resources ?? {})
       .sort()
-      .join(",") === [...resources].sort().join(","),
+      .join(",") === [...assetNames].sort().join(","),
     "Owned component resource inventory mismatch.",
   );
   const assets = {};
-  for (const name of resources) {
+  for (const name of assetNames) {
     const bytes = reference(root, document.resources[name], architecture);
     requireProvenance(
       overlay.resources?.[name]?.sha256 === hash(bytes) &&
         overlay.resources[name].bytes === bytes.length,
       `Owned component resource mismatch: ${name}.`,
     );
-    assets[name] = bytes.toString("utf8");
+    assets[name] = bytes;
   }
-  const config = assets["runtime-config.mjs"];
-  const manifest = JSON.parse(assets["manifest.json"]);
-  const identity = createHash("sha256")
-    .update(Buffer.from(manifest.key ?? "", "base64"))
-    .digest("hex")
-    .slice(0, 32)
-    .replace(/[0-9a-f]/g, (digit) =>
-      String.fromCharCode(97 + Number.parseInt(digit, 16)),
-    );
-  requireProvenance(
-    identity === COMPONENT_ID &&
-      manifest.manifest_version === 3 &&
-      manifest.background?.service_worker === "background.mjs" &&
-      manifest.background.type === "module",
-    "Owned component manifest identity mismatch.",
-  );
-  // Validate the generator's exact emitted host config without evaluating artifact code.
-  const expectedConfig = `export const nativeHost = ${JSON.stringify({ application: "ai.elizaos.app", androidCertificates: [component.launcherSignerSha256.toUpperCase()] })};\n`;
-  requireProvenance(
-    config === expectedConfig,
-    "Owned extension launcher certificate config mismatch.",
+  // Reuse the generator's manifest, resource and host checks without evaluating code.
+  validateAssets(
+    assets,
+    "android",
+    component.launcherSignerSha256,
+    component.launcherApplication,
   );
   const args = reference(root, document.gnArgs, architecture).toString("utf8");
   const assignment = (name) => {

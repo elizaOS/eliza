@@ -21,6 +21,23 @@ import type {
   BrowserWorkspaceCommandResult,
 } from "./workspace/browser-workspace-types.js";
 
+/** Trusted host annotation request; deliberately absent from model browser actions. */
+export type NativeTaskGuidance = {
+  tabId: string;
+  taskContext: NativeTaskContext;
+  revision: number;
+} & (
+  | { kind: "hide" }
+  | {
+      kind: "show";
+      stepId: string;
+      selector: string;
+      text: string;
+      expiresAt: number;
+      restore?: boolean;
+    }
+);
+
 const capabilities = new Set([
   "list",
   "open",
@@ -34,11 +51,45 @@ const capabilities = new Set([
   "reload",
   "close",
 ]);
+export interface NativeTaskContext {
+  actorId: string;
+  accountId: string;
+  agentId: string;
+  taskId: string;
+  epoch: number;
+}
+export interface NativeTaskBinding extends NativeTaskContext {
+  tabId: string;
+  bindingRevision: number;
+  origin: string;
+  expiresAt: number;
+  revoked: boolean;
+  targets: Array<{
+    selector: string;
+    action: "click" | "fill" | "fill-code" | "scroll";
+  }>;
+}
 interface NativeReply {
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 }
+/** Android host identity selects its same-UID abstract socket, never another app's default. */
+export function androidNativeBrowserSocketPath(
+  applicationId = "ai.elizaos.app",
+): string {
+  const path = `\0${applicationId}.browser.native`;
+  if (
+    !/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(
+      applicationId,
+    ) ||
+    Buffer.byteLength(path) > 107
+  ) {
+    throw new Error("Invalid native browser Android application ID");
+  }
+  return path;
+}
+
 export class NativeSocketBrowserTarget implements BrowserTarget {
   readonly id = "chromium-device";
   readonly name = "This device's Chromium";
@@ -56,6 +107,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   private reconnect: ReturnType<typeof setTimeout> | null = null;
   private lastTransportDiagnostic: string | null = null;
   private ownedPath: string | null = null;
+  private androidSocketPath = androidNativeBrowserSocketPath();
   constructor(
     private readonly onDiagnostic: (error: Error) => void,
     private readonly liveness = { registrationMs: 30000, heartbeatMs: 90000 },
@@ -96,6 +148,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       "android",
     );
     if (android) {
+      this.androidSocketPath = androidNativeBrowserSocketPath(
+        env.ELIZA_BROWSER_ANDROID_APPLICATION,
+      );
       this.connectAndroid();
       return;
     }
@@ -132,7 +187,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   private connectAndroid(): void {
     if (this.stopped) return;
     const socket = createConnection({
-      path: "\0ai.elizaos.app.browser.native",
+      path: this.androidSocketPath,
     });
     socket.once("connect", () => this.attach(socket));
     socket.on("error", (error) => this.reportConnectionError(error));
@@ -317,9 +372,31 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     }
   }
 
-  private request(command: BrowserWorkspaceCommand): Promise<unknown> {
+  private request(
+    command: BrowserWorkspaceCommand | undefined,
+    signal?: AbortSignal,
+    binding?: NativeTaskBinding,
+    guidance?: NativeTaskGuidance,
+  ): Promise<unknown> {
     const socket = this.socket;
-    if (!socket || !this.getProfileId() || !this.sender)
+    const sender = this.sender;
+    if (signal?.aborted)
+      return Promise.reject(
+        new BrowserDispatchFailure(
+          "STALE_REF",
+          "The browser request was cancelled before dispatch.",
+          { targetId: this.id },
+        ),
+      );
+    if (signal && !this.advertised.has("cancel"))
+      return Promise.reject(
+        new BrowserDispatchFailure(
+          "UNSUPPORTED",
+          "This Chromium connection does not support cancellable requests.",
+          { targetId: this.id },
+        ),
+      );
+    if (!socket || !this.getProfileId() || !sender)
       return Promise.reject(
         new BrowserDispatchFailure(
           "UNAVAILABLE",
@@ -329,9 +406,42 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       );
     const id = randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const cancelRemote = () => {
+        if (
+          this.socket !== socket ||
+          socket.destroyed ||
+          !this.advertised.has("cancel")
+        )
+          return;
+        // This is a best-effort fence, not proof that an already-dispatched effect
+        // was undone. The caller still receives an uncertain outcome.
+        void sender.send({ type: "cancel", id }).catch(() => socket.destroy());
+      };
+      const finish =
+        (callback: (value: unknown) => void) => (value: unknown) => {
+          signal?.removeEventListener("abort", abort);
+          callback(value);
+        };
+      const abort = () => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
         this.pending.delete(id);
-        reject(
+        clearTimeout(pending.timer);
+        cancelRemote();
+        pending.reject(
+          new BrowserDispatchFailure(
+            "UNCERTAIN_OUTCOME",
+            "The browser request was cancelled after dispatch; inspect the same tab without replaying it.",
+            { targetId: this.id },
+          ),
+        );
+      };
+      const timer = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        this.pending.delete(id);
+        cancelRemote();
+        pending.reject(
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "Chromium did not acknowledge the request before the deadline; inspect the same tab before retrying.",
@@ -339,15 +449,26 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           ),
         );
       }, 30000);
-      this.pending.set(id, { resolve, reject, timer });
-      void this.sender
-        ?.send({ type: "command", id, command })
+      this.pending.set(id, {
+        resolve: finish(resolve),
+        reject: finish(reject),
+        timer,
+      });
+      signal?.addEventListener("abort", abort, { once: true });
+      void sender
+        .send(
+          binding
+            ? { type: "task-bind", id, binding }
+            : guidance
+              ? { type: "task-guide", id, guidance }
+              : { type: "command", id, command },
+        )
         .catch((cause) => {
           const pending = this.pending.get(id);
           if (!pending) return;
           this.pending.delete(id);
           clearTimeout(pending.timer);
-          reject(
+          pending.reject(
             new BrowserDispatchFailure(
               "UNCERTAIN_OUTCOME",
               "The native command transport failed after dispatch; inspect the same profile before retrying.",
@@ -359,9 +480,74 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     });
   }
 
+  /** Trusted host only: not exposed as a model browser subaction. */
+  async bindTask(binding: NativeTaskBinding): Promise<unknown> {
+    if (!this.advertised.has("task-bind"))
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not enforce task bindings.",
+        { targetId: this.id },
+      );
+    return this.request(undefined, undefined, binding);
+  }
+
+  /** Requires native task binding; this API is not a model-facing subaction. */
+  async guideTask(
+    guidance: NativeTaskGuidance,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    if (!this.advertised.has("task-guide") || !this.advertised.has("task-bind"))
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not support task guidance.",
+        { targetId: this.id },
+      );
+    return this.request(undefined, signal, undefined, guidance);
+  }
+
   async execute(
     command: BrowserWorkspaceCommand,
+    options: {
+      signal?: AbortSignal;
+      taskContext?: NativeTaskContext;
+      taskExpiresAt?: number;
+      protectedValueKind?: "verification-code";
+    } = {},
   ): Promise<BrowserWorkspaceCommandResult> {
+    if (
+      options.protectedValueKind &&
+      (!options.taskContext ||
+        command.subaction !== "fill" ||
+        !this.advertised.has("task-protected-fill"))
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "Protected fill requires a bound capable browser.",
+        { targetId: this.id },
+      );
+    // Only trusted execute options may introduce this marker, never a raw command.
+    const { protectedValueKind: _untrusted, ...safeCommand } =
+      command as BrowserWorkspaceCommand & { protectedValueKind?: unknown };
+    command = safeCommand as BrowserWorkspaceCommand;
+    if (
+      options.taskContext &&
+      ["click", "fill", "scroll"].includes(command.subaction) &&
+      !this.advertised.has("task-action-feedback")
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "Task actions require a browser with action feedback.",
+        { targetId: this.id },
+      );
+    if (
+      options.taskContext &&
+      (!command.id || !this.advertised.has("task-bind"))
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "Task commands require an explicit tab and a binding-capable browser.",
+        { targetId: this.id },
+      );
     if (!this.supports(command))
       throw new BrowserDispatchFailure(
         "UNSUPPORTED",
@@ -369,7 +555,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         { targetId: this.id },
       );
     if (!command.id && !["open", "list"].includes(command.subaction)) {
-      const listing = await this.request({ subaction: "list" });
+      const listing = await this.request({ subaction: "list" }, options.signal);
       if (
         !listing ||
         typeof listing !== "object" ||
@@ -388,7 +574,19 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       command = { ...command, id: String(tabs[0].id) };
     }
     const profileId = this.profileId;
-    const result = await this.request(command);
+    const scopedCommand = options.taskContext
+      ? {
+          ...command,
+          taskContext: options.taskContext,
+          ...(options.protectedValueKind
+            ? { protectedValueKind: options.protectedValueKind }
+            : {}),
+          ...(options.taskExpiresAt === undefined
+            ? {}
+            : { taskExpiresAt: options.taskExpiresAt }),
+        }
+      : command;
+    const result = await this.request(scopedCommand, options.signal);
     return {
       targetId: this.id,
       mode: "desktop",

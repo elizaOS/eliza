@@ -20,6 +20,7 @@ android {
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
 
     buildFeatures {
+        aidl true
         buildConfig true
     }
 

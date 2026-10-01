@@ -1,50 +1,17 @@
 /** Maintains native profile registration and consumes each browser command once across worker restarts. */
 
-import { executeCommand, prepareCommand } from "./commands.mjs";
+import { createCommandHandler } from "./command-handler.mjs";
 import { NativeConnection } from "./native-connection.mjs";
-import { BridgeError, parseCommand } from "./protocol.mjs";
 import { nativeHost } from "./runtime-config.mjs";
 
-let processing = Promise.resolve();
-
-async function handle(message, sender, isCurrent) {
-  let request;
-  try {
-    if (!isCurrent()) return;
-    request = parseCommand(message);
-    const key = `request:${request.id}`;
-    const previous = (await chrome.storage.local.get(key))[key];
-    if (previous)
-      throw new BridgeError(
-        "UNCERTAIN_OUTCOME",
-        "This request ID was already admitted; inspect the same tab before issuing a new request.",
-      );
-    const prepared = await prepareCommand(chrome, request.command);
-    if (!isCurrent()) return;
-    await chrome.storage.local.set({ [key]: "admitted" });
-    if (!isCurrent()) return;
-    const result = await executeCommand(chrome, request.command, prepared);
-    await sender.send({
-      type: "result",
-      id: request.id,
-      ok: true,
-      result,
-    });
-  } catch (error) {
-    const reply = {
-      type: "result",
-      id:
-        request?.id ??
-        (typeof message?.id === "string" ? message.id : "invalid"),
-      ok: false,
-      error: {
-        kind: error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
-        message: error instanceof Error ? error.message : String(error),
-      },
-    };
-    await sender.send(reply);
-  }
-}
+const handleCommand = createCommandHandler(chrome);
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (message?.type !== "task-manual-activity") return false;
+  void handleCommand
+    .recordManualActivity(message, sender)
+    .then(reply, () => reply({ recorded: false }));
+  return true;
+});
 
 const connection = new NativeConnection({
   browser: chrome,
@@ -73,16 +40,18 @@ const connection = new NativeConnection({
         "forward",
         "reload",
         "close",
+        "cancel",
+        "task-bind",
+        "task-guide",
+        "task-action-feedback",
+        "task-manual-activity",
+        "task-protected-fill",
       ],
     };
   },
-  onCommand: (message, sender, isCurrent) => {
-    processing = processing.then(() => handle(message, sender, isCurrent));
-    const admitted = processing;
-    // Keep serialization usable after an ended transport; never replay its work.
-    processing = processing.catch(() => {});
-    return admitted;
-  },
+  onCommand: handleCommand,
+  onDisconnect: () => handleCommand.disconnect(),
+  beforeConnect: () => handleCommand.recover(),
   report: (error) =>
     chrome.storage.local.set({ lastTransportError: String(error) }),
 });
