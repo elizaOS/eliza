@@ -6,9 +6,36 @@
 import {
   ElizaError,
   type IAgentRuntime,
+  logger,
   stringToUuid,
   type TaskWorker,
 } from "@elizaos/core";
+import { isProtectedProfileSelected } from "../security/protected-profile-state.ts";
+import {
+  policyIsActive,
+  type ResolvedRetentionConfig,
+  resolveRetentionConfigWithPrefix,
+} from "./memory-retention.ts";
+
+const DEFAULT_RETENTION_INTERVAL_MINUTES = 360; // 6h
+
+/**
+ * Runtime setting that makes explicit retention bounds mandatory. It can only
+ * tighten policy: the protected profile requires bounds regardless of it.
+ */
+export const RETENTION_BOUNDS_REQUIRED_SETTING =
+  "ELIZA_PROTECTED_RETENTION_REQUIRED";
+
+/** True when this host must refuse to run without an explicit retention bound. */
+export function retentionBoundsRequired(runtime: IAgentRuntime): boolean {
+  if (isProtectedProfileSelected()) return true;
+  const value = runtime.getSetting(RETENTION_BOUNDS_REQUIRED_SETTING);
+  return (
+    String(value ?? "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
 
 export class RetentionTask<T> {
   private active: Promise<T> | undefined;
@@ -33,6 +60,51 @@ export class RetentionTask<T> {
         if (this.stopping) return { preserveTask: true };
       },
     };
+  }
+
+  /**
+   * Resolve `${prefix}_*` bounds from runtime settings, then the process
+   * environment, and install the schedule. Without an active bound retention
+   * stays off, unless bounds are required, which rejects with
+   * `RETENTION_BOUNDS_REQUIRED`.
+   */
+  async startConfigured(
+    prefix: string,
+    label: string,
+  ): Promise<ResolvedRetentionConfig> {
+    const config = resolveRetentionConfigWithPrefix((key) => {
+      const fromSettings = this.runtime.getSetting(key);
+      if (fromSettings !== undefined && fromSettings !== null) {
+        return String(fromSettings);
+      }
+      return process.env[key];
+    }, prefix);
+    if (!policyIsActive(config)) {
+      if (retentionBoundsRequired(this.runtime)) {
+        throw new ElizaError(
+          "Set an explicit retention bound for this protected host",
+          {
+            code: "RETENTION_BOUNDS_REQUIRED",
+            context: {
+              worker: this.name,
+              keys: [`${prefix}_DAYS`, `${prefix}_MAX_ROWS_PER_ROOM`],
+            },
+          },
+        );
+      }
+      await this.start(undefined);
+      logger.info(
+        `[${label}] no active bound (${prefix}_DAYS/${prefix}_MAX_ROWS_PER_ROOM unset) — retention DISABLED`,
+      );
+      return config;
+    }
+    const intervalMinutes =
+      config.intervalMinutes ?? DEFAULT_RETENTION_INTERVAL_MINUTES;
+    logger.info(
+      `[${label}] enabled: retentionDays=${config.retentionDays ?? "off"} maxRowsPerRoom=${config.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${config.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
+    );
+    await this.start(intervalMinutes * 60 * 1000);
+    return config;
   }
 
   async start(intervalMs: number | undefined): Promise<void> {

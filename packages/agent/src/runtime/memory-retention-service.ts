@@ -10,14 +10,14 @@ import {
   policyIsActive,
   type ResolvedRetentionConfig,
   type RetainableRow,
-  resolveRetentionConfig,
 } from "./memory-retention.ts";
 
 import { RetentionTask } from "./retention-task.ts";
 
 export const MEMORY_RETENTION_SERVICE = "eliza_memory_retention";
 
-const DEFAULT_INTERVAL_MINUTES = 360; // 6h
+/** Env/settings prefix for memory retention bounds. */
+export const MEMORY_RETENTION_PREFIX = "ELIZA_MEMORY_RETENTION";
 
 /**
  * The memory partitions this sweep governs. Mirrors the canonical partition
@@ -72,29 +72,10 @@ export class MemoryRetentionService extends Service {
   }
 
   private async init(): Promise<void> {
-    this.retentionConfig = resolveRetentionConfig((key) => {
-      const fromSettings = this.runtime.getSetting(key);
-      if (fromSettings !== undefined && fromSettings !== null) {
-        return String(fromSettings);
-      }
-      return process.env[key];
-    });
-
-    if (!policyIsActive(this.retentionConfig)) {
-      await this.retentionTask.start(undefined);
-      logger.info(
-        "[memory-retention] no active bound (retentionDays/maxRowsPerRoom unset) — retention DISABLED",
-      );
-      return;
-    }
-
-    const intervalMinutes =
-      this.retentionConfig.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
-    logger.info(
-      `[memory-retention] enabled: retentionDays=${this.retentionConfig.retentionDays ?? "off"} maxRowsPerRoom=${this.retentionConfig.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${this.retentionConfig.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
+    this.retentionConfig = await this.retentionTask.startConfigured(
+      MEMORY_RETENTION_PREFIX,
+      "memory-retention",
     );
-
-    await this.retentionTask.start(intervalMinutes * 60 * 1000);
   }
 
   async stop(): Promise<void> {

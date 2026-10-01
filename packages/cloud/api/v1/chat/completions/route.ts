@@ -28,6 +28,11 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
+import {
+  firstNumber,
+  modelNotAvailableMessage,
+  summarizeFinishedStepUsage,
+} from "@/api-app/lib/inference-usage";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { createPreflightResponse } from "@/lib/middleware/cors-apps";
@@ -952,17 +957,6 @@ function hasReportedUsageTokens(usage: unknown): boolean {
       record.totalTokens,
     ) !== undefined
   );
-}
-
-function firstNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return undefined;
 }
 
 function getMessageContent(msg: ChatMessage): string {
@@ -2453,15 +2447,6 @@ export async function handleChatCompletionsPOST(
 }
 
 /**
- * Client-facing message for a provider-configuration failure. The requested
- * model id is the only detail safe to echo back — the underlying errors name
- * internal env vars and setup steps, which stay in server logs only.
- */
-function modelNotAvailableMessage(model: string): string {
-  return `model '${model}' is not available on this deployment`;
-}
-
-/**
  * OpenAI-compatible `error.type` for an HTTP status. Single mapping shared by
  * the non-streaming error response and the terminal streaming error chunk so
  * the two paths can never disagree about what a status means.
@@ -2473,58 +2458,6 @@ function openAiErrorTypeForStatus(status: number): string {
   if (status === 503) return "service_unavailable";
   if (status === 400 || status === 404) return "invalid_request_error";
   return "api_error";
-}
-
-function summarizeFinishedStepUsage(
-  steps: readonly StepResult<ToolSet>[],
-): AIUsage | null {
-  let sawUsage = false;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let totalTokens = 0;
-  let cacheReadInputTokens = 0;
-  let cacheWriteInputTokens = 0;
-
-  for (const step of steps) {
-    const usage = step.usage;
-    const stepInputTokens = firstNumber(usage.inputTokens) ?? 0;
-    const stepOutputTokens = firstNumber(usage.outputTokens) ?? 0;
-    const stepTotalTokens =
-      firstNumber(usage.totalTokens) ?? stepInputTokens + stepOutputTokens;
-    const stepCacheReadTokens =
-      firstNumber(
-        usage.inputTokenDetails?.cacheReadTokens,
-        usage.cachedInputTokens,
-      ) ?? 0;
-    const stepCacheWriteTokens =
-      firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
-
-    if (
-      stepInputTokens > 0 ||
-      stepOutputTokens > 0 ||
-      stepTotalTokens > 0 ||
-      stepCacheReadTokens > 0 ||
-      stepCacheWriteTokens > 0
-    ) {
-      sawUsage = true;
-    }
-
-    inputTokens += stepInputTokens;
-    outputTokens += stepOutputTokens;
-    totalTokens += stepTotalTokens;
-    cacheReadInputTokens += stepCacheReadTokens;
-    cacheWriteInputTokens += stepCacheWriteTokens;
-  }
-
-  if (!sawUsage) return null;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    cacheReadInputTokens,
-    cacheWriteInputTokens,
-  };
 }
 
 async function settleStreamingAbortReservation(params: {

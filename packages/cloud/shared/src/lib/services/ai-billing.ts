@@ -751,8 +751,14 @@ export async function recordUsageAnalytics(
       });
     }
 
-    // Log LLM call trajectory for training data collection
+    // Record the model call for training when the deployment capture policy
+    // allows it (production defaults off). A policy/config error lands in the
+    // catch below and skips capture (fail closed).
     try {
+      const { resolveTrajectoryCapturePolicy } = await import("../config/llm-trajectory-policy");
+      if (!resolveTrajectoryCapturePolicy().enabled) {
+        return usageRecord;
+      }
       const { llmTrajectoryService } = await import("./llm-trajectory");
       await llmTrajectoryService.logCall({
         organizationId: context.organizationId,
@@ -774,7 +780,7 @@ export async function recordUsageAnalytics(
       });
     } catch (trajError) {
       // Trajectory logging is non-critical — never block the request
-      logger.warn("[AI Billing] Failed to log trajectory", {
+      logger.warn("[AI Billing] Trajectory not captured", {
         error: trajError instanceof Error ? trajError.message : String(trajError),
       });
     }

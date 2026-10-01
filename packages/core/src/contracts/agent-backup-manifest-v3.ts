@@ -7,6 +7,7 @@
  */
 
 import z from "zod";
+import { canonicalBackupJson } from "./agent-backup-canonical-json.js";
 import {
 	AGENT_BACKUP_CHUNK_AAD_DERIVATION,
 	AGENT_BACKUP_CHUNK_ENVELOPE_V1,
@@ -235,38 +236,6 @@ export type AgentBackupOperationKeyBundleContextInput = z.infer<
 	typeof OperationKeyBundleContextSchema
 >;
 
-function isJsonRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function canonicalJson(value: unknown): string {
-	if (
-		value === null ||
-		typeof value === "boolean" ||
-		typeof value === "string"
-	) {
-		return JSON.stringify(value);
-	}
-	if (typeof value === "number") {
-		if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
-			throw new TypeError(
-				"Canonical backup JSON only permits safe, non-negative integers",
-			);
-		}
-		return String(value);
-	}
-	if (Array.isArray(value)) {
-		return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
-	}
-	if (!isJsonRecord(value)) {
-		throw new TypeError("Canonical backup JSON contains a non-JSON value");
-	}
-	return `{${Object.keys(value)
-		.sort()
-		.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-		.join(",")}}`;
-}
-
 async function sha256Hex(value: string): Promise<string> {
 	const digest = await globalThis.crypto.subtle.digest(
 		"SHA-256",
@@ -368,7 +337,7 @@ async function verifyCommonSelfDigests(
 export function canonicalizeAgentBackupOperationKeyBundleContext(
 	input: AgentBackupOperationKeyBundleContextInput,
 ): string {
-	return canonicalJson({
+	return canonicalBackupJson({
 		derivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
 		...OperationKeyBundleContextSchema.parse(input),
 	});
@@ -377,7 +346,7 @@ export function canonicalizeAgentBackupOperationKeyBundleContext(
 export function canonicalizeAgentBackupManifestV3(
 	draftInput: AgentBackupManifestV3Draft,
 ): string {
-	return canonicalJson(normalizeV3Draft(draftInput));
+	return canonicalBackupJson(normalizeV3Draft(draftInput));
 }
 
 export async function computeAgentBackupManifestV3Digest(

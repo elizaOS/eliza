@@ -33,10 +33,6 @@ function makeRuntime(): AgentRuntime {
     } as Character,
     logLevel: "fatal",
   });
-  // No DB adapter on this minimal runtime — stub the pure-logging call so
-  // useModel returns the handler output cleanly (see
-  // dynamic-prompt-json-mode.test.ts for the original rationale).
-  (runtime as unknown as { logModelCall: () => void }).logModelCall = () => {};
   installAssistantReasoning(runtime);
   runtimes.push(runtime);
   return runtime;

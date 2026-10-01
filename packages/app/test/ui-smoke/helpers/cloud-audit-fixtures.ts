@@ -472,6 +472,29 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/sessions"), body: { sessions: [] } },
   { match: path_("/api/v1/me/mfa"), body: { enrolled: false } },
   { match: path_("/api/v1/me/plugin-grants"), body: { grants: [] } },
+  // No recorded choice: vision renders off; model-call recording renders the
+  // production deployment default (off).
+  {
+    match: path_("/api/v1/me/consents"),
+    body: {
+      consents: [],
+      effective: [
+        {
+          purpose: "vision_capture",
+          granted: false,
+          basis: "default",
+          defaultGranted: false,
+        },
+      ],
+      capture: {
+        modelCallRecording: {
+          enabled: false,
+          source: "deployment-default",
+          retentionDays: 90,
+        },
+      },
+    },
+  },
   {
     match: path_("/api/v1/me/account-deletion"),
     body: {

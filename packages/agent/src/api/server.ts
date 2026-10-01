@@ -5,7 +5,6 @@
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
  * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.ts).
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import {
@@ -90,6 +89,7 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.ts";
+import { ensureProtectedProfileAdmission } from "../security/protected-profile.ts";
 import {
   type AgentBackupStateData,
   AgentSnapshotBudgetExceededError,
@@ -178,7 +178,7 @@ import {
   loadLocalInferenceRouteApi,
   loadLocalInferenceVoiceRouteApi,
 } from "./local-inference-server-api.ts";
-import { serveMediaFile } from "./media-store.ts";
+import { isMediaAuthRequired, serveMediaFile } from "./media-store.ts";
 import {
   getModelOptions,
   getOrFetchAllProviders,
@@ -265,6 +265,7 @@ import {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
+  tokenMatches,
   tryAcquirePendingWebSocket,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
@@ -390,14 +391,6 @@ import {
 import type { X402PluginModule } from "./x402-contract.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
-function tokenMatches(expected: string, provided: string): boolean {
-  const expectedBuf = Buffer.from(expected);
-  const providedBuf = Buffer.from(provided);
-  return (
-    expectedBuf.length === providedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, providedBuf)
-  );
-}
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -1660,8 +1653,9 @@ async function handleRequestForViewClient(
     if (serveStaticUi(req, res, pathname)) return;
     // Chat media (uploaded + generated). Content-addressed sha256 filenames act
     // as unguessable capabilities, so media loads from <img>/<audio> without an
-    // auth header — same rationale as static assets above.
-    if (serveMediaFile(req, res, pathname)) return;
+    // auth header — same rationale as static assets above. The protected
+    // profile serves media only after the auth gate below.
+    if (!isMediaAuthRequired() && serveMediaFile(req, res, pathname)) return;
   }
   // ── Runtime-mode visibility gate ────────────────────────────────────────
   // Enforced here, in the server every host shares, so the bare agent
@@ -1703,6 +1697,15 @@ async function handleRequestForViewClient(
     !isBoundaryRoleAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+  // Protected profile: authenticated media (same-origin <img>/<audio> GETs
+  // carry the session cookie, which the gate above accepts without CSRF).
+  if (
+    (method === "GET" || method === "HEAD") &&
+    isMediaAuthRequired() &&
+    serveMediaFile(req, res, pathname)
+  ) {
     return;
   }
   // Complete trajectory inputs and outputs belong to the owner's developer
@@ -3417,6 +3420,8 @@ export async function startApiServer(opts?: {
     },
   ) => void;
 }> {
+  // Hosts that listen before startEliza must still pass protected admission.
+  await ensureProtectedProfileAdmission();
   const apiStartTime = Date.now();
   const hostAdmission = opts?.hostAdmission;
   const hostConfig =

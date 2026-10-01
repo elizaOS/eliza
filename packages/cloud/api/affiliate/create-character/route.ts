@@ -18,6 +18,7 @@ import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { charactersService } from "@/lib/services/characters/characters";
@@ -163,14 +164,6 @@ function resolveAvatarUrl(
   return pickHttpUrl(characterAvatar) ?? imageUrls?.find(isHttpUrl) ?? null;
 }
 
-function clientIp(c: AppContext): string | undefined {
-  return (
-    c.req.header("x-real-ip")?.trim() ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    undefined
-  );
-}
-
 function parsePositiveIntEnv(
   value: string | undefined,
   defaultValue: number,
@@ -288,7 +281,7 @@ app.post("/", async (c) => {
       user_id: anonymousUser.id,
       expires_at: expiresAt,
       messages_limit: messagesLimit,
-      ip_address: clientIp(c),
+      ip_address: getRequestIp(c),
       user_agent: c.req.header("user-agent") ?? undefined,
     });
 
