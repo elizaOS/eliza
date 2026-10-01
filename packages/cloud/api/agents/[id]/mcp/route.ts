@@ -5,10 +5,11 @@
  * POST → JSON-RPC dispatch (`initialize`, `tools/list`, `tools/call`, `ping`).
  *
  * The `chat` tool reserves credits, resolves the configured model provider,
- * then reconciles actual usage. Returns plain JSON, not SSE.
+ * then reconciles actual usage at the base inference cost. Creator markup is
+ * retired (#22961), so a stored `monetization_enabled` row neither adds a
+ * surcharge nor accrues earnings. Returns plain JSON, not SSE.
  */
 
-import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -40,7 +41,6 @@ import {
   getLanguageModel,
   resolveAiProviderSource,
 } from "@/lib/providers/language-model";
-import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
@@ -159,7 +159,6 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;
-  const markupPct = Number(character.inference_markup_percentage || 0);
 
   return c.json({
     name: character.name,
@@ -167,13 +166,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     version: "1.0.0",
     protocol: "2024-11-05",
     capabilities: { tools: {}, resources: {}, prompts: {} },
-    pricing: character.monetization_enabled
-      ? {
-          type: "credits",
-          markupPercentage: markupPct,
-          description: `Base inference cost + ${markupPct}% creator markup`,
-        }
-      : { type: "credits", description: "Standard inference costs" },
+    pricing: { type: "credits", description: "Standard inference costs" },
     endpoints: {
       mcp: `${baseUrl}/api/agents/${id}/mcp`,
       a2a: `${baseUrl}/api/agents/${id}/a2a`,
@@ -424,8 +417,9 @@ export async function handleToolCall(
             text: JSON.stringify({
               name: character.name,
               bio: bioText,
-              monetization: character.monetization_enabled,
-              markup: character.inference_markup_percentage,
+              // Creator markup is retired (#22961); report what chat bills.
+              monetization: false,
+              markup: "0",
             }),
           },
         ],
@@ -459,7 +453,6 @@ export async function handleToolCall(
     ];
 
     const provider = getProviderFromModel(model);
-    const markupPct = Number(character.inference_markup_percentage || 0);
     const envForThinking = getAnthropicCotEnv(c.env);
     const agentThinkingBudget = parseThinkingBudgetFromCharacterSettings(
       character.settings,
@@ -479,11 +472,6 @@ export async function handleToolCall(
       messages,
       estimatedOutputTokens,
     );
-    const { totalCredits: estimatedTotalCost } = calculateCreditMarkup({
-      baseCredits: estimatedBaseCost,
-      markupPercent: character.monetization_enabled ? markupPct : 0,
-    });
-
     const requestId = `agent-mcp:${character.id}:${crypto.randomUUID()}`;
     let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
     try {
@@ -503,8 +491,8 @@ export async function handleToolCall(
         estimatedOutputTokens: 0,
         flatCost: {
           baseTotalCost: estimatedBaseCost,
-          platformMarkup: estimatedTotalCost - estimatedBaseCost,
-          totalCost: estimatedTotalCost,
+          platformMarkup: 0,
+          totalCost: estimatedBaseCost,
         },
         executionCtx: authUser.executionCtx,
         admissionSnapshot: authUser.admissionSnapshot,
@@ -586,14 +574,8 @@ export async function handleToolCall(
         usage.inputTokens,
         usage.outputTokens,
       );
-      const { markupCredits: actualCreatorMarkup, totalCredits: actualTotal } =
-        calculateCreditMarkup({
-          baseCredits: actualBaseCost,
-          markupPercent: character.monetization_enabled ? markupPct : 0,
-        });
-
       const settlementTask = (async () => {
-        const reconciliation = await admission.settle(actualTotal);
+        const reconciliation = await admission.settle(actualBaseCost);
         if (reconciliation?.adjustmentType === "uncollected_overage") {
           logger.error("[Agent MCP] Final usage overage was not collected", {
             agentId: character.id,
@@ -602,27 +584,6 @@ export async function handleToolCall(
             reserved: reconciliation.reservedAmount,
             actual: reconciliation.actualCost,
           });
-          return;
-        }
-        if (character.monetization_enabled && actualCreatorMarkup > 0) {
-          await agentMonetizationService.recordCreatorEarnings({
-            agentId: character.id,
-            agentName: character.name,
-            ownerId: character.user_id,
-            earnings: actualCreatorMarkup,
-            consumerOrgId: authUser.organization_id,
-            model,
-            tokens: usage.totalTokens,
-            protocol: "mcp",
-          });
-          logger.info(
-            "[Agent MCP] Creator earnings credited to redeemable balance",
-            {
-              agentId: character.id,
-              ownerId: character.user_id,
-              earnings: actualCreatorMarkup,
-            },
-          );
         }
       })().catch((settlementError) => {
         // error-policy:J7 the response is already complete; durable admission
@@ -647,8 +608,8 @@ export async function handleToolCall(
             admittedOutputTokens: estimatedOutputTokens,
             cost: {
               base: actualBaseCost,
-              markup: actualCreatorMarkup,
-              total: actualTotal,
+              markup: 0,
+              total: actualBaseCost,
             },
             usage: {
               inputTokens: usage.inputTokens,

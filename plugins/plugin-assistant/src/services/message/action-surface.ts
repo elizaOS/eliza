@@ -464,7 +464,7 @@ export function retrieveContextualPlannerActions(args: {
         strongest === 0 ||
         plannerDomainOwnership(action, domain) === strongest,
     );
-    const operationNames = preferredOperationNames(
+    let operationNames = preferredOperationNames(
       domain !== undefined && !declaredDomains.has(domain)
         ? (args.intents ?? [])
             .map(positiveIntentText)
@@ -473,6 +473,50 @@ export function retrieveContextualPlannerActions(args: {
         : operationQuery,
       owners.map((action) => action.name),
     );
+    // A generic verb alone matches unrelated families (CREATE loads alarms,
+    // reminders, calendar, etc.). For a simple explicit resource request,
+    // prefer matching operation names; unknown or compound wording retains
+    // the existing discovery fallback. This only narrows automatic exposure.
+    const resourceQuery = positiveIntentText(operationQuery);
+    if (
+      operationNames.size > 0 &&
+      resourceQuery &&
+      (args.intents?.length ?? 0) <= 1 &&
+      tokenizeActionSearchText(resourceQuery).filter((word) =>
+        GENERIC_OPERATION_WORDS.has(word),
+      ).length === 1 &&
+      !/\b(?:and|or|also|plus|then|if|when|unless|before|after|while)\b|[;,]/iu.test(
+        resourceQuery,
+      )
+    ) {
+      const resourceNames = owners
+        .filter(
+          (action) =>
+            operationNames.has(action.name) &&
+            [
+              action.name,
+              ...(action.similes ?? []),
+              ...(action.similes ?? []).flatMap((alias) => {
+                const parent = actionsByName.get(normalizeActionName(alias));
+                return parent?.subActions?.length ? (parent.similes ?? []) : [];
+              }),
+            ].some((alias) => {
+              const words = tokenizeActionSearchText(alias).filter(
+                (word) =>
+                  word !== "owner" &&
+                  !/^\d+$/u.test(word) &&
+                  !GENERIC_OPERATION_WORDS.has(word) &&
+                  !OPERATION_CONNECTORS.has(word),
+              );
+              return (
+                words.length > 0 &&
+                words.every((word) => containsDomainPhrase(resourceQuery, word))
+              );
+            }),
+        )
+        .map((action) => action.name);
+      if (resourceNames.length > 0) operationNames = new Set(resourceNames);
+    }
     if (operationNames.size > 0) {
       const wanted = new Set(operationNames);
       const clauses = args.intents?.length ? args.intents : [operationQuery];

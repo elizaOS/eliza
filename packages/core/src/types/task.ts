@@ -33,6 +33,8 @@ export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
  * cannot overwrite each other the way whole-object read-modify-write does.
  */
 export interface TaskMetadataPatch {
+	/** Atomic absolute-wake request/acknowledgement; requires adapter capability. */
+	wake?: { requestAt?: number; consumeRevision?: number };
 	set?: Partial<TaskMetadata>;
 	unset?: readonly (keyof TaskMetadata)[];
 }
@@ -55,7 +57,10 @@ export interface TaskWorker {
 		runtime: IAgentRuntime,
 		options: Record<string, JsonValue | object>,
 		task: Task,
-	) => Promise<undefined | { nextInterval?: number; preserveTask?: boolean }>;
+	) => Promise<
+		| undefined
+		| { nextInterval?: number; nextWakeAt?: number; preserveTask?: boolean }
+	>;
 	/**
 	 * Called by the scheduler before each run -- "should this task run now?"
 	 * If absent, the task always passes scheduler validation.
@@ -96,6 +101,9 @@ export interface TaskMetadata {
 	updatedAt?: number;
 	/** Optional. If the task is recurring, this specifies the interval in milliseconds between updates or executions. */
 	updateInterval?: number;
+	/** Scheduler-owned absolute wake and monotonic request generation. */
+	wakeAt?: number;
+	wakeRevision?: number;
 	/** Optional. Original interval to restore on success when worker does not return nextInterval. WHY: backoff multiplies interval; we need the original base so we don't compound (exponential-of-exponential). */
 	baseInterval?: number;
 	/** Optional. Window (ms) before ideal next run when task may run. Earliest run = idealNextRun - notBefore. WHY: allows jitter/earlier run within a window. */

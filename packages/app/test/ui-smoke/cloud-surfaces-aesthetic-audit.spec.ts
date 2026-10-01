@@ -217,6 +217,7 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     path: "/cloud/account",
     route: "cloud/account",
     auth: AUTH,
+    fullPageEvidence: true,
   },
   {
     slug: "cloud-security",
@@ -996,6 +997,22 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           await expect(
             page.getByText("Eliza", { exact: true }).filter({ visible: true }),
           ).toBeVisible({ timeout: 10_000 });
+        }
+
+        if (auditCase.slug === "cloud-account") {
+          // The retired security URL redirects here. Privacy must be reachable
+          // in the actual authenticated renderer, not only in an isolated panel.
+          const privacy = page.getByTestId("cloud-privacy-panel");
+          await expect(privacy).toBeVisible();
+          await expect(
+            privacy.getByTestId("model-call-recording-status"),
+          ).toHaveText("Model-call recording is off on this deployment.");
+          await expect(
+            privacy.getByText("Vision and screen capture", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            privacy.getByText("Download my data", { exact: true }),
+          ).toBeVisible();
         }
 
         if (auditCase.slug === "cloud-billing") {

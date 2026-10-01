@@ -1,8 +1,11 @@
 /**
  * Collects guest-v1 dstack attestations and appraises them with a locally pinned
- * dstack-verifier. The verifier owns platform cryptography; this adapter binds
- * its result to the challenge and deployment identity. Socket, executable and
- * configuration belong inside the agent's single-tenant CVM trust boundary.
+ * dstack-verifier. The verifier owns platform cryptography (quote signature,
+ * PCK chain, TCB and collateral); this adapter independently decodes the raw
+ * attestation, binds the raw TDX quote's report data and debug attribute to the
+ * challenge, and binds the verifier's result to the deployment identity.
+ * Socket, executable and configuration belong inside the agent's single-tenant
+ * CVM trust boundary.
  */
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -12,11 +15,27 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import { z } from "zod";
+import { decodeDstackAttestation } from "./tee-dstack-attestation.ts";
 import type { TeeEvidence, TeeEvidenceProvider } from "./tee-evidence.ts";
+import { attachVerifiedNvidiaGpuAttestation } from "./tee-gpu-evidence.ts";
+import {
+  NVIDIA_NRAS_GPU_INTERMEDIATE_004_SHA256,
+  NVIDIA_NRAS_JWKS_URL,
+  NvidiaGpuAttestationVerifier,
+  nvidiaGpuAttestationConfiguration,
+} from "./tee-gpu-nvidia.ts";
 import type {
   TeeReportDataBoundEvidenceProvider,
   TeeReportDataChallenge,
 } from "./tee-key-release.ts";
+import {
+  assertTdxQuoteSelfSignature,
+  parseTdxQuote,
+  type TdxTdReport,
+} from "./tee-tdx-quote.ts";
+
+/** dstack's internal guest-agent socket inside the CVM. */
+export const DSTACK_DEFAULT_SOCKET_PATH = "/var/run/dstack.sock";
 
 const verifiedProviders = new WeakMap<
   TeeEvidenceProvider,
@@ -35,8 +54,30 @@ export function isDstackEvidenceProvider(
 
 const hex = z.string().regex(/^(?:[0-9a-f]{2})+$/i);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/i);
+const secp256k1PublicKey = z
+  .string()
+  .regex(/^(?:0[23][0-9a-f]{64}|04[0-9a-f]{128})$/i);
+/**
+ * NVIDIA confidential-computing GPUs attached to the CVM. When present, every
+ * evidence collection must also pass NVIDIA GPU attestation (pinned `nvattest`
+ * collector, NRAS appraisal, locally verified EAT tokens) bound to the same
+ * request nonce; otherwise the whole evidence is rejected.
+ */
+export const dstackGpuConfiguration = nvidiaGpuAttestationConfiguration.extend({
+  collector: nvidiaGpuAttestationConfiguration.shape.collector.unwrap(),
+  jwks: nvidiaGpuAttestationConfiguration.shape.jwks.default({
+    source: "fetched",
+    url: NVIDIA_NRAS_JWKS_URL,
+    x5cTrustAnchorSha256: [NVIDIA_NRAS_GPU_INTERMEDIATE_004_SHA256],
+    cacheTtlMs: 600_000,
+  }),
+});
 export const dstackEvidenceConfiguration = z.object({
-  socketPath: z.string().refine(isAbsolute),
+  /**
+   * Guest-agent socket. Point it at a dstack simulator for local development;
+   * simulator evidence is still rejected by quote and verifier appraisal.
+   */
+  socketPath: z.string().refine(isAbsolute).default(DSTACK_DEFAULT_SOCKET_PATH),
   verifierPath: z.string().refine(isAbsolute),
   verifierSha256: sha256,
   verifierConfigPath: z.string().refine(isAbsolute),
@@ -49,6 +90,12 @@ export const dstackEvidenceConfiguration = z.object({
     .object({ notBefore: z.iso.datetime(), expiresAt: z.iso.datetime() })
     .optional(),
   timeoutMs: z.number().int().positive().max(300_000).default(60_000),
+  /**
+   * dstack KMS root secp256k1 public key, pinned out of band (for example from
+   * the DstackKms contract). Required to accept guest-derived application keys.
+   */
+  kmsRootPublicKey: secp256k1PublicKey.optional(),
+  gpu: dstackGpuConfiguration.optional(),
 });
 export type DstackEvidenceConfig = z.input<typeof dstackEvidenceConfiguration>;
 const responseSchema = z.object({
@@ -68,6 +115,11 @@ const responseSchema = z.object({
       compose_hash: sha256,
       os_image_hash: sha256,
       mr_aggregated: sha256,
+      mrtd: hex.optional(),
+      rtmr0: hex.optional(),
+      rtmr1: hex.optional(),
+      rtmr2: hex.optional(),
+      rtmr3: hex.optional(),
     }),
   }),
 });
@@ -149,6 +201,39 @@ export async function collectDstackAttestation(
     req.on("error", reject);
     req.end(body);
   });
+}
+
+/**
+ * Appraise the raw attestation bytes independently of the verifier's JSON: the
+ * guest must have attested exactly this challenge, and for TDX the quote's own
+ * REPORTDATA must equal it, the quote must be self-consistently signed, and the
+ * TD must not be debuggable. Returns the quote's TD report for TDX.
+ */
+function appraiseRawAttestation(
+  variant: z.output<typeof dstackEvidenceConfiguration>["variant"],
+  attestation: string,
+  challenge: TeeReportDataChallenge,
+): TdxTdReport | undefined {
+  const expected = challenge.reportDataHex.toLowerCase().padEnd(128, "0");
+  const decoded = decodeDstackAttestation(attestation);
+  if (decoded.stack !== "dstack")
+    throw failure("Attestation stack does not bind the challenge directly");
+  if (decoded.stackReportData.toString("hex") !== expected)
+    throw failure("Attested stack report data does not match the challenge");
+  if (variant === "dstack-nitro-enclave") {
+    if (decoded.platform !== "nitro-enclave")
+      throw failure("Attestation platform does not match the pinned variant");
+    return undefined;
+  }
+  if (decoded.platform !== "tdx" || !decoded.tdxQuote)
+    throw failure("Attestation platform does not match the pinned variant");
+  const quote = parseTdxQuote(decoded.tdxQuote);
+  assertTdxQuoteSelfSignature(quote);
+  if (quote.report.reportData !== expected)
+    throw failure("Raw TDX quote report data does not match the challenge");
+  if (quote.report.debug)
+    throw failure("Raw TDX quote reports a debuggable trust domain");
+  return quote.report;
 }
 
 async function verify(
@@ -242,9 +327,14 @@ async function verify(
   }
 }
 
-/** Remote appraisal deliberately has no local guest socket dependency. */
+/**
+ * Remote appraisal deliberately has no local guest socket dependency. GPU
+ * attestation needs a local collector, so it is only available through
+ * {@link createDstackEvidenceProvider}.
+ */
 export const dstackVerifierConfiguration = dstackEvidenceConfiguration.omit({
   socketPath: true,
+  gpu: true,
 });
 export type DstackVerifierConfig = z.input<typeof dstackVerifierConfiguration>;
 /** Recheck signed authority immediately before a protected operation. */
@@ -268,7 +358,29 @@ export async function verifyDstackAttestation(
   challenge: TeeReportDataChallenge,
   abortSignal?: AbortSignal,
 ): Promise<TeeEvidence> {
-  const config = dstackVerifierConfiguration.parse(input);
+  // A GPU requirement must never be dropped by schema stripping.
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    (input as { gpu?: unknown }).gpu !== undefined
+  )
+    throw failure(
+      "GPU attestation requires the local dstack evidence provider",
+    );
+  return appraiseDstackAttestation(
+    dstackVerifierConfiguration.parse(input),
+    attestation,
+    challenge,
+    abortSignal,
+  );
+}
+
+async function appraiseDstackAttestation(
+  config: z.output<typeof dstackVerifierConfiguration>,
+  attestation: string,
+  challenge: TeeReportDataChallenge,
+  abortSignal?: AbortSignal,
+): Promise<TeeEvidence> {
   sha256.parse(challenge.reportDataHex);
   hex.parse(challenge.nonce);
   hex.parse(attestation);
@@ -281,6 +393,12 @@ export async function verifyDstackAttestation(
   signal.throwIfAborted();
   assertDstackReleaseCurrent(config);
   try {
+    // Rejects before spending verifier work on evidence that cannot pass.
+    const report = appraiseRawAttestation(
+      config.variant,
+      attestation,
+      challenge,
+    );
     const result = responseSchema.parse(
       JSON.parse(await verify(config, attestation, signal)),
     );
@@ -315,18 +433,54 @@ export async function verifyDstackAttestation(
         "Verified deployment identity does not match admission policy",
       );
     }
+    const registers = report
+      ? {
+          mrtd: report.mrTd,
+          rtmr0: report.rtmr0,
+          rtmr1: report.rtmr1,
+          rtmr2: report.rtmr2,
+          rtmr3: report.rtmr3,
+        }
+      : {};
+    for (const [name, value] of Object.entries(registers)) {
+      const reported = app[name as keyof typeof registers];
+      if (reported !== undefined && !equalHex(reported, value))
+        throw failure("Verifier registers do not match the raw TDX quote");
+    }
     return {
       kind: d.tee_variant === "dstack-tdx" ? "tdx" : "nitro",
       provider: "dstack",
       reportData: challenge.reportDataHex.toLowerCase(),
       measurements: {
+        app: app.app_id.toLowerCase(),
         compose: app.compose_hash,
         os: app.os_image_hash,
         boot: app.mr_aggregated,
+        ...registers,
       },
-      // These platforms' pinned verifier rejects debug reports. No GPU, NPU,
-      // I/O, secure-boot or lifecycle claims are inferred from generic validity.
-      claims: { debugDisabled: true },
+      // Claims map only what this appraisal established. debugDisabled: TDX
+      // TDATTRIBUTES.DEBUG = 0 (raw quote), Nitro verifier rejects debug docs.
+      // TDX only: memoryEncrypted: the verified quote proves a TD, whose
+      // private memory TDX encrypts. productionLifecycle: debug bit 0, TCB
+      // UpToDate, no advisories (all enforced above) AND os_image_is_dev is
+      // exactly false (the verifier reports null outside the TDX legacy path;
+      // null leaves the claim absent). Never secureBoot: dstack boots a
+      // measured, pinned OS image (the `os` measurement), not UEFI secure
+      // boot. Never ioProtected, GPU or NPU claims from CPU evidence.
+      claims: {
+        debugDisabled: true,
+        ...(report
+          ? {
+              memoryEncrypted: true,
+              ...(d.os_image_is_dev === false &&
+              d.tcb_status === "UpToDate" &&
+              d.advisory_ids.length === 0 &&
+              !report.debug
+                ? { productionLifecycle: true }
+                : {}),
+            }
+          : {}),
+      },
       freshness: {
         nonce: challenge.nonce,
         timestamp: new Date().toISOString(),
@@ -350,6 +504,9 @@ export function createDstackEvidenceProvider(
   ): Promise<TeeEvidence>;
 } {
   const config = dstackEvidenceConfiguration.parse(input);
+  const gpuVerifier = config.gpu
+    ? new NvidiaGpuAttestationVerifier(config.gpu)
+    : undefined;
   const collect = async (
     challenge: TeeReportDataChallenge,
     abortSignal?: AbortSignal,
@@ -368,12 +525,19 @@ export function createDstackEvidenceProvider(
         challenge.reportDataHex,
         signal,
       );
-      return await verifyDstackAttestation(
+      const evidence = await appraiseDstackAttestation(
         config,
         attestation,
         challenge,
         signal,
       );
+      if (!gpuVerifier) return evidence;
+      // Only after the TDX quote passed: attest the GPUs against the same
+      // request nonce the caller bound into report_data. Any failure rejects
+      // the whole evidence; GPU claims are never dropped or defaulted.
+      const gpu = await gpuVerifier.attest(challenge.nonce, { signal });
+      assertDstackReleaseCurrent(config);
+      return attachVerifiedNvidiaGpuAttestation(evidence, gpu, challenge.nonce);
     } catch (error) {
       // error-policy:J2 Preserve the failing boundary without fabricating trust.
       throw failure("Dstack evidence collection/appraisal failed", error);

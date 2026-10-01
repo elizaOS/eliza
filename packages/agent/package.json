@@ -49,7 +49,9 @@
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "test": "node scripts/run-vitest-batches.ts",
     "test:e2e": "node scripts/run-vitest-batches.ts",
-    "test:integration": "node scripts/run-vitest-batches.ts"
+    "test:integration": "node scripts/run-vitest-batches.ts",
+    "test:tee:dstack": "node scripts/run-vitest-batches.ts test/tee-dstack-admission.test.ts test/tee-dstack-protected-profile.test.ts test/tee-dstack-gpu.test.ts test/tee-gpu-nvidia-attestation.test.ts",
+    "test:tee:dstack-live": "node scripts/run-vitest-batches.ts test/tee-dstack-live.test.ts"
   },
   "exports": {
     ".": {
@@ -58,6 +60,24 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./services/interactive-task-runtime": {
+      "eliza-source": "./src/services/interactive-task-runtime.ts",
+      "types": "./dist/services/interactive-task-runtime.d.ts",
+      "import": "./dist/services/interactive-task-runtime.js",
+      "default": "./dist/services/interactive-task-runtime.js"
+    },
+    "./services/interactive-task-http": {
+      "eliza-source": "./src/services/interactive-task-http.ts",
+      "types": "./dist/services/interactive-task-http.d.ts",
+      "import": "./dist/services/interactive-task-http.js",
+      "default": "./dist/services/interactive-task-http.js"
+    },
+    "./services/interactive-task-store": {
+      "eliza-source": "./src/services/interactive-task-store.ts",
+      "types": "./dist/services/interactive-task-store.d.ts",
+      "import": "./dist/services/interactive-task-store.js",
+      "default": "./dist/services/interactive-task-store.js"
     },
     "./package.json": "./package.json",
     "./api": {
@@ -328,7 +348,7 @@
     "@types/pg": "^8.23.1",
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "ai": "^6.0.134",
@@ -337,7 +357,7 @@
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.2",
     "@elizaos/testing": "workspace:*"
   },
   "elizaos": {

@@ -9,7 +9,7 @@ import {
 	normalizeDeploymentTargetConfig,
 } from "../contracts/service-routing.js";
 import { isIosMobile } from "../runtime-env.js";
-import { isPlainObject } from "../type-guards.js";
+import { hasPlainObjectTag as isPlainObject } from "../utils/type-guards.js";
 export const RUNTIME_EXECUTION_MODES = [
 	"cloud",
 	"local-safe",

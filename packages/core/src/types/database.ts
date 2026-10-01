@@ -1886,6 +1886,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * task matched. Adapters without an atomic merge leave this undefined and
 	 * callers fall back to a whole-metadata update.
 	 */
+	/** True only for atomic earliest wake + revision-conditional consumption. */
+	supportsAtomicTaskWake?: boolean;
 	patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;

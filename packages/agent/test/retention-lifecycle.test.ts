@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   AgentRuntime,
   ChannelType,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
   TaskService,
   type UUID,
 } from "@elizaos/core";
@@ -15,6 +16,11 @@ import { afterEach, expect, it } from "vitest";
 import { encodeRecord } from "../../../plugins/plugin-sqlite/record-codec.ts";
 import { LogsRetentionService } from "../src/runtime/logs-retention-service.ts";
 import { MemoryRetentionService } from "../src/runtime/memory-retention-service.ts";
+import { RETENTION_BOUNDS_REQUIRED_SETTING } from "../src/runtime/retention-task.ts";
+import {
+  CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
+  SANDBOX_AUDIT_LOG_TYPE,
+} from "../src/security/audit-log.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -149,6 +155,57 @@ it("keeps retention off until configured, then uses the core clock and survives 
   await expect(restarted.sweep()).rejects.toMatchObject({
     code: "RETENTION_SERVICE_STOPPED",
   });
+});
+
+it("refuses to start without an explicit bound when a protected host requires one", async () => {
+  const h = await fixture();
+  h.runtime.setSetting(RETENTION_BOUNDS_REQUIRED_SETTING, "true");
+  await expect(MemoryRetentionService.start(h.runtime)).rejects.toMatchObject({
+    code: "RETENTION_BOUNDS_REQUIRED",
+  });
+  await expect(LogsRetentionService.start(h.runtime)).rejects.toMatchObject({
+    code: "RETENTION_BOUNDS_REQUIRED",
+  });
+  expect(await h.runtime.getTasks({ tags: ["queue"] })).toEqual([]);
+  expect(await h.runtime.getMemoryById(h.older)).not.toBeNull();
+
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "1");
+  const memory = await MemoryRetentionService.start(h.runtime);
+  cleanups.push(() => memory.stop());
+  await memory.sweep();
+  expect(await h.runtime.getMemoryById(h.older)).toBeNull();
+  expect(await h.runtime.getMemoryById(h.newer)).not.toBeNull();
+});
+
+it("never selects durable audit rows for lifecycle log retention", async () => {
+  const h = await fixture();
+  const [seed] = await h.adapter.getLogs({ limit: 1 });
+  if (!seed?.roomId) throw new Error("Missing real log seed");
+  for (const type of [
+    SANDBOX_AUDIT_LOG_TYPE,
+    ROLE_WRITE_AUDIT_LOG_TYPE,
+    CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
+  ]) {
+    await h.runtime.log({
+      entityId: seed.entityId,
+      roomId: seed.roomId,
+      type,
+      body: { source: "audit-acceptance", metadata: { evidence: type } },
+    });
+  }
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM", "1");
+  const logs = await LogsRetentionService.start(h.runtime);
+  cleanups.push(() => logs.stop());
+  expect(await logs.sweep()).toMatchObject({ scanned: 2, deleted: 1 });
+  const remaining = await h.adapter.getLogs({});
+  expect(remaining.map((row) => row.type).sort()).toEqual(
+    [
+      CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
+      "retention-acceptance",
+      ROLE_WRITE_AUDIT_LOG_TYPE,
+      SANDBOX_AUDIT_LOG_TYPE,
+    ].sort(),
+  );
 });
 
 it("joins concurrent direct sweeps and drains their durable deletion before stop resolves", async () => {

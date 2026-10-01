@@ -315,18 +315,6 @@
 			"import": "./dist/config/ui-spec.js",
 			"default": "./dist/config/ui-spec.js"
 		},
-		"./config/zod-schema.agent-runtime": {
-			"eliza-source": "./src/config/zod-schema.agent-runtime.ts",
-			"types": "./dist/config/zod-schema.agent-runtime.d.ts",
-			"import": "./dist/config/zod-schema.agent-runtime.js",
-			"default": "./dist/config/zod-schema.agent-runtime.js"
-		},
-		"./config/zod-schema.core": {
-			"eliza-source": "./src/config/zod-schema.core.ts",
-			"types": "./dist/config/zod-schema.core.d.ts",
-			"import": "./dist/config/zod-schema.core.js",
-			"default": "./dist/config/zod-schema.core.js"
-		},
 		"./connector-account-catalog": {
 			"eliza-source": "./src/connector-account-catalog.ts",
 			"types": "./dist/connector-account-catalog.d.ts",
@@ -1342,6 +1330,18 @@
 			"import": "./dist/inference-trace.js",
 			"default": "./dist/inference-trace.js"
 		},
+		"./messaging/task-events": {
+			"eliza-source": "./src/messaging/task-events.ts",
+			"types": "./dist/messaging/task-events.d.ts",
+			"import": "./dist/messaging/task-events.js",
+			"default": "./dist/messaging/task-events.js"
+		},
+		"./messaging/interactive-task": {
+			"eliza-source": "./src/messaging/interactive-task.ts",
+			"types": "./dist/messaging/interactive-task.d.ts",
+			"import": "./dist/messaging/interactive-task.js",
+			"default": "./dist/messaging/interactive-task.js"
+		},
 		"./messaging/interactions/parse": {
 			"eliza-source": "./src/messaging/interactions/parse.ts",
 			"types": "./dist/messaging/interactions/parse.d.ts",
@@ -1437,6 +1437,30 @@
 			"types": "./dist/utils/deterministic.d.ts",
 			"import": "./dist/utils/deterministic.js",
 			"default": "./dist/utils/deterministic.js"
+		},
+		"./messaging/interactions/sessions": {
+			"eliza-source": "./src/messaging/interactions/sessions.ts",
+			"types": "./dist/messaging/interactions/sessions.d.ts",
+			"import": "./dist/messaging/interactions/sessions.js",
+			"default": "./dist/messaging/interactions/sessions.js"
+		},
+		"./messaging/task-widgets": {
+			"eliza-source": "./src/messaging/task-widgets.ts",
+			"types": "./dist/messaging/task-widgets.d.ts",
+			"import": "./dist/messaging/task-widgets.js",
+			"default": "./dist/messaging/task-widgets.js"
+		},
+		"./messaging/interactions/profiles": {
+			"eliza-source": "./src/messaging/interactions/profiles.ts",
+			"types": "./dist/messaging/interactions/profiles.d.ts",
+			"import": "./dist/messaging/interactions/profiles.js",
+			"default": "./dist/messaging/interactions/profiles.js"
+		},
+		"./messaging/interactions/profile-catalog": {
+			"eliza-source": "./src/messaging/interactions/profile-catalog.ts",
+			"types": "./dist/messaging/interactions/profile-catalog.d.ts",
+			"import": "./dist/messaging/interactions/profile-catalog.js",
+			"default": "./dist/messaging/interactions/profile-catalog.js"
 		}
 	},
 	"files": [
@@ -1468,10 +1492,10 @@
 		"@playwright/test": "^1.63.0",
 		"@types/bun": "1.4.2",
 		"@types/node": "^25.0.3",
-		"@vitest/coverage-v8": "^5.0.1",
+		"@vitest/coverage-v8": "^5.0.2",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.1",
+		"vitest": "^5.0.2",
 		"tsup": "^8.5.1",
 		"dotenv": "^17.2.3",
 		"@types/markdown-it": "^14.1.2"

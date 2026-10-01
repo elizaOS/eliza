@@ -29,6 +29,12 @@ import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
+import {
+  type FinishedStepUsageSource,
+  firstNumber,
+  modelNotAvailableMessage,
+  summarizeFinishedStepUsage,
+} from "@/api-app/lib/inference-usage";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -524,16 +530,6 @@ function anthropicError(
     { type: "error", error: { type, message } },
     { status: status as 400, headers },
   );
-}
-
-/**
- * Client-facing message for an unresolvable model. Mirrors the
- * /v1/chat/completions boundary (#13913): when `getLanguageModel` /
- * provider resolution raises a configuration error, the caller must see a clean, model-scoped
- * error — never the internal provider/gateway config detail.
- */
-function modelNotAvailableMessage(model: string): string {
-  return `model '${model}' is not available on this deployment`;
 }
 
 /** A post-settlement audit failure must not re-enter credit settlement. */
@@ -1475,27 +1471,6 @@ async function handleNonStream(
 }
 
 /**
- * The abort-settlement helpers only read `usage` off the SDK's finished steps.
- * `StepResult` is invariant in its tools generic, so this structural view lets
- * the streamText callback's concrete `StepResult<convertedTools>[]` flow in
- * without a cast (`usage` itself does not depend on the tools generic).
- */
-type FinishedStepUsageSource = {
-  readonly usage: StepResult<ToolSet>["usage"];
-};
-
-function firstNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return undefined;
-}
-
-/**
  * True when the SDK's finish usage carries at least one provider-reported
  * token count (an explicit zero counts as reported). Mirrors the
  * chat-completions `hasReportedUsageTokens` guard so a stream that finished
@@ -1519,58 +1494,6 @@ function hasReportedFinishUsage(usage: unknown): boolean {
       record.totalTokens,
     ) !== undefined
   );
-}
-
-function summarizeFinishedStepUsage(
-  steps: readonly FinishedStepUsageSource[],
-): AIUsage | null {
-  let sawUsage = false;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let totalTokens = 0;
-  let cacheReadInputTokens = 0;
-  let cacheWriteInputTokens = 0;
-
-  for (const step of steps) {
-    const usage = step.usage;
-    const stepInputTokens = firstNumber(usage.inputTokens) ?? 0;
-    const stepOutputTokens = firstNumber(usage.outputTokens) ?? 0;
-    const stepTotalTokens =
-      firstNumber(usage.totalTokens) ?? stepInputTokens + stepOutputTokens;
-    const stepCacheReadTokens =
-      firstNumber(
-        usage.inputTokenDetails?.cacheReadTokens,
-        usage.cachedInputTokens,
-      ) ?? 0;
-    const stepCacheWriteTokens =
-      firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
-
-    if (
-      stepInputTokens > 0 ||
-      stepOutputTokens > 0 ||
-      stepTotalTokens > 0 ||
-      stepCacheReadTokens > 0 ||
-      stepCacheWriteTokens > 0
-    ) {
-      sawUsage = true;
-    }
-
-    inputTokens += stepInputTokens;
-    outputTokens += stepOutputTokens;
-    totalTokens += stepTotalTokens;
-    cacheReadInputTokens += stepCacheReadTokens;
-    cacheWriteInputTokens += stepCacheWriteTokens;
-  }
-
-  if (!sawUsage) return null;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    cacheReadInputTokens,
-    cacheWriteInputTokens,
-  };
 }
 
 /**

@@ -25,7 +25,13 @@ export const CRON_ROUTES: Record<string, string> = {
 export const CRON_FANOUT: Record<string, string[]> = {
   "0 0 * * *": ["/api/cron/container-billing"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
-  "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
+  "0 2 * * *": [
+    "/api/cron/cleanup-webhook-events",
+    // Delete recorded model calls past LLM_TRAJECTORY_RETENTION_DAYS.
+    "/api/cron/llm-trajectory-purge",
+    // Delete audit rows past their expires_at (7-year default retention).
+    "/api/cron/audit-log-purge",
+  ],
   "0 3 * * *": [
     "/api/cron/domain-renewals",
     // #11058: release external domain rows still unverified after the reclaim

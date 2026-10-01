@@ -25,11 +25,13 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   isElizaError,
+  isProcessingPolicyDenial,
   isObjectRecord as isRecord,
   logger,
   type Memory,
   ModelType,
   parseJsonObject,
+  resolveActionGateFailure,
   runWithActionRoutingContext,
   Service,
   type State,
@@ -989,8 +991,25 @@ Focus on:
           action,
           callback,
           handlerError: "rethrow",
-          invoke: (actionCallback) =>
-            runWithActionRoutingContext(
+          invoke: async (actionCallback) => {
+            // Every attempt may follow async admission or a retry delay. Resolve
+            // current stored authority at the handler boundary each time.
+            const gateFailure = await resolveActionGateFailure(
+              runtime,
+              action,
+              {
+                message,
+                evaluateContexts: false,
+              },
+            );
+            if (gateFailure) {
+              throw new ElizaError(gateFailure, {
+                code: "ACTION_AUTHORITY_DENIED",
+                context: { action: action.name, stepId: step.id },
+              });
+            }
+            abortSignal?.throwIfAborted();
+            return runWithActionRoutingContext(
               { actionName: action.name, modelClass: action.modelClass },
               () =>
                 action.handler(
@@ -1000,7 +1019,8 @@ Focus on:
                   options,
                   actionCallback,
                 ),
-            ),
+            );
+          },
         });
 
         return {
@@ -1015,8 +1035,10 @@ Focus on:
       } catch (error) {
         // error-policy:J1 action invocation enforces the step's bounded retry contract
         if (
-          isElizaError(error) &&
-          error.code === "ACTION_RESULT_INVALID_AFTER_HANDLER"
+          (isElizaError(error) &&
+            (error.code === "ACTION_RESULT_INVALID_AFTER_HANDLER" ||
+              error.code === "ACTION_AUTHORITY_DENIED")) ||
+          isProcessingPolicyDenial(error)
         ) {
           throw error;
         }

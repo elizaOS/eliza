@@ -20,6 +20,8 @@ import {
   BROWSER_SESSION_TTL_MS,
   createBrowserSession,
   createMachineSession,
+  revokeAllSessionsForIdentity,
+  revokeSession,
 } from "./auth/sessions";
 import { startApiServer } from "./server";
 
@@ -38,6 +40,8 @@ let activeCookie: string;
 let expiredCookie: string;
 let revokedCookie: string;
 let guestCookie: string;
+let ownerId: string;
+let ownerSessionOptions: Parameters<typeof createBrowserSession>[1];
 
 function ping(headers: Record<string, string>): Promise<Probe> {
   return new Promise((resolve) => {
@@ -63,6 +67,34 @@ function ping(headers: Record<string, string>): Promise<Probe> {
     });
     ws.on("error", (error) => finish({ error: error.message }));
   });
+}
+
+/** Opens an admitted socket and resolves its close code once the server ends it. */
+async function openAdmitted(
+  headers: Record<string, string>,
+): Promise<{ closed: Promise<number>; ws: WebSocket }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`, { headers });
+  const closed = new Promise<number>((resolve) => {
+    ws.on("close", (code) => resolve(code));
+  });
+  await new Promise<void>((resolve, reject) => {
+    ws.on("error", reject);
+    ws.on("open", () => ws.send(JSON.stringify({ type: "ping" })));
+    ws.on("message", (data) => {
+      const frame = JSON.parse(String(data)) as { type?: string };
+      if (frame.type === "pong") resolve();
+    });
+  });
+  return { closed, ws };
+}
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out`)), 10_000),
+    ),
+  ]);
 }
 
 function cookieHeaders(sessionId: string): Record<string, string> {
@@ -118,6 +150,8 @@ describe("owner browser session WebSocket admission", {
       userAgent: null,
       rememberDevice: false,
     };
+    ownerId = owner.id;
+    ownerSessionOptions = options;
     activeCookie = (await createBrowserSession(store, options)).session.id;
     expiredCookie = (
       await createBrowserSession(store, {
@@ -221,5 +255,42 @@ describe("owner browser session WebSocket admission", {
     expect(await ping(cookieHeaders(activeCookie))).toEqual({ type: "pong" });
     await store.revokeSession(activeCookie, Date.now());
     expect(await ping(cookieHeaders(activeCookie))).toEqual({ code: 1008 });
+  });
+
+  it("closes an open socket with 1008 when its session is revoked", async () => {
+    const sessionId = (await createBrowserSession(store, ownerSessionOptions))
+      .session.id;
+    const { closed } = await openAdmitted(cookieHeaders(sessionId));
+    await revokeSession(sessionId, {
+      store,
+      reason: "test.revoke",
+      actorIdentityId: ownerId,
+      ip: null,
+      userAgent: null,
+    });
+    expect(await withTimeout(closed, "revoked socket close")).toBe(1008);
+  });
+
+  it("closes other sessions' sockets on revoke-all but keeps the current one", async () => {
+    const current = (await createBrowserSession(store, ownerSessionOptions))
+      .session.id;
+    const other = (await createBrowserSession(store, ownerSessionOptions))
+      .session.id;
+    const kept = await openAdmitted(cookieHeaders(current));
+    const revoked = await openAdmitted(cookieHeaders(other));
+    await revokeAllSessionsForIdentity({
+      store,
+      identityId: ownerId,
+      exceptSessionId: current,
+      reason: "test.revoke_all",
+      ip: null,
+      userAgent: null,
+    });
+    expect(await withTimeout(revoked.closed, "revoke-all socket close")).toBe(
+      1008,
+    );
+    expect(kept.ws.readyState).toBe(WebSocket.OPEN);
+    kept.ws.close();
+    await withTimeout(kept.closed, "kept socket close");
   });
 });

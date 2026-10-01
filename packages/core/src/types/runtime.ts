@@ -85,7 +85,6 @@ import type {
 	TaskMetadataPatchOutcome,
 	TaskWorker,
 } from "./task";
-import type { ToolPolicyConfig, ToolProfileId } from "./tools";
 
 export {
 	type SearchCategoryEnumerationOptions,
@@ -890,42 +889,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * Get all registered actions.
 	 */
 	getAllActions(): Action[];
-
-	/**
-	 * Get actions filtered by tool policy.
-	 *
-	 * @param context - Optional policy context for filtering
-	 * @returns Filtered actions based on policy
-	 */
-	getFilteredActions(context?: {
-		profile?: ToolProfileId;
-		characterPolicy?: ToolPolicyConfig;
-		channelPolicy?: ToolPolicyConfig;
-		providerPolicy?: ToolPolicyConfig;
-		worldPolicy?: ToolPolicyConfig;
-		roomPolicy?: ToolPolicyConfig;
-	}): Action[] | Promise<Action[]>;
-
-	/**
-	 * Check if a specific action is allowed by tool policy.
-	 *
-	 * @param actionName - The action name to check
-	 * @param context - Optional policy context
-	 * @returns Whether the action is allowed
-	 */
-	isActionAllowed(
-		actionName: string,
-		context?: {
-			profile?: ToolProfileId;
-			characterPolicy?: ToolPolicyConfig;
-			channelPolicy?: ToolPolicyConfig;
-			providerPolicy?: ToolPolicyConfig;
-			worldPolicy?: ToolPolicyConfig;
-			roomPolicy?: ToolPolicyConfig;
-		},
-	):
-		| { allowed: boolean; reason: string }
-		| Promise<{ allowed: boolean; reason: string }>;
 
 	ensureConnections(
 		entities: Entity[],
