@@ -2779,7 +2779,7 @@ function parseLabeledEvaluatorText(text: string): RawEvaluatorOutput | null {
   }
 
   if (!isEvaluatorShapedObject(output)) return null;
-  deriveMessageFromLabeledFinalThought(output);
+  // Thought is evaluator commentary, never an implicit user-facing reply.
   return output;
 }
 
@@ -2831,31 +2831,6 @@ function firstLabelToken(value: string): string {
       .trim()
       .split(/\s+/)[0]
       ?.replace(/[.,;:]+$/g, "") ?? ""
-  );
-}
-
-function deriveMessageFromLabeledFinalThought(
-  output: RawEvaluatorOutput,
-): void {
-  if (typeof output.messageToUser === "string") return;
-  if (output.success !== true) return;
-  if (normalizeEvaluatorRoute(output.decision) !== "FINISH") return;
-  if (typeof output.thought !== "string") return;
-  const thought = output.thought.trim();
-  if (!looksLikeMultilineFinalAnswer(thought)) return;
-  output.messageToUser = thought;
-  output.thought = "Recovered evaluator-labeled final answer.";
-}
-
-function looksLikeMultilineFinalAnswer(text: string): boolean {
-  if (!text.includes("\n")) return false;
-  if (!looksLikeUserFacingAnswer(text)) return false;
-  return (
-    text.includes("```") ||
-    text.includes("\n- ") ||
-    text.includes("\n* ") ||
-    text.includes("\n1. ") ||
-    text.includes("**")
   );
 }
 
