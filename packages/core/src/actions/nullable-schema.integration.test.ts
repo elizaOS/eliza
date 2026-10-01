@@ -11,7 +11,9 @@ const action: Action = {
 	similes: [],
 	examples: [],
 	validate: async () => true,
-	handler: async () => ({ success: true }),
+	handler: async () => {
+		throw new Error("Schema admission regression must not execute an action");
+	},
 	parameters: [
 		{
 			name: "schedule",
@@ -82,4 +84,28 @@ test("nullable schedule update crosses planner, wire JSON and admission without 
 	]) {
 		expect(validateToolArgs(action, { schedule }).valid).toBe(false);
 	}
+});
+
+// Retain an explicitly declared nullable enum at both schema and admission boundaries.
+test("nullable enums retain their null branch in planner schema and admission", () => {
+	const enumAction: Action = {
+		...action,
+		parameters: [
+			{
+				name: "value",
+				description: "Explicitly nullable enum",
+				required: true,
+				schema: { type: "null", enum: [null, "non-null"] },
+			},
+		],
+	};
+	const schema = actionToTool(enumAction).function.parameters;
+	expect(schema.properties?.value.enum).toEqual([null, "non-null"]);
+	const admitted = validateToolArgs(enumAction, JSON.parse('{"value":null}'));
+	expect(admitted).toMatchObject({
+		valid: true,
+		args: { value: null },
+		errors: [],
+	});
+	expect(validateToolArgs(enumAction, { value: "non-null" }).valid).toBe(false);
 });
