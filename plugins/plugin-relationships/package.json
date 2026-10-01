@@ -62,7 +62,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.2",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*"

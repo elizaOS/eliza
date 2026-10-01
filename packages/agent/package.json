@@ -59,6 +59,24 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./services/interactive-task-runtime": {
+      "eliza-source": "./src/services/interactive-task-runtime.ts",
+      "types": "./dist/services/interactive-task-runtime.d.ts",
+      "import": "./dist/services/interactive-task-runtime.js",
+      "default": "./dist/services/interactive-task-runtime.js"
+    },
+    "./services/interactive-task-http": {
+      "eliza-source": "./src/services/interactive-task-http.ts",
+      "types": "./dist/services/interactive-task-http.d.ts",
+      "import": "./dist/services/interactive-task-http.js",
+      "default": "./dist/services/interactive-task-http.js"
+    },
+    "./services/interactive-task-store": {
+      "eliza-source": "./src/services/interactive-task-store.ts",
+      "types": "./dist/services/interactive-task-store.d.ts",
+      "import": "./dist/services/interactive-task-store.js",
+      "default": "./dist/services/interactive-task-store.js"
+    },
     "./package.json": "./package.json",
     "./api": {
       "eliza-source": "./src/api/index.ts",
@@ -337,7 +355,7 @@
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.2",
     "@elizaos/testing": "workspace:*"
   },
   "elizaos": {

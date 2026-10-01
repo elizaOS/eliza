@@ -59,7 +59,7 @@
     "googleapis": "^169.0.0",
     "tsup": "^8.5.1",
     "react-dom": "*",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.2",
     "vite": "^8.3.0"
   },
   "peerDependencies": {

@@ -123,6 +123,12 @@
       "types": "./dist/browser-contracts/account-lifecycle.d.ts",
       "import": "./dist/browser-contracts/account-lifecycle.js",
       "default": "./dist/browser-contracts/account-lifecycle.js"
+    },
+    "./app-auth": {
+      "eliza-source": "./src/app-auth.ts",
+      "types": "./dist/app-auth.d.ts",
+      "import": "./dist/app-auth.js",
+      "default": "./dist/app-auth.js"
     }
   },
   "elizaos": {

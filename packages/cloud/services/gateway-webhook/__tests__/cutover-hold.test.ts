@@ -13,6 +13,8 @@ import {
   CONNECTOR_HELD,
   CUTOVER_HOLD_MAX_MS,
   drainCutoverHolds,
+  type HeldWebhook,
+  holdWebhookForCutover,
 } from "../src/cutover-hold";
 import { createRedis, type GatewayRedis } from "../src/redis";
 import {
@@ -275,6 +277,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(providerSends).toHaveLength(1);
   }, 60_000);
@@ -388,6 +391,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(await first).toMatchObject({ delivered: 1 });
     expect(cloud.turns.length - heldTurns).toBe(1);
@@ -468,6 +472,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(recordAfterFirst).toBeNull();
     expect(second).toEqual({
@@ -475,7 +480,69 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
+    expect(await redis.get(dedupKey)).toBe("delivered");
+  }, 60_000);
+
+  test("a hold settled while another replica owned the lease is not redelivered once that lease lapses", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_8";
+    const recordKey = `webhook:cutover-hold:${dedupKey}`;
+    const leaseKey = `webhook:cutover-hold-lease:${dedupKey}`;
+
+    await handleWebhook(
+      blooioWebhook("msg_cutover_8"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const heldTurns = cloud.turns.length;
+
+    // Renewal lapsed mid-turn and another replica took the lease, then died
+    // without draining. This drainer still delivers the turn but must leave
+    // the record to the lease owner.
+    cloud.state.attested = true;
+    cloud.state.onAttestedTurn = async () => {
+      await redis.set(leaseKey, "another-replica", { ex: 180 });
+    };
+    const first = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 60_000 },
+    );
+    cloud.state.onAttestedTurn = undefined;
+    const recordAfterFirst = await redis.get(recordKey);
+
+    // The dead replica's lease lapses. The next drainer finds a settled
+    // ledger and must drop the record instead of running the turn again.
+    await redis.del(leaseKey);
+    const second = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      { now: Date.now() + 120_000 },
+    );
+
+    expect(recordAfterFirst).not.toBeNull();
+    expect(first).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+      stale: 0,
+    });
+    expect(second).toEqual({
+      delivered: 0,
+      rescheduled: 0,
+      released: 0,
+      expired: 0,
+      stale: 1,
+    });
+    expect(cloud.turns.length - heldTurns).toBe(1);
+    expect(providerSends).toHaveLength(1);
+    expect(await redis.get(recordKey)).toBeNull();
     expect(await redis.get(dedupKey)).toBe("delivered");
   }, 60_000);
 
@@ -515,6 +582,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 1,
       expired: 0,
+      stale: 0,
     });
     // Settled like a first-delivery pre-egress failure: the ledger reopens.
     expect(ledgerAfterRefusal).toBeNull();
@@ -524,10 +592,130 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       rescheduled: 0,
       released: 0,
       expired: 0,
+      stale: 0,
     });
     expect(cloud.turns.length - heldTurns).toBe(1);
     expect(providerSends).toEqual([]);
   }, 60_000);
+
+  test("stale cleanup preserves a webhook re-held after the ledger read", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_reheld";
+    const recordKey = `webhook:cutover-hold:${dedupKey}`;
+    await handleWebhook(
+      blooioWebhook("msg_cutover_reheld"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const held = await redis.get<HeldWebhook>(recordKey);
+    if (!held) throw new Error("Expected the initial durable hold");
+    // A prior drainer released the ledger but left its fenced record behind.
+    await redis.del(dedupKey);
+    const originalGet = redis.get.bind(redis);
+    let reheld = false;
+    redis.get = async <T = unknown>(key: string): Promise<T | null> => {
+      const value = await originalGet<T>(key);
+      if (key === dedupKey && !reheld) {
+        reheld = true;
+        // The provider retry parks a new hold before stale cleanup executes.
+        await holdWebhookForCutover(
+          redis,
+          { ...held, traceId: "replacement-hold" },
+          { code: held.code, retryAfterSeconds: null },
+        );
+      }
+      return value;
+    };
+    const first = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      {
+        now: Date.now() + 60_000,
+      },
+    );
+    expect(reheld).toBe(true);
+    expect(first.stale).toBe(0);
+    expect(await redis.get(dedupKey)).toBe(CONNECTOR_HELD);
+    expect(await redis.get<HeldWebhook>(recordKey)).toMatchObject({
+      traceId: "replacement-hold",
+    });
+    cloud.state.attested = true;
+    const second = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      {
+        now: Date.now() + 120_000,
+      },
+    );
+    expect(second.delivered).toBe(1);
+    expect(providerSends).toHaveLength(1);
+    expect(await redis.get(recordKey)).toBeNull();
+    expect(await redis.get(dedupKey)).toBe("delivered");
+  }, 60_000);
+
+  for (const terminal of ["released", "expired"] as const) {
+    test(`terminal cleanup preserves a provider retry held during ${terminal} settlement`, async () => {
+      const cloud = startCloud();
+      const redis = createRedis();
+      const messageId = `terminal_reheld_${terminal}`;
+      const dedupKey = `webhook:blooio:${messageId}`;
+      const recordKey = `webhook:cutover-hold:${dedupKey}`;
+      await handleWebhook(
+        blooioWebhook(messageId),
+        blooioAdapter,
+        deps(cloud.origin, redis),
+        "eliza-app",
+      );
+      await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+      const old = await redis.get<HeldWebhook>(recordKey);
+      if (!old) throw new Error("Initial hold required");
+      if (terminal === "expired")
+        await holdWebhookForCutover(
+          redis,
+          { ...old, heldAt: Date.now() - CUTOVER_HOLD_MAX_MS - 120_000 },
+          { code: old.code, retryAfterSeconds: null },
+        );
+      cloud.state.refusedStatus = 400;
+      const base = drainHandlers(cloud.origin, redis);
+      const rehold = async () => {
+        cloud.state.refusedStatus = null;
+        await handleWebhook(
+          blooioWebhook(messageId),
+          blooioAdapter,
+          deps(cloud.origin, redis),
+          "eliza-app",
+        );
+        await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+      };
+      await drainCutoverHolds(
+        redis,
+        {
+          redeliver: async (held) => {
+            const outcome = await base.redeliver(held);
+            expect(outcome.kind).toBe("released");
+            await rehold();
+            return outcome;
+          },
+          release: async (held, reason) => {
+            await base.release(held, reason);
+            await rehold();
+          },
+        },
+        { now: Date.now() + 60_000 },
+      );
+      expect(await redis.get(dedupKey)).toBe(CONNECTOR_HELD);
+      expect(await redis.get(recordKey)).not.toBeNull();
+      cloud.state.attested = true;
+      const next = await drainCutoverHolds(redis, base, {
+        now: Date.now() + 120_000,
+      });
+      expect(next.delivered).toBe(1);
+      expect(providerSends).toHaveLength(1);
+    }, 60_000);
+  }
 
   test("lease release and renewal are atomic compare-and-act on the owner token", async () => {
     const redis = createRedis();

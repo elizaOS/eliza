@@ -9,8 +9,8 @@ import type {
 	InteractionBlock,
 	InteractionKind,
 } from "../../types/interactions";
-import { stringToUuid } from "../../utils";
 import { stableStringify } from "../../utils/deterministic.js";
+import { stringToUuid } from "../../utils/string-to-uuid.js";
 
 export const INTERACTION_PROFILE_VERSION = 1 as const;
 export const INTERACTION_BLOCK_KINDS = [

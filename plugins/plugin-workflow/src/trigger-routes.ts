@@ -582,7 +582,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
       notifyOnOutcome: current.notifyOnOutcome === true,
-      timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+      timezone: typeof body.timezone === 'string' ? body.timezone : current.timezone,
       intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : current.intervalMs,
       scheduledAtIso:
         typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : current.scheduledAtIso,
