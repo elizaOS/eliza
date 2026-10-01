@@ -89,6 +89,19 @@ jobs:
           bun run --cwd packages/cloud/e2e stability:keyless --
           --run-id cloud-keyless-${{ github.run_id }}-${{ github.run_attempt }}
           --output /opt/eliza-stability/test-results/cloud-stability/keyless
+      # Keep the parent-owned result available even if a failed sandbox leaves
+      # a child-owned ledger unreadable by the full artifact uploader.
+      - name: Upload deterministic stability summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stability-keyless-summary-${{ github.run_attempt }}
+          path: |
+            test-results/cloud-stability/keyless/stability.json
+            test-results/cloud-stability/keyless/stability.sha256
+            test-results/cloud-stability/keyless/manifest.json
+          retention-days: 14
+          if-no-files-found: error
       - name: Upload deterministic trajectories and ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -169,6 +182,17 @@ jobs:
           fi
           args+=(--run-id "$STABILITY_RUN_ID" --output "$STABILITY_OUTPUT")
           "${args[@]}"
+      - name: Upload real-model stability summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stability-real-summary-${{ github.run_attempt }}
+          path: |
+            test-results/cloud-stability/real/stability.json
+            test-results/cloud-stability/real/stability.sha256
+            test-results/cloud-stability/real/manifest.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Upload real-model trajectories and mock-service ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
