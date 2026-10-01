@@ -13,6 +13,31 @@ Agent code imports core APIs and catalog maps through `@elizaos/core`.
 registry shapes; `RegistryPluginInfo` and `RegistrySearchResult` retain the
 plugin manager's extensions. The roles plugin is exported as `rolesPlugin`.
 
+`SqliteInteractiveTaskStore` is available from
+`@elizaos/agent/services/interactive-task-store`. Supply a private host-managed
+SQLite connection with FULL or EXTRA synchronization. The host retains database
+location, encryption and lifecycle ownership. After exclusive startup, call
+`recoverOwner` for the authenticated owner before accepting task commands; it
+pauses unfinished work and marks dispatched outcomes unknown. Persist a dispatch
+transition before any effect, then independently revalidate at the actuator.
+This journal does not execute actions or authorize browser access.
+
+`InteractiveTaskRuntime` and `createInteractiveTaskHandler` have matching
+`services/interactive-task-runtime` and `services/interactive-task-http` exports.
+The runtime commits dispatch before entering the host actuator and cancels
+pending work on Pause/revoke. The HTTP handler accepts only start/status and
+pause/cancel/resume; host callbacks resolve authenticated ownership and authorized
+goal references. Mount it behind the host's normal origin/transport protections.
+Account changes must revoke the old runtime, and the native actuator must recheck
+page, input revision and authorization immediately before an effect. The handler
+never accepts client observations, execution commands or outcome receipts.
+
+Actuators may implement `quiesce` to remove transient host UI. After synchronous
+Pause/cancel/revoke, hosts must await `runtime.settle()` before reporting cleanup
+complete or replacing the runtime. The HTTP handler does this automatically.
+Unconfirmed cleanup returns `TASK_CLEANUP_UNCONFIRMED`; a later status read retries
+cleanup only, without repeating the task transition or browser action.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -54,3 +79,26 @@ to choose an explicit cumulative planner prompt-token budget. Unset runs retain
 the default 1,500,000-token limit; cached prompt tokens count toward the budget.
 The setting does not affect ordinary conversational turns or override an explicit
 host-supplied planner budget. Record the value with benchmark results.
+
+Interactive task events are committed atomically with each SQLite checkpoint.
+The authenticated `GET /tasks/:id/events?after=-1` endpoint returns ordered pages
+of up to 128 events, a cursor and `hasMore`; clients must follow all pages.
+Older journals begin with an explicit `checkpoint` event rather than invented
+history. `@elizaos/core/messaging/task-events` provides a browser-safe validator
+and merge helper that reject gaps, conflicting replay and wrong-task data.
+The feed contains lifecycle metadata, not page text, credentials or transcripts.
+
+`services/sqlite-message-interaction-session-store` adapts the existing
+message-interaction claim/commit/receipt protocol to a host-managed FULL/EXTRA
+SQLite connection. Do not share an open transaction with store calls. Bind choices
+to authenticated task context and revalidate at the effect boundary. Committed
+unknown outcomes survive expiry cleanup until explicit reconciliation; a retry
+must never execute them again. The host owns storage permissions and retention.
+
+`services/interactive-task-choices` binds the shared interaction authority to a
+runtime task and a trusted context hash. Identical offers reuse one durable
+session; Pause/recovery/account epochs invalidate old callbacks. `respond` accepts
+only an offered option, commits before invoking the host executor, and supplies a
+stable operation ID plus a current-task guard. The executor must still verify
+fresh observations and native authorization. Expired pending offers remain
+expired; a new task epoch or changed trusted context requires a new review.

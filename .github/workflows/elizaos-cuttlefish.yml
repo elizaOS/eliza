@@ -118,7 +118,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24.15.0"
 
@@ -151,7 +151,7 @@ jobs:
           key: eliza-bun-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.eliza-source/bun.lock') }}
           restore-keys: eliza-bun-downloads-${{ runner.os }}-${{ runner.arch }}-
 
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: "21"
