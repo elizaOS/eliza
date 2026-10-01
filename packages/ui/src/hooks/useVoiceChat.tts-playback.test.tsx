@@ -41,6 +41,7 @@ import { toSpeakableText } from "../voice/voice-chat-playback";
 import { globalAudioCache } from "../voice/voice-chat-types";
 import type { VoicePlaybackEvidenceEvent } from "../voice/voice-playback-evidence";
 import { VoiceWorkbenchShell } from "../voice/voice-selftest/VoiceWorkbenchShell";
+import { serializeVoiceWorkbenchReport } from "../voice/voice-selftest/voice-workbench-artifact";
 import { runVoiceWorkbench } from "../voice/voice-selftest/voice-workbench-player";
 import {
   __resetDirectCloudTtsFallbackWarnings,
@@ -594,7 +595,9 @@ describe("useVoiceChat TTS playback across providers", () => {
         .resolveObjectURL(download.href);
       if (!artifact)
         throw new Error("Evidence object URL has no registered bytes");
-      const downloaded = JSON.parse(await artifact.text());
+      const downloadedText = await artifact.text();
+      expect(downloadedText).toBe(serializeVoiceWorkbenchReport(report));
+      const downloaded = JSON.parse(downloadedText);
       expect(downloaded.schema).toBe("eliza.voice-workbench.playback.v1");
       expect(downloaded.report.turns[0].playbackEvidence).toContainEqual(
         expect.objectContaining({
