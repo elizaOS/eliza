@@ -230,9 +230,16 @@ export class PdfService extends Service {
   ): Promise<PdfCompleteDocument> {
     options = { ...options };
     const uint8Array = validatePdfInput(pdfBuffer);
+    let ownershipFailure: { value: unknown } | undefined;
     const assertActive = async () => {
       options.signal?.throwIfAborted();
-      await options.assertActive?.();
+      try {
+        await options.assertActive?.();
+      } catch (error) {
+        // Keep the host's ownership failure distinct from parser failures.
+        ownershipFailure = { value: error };
+        throw error;
+      }
       options.signal?.throwIfAborted();
     };
     await assertActive();
@@ -360,6 +367,7 @@ export class PdfService extends Service {
         await assertActive();
       } catch (error) {
         options.signal?.throwIfAborted();
+        if (ownershipFailure && Object.is(error, ownershipFailure.value)) throw error;
         // error-policy:J2 preserve typed dependency failures; add provenance to parser failures.
         if (error instanceof ElizaError && error.code === "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE")
           throw error;
