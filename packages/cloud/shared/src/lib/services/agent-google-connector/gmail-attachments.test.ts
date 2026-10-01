@@ -1,5 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { MAX_GMAIL_ATTACHMENT_BYTES } from "@elizaos/plugin-google-workspace/gmail-attachments";
 import { readManagedGoogleGmailMessage } from "./gmail";
 import { readManagedGoogleGmailAttachment } from "./gmail-attachments";
 import * as shared from "./shared";
@@ -29,11 +30,13 @@ function setup({
   status = {},
   reply = { data: bytes.toString("base64url"), size: bytes.length },
   messageId = "m1",
+  bodyText = "",
 }: {
   part?: unknown;
   status?: object;
   reply?: unknown;
   messageId?: string;
+  bodyText?: string;
 } = {}) {
   spies.push(
     spyOn(shared, "getManagedGoogleConnectorStatus").mockResolvedValue({
@@ -48,15 +51,36 @@ function setup({
   spies.push(
     spyOn(shared, "googleFetch").mockImplementation(async (input) => {
       calls.push(input);
-      return Response.json(
-        input.url.includes("/attachments/")
-          ? reply
-          : {
-              id: messageId,
-              threadId: "t1",
-              payload: { mimeType: "multipart/mixed", parts: [part] },
+      const body = input.url.includes("/attachments/")
+        ? reply
+        : {
+            id: messageId,
+            threadId: "t1",
+            payload: {
+              mimeType: "multipart/mixed",
+              parts: [
+                ...(bodyText
+                  ? [
+                      {
+                        partId: "0",
+                        mimeType: "text/html",
+                        body: {
+                          data: Buffer.from(bodyText).toString("base64url"),
+                          size: Buffer.byteLength(bodyText),
+                        },
+                      },
+                    ]
+                  : []),
+                part,
+              ],
             },
-      );
+          };
+      if (
+        input.maxResponseBytes !== undefined &&
+        Buffer.byteLength(JSON.stringify(body)) > input.maxResponseBytes
+      )
+        throw new Error("Provider response exceeds configured limit");
+      return Response.json(body);
     }),
   );
   return calls;
@@ -76,12 +100,18 @@ test("managed attachment is bound to exact grant/message/part and bounded at bot
   expect(
     calls.every(
       (input) =>
-        input.grantId === "grant" &&
-        input.organizationId === "org" &&
-        input.userId === "user" &&
-        input.maxResponseBytes === 65672,
+        input.grantId === "grant" && input.organizationId === "org" && input.userId === "user",
     ),
   ).toBe(true);
+  expect(calls.map((input) => input.maxResponseBytes)).toEqual([
+    Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536,
+    65672,
+  ]);
+});
+test("small attachment reads tolerate a larger unrelated message body", async () => {
+  const calls = setup({ bodyText: "x".repeat(80 * 1024) });
+  expect((await readManagedGoogleGmailAttachment(args)).data).toBe(bytes.toString("base64url"));
+  expect(calls[1].maxResponseBytes).toBe(65672);
 });
 test("inline attachment needs no separate provider request", async () => {
   const calls = setup({
