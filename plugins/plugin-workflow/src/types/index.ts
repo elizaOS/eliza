@@ -179,6 +179,12 @@ export interface WorkflowExecution {
   triggerChainDepth?: number;
 }
 
+/** Request provenance captured under the execution row lock, separate from terminal outcome. */
+export interface WorkflowCancellationResult {
+  execution: WorkflowExecution;
+  request: { requestedAt: string; replayed: boolean } | null;
+}
+
 export interface WorkflowCreationResult {
   id: string;
   name: string;

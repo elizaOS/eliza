@@ -7,6 +7,7 @@
 import { type IAgentRuntime, ModelType, Service } from '@elizaos/core';
 import type {
   TriggerContext,
+  WorkflowCancellationResult,
   WorkflowCreationResult,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -392,6 +393,21 @@ export class WorkflowService extends Service {
     ownerEntityId: string,
     options: { activate?: boolean } = {}
   ): Promise<WorkflowCreationResult> {
+    const deployed = await this.deployWorkflowDefinition(workflow, ownerEntityId, options);
+    return {
+      id: deployed.id,
+      name: deployed.name,
+      active: deployed.active === true,
+      stepCount: deployed.steps?.length ?? 0,
+    };
+  }
+
+  /** Return the definition committed by this operation, never an uncorrelated later read. */
+  async deployWorkflowDefinition(
+    workflow: WorkflowDefinition,
+    ownerEntityId: string,
+    options: { activate?: boolean } = {}
+  ): Promise<WorkflowDefinitionResponse> {
     const owned = this.ownedDefinition(workflow, ownerEntityId);
     let deployed: WorkflowDefinitionResponse;
     if (workflow.id) {
@@ -404,15 +420,10 @@ export class WorkflowService extends Service {
       });
     }
     if (options.activate === true && !deployed.active)
-      await this.embedded().activateWorkflow(deployed.id);
+      deployed = await this.embedded().activateWorkflow(deployed.id);
     if (options.activate === false && deployed.active)
-      await this.embedded().deactivateWorkflow(deployed.id);
-    return {
-      id: deployed.id,
-      name: deployed.name,
-      active: options.activate ?? deployed.active ?? false,
-      stepCount: deployed.steps?.length ?? 0,
-    };
+      deployed = await this.embedded().deactivateWorkflow(deployed.id);
+    return this.publicWorkflow(deployed);
   }
 
   async listWorkflows(
@@ -617,8 +628,15 @@ export class WorkflowService extends Service {
   }
 
   async cancelExecution(id: string, ownerEntityId?: string): Promise<WorkflowExecution> {
+    return (await this.cancelExecutionWithReceipt(id, ownerEntityId)).execution;
+  }
+
+  async cancelExecutionWithReceipt(
+    id: string,
+    ownerEntityId?: string
+  ): Promise<WorkflowCancellationResult> {
     await this.getExecutionDetail(id, ownerEntityId);
-    return this.embedded().cancelExecution(id);
+    return this.embedded().cancelExecutionWithReceipt(id);
   }
 
   async approvalReceipts(runId: string, ownerId: string) {

@@ -34,6 +34,7 @@ import {
 } from '../db/schema';
 import type {
   WorkflowApproval,
+  WorkflowCancellationResult,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
   WorkflowExecution,
@@ -217,6 +218,7 @@ export class EmbeddedWorkflowService extends Service {
   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
   override capabilityDescription = 'Native Smithers workflow persistence and execution on elizaOS.';
 
+  private readonly cancellationControls = new Map<string, Promise<void>>();
   private readonly scheduleLocks = new Map<string, Promise<void>>();
   private readonly listeners = new Map<string, Set<RunListener>>();
   private readonly controllers = new Map<string, AbortController>();
@@ -1808,6 +1810,10 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   async cancelExecution(runId: string): Promise<WorkflowExecution> {
+    return (await this.cancelExecutionWithReceipt(runId)).execution;
+  }
+
+  async cancelExecutionWithReceipt(runId: string): Promise<WorkflowCancellationResult> {
     const requested = await this.getDb().transaction(async (tx) => {
       const [row] = await tx
         .select()
@@ -1815,7 +1821,13 @@ export class EmbeddedWorkflowService extends Service {
         .where(and(eq(embeddedExecutions.agentId, this.tenantId), eq(embeddedExecutions.id, runId)))
         .for('update');
       if (!row) throw new WorkflowApiError('Workflow execution not found', 404);
-      if (row.execution.finished) return cloneJson(row.execution);
+      if (row.execution.finished)
+        return {
+          execution: cloneJson(row.execution),
+          request: row.execution.cancellationRequestedAt
+            ? { requestedAt: row.execution.cancellationRequestedAt, replayed: true }
+            : null,
+        };
       const execution = {
         ...row.execution,
         cancellationRequestedAt: row.execution.cancellationRequestedAt ?? nowIso(),
@@ -1826,69 +1838,98 @@ export class EmbeddedWorkflowService extends Service {
         .where(
           and(eq(embeddedExecutions.agentId, this.tenantId), eq(embeddedExecutions.id, runId))
         );
-      return execution;
-    });
-    const execution = requested;
-    if (execution.finished && execution.status !== 'cancelled') return execution;
-    const controller = this.controllers.get(runId);
-    const running = this.running.get(runId);
-    controller?.abort();
-    // Preserve active-worker teardown, then use the same durable cancellation
-    // policy for a parked run whose worker/controller has already exited.
-    if (running) await running;
-    const receipt = await controlSmithersRun(this.tenantId, execution.workflowId, {
-      kind: 'cancel',
-      runId,
-    });
-    const current = await this.getExecution(runId);
-    // A captured terminal winner committed during teardown remains authoritative.
-    if (current.finished && current.status !== 'cancelled') return current;
-    // An aborted queued worker may never create its native run row. Its
-    // persisted terminal cancellation remains idempotent on later requests.
-    if (receipt.status === null && current.finished && current.status === 'cancelled')
-      return current;
-    if (receipt.status === null) {
-      // No native row means cancellation won before worker admission. Never evaluate source.
-      await this.saveExecution({
-        ...current,
-        status: 'cancelled',
-        finished: true,
-        stoppedAt: current.stoppedAt ?? nowIso(),
-      });
-      return this.getExecution(runId);
-    }
-    if (current.finished && current.status === receipt.status) return current;
-    if (receipt.status !== 'cancelled') {
-      // The native commit can precede emission of its result. Without that
-      // matching receipt, status alone cannot recover output/error/nextRunId.
-      const message = `Native workflow ${receipt.status}, but its terminal result was not captured; the workflow was not resumed.`;
-      await this.saveExecution(
-        {
-          ...current,
-          status: 'failed',
-          finished: true,
-          stoppedAt: current.stoppedAt ?? nowIso(),
-          error: { message },
+      return {
+        execution,
+        request: {
+          requestedAt: execution.cancellationRequestedAt,
+          replayed: Boolean(row.execution.cancellationRequestedAt),
         },
-        current
-      );
-      throw new WorkflowApiError(message, 409, {
-        code: 'WORKFLOW_TERMINAL_RESULT_UNAVAILABLE',
-        nativeStatus: receipt.status,
-        executionId: runId,
-      });
-    }
-    await this.saveExecution(
-      {
-        ...current,
-        status: receipt.status,
-        finished: true,
-        stoppedAt: current.stoppedAt ?? nowIso(),
-      },
-      current
-    );
+      };
+    });
+    const execution = requested.execution;
+    const outcome = (value: WorkflowExecution): WorkflowCancellationResult => ({
+      execution: value,
+      request: requested.request,
+    });
+    if (execution.finished && execution.status !== 'cancelled') return outcome(execution);
+    // Admission/provenance above remains transactional and concurrent. Native
+    // control workers open one Smithers store per workflow; serialize their
+    // cancellation commands to avoid racing SQLite schema initialization.
+    const key = execution.workflowId;
+    const previous = this.cancellationControls.get(key) ?? Promise.resolve();
+    const completion = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const controller = this.controllers.get(runId);
+        const running = this.running.get(runId);
+        controller?.abort();
+        // Preserve active-worker teardown, then use the same durable cancellation
+        // policy for a parked run whose worker/controller has already exited.
+        if (running) await running;
+        const receipt = await controlSmithersRun(this.tenantId, execution.workflowId, {
+          kind: 'cancel',
+          runId,
+        });
+        const current = await this.getExecution(runId);
+        // A captured terminal winner committed during teardown remains authoritative.
+        if (current.finished && current.status !== 'cancelled') return outcome(current);
+        // An aborted queued worker may never create its native run row. Its
+        // persisted terminal cancellation remains idempotent on later requests.
+        if (receipt.status === null && current.finished && current.status === 'cancelled')
+          return outcome(current);
+        if (receipt.status === null) {
+          // No native row means cancellation won before worker admission. Never evaluate source.
+          await this.saveExecution({
+            ...current,
+            status: 'cancelled',
+            finished: true,
+            stoppedAt: current.stoppedAt ?? nowIso(),
+          });
+          return outcome(await this.getExecution(runId));
+        }
+        if (current.finished && current.status === receipt.status) return outcome(current);
+        if (receipt.status !== 'cancelled') {
+          // The native commit can precede emission of its result. Without that
+          // matching receipt, status alone cannot recover output/error/nextRunId.
+          const message = `Native workflow ${receipt.status}, but its terminal result was not captured; the workflow was not resumed.`;
+          await this.saveExecution(
+            {
+              ...current,
+              status: 'failed',
+              finished: true,
+              stoppedAt: current.stoppedAt ?? nowIso(),
+              error: { message },
+            },
+            current
+          );
+          throw new WorkflowApiError(message, 409, {
+            code: 'WORKFLOW_TERMINAL_RESULT_UNAVAILABLE',
+            nativeStatus: receipt.status,
+            executionId: runId,
+          });
+        }
+        await this.saveExecution(
+          {
+            ...current,
+            status: receipt.status,
+            finished: true,
+            stoppedAt: current.stoppedAt ?? nowIso(),
+          },
+          current
+        );
 
-    return this.getExecution(runId);
+        return outcome(await this.getExecution(runId));
+      });
+    const pending = completion.then(
+      () => undefined,
+      () => undefined
+    );
+    this.cancellationControls.set(key, pending);
+    try {
+      return await completion;
+    } finally {
+      if (this.cancellationControls.get(key) === pending) this.cancellationControls.delete(key);
+    }
   }
 
   async approvalReceipts(runId: string) {
