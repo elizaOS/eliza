@@ -47,7 +47,7 @@ export function deviceRequestCredential(
       ? capabilityHeader.split(",").map((value) => value.trim())
       : [];
   if (
-    capabilities.length > 3 ||
+    capabilities.length > 4 ||
     new Set(capabilities).size !== capabilities.length ||
     capabilities.some(
       (value) =>
@@ -55,6 +55,7 @@ export function deviceRequestCredential(
           "calendar.local-event.v1",
           "notes.local-record.v1",
           "reminders.local-record.v1",
+          "maps.selected-read.v1",
         ].includes(value),
     )
   )
@@ -116,6 +117,7 @@ export async function handleDeviceActionRoutes(
             "calendar.local-event.v1",
             "notes.local-record.v1",
             "reminders.local-record.v1",
+            "maps.selected-read.v1",
           ],
         },
       });

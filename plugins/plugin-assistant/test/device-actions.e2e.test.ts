@@ -6,10 +6,13 @@ import { join } from "node:path";
 import type { Memory } from "@elizaos/core";
 import { expect, test } from "vitest";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
+import { readChatRequestPayload } from "../../../packages/agent/src/api/chat-routes.ts";
 import {
+  deviceRequestCredential,
   handleDeviceActionRoutes,
   requiresDeviceIdentity,
 } from "../../../packages/agent/src/api/device-action-routes.ts";
+import { buildUserMessages } from "../../../packages/agent/src/api/server-helpers.ts";
 import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
 import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
 import {
@@ -66,6 +69,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       installationId: device,
       deviceKey,
     };
+    let mapsActionParameters:
+      | { operation: unknown; operationKey: string; reason: string }
+      | undefined;
     const start = async () => {
       authStore = new AuthStore(
         runtimeState.runtime.adapter.db as DrizzleDatabase,
@@ -104,6 +110,50 @@ test("device approval REST lifecycle survives restart and never duplicates claim
               readJsonBody: async () => null,
             },
           );
+          return;
+        }
+        if (req.url === "/api/maps-observation-fixture") {
+          const credential = deviceRequestCredential(req, authorization);
+          if (!credential || !mapsActionParameters) {
+            send(res, { error: "Authenticated fixture turn required" }, 401);
+            return;
+          }
+          try {
+            await withDeviceActionTurn(
+              runtimeState.runtime,
+              credential,
+              async () => {
+                const payload = await readChatRequestPayload(req, res, {
+                  error: (response, message, status) =>
+                    send(response, { error: message }, status),
+                  readJsonBody: async (request) => {
+                    let value = "";
+                    for await (const part of request) value += part;
+                    return JSON.parse(value || "{}");
+                  },
+                });
+                if (!payload) return;
+                const { userMessage } = await buildUserMessages({
+                  images: payload.images,
+                  prompt: payload.prompt,
+                  userId: memory.entityId,
+                  agentId: runtimeState.runtime.agentId,
+                  roomId: memory.roomId,
+                  channelType: payload.channelType,
+                  metadata: payload.metadata,
+                });
+                const action = await proposeDeviceAction.handler(
+                  runtimeState.runtime,
+                  userMessage,
+                  undefined,
+                  { parameters: mapsActionParameters },
+                );
+                send(res, { action, metadata: userMessage.content.metadata });
+              },
+            );
+          } catch {
+            send(res, { error: "Fixture turn rejected" }, 409);
+          }
           return;
         }
         await handleDeviceActionRoutes({
@@ -723,6 +773,275 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             (p: any) => p.id === item.id,
           ),
         ).toHaveLength(1);
+      }
+    }
+    {
+      const capability = "maps.selected-read.v1";
+      const service = new DeviceActionService(runtimeState.runtime);
+      const c = { ...credentials, capabilities: [capability] };
+      for (const kind of ["map-place", "map-route"] as const) {
+        const target = { kind, id: `maps_${randomUUID()}`, revision: "1" };
+        const operation = { type: "maps_read_selected", target };
+        const observation = {
+          view: "maps",
+          sensitive: false,
+          revision: 1,
+          selectedObject: target,
+        };
+        await expect(
+          service.propose(
+            credentials,
+            operation,
+            "maps-no-cap",
+            "fixture",
+            observation,
+          ),
+        ).rejects.toThrow();
+        await expect(
+          service.propose(c, operation, "maps-no-context", "fixture"),
+        ).rejects.toThrow();
+        await expect(
+          service.propose(c, operation, "maps-stale", "fixture", {
+            ...observation,
+            selectedObject: { ...target, revision: "2" },
+          }),
+        ).rejects.toThrow();
+        mapsActionParameters = {
+          operation,
+          operationKey: `maps-selected-${kind}`,
+          reason: "fixture",
+        };
+        const transport = await fetch(
+          `${origin}/api/maps-observation-fixture`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${sessions.a}`,
+              "x-eliza-device-id": device,
+              "x-eliza-device-key": deviceKey,
+              "x-eliza-device-capabilities": capability,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              text: "Review selected Maps fixture",
+              metadata: {
+                clientDevice: {
+                  context: observation,
+                  subjectUserId: ownerB,
+                  installationId: "forged-device",
+                  enrollmentId: "forged-enrollment",
+                },
+                uiViewActionNames: ["FORGED_ACTION"],
+              },
+            }),
+          },
+        );
+        expect(transport.status).toBe(200);
+        const transported = (await transport.json()) as {
+          action: { data: { proposalId: string } };
+          metadata: Record<string, unknown>;
+        };
+        expect(transported.metadata.clientDevice).toMatchObject({
+          context: observation,
+        });
+        expect(transported.metadata.uiViewActionNames).toBeUndefined();
+        const proposed = transported.action;
+        const rows = await request(
+          "/proposals",
+          undefined,
+          "a",
+          deviceKey,
+          capability,
+        );
+        const item = rows.body.proposals.find(
+          (p: any) => p.id === (proposed && proposed.data?.proposalId),
+        );
+        expect(item.subjectUserId).toBe(ownerA);
+        expect(item.payload.installationId).toBe(device);
+        expect(item.payload.enrollmentId).not.toBe("forged-enrollment");
+        expect(item.state).toBe("pending");
+        expect(item.execution).toBeNull();
+        const req = (
+          suffix: string,
+          body?: unknown,
+          owner = "a",
+          key = deviceKey,
+          cap = capability,
+        ) => request(`/proposals/${item.id}/${suffix}`, body, owner, key, cap);
+        expect(
+          (
+            await req(
+              "decision",
+              { digest: item.digest, decision: "approve" },
+              "b",
+            )
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await req(
+              "decision",
+              { digest: item.digest, decision: "approve" },
+              "a",
+              "b".repeat(64),
+            )
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await req(
+              "decision",
+              { digest: item.digest, decision: "approve" },
+              "a",
+              deviceKey,
+              "notes.local-record.v1",
+            )
+          ).status,
+        ).toBe(409);
+        expect(
+          (await req("decision", { digest: item.digest, decision: "approve" }))
+            .status,
+        ).toBe(200);
+        const claim = await req("claim", { digest: item.digest });
+        expect(claim.status).toBe(200);
+        expect((await req("claim", { digest: item.digest })).status).toBe(409);
+        const result = {
+          kind: "maps_read_selected",
+          version: 1,
+          target,
+          fields: {
+            kind,
+            providerId: "fixture-region",
+            providerRevision: "1",
+            attribution: "Synthetic region",
+            ...(kind === "map-place"
+              ? {
+                  label: "Approved fixture place",
+                  coordinate: { latitude: 43.7384, longitude: 7.4246 },
+                }
+              : {
+                  from: { latitude: 43.7384, longitude: 7.4246 },
+                  to: { latitude: 43.739, longitude: 7.4272 },
+                  mode: "walk",
+                  distanceMeters: 307,
+                  durationSeconds: 223,
+                  traffic: "none",
+                }),
+          },
+        };
+        const receipt = {
+          digest: item.digest,
+          attemptId: claim.body.proposal.execution.attemptId,
+          receipt: {
+            outcome: "applied",
+            operationId: "maps-fixture-read",
+            result,
+          },
+        };
+        expect(
+          (
+            await req("receipt", {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, target: { ...target, revision: "2" } },
+              },
+            })
+          ).status,
+        ).toBe(409);
+        if (kind === "map-route") {
+          expect(
+            (
+              await req("receipt", {
+                ...receipt,
+                receipt: {
+                  outcome: "unknown",
+                  operationId: "maps-fixture-read",
+                },
+              })
+            ).body.proposal.state,
+          ).toBe("reconciliation_required");
+          const resolution = {
+            digest: item.digest,
+            attemptId: receipt.attemptId,
+            resolution: { confirmed: true, ...receipt.receipt },
+          };
+          expect(
+            (
+              await req("reconciliation", {
+                ...resolution,
+                resolution: {
+                  ...resolution.resolution,
+                  result: { ...result, target: { ...target, revision: "2" } },
+                },
+              })
+            ).status,
+          ).toBe(409);
+          expect(
+            (await req("reconciliation", resolution)).body.proposal.state,
+          ).toBe("done");
+          expect((await req("reconciliation", resolution)).status).toBe(200);
+        } else {
+          expect((await req("receipt", receipt)).body.proposal.state).toBe(
+            "done",
+          );
+          expect((await req("receipt", receipt)).status).toBe(200);
+        }
+        const restored = await request(
+          "/proposals",
+          undefined,
+          "a",
+          deviceKey,
+          capability,
+        );
+        expect(
+          restored.body.proposals.find((p: any) => p.id === item.id).execution
+            .providerReceipt.result,
+        ).toEqual(result);
+        const recovered = await withDeviceActionTurn(
+          runtimeState.runtime,
+          c,
+          () =>
+            proposeDeviceAction.handler(
+              runtimeState.runtime,
+              {
+                ...memory,
+                content: {
+                  ...memory.content,
+                  metadata: {},
+                },
+              },
+              undefined,
+              {
+                parameters: {
+                  operation,
+                  operationKey: `maps-selected-${kind}`,
+                  reason: "fixture",
+                },
+              },
+            ),
+        );
+        expect(recovered && recovered.data).toMatchObject({
+          proposalId: item.id,
+          executed: false,
+          result,
+        });
+        await expect(
+          service.propose(
+            c,
+            { ...operation, target: { ...target, revision: "2" } },
+            `maps-selected-${kind}`,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        await expect(
+          service.propose(
+            credentials,
+            operation,
+            `maps-selected-${kind}`,
+            "fixture",
+          ),
+        ).rejects.toThrow();
       }
     }
     {

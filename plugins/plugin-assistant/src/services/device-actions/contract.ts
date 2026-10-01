@@ -2,6 +2,7 @@ import {
   type CalendarOperation,
   validateCalendarOperation,
 } from "./calendar-contract.ts";
+import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
 import {
   type NotesOperation,
   validateNotesOperation,
@@ -43,6 +44,7 @@ export const DEVICE_VIEWS = [
   "settings",
 ] as const;
 export type DeviceOperation =
+  | MapsOperation
   | ReminderOperation
   | NotesOperation
   | CalendarOperation
@@ -91,6 +93,12 @@ export function exactKeys(
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   switch (p.type) {
+    case "maps_read_selected":
+      try {
+        return validateMapsOperation(p);
+      } catch {
+        throw new DeviceActionError("Invalid Maps operation");
+      }
     case "reminder_read_selected":
     case "reminder_update":
     case "reminder_complete":

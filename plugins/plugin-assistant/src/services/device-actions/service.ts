@@ -25,6 +25,12 @@ import {
   validateDevicePayload,
 } from "./contract.ts";
 import {
+  assertMapsObservation,
+  isMapsOperation,
+  MAPS_CAPABILITY,
+  validateMapsResult,
+} from "./maps-contract.ts";
+import {
   isNotesOperation,
   NOTES_CAPABILITY,
   validateNotesResult,
@@ -154,6 +160,7 @@ export class DeviceActionService {
           "calendar.local-event.v1",
           "notes.local-record.v1",
           REMINDER_CAPABILITY,
+          MAPS_CAPABILITY,
         ],
       };
     });
@@ -209,8 +216,13 @@ export class DeviceActionService {
     operation: unknown,
     operationKey: string,
     reason: string,
+    observation?: unknown,
   ): Promise<ApprovalRequest> {
     const validated = validateDeviceOperation(operation);
+    if (isMapsOperation(validated)) {
+      if (!c.capabilities?.includes(MAPS_CAPABILITY))
+        throw new DeviceActionError("Maps capability unavailable");
+    }
     if (
       isReminderOperation(validated) &&
       !c.capabilities?.includes(REMINDER_CAPABILITY)
@@ -229,6 +241,7 @@ export class DeviceActionService {
     if (
       ![
         "create_note",
+        "maps_read_selected",
         "notes_read_selected",
         "notes_update",
         "notes_delete",
@@ -261,6 +274,30 @@ export class DeviceActionService {
         idempotencyKey,
         c.subjectUserId,
       );
+      if (isMapsOperation(validated)) {
+        const receipt = existing?.execution?.providerReceipt;
+        const historical =
+          existing?.state === "done" &&
+          stableStringify(existing.payload) === stableStringify(payload) &&
+          receipt &&
+          typeof receipt === "object" &&
+          !Array.isArray(receipt) &&
+          receipt.outcome === "applied";
+        if (historical) {
+          // Exact canonical duplicate: return the approved historical snapshot,
+          // never demand or read a newly selected object. Queue idempotency below
+          // still rejects changed immutable proposal fields.
+          validateMapsResult(validated, receipt.result);
+        } else {
+          try {
+            assertMapsObservation(validated, observation);
+          } catch {
+            throw new DeviceActionError(
+              "Maps observation unavailable or changed",
+            );
+          }
+        }
+      }
       const result = await queue.enqueueTransactional(
         {
           requestedBy: this.runtime.agentId,
@@ -478,6 +515,11 @@ export class DeviceActionService {
     if (!request) throw new DeviceActionError("Proposal unavailable");
     const payload = validateDevicePayload(request.payload);
     if (
+      isMapsOperation(payload.operation) &&
+      !c.capabilities?.includes(MAPS_CAPABILITY)
+    )
+      throw new DeviceActionError("Maps capability unavailable");
+    if (
       isReminderOperation(payload.operation) &&
       !c.capabilities?.includes(REMINDER_CAPABILITY)
     )
@@ -595,6 +637,11 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isMapsOperation(payload.operation) &&
+        !c.capabilities?.includes(MAPS_CAPABILITY)
+      )
+        throw new DeviceActionError("Maps capability unavailable");
+      if (
         isReminderOperation(payload.operation) &&
         !c.capabilities?.includes(REMINDER_CAPABILITY)
       )
@@ -607,7 +654,16 @@ export class DeviceActionService {
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range";
-      if (
+      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateMapsResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Maps receipt");
+        }
+      } else if (
         isReminderOperation(payload.operation) &&
         receipt.outcome === "applied"
       ) {
@@ -709,6 +765,11 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isMapsOperation(payload.operation) &&
+        !c.capabilities?.includes(MAPS_CAPABILITY)
+      )
+        throw new DeviceActionError("Maps capability unavailable");
+      if (
         isReminderOperation(payload.operation) &&
         !c.capabilities?.includes(REMINDER_CAPABILITY)
       )
@@ -718,7 +779,16 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
-      if (
+      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateMapsResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Maps receipt");
+        }
+      } else if (
         isReminderOperation(payload.operation) &&
         receipt.outcome === "applied"
       ) {
