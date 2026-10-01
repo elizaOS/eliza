@@ -40,11 +40,12 @@ export class SqliteTaskPresentation {
       ON CONFLICT(owner_key,task_id) DO UPDATE SET generation=generation+1, document=NULL
       WHERE generation < 9007199254740991 RETURNING generation`)
       .get(this.ownerKey, taskId) as { generation?: number } | undefined;
-    if (!row || !Number.isSafeInteger(row.generation))
+    const generation = row?.generation;
+    if (typeof generation !== "number" || !Number.isSafeInteger(generation))
       throw new ElizaError("Task presentation revision exhausted", {
         code: "TASK_PRESENTATION_REVISION_EXHAUSTED",
       });
-    return row.generation!;
+    return generation;
   }
   /** Called only by an authenticated host workflow, never by model or renderer input. */
   async publish(
