@@ -20,3 +20,9 @@ bun run --cwd packages/ui test   # tests
 `bun run --cwd packages/ui audit:design` reports current component ownership
 and possible duplication. It is advisory; lint, typecheck, rendered behavior,
 and accessibility checks remain separate.
+
+The browser-safe `components/interactive-task/TaskChoice` leaf renders validated
+task choices in a chat or panel. The host owns transport, authorization, styling
+and localized messages. It suppresses duplicate in-flight clicks and expired
+responses; the durable runtime remains authoritative. `voice/speech-segments`
+shares lossless caption/playback chunks without importing the voice runtime.
