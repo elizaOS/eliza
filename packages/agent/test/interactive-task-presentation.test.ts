@@ -1,13 +1,17 @@
-import { mkdtempSync, rmSync } from "node:fs";
+/** Actual task HTTP admission, disk SQLite presentation and filesystem selection effects. */
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { InteractiveTaskChoices } from "../src/services/interactive-task-choices.ts";
+import { createInteractiveTaskHandler } from "../src/services/interactive-task-http.ts";
 import { SqliteTaskPresentation } from "../src/services/interactive-task-presentation.ts";
 import { InteractiveTaskRuntime } from "../src/services/interactive-task-runtime.ts";
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
 import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
+
+import { listenTaskHttp } from "./fixtures/task-http-server.ts";
 
 const block = {
   kind: "choice" as const,
@@ -17,8 +21,10 @@ const block = {
   options: [{ value: "existing", label: "Use existing method" }],
 };
 const context = "a".repeat(64);
-function setup(filename = ":memory:") {
-  const db = new DatabaseSync(filename);
+async function setup(filename?: string) {
+  const directory = mkdtempSync(join(tmpdir(), "task-presentation-host-"));
+  const effectFile = join(directory, "selection.txt");
+  const db = new DatabaseSync(filename ?? join(directory, "journal.sqlite"));
   db.exec("PRAGMA synchronous = FULL");
   const owner = {
     actorId: "actor",
@@ -51,23 +57,48 @@ function setup(filename = ":memory:") {
     actuator,
     now: () => 1000,
   });
-  runtime.create({
+  const authorizedGoal = {
     id: "task",
     goalRef: "goal",
     authorization: {
       decisionId: "grant",
       policyRevision: "policy",
-      state: "active",
+      state: "active" as const,
       decidedAt: new Date(1000).toISOString(),
       revokedAt: null,
     },
     allowedCapabilities: [],
     allowedOrigins: ["https://example.org"],
-  });
+  };
+  const http = await listenTaskHttp(
+    createInteractiveTaskHandler({
+      runtime,
+      authenticate: async (request) =>
+        request.headers.get("authorization") === "valid" ? owner : null,
+      authorizeGoal: async (goalRef) => ({ ...authorizedGoal, goalRef }),
+    }),
+  );
+  try {
+    const started = await http.call("/tasks", { goalRef: "goal" });
+    if (started.status !== 201)
+      throw new Error("Host rejected the fixture task");
+  } catch (error) {
+    await http.close();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
   let now = 1500;
   const choices = new InteractiveTaskChoices(runtime, sessions, () => now);
   return {
     db,
+    http,
+    effectFile,
+    async close() {
+      await http.close();
+      db.close();
+      rmSync(directory, { recursive: true, force: true });
+    },
     runtime,
     tasks,
     sessions,
@@ -85,7 +116,7 @@ function setup(filename = ":memory:") {
 }
 describe("durable task presentation delivery", () => {
   it("reopens the same presentation and reads live commitment without a new task operation", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       const offered = await t.presentation.publish("task", context, block);
       const revision = t.runtime.get("task").revision;
@@ -98,35 +129,46 @@ describe("durable task presentation delivery", () => {
         callbackData: offered.callbackData,
         value: "existing",
         execute: async () => {
+          writeFileSync(t.effectFile, "Chosen existing method");
           effects++;
-          return { accepted: true };
+          return {
+            accepted:
+              readFileSync(t.effectFile, "utf8") === "Chosen existing method",
+          };
         },
       });
       expect((await reader.read("task"))?.state).toBe("completed");
       expect((await reader.read("task"))?.state).toBe("completed");
       expect(effects).toBe(1);
+      expect(readFileSync(t.effectFile, "utf8")).toBe("Chosen existing method");
       expect(t.observations).toBe(0);
       expect(t.runtime.get("task").revision).toBe(revision);
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("suppresses old epochs after Pause and Resume", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       await t.presentation.publish("task", context, block);
-      t.runtime.control("task", t.runtime.get("task").revision, "pause");
+      expect(
+        (
+          await t.http.call("/tasks/task/pause", {
+            expectedRevision: t.runtime.get("task").revision,
+          })
+        ).status,
+      ).toBe(200);
       expect(await t.presentation.read("task")).toBeNull();
       await t.runtime.observe("task", t.runtime.get("task").revision, true);
       expect(await t.presentation.read("task")).toBeNull();
       const next = await t.presentation.publish("task", context, block);
       expect(await t.presentation.read("task")).toEqual(next);
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("suppresses expired offers and rejects forged presentation labels", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       const offered = await t.presentation.publish("task", context, block);
       await expect(
@@ -138,11 +180,11 @@ describe("durable task presentation delivery", () => {
       t.expire();
       expect(await t.presentation.read("task")).toBeNull();
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("does not expose another actor's presentation", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       await t.presentation.publish("task", context, block);
       const runtime = new InteractiveTaskRuntime({
@@ -158,11 +200,11 @@ describe("durable task presentation delivery", () => {
       );
       await expect(reader.read("task")).rejects.toThrow();
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("newer concurrent publication wins without allowing a late overwrite", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       const first = t.presentation.publish("task", context, block);
       const second = t.presentation.publish("task", "b".repeat(64), {
@@ -176,11 +218,11 @@ describe("durable task presentation delivery", () => {
         "New review",
       );
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("clear fences pending publication and pending reads", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       const pending = t.presentation.publish("task", context, block);
       t.presentation.clear("task");
@@ -193,11 +235,11 @@ describe("durable task presentation delivery", () => {
       t.presentation.clear("task");
       expect(await reading).toBeNull();
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("rejects malformed stored presentation instead of hiding storage corruption", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       await t.presentation.publish("task", context, block);
       t.db
@@ -207,11 +249,11 @@ describe("durable task presentation delivery", () => {
         code: "TASK_PRESENTATION_CORRUPT",
       });
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("captures the offered block before asynchronous storage work", async () => {
-    const t = setup();
+    const t = await setup();
     try {
       const supplied = structuredClone(block);
       const pending = t.presentation.publish("task", context, supplied);
@@ -226,20 +268,26 @@ describe("durable task presentation delivery", () => {
           contextKey: context,
           callbackData: offered.callbackData,
           value: "existing",
-          execute: async () => ({ accepted: true }),
+          execute: async () => {
+            writeFileSync(t.effectFile, "Original selection");
+            return {
+              accepted:
+                readFileSync(t.effectFile, "utf8") === "Original selection",
+            };
+          },
         }),
       ).resolves.toMatchObject({ status: "completed" });
     } finally {
-      t.db.close();
+      await t.close();
     }
   });
   it("keeps disk evidence across restart but does not deliver a recovered paused choice", async () => {
     const directory = mkdtempSync(join(tmpdir(), "task-presentation-"));
     const filename = join(directory, "journal.sqlite");
     try {
-      const initial = setup(filename);
+      const initial = await setup(filename);
       await initial.presentation.publish("task", context, block);
-      initial.db.close();
+      await initial.close();
       const db = new DatabaseSync(filename);
       db.exec("PRAGMA synchronous = FULL");
       try {
