@@ -59,7 +59,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.2",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "tsup": "^8.5.1"
