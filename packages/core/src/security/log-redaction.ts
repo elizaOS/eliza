@@ -269,7 +269,27 @@ export function redactSensitiveLogText(text: string): string {
  * it) with message and stack scrubbed — thrown errors routinely interpolate
  * the offending secret — and their own enumerable properties (axios-style
  * `err.config.headers`) are walked and masked.
+ *
+ * Clone targets stay plain objects: `__proto__`
+ * protection comes from defineSafeProperty (Object.defineProperty creates an
+ * own data property without invoking the inherited setter), while a
+ * null-prototype target throws on String()/template coercion ("Cannot convert
+ * object to primitive value") and crashes any sink that coerces log args
+ * (e.g. React DevTools' patched console methods during startup logging).
  */
+function createRedactClone(): Record<string, unknown> {
+	const clone = {};
+	protectCloneCoercion(clone, "[object Object]");
+	return clone;
+}
+
+/** Keep source data named toString/valueOf without executing it during coercion. */
+function protectCloneCoercion(clone: object, text: string): void {
+	Object.defineProperty(clone, Symbol.toPrimitive, {
+		value: (hint: string) => (hint === "number" ? Number.NaN : text),
+	});
+}
+
 export function redactLogValue(
 	value: unknown,
 	seen: WeakSet<object>,
@@ -289,6 +309,7 @@ export function redactLogValue(
 		const clone = new Error(redactSensitiveLogText(value.message));
 		clone.name = redactSensitiveLogText(value.name);
 		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
+		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
 		if (value.cause !== undefined) {
 			clone.cause = redactLogValue(value.cause, seen, depth + 1);
 		}
@@ -340,7 +361,7 @@ export function redactLogValue(
 				entries.push([safeKey, safeValue]);
 			},
 		);
-		const result = Object.create(null) as Record<string, unknown>;
+		const result = createRedactClone();
 		defineSafeProperty(result, "type", "Map");
 		defineSafeProperty(result, "entries", entries);
 		return result;
@@ -350,7 +371,7 @@ export function redactLogValue(
 		Set.prototype.forEach.call(value, (entryValue: unknown) => {
 			values.push(redactLogValue(entryValue, seen, depth + 1));
 		});
-		const result = Object.create(null) as Record<string, unknown>;
+		const result = createRedactClone();
 		defineSafeProperty(result, "type", "Set");
 		defineSafeProperty(result, "values", values);
 		return result;
@@ -362,7 +383,7 @@ export function redactLogValue(
 	// Class instances are cloned into plain objects: JSON serialization only
 	// ever emits own enumerable properties anyway, and walking them here masks
 	// credentials stashed on config/response wrappers (axios-style).
-	const result = Object.create(null) as Record<string, unknown>;
+	const result = createRedactClone();
 	redactOwnPropertiesInto(value, result, seen, depth + 1);
 	return result;
 }

@@ -40,7 +40,7 @@
     "@types/bun": "1.4.2",
     "@types/node": "^25.0.0",
     "@types/react": "^18.0.0 || ^19.0.0",
-    "@types/react-dom": "^18.0.0 || ^19.0.0",
+    "@types/react-dom": "^19.3.0",
     "@types/three": "0.165.0",
     "jsdom": "^29.0.0",
     "electrobun": "1.18.1",
