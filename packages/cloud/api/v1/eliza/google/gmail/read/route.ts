@@ -9,6 +9,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   AgentGoogleConnectorError,
+  readManagedGoogleGmailAttachment,
   readManagedGoogleGmailMessage,
 } from "@/lib/services/agent-google-connector";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -29,6 +30,25 @@ app.get("/", async (c) => {
       return c.json({ error: "messageId is required." }, 400);
     }
 
+    const partId = c.req.query("partId");
+    if (partId !== undefined) {
+      const rawMax = c.req.query("maxBytes");
+      if (!grantId || (rawMax !== undefined && !/^[1-9][0-9]*$/.test(rawMax)))
+        return c.json(
+          { error: "A grant and valid byte limit are required." },
+          400,
+        );
+      const result = await readManagedGoogleGmailAttachment({
+        organizationId: user.organization_id,
+        userId: user.id,
+        side: rawSide === "agent" ? "agent" : "owner",
+        grantId,
+        messageId: messageId.trim(),
+        partId,
+        maxBytes: rawMax === undefined ? undefined : Number(rawMax),
+      });
+      return c.json(result);
+    }
     const message = await readManagedGoogleGmailMessage({
       organizationId: user.organization_id,
       userId: user.id,

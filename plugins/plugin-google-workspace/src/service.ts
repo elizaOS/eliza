@@ -40,6 +40,7 @@ import {
   type GoogleDriveCreateFileInput,
   type GoogleDriveFile,
   type GoogleDriveFileList,
+  type GoogleGmailAttachmentContent,
   type GoogleGmailBulkOperation,
   type GoogleGmailDraftResult,
   type GoogleGmailFilterCreateResult,
@@ -202,6 +203,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageDetail | null> {
     return this.gmailClient.getGmailMessageDetail(params);
+  }
+
+  getGmailAttachment(
+    params: GoogleAccountRef & { messageId: string; partId: string; maxBytes: number }
+  ): Promise<GoogleGmailAttachmentContent> {
+    return this.gmailClient.getGmailAttachment(params);
   }
 
   getGmailMessageRevision(

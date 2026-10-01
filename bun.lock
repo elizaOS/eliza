@@ -989,6 +989,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",

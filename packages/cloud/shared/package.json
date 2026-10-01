@@ -107,7 +107,8 @@
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-native-inference": "workspace:*",
-    "@elizaos/plugin-wallet": "workspace:*"
+    "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

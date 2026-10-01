@@ -13,7 +13,9 @@ export const GMAIL_MIME_PART_UNBOUNDED = "GMAIL_MIME_PART_UNBOUNDED";
 
 export type GmailMimePartLike = {
   mimeType?: string | null;
-  body?: { data?: string | null } | null;
+  partId?: string | null;
+  filename?: string | null;
+  body?: { data?: string | null; attachmentId?: string | null; size?: number | null } | null;
   parts?: GmailMimePartLike[] | null;
 };
 
@@ -71,6 +73,10 @@ export function snapshotGmailMimePart(part: object): GmailMimePartLike {
   const mime = ownData(part, "mimeType", "mimeType");
   const bodyOwn = ownData(part, "body", "body");
   const snapshot: GmailMimePartLike = {};
+  for (const field of ["partId", "filename"] as const) {
+    const item = ownData(part, field, field);
+    if (item.found) snapshot[field] = item.value as string | null | undefined;
+  }
   if (mime.found) {
     snapshot.mimeType = mime.value as string | null | undefined;
   }
@@ -90,6 +96,11 @@ export function snapshotGmailMimePart(part: object): GmailMimePartLike {
         ? ((data.found ? data.value : undefined) as string | null | undefined)
         : undefined,
   };
+  const attachmentId = ownData(bodyOwn.value, "attachmentId", "body.attachmentId");
+  const size = ownData(bodyOwn.value, "size", "body.size");
+  if (attachmentId.found)
+    snapshot.body.attachmentId = attachmentId.value as string | null | undefined;
+  if (size.found) snapshot.body.size = size.value as number | null | undefined;
   return snapshot;
 }
 
