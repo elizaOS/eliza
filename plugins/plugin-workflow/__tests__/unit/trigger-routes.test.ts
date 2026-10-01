@@ -146,3 +146,40 @@ describe('trigger route path decoding', () => {
     });
   });
 });
+
+describe('partial trigger updates', () => {
+  test('retains the saved timezone unless the update supplies another one', async () => {
+    for (const body of [
+      { enabled: false },
+      { displayName: 'Renamed prompt' },
+      { enabled: false, timezone: 'Europe/London' },
+    ]) {
+      const { context, response } = createHarness('PUT', '/api/triggers/saved-prompt');
+      const current = {
+        triggerId: 'saved-prompt',
+        kind: 'prompt',
+        displayName: 'Saved prompt',
+        instructions: 'Return a short answer',
+        triggerType: 'cron',
+        cronExpression: '0 9 * * *',
+        enabled: true,
+        timezone: 'America/Los_Angeles',
+        createdBy: 'api',
+      } as TriggerConfig;
+      const task = { id: 'saved-task', metadata: { trigger: current } } as Task;
+      context.listTriggerTasks = async () => [task];
+      context.readTriggerConfig = () => current;
+      context.readJsonBody = async () => body as never;
+      let inputTimezone: string | undefined;
+      context.normalizeTriggerDraft = ({ input }) => {
+        inputTimezone = input.timezone;
+        return { error: 'Stop before storage for this normalization assertion' };
+      };
+
+      await expect(handleTriggerRoutes(context)).resolves.toBe(true);
+
+      expect(inputTimezone).toBe('timezone' in body ? body.timezone : 'America/Los_Angeles');
+      expect(response.status).toBe(400);
+    }
+  });
+});
