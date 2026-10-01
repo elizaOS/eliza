@@ -691,7 +691,7 @@ export async function isWebSocketSessionTokenAuthorized(
   if (typeof resolveSessionToken !== "function") return false;
   try {
     const resolved = await resolveSessionToken(token, runtime);
-    return resolved.ok === true;
+    return resolved.ok === true && resolved.role === "OWNER";
   } catch (err) {
     // error-policy:J4 session-store failure → fail-closed deny; the outage is
     // surfaced here rather than collapsing silently into a stream of 1008s.
