@@ -51,9 +51,9 @@
     "@types/bun": "1.4.2",
     "@types/node": "25.6.2",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "turbo": "^2.9.16",
+    "turbo": "^2.11.4",
     "typescript": "^6.0.3",
-    "vitest": "4.1.5",
+    "vitest": "5.0.2",
     "@fontsource/poppins": "^5.2.7"
   },
   "overrides": {
