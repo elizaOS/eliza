@@ -551,6 +551,11 @@ export class TaskService extends Service {
 			if (value != null && (!finite(value) || value < 0))
 				return `metadata.${field}`;
 		}
+		for (const field of ["wakeAt", "wakeRevision"] as const) {
+			const value = metadata?.[field];
+			if (value != null && (!Number.isSafeInteger(value) || value < 0))
+				return `metadata.${field}`;
+		}
 		const failureCount = metadata?.failureCount;
 		if (failureCount != null && (!finite(failureCount) || failureCount < 0)) {
 			return "metadata.failureCount";
@@ -694,7 +699,12 @@ export class TaskService extends Service {
 			const notAfterMs = taskMetadata?.notAfter;
 
 			const idealNextRun = lastRan + updateIntervalMs;
-			const earliest = idealNextRun - notBeforeMs;
+			const wakeAt =
+				this.runtime.adapter?.supportsAtomicTaskWake === true &&
+				!taskMetadata?.failureCount
+					? taskMetadata?.wakeAt
+					: undefined;
+			const earliest = Math.min(idealNextRun - notBeforeMs, wakeAt ?? Infinity);
 
 			if (now < earliest) {
 				continue;
@@ -826,6 +836,8 @@ export class TaskService extends Service {
 
 		this.executingTasks.add(task.id);
 		const startTime = this.clock.now();
+		const observedWakeRevision = task.metadata?.wakeRevision;
+		const observedWakeAt = task.metadata?.wakeAt;
 
 		try {
 			const taskOptions = (task.metadata ?? {}) as Record<
@@ -884,7 +896,42 @@ export class TaskService extends Service {
 				} else if (baseInterval != null && typeof baseInterval === "number") {
 					bookkeeping.updateInterval = baseInterval;
 				}
-				await this.persistTaskMetadata(task.id, meta, bookkeeping, cleared);
+				const nextWakeAt = result?.nextWakeAt;
+				if (
+					nextWakeAt !== undefined &&
+					(!Number.isSafeInteger(nextWakeAt) || nextWakeAt < 0)
+				)
+					throw new ElizaError("Task returned an invalid absolute wake", {
+						code: "TASK_WAKE_INVALID",
+					});
+				if (
+					this.runtime.adapter?.supportsAtomicTaskWake === true &&
+					(observedWakeAt !== undefined || nextWakeAt !== undefined)
+				) {
+					const outcome = await this.runtime.patchTaskMetadata(task.id, {
+						set: bookkeeping,
+						unset: cleared,
+						wake: {
+							consumeRevision: observedWakeRevision ?? 0,
+							...(nextWakeAt !== undefined ? { requestAt: nextWakeAt } : {}),
+						},
+					});
+					if (outcome === "unsupported")
+						throw new ElizaError("Atomic task wake capability was withdrawn", {
+							code: "TASK_WAKE_UNSUPPORTED",
+						});
+				} else {
+					if (nextWakeAt !== undefined)
+						this.runtime.reportError(
+							"TaskService.absoluteWake",
+							new ElizaError(
+								"Adapter retains interval cadence; atomic wake unavailable",
+								{ code: "TASK_WAKE_UNSUPPORTED" },
+							),
+							{ taskId: task.id, diagnosticOnly: true },
+						);
+					await this.persistTaskMetadata(task.id, meta, bookkeeping, cleared);
+				}
 			} else {
 				await this.runtime.deleteTask(task.id);
 				this.runtime.logger.debug(

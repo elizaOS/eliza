@@ -130,6 +130,7 @@ import {
 } from "../owner/fact-store.js";
 import { getSignalSourceRegistry } from "../registries/signal-source-registry.js";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
+import { nextReminderWakeAt } from "../reminder-wake.js";
 import {
   createLifeOpsActivitySignal,
   createLifeOpsAuditEvent,
@@ -5225,7 +5226,7 @@ export class RemindersDomain {
     globalReminderPreference: LifeOpsReminderPreference;
     existingAttempts: LifeOpsReminderAttempt[];
     activityProfile: ReminderActivityProfileSnapshot | null;
-  }): Promise<LifeOpsReminderAttempt[]> {
+  }): Promise<{ attempts: LifeOpsReminderAttempt[]; nextWakeAt?: number }> {
     const {
       now,
       limit,
@@ -5238,7 +5239,7 @@ export class RemindersDomain {
     } = args;
     const dueAttempts: LifeOpsReminderAttempt[] = [];
     if (limit <= 0) {
-      return dueAttempts;
+      return { attempts: dueAttempts };
     }
 
     // This is a background scheduler boundary, not a caller-facing read. A
@@ -5339,6 +5340,15 @@ export class RemindersDomain {
       stepIndex: number,
       scheduledFor: string,
     ) => `${planId}:${stepIndex}:${scheduledFor}`;
+    const nextWakeAt = nextReminderWakeAt(
+      occurrenceViews,
+      [...plansByDefinitionId.values()],
+      existingAttempts,
+      now.getTime(),
+      calendarEvents,
+      [...plansByEventId.values()],
+    );
+
     const deliveredAttempts = new Set(
       existingAttempts
         .filter((attempt) => isDeliveredReminderOutcome(attempt.outcome))
@@ -5598,7 +5608,7 @@ export class RemindersDomain {
       reminderAttemptsForEscalation.push(attempt);
     }
 
-    return dueAttempts;
+    return { attempts: dueAttempts, nextWakeAt };
   }
 
   async processReminders(
@@ -5666,21 +5676,21 @@ export class RemindersDomain {
         };
       }
 
-      dueAttempts.push(
-        ...(await this.processDueReminderDeliveries({
-          now,
-          limit: limit - dueAttempts.length,
-          includeCalendar: scope === "all",
-          ownerTimezone,
-          policies,
-          globalReminderPreference,
-          existingAttempts: [...existingAttempts, ...dueAttempts],
-          activityProfile,
-        })),
-      );
+      const deliveries = await this.processDueReminderDeliveries({
+        now,
+        limit: limit - dueAttempts.length,
+        includeCalendar: scope === "all",
+        ownerTimezone,
+        policies,
+        globalReminderPreference,
+        existingAttempts: [...existingAttempts, ...dueAttempts],
+        activityProfile,
+      });
+      dueAttempts.push(...deliveries.attempts);
 
       return {
         now: now.toISOString(),
+        nextWakeAt: deliveries.nextWakeAt,
         attempts: dueAttempts,
       };
     });
@@ -5695,6 +5705,7 @@ export class RemindersDomain {
       sleepCycleCheckins?: boolean;
     } = {},
   ): Promise<{
+    nextWakeAt?: number;
     now: string;
     reminderAttempts: LifeOpsReminderAttempt[];
     workflowRuns: LifeOpsWorkflowRun[];
@@ -5895,7 +5906,7 @@ export class RemindersDomain {
       },
     );
 
-    const reminderResult = await runSubsystem(
+    const reminderResult = await runSubsystem<LifeOpsReminderProcessingResult>(
       "reminders",
       { now: now.toISOString(), attempts: [] as LifeOpsReminderAttempt[] },
       () =>
@@ -5977,6 +5988,7 @@ export class RemindersDomain {
     return {
       now: now.toISOString(),
       reminderAttempts: reminderResult.attempts,
+      nextWakeAt: reminderResult.nextWakeAt,
       workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
       scheduledTaskFires: scheduledTaskResult.fires.map((fire) => ({
         ...fire,

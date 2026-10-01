@@ -101,6 +101,42 @@ it("keeps nonhistory constraints, role text and receipts exact while leaving ori
 	expect(text).not.toContain("unrelated weather");
 	expect(JSON.stringify(f.original)).toBe(original);
 });
+it("separates only an exact live canonical system prefix and preserves other context", () => {
+	const f = fixture();
+	const prefix = f.original.staticPrefix;
+	if (!prefix) throw new Error("Fixture system prefix is missing");
+	prefix.characterPrompt = {
+		content: "Keep the user's chosen style",
+		stable: true,
+	};
+	const before = JSON.stringify(f.original);
+	bindTaskExtractionContext(f.state, f.message, f.original, f.projected);
+	const context = readTaskExtractionContext(
+		f.state,
+		f.message,
+		"Never disclose private material",
+	);
+	expect(context?.system).toBe("Never disclose private material");
+	expect(context?.text).not.toContain("Never disclose private material");
+	expect(context?.originalText).not.toContain(
+		"Never disclose private material",
+	);
+	expect(context?.text).toContain("Keep the user's chosen style");
+	expect(context?.text).toContain("Only in-app delivery authorized");
+	expect(context?.text).toContain("Current mutation receipt exact: saved-id");
+	expect(context?.originalText).toContain("unrelated weather");
+	expect(JSON.stringify(f.original)).toBe(before);
+});
+it("keeps the full prefix when live role/persona differs or no system comparison is supplied", () => {
+	const f = fixture();
+	bindTaskExtractionContext(f.state, f.message, f.original, f.projected);
+	for (const system of [undefined, "A different live role", ""]) {
+		const context = readTaskExtractionContext(f.state, f.message, system);
+		expect(Object.hasOwn(context ?? {}, "system")).toBe(false);
+		expect(context?.text).toContain("Never disclose private material");
+		expect(context?.originalText).toContain("Never disclose private material");
+	}
+});
 it("keeps capability through routing values clone but not JSON, wrong actor/room/message or mutated state/source", () => {
 	for (const mutation of [
 		"json",
