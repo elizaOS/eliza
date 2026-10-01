@@ -244,10 +244,13 @@ export async function drainCutoverHolds(
       ex: leaseSeconds,
     });
     if (!leased) continue;
+    // Only a different owner fences removal. A lease that lapsed with no new
+    // owner must not keep a settled record, or the next drain replays it.
     const removeHeldRecord = async (): Promise<boolean> =>
       Number(
         await redis.eval(
-          `if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+          `local owner = redis.call('GET', KEYS[1])
+       if owner and owner ~= ARGV[1] then return 0 end
        redis.call('DEL', KEYS[2])
        redis.call('ZREM', KEYS[3], ARGV[2])
        return 1`,
