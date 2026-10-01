@@ -66,7 +66,8 @@ app.get("/", async (c) => {
       tags: character.tags,
       viewCount: character.view_count,
       interactionCount: character.interaction_count,
-      monetizationEnabled: character.monetization_enabled,
+      // Creator markup is retired (#22961): no agent charges a surcharge.
+      monetizationEnabled: false,
     };
 
     logger.debug(`[Public Character API] Returning public info for: ${character.id}`, {

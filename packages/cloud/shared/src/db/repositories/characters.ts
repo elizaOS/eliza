@@ -733,11 +733,13 @@ export class UserCharactersRepository {
     return result[0]?.count || 0;
   }
 
+  /**
+   * Makes an agent public. Creator inference markup is retired (#22961), so
+   * publishing always leaves it off; there is no option to turn it on.
+   */
   async publish(
     id: string,
     options: {
-      enableMonetization: boolean;
-      markupPercentage: number;
       payoutWalletAddress?: string;
       a2aEnabled: boolean;
       mcpEnabled: boolean;
@@ -749,8 +751,8 @@ export class UserCharactersRepository {
         is_public: true,
         a2a_enabled: options.a2aEnabled,
         mcp_enabled: options.mcpEnabled,
-        monetization_enabled: options.enableMonetization,
-        inference_markup_percentage: String(options.markupPercentage),
+        monetization_enabled: false,
+        inference_markup_percentage: "0",
         ...(options.payoutWalletAddress && {
           payout_wallet_address: options.payoutWalletAddress,
         }),
