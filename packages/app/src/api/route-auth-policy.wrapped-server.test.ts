@@ -70,6 +70,31 @@ describe("per-agent compat pass-through auth", { concurrent: false }, () => {
     }
   });
 
+  it.each<[Record<string, string>]>([
+    [{ authorization: "Bearer fixture-machine-session" }],
+    [{ cookie: "eliza_session=fixture-machine-session" }],
+  ])(
+    "keeps unavailable session auth distinct from invalid credentials: %j",
+    async (headers) => {
+      const response = await fetch(`${baseUrl}/api/status`, { headers });
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(await response.json()).toMatchObject({ error: "db_unavailable" });
+    },
+  );
+
+  it("preserves status access for known bootstrap credentials during startup", async () => {
+    const response = await fetch(`${baseUrl}/api/status`, {
+      headers: { authorization: `Bearer ${OWNER_TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("keeps an uncredentialed status request denied during startup", async () => {
+    const response = await fetch(`${baseUrl}/api/status`);
+    expect(response.status).toBe(401);
+  });
+
   for (const route of ["message", "event"] as const) {
     it(`keeps /${route} closed to missing and invalid credentials`, async () => {
       expect((await post(route)).status).toBe(401);

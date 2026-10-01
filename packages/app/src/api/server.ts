@@ -46,6 +46,7 @@ import {
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
+import { isRegisteredTokenRoleAuthorized } from "@elizaos/agent/api/boundary-role-resolver";
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
@@ -65,7 +66,11 @@ import {
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
-import { readCookie, resolveSessionTokenRole } from "./auth";
+import {
+  getProvidedApiToken,
+  readCookie,
+  resolveSessionTokenRole,
+} from "./auth";
 import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -986,6 +991,21 @@ async function runCompatRequestPipeline(
 
   {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    // A session cannot be declared invalid before its store is available.
+    // Status 401 revokes the client's saved pairing; match auth/me's startup
+    // unavailability instead, without granting access or changing ready auth.
+    if (
+      req.method === "GET" &&
+      pathname === "/api/status" &&
+      (getProvidedApiToken(req) || readCookie(req, SESSION_COOKIE_NAME)) &&
+      !authStoreForRuntime(state.current) &&
+      !isAuthorized(req) &&
+      !isRegisteredTokenRoleAuthorized(req, "GET", pathname)
+    ) {
+      res.setHeader("Retry-After", "1");
+      sendJsonResponse(res, 503, { error: "db_unavailable" });
+      return;
+    }
     if (
       pathname.startsWith("/api/database") ||
       pathname.startsWith("/api/trajectories")
