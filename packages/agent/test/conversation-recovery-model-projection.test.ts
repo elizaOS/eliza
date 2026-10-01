@@ -164,6 +164,8 @@ it.each([
         ModelType.TEXT_SMALL,
         async (_runtime, params) => {
           if (!rewriteAllowed) return fail();
+          if (typeof params.prompt !== "string")
+            throw new Error("Recovery model requires a text prompt");
           recoveryModelCalls++;
           expect(params.prompt).toContain("Keep two  spaces.");
           expect(params.prompt).toContain("Original Ω🙂 record.");
