@@ -71,8 +71,8 @@ describe("stripAssistantStageDirections", () => {
 		).toBe("hi there");
 		expect(
 			extractAssistantReplyText(
-			JSON.stringify({ thought: "x", reply: "done", actions: ["REPLY"] }),
-		),
+				JSON.stringify({ thought: "x", reply: "done", actions: ["REPLY"] }),
+			),
 		).toBe("done");
 	});
 
@@ -121,25 +121,25 @@ describe("stripAssistantStageDirections", () => {
 
 		const mixedMessage = `Here is the configuration:
 
-```yaml
+\`\`\`yaml
 services:
   agent:
     image: elizaos/agent:latest
     environment:
       - DEBUG=true
-```
+\`\`\`
 
 *smiles* Hope that helps!`;
 
 		const expected = `Here is the configuration:
 
-```yaml
+\`\`\`yaml
 services:
   agent:
     image: elizaos/agent:latest
     environment:
       - DEBUG=true
-```
+\`\`\`
 
 Hope that helps!`;
 
@@ -233,6 +233,55 @@ Hope that helps!`;
 		const expectedUnclosed = "> ```python\n> def f():\n>     return 1\n\ndone";
 		expect(stripAssistantStageDirections(unclosedBlockquote)).toBe(
 			expectedUnclosed,
+		);
+	});
+
+	it("preserves inline code, unequal delimiters, and multiline code bytes", () => {
+		const code = "``*smiles* ` _waves_  ``";
+		expect(stripAssistantStageDirections(`*waves* Use ${code}.`)).toBe(
+			`Use ${code}.`,
+		);
+		const multiline = "`one\n  *smiles*\n  two`";
+		expect(stripAssistantStageDirections(`*sighs* ${multiline}`)).toBe(
+			multiline,
+		);
+	});
+
+	it("preserves indented code and CRLF when surrounding prose is cleaned", () => {
+		const code = "    # *smiles*\r\n\tprint('a  b')\r\n";
+		const input = `*waves* Hello\r\n\r\n${code}\r\n*nods* Done`;
+		expect(stripAssistantStageDirections(input)).toBe(
+			`Hello\r\n\r\n${code}\r\nDone`,
+		);
+	});
+
+	it("ends a nested quote fence at the correct container boundary", () => {
+		const code = "> > ~~~\n> >   *smiles*\n";
+		expect(stripAssistantStageDirections(`${code}> *waves* done`)).toBe(
+			`${code}> done`,
+		);
+	});
+
+	it("uses CommonMark closing indentation rather than adding the opener indentation", () => {
+		const code = "   ~~~\n     ~~~\n  *smiles*\n~~~\n";
+		expect(stripAssistantStageDirections(`${code}*waves* done`)).toBe(
+			`${code}done`,
+		);
+	});
+
+	it("retains escaped delimiters and curly quote stage-direction boundaries", () => {
+		expect(stripAssistantStageDirections("\\` *smiles* hello")).toBe(
+			"\\` hello",
+		);
+		expect(stripAssistantStageDirections("“*smiles* hello”")).toBe("“ hello”");
+		expect(stripAssistantStageDirections("\\*smiles* hello")).toBe(
+			"\\*smiles* hello",
+		);
+	});
+
+	it("does not pair unmatched backticks across separate paragraphs", () => {
+		expect(stripAssistantStageDirections("`example\n\n*smiles* prose `")).toBe(
+			"`example\n\nprose `",
 		);
 	});
 
