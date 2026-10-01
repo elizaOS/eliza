@@ -26,6 +26,12 @@ vi.mock("./profile-form", () => ({
   ProfileForm: () => <div>profile form</div>,
 }));
 
+// PrivacyPanel's API, auth and translation providers are exercised by its
+// owning tests; this page-composition fixture mocks each lower panel.
+vi.mock("./privacy-panel", () => ({
+  PrivacyPanel: () => <div>privacy controls</div>,
+}));
+
 function makeUser(): UserProfile {
   const now = new Date("2026-07-05T00:00:00.000Z");
   return {
@@ -87,6 +93,7 @@ describe("AccountPageClient", () => {
 
     expect(text).toContain("profile form");
     expect(text).toContain("account details");
+    expect(text).toContain("privacy controls");
     // Per-user-account console: no org surfacing even when one exists.
     expect(text).not.toMatch(/Welcome back/i);
     expect(text).not.toMatch(/You're part of/i);

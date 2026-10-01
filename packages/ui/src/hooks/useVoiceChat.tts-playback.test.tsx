@@ -214,16 +214,10 @@ function installMocks() {
     configurable: true,
     value: FakeUtterance,
   });
-  if (typeof URL.createObjectURL !== "function") {
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:playback-worklet"),
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
-  }
+  // Object URLs are an external browser boundary. The runtime's implementation
+  // cannot consume the jsdom Blob used by the workbench report download.
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:playback-worklet");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   window.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) =>
     window.setTimeout(() => cb(performance.now()), 16),
   ) as typeof window.requestAnimationFrame;
