@@ -94,6 +94,7 @@ export async function routeAutonomyTextToUser(
   state: ServerState,
   responseText: string,
   source = "autonomy",
+  reminderPresentation?: unknown,
 ): Promise<void> {
   const runtime = state.runtime;
   if (!runtime) return;
@@ -147,7 +148,16 @@ export async function routeAutonomyTextToUser(
   if (!isEphemeral) {
     const voiced = await ensureAgentVoice(
       runtime,
-      { text: normalizedText, source },
+      {
+        text: normalizedText,
+        source,
+        ...(reminderPresentation !== undefined
+          ? {
+              reminderPresentation:
+                reminderPresentation as import("@elizaos/core").ReminderPresentation,
+            }
+          : {}),
+      },
       { source },
     );
     agentVoiced = voiced.agentVoiced === true;

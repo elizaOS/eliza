@@ -6,7 +6,8 @@
  * service credential forms reach the owning agent handlers.
  */
 import type { startApiServer as startApiServerType } from "@elizaos/agent";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as authStores from "../services/auth-store";
 import { startApiServer } from "./server";
 
 const ENV_KEYS = [
@@ -88,6 +89,23 @@ describe("per-agent compat pass-through auth", { concurrent: false }, () => {
       headers: { authorization: `Bearer ${OWNER_TOKEN}` },
     });
     expect(response.status).toBe(200);
+  });
+
+  it("does not make a known bootstrap credential depend on auth-store startup", async () => {
+    const lookup = vi
+      .spyOn(authStores, "authStoreForRuntime")
+      .mockImplementation(() => {
+        throw new Error("Auth store is still starting");
+      });
+    try {
+      const response = await fetch(`${baseUrl}/api/status`, {
+        headers: { authorization: `Bearer ${OWNER_TOKEN}` },
+      });
+      expect(response.status).toBe(200);
+      expect(lookup).not.toHaveBeenCalled();
+    } finally {
+      lookup.mockRestore();
+    }
   });
 
   it("keeps an uncredentialed status request denied during startup", async () => {

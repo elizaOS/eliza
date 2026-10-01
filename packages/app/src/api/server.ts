@@ -998,9 +998,9 @@ async function runCompatRequestPipeline(
       req.method === "GET" &&
       pathname === "/api/status" &&
       (getProvidedApiToken(req) || readCookie(req, SESSION_COOKIE_NAME)) &&
-      !authStoreForRuntime(state.current) &&
       !isAuthorized(req) &&
-      !isRegisteredTokenRoleAuthorized(req, "GET", pathname)
+      !isRegisteredTokenRoleAuthorized(req, "GET", pathname) &&
+      !authStoreForRuntime(state.current)
     ) {
       res.setHeader("Retry-After", "1");
       sendJsonResponse(res, 503, { error: "db_unavailable" });

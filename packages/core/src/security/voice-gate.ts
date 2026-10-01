@@ -1,3 +1,5 @@
+import { ElizaError } from "../errors";
+import { readReminderPresentation } from "../types/reminder-presentation";
 /**
  * The humanness voice gate (#14873): the single canonical last-mile pass that
  * rewrites any outbound literal into the agent's own natural voice before it
@@ -144,11 +146,6 @@ export async function ensureAgentVoice(
 	content: Content,
 	options: EnsureAgentVoiceOptions,
 ): Promise<Content> {
-	const notice = readSystemNotice(content.systemNotice);
-	if (notice) {
-		const { agentVoiced: _provenance, ...status } = content;
-		return { ...status, text: systemNoticeText(notice) };
-	}
 	// This is a system status explicitly stating that no model reply exists.
 	// Re-voicing it would retry the failed generation and falsely grant prose
 	// provenance; preserve its typed failure marker without agentVoiced=true.
@@ -157,6 +154,24 @@ export async function ensureAgentVoice(
 		readActionReplyFailure(content.replyFailure)
 	)
 		return content;
+	if (content.reminderPresentation !== undefined) {
+		const reminder = readReminderPresentation(content.reminderPresentation);
+		if (!reminder || content.text !== reminder.chatText)
+			throw new ElizaError("Untrusted or mismatched reminder presentation", {
+				code: "REMINDER_PRESENTATION_UNTRUSTED",
+			});
+		const {
+			agentVoiced: _voice,
+			reminderPresentation: _authority,
+			...rest
+		} = content;
+		return { ...rest, text: reminder.chatText };
+	}
+	const notice = readSystemNotice(content.systemNotice);
+	if (notice) {
+		const { agentVoiced: _provenance, ...status } = content;
+		return { ...status, text: systemNoticeText(notice) };
+	}
 	const rewriteOverride = runtime.getSetting?.("OUTBOUND_VOICE_REWRITE");
 	if (
 		rewriteOverride !== undefined &&
