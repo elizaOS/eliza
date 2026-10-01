@@ -71,6 +71,8 @@ jobs:
       ELIZA_WEBVIEW_DEBUG: "1"
       ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
+      # This host-backed mobile lane does not use desktop fused inference.
+      ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
       # Renderer probes use a host backend. The preceding native-agent lane
       # separately boots the real embedded Bun bundle on the clean emulator;
       # model inference and the LOCAL arm64 route retain their own coverage.
