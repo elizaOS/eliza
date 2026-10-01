@@ -15,3 +15,8 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-elizacloud build  # build
 bun run --cwd plugins/plugin-elizacloud test   # tests
 ```
+
+Image description forwards the caller AbortSignal to the Cloud SDK, interrupts
+warming/rate-limit waits, and discards responses received after cancellation.
+Actual server-side cancellation depends on the provider; no late result is
+returned as a successful description.

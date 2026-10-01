@@ -3763,6 +3763,7 @@ export {
 export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
+export { sleepWithAbort } from "./utils/retry";
 export { createSerialise } from "./utils/serialise.js";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
