@@ -666,6 +666,15 @@ export interface Action {
 	disclosureGate?: DisclosureGate;
 
 	/**
+	 * External destinations this action's handler may send data to (processor
+	 * or service identifiers the host processing policy understands). `[]`
+	 * declares that the handler performs no external egress. When a host
+	 * processing policy is installed, an action without this declaration is
+	 * denied before its handler runs; without a policy it is ignored.
+	 */
+	egress?: readonly string[];
+
+	/**
 	 * Optional connector account policy checked by planner tool exposure and
 	 * again immediately before handler execution. This must not be implemented
 	 * only inside validate(); validate is advisory and can be bypassed by native

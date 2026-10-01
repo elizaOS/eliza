@@ -5,7 +5,7 @@
 
 import { Hono } from "hono";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -34,25 +34,22 @@ app.post("/", async (c) => {
       c,
     });
 
-    const { apiKey: updatedKey, plainKey } =
-      await apiKeysService.regenerate(id);
-
-    await getAuditDispatcher()
-      .emit({
-        actor: { type: "user", id: user.id },
-        action: "api_key.rotate",
-        result: "success",
-        resource: { type: "api_key", id },
-        org_id: user.organization_id,
-        request_id: c.get("requestId"),
-        metadata: { key_id: id, reason: "user_regenerate" },
-      })
-      .catch((err: unknown) => {
-        // error-policy:J7 audit-log emit is best-effort telemetry; a failed emit must not fail an already-rotated key. Observed via this warn.
-        logger.warn("[API Keys] rotate audit emit failed", {
-          error: err instanceof Error ? err.message : String(err),
+    const audit = createTransactionalAudit();
+    const { apiKey: updatedKey, plainKey } = await apiKeysService.regenerate(
+      id,
+      async (tx, replacement) => {
+        await audit.write(tx, {
+          actor: { type: "user", id: user.id },
+          action: "api_key.rotate",
+          result: "success",
+          resource: { type: "api_key", id },
+          org_id: user.organization_id,
+          request_id: c.get("requestId"),
+          metadata: { key_id: replacement.id, reason: "user_regenerate" },
         });
-      });
+      },
+    );
+    await audit.publish();
 
     return c.json({
       apiKey: {

@@ -1,3 +1,4 @@
+import { requestReminderWake } from "../reminder-wake.js";
 /**
  * Task-definition domain for LifeOps: CRUD over LifeOps task definitions and
  * their occurrences (the recurring reminders/check-ins/routines the scheduler
@@ -388,6 +389,8 @@ export class DefinitionsDomain {
         definition,
         operationKey,
       );
+    if (reminderPlan?.steps.length)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return {
       idempotency: { key: operationKey, replayed: false },
       definition,
@@ -616,6 +619,8 @@ export class DefinitionsDomain {
       this.ctx.agentId(),
       nextDefinition.id,
     );
+    if (reminderPlan?.steps.length)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return {
       definition: nextDefinition,
       reminderPlan,
@@ -1093,6 +1098,10 @@ export class DefinitionsDomain {
         { occurrenceId: updatedOccurrence.id },
       );
     }
+    // Ask the existing worker to reconcile the committed snooze against its
+    // effective plan, rather than reproducing preference/offset policy here.
+    if (definition.reminderPlanId)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return view;
   }
 }

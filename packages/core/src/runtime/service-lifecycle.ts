@@ -152,7 +152,7 @@ export class RuntimeServiceLifecycle {
 		) as ServiceTypeName;
 		// Fast path: a service that is already registered and running is returned
 		// immediately WITHOUT awaiting initPromise. Callers inside initialize()
-		// (plugin init -> getFilteredActions) would otherwise deadlock on the
+		// (plugin init -> getService) would otherwise deadlock on the
 		// still-unresolved init barrier even though the instance is already up.
 		const alreadyRunning = this.runtime.services.get(key)?.[0];
 		if (alreadyRunning && this.host.initResolver()) return alreadyRunning;

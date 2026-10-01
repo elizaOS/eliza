@@ -27,6 +27,7 @@ import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { isProcessOnlyEnvKey } from "./blocked-env-keys.ts";
 import {
   captureDevCloudEnvAuthority,
   createDevCloudConfigAuthorityView,
@@ -126,6 +127,9 @@ function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
   for (const [key, value] of Object.entries(entries)) {
     if (isDevCloudInternalEnvKey(key)) continue;
     if (devCloudAuthority && isDevCloudEnvOwnedKey(key)) continue;
+    // TEE / protected-profile keys come from the process environment only; a
+    // persisted config.env line must not relax them.
+    if (isProcessOnlyEnvKey(key)) continue;
     // Skip unresolved vault sentinels. The boot-time vault hydration
     // (resolveConfigEnvForProcess + applyCloudConfigToEnv) writes the resolved
     // plaintext to process.env once at startup. Many services call

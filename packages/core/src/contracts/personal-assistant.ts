@@ -3652,6 +3652,8 @@ export interface ProcessLifeOpsRemindersRequest {
 }
 
 export interface LifeOpsReminderProcessingResult {
+	/** Future absolute deadline from this exact processing snapshot. */
+	nextWakeAt?: number;
 	now: string;
 	attempts: LifeOpsReminderAttempt[];
 }

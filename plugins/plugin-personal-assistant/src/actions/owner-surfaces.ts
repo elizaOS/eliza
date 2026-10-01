@@ -192,6 +192,7 @@ function makeOwnerLifeAction(args: {
       },
       {
         name: "minutes",
+        subactions: ["snooze"],
         description: "Snooze minutes when action=snooze.",
         required: false,
         aliases: ["snoozeMinutes", "durationMinutes"],
@@ -199,6 +200,7 @@ function makeOwnerLifeAction(args: {
       },
       {
         name: "idempotencyKey",
+        subactions: ["create"],
         description:
           "Create-definition operation identity: reuse the same key and request when retrying; use distinct keys only for intentionally separate items, even if their content is identical. For other operations or unkeyed creation, omit this field or send an empty string. Whitespace-only tool values also mean omission.",
         required: false,
@@ -207,6 +209,7 @@ function makeOwnerLifeAction(args: {
       },
       {
         name: "confirmed",
+        subactions: ["create"],
         description:
           'create-only: set true ONLY when the owner is confirming a save the assistant previously previewed ("yes, save that") — it saves immediately instead of previewing. Never set on the first request.',
         required: false,

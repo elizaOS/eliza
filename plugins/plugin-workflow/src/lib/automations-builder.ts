@@ -453,7 +453,7 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
   const STATUS_MAP: Record<string, AutomationLastExecution['status']> = {
     finished: 'success',
     failed: 'error',
-    cancelled: 'error',
+    cancelled: 'cancelled',
     running: 'running',
     queued: 'waiting',
     'waiting-approval': 'waiting',

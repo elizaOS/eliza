@@ -84,7 +84,8 @@ export function bindTaskExtractionContext(
 export function readTaskExtractionContext(
 	state: State | undefined,
 	message: Memory | undefined,
-): { text: string; originalText: string } | undefined {
+	expectedSystem?: string,
+): { text: string; originalText: string; system?: string } | undefined {
 	if (!state?.data || !message) return undefined;
 	const binding = bindings().get(state.data);
 	if (!binding) return undefined;
@@ -96,14 +97,36 @@ export function readTaskExtractionContext(
 			binding.projectionHash !== hashStableJson(binding.projected)
 		)
 			return undefined;
-		// Preserve every rendered non-history instruction, provider and receipt.
-		// Tools remain on the renderer's separate tool surface, not prompt text.
-		const rendered = renderContextObject(binding.projected);
+		// Keep the trusted canonical prefix on the model's system surface once,
+		// rather than flattening it into user context and adding it again at dispatch.
+		// Originals, style directions, other instructions, providers and receipts
+		// remain intact; this is not a text-based deduplication of dialogue.
+		const system = binding.original.staticPrefix?.systemPrompt?.content;
+		// A different live persona/role must retain the existing full context;
+		// never replace the dispatcher's current authority with a stale prefix.
+		const separateSystem =
+			typeof system === "string" &&
+			system.trim().length > 0 &&
+			system === expectedSystem;
+		const render = (context: ContextObject) =>
+			renderContextObject(
+				separateSystem
+					? {
+							...context,
+							staticPrefix: {
+								...context.staticPrefix,
+								systemPrompt: undefined,
+							},
+						}
+					: context,
+			);
+		const rendered = render(binding.projected);
 		return {
 			text: rendered.promptSegments.map(segmentBlock).join("\n\n"),
-			originalText: renderContextObject(binding.original)
+			originalText: render(binding.original)
 				.promptSegments.map(segmentBlock)
 				.join("\n\n"),
+			...(separateSystem ? { system } : {}),
 		};
 	} catch {
 		return undefined;

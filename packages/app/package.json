@@ -293,7 +293,7 @@
     "@use-gesture/react": "^10.3.1",
     "adm-zip": "^0.6.0",
     "buffer": "^6.0.3",
-    "chalk": "^6.0.0",
+    "chalk": "^6.0.1",
     "commander": "^15.0.0",
     "cookie": "^1.1.1",
     "cron-parser": "^5.10.0",
@@ -337,7 +337,7 @@
     "@tailwindcss/postcss": "^4.3.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^6.1.1",
@@ -349,7 +349,7 @@
     "esbuild": "^0.28.0",
     "fflate": "^0.8.3",
     "ffprobe-static": "^3.1.0",
-    "jsdom": "^29.0.0",
+    "jsdom": "^30.1.1",
     "json5": "^2.2.3",
     "nodemailer": "^9.0.1",
     "pathe": "^2.0.3",
@@ -367,7 +367,7 @@
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.2",
     "ws": "^8.21.3",
     "yaml": "^2.9.0"
   },
@@ -476,11 +476,6 @@
       "import": "./dist/api/response.js",
       "default": "./dist/api/response.js"
     },
-    "./first-run/first-run-config": {
-      "types": "./dist/first-run/first-run-config.d.ts",
-      "import": "./dist/first-run/first-run-config.js",
-      "default": "./dist/first-run/first-run-config.js"
-    },
     "./services/vault-mirror": {
       "types": "./dist/services/vault-mirror.d.ts",
       "import": "./dist/services/vault-mirror.js",
@@ -521,11 +516,6 @@
       "types": "./dist/services/task-host-capabilities.d.ts",
       "import": "./dist/services/task-host-capabilities.js",
       "default": "./dist/services/task-host-capabilities.js"
-    },
-    "./services/app-updates/update-policy": {
-      "types": "./dist/services/app-updates/update-policy.d.ts",
-      "import": "./dist/services/app-updates/update-policy.js",
-      "default": "./dist/services/app-updates/update-policy.js"
     },
     "./platform/native-plugin-entrypoints": {
       "types": "./dist/platform/native-plugin-entrypoints.d.ts",

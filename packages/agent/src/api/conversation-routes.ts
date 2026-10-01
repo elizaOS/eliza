@@ -88,6 +88,7 @@ import {
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
   parseReplyRecoveryHistorySelection,
+  projectToolResultForModel,
   resolvePlannedReplyEgress,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
@@ -1342,8 +1343,10 @@ function captureConversationConnection(
 }
 async function establishConversationConnection(
   descriptor: ConversationConnectionDescriptor,
+  roomName: string,
 ): Promise<void> {
   await descriptor.runtime.ensureConnection({
+    roomName,
     entityId: descriptor.callerEntityId,
     roomId: descriptor.roomId,
     worldId: descriptor.worldId,
@@ -1386,7 +1389,7 @@ export async function ensureConversationRoom(
     caller,
   );
   await scheduleConversationConnectionEnsure(descriptor, () =>
-    establishConversationConnection(descriptor),
+    establishConversationConnection(descriptor, conv.title),
   );
   assertConversationConnectionRuntime(state.runtime, descriptor);
   return descriptor;
@@ -1740,12 +1743,37 @@ async function persistConversationReplyRecovery(
           ...assistant.content,
           replyRecoveryAvailable: true,
         }),
-        actionResults: result.replyRecovery.actionResults.map((action) => ({
-          ...action,
-          ...(action.error instanceof Error
-            ? { error: action.error.stack ?? action.error.message }
-            : {}),
-        })),
+        actionResults: result.replyRecovery.actionResults.map((action) => {
+          const modelResult = projectToolResultForModel(action);
+          return {
+            // Persist the producer's authoritative model projection, not live
+            // registry handles (for example a view's executable component).
+            // Context, receipts, values and the in-flight result stay intact.
+            ...modelResult,
+            // These runtime markers veto recovery even when the model-facing
+            // producer projection omits them. Never hide an uncertain commit.
+            ...(action.data?.reconciliationRequired !== undefined ||
+            action.data?.committed !== undefined
+              ? {
+                  data: {
+                    ...modelResult.data,
+                    ...(action.data.reconciliationRequired !== undefined
+                      ? {
+                          reconciliationRequired:
+                            action.data.reconciliationRequired,
+                        }
+                      : {}),
+                    ...(action.data.committed !== undefined
+                      ? { committed: action.data.committed }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(action.error instanceof Error
+              ? { error: action.error.stack ?? action.error.message }
+              : {}),
+          };
+        }),
       },
       composeToolDiagnosticRedactor(runtime),
     );
@@ -5381,7 +5409,7 @@ async function streamConversationMessage(
       );
       try {
         await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
-          establishConversationConnection(connectionDescriptor),
+          establishConversationConnection(connectionDescriptor, conv.title),
         );
         assertConversationConnectionRuntime(
           state.runtime,

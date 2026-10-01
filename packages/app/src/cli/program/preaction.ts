@@ -8,7 +8,6 @@
  */
 import { isTruthyEnvValue } from "@elizaos/core";
 import type { Command } from "commander";
-import { setVerbose } from "../../utils/globals";
 import { getCommandPath, getVerboseFlag, hasHelpOrVersion } from "../argv";
 import { emitCliBanner } from "../banner";
 import { resolveCliName } from "../cli-name";
@@ -50,7 +49,6 @@ export function registerPreActionHooks(
       scheduleUpdateNotification();
     }
     const verbose = getVerboseFlag(argv, { includeDebug: true });
-    setVerbose(verbose);
     if (!verbose) {
       process.env.NODE_NO_WARNINGS ??= "1";
     }

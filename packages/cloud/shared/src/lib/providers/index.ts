@@ -3,8 +3,8 @@
  *
  * The Worker calls each provider DIRECTLY when we hold its native key (Groq,
  * Vast, OpenAI, Anthropic). OpenRouter (BYOK) is the backup: it serves models we
- * have no native key for, and is the per-family failover target via
- * `getProviderForModelWithFallback`.
+ * have no native key for. Per-family on-error failover lives in the AI-SDK
+ * middleware in `language-model.ts` (`withRetryableFallback`).
  */
 
 import { CEREBRAS_NATIVE_TEXT_MODELS, isGroqNativeModel, isVastNativeModel } from "../models";
@@ -17,7 +17,7 @@ import { OpenRouterProvider } from "./openrouter";
 import { getProviderKey, getRequiredProviderKey } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
-import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
+import { resolveVastEndpointConfig } from "./vast-endpoints";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
 // Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
@@ -25,7 +25,6 @@ export { AnthropicDirectProvider } from "./anthropic-direct";
 // silently disable thinking - this is intentional fail-fast behavior.
 export * from "./anthropic-thinking";
 export { CerebrasDirectProvider } from "./cerebras-direct";
-export { withProviderFallback } from "./failover";
 export { GroqProvider } from "./groq";
 export { OpenAIDirectProvider } from "./openai-direct";
 export { OpenRouterProvider } from "./openrouter";
@@ -142,7 +141,7 @@ export function hasOpenRouterProviderConfigured(): boolean {
 
 /**
  * OpenRouter direct provider (BYOK) — the backup for models we have no native
- * key for, and the per-family failover target. See `getProviderForModelWithFallback`.
+ * key for.
  */
 export function getOpenRouterProvider(): AIProvider {
   const apiKey = getRequiredProviderKey("OPENROUTER_API_KEY");
@@ -194,9 +193,6 @@ export function getProviderForModel(model: string): AIProvider {
     if (directCerebrasModel && hasCerebrasDirectConfigured()) {
       return getCerebrasDirectProvider();
     }
-    if (hasOpenRouterProviderConfigured()) {
-      return getOpenRouterProvider();
-    }
     return getOpenRouterProvider();
   }
 
@@ -208,68 +204,5 @@ export function getProviderForModel(model: string): AIProvider {
     return getAnthropicDirectProvider();
   }
 
-  if (hasOpenRouterProviderConfigured()) {
-    return getOpenRouterProvider();
-  }
-
   return getOpenRouterProvider();
-}
-
-/**
- * Returns primary + fallback providers for a model. Routes (chat/completions,
- * responses, embeddings, apps/[id]/chat) use this for automatic 402/429 failover
- * via `withProviderFallback`.
- *
- * Direct-first: native providers serve their own models (no hop); OpenRouter
- * (BYOK) is the backup.
- *   - Groq native: no fallback.
- *   - Vast native: fallback to a smaller Vast endpoint (27B -> 9B -> 2B).
- *   - `openai/*` (+ OPENAI_API_KEY): OpenAI direct, OpenRouter on-error fallback.
- *   - `anthropic/*` (+ ANTHROPIC_API_KEY): Anthropic direct, OpenRouter fallback.
- *   - Everything else (no native key — xai, google, mistral, …): OpenRouter is
- *     the direct gateway with no further fallback.
- */
-export function getProviderForModelWithFallback(model: string): {
-  primary: AIProvider;
-  fallback: AIProvider | null;
-} {
-  if (isGroqNativeModel(model)) {
-    return { primary: getGroqProvider(), fallback: null };
-  }
-
-  if (isVastNativeModel(model)) {
-    const fallbackModel = resolveVastFallbackModel(model);
-    return {
-      primary: getVastProvider(model),
-      fallback: fallbackModel ? getVastProvider(fallbackModel) : null,
-    };
-  }
-
-  const openRouterBackup = hasOpenRouterProviderConfigured() ? getOpenRouterProvider() : null;
-
-  const directCerebrasModel = cerebrasModelId(model);
-  if (directCerebrasModel || isCerebrasCatalogModel(model)) {
-    if (directCerebrasModel && hasCerebrasDirectConfigured()) {
-      return { primary: getCerebrasDirectProvider(), fallback: null };
-    }
-    if (openRouterBackup) {
-      return { primary: openRouterBackup, fallback: null };
-    }
-    return { primary: getOpenRouterProvider(), fallback: null };
-  }
-
-  if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
-    return { primary: getOpenAIDirectProvider(), fallback: openRouterBackup };
-  }
-
-  if (model.startsWith("anthropic/") && hasAnthropicDirectConfigured()) {
-    return { primary: getAnthropicDirectProvider(), fallback: openRouterBackup };
-  }
-
-  // No native key for this model: OpenRouter is the direct gateway.
-  if (openRouterBackup) {
-    return { primary: openRouterBackup, fallback: null };
-  }
-
-  return { primary: getOpenRouterProvider(), fallback: null };
 }

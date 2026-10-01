@@ -1075,6 +1075,31 @@ async function restoreAgentDataInScope(
   const worlds = payload.worlds.map(restoreGraphCreatedAt);
   const rooms = payload.rooms.map(restoreGraphCreatedAt);
   const entities = payload.entities.map(restoreGraphCreatedAt);
+  const restoreTaskWake = db.supportsAtomicTaskWake
+    ? db.patchTaskMetadata?.bind(db)
+    : undefined;
+  // Validate scheduler state before creating any destination rows. A pending
+  // deadline must survive transfer, but its source revision cannot own the new
+  // scheduler's claim.
+  for (const task of payload.tasks) {
+    for (const key of ["wakeAt", "wakeRevision"] as const) {
+      const value = task.metadata?.[key];
+      if (
+        value !== undefined &&
+        (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+      ) {
+        throw new AgentExportError("Imported task wake state is invalid", {
+          code: "AGENT_IMPORT_TASK_WAKE_INVALID",
+        });
+      }
+    }
+    if (task.metadata?.wakeAt !== undefined && !restoreTaskWake) {
+      throw new AgentExportError(
+        "This database adapter cannot restore pending task wake deadlines",
+        { code: "AGENT_IMPORT_TASK_WAKE_UNSUPPORTED" },
+      );
+    }
+  }
   if (payload.version >= 2) {
     for (const memory of payload.memories) {
       const type = (memory as Memory & { type?: unknown }).type;
@@ -1293,8 +1318,15 @@ async function restoreAgentDataInScope(
   // that the database adapter will persist.
   let tasksImported = 0;
   for (const task of payload.tasks) {
+    const metadata = task.metadata ? { ...task.metadata } : undefined;
+    const wakeAt = metadata?.wakeAt;
+    if (metadata) {
+      delete metadata.wakeAt;
+      delete metadata.wakeRevision;
+    }
     const newTask = {
       ...task,
+      metadata,
       id: remap(task.id ?? "") as UUID,
       agentId: newAgentId as UUID,
       roomId: task.roomId ? (remap(task.roomId) as UUID) : undefined,
@@ -1302,6 +1334,19 @@ async function restoreAgentDataInScope(
       entityId: task.entityId ? (remap(task.entityId) as UUID) : undefined,
     } as Task;
     await db.createTasks([newTask]);
+    if (
+      wakeAt !== undefined &&
+      !(await restoreTaskWake?.(newTask.id as UUID, {
+        wake: { requestAt: wakeAt },
+      }))
+    ) {
+      throw new AgentExportError(
+        "Failed to restore imported task wake deadline",
+        {
+          code: "AGENT_IMPORT_TASK_WAKE_FAILED",
+        },
+      );
+    }
     tasksImported++;
   }
   logger.info(`[agent-import] Imported ${tasksImported} tasks`);

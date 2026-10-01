@@ -30,7 +30,7 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
-import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
+import { buildFirstRunRuntimeConfig } from "../../ui/src/first-run/first-run-config.ts";
 import {
   createLiveRuntimeChildEnv,
   shouldSkipLiveStackAutoFirstRun,

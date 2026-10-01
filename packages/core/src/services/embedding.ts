@@ -11,6 +11,7 @@
  */
 
 import { shouldSkipResponseMemoryPersistence } from "../memory";
+import { isProcessingPolicyDenial } from "../security/processing-policy";
 import type {
 	EmbeddingGenerationPayload,
 	MessagePayload,
@@ -232,7 +233,11 @@ export class EmbeddingGenerationService extends Service {
 			getPriority: (item) => item.priority,
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
-			shouldRetry: (_item, error) => !isModelFundingAuthorityError(error),
+			// Funding and processing-policy denials are terminal; retrying them
+			// re-asks the same authority for the same answer.
+			shouldRetry: (_item, error) =>
+				!isModelFundingAuthorityError(error) &&
+				!isProcessingPolicyDenial(error),
 			process: (item) => this.generateEmbedding(item),
 			onDrainBatchOutcomes: (outcomes) => {
 				for (const { item } of outcomes) {

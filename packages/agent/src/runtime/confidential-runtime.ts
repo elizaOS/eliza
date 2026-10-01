@@ -23,6 +23,15 @@ import {
 } from "../security/confidential-host-policy.ts";
 import { createConfidentialLocalAdmission } from "../security/confidential-local-admission.ts";
 import { prepareConfidentialHost } from "./confidential-host-bootstrap.ts";
+import {
+  LOGS_RETENTION_PREFIX,
+  LogsRetentionService,
+} from "./logs-retention-service.ts";
+import {
+  MEMORY_RETENTION_PREFIX,
+  MemoryRetentionService,
+} from "./memory-retention-service.ts";
+import { RETENTION_BOUNDS_REQUIRED_SETTING } from "./retention-task.ts";
 
 const textSlots = {
   TEXT_SMALL: "OPENAI_SMALL_MODEL",
@@ -34,9 +43,42 @@ const textSlots = {
   ACTION_PLANNER: "OPENAI_ACTION_PLANNER_MODEL",
 } as const;
 
+// A confidential host must declare an explicit lifecycle bound for memories
+// and logs; retention is authorized deletion, never context truncation.
+const retentionBounds = z
+  .object({
+    retentionDays: z.number().positive().optional(),
+    maxRowsPerRoom: z.number().int().positive().optional(),
+    maxDeletePerSweep: z.number().int().positive().optional(),
+    intervalMinutes: z.number().positive().optional(),
+  })
+  .strict()
+  .refine(
+    (bounds) =>
+      bounds.retentionDays !== undefined || bounds.maxRowsPerRoom !== undefined,
+  );
+
+function retentionSettings(
+  prefix: string,
+  bounds: z.output<typeof retentionBounds>,
+): Record<string, string> {
+  const settings: Record<string, string> = {};
+  if (bounds.retentionDays !== undefined)
+    settings[`${prefix}_DAYS`] = String(bounds.retentionDays);
+  if (bounds.maxRowsPerRoom !== undefined)
+    settings[`${prefix}_MAX_ROWS_PER_ROOM`] = String(bounds.maxRowsPerRoom);
+  if (bounds.maxDeletePerSweep !== undefined)
+    settings[`${prefix}_MAX_DELETE_PER_SWEEP`] = String(
+      bounds.maxDeletePerSweep,
+    );
+  if (bounds.intervalMinutes !== undefined)
+    settings[`${prefix}_INTERVAL_MINUTES`] = String(bounds.intervalMinutes);
+  return settings;
+}
+
 export const confidentialRuntimeConfiguration = z
   .object({
-    schema: z.literal("eliza-confidential-runtime-v1"),
+    schema: z.literal("eliza-confidential-runtime-v2"),
     host: confidentialHostConfiguration,
     textRouteId: z.string().min(1),
     embeddingRouteId: z.string().min(1),
@@ -44,6 +86,9 @@ export const confidentialRuntimeConfiguration = z
     embeddingCredentialPath: z.string().refine(isAbsolute),
     // This is the storage width, not an assertion of model/weight provenance.
     embeddingDimensions: z.literal(384),
+    retention: z
+      .object({ memory: retentionBounds, logs: retentionBounds })
+      .strict(),
   })
   .strict();
 export type ConfidentialRuntimeConfiguration = z.input<
@@ -193,6 +238,15 @@ export async function startConfidentialRuntime(
         EMBEDDING_MODEL: embedding.model,
         EMBEDDING_API_KEY: embeddingKey,
         EMBEDDING_DIMENSIONS: String(configuration.embeddingDimensions),
+        [RETENTION_BOUNDS_REQUIRED_SETTING]: "true",
+        ...retentionSettings(
+          MEMORY_RETENTION_PREFIX,
+          configuration.retention.memory,
+        ),
+        ...retentionSettings(
+          LOGS_RETENTION_PREFIX,
+          configuration.retention.logs,
+        ),
       },
       // Copy only reviewed handlers. Provider init, config, media, research,
       // preconnect events and embedding warmup are deliberately absent.
@@ -208,6 +262,11 @@ export async function startConfidentialRuntime(
           models: embeddingModels,
         },
         createAssistantPlugin(),
+        {
+          name: "confidential-retention",
+          description: "Required lifecycle retention for memories and logs",
+          services: [MemoryRetentionService, LogsRetentionService],
+        },
       ],
     });
     await admit();
