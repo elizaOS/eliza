@@ -249,7 +249,9 @@ export async function drainCutoverHolds(
     if (!leased) continue;
     // Only a different owner fences removal. A lease that lapsed with no new
     // owner must not keep a settled record, or the next drain replays it.
-    const removeHeldRecord = async (staleOnly = false): Promise<boolean> =>
+    // Terminal cleanup also races provider retries that have reopened delivery.
+    // A replacement held ledger must retain its durable record and index.
+    const removeHeldRecord = async (settledOnly = false): Promise<boolean> =>
       Number(
         await redis.eval(
           `local owner = redis.call('GET', KEYS[1])
@@ -259,7 +261,7 @@ export async function drainCutoverHolds(
        redis.call('ZREM', KEYS[3], ARGV[2])
        return 1`,
           [leaseKey, recordKey(dedupKey), HOLD_INDEX_KEY, dedupKey],
-          [leaseToken, dedupKey, staleOnly ? CONNECTOR_HELD : ""],
+          [leaseToken, dedupKey, settledOnly ? CONNECTOR_HELD : ""],
         ),
       ) === 1;
     const stopRenewal = renewLeaseWhileRedelivering(
@@ -296,7 +298,7 @@ export async function drainCutoverHolds(
       }
       if (now - held.heldAt > CUTOVER_HOLD_MAX_MS) {
         await handlers.release(held, "expired");
-        if (await removeHeldRecord()) stats.expired += 1;
+        if (await removeHeldRecord(true)) stats.expired += 1;
         continue;
       }
       const outcome = await handlers.redeliver(held);
@@ -311,7 +313,7 @@ export async function drainCutoverHolds(
         if (stored) stats.rescheduled += 1;
         continue;
       }
-      if (!(await removeHeldRecord())) continue;
+      if (!(await removeHeldRecord(true))) continue;
       if (outcome.kind === "delivered") stats.delivered += 1;
       else stats.released += 1;
     } finally {
