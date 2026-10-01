@@ -388,34 +388,6 @@ const definition = scenario({
         cardinality: 1,
       },
       {
-        name: "cloud-reminder-dispatch-body",
-        match: {
-          modelType: "TEXT_SMALL",
-          input: {
-            includes:
-              "Current reminder:\n- title: Review the synthetic Cloud inbox",
-          },
-          toolNames: [],
-        },
-        response: {
-          text: "Time to review the synthetic Cloud inbox.",
-        },
-        cardinality: 1,
-      },
-      {
-        name: "cloud-reminder-dispatch-title",
-        match: {
-          modelType: "TEXT_SMALL",
-          input: {
-            includes:
-              "Message body:\nTime to review the synthetic Cloud inbox.",
-          },
-          toolNames: [],
-        },
-        response: { text: "Synthetic Cloud reminder" },
-        cardinality: 1,
-      },
-      {
         name: "cloud-reminder-post-action-evaluator",
         match: {
           modelType: "RESPONSE_HANDLER",
