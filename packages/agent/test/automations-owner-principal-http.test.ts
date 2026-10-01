@@ -175,13 +175,13 @@ it("keeps a persisted legacy heartbeat without entity ownership read-only", asyn
 });
 
 it("rejects stale presented credentials instead of promoting loopback access", async () => {
-  for (const headers of [
-    { Authorization: "Bearer stale-owner-token" },
-    { Cookie: "eliza_session=stale-session" },
-  ]) {
+  for (const [name, value] of [
+    ["Authorization", "Bearer stale-owner-token"],
+    ["Cookie", "eliza_session=stale-session"],
+  ] as const) {
     for (const route of ["/api/triggers", "/api/automations"]) {
       const response = await fetch(`http://127.0.0.1:${server.port}${route}`, {
-        headers,
+        headers: { [name]: value },
       });
       expect(response.status).toBe(403);
     }
