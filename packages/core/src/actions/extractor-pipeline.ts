@@ -29,6 +29,8 @@ export interface ExtractorPipelineResult<TParsed> {
 export interface RunExtractorPipelineArgs<TParsed> {
 	runtime: IAgentRuntime;
 	prompt: string;
+	/** Request-bound canonical system context, when already supplied by the caller. */
+	system?: string;
 	/**
 	 * Convert the raw model text into a typed value. Return `null` when the
 	 * output is unparseable or fails validation; that triggers the repair pass.
@@ -70,7 +72,11 @@ export async function runExtractorPipeline<TParsed>(
 	try {
 		const firstResult = await runWithTrajectoryPurpose(
 			"lifeops-extractor-first-pass",
-			() => runtime.useModel(modelType, { prompt }),
+			() =>
+				runtime.useModel(modelType, {
+					prompt,
+					...(args.system !== undefined ? { system: args.system } : {}),
+				}),
 		);
 		const firstRaw = asString(firstResult);
 		const firstParsed = parser(firstRaw);
@@ -87,6 +93,7 @@ export async function runExtractorPipeline<TParsed>(
 			() =>
 				runtime.useModel(modelType, {
 					prompt: buildRepairPrompt(firstRaw),
+					...(args.system !== undefined ? { system: args.system } : {}),
 				}),
 		);
 		const repairRaw = asString(repairResult);
