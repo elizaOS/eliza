@@ -20,11 +20,15 @@ describe('Smithers worker script', () => {
     expect(source).not.toContain('Gateway');
   });
 
-  test('uses the public smthrs API for durable controls', () => {
+  test('uses public Smithers control exports, including canonical subtree cancellation', () => {
     const source = createSmithersControlScript();
     expect(source).toContain("from 'smthrs'");
     expect(source).toContain("from 'smthrs/openSmithersStore'");
-    expect(source).not.toContain('@smthrs/engine');
+    // smthrs 0.35 does not re-export cancellation; this declared dependency
+    // exposes the canonical helper through its public subpath export.
+    expect(source).toContain("from '@smthrs/engine/cancel-subtree'");
+    expect(source).not.toContain('@smthrs/engine/src/');
+    expect(source).not.toContain('node_modules/');
     expect(source).not.toContain('@smithers-orchestrator');
     expect(source).not.toContain('Gateway');
   });

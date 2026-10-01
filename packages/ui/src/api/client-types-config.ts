@@ -542,7 +542,7 @@ export interface AutomationRoomBinding {
   terminalBridgeConversationId?: string;
 }
 export interface AutomationLastExecution {
-  status: "success" | "error" | "running" | "waiting" | "unknown";
+  status: "success" | "error" | "cancelled" | "running" | "waiting" | "unknown";
   startedAt: string;
   stoppedAt?: string | null;
   errorMessage?: string;
