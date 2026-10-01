@@ -409,7 +409,8 @@ export class GoogleGmailClient {
           id: input.messageId,
           format: "full",
         },
-        { maxContentLength: Math.ceil(input.maxBytes / 3) * 4 + 65536 }
+        // The message includes unrelated body/parts, independent of the selected attachment's limit.
+        { maxContentLength: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536 }
       );
       if (message.data.id !== input.messageId) throw attachmentUnavailable();
       const selected = gmailAttachmentParts(message.data.payload).find(

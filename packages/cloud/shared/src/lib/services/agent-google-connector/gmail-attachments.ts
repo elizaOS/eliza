@@ -53,7 +53,12 @@ export async function readManagedGoogleGmailAttachment(args: {
     await requireCurrentGrant();
     const base = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(args.messageId)}`;
     const maxResponseBytes = Math.ceil(maxBytes / 3) * 4 + 65536;
-    const response = await googleFetch({ ...args, url: `${base}?format=full`, maxResponseBytes });
+    const response = await googleFetch({
+      ...args,
+      url: `${base}?format=full`,
+      // Full message metadata/body is independent of the selected attachment's limit.
+      maxResponseBytes: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536,
+    });
     const message = (await response.json()) as { id?: string; payload?: GmailMimePartLike };
     if (message.id !== args.messageId) fail(502, "Gmail attachment unavailable.");
     const part = gmailAttachmentParts(message.payload).find(

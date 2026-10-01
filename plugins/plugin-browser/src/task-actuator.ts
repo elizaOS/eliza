@@ -329,10 +329,10 @@ export class NativeTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<{
-    status: "succeeded" | "failed" | "unknown";
-    evidenceRef?: string;
-  }> {
+  ): Promise<
+    | { status: "succeeded" | "failed"; evidenceRef: string }
+    | { status: "unknown"; evidenceRef?: string }
+  > {
     const task = this.task(proposal.taskId, context.owner);
     const cached = this.observations.get(task.id);
     const binding = this.bindings.get(task.id);
