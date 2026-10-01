@@ -742,6 +742,8 @@ describe("MapsService and MAPS action", () => {
     ).toBe(2);
   });
 
+  // This case performs all 256 real SQLite mutations before checking replay.
+  // Allow the complete quota journey to finish on a shared CI runner.
   it("enforces operation quotas while preserving replay at capacity", async () => {
     const request = {
       ownerEntityId: OWNER_ID,
@@ -773,7 +775,7 @@ describe("MapsService and MAPS action", () => {
         idempotencyKey: "quota-op-overflow",
       }),
     ).rejects.toMatchObject({ code: "MAPS_STORAGE_LIMIT" });
-  });
+  }, 30_000);
 
   it("admits one final place under contention and rejects boundary plus one", async () => {
     const ownerEntityId = "66666666-6666-4666-a666-666666666666";
