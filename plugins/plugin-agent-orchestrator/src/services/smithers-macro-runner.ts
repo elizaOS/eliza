@@ -147,7 +147,12 @@ async function resolvePluginRoot(): Promise<string> {
 function createMacroScript(): string {
   return String.raw`
     import { Smithers } from 'smthrs';
-    import { Effect, Schema } from 'effect';
+    import { createRequire } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    // Execute Smithers effects and schemas with the runtime Smithers pins.
+    // Separately resolved Effect releases are not compatible across this boundary.
+    const smithersRequire = createRequire(import.meta.resolve('smthrs'));
+    const { Effect, Schema } = await import(pathToFileURL(smithersRequire.resolve('effect')).href);
     import { createInterface } from 'node:readline/promises';
 
     const payload = JSON.parse(process.env.ELIZA_SMITHERS_MACRO_PAYLOAD ?? '{}');

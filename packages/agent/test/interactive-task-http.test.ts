@@ -1,16 +1,20 @@
 /** Real HTTP + SQLite integration. The controlled actuator is not Chromium. */
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { InteractiveTaskChoices } from "../src/services/interactive-task-choices.ts";
 import { createInteractiveTaskHandler } from "../src/services/interactive-task-http.ts";
+import { SqliteTaskPresentation } from "../src/services/interactive-task-presentation.ts";
 import {
   type InteractiveTaskActuator,
   InteractiveTaskRuntime,
 } from "../src/services/interactive-task-runtime.ts";
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
+import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
+
+import { listenTaskHttp } from "./fixtures/task-http-server.ts";
 
 const owner = {
   actorId: "actor",
@@ -29,6 +33,7 @@ function setup() {
   const db = new DatabaseSync(join(directory, "host.sqlite"));
   db.exec("PRAGMA synchronous = FULL");
   return {
+    db,
     store: new SqliteInteractiveTaskStore(db),
     close() {
       db.close();
@@ -36,44 +41,7 @@ function setup() {
     },
   };
 }
-async function listen(handler: (request: Request) => Promise<Response>) {
-  const server = createServer(async (req, res) => {
-    try {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const body = Buffer.concat(chunks);
-      const response = await handler(
-        new Request(`http://127.0.0.1${req.url}`, {
-          method: req.method,
-          headers: req.headers as Record<string, string>,
-          ...(body.length ? { body } : {}),
-        }),
-      );
-      res.writeHead(response.status, Object.fromEntries(response.headers));
-      res.end(Buffer.from(await response.arrayBuffer()));
-    } catch {
-      res.writeHead(500);
-      res.end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string")
-    throw new Error("Missing test server address");
-  return {
-    call: (path: string, value?: unknown, token = "valid") =>
-      fetch(`http://127.0.0.1:${address.port}${path}`, {
-        method: value === undefined ? "GET" : "POST",
-        headers: { Authorization: token, "Content-Type": "application/json" },
-        ...(value === undefined ? {} : { body: JSON.stringify(value) }),
-      }),
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-        server.closeAllConnections();
-      }),
-  };
-}
+
 function goal(goalRef: string) {
   return {
     id: "task-1",
@@ -124,7 +92,7 @@ describe("interactive task HTTP host", () => {
         },
       },
     });
-    const http = await listen(
+    const http = await listenTaskHttp(
       createInteractiveTaskHandler({
         runtime,
         authenticate: async () => owner,
@@ -212,7 +180,7 @@ describe("interactive task HTTP host", () => {
         },
       },
     });
-    const http = await listen(
+    const http = await listenTaskHttp(
       createInteractiveTaskHandler({
         runtime,
         authenticate: async (request) =>
@@ -333,7 +301,7 @@ describe("interactive task HTTP host", () => {
     });
     runtime.create(goal("message-1"));
     runtime.control("task-1", 0, "pause");
-    const http = await listen(
+    const http = await listenTaskHttp(
       createInteractiveTaskHandler({
         runtime,
         authenticate: async () => (authenticated ? owner : null),
@@ -373,7 +341,7 @@ describe("task event transport", () => {
         },
       },
     });
-    const server = await listen(
+    const server = await listenTaskHttp(
       createInteractiveTaskHandler({
         runtime,
         authenticate: async (request) =>
@@ -451,7 +419,7 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     },
   });
   runtime.create(goal("cleanup"));
-  const http = await listen(
+  const http = await listenTaskHttp(
     createInteractiveTaskHandler({
       runtime,
       authenticate: async () => owner,
@@ -490,5 +458,74 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     release.resolve();
     await http.close();
     f.close();
+  }
+});
+
+it("does not deliver a choice when an authenticated pause finishes during refresh", async () => {
+  const storage = setup();
+  const runtime = new InteractiveTaskRuntime({
+    owner,
+    store: storage.store,
+    actuator: {
+      capabilities: [],
+      observe: async () => {
+        throw new Error("Presentation read must not observe");
+      },
+      execute: async () => {
+        throw new Error("Presentation read must not execute");
+      },
+    },
+  });
+  const http = await listenTaskHttp(
+    createInteractiveTaskHandler({
+      runtime,
+      authenticate: async () => owner,
+      authorizeGoal: async (ref) => ({ ...goal(ref), allowedCapabilities: [] }),
+    }),
+  );
+  let pauseAfterRefresh = false;
+  // Preserve the actual refresh and disk read; interleave a real HTTP control
+  // before its caller resumes, as can happen across an asynchronous boundary.
+  class ControlledRefresh extends InteractiveTaskChoices {
+    override async refresh(
+      value: Parameters<InteractiveTaskChoices["refresh"]>[0],
+    ) {
+      const current = await super.refresh(value);
+      if (pauseAfterRefresh) {
+        pauseAfterRefresh = false;
+        const paused = await http.call("/tasks/task-1/pause", {
+          expectedRevision: runtime.get("task-1").revision,
+        });
+        expect(paused.status).toBe(200);
+        expect(runtime.get("task-1").status).toBe("paused");
+      }
+      return current;
+    }
+  }
+  try {
+    expect((await http.call("/tasks", { goalRef: "message" })).status).toBe(
+      201,
+    );
+    const choices = new ControlledRefresh(
+      runtime,
+      new SqliteMessageInteractionSessionStore(storage.db),
+    );
+    const presentation = new SqliteTaskPresentation(
+      storage.db,
+      runtime,
+      choices,
+    );
+    await presentation.publish("task-1", "a".repeat(64), {
+      kind: "choice",
+      id: "method",
+      scope: "review",
+      options: [{ value: "existing", label: "Use existing method" }],
+    });
+    pauseAfterRefresh = true;
+    expect(await presentation.read("task-1")).toBeNull();
+    expect(runtime.get("task-1").status).toBe("paused");
+  } finally {
+    await http.close();
+    storage.close();
   }
 });

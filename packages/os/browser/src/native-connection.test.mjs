@@ -5,7 +5,11 @@ import {
   NativeConnection,
 } from "./native-connection.mjs";
 
-function fixture({ failFirstHello = false } = {}) {
+function fixture({
+  failFirstHello = false,
+  onDisconnect = () => {},
+  beforeConnect = async () => {},
+} = {}) {
   let time = 1000;
   let sequence = 0;
   const timers = new Map();
@@ -65,6 +69,8 @@ function fixture({ failFirstHello = false } = {}) {
     onCommand: (message, _sender, isCurrent) => {
       commands.push({ message, isCurrent });
     },
+    onDisconnect,
+    beforeConnect,
     report: (error) => diagnostics.push(String(error)),
     now: () => time,
     nonce: () => `nonce-${++sequence}`,
@@ -229,4 +235,41 @@ test("default timers preserve the worker global receiver", () => {
     globalThis.setTimeout = originalSet;
     globalThis.clearTimeout = originalClear;
   }
+});
+
+test("disconnect invokes annotation cleanup and fences old commands even if cleanup throws", async () => {
+  let calls = 0;
+  const f = fixture({
+    onDisconnect: () => {
+      calls++;
+      throw new Error("cleanup failed");
+    },
+  });
+  await f.connection.start();
+  f.ready();
+  f.ports[0].onMessage.emit({
+    type: "command",
+    id: "read",
+    command: { subaction: "snapshot", id: "1" },
+  });
+  assert.equal(f.commands[0].isCurrent(), true);
+  f.ports[0].onDisconnect.emit();
+  assert.equal(f.commands[0].isCurrent(), false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  assert.ok(f.diagnostics.some((value) => value.includes("cleanup failed")));
+});
+
+test("recovery failure prevents registration until a later successful retry", async () => {
+  let attempts = 0;
+  const f = fixture({
+    beforeConnect: async () => {
+      if (++attempts === 1) throw new Error("recovery pending");
+    },
+  });
+  await f.connection.start();
+  assert.equal(f.ports.length, 0);
+  await f.connection.check();
+  assert.equal(f.ports.length, 1);
+  f.ready();
 });

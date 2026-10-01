@@ -22,12 +22,16 @@ import {
   isLoopbackBindHost,
   type RuntimeEnvRecord,
 } from "@elizaos/core/runtime-env";
-import {
-  type AuthIdentityRow,
-  type AuthRepository,
-  type AuthSessionRow,
+import type {
+  AuthIdentityRow,
+  AuthRepository,
+  AuthSessionRow,
 } from "../../services/auth-store";
-import { findActiveSession, parseSessionCookie } from "./sessions.js";
+import {
+  findActiveSession,
+  parseSessionCookie,
+  readLastActivityHeader,
+} from "./sessions.js";
 import { getProvidedApiToken } from "./tokens.js";
 export type AuthContextSource =
   | "cookie"
@@ -90,9 +94,9 @@ export async function ensureSessionForRequest(
   // 1. cookie session
   const cookieSessionId = parseSessionCookie(req);
   if (cookieSessionId) {
-    const session = await findActiveSession(store, cookieSessionId, now).catch(
-      handleStoreFailure,
-    );
+    const session = await findActiveSession(store, cookieSessionId, now, {
+      lastActivityAt: readLastActivityHeader(req),
+    }).catch(handleStoreFailure);
     if (session && sessionAllowedForRequest(session, req)) {
       const identity = await store
         .findIdentity(session.identityId)
@@ -110,9 +114,9 @@ export async function ensureSessionForRequest(
   const bearer = getProvidedApiToken(req);
   if (bearer) {
     // 2a. session-id bearer (machine sessions and SPA fallback).
-    const session = await findActiveSession(store, bearer, now).catch(
-      handleStoreFailure,
-    );
+    const session = await findActiveSession(store, bearer, now, {
+      lastActivityAt: readLastActivityHeader(req),
+    }).catch(handleStoreFailure);
     if (session && sessionAllowedForRequest(session, req)) {
       const identity = await store
         .findIdentity(session.identityId)

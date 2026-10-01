@@ -9,7 +9,8 @@ import { z } from "zod";
 import { dstackEvidenceConfiguration } from "./tee-dstack-evidence.ts";
 
 export const DSTACK_RELEASE_SIGNATURE_DOMAIN = "eliza-dstack-release-v1\0";
-const releaseSchema = dstackEvidenceConfiguration
+/** Signed release identity payload shared by release signing and admission. */
+export const dstackReleaseIdentity = dstackEvidenceConfiguration
   .pick({ appId: true, composeHash: true, osImageHash: true, variant: true })
   .extend({
     schemaVersion: z.literal(1),
@@ -17,6 +18,12 @@ const releaseSchema = dstackEvidenceConfiguration
     expiresAt: z.iso.datetime(),
   })
   .strict();
+export type DstackReleaseIdentity = z.output<typeof dstackReleaseIdentity>;
+
+/** Exact bytes an Ed25519 release authority signs for one identity payload. */
+export function dstackReleaseSigningMessage(payload: Buffer): Buffer {
+  return Buffer.concat([Buffer.from(DSTACK_RELEASE_SIGNATURE_DOMAIN), payload]);
+}
 const envelopeSchema = z
   .object({
     payload: z
@@ -54,14 +61,16 @@ export function resolveDstackEvidenceConfiguration(
     if (
       !verify(
         null,
-        Buffer.concat([Buffer.from(DSTACK_RELEASE_SIGNATURE_DOMAIN), payload]),
+        dstackReleaseSigningMessage(payload),
         key,
         Buffer.from(envelope.signature, "base64"),
       )
     ) {
       throw new Error("Release identity signature rejected");
     }
-    const identity = releaseSchema.parse(JSON.parse(payload.toString("utf8")));
+    const identity = dstackReleaseIdentity.parse(
+      JSON.parse(payload.toString("utf8")),
+    );
     const now = Date.now();
     if (
       Date.parse(identity.notBefore) > now ||

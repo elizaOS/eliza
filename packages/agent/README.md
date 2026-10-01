@@ -102,3 +102,21 @@ only an offered option, commits before invoking the host executor, and supplies 
 stable operation ID plus a current-task guard. The executor must still verify
 fresh observations and native authorization. Expired pending offers remain
 expired; a new task epoch or changed trusted context requires a new review.
+
+`services/interactive-task-presentation` exports `SqliteTaskPresentation` for a
+single current host-issued choice per task. It stores presentation separately
+from effect authority and rehydrates through `InteractiveTaskChoices` before
+delivery. Reads never observe or execute the task. A newer publish/clear fences
+older in-flight writes; expired or paused/old-epoch choices are not delivered.
+Only trusted workflows may publish. Hosts bind chat routes to authenticated
+account/task identity and dispatch responses through the existing choice authority;
+model text and renderer metadata must never create offers or grant execution.
+
+Hosts that hydrate credentials from an external protected store can set
+`ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS` to up to 32 comma-separated environment
+variable names before saving config. `saveElizaConfig` omits exact string values
+currently held in those variables from its serialized copy without changing the
+in-memory credential. Empty or absent variables contribute no value. Other
+settings retain existing persistence behavior; invalid names reject the save.
+This does not scrub old files, logs, transformed secret values or other stores;
+the host still owns credential migration and custody.

@@ -5,7 +5,7 @@
  */
 
 import { Hono } from "hono";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -24,16 +24,13 @@ app.delete("/", async (c) => {
     const user = await requireSessionUserWithOrg(c);
     const credentialId = c.req.param("id");
     if (!credentialId) throw NotFoundError("Mobile credential not found");
+    const audit = createTransactionalAudit();
     const result = await apiKeysService.revokeMobileCredentialForAccount(
       credentialId,
       user.id,
       user.organization_id,
-    );
-    if (!result) throw NotFoundError("Mobile credential not found");
-
-    if (result.revokedNow) {
-      await getAuditDispatcher()
-        .emit({
+      async (tx) => {
+        await audit.write(tx, {
           actor: { type: "user", id: user.id },
           action: "api_key.revoke",
           result: "success",
@@ -41,14 +38,11 @@ app.delete("/", async (c) => {
           org_id: user.organization_id,
           request_id: c.get("requestId"),
           metadata: { key_id: credentialId, reason: "account_device_revoke" },
-        })
-        .catch((error: unknown) => {
-          // error-policy:J7 Audit telemetry cannot resurrect a revoked credential.
-          logger.warn("[MobileAppAuth] Account revoke audit emit failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
         });
-    }
+      },
+    );
+    if (!result) throw NotFoundError("Mobile credential not found");
+    await audit.publish();
 
     return c.json({ success: true, ...result.receipt });
   } catch (error) {

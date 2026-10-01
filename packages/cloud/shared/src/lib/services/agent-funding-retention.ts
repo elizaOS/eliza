@@ -19,7 +19,8 @@
  *
  * Paying before the deadline resumes the same agent through the existing paths
  * (#30702 automatic resume, #32856 plan recovery). This reconciler only closes
- * the clock once the agent is running again or its lifecycle moved on.
+ * a credits clock once the agent is running again or its lifecycle moved on,
+ * and a plan clock once its fallback interval leaves the withdrawn states.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -449,6 +450,12 @@ export class AgentFundingRetentionService {
       if (!fallback || !(PLAN_WITHDRAWN_STATES as readonly string[]).includes(fallback.state)) {
         return "funding_restored";
       }
+      // The plan is still withdrawn. Activation commits `shared_active` while
+      // the suspend is only enqueued (and a lifecycle conflict leaves it
+      // `fallback_pending`), so a live runtime here is still on its way down,
+      // not a resumed one. Only the fallback leaving these states restores the
+      // plan; a closed clock is never rediscovered for the same fallback.
+      return null;
     }
     if (row.reason === "credits_exhausted" && row.stop_intent_id) {
       const [stop] = await dbWrite

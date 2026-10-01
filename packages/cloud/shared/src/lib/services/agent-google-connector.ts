@@ -14,6 +14,7 @@ export {
   sendManagedGoogleMessage,
   sendManagedGoogleReply,
 } from "./agent-google-connector/gmail";
+export { readManagedGoogleGmailAttachment } from "./agent-google-connector/gmail-attachments";
 export {
   type AgentGoogleCapability,
   AgentGoogleConnectorError,

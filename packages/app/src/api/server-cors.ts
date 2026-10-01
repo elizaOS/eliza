@@ -23,6 +23,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Eliza-Terminal-Token",
   "X-Eliza-Platform",
   "X-Eliza-CSRF",
+  "X-Eliza-Last-Activity",
   "X-ElizaOS-Turn-Correlation",
   "X-ElizaOS-Turn-Attempt",
 ].join(", ");

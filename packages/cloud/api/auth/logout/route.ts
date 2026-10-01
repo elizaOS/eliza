@@ -195,7 +195,7 @@ app.post("/", async (c) => {
           // error-policy:J7 audit write is diagnostic; logout already succeeded via
           // the cookie clear above, so a dropped audit event is logged, not fatal.
           .catch((err: unknown) => {
-            logger.warn("[Logout] audit emit failed", {
+            logger.error("[Logout] audit emit failed", {
               error: err instanceof Error ? err.message : String(err),
             });
           });

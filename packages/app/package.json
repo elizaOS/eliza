@@ -476,11 +476,6 @@
       "import": "./dist/api/response.js",
       "default": "./dist/api/response.js"
     },
-    "./first-run/first-run-config": {
-      "types": "./dist/first-run/first-run-config.d.ts",
-      "import": "./dist/first-run/first-run-config.js",
-      "default": "./dist/first-run/first-run-config.js"
-    },
     "./services/vault-mirror": {
       "types": "./dist/services/vault-mirror.d.ts",
       "import": "./dist/services/vault-mirror.js",
@@ -521,11 +516,6 @@
       "types": "./dist/services/task-host-capabilities.d.ts",
       "import": "./dist/services/task-host-capabilities.js",
       "default": "./dist/services/task-host-capabilities.js"
-    },
-    "./services/app-updates/update-policy": {
-      "types": "./dist/services/app-updates/update-policy.d.ts",
-      "import": "./dist/services/app-updates/update-policy.js",
-      "default": "./dist/services/app-updates/update-policy.js"
     },
     "./platform/native-plugin-entrypoints": {
       "types": "./dist/platform/native-plugin-entrypoints.d.ts",

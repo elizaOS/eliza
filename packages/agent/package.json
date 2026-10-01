@@ -49,7 +49,9 @@
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "test": "node scripts/run-vitest-batches.ts",
     "test:e2e": "node scripts/run-vitest-batches.ts",
-    "test:integration": "node scripts/run-vitest-batches.ts"
+    "test:integration": "node scripts/run-vitest-batches.ts",
+    "test:tee:dstack": "node scripts/run-vitest-batches.ts test/tee-dstack-admission.test.ts test/tee-dstack-protected-profile.test.ts test/tee-dstack-gpu.test.ts test/tee-gpu-nvidia-attestation.test.ts",
+    "test:tee:dstack-live": "node scripts/run-vitest-batches.ts test/tee-dstack-live.test.ts"
   },
   "exports": {
     ".": {
@@ -251,7 +253,25 @@
     "./runtime/roles/src/types": null,
     "./runtime/roles/src/utils": null,
     "./runtime/tool-call-cache/index": null,
-    "./runtime/operations/index": null
+    "./runtime/operations/index": null,
+    "./services/interactive-task-choices": {
+      "eliza-source": "./src/services/interactive-task-choices.ts",
+      "types": "./dist/services/interactive-task-choices.d.ts",
+      "import": "./dist/services/interactive-task-choices.js",
+      "default": "./dist/services/interactive-task-choices.js"
+    },
+    "./services/interactive-task-presentation": {
+      "eliza-source": "./src/services/interactive-task-presentation.ts",
+      "types": "./dist/services/interactive-task-presentation.d.ts",
+      "import": "./dist/services/interactive-task-presentation.js",
+      "default": "./dist/services/interactive-task-presentation.js"
+    },
+    "./services/sqlite-message-interaction-session-store": {
+      "eliza-source": "./src/services/sqlite-message-interaction-session-store.ts",
+      "types": "./dist/services/sqlite-message-interaction-session-store.d.ts",
+      "import": "./dist/services/sqlite-message-interaction-session-store.js",
+      "default": "./dist/services/sqlite-message-interaction-session-store.js"
+    }
   },
   "publishConfig": {
     "access": "public",

@@ -31,6 +31,7 @@ import path from "node:path";
 
 import { isBlockedSpawnEnvKey } from "@elizaos/core";
 
+import { isProcessOnlyEnvKey } from "../config/blocked-env-keys.ts";
 import { resolveStateDir } from "../config/paths.ts";
 
 const CONFIG_ENV_FILENAME = "config.env";
@@ -150,6 +151,11 @@ function validateKey(key: string): void {
   if (BLOCKED_CONFIG_ENV_KEYS.has(key) || isBlockedSpawnEnvKey(key)) {
     throw new Error(
       `persistConfigEnv: key "${key}" is a shell/runtime hijack vector and cannot be written`,
+    );
+  }
+  if (isProcessOnlyEnvKey(key)) {
+    throw new Error(
+      `persistConfigEnv: key "${key}" is process-environment only and cannot be written`,
     );
   }
 }

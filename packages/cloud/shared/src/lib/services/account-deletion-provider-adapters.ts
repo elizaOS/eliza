@@ -34,6 +34,7 @@ import {
 } from "../../db/schemas/agent-vault-key-authority";
 import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
 import { apps } from "../../db/schemas/apps";
+import { llmTrajectories } from "../../db/schemas/llm-trajectories";
 import { managedDomains } from "../../db/schemas/managed-domains";
 import { organizations } from "../../db/schemas/organizations";
 import { billingSubscriptionCommands } from "../../db/schemas/subscription-billing-operations";
@@ -65,6 +66,11 @@ import {
   deleteStewardPlatformUser,
   inspectStewardPlatformUser,
 } from "./steward-platform-users";
+import {
+  deleteTrajectoryPayload,
+  listPrivateTrajectoryObjectKeys,
+  privateTrajectoryStoreConfigured,
+} from "./trajectory-object-storage";
 import { voiceCloningService } from "./voice-cloning";
 
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
@@ -142,7 +148,41 @@ export interface AccountDeletionProviderAdapterDependencies {
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
   spoolAuthority?: AccountDeletionSpoolAuthority;
+  trajectoryStore?: AccountDeletionTrajectoryStore;
 }
+
+/**
+ * The dedicated private store for recorded model-call payloads. Payloads in
+ * the general blob bucket (legacy `r2` rows) are covered by the primary
+ * object-storage listing; this store is enumerated by `{organizationId}/`.
+ */
+export interface AccountDeletionTrajectoryStore {
+  /** False when this org has rows in a private store the deployment cannot reach. */
+  reachable(organizationId: string): Promise<boolean>;
+  listOrganizationKeys(organizationId: string): Promise<string[]>;
+  deleteObject(key: string): Promise<void>;
+}
+
+const defaultTrajectoryStore: AccountDeletionTrajectoryStore = {
+  async reachable(organizationId) {
+    if (privateTrajectoryStoreConfigured()) return true;
+    const [row] = await dbWrite
+      .select({ id: llmTrajectories.id })
+      .from(llmTrajectories)
+      .where(
+        and(
+          eq(llmTrajectories.organization_id, organizationId),
+          eq(llmTrajectories.trajectory_payload_storage, "private_object"),
+        ),
+      )
+      .limit(1);
+    return row === undefined;
+  },
+  async listOrganizationKeys(organizationId) {
+    return (await listPrivateTrajectoryObjectKeys(organizationId)) ?? [];
+  },
+  deleteObject: (key) => deleteTrajectoryPayload("private_object", key),
+};
 
 export interface AccountDeletionBackupAuthority {
   inspectOrganizationBackups(input: { organizationId: string }): Promise<"absent" | "present">;
@@ -454,6 +494,7 @@ async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContex
 export function createAccountDeletionProviderAdapters(
   dependencies: AccountDeletionProviderAdapterDependencies = {},
 ): AccountDeletionProviderAdapters {
+  const trajectoryStore = dependencies.trajectoryStore ?? defaultTrajectoryStore;
   const adapters = {
     steward_deactivation: {
       async inspect(context) {
@@ -765,10 +806,17 @@ export function createAccountDeletionProviderAdapters(
     },
     primary_object_storage: {
       async inspect(context) {
+        if (!(await trajectoryStore.reachable(context.organizationId))) {
+          return {
+            state: "action_required",
+            errorCode: "ACCOUNT_DELETION_TRAJECTORY_STORE_UNAVAILABLE",
+          };
+        }
         const result = await reconcileAccountDeletionStorage(
           context,
           async () =>
-            (await listOrganizationObjectKeys(context.blob, context.organizationId)).length === 0,
+            (await listOrganizationObjectKeys(context.blob, context.organizationId)).length === 0 &&
+            (await trajectoryStore.listOrganizationKeys(context.organizationId)).length === 0,
         );
         if (result === "provider_present") return { state: "needs_execution" };
         if (result === "retained_reads")
@@ -779,8 +827,18 @@ export function createAccountDeletionProviderAdapters(
         return complete(context, "primary_object_storage");
       },
       async execute(context) {
+        if (!(await trajectoryStore.reachable(context.organizationId))) {
+          throw new ElizaError("Recorded model-call payload store is not reachable", {
+            code: "ACCOUNT_DELETION_TRAJECTORY_STORE_UNAVAILABLE",
+            severity: "fatal",
+          });
+        }
         for (const key of await listOrganizationObjectKeys(context.blob, context.organizationId)) {
           await context.blob.delete(key);
+        }
+        // Enumerated by prefix, so payloads whose rows were already removed go too.
+        for (const key of await trajectoryStore.listOrganizationKeys(context.organizationId)) {
+          await trajectoryStore.deleteObject(key);
         }
       },
     },

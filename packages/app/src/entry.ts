@@ -7,12 +7,16 @@
  * and delegates to the Commander-based CLI.
  */
 import process from "node:process";
+import { captureProtectedProfile } from "@elizaos/agent/security/protected-profile-state";
 import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
 import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
 import { bootLap } from "./boot-profile";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 import { promoteLauncherScopedDevCloudApiKey } from "./entry-cloud-api-key";
 
+// Freeze the protected-profile environment before dotenv, CLI profiles or
+// config can mutate process.env; admission and key release trust this snapshot.
+captureProtectedProfile();
 bootLap("entry:body (Bun load of entry.js)");
 process.title = process.env.APP_CLI_NAME?.trim() || "eliza";
 if (process.argv.includes("--no-color")) {

@@ -8,7 +8,7 @@
  * cloud-topology resolution and first-run config handling.
  */
 
-import { asRecord } from "../type-guards.js";
+import { asObjectRecord as asRecord } from "../utils/type-guards.js";
 import type {
 	DeploymentTargetConfig,
 	DeploymentTargetRuntime,

@@ -191,6 +191,7 @@ export * from "./twilio-inbound-calls";
 export * from "./twilio-outbound-calls";
 export * from "./usage-records";
 export * from "./user-characters";
+export * from "./user-consents";
 export * from "./user-identities";
 export * from "./user-mcps";
 export * from "./user-preferences";
