@@ -22,6 +22,7 @@ const h = vi.hoisted(() => {
     resolvers: [] as Array<() => void>,
     /** Total remove() calls across all handles ever returned. */
     removeCalls: 0,
+    stopCalls: 0,
   };
   const talkModePlugin = {
     addListener: (event: string, _cb: (ev: unknown) => void) => {
@@ -48,7 +49,10 @@ const h = vi.hoisted(() => {
         speechRecognition: "granted",
       }),
     start: () => Promise.resolve({ started: true }),
-    stop: () => Promise.resolve(),
+    stop: () => {
+      state.stopCalls += 1;
+      return Promise.resolve();
+    },
   };
   return { state, talkModePlugin };
 });
@@ -82,10 +86,12 @@ describe("useVoiceChat talk-mode listener registration (FIX 1)", () => {
     h.state.addListenerEvents.length = 0;
     h.state.resolvers.length = 0;
     h.state.removeCalls = 0;
+    h.state.stopCalls = 0;
   });
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -158,5 +164,31 @@ describe("useVoiceChat talk-mode listener registration (FIX 1)", () => {
       unmount();
     });
     await waitFor(() => expect(h.state.removeCalls).toBe(3));
+  });
+
+  it("stops active capture and removes every listener when unmounted", async () => {
+    const { result, unmount } = renderHook(() =>
+      useVoiceChat({ onTranscript: vi.fn(), cloudConnected: false }),
+    );
+    await act(async () => {
+      const started = result.current.startListening("push-to-talk");
+      await releaseAllListenerRegistrations();
+      await started;
+    });
+    expect(result.current.isListening).toBe(true);
+    expect(h.state.removeCalls).toBe(0);
+    const stopsBeforeUnmount = h.state.stopCalls;
+
+    // Keep the DOM alive until the native stop-settle timer completes. The
+    // listener removals can finish before that timer; ending the test there
+    // would destroy window while capture cleanup is still using it.
+    vi.useFakeTimers();
+    await act(async () => {
+      unmount();
+      await vi.runAllTimersAsync();
+    });
+    expect(h.state.stopCalls).toBe(stopsBeforeUnmount + 1);
+    expect(h.state.removeCalls).toBe(3);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
