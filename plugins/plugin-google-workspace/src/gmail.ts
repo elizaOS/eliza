@@ -1,3 +1,4 @@
+import { gmailThreadSourceLink } from "./gmail-source-link.js";
 /**
  * `GoogleGmailClient` — all Gmail operations behind the workspace service: raw
  * message search/get/send, plus the enriched triage layer (unread/importance
@@ -14,6 +15,12 @@ import { ElizaError, stripHtmlRawTextElements } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import {
+  attachmentUnavailable,
+  decodeGmailAttachment,
+  gmailAttachmentParts,
+  MAX_GMAIL_ATTACHMENT_BYTES,
+} from "./gmail-attachments.js";
+import {
   extractGmailMimeBody,
   snapshotGmailMimePart,
   walkGmailMimeParts,
@@ -21,6 +28,7 @@ import {
 import type {
   GoogleAccountRef,
   GoogleEmailAddress,
+  GoogleGmailAttachmentContent,
   GoogleGmailBulkOperation,
   GoogleGmailDraftResult,
   GoogleGmailFilterCreateResult,
@@ -368,7 +376,76 @@ export class GoogleGmailClient {
     return {
       message,
       bodyText: extractGoogleGmailBody(response.data.payload).trim() || message.snippet,
+      attachments: gmailAttachmentParts(response.data.payload).map((part) => part.descriptor),
     };
+  }
+
+  async getGmailAttachment(
+    params: GoogleAccountRef & { messageId: string; partId: string; maxBytes: number }
+  ): Promise<GoogleGmailAttachmentContent> {
+    // Snapshot host inputs before credential resolution or network awaits.
+    const input = { ...params };
+    try {
+      if (
+        typeof input.accountId !== "string" ||
+        !input.accountId.trim() ||
+        typeof input.messageId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,256}$/.test(input.messageId) ||
+        typeof input.partId !== "string" ||
+        !/^[0-9.]{0,128}$/.test(input.partId) ||
+        !Number.isSafeInteger(input.maxBytes) ||
+        input.maxBytes < 1 ||
+        input.maxBytes > MAX_GMAIL_ATTACHMENT_BYTES
+      )
+        throw attachmentUnavailable();
+      const gmail = await this.clientFactory.gmail(
+        input,
+        ["gmail.read"],
+        "gmail.getGmailAttachment"
+      );
+      const message = await gmail.users.messages.get(
+        {
+          userId: "me",
+          id: input.messageId,
+          format: "full",
+        },
+        { maxContentLength: Math.ceil(input.maxBytes / 3) * 4 + 65536 }
+      );
+      if (message.data.id !== input.messageId) throw attachmentUnavailable();
+      const selected = gmailAttachmentParts(message.data.payload).find(
+        (part) => part.descriptor.partId === input.partId
+      );
+      if (!selected || selected.descriptor.size > input.maxBytes) throw attachmentUnavailable();
+      let data: unknown = selected.inlineData;
+      let size: unknown = selected.descriptor.size;
+      if (selected.descriptor.attachmentId !== null) {
+        // Re-resolve the same explicit account before the second provider read.
+        const current = await this.clientFactory.gmail(
+          input,
+          ["gmail.read"],
+          "gmail.getGmailAttachment.content"
+        );
+        const response = await current.users.messages.attachments.get(
+          { userId: "me", messageId: input.messageId, id: selected.descriptor.attachmentId },
+          { maxContentLength: Math.ceil(input.maxBytes / 3) * 4 + 65536 }
+        );
+        data = response.data.data;
+        size = response.data.size;
+      }
+      // Revalidate the same account after the final network response. Revocation
+      // during an in-flight read must not release attachment bytes to the host.
+      await this.clientFactory.gmail(input, ["gmail.read"], "gmail.getGmailAttachment.release");
+      return decodeGmailAttachment(
+        selected.descriptor,
+        input.messageId,
+        data,
+        size,
+        input.maxBytes
+      );
+    } catch {
+      // Provider responses can contain tokens and attachment bytes; do not echo them.
+      throw attachmentUnavailable();
+    }
   }
 
   async getGmailMessageRevision(
@@ -961,7 +1038,7 @@ function mapRichMessage(
     triageScore: triage.triageScore,
     triageReason: triage.triageReason,
     labels,
-    htmlLink: deriveHtmlLink(threadId, selfEmail),
+    htmlLink: gmailThreadSourceLink(threadId, selfEmail),
     metadata: {
       historyId: message.historyId?.trim() || null,
       sizeEstimate: typeof message.sizeEstimate === "number" ? message.sizeEstimate : null,
@@ -1576,14 +1653,6 @@ function decodeHtmlEntities(value: string): string {
 function internalDateToIso(value: string | null | undefined): string {
   const ms = value ? Number(value) : Number.NaN;
   return Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
-}
-
-function deriveHtmlLink(threadId: string, accountEmail: string | null): string {
-  const accountSegment =
-    accountEmail && accountEmail.trim().length > 0
-      ? encodeURIComponent(accountEmail.trim().toLowerCase())
-      : "0";
-  return `https://mail.google.com/mail/u/${accountSegment}/#all/${encodeURIComponent(threadId)}`;
 }
 
 function classifyReplyNeed(args: {
