@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { androidNativeHost } from "../../browser/scripts/android-host.mjs";
 
 export const ELIZA_BROWSER_EXTENSION_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 
@@ -46,6 +47,7 @@ export async function prepareChromiumBrowser({
   extension,
   out,
   certificate,
+  application = "ai.elizaos.app",
   revision,
 }) {
   for (const [name, value] of Object.entries({ source, extension, out })) {
@@ -54,6 +56,7 @@ export async function prepareChromiumBrowser({
   }
   if (!/^[a-f0-9]{64}$/i.test(certificate ?? ""))
     throw new Error("The final launcher certificate SHA-256 is required.");
+  const nativeHost = androidNativeHost(certificate, application);
   const sourceRoot = fs.realpathSync(source);
   const outputRoot = path.resolve(out);
   if (
@@ -84,6 +87,8 @@ export async function prepareChromiumBrowser({
       "android",
       "--certificate",
       certificate,
+      "--application",
+      nativeHost.application,
     ],
     { stdio: "pipe" },
   );
@@ -93,6 +98,10 @@ export async function prepareChromiumBrowser({
       "utf8",
     ),
   );
+  if (JSON.stringify(report.nativeHost) !== JSON.stringify(nativeHost))
+    throw new Error(
+      "Generated component native host does not match the requested application and certificate.",
+    );
   const patch = path.join(outputRoot, "eliza-component.patch");
   if (generator.sha256(fs.readFileSync(patch)) !== report.patchSha256)
     throw new Error("Generated component patch changed before application.");
@@ -123,6 +132,7 @@ export async function main(args = process.argv.slice(2)) {
     "extension",
     "out",
     "certificate",
+    "application",
     "revision",
   ]);
   for (let i = 0; i < args.length; i += 2) {

@@ -163,22 +163,23 @@ describe("crypto and x402 refunds (#22968)", () => {
     expect(balance?.credit_balance).toBe("10.000000");
   });
 
-  test("x402 payments refund as credits to the owning organization only", async () => {
-    await expect(
-      refund({ paymentId: X402_PAYMENT, organizationId: OTHER_ORG, amountUsd: "1" }),
-    ).rejects.toMatchObject({ code: "CRYPTO_REFUND_RECIPIENT_MISMATCH" });
-    const result = await refund({
-      paymentId: X402_PAYMENT,
-      amountUsd: "2",
-      refundKey: "x402-ticket-1",
-    });
-    expect(result).toMatchObject({ refundableUsd: "2.000000", replayed: false });
-    const [row] = await query<{ metadata: Record<string, unknown> }>(
-      "SELECT metadata FROM credit_transactions",
+  test("x402 payment requests are refused: the record belongs to the payee, not the payer", async () => {
+    // The seeded x402 row is owned by ORG, the organization that created the
+    // payment request and was paid for it; the payer is an external wallet.
+    for (const organizationId of [ORG, OTHER_ORG]) {
+      await expect(
+        refund({
+          paymentId: X402_PAYMENT,
+          organizationId,
+          amountUsd: "2",
+          refundKey: "x402-ticket-1",
+        }),
+      ).rejects.toMatchObject({ code: "CRYPTO_REFUND_X402_PAYER_UNBOUND" });
+    }
+    expect(await query("SELECT id FROM credit_transactions")).toEqual([]);
+    const [payee] = await query<{ credit_balance: string }>(
+      `SELECT credit_balance::text AS credit_balance FROM organizations WHERE id = '${ORG}'`,
     );
-    expect(row?.metadata).toMatchObject({
-      payment_rail: "x402",
-      refund_destination: "cloud_credits",
-    });
+    expect(Number(payee?.credit_balance ?? 0)).toBe(0);
   });
 });

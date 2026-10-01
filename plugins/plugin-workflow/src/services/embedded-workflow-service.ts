@@ -140,15 +140,21 @@ function normalizeWorkflow(
   id: string | undefined,
   fallbackActive: boolean
 ): WorkflowDefinition {
-  if (workflow.metadata?.[PHONE_SPEC_KEY] !== undefined)
-    throw new WorkflowApiError('Typed specifications require the reviewed authoring route', 400);
-
   const snapshot = cloneJson(workflow);
-  if (snapshot?.metadata && (REMOVED in snapshot.metadata || CLEANUP in snapshot.metadata))
-    throw new WorkflowApiError('Reserved workflow lifecycle fields', 400);
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
     throw new WorkflowApiError('Workflow definition must be an object', 400);
   }
+  if (
+    snapshot.metadata !== undefined &&
+    (!snapshot.metadata ||
+      typeof snapshot.metadata !== 'object' ||
+      Array.isArray(snapshot.metadata))
+  )
+    throw new WorkflowApiError('Workflow metadata must be an object', 400);
+  if (snapshot.metadata?.[PHONE_SPEC_KEY] !== undefined)
+    throw new WorkflowApiError('Typed specifications require the reviewed authoring route', 400);
+  if (snapshot.metadata && (REMOVED in snapshot.metadata || CLEANUP in snapshot.metadata))
+    throw new WorkflowApiError('Reserved workflow lifecycle fields', 400);
   if (typeof snapshot.source !== 'string') {
     throw new WorkflowApiError('Workflow source is required', 400);
   }
@@ -318,15 +324,11 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   private async resumeExecution(execution: WorkflowExecution): Promise<void> {
+    // A control request may have read its snapshot before a concurrent cancel.
     execution = await this.getExecution(execution.id);
     if (execution.finished || this.running.has(execution.id)) return;
     if (execution.cancellationRequestedAt) {
-      await this.saveExecution({
-        ...execution,
-        status: 'cancelled',
-        finished: true,
-        stoppedAt: nowIso(),
-      });
+      await this.cancelExecution(execution.id);
       return;
     }
     const workflow = await this.workflowVersionForExecution(execution);
@@ -1664,6 +1666,10 @@ export class EmbeddedWorkflowService extends Service {
         runId: pending.id,
         mode: pending.mode,
         input: pending.input,
+        eventSequenceOffset: (pending.events ?? []).reduce(
+          (max, event) => Math.max(max, event.sequence),
+          0
+        ),
         signal: controller.signal,
         onEvent: (event) => this.recordEvent(running, event),
         device: async ({ payload, signal }) => {
@@ -1735,7 +1741,8 @@ export class EmbeddedWorkflowService extends Service {
         stoppedAt: ['cancelled', 'continued', 'failed', 'finished'].includes(result.status)
           ? nowIso()
           : null,
-        events: result.events,
+        // recordEvent already appended this invocation's events to the
+        // persisted history. result.events contains only this new batch.
         ...(result.output !== undefined ? { output: result.output } : {}),
         ...(result.error ? { error: result.error } : {}),
         ...(result.nextRunId ? { nextRunId: result.nextRunId } : {}),
@@ -1821,11 +1828,66 @@ export class EmbeddedWorkflowService extends Service {
         );
       return execution;
     });
-    if (!requested.finished) {
-      const controller = this.controllers.get(runId);
-      if (controller) controller.abort();
-      else await this.resumeExecution(requested); // Durable guard finalizes without evaluating source.
+    const execution = requested;
+    if (execution.finished && execution.status !== 'cancelled') return execution;
+    const controller = this.controllers.get(runId);
+    const running = this.running.get(runId);
+    controller?.abort();
+    // Preserve active-worker teardown, then use the same durable cancellation
+    // policy for a parked run whose worker/controller has already exited.
+    if (running) await running;
+    const receipt = await controlSmithersRun(this.tenantId, execution.workflowId, {
+      kind: 'cancel',
+      runId,
+    });
+    const current = await this.getExecution(runId);
+    // A captured terminal winner committed during teardown remains authoritative.
+    if (current.finished && current.status !== 'cancelled') return current;
+    // An aborted queued worker may never create its native run row. Its
+    // persisted terminal cancellation remains idempotent on later requests.
+    if (receipt.status === null && current.finished && current.status === 'cancelled')
+      return current;
+    if (receipt.status === null) {
+      // No native row means cancellation won before worker admission. Never evaluate source.
+      await this.saveExecution({
+        ...current,
+        status: 'cancelled',
+        finished: true,
+        stoppedAt: current.stoppedAt ?? nowIso(),
+      });
+      return this.getExecution(runId);
     }
+    if (current.finished && current.status === receipt.status) return current;
+    if (receipt.status !== 'cancelled') {
+      // The native commit can precede emission of its result. Without that
+      // matching receipt, status alone cannot recover output/error/nextRunId.
+      const message = `Native workflow ${receipt.status}, but its terminal result was not captured; the workflow was not resumed.`;
+      await this.saveExecution(
+        {
+          ...current,
+          status: 'failed',
+          finished: true,
+          stoppedAt: current.stoppedAt ?? nowIso(),
+          error: { message },
+        },
+        current
+      );
+      throw new WorkflowApiError(message, 409, {
+        code: 'WORKFLOW_TERMINAL_RESULT_UNAVAILABLE',
+        nativeStatus: receipt.status,
+        executionId: runId,
+      });
+    }
+    await this.saveExecution(
+      {
+        ...current,
+        status: receipt.status,
+        finished: true,
+        stoppedAt: current.stoppedAt ?? nowIso(),
+      },
+      current
+    );
+
     return this.getExecution(runId);
   }
 
@@ -1931,6 +1993,8 @@ export class EmbeddedWorkflowService extends Service {
     options: { note?: string; decidedBy?: string; decision?: unknown } = {}
   ): Promise<WorkflowExecution> {
     const execution = await this.getExecution(runId);
+    if (execution.finished)
+      throw new WorkflowApiError('Workflow execution is already terminal', 409);
     const pending = (execution.approvals ?? []).find(
       (approval) => approval.nodeId === nodeId && approval.iteration === iteration
     );
@@ -1961,7 +2025,7 @@ export class EmbeddedWorkflowService extends Service {
     ];
     await this.saveExecution(execution);
     await this.resumeExecution(execution);
-    return execution;
+    return this.getExecution(runId);
   }
 
   async signalExecution(
@@ -1972,6 +2036,8 @@ export class EmbeddedWorkflowService extends Service {
   ): Promise<WorkflowExecution> {
     if (!signal.trim()) throw new WorkflowApiError('Signal name is required', 400);
     const execution = await this.getExecution(runId);
+    if (execution.finished)
+      throw new WorkflowApiError('Workflow execution is already terminal', 409);
     await controlSmithersRun(this.tenantId, execution.workflowId, {
       kind: 'signal',
       runId,
@@ -1980,10 +2046,13 @@ export class EmbeddedWorkflowService extends Service {
       ...(receivedBy ? { receivedBy } : {}),
     });
     await this.resumeExecution(execution);
-    return execution;
+    return this.getExecution(runId);
   }
 
-  private async saveExecution(execution: WorkflowExecution): Promise<void> {
+  private async saveExecution(
+    execution: WorkflowExecution,
+    reconcileDurableTerminal?: WorkflowExecution
+  ): Promise<void> {
     const hostedWorkflow =
       execution.finished && execution.input.hostedDigest
         ? await this.workflowVersionForExecution(execution)
@@ -1997,7 +2066,14 @@ export class EmbeddedWorkflowService extends Service {
       // Late event snapshots cannot erase a durable cancellation request or resurrect a terminal run.
       if (existing?.execution.cancellationRequestedAt)
         execution.cancellationRequestedAt = existing.execution.cancellationRequestedAt;
-      if (existing?.execution.finished) return;
+      const reconcilesCancellation =
+        existing?.execution.finished &&
+        existing.execution.status === 'cancelled' &&
+        execution.finished &&
+        execution.status === 'failed' &&
+        reconcileDurableTerminal !== undefined &&
+        isDeepStrictEqual(existing.execution, reconcileDurableTerminal);
+      if (existing?.execution.finished && !reconcilesCancellation) return;
       const values = {
         status: execution.status,
         mode: execution.mode,
@@ -2015,7 +2091,16 @@ export class EmbeddedWorkflowService extends Service {
           workflowId: execution.workflowId,
           ...values,
         });
-      if (hostedWorkflow) await writeDigestResult(tx, this.tenantId, hostedWorkflow, execution);
+      if (hostedWorkflow) {
+        // Replace only the reconciled provisional cancellation, atomically with its host row.
+        if (reconcilesCancellation)
+          await tx
+            .delete(hostedResults)
+            .where(
+              and(eq(hostedResults.agentId, this.tenantId), eq(hostedResults.runId, execution.id))
+            );
+        await writeDigestResult(tx, this.tenantId, hostedWorkflow, execution);
+      }
     });
   }
 

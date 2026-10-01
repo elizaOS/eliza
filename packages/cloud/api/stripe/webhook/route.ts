@@ -5,6 +5,7 @@ import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleto
 import type { StripeEventMessage } from "@/api-queue/types";
 import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import {
+  getRequestIp,
   moneyRateLimit,
   RateLimitPresets,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -56,14 +57,6 @@ async function hashPayload(body: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function getClientIp(c: AppContext): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    "unknown"
-  );
 }
 
 /**
@@ -160,7 +153,7 @@ export async function handleStripeWebhook(
         action: "payment.charge",
         result: "denied",
         resource: { type: "webhook", id: "stripe" },
-        ip: getClientIp(c),
+        ip: getRequestIp(c),
         request_id: c.get("requestId"),
         metadata: { provider: "stripe", reason },
       })
@@ -188,7 +181,7 @@ export async function handleStripeWebhook(
     provider: "stripe",
     event_type: event.type,
     payload_hash: payloadHash,
-    source_ip: getClientIp(c),
+    source_ip: getRequestIp(c) ?? "unknown",
     event_timestamp: event.created ? new Date(event.created * 1000) : undefined,
   });
 

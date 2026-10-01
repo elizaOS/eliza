@@ -18,9 +18,10 @@ import {
   ensureSessionForRequest,
   getSensitiveLimiter,
   hashPassword,
-  parseSessionCookie,
+  revokeAllSessionsForIdentity,
   revokeSession,
   SESSION_COOKIE_NAME,
+  type SessionCookieSource,
   serializeCsrfCookie,
   serializeCsrfExpiryCookie,
   serializeSessionCookie,
@@ -28,7 +29,7 @@ import {
   verifyPassword,
   WeakPasswordError,
 } from "./auth/index";
-import { findActiveSession } from "./auth/sessions";
+import { findActiveSession, readAllCookieValues } from "./auth/sessions";
 import {
   extractHeaderValue,
   getProvidedApiToken,
@@ -101,7 +102,7 @@ export function _resetAuthSessionRoutesLimiter(): void {
 
 function setSessionCookies(
   res: http.ServerResponse,
-  session: { id: string; csrfSecret: string; expiresAt: number },
+  session: SessionCookieSource & { csrfSecret: string },
 ): void {
   res.setHeader("set-cookie", [
     serializeSessionCookie(session),
@@ -109,11 +110,39 @@ function setSessionCookies(
   ]);
 }
 
-function clearSessionCookies(res: http.ServerResponse): void {
-  res.setHeader("set-cookie", [
-    serializeSessionExpiryCookie(),
-    serializeCsrfExpiryCookie(),
-  ]);
+function requestCookieDomain(req: http.IncomingMessage): string | undefined {
+  const host = req.headers.host;
+  if (!host) return undefined;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname;
+  } catch {
+    // error-policy:J3 a malformed Host header has no domain variant to clear.
+    return undefined;
+  }
+  // IP literals cannot carry Domain cookies; only named hosts need the variant.
+  if (/^[\d.]+$/.test(hostname) || hostname.startsWith("[")) return undefined;
+  return hostname;
+}
+
+/**
+ * Expire both the host-only cookies this server sets and the `Domain=`
+ * variants the desktop bridge installs, so a user left with differing
+ * duplicates (which the parser rejects) can recover by signing out.
+ */
+function clearSessionCookies(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
+  const cookies = [serializeSessionExpiryCookie(), serializeCsrfExpiryCookie()];
+  const domain = requestCookieDomain(req);
+  if (domain) {
+    cookies.push(
+      serializeSessionExpiryCookie({ domain }),
+      serializeCsrfExpiryCookie({ domain }),
+    );
+  }
+  res.setHeader("set-cookie", cookies);
 }
 
 // ── Route handler ───────────────────────────────────────────────────────────
@@ -433,14 +462,18 @@ async function handleLogout(
   store: AuthRepository,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
-  const sessionId = parseSessionCookie(req) ?? getProvidedApiToken(req) ?? null;
-  if (!sessionId) {
-    clearSessionCookies(res);
-    sendJsonResponse(res, 200, { ok: true });
-    return true;
-  }
-  const session = await findActiveSession(store, sessionId);
-  if (session) {
+  // Revoke every session credential the browser presents. Conflicting
+  // duplicate session cookies are ambiguous for authentication, but logout
+  // must still end each of them rather than report success while they stay
+  // live. Revoking a token the caller already holds grants nothing.
+  const candidates = new Set<string>(
+    readAllCookieValues(req, SESSION_COOKIE_NAME),
+  );
+  const bearer = getProvidedApiToken(req);
+  if (bearer) candidates.add(bearer);
+  for (const sessionId of candidates) {
+    const session = await findActiveSession(store, sessionId);
+    if (!session) continue;
     await revokeSession(session.id, {
       store,
       reason: "user_logout",
@@ -449,7 +482,7 @@ async function handleLogout(
       userAgent: meta.userAgent,
     });
   }
-  clearSessionCookies(res);
+  clearSessionCookies(req, res);
   sendJsonResponse(res, 200, { ok: true });
   return true;
 }
@@ -626,6 +659,17 @@ async function handleChangePassword(
 
   const passwordHash = await hashPassword(newPassword);
   await store.updateIdentityPassword(identity.id, passwordHash);
+  // A changed password ends every other session of this identity (and their
+  // open WebSockets); the caller's own session, when there is one, survives.
+  const currentSessionId = ctx?.session?.id;
+  const sessionsRevoked = await revokeAllSessionsForIdentity({
+    store,
+    identityId: identity.id,
+    ...(currentSessionId ? { exceptSessionId: currentSessionId } : {}),
+    reason: "password_change",
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
   await appendAuditEvent(
     {
       actorIdentityId: identity.id,
@@ -633,12 +677,12 @@ async function handleChangePassword(
       userAgent: meta.userAgent,
       action: "auth.password.change",
       outcome: "success",
-      metadata: { localAccess },
+      metadata: { localAccess, sessionsRevoked },
     },
     { store },
   );
 
-  sendJsonResponse(res, 200, { ok: true });
+  sendJsonResponse(res, 200, { ok: true, sessionsRevoked });
   return true;
 }
 
@@ -731,7 +775,7 @@ async function handleRevoke(
     userAgent: meta.userAgent,
   });
   if (ctx.session && ctx.session.id === targetSessionId) {
-    clearSessionCookies(res);
+    clearSessionCookies(req, res);
   }
   sendJsonResponse(res, 200, { ok: true });
   return true;

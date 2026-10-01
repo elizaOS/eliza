@@ -19,6 +19,19 @@ runtime setting. Changing packages uses a separate browser profile and does not
 migrate existing browser grants or credentials. Native messaging retains its
 upstream `org.chromium.chrome.browser` AIDL/action ABI.
 
+Android hosts may opt in to the shared `BrowserNativeMessagingService` by
+registering it as an exported service with the action
+`org.chromium.chrome.browser.extensions.messaging.action.NATIVE_MESSAGING`.
+The plugin does not register an exported service automatically. The relay accepts
+only the build-pinned Chromium package/certificate and a verified extension;
+debug builds do not bypass verification. It exposes the private abstract socket
+`<applicationId>.browser.native` only to the same UID. Each host must build its
+owned Chromium component with that host's application ID and signing certificate.
+This is transport infrastructure, not proof of an installed browser connection.
+The plugin owns the Chromium native-messaging AIDL definitions. Host apps use
+the library classes and must not compile duplicate copies of those definitions.
+Eliza retains its existing service component as a thin subclass of this relay.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

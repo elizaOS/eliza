@@ -4,6 +4,7 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { computeNextCronRunAtMs, ModelType, ServiceType, TaskService } from '@elizaos/core';
+import { and, eq } from 'drizzle-orm';
 import { expect, test } from 'vitest';
 import { registerTriggerTaskWorker } from '../../../../packages/agent/src/triggers/runtime.ts';
 import { createRealTestRuntime } from '../../../../packages/app/test/helpers/real-runtime.ts';
@@ -385,6 +386,68 @@ test('two actual scheduled hosted digests survive restart and reconnect with one
         })
       ).status
     ).toBe(409);
+    // Reconcile a lost host terminal receipt against the real, already finished
+    // native run. The hosted delivery must move with the SQL run, without rerunning inference.
+    const terminal = await freshEngine.getExecution(entries[0].runId);
+    const {
+      output: _lostOutput,
+      error: _lostError,
+      nextRunId: _lostNextRunId,
+      ...retained
+    } = terminal;
+    const provisional = { ...retained, status: 'cancelled' as const, finished: true };
+    const terminalWhere = and(
+      eq(embeddedExecutions.agentId, state!.runtime.agentId),
+      eq(embeddedExecutions.id, terminal.id)
+    );
+    await (state!.runtime.db as any)
+      .update(embeddedExecutions)
+      .set({
+        status: 'cancelled',
+        finished: true,
+        execution: provisional,
+      })
+      .where(terminalWhere);
+    const resultWhere = and(
+      eq(hostedResults.agentId, state!.runtime.agentId),
+      eq(hostedResults.runId, terminal.id)
+    );
+    await (state!.runtime.db as any)
+      .update(hostedResults)
+      .set({
+        result: { ...entries[0], status: 'cancelled', output: null },
+      })
+      .where(resultWhere);
+    await expect(freshEngine.cancelExecution(terminal.id)).rejects.toMatchObject({
+      statusCode: 409,
+      response: { code: 'WORKFLOW_TERMINAL_RESULT_UNAVAILABLE', nativeStatus: 'finished' },
+    });
+    const reconciled = await freshEngine.getExecution(terminal.id);
+    expect(reconciled.status).toBe('failed');
+    expect(reconciled.output).toBeUndefined();
+    const reconciledRows = await (state!.runtime.db as any)
+      .select()
+      .from(hostedResults)
+      .where(resultWhere);
+    expect(reconciledRows).toHaveLength(1);
+    expect(reconciledRows[0].result.status).toBe('failed');
+    expect(reconciledRows[0].result.error).toBe(reconciled.error?.message);
+    expect(await freshEngine.cancelExecution(terminal.id)).toEqual(reconciled);
+    // A delayed cancellation reconciliation cannot replace a newer terminal winner.
+    const internals = freshEngine as unknown as {
+      saveExecution(execution: typeof terminal, expected: typeof terminal): Promise<void>;
+    };
+    await internals.saveExecution(
+      { ...provisional, status: 'failed', error: { message: 'stale' } },
+      provisional
+    );
+    expect(await freshEngine.getExecution(terminal.id)).toEqual(reconciled);
+    expect(
+      (await call('/hosted/results?clientId=reconciled-phone')).body.entries.find(
+        (entry: { runId: string }) => entry.runId === terminal.id
+      )
+    ).toMatchObject({ status: 'failed', error: reconciled.error?.message });
+    expect(modelCalls).toBe(2);
     // Delivery projects oversized outputs without mutating the authoritative run.
     const large = { ...entries[0], runId: randomUUID(), output: { text: '界'.repeat(190000) } };
     const projected = digestDeliveryProjection(large);

@@ -103,7 +103,7 @@ test("real Hono route + PostgreSQL migration + HTTP provider: admission, respons
   await database.query("INSERT INTO users VALUES ($1),($2)", [user, other]);
   await database.exec(
     readFileSync(
-      new URL("../../../db/migrations/0506_managed_gmail_operation_receipts.sql", import.meta.url),
+      new URL("../../../db/migrations/0509_managed_gmail_operation_receipts.sql", import.meta.url),
       "utf8",
     ),
   );

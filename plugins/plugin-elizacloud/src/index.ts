@@ -6,7 +6,7 @@ import { delegationRecords } from "./db/delegation-records";
 
 import type { IAgentRuntime, ProcessEnvLike } from "@elizaos/core";
 import type { Plugin } from "@elizaos/core";
-import { logger, ModelType, registerProviderModels } from "@elizaos/core";
+import { ElizaError, logger, ModelType, registerProviderModels } from "@elizaos/core";
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -57,6 +57,11 @@ import {
 } from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 import { createWaifuMeteringHandler } from "./utils/waifu-metering";
+
+const accountActionsPolicy = process.env.ELIZAOS_CLOUD_ACCOUNT_ACTIONS ?? "enabled";
+if (accountActionsPolicy !== "enabled" && accountActionsPolicy !== "disabled") {
+  throw new ElizaError("Invalid Cloud account action policy", { code: "CLOUD_ACCOUNT_ACTION_POLICY_INVALID" });
+}
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
 const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
@@ -336,7 +341,7 @@ export const elizaOSCloudPlugin: Plugin = {
   // All validate() on the CLOUD_AUTH signed-in state so they vanish from the
   // planner tool list when the agent has no cloud credential; handlers
   // re-guard because validate is advisory.
-  actions: [
+  actions: accountActionsPolicy === "disabled" ? [] : [
     cloudAccountStatusAction,
     listCloudAgentsAction,
     createCloudApiKeyAction,

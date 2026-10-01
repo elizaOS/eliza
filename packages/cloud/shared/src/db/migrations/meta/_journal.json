@@ -3338,7 +3338,28 @@
       "idx": 476,
       "version": "7",
       "when": 1796083200124,
-      "tag": "0506_managed_gmail_operation_receipts",
+      "tag": "0506_pii_scrub_markers_inspection_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 477,
+      "version": "7",
+      "when": 1796083200125,
+      "tag": "0507_user_consents",
+      "breakpoints": true
+    },
+    {
+      "idx": 478,
+      "version": "7",
+      "when": 1796083200126,
+      "tag": "0508_app_notification_secret_envelope_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 479,
+      "version": "7",
+      "when": 1796083200127,
+      "tag": "0509_managed_gmail_operation_receipts",
       "breakpoints": true
     }
   ]

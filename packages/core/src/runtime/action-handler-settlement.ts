@@ -8,6 +8,12 @@
  */
 
 import { ElizaError } from "../errors";
+import {
+	admitProcessing,
+	isProcessingPolicyDenial,
+	PROCESSING_POLICY_DENIED,
+	processingPolicyFor,
+} from "../security/processing-policy";
 import { runWithSuppressedModelStream } from "../streaming-context";
 import {
 	type ActionFailureProvenance,
@@ -357,6 +363,35 @@ export async function settleActionHandler(
 			}
 		: undefined;
 
+	// Host processing admission runs before the handler so a denied effect sends
+	// nothing. No policy installed means nothing is consulted.
+	try {
+		await admitProcessing(
+			processingPolicyFor(options.runtime),
+			options.runtime.agentId,
+			{
+				kind: "action_effect",
+				action: { name: options.action.name, egress: options.action.egress },
+			},
+		);
+	} catch (error) {
+		// error-policy:J1 a denial is a terminal pre-effect failure: no handler
+		// ran, so it is never retryable and no callback may be delivered.
+		phase = "failed";
+		if (options.handlerError === "rethrow") throw error;
+		return actionFailureResult(
+			options.action.name,
+			stringifyActionError(error),
+			{ error, retryable: false, processingDenied: true },
+			{
+				kind: "handler_error",
+				boundary: "handler",
+				code: PROCESSING_POLICY_DENIED,
+				retryable: false,
+			},
+		);
+	}
+
 	let rawResult: unknown;
 	try {
 		rawResult = await runWithSuppressedModelStream(() =>
@@ -371,6 +406,9 @@ export async function settleActionHandler(
 			throw error;
 		}
 		const contextOverflow = isProviderContextOverflowFailure(error);
+		// A processing-policy denial raised by a model call inside the handler is
+		// as terminal as a denied admission: a replan must not retry it.
+		const processingDenied = isProcessingPolicyDenial(error);
 		const failureProvenance = contextOverflow
 			? ({
 					kind: "handler_error",
@@ -378,17 +416,30 @@ export async function settleActionHandler(
 					code: PROVIDER_CONTEXT_OVERFLOW,
 					retryable: false,
 				} satisfies ActionFailureProvenance)
-			: (readActionFailureProvenance(error) ??
-				({
-					kind: "handler_error",
-					boundary: "handler",
-					code: "ACTION_HANDLER_FAILED",
-					retryable: true,
-				} satisfies ActionFailureProvenance));
+			: processingDenied
+				? ({
+						kind: "handler_error",
+						boundary: "handler",
+						code: PROCESSING_POLICY_DENIED,
+						retryable: false,
+					} satisfies ActionFailureProvenance)
+				: (readActionFailureProvenance(error) ??
+					({
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_HANDLER_FAILED",
+						retryable: true,
+					} satisfies ActionFailureProvenance));
 		return actionFailureResult(
 			options.action.name,
 			stringifyActionError(error),
-			{ error, ...(contextOverflow ? { retryable: false } : {}) },
+			{
+				error,
+				...(contextOverflow ? { retryable: false } : {}),
+				...(processingDenied
+					? { retryable: false, processingDenied: true }
+					: {}),
+			},
 			failureProvenance,
 		);
 	}

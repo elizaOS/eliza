@@ -4,6 +4,7 @@
  * subscription migrations on PGlite.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { createBillingSnapshotFixture } from "../../db/repositories/account-billing-snapshot-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -48,6 +49,22 @@ afterAll(async () => {
 });
 
 describe("API-key plan ceilings (#22958)", () => {
+  test("required audit failure rolls back a plan-limited key creation", async () => {
+    let observedCreatedKey = false;
+    await expect(
+      service.createUserManaged(
+        { name: "audited", organization_id: OTHER_ORG, user_id: USER, is_active: true },
+        async (tx, created) => {
+          const result = await tx.execute(sql`SELECT id FROM api_keys WHERE id = ${created.id}`);
+          observedCreatedKey = result.rows.length === 1;
+          throw new Error("audit unavailable");
+        },
+      ),
+    ).rejects.toThrow("audit unavailable");
+    expect(observedCreatedKey).toBe(true);
+    expect((await service.getUsage(OTHER_ORG)).used).toBe(0);
+  });
+
   test("the catalogue pins pay-as-you-go 5, Plus 10 and Pro 25", async () => {
     const { API_KEY_CEILINGS, FREE_RESOURCE_CEILINGS, resolveSubscriptionPlanDefinition } =
       await import("./subscription-catalog");

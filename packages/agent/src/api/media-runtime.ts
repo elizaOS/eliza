@@ -1,6 +1,7 @@
 /**
- * Runtime wiring for the local media store: a public route so on-device iOS
- * (in-process dispatch, no HTTP server) can serve media, an outgoing hook that
+ * Runtime wiring for the local media store: a media route so on-device iOS
+ * (in-process dispatch, no HTTP server) can serve media (public except under
+ * the protected profile), an outgoing hook that
  * persists inline `data:` URLs to the store before they hit the DB/context, and
  * a periodic GC task that sweeps orphaned files.
  *
@@ -22,6 +23,7 @@ import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,
   handleMediaRouteRequest,
+  isMediaAuthRequired,
   isStoredMediaUrl,
   MEDIA_URL_IN_TEXT_RE,
   mediaFileNameFromUrl,
@@ -78,9 +80,8 @@ async function rehostRemoteMediaUrl(
 }
 const MEDIA_URL_PREFIX = "/api/media/";
 /**
- * Public GET route for stored media. On HTTP platforms with a listening port
- * the pre-auth `serveMediaFile` handler answers first and this route is never
- * reached; it exists for the port-free native IPC path — iOS/desktop/Android
+ * GET route for stored media. On HTTP platforms with a listening port the
+ * `serveMediaFile` handler answers first and this route is never reached; it exists for the port-free native IPC path — iOS/desktop/Android
  * native scheme handlers (`eliza-local-agent://ipc/api/media/…`) that dispatch
  * in-process over `runtime.routes` with no HTTP server. The native bridge
  * base64-encodes the returned `Buffer` body losslessly.
@@ -88,13 +89,21 @@ const MEDIA_URL_PREFIX = "/api/media/";
  * The `Range` request header is forwarded so `handleMediaRouteRequest` can
  * answer `206 Partial Content`, which is what lets `<audio>`/`<video>` seek
  * over the native scheme handler.
+ *
+ * `public` is a getter so it is resolved from the frozen protected-profile
+ * capture, not at module load (route registration copies the value). Under
+ * the protected profile (`isMediaAuthRequired`) the route is private, so the
+ * native dispatcher and the HTTP runtime-route gate require an authorized
+ * caller.
  */
-export const mediaFileRoute: Route = {
+export const mediaFileRoute = {
   type: "GET",
   path: "/api/media/:filename",
   // Serve at the literal path, not under the plugin-name prefix.
   rawPath: true,
-  public: true,
+  get public(): boolean {
+    return !isMediaAuthRequired();
+  },
   name: "media-file",
   publicReason:
     "Media URLs are content-addressed capability links served pre-auth.",
@@ -112,7 +121,7 @@ export const mediaFileRoute: Route = {
       ...(result.body !== undefined ? { body: result.body } : {}),
     };
   },
-};
+} as Route;
 /**
  * Persist agent-generated / inline `data:` URL attachments to the content-
  * addressed store before the response is delivered + persisted, so a compact

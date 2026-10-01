@@ -108,7 +108,9 @@ test("provision, restart, transfer and removal preserve owner and isolate confid
   }
 }, 30000);
 
+const actualFieldEncryption = await import("./field-encryption");
 mock.module("./field-encryption", () => ({
+  isFieldEncryptionRequired: actualFieldEncryption.isFieldEncryptionRequired,
   fieldEncryption: {
     isEncrypted: (value: string) => value.startsWith("enc:v1:"),
     encrypt: mock(

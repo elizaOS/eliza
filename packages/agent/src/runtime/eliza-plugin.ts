@@ -188,8 +188,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       roleBackfillProvider,
       escalationTriggerProvider,
     ],
-    // Public media route — only reached on iOS (in-process dispatch, no HTTP
-    // server). HTTP platforms serve media via the pre-auth handler in server.ts.
+    // Media route — only reached on iOS (in-process dispatch, no HTTP server).
+    // HTTP platforms serve media via server.ts. Public on ordinary hosts;
+    // authenticated under the protected profile (see `isMediaAuthRequired`).
     routes: [
       mediaFileRoute,
       backgroundGenerateImageRoute,

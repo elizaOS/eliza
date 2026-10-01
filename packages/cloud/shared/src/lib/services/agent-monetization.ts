@@ -405,7 +405,12 @@ class AgentMonetizationService {
       payoutWalletAddress?: string;
     },
   ): Promise<{ success: boolean; error?: string }> {
-    if (settings.monetizationEnabled === true) {
+    // A positive markup is the retired surcharge too: storing one would show a
+    // price that A2A/MCP no longer charge.
+    if (
+      settings.monetizationEnabled === true ||
+      (settings.markupPercentage !== undefined && settings.markupPercentage > 0)
+    ) {
       throw new CreatorMonetizationRetiredError("agent_inference_markup");
     }
     // Verify ownership

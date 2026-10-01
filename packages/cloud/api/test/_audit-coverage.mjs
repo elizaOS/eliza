@@ -1,26 +1,29 @@
 /**
- * Coverage audit — cross-references the Hono router (apps/api/src/_router.generated.ts)
- * against e2e tests living at cloud/packages/tests/e2e/.
+ * Coverage audit — cross-references the Hono router (src/_router.generated.ts)
+ * against the cloud-api e2e tests under test/e2e/.
  *
- * Run from repo root or anywhere — paths are resolved relative to this file.
- * Output: writes COVERAGE.md next to itself.
+ * Run from anywhere — paths are resolved relative to this file.
+ * Output: test-results/cloud-api-route-coverage/COVERAGE.md at the repo root.
  *
- *   node apps/api/test/_audit-coverage.mjs
+ *   bun run --cwd packages/cloud/api test:audit
  */
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_ROOT = resolve(__dirname, "..");
-const CLOUD_ROOT = resolve(API_ROOT, "..", "..");
 const ROUTER = join(API_ROOT, "src", "_router.generated.ts");
-const E2E_ROOTS = [
-  join(CLOUD_ROOT, "packages", "tests", "e2e"),
-  join(API_ROOT, "test", "e2e"),
-];
-const OUTPUT = join(__dirname, "COVERAGE.md");
+const E2E_ROOTS = [join(API_ROOT, "test", "e2e")];
+const OUTPUT = testOutputPath("cloud-api-route-coverage", "COVERAGE.md");
 
 const routerSrc = readFileSync(ROUTER, "utf8");
 const routes = [];
@@ -137,20 +140,18 @@ const lines = [];
 lines.push("# Hono Worker Route Coverage Audit");
 lines.push("");
 lines.push(
-  "Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.",
+  "Auto-generated. Re-run with `bun run --cwd packages/cloud/api test:audit`.",
 );
 lines.push("");
 lines.push(`- Mounted routes: **${routes.length}**`);
 lines.push(
-  `- Covered (path appears in at least one Next-targeted e2e test): **${covered.length}**`,
+  `- Covered (path appears in at least one e2e test): **${covered.length}**`,
 );
 lines.push(`- Uncovered: **${uncovered.length}**`);
 lines.push("");
 lines.push(
-  '> Note: "covered" here means the path appears in a test file under ' +
-    "`cloud/packages/tests/e2e/`. Those tests target the legacy Next.js app, not " +
-    "the Hono Worker built from `apps/api/`. Even covered routes need a Worker-" +
-    "targeted run to confirm the migrated implementation works end-to-end.",
+  '> Note: "covered" means the path string appears in a test file under ' +
+    "`packages/cloud/api/test/e2e/`; it is not proof the route's behavior is exercised.",
 );
 lines.push("");
 lines.push(`## Uncovered (${uncovered.length})`);
@@ -162,6 +163,7 @@ lines.push("");
 for (const c of covered) lines.push(`- \`${c.route}\` — ${c.files.join(", ")}`);
 lines.push("");
 
+mkdirSync(dirname(OUTPUT), { recursive: true });
 writeFileSync(OUTPUT, lines.join("\n"));
 console.log(
   `Mounted: ${routes.length}, Covered: ${covered.length}, Uncovered: ${uncovered.length}`,

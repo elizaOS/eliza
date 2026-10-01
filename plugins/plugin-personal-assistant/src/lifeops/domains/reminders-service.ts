@@ -130,6 +130,7 @@ import {
 } from "../owner/fact-store.js";
 import { getSignalSourceRegistry } from "../registries/signal-source-registry.js";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
+import { nextReminderWakeAt } from "../reminder-wake.js";
 import {
   createLifeOpsActivitySignal,
   createLifeOpsAuditEvent,
@@ -210,6 +211,7 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
+  hasExplicitReminderEscalationProfile,
   isReminderChannel,
   isReminderReviewClosed,
   normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
@@ -3760,6 +3762,7 @@ export class RemindersDomain {
             priority: occurrence.priority,
           }),
           intensity: preference?.effective.intensity ?? args.defaultIntensity,
+          intensitySource: preference?.effective.source,
           quietHours: plan.quietHours,
           attemptedAt: nowIso,
           now: args.now,
@@ -3850,6 +3853,7 @@ export class RemindersDomain {
     dueAt: string | null;
     urgency: LifeOpsReminderUrgency;
     intensity: LifeOpsReminderIntensity;
+    intensitySource?: LifeOpsReminderPreference["effective"]["source"];
     quietHours: LifeOpsReminderPlan["quietHours"];
     attemptedAt: string;
     now: Date;
@@ -3868,7 +3872,10 @@ export class RemindersDomain {
     acknowledged: boolean;
     nearbyReminderTitles?: string[];
     timezone: string;
-    definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    definition:
+      | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
+          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+      | null;
     reviewAttempt?: LifeOpsReminderAttempt | null;
   }): Promise<LifeOpsReminderAttempt | null> {
     if (!shouldDeliverReminderForIntensity(args.intensity, args.urgency)) {
@@ -3912,6 +3919,53 @@ export class RemindersDomain {
     );
     const nowMs = args.now.getTime();
     const planExhausted = nowMs >= lastScheduledPlanTime;
+    let suppressDefaultEscalation = false;
+    const persistentOptIn =
+      args.intensity === "persistent" &&
+      args.intensitySource !== undefined &&
+      args.intensitySource !== "default";
+    if (
+      planExhausted &&
+      args.ownerType === "occurrence" &&
+      args.subjectType === "owner" &&
+      args.definition?.cadence?.kind === "once" &&
+      args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+      !persistentOptIn &&
+      !hasExplicitReminderEscalationProfile(args.definition)
+    ) {
+      const deliveredPlanSteps = new Set(
+        ownerAttempts
+          .filter(
+            (attempt) =>
+              readReminderAttemptLifecycle(attempt) === "plan" &&
+              isDeliveredReminderOutcome(attempt.outcome),
+          )
+          .map((attempt) =>
+            JSON.stringify([
+              attempt.planId,
+              attempt.stepIndex,
+              attempt.channel,
+              attempt.scheduledFor,
+            ]),
+          ),
+      );
+      if (
+        schedule.every((entry) =>
+          deliveredPlanSteps.has(
+            JSON.stringify([
+              args.plan.id,
+              entry.stepIndex,
+              entry.channel,
+              entry.scheduledFor,
+            ]),
+          ),
+        )
+      ) {
+        // Delivery completion suppresses only the automatic follow-up. Owner
+        // replies and due review bookkeeping must still run below.
+        suppressDefaultEscalation = true;
+      }
+    }
     const reviewAttempt =
       args.reviewAttempt ??
       readLatestPendingReminderReviewAttempt(ownerAttempts);
@@ -4071,6 +4125,34 @@ export class RemindersDomain {
           semanticReason: reviewTransition.observation.semanticReason,
         });
       }
+    }
+
+    if (suppressDefaultEscalation) {
+      if (
+        reviewDue &&
+        reviewAttempt &&
+        !isReminderReviewClosed(reviewAttempt)
+      ) {
+        // Close the review job, not the occurrence. A delivered/read notification
+        // does not mean the owner acknowledged or completed the reminder.
+        const reviewMetadata = {
+          [REMINDER_REVIEW_STATUS_METADATA_KEY]: "resolved",
+          ...(reviewAttempt.deliveryMetadata[
+            REMINDER_REVIEW_DECISION_METADATA_KEY
+          ] === undefined
+            ? { [REMINDER_REVIEW_DECISION_METADATA_KEY]: "no_response" }
+            : {}),
+          [REMINDER_REVIEW_REASON_METADATA_KEY]: "one_shot_plan_delivered",
+        };
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          reviewAttempt.id,
+          reviewAttempt.outcome,
+          reviewMetadata,
+        );
+        Object.assign(reviewAttempt.deliveryMetadata, reviewMetadata);
+        reviewAttempt.reviewStatus = "resolved";
+      }
+      return null;
     }
 
     if (
@@ -4371,6 +4453,7 @@ export class RemindersDomain {
     stepIndex: number;
     scheduledFor: string;
     dueAt: string | null;
+    snoozedUntil?: string | null;
     urgency: LifeOpsReminderUrgency;
     quietHours: LifeOpsReminderPlan["quietHours"];
     acknowledged: boolean;
@@ -4466,7 +4549,11 @@ export class RemindersDomain {
         args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
         args.bodyOverride === undefined;
       reminderBody = exactReminder
-        ? buildReminderBody({ ...args, lifecycle })
+        ? buildReminderBody({
+            ...args,
+            dueAt: args.snoozedUntil ?? args.dueAt,
+            lifecycle,
+          })
         : (args.bodyOverride ??
           (await this.renderReminderBody({
             title: args.title,
@@ -5225,7 +5312,7 @@ export class RemindersDomain {
     globalReminderPreference: LifeOpsReminderPreference;
     existingAttempts: LifeOpsReminderAttempt[];
     activityProfile: ReminderActivityProfileSnapshot | null;
-  }): Promise<LifeOpsReminderAttempt[]> {
+  }): Promise<{ attempts: LifeOpsReminderAttempt[]; nextWakeAt?: number }> {
     const {
       now,
       limit,
@@ -5238,7 +5325,7 @@ export class RemindersDomain {
     } = args;
     const dueAttempts: LifeOpsReminderAttempt[] = [];
     if (limit <= 0) {
-      return dueAttempts;
+      return { attempts: dueAttempts };
     }
 
     // This is a background scheduler boundary, not a caller-facing read. A
@@ -5339,6 +5426,15 @@ export class RemindersDomain {
       stepIndex: number,
       scheduledFor: string,
     ) => `${planId}:${stepIndex}:${scheduledFor}`;
+    const nextWakeAt = nextReminderWakeAt(
+      occurrenceViews,
+      [...plansByDefinitionId.values()],
+      existingAttempts,
+      now.getTime(),
+      calendarEvents,
+      [...plansByEventId.values()],
+    );
+
     const deliveredAttempts = new Set(
       existingAttempts
         .filter((attempt) => isDeliveredReminderOutcome(attempt.outcome))
@@ -5417,6 +5513,7 @@ export class RemindersDomain {
         stepIndex: reminder.stepIndex,
         scheduledFor: reminder.scheduledFor,
         dueAt: occurrence.dueAt,
+        snoozedUntil: occurrence.snoozedUntil,
         urgency,
         quietHours: plan.quietHours,
         acknowledged,
@@ -5537,6 +5634,9 @@ export class RemindersDomain {
         intensity:
           definitionPreferencesById.get(occurrence.definitionId)?.effective
             ?.intensity ?? globalReminderPreference.effective.intensity,
+        intensitySource:
+          definitionPreferencesById.get(occurrence.definitionId)?.effective
+            .source ?? globalReminderPreference.effective.source,
         quietHours: plan.quietHours,
         attemptedAt: now.toISOString(),
         now,
@@ -5598,7 +5698,7 @@ export class RemindersDomain {
       reminderAttemptsForEscalation.push(attempt);
     }
 
-    return dueAttempts;
+    return { attempts: dueAttempts, nextWakeAt };
   }
 
   async processReminders(
@@ -5666,21 +5766,21 @@ export class RemindersDomain {
         };
       }
 
-      dueAttempts.push(
-        ...(await this.processDueReminderDeliveries({
-          now,
-          limit: limit - dueAttempts.length,
-          includeCalendar: scope === "all",
-          ownerTimezone,
-          policies,
-          globalReminderPreference,
-          existingAttempts: [...existingAttempts, ...dueAttempts],
-          activityProfile,
-        })),
-      );
+      const deliveries = await this.processDueReminderDeliveries({
+        now,
+        limit: limit - dueAttempts.length,
+        includeCalendar: scope === "all",
+        ownerTimezone,
+        policies,
+        globalReminderPreference,
+        existingAttempts: [...existingAttempts, ...dueAttempts],
+        activityProfile,
+      });
+      dueAttempts.push(...deliveries.attempts);
 
       return {
         now: now.toISOString(),
+        nextWakeAt: deliveries.nextWakeAt,
         attempts: dueAttempts,
       };
     });
@@ -5695,6 +5795,7 @@ export class RemindersDomain {
       sleepCycleCheckins?: boolean;
     } = {},
   ): Promise<{
+    nextWakeAt?: number;
     now: string;
     reminderAttempts: LifeOpsReminderAttempt[];
     workflowRuns: LifeOpsWorkflowRun[];
@@ -5895,7 +5996,7 @@ export class RemindersDomain {
       },
     );
 
-    const reminderResult = await runSubsystem(
+    const reminderResult = await runSubsystem<LifeOpsReminderProcessingResult>(
       "reminders",
       { now: now.toISOString(), attempts: [] as LifeOpsReminderAttempt[] },
       () =>
@@ -5977,6 +6078,7 @@ export class RemindersDomain {
     return {
       now: now.toISOString(),
       reminderAttempts: reminderResult.attempts,
+      nextWakeAt: reminderResult.nextWakeAt,
       workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
       scheduledTaskFires: scheduledTaskResult.fires.map((fire) => ({
         ...fire,

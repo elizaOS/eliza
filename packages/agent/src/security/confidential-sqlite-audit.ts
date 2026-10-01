@@ -12,6 +12,7 @@ import {
 } from "@elizaos/core";
 import type { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { z } from "zod";
+import { CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE } from "./audit-log.ts";
 
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const recordSchema = z
@@ -87,7 +88,7 @@ export async function createConfidentialSQLiteAudit(
           {
             entityId,
             roomId,
-            type: "confidential_inference",
+            type: CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
             body: { source: "confidential-host", metadata: record },
           },
         ]);

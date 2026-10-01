@@ -25,6 +25,7 @@ import {
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
+  ensureProtectedProfileAdmission,
   extractAuthToken,
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
@@ -67,6 +68,7 @@ import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import { readCookie, resolveSessionTokenRole } from "./auth";
+import { bindSessionSocket, unbindSessionSocket } from "./auth/session-sockets";
 import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -1065,6 +1067,8 @@ async function runCompatRequestPipeline(
 export async function startApiServer(
   ...args: Parameters<typeof upstreamStartApiServer>
 ): Promise<Awaited<ReturnType<typeof upstreamStartApiServer>>> {
+  // Protected hosts are admitted before config or credential aliasing.
+  await ensureProtectedProfileAdmission();
   // Ensure cloud-backed ElevenLabs key is available as ELEVENLABS_API_KEY so
   // the upstream Eliza TTS handler can use it (the `/api/tts/elevenlabs` route
   // passes through to upstream which checks this env var).
@@ -1100,6 +1104,34 @@ export async function startApiServer(
       });
     },
     authorizeWebSocket: async (request, url) => {
+      // Bind first, then re-read the session: a revoke that landed between
+      // the admission lookup and the bind found no socket to close, so the
+      // re-read is what keeps a revoked session from being admitted.
+      const bindActiveSession = async (binding: {
+        sessionId: string;
+        identityId: string;
+      }): Promise<boolean> => {
+        bindSessionSocket(binding, request.socket);
+        const store = compatState.current
+          ? authStoreForRuntime(compatState.current)
+          : null;
+        const stillActive = store
+          ? await findActiveSession(store, binding.sessionId).catch(
+              (error: unknown) => {
+                // error-policy:J1 an unavailable auth store refuses the socket.
+                compatState.current?.reportError(
+                  "appCore.webSocketSessionRecheck",
+                  error,
+                  { phase: "upgrade" },
+                );
+                return null;
+              },
+            )
+          : null;
+        if (stillActive) return true;
+        unbindSessionSocket(request.socket);
+        return false;
+      };
       const cookie = readCookie(request, SESSION_COOKIE_NAME);
       const origin =
         typeof request.headers.origin === "string"
@@ -1112,7 +1144,17 @@ export async function startApiServer(
           state: compatState,
           scope: "appCore.webSocketCookieAuth",
         });
-        if (session?.role === "OWNER") return true;
+        if (session?.role === "OWNER") {
+          if (!session.identityId) return true;
+          if (
+            await bindActiveSession({
+              sessionId: cookie,
+              identityId: session.identityId,
+            })
+          ) {
+            return true;
+          }
+        }
       }
       const sessionToken =
         url.searchParams.get("token")?.trim() ||
@@ -1124,7 +1166,16 @@ export async function startApiServer(
         if (compatState.current?.adapter) {
           try {
             const store = authStoreForRuntime(compatState.current);
-            if (store && (await findActiveSession(store, sessionToken))) {
+            const session = store
+              ? await findActiveSession(store, sessionToken)
+              : null;
+            if (
+              session &&
+              (await bindActiveSession({
+                sessionId: session.id,
+                identityId: session.identityId,
+              }))
+            ) {
               return true;
             }
           } catch (error) {

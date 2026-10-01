@@ -11,6 +11,11 @@ import {
   sign,
   verify,
 } from "node:crypto";
+import {
+  type DstackReleaseIdentity,
+  dstackReleaseIdentity,
+  dstackReleaseSigningMessage,
+} from "@elizaos/agent/services/tee-dstack-release";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 
@@ -20,7 +25,7 @@ const releaseInput = z
     agentId: z.uuid(),
     compose: z.string().min(1),
     osImageHash: sha256,
-    variant: z.enum(["dstack-tdx", "dstack-nitro-enclave"]),
+    variant: dstackReleaseIdentity.shape.variant,
     notBefore: z.iso.datetime(),
     expiresAt: z.iso.datetime(),
   })
@@ -30,18 +35,6 @@ export interface ConfidentialReleaseEnvelope {
   payload: string;
   signature: string;
 }
-
-const releaseIdentity = z
-  .object({
-    schemaVersion: z.literal(1),
-    appId: z.string().regex(/^[a-f0-9]{40}$/),
-    composeHash: sha256,
-    osImageHash: sha256,
-    variant: z.enum(["dstack-tdx", "dstack-nitro-enclave"]),
-    notBefore: z.iso.datetime(),
-    expiresAt: z.iso.datetime(),
-  })
-  .strict();
 
 function validateReleaseInput(input: unknown): z.output<typeof releaseInput> {
   const release = releaseInput.parse(input);
@@ -74,7 +67,7 @@ export function verifyConfidentialRelease(
   input: unknown,
   envelope: ConfidentialReleaseEnvelope,
   publicKeyPem: string,
-): z.output<typeof releaseIdentity> {
+): DstackReleaseIdentity {
   try {
     const release = validateReleaseInput(input);
     const bytes = Buffer.from(envelope.payload, "base64");
@@ -89,16 +82,13 @@ export function verifyConfidentialRelease(
     const key = createPublicKey(publicKeyPem);
     if (
       key.asymmetricKeyType !== "ed25519" ||
-      !verify(
-        null,
-        Buffer.concat([Buffer.from("eliza-dstack-release-v1\0"), bytes]),
-        key,
-        signature,
-      )
+      !verify(null, dstackReleaseSigningMessage(bytes), key, signature)
     ) {
       throw new Error("Release authority signature rejected");
     }
-    const identity = releaseIdentity.parse(JSON.parse(bytes.toString("utf8")));
+    const identity = dstackReleaseIdentity.parse(
+      JSON.parse(bytes.toString("utf8")),
+    );
     const composeHash = createHash("sha256")
       .update(release.compose)
       .digest("hex");
@@ -161,7 +151,7 @@ export function signConfidentialRelease(
     );
     const signature = sign(
       null,
-      Buffer.concat([Buffer.from("eliza-dstack-release-v1\0"), payload]),
+      dstackReleaseSigningMessage(payload),
       privateKey,
     );
     return {

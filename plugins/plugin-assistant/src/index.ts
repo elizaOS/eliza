@@ -166,7 +166,10 @@ export {
 } from "./runtime/message-handler.ts";
 export * from "./runtime/model-pricing";
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop.ts";
-export { renderActionResultsForModel } from "./runtime/planner-rendering.ts";
+export {
+  projectToolResultForModel,
+  renderActionResultsForModel,
+} from "./runtime/planner-rendering.ts";
 export {
   type ProviderOriginalMessages,
   renderProviderOriginalMessages,
