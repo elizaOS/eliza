@@ -618,7 +618,7 @@ const optionalPluginSpecifiers = {
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
-  workflow: "@elizaos/plugin-workflow",
+  workflow: "@elizaos/plugin-workflow/trigger-routes",
 } as const;
 const optionalPluginImports = {
   capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
