@@ -11,12 +11,6 @@ import { workflowRoutePlugin } from "../../../plugins/plugin-workflow/src/plugin
 import { registerTokenRoleResolver } from "../src/api/boundary-role-resolver.ts";
 import { startApiServer } from "../src/api/server.ts";
 
-vi.mock("@elizaos/plugin-workflow", async () => ({
-  handleTriggerRoutes: (
-    await import("../../../plugins/plugin-workflow/src/trigger-routes.ts")
-  ).handleTriggerRoutes,
-}));
-
 let canonicalOwner: string;
 const foreignOwner = "00000000-0000-4000-8000-000000000022";
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
@@ -39,12 +33,13 @@ beforeAll(async () => {
     id: "prompt-owner-http-test",
     resolve: (req) => {
       const token = req.headers["x-test-owner"];
-      if (token !== "canonical" && token !== "foreign") return null;
+      if (token !== "canonical" && token !== "foreign" && token !== "user")
+        return null;
       return {
         providerId: "prompt-owner-http-test",
-        worldRole: "OWNER",
+        worldRole: token === "user" ? "USER" : "OWNER",
         principal: token === "canonical" ? canonicalOwner : foreignOwner,
-        isAdmin: true,
+        isAdmin: token !== "user",
         isRouteInScope: () => true,
         claims: {},
       };
@@ -66,7 +61,7 @@ afterAll(async () => {
 }, 120_000);
 
 function request(
-  owner: "canonical" | "foreign",
+  owner: "canonical" | "foreign" | "user",
   route: string,
   method = "GET",
   body?: object,
@@ -119,7 +114,9 @@ it("rejects a distinct registered OWNER before Node trigger/feed handlers can us
     ["GET", "/api/automations"],
     ["POST", "/api/triggers", createBody],
   ] as const) {
-    expect((await request("foreign", route, method, body)).status).toBe(403);
+    for (const principal of ["foreign", "user"] as const) {
+      expect((await request(principal, route, method, body)).status).toBe(403);
+    }
   }
   expect(
     (await request("canonical", `/api/triggers/${trigger.id}`)).status,
@@ -175,4 +172,18 @@ it("keeps a persisted legacy heartbeat without entity ownership read-only", asyn
     id: taskId,
     tags: ["queue", "repeat", "heartbeat"],
   });
+});
+
+it("rejects stale presented credentials instead of promoting loopback access", async () => {
+  for (const [name, value] of [
+    ["Authorization", "Bearer stale-owner-token"],
+    ["Cookie", "eliza_session=stale-session"],
+  ] as const) {
+    for (const route of ["/api/triggers", "/api/automations"]) {
+      const response = await fetch(`http://127.0.0.1:${server.port}${route}`, {
+        headers: { [name]: value },
+      });
+      expect(response.status).toBe(403);
+    }
+  }
 });
