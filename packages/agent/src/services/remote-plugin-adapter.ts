@@ -81,6 +81,11 @@ export type RemotePluginBootstrapOptions = RemotePluginAdapterOptions & {
   unloadMissing?: boolean;
 };
 export type RemotePluginTrustPolicy = {
+  /** Additional constraints belonging only to the supplying endpoint. */
+  endpointPolicies?: Record<
+    string,
+    Omit<RemotePluginTrustPolicy, "endpointPolicies">
+  >;
   allowedEndpointIds?: string[];
   allowedModuleIds?: string[];
   allowedProvenanceIssuers?: string[];
@@ -1035,6 +1040,15 @@ function evaluateRemotePluginTrustPolicy(
         details: { trustDecision: decision },
       });
     }
+    const endpointPolicy =
+      endpointId === undefined
+        ? undefined
+        : policy.endpointPolicies?.[endpointId];
+    if (endpointPolicy) {
+      // A sibling endpoint's modules, issuers and keys never grant authority here.
+      // Evaluate both constraints: global policy cannot be weakened by an endpoint.
+      evaluateRemotePluginTrustPolicy([module], endpointPolicy);
+    }
     if (allowedModuleIds && !allowedModuleIds.has(module.id)) {
       const decision = trustDecision(
         module,
@@ -1523,15 +1537,38 @@ export function resolveConfiguredRemotePluginTrustPolicy(
   const routerConfig = resolveRemoteCapabilityRouterConfig(runtime);
   const endpointIds = configuredEndpointIds(routerConfig);
   if (endpointIds.length === 0) return undefined;
-  const allowedModuleIds = configuredAllowedModuleIds(runtime, endpointIds);
-  const trustPolicy = configuredRemotePluginTrustPolicyOptions(
+  const moduleSetting = readRemotePluginTrustPolicySetting(
+    "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
     runtime,
-    endpointIds,
+    parseCapabilityRouterModuleAllowlistSetting,
   );
+  const trustSetting = readRemotePluginTrustPolicySetting(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+    runtime,
+    parseCapabilityRouterTrustPolicySetting,
+  );
+  const endpointPolicies: NonNullable<
+    RemotePluginTrustPolicy["endpointPolicies"]
+  > = Object.create(null);
+  for (const endpointId of endpointIds) {
+    const endpointPolicy = mergeConfiguredTrustPolicyOptions([
+      trustSetting?.endpoints[endpointId] ?? {},
+    ]);
+    const modules =
+      moduleSetting?.kind === "endpoints"
+        ? moduleSetting.endpoints[endpointId]
+        : undefined;
+    if (modules?.length) endpointPolicy.allowedModuleIds = modules;
+    if (Object.keys(endpointPolicy).length)
+      endpointPolicies[endpointId] = endpointPolicy;
+  }
+  const globalModules =
+    moduleSetting?.kind === "global" ? moduleSetting.moduleIds : [];
   return {
     allowedEndpointIds: endpointIds,
-    ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
-    ...trustPolicy,
+    ...(globalModules.length ? { allowedModuleIds: globalModules } : {}),
+    ...mergeConfiguredTrustPolicyOptions([trustSetting?.global ?? {}]),
+    ...(Object.keys(endpointPolicies).length ? { endpointPolicies } : {}),
     requireEndpointId: true,
   };
 }
@@ -1548,46 +1585,12 @@ function configuredEndpointIds(config: {
   }
   return [...ids];
 }
-function configuredAllowedModuleIds(
-  runtime: IAgentRuntime,
-  endpointIds: string[],
-): string[] {
-  const setting = readRemotePluginTrustPolicySetting(
-    "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
-    runtime,
-    parseCapabilityRouterModuleAllowlistSetting,
-  );
-  if (setting === undefined) return [];
-  if (setting.kind === "global") return setting.moduleIds;
-  const modules = new Set<string>();
-  for (const endpointId of endpointIds) {
-    for (const moduleId of setting.endpoints[endpointId] ?? []) {
-      modules.add(moduleId);
-    }
-  }
-  return [...modules];
-}
-function configuredRemotePluginTrustPolicyOptions(
-  runtime: IAgentRuntime,
-  endpointIds: string[],
-): RemotePluginTrustPolicy {
-  const setting = readRemotePluginTrustPolicySetting(
-    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
-    runtime,
-    parseCapabilityRouterTrustPolicySetting,
-  );
-  if (setting === undefined) return {};
-  const candidates = endpointIds.flatMap((endpointId) => {
-    const policy = setting.endpoints[endpointId];
-    return policy === undefined ? [] : [policy];
-  });
-  return mergeConfiguredTrustPolicyOptions([setting.global, ...candidates]);
-}
 function mergeConfiguredTrustPolicyOptions(
   values: CapabilityRouterTrustPolicySettingValue[],
 ): RemotePluginTrustPolicy {
   const allowedProvenanceIssuers = new Set<string>();
-  const trustedProvenancePublicKeys: Record<string, string> = {};
+  const trustedProvenancePublicKeys: Record<string, string> =
+    Object.create(null);
   let requireSignedProvenance = false;
   let requireVerifiedProvenance = false;
   let requireProvenanceDigestMatch = false;
