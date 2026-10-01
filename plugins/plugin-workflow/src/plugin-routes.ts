@@ -5,7 +5,7 @@
  */
 import type http from 'node:http';
 import type { HttpPlugin as Plugin, Route } from '@elizaos/core/api/http-plugin';
-import { handleAutomationsRoutes } from './routes/automations';
+import { handleAutomationsRoutes, readAutomations } from './routes/automations';
 import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
@@ -201,6 +201,19 @@ const workflowRouteList: Route[] = [
     path: '/api/automations',
     rawPath: true,
     handler: automationsHandler,
+    routeHandler: async (ctx) => {
+      const principal = ctx.accessContext;
+      if (
+        principal &&
+        (!principal.isOwner || principal.role !== 'OWNER' || !principal.requesterEntityId?.trim())
+      ) {
+        return { status: 403, body: { error: 'Owner role required' } };
+      }
+      if (!principal && !ctx.isTrustedLocal && !ctx.inProcess) {
+        return { status: 403, body: { error: 'Owner role required' } };
+      }
+      return readAutomations(ctx.runtime as AnyRuntime, principal?.requesterEntityId);
+    },
   },
   // Workbench task-list CRUD for runtime tasks tagged as workbench items. Ordered
   // most-specific-first so `/:id/complete` matches before `/:id`.

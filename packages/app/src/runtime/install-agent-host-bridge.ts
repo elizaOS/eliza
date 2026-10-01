@@ -26,6 +26,7 @@ import {
   resolveAuthorizedRouteRole,
   resolveSessionTokenRole,
 } from "../api/auth";
+import { subscribeSessionRevocations } from "../api/auth/sessions";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import { handleDesktopAuthBootstrapRoute } from "../api/desktop-auth-bootstrap-routes";
 import {
@@ -127,6 +128,7 @@ export function installAgentHostBridge(): void {
       }),
     resolveHttpRequestAuthorization,
     resolveSessionTokenAuthorization,
+    subscribeSessionRevocations,
     isHttpRequestAuthorized: async (req, runtime) =>
       (
         await resolveHttpRequestAuthorization(req, runtime, {

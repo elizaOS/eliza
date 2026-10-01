@@ -36,6 +36,8 @@ function createHarness(
     req,
     res,
     runtime,
+    ownerEntityId: 'owner-local',
+    localOwnerEntityId: 'owner-local',
     readJsonBody: async () => {
       calls.push('readJsonBody');
       return {};
@@ -144,5 +146,181 @@ describe('trigger route path decoding', () => {
       },
       status: undefined,
     });
+  });
+});
+
+describe('trigger route ownership', () => {
+  test('binds a new prompt to the trusted owner despite spoofed creator and owner fields', async () => {
+    const { context, response } = createHarness('POST', '/api/triggers');
+    let saved: Task | undefined;
+    context.readJsonBody = async () => ({
+      kind: 'prompt',
+      displayName: 'QA prompt',
+      instructions: 'Return a short answer',
+      triggerType: 'cron',
+      cronExpression: '0 12 28 9 *',
+      createdBy: 'owner-foreign',
+      ownerEntityId: 'owner-foreign',
+    });
+    context.normalizeTriggerDraft = ({ input }) => ({ draft: input as never });
+    context.buildTriggerConfig = ({ draft, triggerId }) =>
+      ({ ...draft, triggerId }) as TriggerConfig;
+    context.buildTriggerMetadata = ({ trigger }) => ({ trigger });
+    context.taskToTriggerSummary = (task) =>
+      ({ id: (task.metadata?.trigger as TriggerConfig | undefined)?.triggerId }) as never;
+    context.runtime = {
+      createTask: async (task: Task) => {
+        saved = { ...task, id: 'stored-task' };
+        return 'stored-task';
+      },
+      getTask: async () => saved,
+      getService: () => null,
+    } as unknown as IAgentRuntime;
+
+    await handleTriggerRoutes(context);
+    expect(response.status).toBe(201);
+    if (!saved) throw new Error('Task was not saved');
+    expect(saved.entityId).toBe('owner-local');
+    expect((saved.metadata?.ownership as { ownerId: string } | undefined)?.ownerId).toBe(
+      'owner-local'
+    );
+    expect((saved.metadata?.trigger as TriggerConfig | undefined)?.createdBy).toBe('owner-foreign');
+  });
+
+  test('lists a legacy prompt for the canonical owner and hides an explicitly foreign task', async () => {
+    const { context, response } = createHarness('GET', '/api/triggers');
+    const legacy = { id: 'legacy', metadata: { trigger: { createdBy: 'api' } } } as Task;
+    const foreign = {
+      id: 'foreign',
+      entityId: 'owner-foreign',
+      metadata: { trigger: { createdBy: 'api' } },
+    } as Task;
+    context.listTriggerTasks = async () => [legacy, foreign];
+    context.taskToTriggerSummary = (task) => ({ id: task.id }) as never;
+
+    await handleTriggerRoutes(context);
+    expect(response.body).toEqual({ triggers: [{ id: 'legacy' }] });
+  });
+
+  test('does not disclose or mutate a foreign trigger by ID', async () => {
+    const foreign = {
+      id: 'foreign-task',
+      entityId: 'owner-foreign',
+      metadata: { trigger: { triggerId: 'foreign-trigger', createdBy: 'api' } },
+    } as Task;
+    for (const [method, path] of [
+      ['GET', '/api/triggers/foreign-trigger'],
+      ['GET', '/api/triggers/foreign-trigger/runs'],
+      ['PUT', '/api/triggers/foreign-trigger'],
+      ['DELETE', '/api/triggers/foreign-trigger'],
+      ['POST', '/api/triggers/foreign-trigger/execute'],
+    ]) {
+      const { context, response, calls } = createHarness(method, path);
+      context.listTriggerTasks = async () => [foreign];
+      context.readTriggerConfig = () => foreign.metadata?.trigger as TriggerConfig;
+      await handleTriggerRoutes(context);
+      expect(response).toEqual({ body: { error: 'Trigger not found' }, status: 404 });
+      expect(calls).not.toContain('executeTriggerTask');
+      expect(calls).not.toContain('deleteTask');
+    }
+  });
+
+  test('rejects an untrusted requester even when the task is ownerless', async () => {
+    const { context, response } = createHarness('GET', '/api/triggers');
+    context.ownerEntityId = undefined;
+    await handleTriggerRoutes(context);
+    expect(response).toEqual({ body: { error: 'Owner role required' }, status: 403 });
+  });
+
+  test('event HTTP dispatch does not execute a foreign trigger', async () => {
+    const { context, response, calls } = createHarness(
+      'POST',
+      '/api/triggers/events/order.created'
+    );
+    context.listTriggerTasks = async () => [
+      {
+        id: 'foreign-task',
+        entityId: 'owner-foreign',
+        metadata: { trigger: { createdBy: 'api' } },
+      } as Task,
+    ];
+    context.readTriggerConfig = () =>
+      ({ triggerType: 'event', enabled: true, eventKind: 'order.created' }) as TriggerConfig;
+    await handleTriggerRoutes(context);
+    expect(response.body).toEqual({
+      ok: true,
+      eventKind: 'order.created',
+      matched: 0,
+      results: [],
+    });
+    expect(calls).not.toContain('executeTriggerTask');
+  });
+
+  test('allows reading an agent heartbeat but blocks public mutations and execution', async () => {
+    const heartbeat = {
+      id: 'system-heartbeat',
+      agentId: 'agent-id',
+      entityId: 'agent-id',
+      tags: ['queue', 'repeat', 'heartbeat'],
+      metadata: { updateInterval: 60_000 },
+    } as Task;
+    for (const [method, path, expectedStatus] of [
+      ['GET', '/api/triggers/system-heartbeat', 200],
+      ['PUT', '/api/triggers/system-heartbeat', 403],
+      ['DELETE', '/api/triggers/system-heartbeat', 403],
+      ['POST', '/api/triggers/system-heartbeat/execute', 403],
+    ] as const) {
+      const { context, response, calls } = createHarness(method, path);
+      context.runtime = {
+        agentId: 'agent-id',
+        deleteTask: async () => calls.push('deleteTask'),
+      } as unknown as IAgentRuntime;
+      context.listTriggerTasks = async () => [heartbeat];
+      context.taskToTriggerSummary = () => ({ id: 'system-heartbeat' }) as never;
+      await handleTriggerRoutes(context);
+      expect(response.status ?? 200).toBe(expectedStatus);
+      if (expectedStatus === 403) {
+        expect(response.body).toEqual({ error: 'System trigger is read-only' });
+      }
+      expect(calls).not.toContain('deleteTask');
+      expect(calls).not.toContain('executeTriggerTask');
+    }
+  });
+});
+
+describe('partial trigger updates', () => {
+  test('retains the saved timezone unless the update supplies another one', async () => {
+    for (const body of [
+      { enabled: false },
+      { displayName: 'Renamed prompt' },
+      { enabled: false, timezone: 'Europe/London' },
+    ]) {
+      const { context, response } = createHarness('PUT', '/api/triggers/saved-prompt');
+      const current = {
+        triggerId: 'saved-prompt',
+        kind: 'prompt',
+        displayName: 'Saved prompt',
+        instructions: 'Return a short answer',
+        triggerType: 'cron',
+        cronExpression: '0 9 * * *',
+        enabled: true,
+        timezone: 'America/Los_Angeles',
+        createdBy: 'api',
+      } as TriggerConfig;
+      const task = { id: 'saved-task', metadata: { trigger: current } } as Task;
+      context.listTriggerTasks = async () => [task];
+      context.readTriggerConfig = () => current;
+      context.readJsonBody = async () => body as never;
+      let inputTimezone: string | undefined;
+      context.normalizeTriggerDraft = ({ input }) => {
+        inputTimezone = input.timezone;
+        return { error: 'Stop before storage for this normalization assertion' };
+      };
+
+      await expect(handleTriggerRoutes(context)).resolves.toBe(true);
+
+      expect(inputTimezone).toBe('timezone' in body ? body.timezone : 'America/Los_Angeles');
+      expect(response.status).toBe(400);
+    }
   });
 });

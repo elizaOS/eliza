@@ -949,6 +949,7 @@ export function AutomationsFeed({
                               : false
                           }
                           onOpen={() => {
+                            if (row.source.system) return;
                             if (row.source.source === "scheduled_task") {
                               setEditor({
                                 kind: "scheduled",
@@ -1150,7 +1151,9 @@ function FeedRowItem({
         ? "Open workflow graph, runs, logs, and JSON"
         : "Open prompt automation schedule and prompt",
     status: row.active ? "active" : "inactive",
-    onActivate: onOpen,
+    onActivate: () => {
+      if (!row.source.system) onOpen();
+    },
   });
   const runAction = useAgentElement<HTMLButtonElement>({
     id: `run-workflow-${workflowId}`,
@@ -1184,6 +1187,7 @@ function FeedRowItem({
       <Button
         ref={openAction.ref}
         onClick={onOpen}
+        disabled={row.source.system}
         variant="transparent"
         size="rowContent"
         align="start"
@@ -1202,9 +1206,11 @@ function FeedRowItem({
               }`}
             >
               <StatusDot tone={row.active ? "success" : "muted"} />
-              {row.active
-                ? t("automationsfeed.active", { defaultValue: "Active" })
-                : t("automationsfeed.inactive", { defaultValue: "Inactive" })}
+              {row.source.system
+                ? t("automationsfeed.system", { defaultValue: "System" })
+                : row.active
+                  ? t("automationsfeed.active", { defaultValue: "Active" })
+                  : t("automationsfeed.inactive", { defaultValue: "Inactive" })}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-strong">

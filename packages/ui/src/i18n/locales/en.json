@@ -6264,6 +6264,7 @@
   "automationsfeed.runError": "Failed to run automation.",
   "automationsfeed.workflow": "Workflow",
   "automationsfeed.promptAutomation": "Prompt automation",
+  "automationsfeed.system": "System",
   "automationsfeed.active": "Active",
   "automationsfeed.inactive": "Inactive",
   "automationsfeed.updated": "Updated {{date}}",

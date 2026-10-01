@@ -18,6 +18,7 @@ import {
   type UUID,
 } from '@elizaos/core';
 import type { RouteHelpers, RouteRequestContext } from '@elizaos/core/api/route-helpers';
+import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './lib/trigger-ownership';
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -137,6 +138,10 @@ interface NormalizeTriggerDraftFallback {
 }
 export interface TriggerRouteContext extends RouteRequestContext {
   runtime: IAgentRuntime | null;
+  /** Resolved at the authenticated server boundary, never from request data. */
+  ownerEntityId?: string;
+  /** Canonical local owner for ownerless legacy trigger compatibility. */
+  localOwnerEntityId?: string;
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
@@ -267,12 +272,22 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     error(res, 'Triggers are disabled by configuration', 503);
     return true;
   }
+  const ownerEntityId = ctx.ownerEntityId;
+  const localOwnerEntityId = ctx.localOwnerEntityId;
+  if (!ownerEntityId || !localOwnerEntityId) {
+    error(res, 'Owner role required', 403);
+    return true;
+  }
+  const listOwnedTriggerTasks = async (currentRuntime: IAgentRuntime): Promise<Task[]> =>
+    (await listTriggerTasks(currentRuntime)).filter((task) =>
+      isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
+    );
   if (method === 'GET' && pathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
   }
   if (method === 'GET' && pathname === '/api/triggers') {
-    const tasks = await listTriggerTasks(runtime);
+    const tasks = await listOwnedTriggerTasks(runtime);
     const triggers = tasks
       .map(taskToTriggerSummary)
       .filter((summary): summary is TriggerSummary => summary !== null)
@@ -347,10 +362,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, normalized.error ?? 'Invalid trigger request', 400);
       return true;
     }
-    const existingTasks = await listTriggerTasks(runtime);
+    const existingTasks = await listOwnedTriggerTasks(runtime);
     const activeCount = existingTasks.filter((task) => {
       const trigger = readTriggerConfig(task);
-      return trigger?.enabled && trigger.createdBy === creator;
+      return trigger?.enabled && !isAgentOwnedHeartbeat(task, runtime.agentId);
     }).length;
     const limit = getTriggerLimit(runtime);
     if (activeCount >= limit) {
@@ -360,6 +375,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     const triggerId = stringToUuid(crypto.randomUUID());
     const trigger = buildTriggerConfig({ draft: normalized.draft, triggerId });
     const duplicate = existingTasks.find((task) => {
+      if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
       const existingTrigger = readTriggerConfig(task);
       return (
         existingTrigger?.enabled &&
@@ -395,8 +411,12 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,
       roomId,
+      entityId: ownerEntityId as UUID,
       tags: [...TRIGGER_TASK_TAGS],
-      metadata: metadata as Task['metadata'],
+      metadata: {
+        ...metadata,
+        ownership: { ownerId: ownerEntityId },
+      } as Task['metadata'],
     });
     const created = await runtime.getTask(taskId);
     const summary = created ? taskToTriggerSummary(created) : null;
@@ -414,7 +434,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Invalid trigger ID: malformed URL encoding', 400);
       return true;
     }
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
       return true;
@@ -429,9 +449,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Invalid trigger ID: malformed URL encoding', 400);
       return true;
     }
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
+      error(res, 'System trigger is read-only', 403);
       return true;
     }
     const result: TriggerExecutionResult = await executeTriggerTask(runtime, task, {
@@ -458,8 +482,9 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     const payload = parseEventPayload(body.payload ?? body);
-    const tasks = await listTriggerTasks(runtime);
+    const tasks = await listOwnedTriggerTasks(runtime);
     const matchingTasks = tasks.filter((task) => {
+      if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
       const trigger = readTriggerConfig(task);
       return (
         trigger?.enabled === true &&
@@ -500,7 +525,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
   if (method === 'GET') {
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
       return true;
@@ -514,9 +539,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
   if (method === 'DELETE') {
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task?.id) {
       error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
+      error(res, 'System trigger is read-only', 403);
       return true;
     }
     await runtime.deleteTask(task.id);
@@ -524,9 +553,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
   if (method === 'PUT') {
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task?.id) {
       error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
+      error(res, 'System trigger is read-only', 403);
       return true;
     }
     const current = readTriggerConfig(task);
@@ -582,7 +615,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
       notifyOnOutcome: current.notifyOnOutcome === true,
-      timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+      timezone: typeof body.timezone === 'string' ? body.timezone : current.timezone,
       intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : current.intervalMs,
       scheduledAtIso:
         typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : current.scheduledAtIso,

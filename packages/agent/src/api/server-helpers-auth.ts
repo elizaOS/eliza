@@ -357,11 +357,16 @@ export function isAuthorized(req: http.IncomingMessage): boolean {
   // Accept the cloud gateway's shared service token first (mirrors the K8s
   // agent-server contract). Disabled automatically when the secret is unset.
   if (isServerTokenAuthorized(req)) return true;
+  return isDirectOwnerApiTokenAuthorized(req);
+}
+/** Exact configured owner API token, without ambient loopback or gateway authority. */
+export function isDirectOwnerApiTokenAuthorized(
+  req: http.IncomingMessage,
+): boolean {
   const expected = getConfiguredApiToken();
   if (!expected) return false;
   const provided = extractAuthToken(req);
-  if (!provided) return false;
-  return tokenMatches(expected, provided);
+  return Boolean(provided && tokenMatches(expected, provided));
 }
 /**
  * Whether a request is authorized by a registered product boundary-role
@@ -686,7 +691,7 @@ export async function isWebSocketSessionTokenAuthorized(
   if (typeof resolveSessionToken !== "function") return false;
   try {
     const resolved = await resolveSessionToken(token, runtime);
-    return resolved.ok === true;
+    return resolved.ok === true && resolved.role === "OWNER";
   } catch (err) {
     // error-policy:J4 session-store failure → fail-closed deny; the outage is
     // surfaced here rather than collapsing silently into a stream of 1008s.

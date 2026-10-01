@@ -149,6 +149,7 @@ import {
   writeAgentBackupJsonResponse,
 } from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
+import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { replaceConfigInPlace } from "./config-state.ts";
@@ -1721,6 +1722,67 @@ async function handleRequestForViewClient(
     json(res, { error: "Owner role required" }, 403);
     return;
   }
+  let automationOwnerEntityId: string | undefined;
+  // Trigger definitions and the unified automation feed contain owner-private
+  // prompts. Resolve a presented credential without ambient loopback promotion:
+  // a paired USER bearer stays USER even when the request arrives locally.
+  if (
+    method !== "OPTIONS" &&
+    (pathname.startsWith("/api/triggers") || pathname === "/api/automations")
+  ) {
+    const cookie = req.headers.cookie;
+    const registeredAccess = resolveRegisteredTokenRoleAccess(req);
+    const hasPresentedCredential =
+      [
+        "authorization",
+        "x-eliza-token",
+        "x-elizaos-token",
+        "x-waifu-chat-access-token",
+        "x-api-key",
+        "x-api-token",
+        "x-server-token",
+      ].some((name) => Object.hasOwn(req.headers, name)) ||
+      (typeof cookie === "string" && /(?:^|;\s*)eliza_session=/.test(cookie)) ||
+      registeredAccess !== null;
+    const strictResolver = getAgentHostBridge().resolveHttpRequestAuthorization;
+    const ownerAuthorization = hasPresentedCredential
+      ? strictResolver
+        ? await strictResolver(req, state.runtime, {
+            allowCookieAuth: allowHostCookieAuth,
+            allowTrustedLocalBypass: false,
+            allowBearerAuth: true,
+          })
+        : ({ ok: false, role: "NONE" } as const)
+      : await resolveHostSessionAuthorization();
+    if (
+      !isTrajectoryOwnerRequest(
+        req,
+        method,
+        pathname,
+        ownerAuthorization,
+        !hasPresentedCredential,
+      )
+    ) {
+      json(res, { error: "Owner role required" }, 403);
+      return;
+    }
+    if (state.runtime) {
+      const localOwnerEntityId = resolveOwnerEntityIdOrDefault(state.runtime);
+      const trustedAccess = ownerAuthorization.ok
+        ? resolveHostSessionAccessContext(ownerAuthorization, state.runtime)
+        : resolveHttpAccessContext(req);
+      const requesterEntityId =
+        trustedAccess?.requesterEntityId ?? localOwnerEntityId;
+      // Legacy Node plugin routes cannot carry a distinct requester principal.
+      // Keep this owner-only local surface closed to such principals rather than
+      // silently reading or mutating the canonical local owner's records.
+      if (requesterEntityId !== localOwnerEntityId) {
+        json(res, { error: "Owner role required" }, 403);
+        return;
+      }
+      automationOwnerEntityId = requesterEntityId;
+    }
+  }
   // Remote-mode cloud mutations are forwarded only after the request passes
   // the normal API auth gate; the forwarder attaches the controller's target
   // token, so pre-auth forwarding would let an unauthenticated caller mutate
@@ -2159,6 +2221,10 @@ async function handleRequestForViewClient(
       method,
       pathname,
       runtime: state.runtime,
+      ownerEntityId: automationOwnerEntityId,
+      localOwnerEntityId: state.runtime
+        ? resolveOwnerEntityIdOrDefault(state.runtime)
+        : undefined,
       readJsonBody,
       json,
       error,
@@ -3782,12 +3848,77 @@ export async function startApiServer(opts?: {
     getBufferedAmount: (ws) =>
       ws.bufferedAmount + (wsQueuedSendBytes.get(ws) ?? 0),
   });
+  const wsSessions = new Map<
+    WebSocket,
+    {
+      token: string;
+      checkedAt: number;
+      pending?: Promise<boolean>;
+      revoked: boolean;
+      generation: number;
+    }
+  >();
+  const invalidateSessionSocket = (
+    ws: WebSocket,
+    reason = "session_invalid",
+  ) => {
+    const session = wsSessions.get(ws);
+    if (session) session.revoked = true;
+    wsClients.delete(ws);
+    ws.close(1008, reason);
+  };
+  const validateSessionSocket = async (ws: WebSocket): Promise<boolean> => {
+    const session = wsSessions.get(ws);
+    if (!session) return true;
+    if (session.revoked) return false;
+    if (session.pending) return session.pending;
+    if (Date.now() - session.checkedAt < 5_000) return true;
+    session.pending = (async () => {
+      for (;;) {
+        const generation = session.generation;
+        const authorized = await isWebSocketSessionTokenAuthorized(
+          session.token,
+          state.runtime,
+        );
+        if (
+          !authorized ||
+          session.revoked ||
+          ws.readyState !== WebSocket.OPEN
+        ) {
+          invalidateSessionSocket(ws);
+          return false;
+        }
+        // A bulk revoke can commit while this read is in flight. Re-read
+        // before releasing queued frames; the excepted session stays usable.
+        if (generation !== session.generation) continue;
+        session.checkedAt = Date.now();
+        return true;
+      }
+    })().finally(() => {
+      delete session.pending;
+    });
+    return session.pending;
+  };
+  const unsubscribeSessionRevocations =
+    getAgentHostBridge().subscribeSessionRevocations?.((sessionId) => {
+      for (const [ws, session] of wsSessions) {
+        if (sessionId === session.token)
+          invalidateSessionSocket(ws, "session_revoked");
+        else if (sessionId === null) {
+          // Bulk revoke preserves the excepted session: re-resolve each bearer.
+          session.checkedAt = 0;
+          session.generation += 1;
+          void validateSessionSocket(ws);
+        }
+      }
+    });
   const admitWebSocket = async (
     ws: WebSocket,
     request: http.IncomingMessage,
     boundary: "websocket-send" | "websocket-message",
   ): Promise<boolean> => {
     if (ws.readyState !== WebSocket.OPEN) return false;
+    if (!(await validateSessionSocket(ws))) return false;
     const rejection = await admitHostRequest(request, boundary);
     if (rejection !== null) {
       ws.close(rejection === 403 ? 1008 : 1011, "Host admission rejected");
@@ -3799,7 +3930,7 @@ export async function startApiServer(opts?: {
     if (ws.readyState !== WebSocket.OPEN || !wsBackpressure.admit(ws)) {
       return false;
     }
-    if (!hostAdmission) {
+    if (!hostAdmission && !wsSessions.has(ws)) {
       ws.send(message);
       return true;
     }
@@ -4244,6 +4375,16 @@ export async function startApiServer(opts?: {
       hostAuthorized ||
       isWebSocketAuthorized(request, wsUrl) ||
       isWebSocketUpgradeSessionAuthorized(request);
+    if (isWebSocketUpgradeSessionAuthorized(request)) {
+      const token = extractWebSocketHandshakeToken(request, wsUrl);
+      if (token)
+        wsSessions.set(ws, {
+          token,
+          checkedAt: 0,
+          revoked: false,
+          generation: 0,
+        });
+    }
     // Serializes in-band machine-session lookups for this socket (see the
     // auth branch of the message handler).
     let inBandSessionLookupInFlight = false;
@@ -4408,7 +4549,7 @@ export async function startApiServer(opts?: {
     ws.on("message", async (data: unknown) => {
       try {
         if (
-          hostAdmission &&
+          (hostAdmission || wsSessions.has(ws)) &&
           !(await admitWebSocket(ws, request, "websocket-message"))
         )
           return;
@@ -4441,6 +4582,13 @@ export async function startApiServer(opts?: {
                 providedToken,
                 state.runtime,
               );
+              if (authorized)
+                wsSessions.set(ws, {
+                  token: providedToken,
+                  checkedAt: 0,
+                  revoked: false,
+                  generation: 0,
+                });
             } finally {
               inBandSessionLookupInFlight = false;
             }
@@ -4641,6 +4789,7 @@ export async function startApiServer(opts?: {
       clearAuthGraceTimer();
       releasePendingSlot();
       wsClients.delete(ws);
+      wsSessions.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up any PTY output subscriptions for this client
       const subs = wsClientPtySubscriptions.get(ws);
@@ -4674,6 +4823,9 @@ export async function startApiServer(opts?: {
   // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
   let statusReadinessSequence = 0;
   const broadcastStatus = async () => {
+    // The existing five-second status cadence detects revocations/expiry from
+    // other processes. One coalesced lookup gates all queued frames per socket.
+    for (const session of wsSessions.values()) session.checkedAt = 0;
     // Skip the payload build + computeCanRespond() when no dashboard is
     // connected. This fires every 5s (statusInterval) plus on every state
     // change for the whole process lifetime; a headless / background agent
@@ -4997,6 +5149,10 @@ export async function startApiServer(opts?: {
     logger.warn({ error, resource }, `[eliza-api] Failed to close ${resource}`);
   });
   for (const resource of [
+    {
+      name: "session revocation listener",
+      dispose: () => unsubscribeSessionRevocations?.(),
+    },
     {
       name: "status interval",
       dispose: () => clearInterval(statusInterval),

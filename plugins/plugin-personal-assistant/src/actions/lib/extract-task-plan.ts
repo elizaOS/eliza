@@ -13,8 +13,12 @@
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
+  buildCanonicalSystemPrompt,
+  ElizaError,
+  getTrajectoryContext,
   ModelType,
   parseJsonModelRecord,
+  readTaskExtractionContext,
   recentConversationTexts,
   runExtractorPipeline,
   runWithTrajectoryPurpose,
@@ -505,36 +509,102 @@ export async function extractTaskCreatePlanWithLlm(args: {
     return buildExtractionFailurePlan();
   }
 
-  const recentWindow = await recentConversationTexts({
-    runtime,
-    message: args.message,
-    state: args.state,
-  });
-  const recentConversation = recentWindow.join("\n");
+  const managed = readTaskExtractionContext(
+    args.state,
+    args.message,
+    buildCanonicalSystemPrompt({
+      character: runtime.character,
+      userRole: getTrajectoryContext()?.userRole,
+    }),
+  );
+  const fullConversation = async () =>
+    (
+      await recentConversationTexts({
+        runtime,
+        message: args.message,
+        state: args.state,
+      })
+    ).join("\n");
+  let recentConversation = managed?.text ?? (await fullConversation());
+  const nowDescription = describeNowForPrompt(
+    args.now ?? new Date(),
+    args.timeZone ?? resolveDefaultTimeZone(),
+  );
+  const parsePlan = (raw: string) => {
+    const object = parseStructuredRecord(raw);
+    // A restore request can never also authorize a create plan.
+    if (!object || Object.hasOwn(object, "restoreContext")) return null;
+    return buildTaskCreatePlan(object);
+  };
   const prompt = buildExtractionPrompt(
     intent,
     recentConversation,
-    describeNowForPrompt(
-      args.now ?? new Date(),
-      args.timeZone ?? resolveDefaultTimeZone(),
-    ),
+    nowDescription,
   );
-
+  if (managed !== undefined) {
+    const first = await runExtractorPipeline({
+      runtime,
+      ...(managed.system !== undefined ? { system: managed.system } : {}),
+      prompt: `${prompt}\n\nHistory was selected by the request-bound planner review. Current provider constraints and receipts remain complete. If a constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
+      parser: parsePlan,
+    });
+    if (first.parsed) return first.parsed;
+    const raw = parseStructuredRecord(first.raw);
+    if (raw?.restoreContext === true && Object.keys(raw).length === 1) {
+      const legacy = await fullConversation();
+      recentConversation = legacy.includes(managed.originalText)
+        ? legacy
+        : `${managed.originalText}\n\nComplete stored conversation and state:\n${legacy}`;
+      // Restoration consumes the existing second-call allowance. A second
+      // restore or malformed full response fails without effects or a loop.
+      const restored = await runExtractorPipeline({
+        runtime,
+        ...(managed.system !== undefined ? { system: managed.system } : {}),
+        prompt: buildExtractionPrompt(
+          intent,
+          recentConversation,
+          nowDescription,
+        ),
+        parser: parsePlan,
+      });
+      if (!restored.parsed)
+        throw new ElizaError(
+          "Task extraction requires unresolved original context",
+          { code: "TASK_EXTRACTION_CONTEXT_UNRESOLVED" },
+        );
+      return restored.parsed;
+    }
+    if (raw && Object.hasOwn(raw, "restoreContext"))
+      throw new ElizaError(
+        "Task extraction mixed restoration with plan output",
+        { code: "TASK_EXTRACTION_CONTEXT_UNRESOLVED" },
+      );
+    const repaired = await runExtractorPipeline({
+      runtime,
+      ...(managed.system !== undefined ? { system: managed.system } : {}),
+      prompt: buildRepairPrompt({
+        intent,
+        recentConversation,
+        rawResponse: first.raw,
+      }),
+      parser: parsePlan,
+    });
+    if (!repaired.parsed)
+      throw new ElizaError("Task extraction did not resolve reviewed context", {
+        code: "TASK_EXTRACTION_CONTEXT_UNRESOLVED",
+      });
+    return repaired.parsed;
+  }
   const { parsed } = await runExtractorPipeline({
     runtime,
     prompt,
     parser: (raw) => {
-      const parsedObject = parseStructuredRecord(raw);
-      return parsedObject ? buildTaskCreatePlan(parsedObject) : null;
+      const object = parseStructuredRecord(raw);
+      return object ? buildTaskCreatePlan(object) : null;
     },
-    buildRepairPrompt: (rawFirstPass) =>
-      buildRepairPrompt({
-        intent,
-        recentConversation,
-        rawResponse: rawFirstPass,
-      }),
+    buildRepairPrompt: (rawResponse) =>
+      buildRepairPrompt({ intent, recentConversation, rawResponse }),
   });
-
   return parsed ?? buildExtractionFailurePlan();
 }
 
