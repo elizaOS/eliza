@@ -150,7 +150,13 @@ describe("useVoiceChat talk-mode listener registration (FIX 1)", () => {
 
     // Every registered handle is removable via removeTalkModeListeners
     // (unmount cleanup) — nothing leaked outside talkModeHandlesRef.
-    unmount();
+    await act(async () => {
+      await result.current.stopListening();
+    });
+    expect(h.state.removeCalls).toBe(0);
+    await act(async () => {
+      unmount();
+    });
     await waitFor(() => expect(h.state.removeCalls).toBe(3));
   });
 });

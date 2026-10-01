@@ -149,7 +149,9 @@ function renderSection(initialEntry = "/login") {
 async function startEmailLogin() {
   const input = await screen.findByPlaceholderText("you@example.com");
   fireEvent.change(input, { target: { value: "person@example.com" } });
-  fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+  });
   await screen.findByLabelText("Six-digit code");
 }
 
@@ -318,7 +320,9 @@ describe("StewardLoginSection email magic-link companion code", () => {
     });
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "other@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    });
     await screen.findByLabelText("Six-digit code");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000);
@@ -503,7 +507,9 @@ describe("StewardLoginSection email magic-link companion code", () => {
     renderSection();
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    });
     await screen.findByText("Check your email");
 
     // The waiting copy must not assert a code the email may not contain.
@@ -542,7 +548,9 @@ describe("StewardLoginSection email magic-link companion code", () => {
     renderSection();
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    });
     await screen.findByText("Check your email");
 
     expect(
