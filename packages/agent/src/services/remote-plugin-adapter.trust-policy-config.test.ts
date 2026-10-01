@@ -113,10 +113,14 @@ describe("resolveConfiguredRemotePluginTrustPolicy", () => {
     );
     expect(policy).toEqual({
       allowedEndpointIds: ["primary"],
-      allowedModuleIds: ["mod-a"],
       allowedProvenanceIssuers: ["issuer-g"],
-      requireSignedProvenance: true,
-      requireProvenanceDigestMatch: true,
+      endpointPolicies: {
+        primary: {
+          allowedModuleIds: ["mod-a"],
+          requireSignedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      },
       requireEndpointId: true,
     });
   });

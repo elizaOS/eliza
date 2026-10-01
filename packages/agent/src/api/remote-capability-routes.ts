@@ -735,7 +735,10 @@ function mergePersistedModuleAllowlists(
       moduleIds: normalizeStringList([...existing.moduleIds, ...normalized]),
     };
   }
-  const next = { ...existing.endpoints };
+  const next: typeof existing.endpoints = Object.assign(
+    Object.create(null),
+    existing.endpoints,
+  );
   if (normalized.length === 0) {
     delete next[endpointId];
   } else {
@@ -749,7 +752,10 @@ function mergePersistedTrustPolicies(
   endpointId: string,
   trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined,
 ): CapabilityRouterTrustPolicySetting {
-  const next = { ...existing.endpoints };
+  const next: typeof existing.endpoints = Object.assign(
+    Object.create(null),
+    existing.endpoints,
+  );
   const normalized = normalizeEndpointTrustPolicyOptions(trustPolicy);
   if (Object.keys(normalized).length === 0) {
     delete next[endpointId];
@@ -1037,7 +1043,7 @@ function parseOptionalStringRecord(
 ): Record<string, string> | undefined {
   if (value === undefined) return undefined;
   const body = requireObject(value, field);
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = Object.create(null);
   for (const [key, entry] of Object.entries(body)) {
     if (typeof entry !== "string") {
       throw new Error(`${field}.${key} must be a string.`);

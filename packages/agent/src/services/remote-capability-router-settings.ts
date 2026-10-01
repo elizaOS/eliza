@@ -233,7 +233,7 @@ export function parseCapabilityRouterModuleAllowlistSetting(
       "must be a JSON array of module ids or an object keyed by endpoint id",
     );
   }
-  const endpoints: Record<string, string[]> = {};
+  const endpoints: Record<string, string[]> = Object.create(null);
   for (const [endpointId, moduleIds] of Object.entries(parsed)) {
     const normalized = requireStringList(
       key,
@@ -264,7 +264,8 @@ export function parseCapabilityRouterTrustPolicySetting(
     throw new CapabilityRouterSettingError(key, "must be a JSON object");
   }
   const globalFields: Record<string, unknown> = {};
-  const endpoints: Record<string, CapabilityRouterTrustPolicySettingValue> = {};
+  const endpoints: Record<string, CapabilityRouterTrustPolicySettingValue> =
+    Object.create(null);
   for (const [entryKey, entry] of Object.entries(parsed)) {
     if (TRUST_POLICY_FIELD_SET.has(entryKey)) {
       globalFields[entryKey] = entry;
@@ -349,7 +350,7 @@ function parseTrustPolicyValue(
         `${label} trustedProvenancePublicKeys must be an object of issuer to public key`,
       );
     }
-    const trusted: Record<string, string> = {};
+    const trusted: Record<string, string> = Object.create(null);
     for (const [issuer, publicKey] of Object.entries(keys)) {
       if (typeof publicKey !== "string") {
         throw new CapabilityRouterSettingError(
