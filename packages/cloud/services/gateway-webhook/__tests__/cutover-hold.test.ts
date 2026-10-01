@@ -13,6 +13,8 @@ import {
   CONNECTOR_HELD,
   CUTOVER_HOLD_MAX_MS,
   drainCutoverHolds,
+  type HeldWebhook,
+  holdWebhookForCutover,
 } from "../src/cutover-hold";
 import { createRedis, type GatewayRedis } from "../src/redis";
 import {
@@ -594,6 +596,64 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     });
     expect(cloud.turns.length - heldTurns).toBe(1);
     expect(providerSends).toEqual([]);
+  }, 60_000);
+
+  test("stale cleanup preserves a webhook re-held after the ledger read", async () => {
+    const cloud = startCloud();
+    const redis = createRedis();
+    const dedupKey = "webhook:blooio:msg_cutover_reheld";
+    const recordKey = `webhook:cutover-hold:${dedupKey}`;
+    await handleWebhook(
+      blooioWebhook("msg_cutover_reheld"),
+      blooioAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+    await waitForLedger(redis, dedupKey, CONNECTOR_HELD);
+    const held = await redis.get<HeldWebhook>(recordKey);
+    if (!held) throw new Error("Expected the initial durable hold");
+    // A prior drainer released the ledger but left its fenced record behind.
+    await redis.del(dedupKey);
+    const originalGet = redis.get.bind(redis);
+    let reheld = false;
+    redis.get = async <T = unknown>(key: string): Promise<T | null> => {
+      const value = await originalGet<T>(key);
+      if (key === dedupKey && !reheld) {
+        reheld = true;
+        // The provider retry parks a new hold before stale cleanup executes.
+        await holdWebhookForCutover(
+          redis,
+          { ...held, traceId: "replacement-hold" },
+          { code: held.code, retryAfterSeconds: null },
+        );
+      }
+      return value;
+    };
+    const first = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      {
+        now: Date.now() + 60_000,
+      },
+    );
+    expect(reheld).toBe(true);
+    expect(first.stale).toBe(0);
+    expect(await redis.get(dedupKey)).toBe(CONNECTOR_HELD);
+    expect(await redis.get<HeldWebhook>(recordKey)).toMatchObject({
+      traceId: "replacement-hold",
+    });
+    cloud.state.attested = true;
+    const second = await drainCutoverHolds(
+      redis,
+      drainHandlers(cloud.origin, redis),
+      {
+        now: Date.now() + 120_000,
+      },
+    );
+    expect(second.delivered).toBe(1);
+    expect(providerSends).toHaveLength(1);
+    expect(await redis.get(recordKey)).toBeNull();
+    expect(await redis.get(dedupKey)).toBe("delivered");
   }, 60_000);
 
   test("lease release and renewal are atomic compare-and-act on the owner token", async () => {
