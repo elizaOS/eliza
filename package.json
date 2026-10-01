@@ -152,7 +152,7 @@
     "adze": "^2.3.0",
     "browserify-sign": "^4.2.5",
     "bun-types": "1.4.2",
-    "chalk": "^6.0.0",
+    "chalk": "^6.0.1",
     "create-hash": "^1.2.0",
     "create-hmac": "^1.1.7",
     "ethers": "^6.16.0",

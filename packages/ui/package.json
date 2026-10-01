@@ -686,7 +686,7 @@
     "@elizaos/auth": "workspace:*",
     "@tanstack/react-query": "^5.90.20",
     "@xyflow/react": "^12.10.2",
-    "chalk": "^6.0.0",
+    "chalk": "^6.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
