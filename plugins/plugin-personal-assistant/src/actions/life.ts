@@ -74,6 +74,7 @@ import {
 } from "../lifeops/definition-creation-identity.js";
 import {
   type OwnerDefinitionSurface,
+  ownerDefinitionSurface,
   resolveOwnerDefinitionSurface,
 } from "../lifeops/definition-owner-surface.js";
 import {

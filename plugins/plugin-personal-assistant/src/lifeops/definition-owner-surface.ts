@@ -11,16 +11,20 @@ const OWNER_DEFINITION_SURFACES = [
 
 export type OwnerDefinitionSurface = (typeof OWNER_DEFINITION_SURFACES)[number];
 
+export function ownerDefinitionSurface(
+  value: unknown,
+): OwnerDefinitionSurface | null {
+  return typeof value === "string" &&
+    OWNER_DEFINITION_SURFACES.includes(value as OwnerDefinitionSurface)
+    ? (value as OwnerDefinitionSurface)
+    : null;
+}
+
 export function resolveOwnerDefinitionSurface(
   definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata">,
 ): OwnerDefinitionSurface | null {
-  const persisted = definition.metadata.ownerSurface;
-  if (
-    typeof persisted === "string" &&
-    OWNER_DEFINITION_SURFACES.includes(persisted as OwnerDefinitionSurface)
-  ) {
-    return persisted as OwnerDefinitionSurface;
-  }
+  const persisted = ownerDefinitionSurface(definition.metadata.ownerSurface);
+  if (persisted) return persisted;
   const nativeReminder = readNativeAppleReminderMetadata(definition.metadata);
   if (nativeReminder?.kind === "alarm") return "OWNER_ALARMS";
   if (nativeReminder?.kind === "reminder") return "OWNER_REMINDERS";
