@@ -257,6 +257,7 @@ import {
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
 import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
+import { isAlreadyPairedRemoteTarget } from "./remote-deep-link-connection";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
@@ -2060,6 +2061,11 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     );
     return;
   }
+  // Android can replay the launch intent on a cold app start. An exact target
+  // already paired by this installation needs no second connect transaction;
+  // that transaction would otherwise clear its saved machine session.
+  if (isAlreadyPairedRemoteTarget(validatedUrl, loadPersistedActiveServer()))
+    return;
   // SECURITY: never accept a bearer token from an OS-delivered deep link (see
   // the `connect` case below). A pairing-disabled remote that needs a token is
   // connected via the trusted in-app Settings entry instead.
@@ -2424,6 +2430,14 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
               `${APP_LOG_PREFIX} Rejected untrusted gateway URL host:`,
               validatedUrl.hostname,
             );
+            break;
+          }
+          if (
+            isAlreadyPairedRemoteTarget(
+              validatedUrl,
+              loadPersistedActiveServer(),
+            )
+          ) {
             break;
           }
           // SECURITY: never accept a bearer token from an OS-delivered deep

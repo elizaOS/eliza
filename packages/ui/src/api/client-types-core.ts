@@ -141,6 +141,10 @@ export type AgentModelReadiness =
       message: string;
       checkedAt: number;
     };
+export type LocalModelReadiness = {
+  provider: "eliza-local-inference";
+  status: "available" | "model_not_loaded";
+};
 export interface AgentStatus {
   state: AgentState;
   agentName: string;
@@ -159,6 +163,8 @@ export interface AgentStatus {
    * a provider outage (`unknown`) or no provider at all (absent).
    */
   modelReadiness?: AgentModelReadiness;
+  /** Runtime-owned local text-model load state, present only for a sole local provider. */
+  localModelReadiness?: LocalModelReadiness;
   uptime: number | undefined;
   startedAt: number | undefined;
   port?: number;

@@ -21,6 +21,10 @@ import type { AgentRuntime } from "@elizaos/core";
 
 /** Route + chat surface exported by `.../local-inference-routes`. */
 export type LocalInferenceRouteApi = {
+  hasLocalTextModelAvailable: (
+    runtime: AgentRuntime,
+    modelTypes: readonly string[],
+  ) => Promise<boolean>;
   getLocalInferenceActiveModelId: () => string | undefined;
   getLocalInferenceActiveSnapshot: () => Promise<{
     status?: string;

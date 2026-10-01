@@ -206,6 +206,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/mobile/targets/android.ts",
   "scripts/mobile/toolchain.ts",
   "scripts/mobile/web-build.ts",
+  "scripts/mobile/whitelabel.ts",
   "scripts/pack-upstreams.ts",
   "scripts/package-electrobun-flatpak.ts",
   "scripts/package-electrobun-linux.ts",

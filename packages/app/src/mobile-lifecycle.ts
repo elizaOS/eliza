@@ -83,7 +83,10 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   // inside the replay window is a genuine repeat that must apply. Cleared when
   // the replay window closes.
   const coldLaunchEchoCandidates = new Set<string>();
-  const pendingDeepLinks = new Map<string, Array<() => void>>();
+  const pendingDeepLinks: Array<{
+    url: string;
+    acknowledgements: Array<() => void>;
+  }> = [];
   // Acknowledgements queued behind a URL's IN-FLIGHT `ctx.handleDeepLink`
   // outcome. Android's cold-launch replay polls the still-unacked buffer
   // every second for up to 15s, redelivering the same URL while the shell is
@@ -253,7 +256,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
             acknowledge();
           }
         } else if (acknowledge) {
-          pendingDeepLinks.get(trimmed)?.push(acknowledge);
+          pendingDeepLinks
+            .find((entry) => entry.url === trimmed)
+            ?.acknowledgements.push(acknowledge);
         }
         return false;
       }
@@ -264,7 +269,10 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       if (deepLinkHandlingReady) {
         applyDeepLink(trimmed, acknowledge ? [acknowledge] : []);
       } else {
-        pendingDeepLinks.set(trimmed, acknowledge ? [acknowledge] : []);
+        pendingDeepLinks.push({
+          url: trimmed,
+          acknowledgements: acknowledge ? [acknowledge] : [],
+        });
       }
       return true;
     };
@@ -291,12 +299,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         applyDeepLink(trimmed, acknowledgements);
         return;
       }
-      const queued = pendingDeepLinks.get(trimmed);
-      if (queued) {
-        queued.push(...acknowledgements);
-      } else {
-        pendingDeepLinks.set(trimmed, acknowledgements);
-      }
+      // Each warm event is a distinct user action, even before the shell is
+      // ready. Replay duplicates attach to an existing entry above instead.
+      pendingDeepLinks.push({ url: trimmed, acknowledgements });
     };
 
     // Warm intents can arrive while the renderer is reloading. main.tsx arms
@@ -361,10 +366,10 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     initializeDeepLinks();
     if (!deepLinkHandlingReady) {
       deepLinkHandlingReady = true;
-      for (const [url, acknowledgements] of pendingDeepLinks) {
+      for (const { url, acknowledgements } of pendingDeepLinks) {
         applyDeepLink(url, acknowledgements);
       }
-      pendingDeepLinks.clear();
+      pendingDeepLinks.length = 0;
     }
 
     // Each Capacitor listener fires its handler N times if added N times;

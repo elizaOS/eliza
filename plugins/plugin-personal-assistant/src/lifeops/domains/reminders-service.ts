@@ -18,12 +18,14 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import {
+  createReminderPresentation,
   ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
   ModelType,
   parseJsonModelRecord,
+  type ReminderPresentation,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
   ServiceType,
@@ -744,6 +746,7 @@ export function readLadderRungTitle(
 }
 
 export function buildReminderBody(args: {
+  timezone?: string;
   title: string;
   scheduledFor: string;
   dueAt: string | null;
@@ -760,7 +763,9 @@ export function buildReminderBody(args: {
     parts.push(`Reminder: ${focus}`);
   }
   if (args.dueAt) {
-    parts.push(`Due: ${new Date(args.dueAt).toLocaleString()}`);
+    parts.push(
+      `Due: ${args.timezone ? new Date(args.dueAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.dueAt).toLocaleString()}`,
+    );
   }
   return parts.join("\n");
 }
@@ -1181,6 +1186,7 @@ export class RemindersDomain {
 
   protected async emitInAppReminderNudge(args: {
     text: string;
+    presentation?: ReminderPresentation;
     ownerType: "occurrence" | "calendar_event";
     ownerId: string;
     subjectType: LifeOpsSubjectType;
@@ -1195,7 +1201,16 @@ export class RemindersDomain {
       dueAt: args.dueAt,
     };
     const chatText = appendReminderChoiceChips(args.text, args);
-    this.ctx.emitAssistantEvent(chatText, "reminder", metadata);
+    this.ctx.emitAssistantEvent(
+      args.presentation?.chatText ?? chatText,
+      "reminder",
+      {
+        ...metadata,
+        ...(args.presentation
+          ? { reminderPresentation: args.presentation }
+          : {}),
+      },
+    );
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
     // just the in-app assistant stream. groupKey collapses repeat nudges for
@@ -1205,15 +1220,17 @@ export class RemindersDomain {
     } | null;
     if (notifier?.notify) {
       try {
-        const title = await renderOwnerNotificationTitle(this.ctx.runtime, {
-          body: args.text,
-          fallbackTitle: "Reminder",
-          firedAtIso: args.scheduledFor,
-          errorContext: {
-            ownerType: args.ownerType,
-            ownerId: args.ownerId,
-          },
-        });
+        const title =
+          args.presentation?.title ??
+          (await renderOwnerNotificationTitle(this.ctx.runtime, {
+            body: args.text,
+            fallbackTitle: "Reminder",
+            firedAtIso: args.scheduledFor,
+            errorContext: {
+              ownerType: args.ownerType,
+              ownerId: args.ownerId,
+            },
+          }));
         await notifier.notify({
           title,
           body: args.text,
@@ -4364,7 +4381,10 @@ export class RemindersDomain {
     activityProfile?: ReminderActivityProfileSnapshot | null;
     nearbyReminderTitles?: string[];
     timezone: string;
-    definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    definition:
+      | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
+          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+      | null;
     derivedTarget?: Record<string, unknown> | null;
     bodyOverride?: string;
   }): Promise<LifeOpsReminderAttempt> {
@@ -4372,6 +4392,7 @@ export class RemindersDomain {
     const attemptedAtDate = new Date(attemptedAt);
     const lifecycle = args.lifecycle ?? "plan";
     let reminderBody = "";
+    let presentation: ReminderPresentation | undefined;
     let outcome: LifeOpsReminderAttemptOutcome = "delivered";
     let connectorRef: string | null = null;
     const deliveryMetadata: Record<string, unknown> = {
@@ -4436,19 +4457,34 @@ export class RemindersDomain {
       deliveryMetadata.reason = "quiet_hours";
     }
     if (outcome === "delivered") {
-      reminderBody =
-        args.bodyOverride ??
-        (await this.renderReminderBody({
-          title: args.title,
-          scheduledFor: args.scheduledFor,
-          dueAt: args.dueAt,
-          channel: args.channel,
-          lifecycle,
-          urgency: args.urgency,
-          subjectType: args.subjectType,
-          nearbyReminderTitles: args.nearbyReminderTitles,
-          derivedTarget: args.derivedTarget,
-        }));
+      const exactReminder =
+        args.ownerType === "occurrence" &&
+        args.subjectType === "owner" &&
+        args.channel === "in_app" &&
+        lifecycle === "plan" &&
+        args.definition?.cadence?.kind === "once" &&
+        args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+        args.bodyOverride === undefined;
+      reminderBody = exactReminder
+        ? buildReminderBody({ ...args, lifecycle })
+        : (args.bodyOverride ??
+          (await this.renderReminderBody({
+            title: args.title,
+            scheduledFor: args.scheduledFor,
+            dueAt: args.dueAt,
+            channel: args.channel,
+            lifecycle,
+            urgency: args.urgency,
+            subjectType: args.subjectType,
+            nearbyReminderTitles: args.nearbyReminderTitles,
+            derivedTarget: args.derivedTarget,
+          })));
+      if (exactReminder)
+        presentation = createReminderPresentation(
+          reminderBody,
+          appendReminderChoiceChips(reminderBody, args),
+          "Reminder",
+        );
       if (args.channel === "in_app") {
         connectorRef = "system:in_app";
         deliveryMetadata.message = reminderBody;
@@ -4702,6 +4738,7 @@ export class RemindersDomain {
     if (outcome === "delivered" && args.channel === "in_app") {
       await this.emitInAppReminderNudge({
         text: reminderBody,
+        presentation,
         ownerType: args.ownerType,
         ownerId: args.ownerId,
         subjectType: args.subjectType,

@@ -1332,6 +1332,7 @@ export function ChatOverlay({
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
+  const localTextModelNotLoaded = controller.localTextModelNotLoaded ?? false;
   const firstRunComposerPlaceholder = React.useMemo(() => {
     const latestStatus = messages.at(-1)?.content ?? "";
     if (/waiting for sign-in/i.test(latestStatus)) {
@@ -6701,22 +6702,26 @@ export function ChatOverlay({
                                   ? viewChatBinding.placeholder
                                   : noProviderConfigured
                                     ? "Connect a model provider in Settings to chat"
-                                    : modelBlocksSend
-                                      ? modelStatus?.kind === "downloading"
-                                        ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                                        : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                                      : booting
-                                        ? `Message ${agentName} — waking up…`
-                                        : "Hey Eliza…"
+                                    : localTextModelNotLoaded
+                                      ? "Text model not loaded — check Settings"
+                                      : modelBlocksSend
+                                        ? modelStatus?.kind === "downloading"
+                                          ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                          : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                                        : booting
+                                          ? `Message ${agentName} — waking up…`
+                                          : "Hey Eliza…"
                         }
                         aria-label="message"
                         data-testid="chat-composer-textarea"
                         aria-describedby={
                           firstRunOpen
                             ? "cc-first-run-hint"
-                            : booting && !noProviderConfigured
-                              ? "cc-booting-hint"
-                              : undefined
+                            : localTextModelNotLoaded
+                              ? "cc-local-model-hint"
+                              : booting && !noProviderConfigured
+                                ? "cc-booting-hint"
+                                : undefined
                         }
                         // The floating composer is the primary chat affordance on the
                         // ambient home surface, so its placeholder must stay readable
@@ -6727,11 +6732,18 @@ export function ChatOverlay({
                     )}
                     {!transcriptionComposerActive &&
                     booting &&
+                    !localTextModelNotLoaded &&
                     !noProviderConfigured &&
                     !firstRunOpen ? (
                       <span id="cc-booting-hint" className="sr-only">
                         {agentName} is waking up. You can type now; your message
                         sends and the reply arrives in a moment.
+                      </span>
+                    ) : null}
+                    {localTextModelNotLoaded && !firstRunOpen ? (
+                      <span id="cc-local-model-hint" className="sr-only">
+                        A text model is not loaded on the connected agent. Check
+                        its model settings before sending.
                       </span>
                     ) : null}
                     {firstRunOpen ? (

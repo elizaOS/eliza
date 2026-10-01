@@ -159,4 +159,55 @@ describe("mobile lifecycle deep links", () => {
     expect(handleDeepLink).toHaveBeenCalledTimes(2);
     expect(handleDeepLink).toHaveBeenNthCalledWith(2, launch);
   });
+
+  it("preserves warm actions and their order before the shell is ready", async () => {
+    const handleDeepLink = vi.fn((_url: string) => undefined);
+    const lifecycle = createMobileLifecycle({
+      isNative: true,
+      isIOS: false,
+      isAndroid: true,
+      logPrefix: "[mobile-boot-test]",
+      handleDeepLink,
+    });
+    lifecycle.initializeDeepLinks();
+    await flush();
+    const ask = "elizaos://chat?source=android-widget&action=ask";
+    const voice = "elizaos://chat?source=android-widget&action=voice";
+    openWarmUrl(ask);
+    openWarmUrl(voice);
+    openWarmUrl(ask);
+    expect(handleDeepLink).not.toHaveBeenCalled();
+    lifecycle.initializeAppLifecycle();
+    expect(handleDeepLink.mock.calls.map(([url]) => url)).toEqual([
+      ask,
+      voice,
+      ask,
+    ]);
+    lifecycle.initializeAppLifecycle();
+    expect(handleDeepLink).toHaveBeenCalledTimes(3);
+  });
+
+  it("dedupes buffered replay before boot without collapsing warm repeats", async () => {
+    const url = "elizaos://chat?source=android-widget&action=ask";
+    const buffer = createAndroidDeepLinkBuffer(url);
+    const handleDeepLink = vi.fn((_url: string) => undefined);
+    const lifecycle = createMobileLifecycle({
+      isNative: true,
+      isIOS: false,
+      isAndroid: true,
+      logPrefix: "[mobile-boot-test]",
+      handleDeepLink,
+      androidDeepLinkBuffer: buffer,
+    });
+    lifecycle.initializeDeepLinks();
+    await flush();
+    await vi.advanceTimersByTimeAsync(3_000);
+    openWarmUrl(url);
+    openWarmUrl(url);
+    expect(buffer.acknowledgePendingUrl).not.toHaveBeenCalled();
+    lifecycle.initializeAppLifecycle();
+    expect(handleDeepLink).toHaveBeenCalledTimes(3);
+    await flush();
+    expect(await buffer.peekPendingUrl()).toEqual({ url: null });
+  });
 });
