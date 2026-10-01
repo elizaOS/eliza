@@ -505,7 +505,10 @@ function recordFromSyncInput(args: {
     circadianState,
     stateConfidence: args.input.stateConfidence,
     uncertaintyReason,
-    mealLabel: args.input.mealLabel ?? snapshot.nextMealLabel ?? null,
+    // The snapshot's `nextMealLabel` is a forecast carried by every row, not
+    // this row's label. Adopting it would turn a state row into a meal row,
+    // which never votes on the circadian state.
+    mealLabel: args.input.mealLabel ?? null,
     windowStartAt: bucketedWindowStartAt,
     windowEndAt: bucketedWindowEndAt,
     metadata: observationMetadata({
@@ -521,17 +524,53 @@ export function recordsFromSyncRequest(args: {
   request: SyncLifeOpsScheduleObservationsRequest;
 }): LifeOpsScheduleObservation[] {
   const observedAt = args.request.observedAt ?? new Date().toISOString();
-  return args.request.observations.map((input) =>
-    recordFromSyncInput({
+  const sentMs = parseIsoMs(observedAt);
+  return args.request.observations.map((input) => {
+    // Each row keeps the time its device recorded it, so an older sleep row
+    // replayed in the same batch as a newer wake stays older. A row time
+    // after the send time is not trusted and falls back to the send time.
+    const rowMs = parseIsoMs(input.observedAt);
+    const rowObservedAt =
+      input.observedAt && rowMs !== null && sentMs !== null && rowMs <= sentMs
+        ? input.observedAt
+        : observedAt;
+    return recordFromSyncInput({
       agentId: args.agentId,
       timezone: args.request.timezone,
-      observedAt,
+      observedAt: rowObservedAt,
       origin: args.origin,
       deviceId: args.request.deviceId,
       deviceKind: args.request.deviceKind,
       input,
-    }),
-  );
+    });
+  });
+}
+
+/** The sync payload for one stored observation, carrying its own time. */
+export function scheduleObservationSyncInput(
+  observation: LifeOpsScheduleObservation,
+): SyncLifeOpsScheduleObservationInput {
+  const metadata = asRecord(observation.metadata);
+  const rawSnapshot = asRecord(metadata?.snapshot);
+  const snapshot = rawSnapshot ? { ...rawSnapshot } : undefined;
+  const extraMetadata = metadata
+    ? Object.fromEntries(
+        Object.entries(metadata).filter(
+          ([key]) => key !== "snapshot" && key !== "source",
+        ),
+      )
+    : {};
+  return {
+    observedAt: observation.observedAt,
+    circadianState: observation.circadianState,
+    stateConfidence: observation.stateConfidence,
+    uncertaintyReason: observation.uncertaintyReason,
+    windowStartAt: observation.windowStartAt,
+    windowEndAt: observation.windowEndAt,
+    mealLabel: observation.mealLabel,
+    snapshot,
+    metadata: Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined,
+  };
 }
 function observationSnapshot(
   observation: LifeOpsScheduleObservation,
