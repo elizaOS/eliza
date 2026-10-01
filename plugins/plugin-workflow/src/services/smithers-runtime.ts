@@ -224,7 +224,12 @@ export function createSmithersWorkerScript(): string {
   return String.raw`
     import { readFileSync } from 'node:fs';
     import { pathToFileURL } from 'node:url';
-    import { Effect } from 'effect';
+    import { createRequire } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    // Execute Smithers effects and schemas with the runtime Smithers pins.
+    // Separately resolved Effect releases are not compatible across this boundary.
+    const smithersRequire = createRequire(import.meta.resolve('smthrs'));
+    const { Effect } = await import(pathToFileURL(smithersRequire.resolve('effect')).href);
     import { runWorkflow } from 'smthrs';
     import { createInterface } from 'node:readline';
 
@@ -313,7 +318,12 @@ export function createSmithersWorkerScript(): string {
 export function createSmithersControlScript(): string {
   return `
     import { readFileSync } from 'node:fs';
-    import { Effect } from 'effect';
+    import { createRequire } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    // Execute Smithers effects and schemas with the runtime Smithers pins.
+    // Separately resolved Effect releases are not compatible across this boundary.
+    const smithersRequire = createRequire(import.meta.resolve('smthrs'));
+    const { Effect } = await import(pathToFileURL(smithersRequire.resolve('effect')).href);
     import { approveNode, denyNode, signalRun } from 'smthrs';
     import { cancelRunSubtree } from '@smthrs/engine/cancel-subtree';
     import { openSmithersStore } from 'smthrs/openSmithersStore';
