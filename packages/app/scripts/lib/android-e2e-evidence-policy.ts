@@ -34,7 +34,12 @@ const PHASES = new Set([
 ]);
 
 const STATUSES = new Set(["started", "passed", "failed", "skipped"]);
-const COUNTERS = new Set(["mediaArtifactCount", "sourceLine", "specId"]);
+const COUNTERS = new Set([
+  "mediaArtifactCount",
+  "sourceLine",
+  "specId",
+  "androidWaitErrorKind",
+]);
 
 const CODES = new Set([
   "PHASE_STARTED",
@@ -157,8 +162,28 @@ export function createAndroidEvidenceBoundary({
   };
 }
 
-// Only source-owned probe identifiers and numeric locations leave the private
-// report. Titles, errors, attachments, stdout and stderr may contain device data.
+// Numeric categories distinguish Android wait failures without exporting the
+// private error text: 1 selector absent, 2 deadline, 3 device closed, 4 other.
+function androidWaitErrorKind(error) {
+  if (typeof error?.message !== "string") return undefined;
+  const firstLine = error.message.split("\n", 1)[0];
+  const prefix = "androidDevice.wait: ";
+  if (!firstLine.startsWith(prefix)) return undefined;
+  const message = firstLine.slice(prefix.length);
+  if (
+    /^(?:java\.lang\.RuntimeException: )?Timed out waiting for selector$/.test(
+      message,
+    )
+  ) {
+    return 1;
+  }
+  if (/^Timeout \d+ms exceeded\.$/.test(message)) return 2;
+  if (/^Device (?:is closed|closed)$/.test(message)) return 3;
+  return 4;
+}
+
+// Only source-owned probe identifiers, numeric locations and closed numeric
+// categories leave the private report. Error text and media remain private.
 export function reportAndroidPlaywrightResults(reportPath, boundary) {
   const specs = [
     "onboarding-to-home.android.spec.ts",
@@ -220,6 +245,10 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                 location.line > 0
                   ? location.line
                   : spec.line;
+              const waitErrorKind =
+                result.status === "failed"
+                  ? androidWaitErrorKind(result.error)
+                  : undefined;
               boundary.event(
                 "route-capture",
                 result.status === "passed"
@@ -228,7 +257,13 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                     ? "skipped"
                     : "failed",
                 code,
-                { specId: specId + 1, sourceLine },
+                {
+                  specId: specId + 1,
+                  sourceLine,
+                  ...(waitErrorKind !== undefined
+                    ? { androidWaitErrorKind: waitErrorKind }
+                    : {}),
+                },
               );
               emitted += 1;
             }

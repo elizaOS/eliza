@@ -716,6 +716,54 @@ describe("Android hosted probe diagnostics", () => {
     expect(chunks.join("")).not.toContain(canary);
   });
 
+  test("Android wait failures export closed categories without private error text", () => {
+    const root = fixtureRoot();
+    const reportPath = path.join(root, "report.json");
+    const messages = [
+      "androidDevice.wait: java.lang.RuntimeException: Timed out waiting for selector\nCall log:\nPRIVATE_CANARY",
+      "androidDevice.wait: Timeout 1000ms exceeded.",
+      "androidDevice.wait: Device is closed",
+      "androidDevice.wait: PRIVATE_CANARY",
+      "PRIVATE_CANARY",
+    ];
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        suites: [
+          {
+            specs: [
+              {
+                file: "onboarding-to-home.android.spec.ts",
+                line: 117,
+                tests: [
+                  {
+                    results: messages.map((message) => ({
+                      status: "failed",
+                      error: { message },
+                    })),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const chunks = [];
+    reportAndroidPlaywrightResults(
+      reportPath,
+      createAndroidEvidenceBoundary({ write: (chunk) => chunks.push(chunk) }),
+    );
+    expect(chunks).toEqual([
+      ...[1, 2, 3, 4].map(
+        (kind) =>
+          `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidWaitErrorKind=${kind}\n`,
+      ),
+      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117\n",
+    ]);
+    expect(chunks.join("")).not.toContain("PRIVATE_CANARY");
+  });
+
   test("missing, malformed, unrecognized and symlink reports explicitly fail closed", () => {
     const root = fixtureRoot();
     const reportPath = path.join(root, "report.json");
