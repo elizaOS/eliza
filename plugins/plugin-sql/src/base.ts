@@ -131,6 +131,7 @@ import {
   taskMetadataForWrite,
   taskMetadataPatchForWrite,
 } from "./stores/task-timing";
+import { applyTaskWakePatch, assertNoAuthoredTaskWake, preserveTaskWake } from "./stores/task-wake";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
   if (bio == null) return [];
@@ -6075,6 +6076,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
    */
   async createTask(task: Task): Promise<UUID> {
+    assertNoAuthoredTaskWake(task.metadata);
     // Default worldId to agentId for agent-internal tasks
     if (!task.worldId) {
       task = { ...task, worldId: this.agentId as UUID };
@@ -6274,7 +6276,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (task.entityId !== undefined) updateValues.entityId = task.entityId;
         if (task.tags !== undefined) updateValues.tags = task.tags;
         if (task.metadata !== undefined) {
-          updateValues.metadata = replacementMetadata;
+          updateValues.metadata = preserveTaskWake(
+            sql`COALESCE(${taskTable.metadata}, '{}'::jsonb)`,
+            replacementMetadata
+          );
         } else if (scheduledAt !== undefined) {
           const dueAtPatch = JSON.stringify({ scheduledAt });
           updateValues.metadata = sql`COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${dueAtPatch}::jsonb`;
@@ -8363,7 +8368,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         };
         if (task.tags !== undefined) updateValues.tags = task.tags;
         if (replacementMetadata !== undefined) {
-          updateValues.metadata = replacementMetadata;
+          updateValues.metadata = preserveTaskWake(
+            sql`COALESCE(${taskTable.metadata}, '{}'::jsonb)`,
+            replacementMetadata
+          );
         }
         const updated = await this.db
           .update(taskTable)
@@ -8388,7 +8396,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * concurrent whole-object writer cannot slip between a read and this write.
    * Returns false when no task row matched (deleted or foreign agent).
    */
+  readonly supportsAtomicTaskWake = true;
+
   async patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<boolean> {
+    for (const key of ["wakeAt", "wakeRevision"] as const)
+      if (Object.hasOwn(patch.set ?? {}, key) || patch.unset?.includes(key))
+        throw new ElizaError("Task wake keys require atomic wake operation", {
+          code: "TASK_WAKE_INVALID",
+        });
     const guarded = taskMetadataPatchForWrite(patch);
     // JSON.stringify drops undefined values, so an `undefined` in `set` never
     // reaches storage; callers remove keys through `unset`.
@@ -8397,6 +8412,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     for (const key of guarded.unset ?? []) {
       metadata = sql`(${metadata} - ${String(key)})`;
     }
+    if (guarded.wake)
+      metadata = applyTaskWakePatch(
+        sql`COALESCE(${taskTable.metadata}, '{}'::jsonb)`,
+        metadata,
+        guarded.wake
+      );
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const updated = await this.db

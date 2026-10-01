@@ -5188,6 +5188,8 @@ export class AgentRuntime implements IAgentRuntime {
 		id: UUID,
 		patch: TaskMetadataPatch,
 	): Promise<TaskMetadataPatchOutcome> {
+		if (patch.wake && this.adapter.supportsAtomicTaskWake !== true)
+			return "unsupported";
 		const patcher = this.adapter.patchTaskMetadata;
 		if (typeof patcher !== "function") return "unsupported";
 		const patched = await patcher.call(this.adapter, id, patch);
