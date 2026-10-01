@@ -52,9 +52,9 @@ export interface ActionParameterSchema {
 	/** For array types, define the item schema */
 	items?: ActionParameterSchema;
 	/** Enumerated allowed values (schema-compatible) */
-	enumValues?: string[];
+	enumValues?: Array<string | number | boolean | null>;
 	/** Enumerated allowed values */
-	enum?: string[];
+	enum?: Array<string | number | boolean | null>;
 	/** Minimum string length for string-valued parameters */
 	minLength?: number;
 	/** Maximum string length for string-valued parameters */
