@@ -54,6 +54,11 @@ async function reset() {
 function seed(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "PG_VERSION"), "16");
+  fs.mkdirSync(path.join(dir, "global"));
+  fs.writeFileSync(
+    path.join(dir, "global", "pg_control"),
+    "fixture control data",
+  );
   return dir;
 }
 
@@ -100,3 +105,33 @@ it("refuses to reset when the configured provider is postgres", async () => {
   );
   expect(exit).toHaveBeenCalledWith(1);
 });
+
+it.each(["unrelated directory", "symlink"])(
+  "refuses a configured %s without deleting user files",
+  async (kind) => {
+    const target = path.join(tmp, "user-files");
+    fs.mkdirSync(target);
+    const sentinel = path.join(target, "important.txt");
+    fs.writeFileSync(sentinel, "preserve me");
+    let configured = target;
+    if (kind === "symlink") {
+      seed(target);
+      configured = path.join(tmp, "db-link");
+      fs.symlinkSync(target, configured, "dir");
+    }
+    loadElizaConfig.mockReturnValue({
+      database: { provider: "pglite", pglite: { dataDir: configured } },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    await reset();
+    expect(fs.readFileSync(sentinel, "utf8")).toBe("preserve me");
+    expect(fs.existsSync(configured)).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("Refusing to reset"),
+    );
+    expect(exit).toHaveBeenCalledWith(1);
+  },
+);

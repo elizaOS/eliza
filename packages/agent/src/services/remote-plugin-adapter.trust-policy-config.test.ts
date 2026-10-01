@@ -5,7 +5,11 @@
  * dropping signature requirements or the module allowlist; unset settings
  * keep the default endpoint-only policy.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   RemotePluginTrustPolicyConfigError,
@@ -152,6 +156,25 @@ describe("resolveConfiguredRemotePluginTrustPolicy", () => {
     expect(run).toThrow(RemotePluginTrustPolicyConfigError);
     expect(run).toThrow(/ELIZA_CAPABILITY_ROUTER_TRUST_POLICY/);
   });
+
+  it.each(["true", "false", 1])(
+    "rejects non-string values exposed by the real runtime (%s)",
+    (value) => {
+      for (const setting of [
+        "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+        "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
+      ]) {
+        const runtime = new AgentRuntime({
+          character: createCharacter({ name: "policy-setting-validation" }),
+          settings: { ...base, [setting]: value },
+        });
+        expect(typeof runtime.getSetting(setting)).not.toBe("string");
+        expect(() => resolveConfiguredRemotePluginTrustPolicy(runtime)).toThrow(
+          RemotePluginTrustPolicyConfigError,
+        );
+      }
+    },
+  );
 
   it("throws on a malformed policy supplied through the environment", () => {
     process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY = "{oops";

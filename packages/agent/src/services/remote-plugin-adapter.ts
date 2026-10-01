@@ -1485,6 +1485,16 @@ function readRemotePluginTrustPolicySetting<T>(
   parse: (raw: string | undefined) => T,
 ): T {
   const configured = runtime.getSetting?.(setting);
+  if (
+    configured !== null &&
+    configured !== undefined &&
+    typeof configured !== "string"
+  ) {
+    throw new RemotePluginTrustPolicyConfigError(
+      setting,
+      "expected a JSON string",
+    );
+  }
   const raw =
     typeof configured === "string" && configured.trim()
       ? configured

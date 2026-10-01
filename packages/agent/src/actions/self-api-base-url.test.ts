@@ -62,6 +62,19 @@ describe("self-API base URL", () => {
     ).toBe("http://10.0.0.5:31337");
   });
 
+  it.each([
+    ["127.0.0.2", "http://127.0.0.2:31337"],
+    ["::ffff:127.0.0.2", "http://[::ffff:127.0.0.2]:31337"],
+    ["0:0:0:0:0:0:0:1", "http://[0:0:0:0:0:0:0:1]:31337"],
+  ])("preserves the specific bound loopback interface %s", (bind, expected) => {
+    expect(
+      resolveSelfApiBaseUrl({
+        ELIZA_API_PORT: "31337",
+        ELIZA_API_BIND: bind,
+      }),
+    ).toBe(expected);
+  });
+
   it("LOGS search calls the desktop API port, not 2138", async () => {
     process.env.ELIZA_API_PORT = "31337";
     process.env.ELIZA_UI_PORT = "2138";

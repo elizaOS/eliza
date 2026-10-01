@@ -7,6 +7,8 @@
  * inside `runCommandWithRuntime` for consistent error/exit handling.
  */
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
@@ -29,6 +31,28 @@ async function resolveDbDir(): Promise<string> {
   }
   return dataDir;
 }
+function assertResettableDatabaseDirectory(dataDir: string): void {
+  const resolved = fs.realpathSync(dataDir);
+  const protectedDirectories = [
+    path.parse(resolved).root,
+    fs.realpathSync(os.homedir()),
+    fs.realpathSync(process.cwd()),
+  ];
+  if (
+    protectedDirectories.includes(resolved) ||
+    !fs.lstatSync(dataDir).isDirectory() ||
+    !["PG_VERSION", "global/pg_control"].every((marker) => {
+      const markerPath = path.join(dataDir, marker);
+      return fs.existsSync(markerPath) && fs.lstatSync(markerPath).isFile();
+    })
+  ) {
+    throw new ElizaError(
+      `Refusing to reset ${dataDir}: expected a dedicated PGlite directory with database markers`,
+      { code: "DB_RESET_UNSAFE_DIRECTORY" },
+    );
+  }
+}
+
 export function registerDbCommand(program: Command) {
   const db = program.command("db").description("Database management");
   db.command("reset")
@@ -71,6 +95,7 @@ export function registerDbCommand(program: Command) {
             return;
           }
         }
+        assertResettableDatabaseDirectory(dbDir);
         fs.rmSync(dbDir, { recursive: true, force: true });
         console.log(`${theme.success("✓")} Database deleted: ${dbDir}`);
         console.log(

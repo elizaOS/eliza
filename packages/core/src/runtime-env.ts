@@ -372,9 +372,9 @@ export function createSelfApiRequestHeaders(
  * Base URL (no trailing slash) for same-process HTTP calls back to this
  * elizaOS API. Uses the listener's exact port precedence: `ELIZA_API_PORT`
  * (desktop launcher, synced to the bound port by `syncResolvedApiPort`) wins,
- * otherwise the single-process port. Wildcard/loopback binds are reached via
- * `127.0.0.1` (or `[::1]` for an IPv6 loopback bind); a specific interface
- * bind is reached on that interface.
+ * otherwise the single-process port. Wildcard binds are reached via
+ * `127.0.0.1`; every specific interface, including a loopback address,
+ * is reached on that exact interface.
  */
 export function resolveSelfApiBaseUrl(
 	env: RuntimeEnvRecord = process.env,
@@ -386,13 +386,6 @@ export function resolveSelfApiBaseUrl(
 	let host: string;
 	if (!bindHost || isWildcardBindHost(bindHost)) {
 		host = "127.0.0.1";
-	} else if (isLoopbackBindHost(bindHost)) {
-		host =
-			bindHost === "::1" || bindHost === "0:0:0:0:0:0:0:1"
-				? "[::1]"
-				: bindHost === "localhost"
-					? "localhost"
-					: "127.0.0.1";
 	} else {
 		host = bindHost.includes(":") ? `[${bindHost}]` : bindHost;
 	}
