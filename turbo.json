@@ -601,7 +601,10 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/os#build:browser": {
-      "env": ["ELIZA_BROWSER_ANDROID_CERTIFICATE"],
+      "env": [
+        "ELIZA_BROWSER_ANDROID_CERTIFICATE",
+        "ELIZA_BROWSER_ANDROID_APPLICATION"
+      ],
       "outputs": ["browser/dist/**"],
       "inputs": [
         "browser/**",
@@ -622,7 +625,11 @@
     },
     "@elizaos/os#build": {
       "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL", "ELIZA_BROWSER_ANDROID_CERTIFICATE"],
+      "env": [
+        "LOG_LEVEL",
+        "ELIZA_BROWSER_ANDROID_CERTIFICATE",
+        "ELIZA_BROWSER_ANDROID_APPLICATION"
+      ],
       "outputs": [
         "dist/**",
         "browser/dist/**",
