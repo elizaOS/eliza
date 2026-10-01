@@ -134,3 +134,45 @@ it("rejects a distinct registered OWNER before Node trigger/feed handlers can us
     runCount: 0,
   });
 });
+
+it("keeps a persisted legacy heartbeat without entity ownership read-only", async () => {
+  const taskId = await fixture.runtime.createTask({
+    name: "HEARTBEAT",
+    tags: ["queue", "repeat", "heartbeat"],
+    metadata: { updateInterval: 60_000 },
+  });
+  const saved = await fixture.runtime.getTask(taskId);
+  expect(saved?.entityId == null).toBe(true);
+  const feed = await request("canonical", "/api/automations");
+  expect(feed.status).toBe(200);
+  const body = (await feed.json()) as {
+    automations: Array<{
+      triggerId?: string;
+      system?: boolean;
+      status: string;
+    }>;
+  };
+  expect(
+    body.automations.find((row) => row.triggerId === taskId),
+  ).toMatchObject({ system: true, status: "system" });
+  for (const [method, suffix, payload] of [
+    ["PUT", "", { enabled: false }],
+    ["DELETE", "", undefined],
+    ["POST", "/execute", undefined],
+  ] as const) {
+    const response = await request(
+      "canonical",
+      `/api/triggers/${taskId}${suffix}`,
+      method,
+      payload,
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: "System trigger is read-only",
+    });
+  }
+  expect(await fixture.runtime.getTask(taskId)).toMatchObject({
+    id: taskId,
+    tags: ["queue", "repeat", "heartbeat"],
+  });
+});
