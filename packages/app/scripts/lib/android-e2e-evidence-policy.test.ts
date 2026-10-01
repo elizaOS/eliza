@@ -720,10 +720,10 @@ describe("Android hosted probe diagnostics", () => {
     const root = fixtureRoot();
     const reportPath = path.join(root, "report.json");
     const messages = [
-      "androidDevice.wait: java.lang.RuntimeException: Timed out waiting for selector\nCall log:\nPRIVATE_CANARY",
-      "androidDevice.wait: Timeout 1000ms exceeded.",
-      "androidDevice.wait: Device is closed",
-      "androidDevice.wait: PRIVATE_CANARY",
+      "Error: androidDevice.wait: java.lang.RuntimeException: Timed out waiting for selector\nCall log:\nPRIVATE_CANARY",
+      "TimeoutError: androidDevice.wait: Timeout 1000ms exceeded.",
+      "Error: androidDevice.wait: Device is closed",
+      "Error: androidDevice.wait: PRIVATE_CANARY",
       "PRIVATE_CANARY",
     ];
     fs.writeFileSync(

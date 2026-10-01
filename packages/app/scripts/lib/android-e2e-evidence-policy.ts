@@ -166,7 +166,10 @@ export function createAndroidEvidenceBoundary({
 // private error text: 1 selector absent, 2 deadline, 3 device closed, 4 other.
 function androidWaitErrorKind(error) {
   if (typeof error?.message !== "string") return undefined;
-  const firstLine = error.message.split("\n", 1)[0];
+  // Playwright's JSON reporter prepends the serialized Error class name.
+  const firstLine = error.message
+    .split("\n", 1)[0]
+    .replace(/^(?:Error|TimeoutError): /, "");
   const prefix = "androidDevice.wait: ";
   if (!firstLine.startsWith(prefix)) return undefined;
   const message = firstLine.slice(prefix.length);
