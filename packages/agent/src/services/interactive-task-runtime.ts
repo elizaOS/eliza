@@ -3,11 +3,12 @@
  * at the instant of the effect. No renderer may call execute or supply observations.
  */
 import { ElizaError } from "@elizaos/core/errors";
-import type {
-  InteractiveTask,
-  TaskActionProposal,
-  TaskObservation,
-  TaskOwner,
+import {
+  type InteractiveTask,
+  type TaskActionProposal,
+  type TaskObservation,
+  type TaskOwner,
+  transitionInteractiveTask,
 } from "@elizaos/core/messaging/interactive-task";
 import type { SqliteInteractiveTaskStore } from "./interactive-task-store.ts";
 
@@ -28,10 +29,10 @@ export interface InteractiveTaskActuator {
       /** Required immediately before the native effect, in addition to native checks. */
       isCurrent: () => boolean;
     },
-  ): Promise<{
-    status: "succeeded" | "failed" | "unknown";
-    evidenceRef?: string;
-  }>;
+  ): Promise<
+    | { status: "succeeded" | "failed"; evidenceRef: string }
+    | { status: "unknown"; evidenceRef?: string }
+  >;
 }
 export type AuthorizedTaskGoal = Pick<
   Parameters<SqliteInteractiveTaskStore["create"]>[0],
@@ -268,9 +269,24 @@ export class InteractiveTaskRuntime {
       let outcome: Awaited<ReturnType<InteractiveTaskActuator["execute"]>>;
       try {
         // The durable dispatched record exists before the adapter is entered.
-        outcome = await this.options.actuator.execute(
+        const result = await this.options.actuator.execute(
           structuredClone(proposal),
           { owner: this.owner, signal: controller.signal, isCurrent },
+        );
+        outcome =
+          result.status === "unknown"
+            ? { status: "unknown", evidenceRef: result.evidenceRef }
+            : { status: result.status, evidenceRef: result.evidenceRef };
+        // Validate adapter replies before persisting them. An invalid reply after
+        // dispatch is uncertain, never proof that the native effect did not run.
+        transitionInteractiveTask(
+          dispatched,
+          {
+            owner: this.owner,
+            expectedRevision: dispatched.revision,
+            now: this.now(),
+          },
+          { type: "result", operationId: proposal.id, ...outcome },
         );
       } catch {
         // Lost/error replies are not proof that an effect failed to occur.
