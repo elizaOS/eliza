@@ -154,9 +154,9 @@ export function createErrorReportedEscalationHandler(
     const reason = `Systemic failure ${payload.code} reported ${count} times within ${windowMinutes}m`;
     const notice =
       (payload.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
-        (payload.context?.reason === "backend_unavailable" ||
-          payload.context?.reason === "capability_unavailable")) ||
-      payload.code === "NO_MODEL_PROVIDER_CONFIGURED"
+        payload.context?.reason === "backend_unavailable") ||
+      (payload.code === "NO_MODEL_PROVIDER_CONFIGURED" &&
+        payload.context?.reason !== "capability-disabled")
         ? "model-unavailable"
         : "runtime-error";
 

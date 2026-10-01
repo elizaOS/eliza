@@ -393,7 +393,7 @@ describe("makeModelMomentCheckGate", () => {
 });
 
 describe("first-use dossier admission", () => {
-  it("defers a previously seeded dossier until durable LifeOps setup completes without changing its task", async () => {
+  it("denies an unconfigured default occurrence without changing its durable task", async () => {
     const fake = makeFakeRuntime({
       modelOutput: '{"decision":"send","reason":"ready"}',
     });
@@ -405,7 +405,7 @@ describe("first-use dossier admission", () => {
     });
     const original = structuredClone(task);
     expect(await gate.evaluate(task, makeGateContext(task))).toMatchObject({
-      kind: "defer",
+      kind: "deny",
       reason: "LifeOps owner setup is incomplete",
     });
     expect(fake.prompts).toHaveLength(0);

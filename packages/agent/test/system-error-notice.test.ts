@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   AgentRuntime,
   createMessageMemory,
+  ElizaError,
   ensureAgentVoice,
   ModelType,
   systemNoticeText,
@@ -96,6 +97,51 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       }),
     );
     registerErrorEscalation(runtime);
+    // A deliberately disabled capability or unsupported local capability does
+    // not prove provider configuration is missing. Exercise real event delivery,
+    // SQLite persistence, and authenticated history for both classifications.
+    for (const [code, reason] of [
+      ["NO_MODEL_PROVIDER_CONFIGURED", "capability-disabled"],
+      ["LOCAL_INFERENCE_UNAVAILABLE", "capability_unavailable"],
+    ]) {
+      for (let i = 0; i < 3; i++) {
+        runtime.reportError(
+          "notice-capability",
+          new ElizaError("Capability is unavailable", {
+            code,
+            context: { reason, modelType: ModelType.TEXT_EMBEDDING },
+          }),
+        );
+      }
+      await vi.waitFor(async () => {
+        if (!runtime) throw new Error("Runtime closed during capability notice");
+        const notice = await EscalationService.getActiveEscalation(runtime);
+        expect(notice?.systemNotice).toBe("runtime-error");
+      });
+      const notice = await EscalationService.getActiveEscalation(runtime);
+      if (!notice) throw new Error("Capability notice was not persisted");
+      expect(notice.text).toBe(systemNoticeText("runtime-error"));
+      const capabilityHistory = await fetch(
+        `${base}/api/conversations/${conversation.id}/messages`,
+        { headers },
+      );
+      expect(capabilityHistory.status).toBe(200);
+      const capabilityMessages = (await capabilityHistory.json()).messages;
+      expect(
+        capabilityMessages.some(
+          (message: { text: string }) =>
+            message.text === systemNoticeText("runtime-error"),
+        ),
+      ).toBe(true);
+      expect(
+        capabilityMessages.some(
+          (message: { text: string }) =>
+            message.text === systemNoticeText("model-unavailable"),
+        ),
+      ).toBe(false);
+      await EscalationService.resolveEscalation(notice.id, runtime);
+    }
+    expect(modelCalls).toBe(0);
     for (let i = 0; i < 3; i++) {
       const original = { text: `Owner update ${i}`, source: "notice-test" };
       const delivered = await ensureAgentVoice(runtime, original, {

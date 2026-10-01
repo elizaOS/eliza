@@ -360,8 +360,9 @@ export function makeModelMomentCheckGate(
         (await createFirstRunStateStore(runtime).read()).status !== "complete"
       ) {
         return {
-          kind: "defer",
-          until: { offsetMinutes: 5 },
+          // Settle this occurrence through the scheduler's normal recurrence
+          // path instead of retrying an unconfigured default every five minutes.
+          kind: "deny",
           reason: "LifeOps owner setup is incomplete",
         };
       }
