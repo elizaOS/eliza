@@ -651,6 +651,84 @@ describe("AutomationsFeed", () => {
   });
 });
 
+it.each(["missing", "disabled"])(
+  "keeps incomplete counts unknown when the workflow service is %s",
+  async (mode) => {
+    if (mode === "missing") {
+      clientMock.listAutomations.mockRejectedValue(
+        new ApiError({
+          kind: "http",
+          path: "/api/automations",
+          status: 404,
+          message: "Not found",
+        }),
+      );
+    } else {
+      clientMock.listAutomations.mockResolvedValue({
+        ...responseFixture(),
+        automations: [],
+        workflowStatus: {
+          mode: "disabled",
+          host: "in-process",
+          status: "error",
+          cloudConnected: false,
+          localEnabled: false,
+        },
+        workflowFetchError: "Workflow service is not registered",
+      });
+    }
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          reminders: [
+            {
+              definition: {
+                id: "independent-reminder",
+                title: "Reminder still available",
+                status: "active",
+                timezone: "UTC",
+                cadence: { kind: "once", dueAt: "2026-10-01T12:00:00Z" },
+              },
+              occurrence: null,
+              latestAttempt: null,
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    render(<AutomationsFeed />);
+    await screen.findByText("Workflow service unavailable");
+    await screen.findByText("Reminder still available");
+    for (const label of ["All", "Active", "Inactive", "Workflows"]) {
+      act(() =>
+        window.dispatchEvent(
+          new CustomEvent("eliza:automations:setFilter", {
+            detail: { filter: label.toLowerCase() },
+          }),
+        ),
+      );
+      expect(
+        screen.getByRole("button", {
+          name: `Filter automations, ${label} selected`,
+        }).textContent,
+      ).not.toMatch(/\d/);
+    }
+    act(() =>
+      window.dispatchEvent(
+        new CustomEvent("eliza:automations:setFilter", {
+          detail: { filter: "reminders" },
+        }),
+      ),
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Filter automations, Reminders selected",
+      }).textContent,
+    ).toContain("1");
+  },
+);
+
 it("does not display a fabricated zero count when Reminders contains a saved reminder", async () => {
   const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(

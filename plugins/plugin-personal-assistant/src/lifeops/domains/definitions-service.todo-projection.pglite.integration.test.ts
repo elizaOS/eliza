@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
+import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
+import { buildNativeAppleReminderMetadata } from "../apple-reminders.js";
 import { LifeOpsService } from "../service.js";
 import { buildReminderBody } from "./reminders-service.js";
 
@@ -88,6 +90,62 @@ it("excludes owner reminders from todos without changing their stored occurrence
     expect((await service.listReminders())[0].definition.status).toBe(
       "archived",
     );
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120000);
+
+it("uses legacy native reminder classification while preserving an explicit owner surface", async () => {
+  const fixture = await createLifeOpsTestRuntime();
+  try {
+    const service = new LifeOpsService(fixture.runtime);
+    const dueAt = new Date(Date.now() + 120000).toISOString();
+    const saved: LifeOpsTaskDefinition[] = [];
+    for (const explicit of [false, true]) {
+      const record = await service.createDefinition({
+        title: explicit ? "Explicit todo" : "Legacy native reminder",
+        kind: "task",
+        cadence: { kind: "once", dueAt },
+        timezone: "UTC",
+        reminderPlan: null,
+      });
+      // Seed a legacy persisted row directly: this read-model test must not
+      // invoke the native Apple bridge or alter the user's real reminders.
+      const definition = {
+        ...record.definition,
+        metadata: {
+          ...buildNativeAppleReminderMetadata({
+            kind: "reminder",
+            source: "heuristic",
+          }),
+          ...(explicit ? { ownerSurface: "OWNER_TODOS" } : {}),
+        },
+        updatedAt: new Date(
+          Date.parse(record.definition.updatedAt) + 1,
+        ).toISOString(),
+      };
+      await service.repository.updateDefinition(definition, {
+        expectedUpdatedAt: record.definition.updatedAt,
+      });
+      saved.push(definition);
+    }
+    const overview = await service.getOverview();
+    const todos = await service.definitionsDomain.getTodos(
+      overview.owner.occurrences,
+    );
+    expect(todos.some((todo) => todo.title === "Legacy native reminder")).toBe(
+      false,
+    );
+    expect(todos.some((todo) => todo.title === "Explicit todo")).toBe(true);
+    const reminders = await service.listReminders();
+    expect(reminders.map((reminder) => reminder.definition.id)).toEqual([
+      saved[0].id,
+    ]);
+    for (const definition of saved) {
+      expect(
+        (await service.getDefinition(definition.id)).definition.metadata,
+      ).toEqual(definition.metadata);
+    }
   } finally {
     await fixture.cleanup();
   }

@@ -33,6 +33,7 @@ import {
   type DefinitionCreationContext,
   definitionCreationIdentity,
 } from "../definition-creation-identity.js";
+import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -174,7 +175,8 @@ export class DefinitionsDomain {
         activeOnly: false,
       })
     ).filter(
-      (definition) => definition.metadata?.ownerSurface === "OWNER_REMINDERS",
+      (definition) =>
+        resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS",
     );
     const occurrences = await this.ctx.repository.listOccurrencesForDefinitions(
       this.ctx.agentId(),
@@ -258,7 +260,7 @@ export class DefinitionsDomain {
       definitions
         .filter(
           (definition) =>
-            definition.metadata?.ownerSurface === "OWNER_REMINDERS",
+            resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS",
         )
         .map((definition) => definition.id),
     );

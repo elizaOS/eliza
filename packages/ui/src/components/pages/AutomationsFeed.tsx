@@ -606,20 +606,31 @@ export function AutomationsFeed({
     return allRows.filter((r) => passesFilter(r, filter));
   }, [allRows, filter]);
 
+  const automationCountsKnown = data !== null && !error && !workflowRouteIssue;
+  const workflowCountsKnown = automationCountsKnown && !workflowServiceIssue;
   const filterCounts = useMemo<Partial<Record<FeedFilter, number>>>(
     () => ({
-      all: reminderCounts ? allRows.length + reminderCounts.all : undefined,
+      all:
+        workflowCountsKnown && reminderCounts
+          ? allRows.length + reminderCounts.all
+          : undefined,
       reminders: reminderCounts?.all,
-      prompts: allRows.filter((r) => r.kind === "task").length,
-      workflows: allRows.filter((r) => r.kind === "workflow").length,
-      active: reminderCounts
-        ? allRows.filter((r) => r.active).length + reminderCounts.active
+      prompts: automationCountsKnown
+        ? allRows.filter((r) => r.kind === "task").length
         : undefined,
-      inactive: reminderCounts
-        ? allRows.filter((r) => !r.active).length + reminderCounts.inactive
+      workflows: workflowCountsKnown
+        ? allRows.filter((r) => r.kind === "workflow").length
         : undefined,
+      active:
+        workflowCountsKnown && reminderCounts
+          ? allRows.filter((r) => r.active).length + reminderCounts.active
+          : undefined,
+      inactive:
+        workflowCountsKnown && reminderCounts
+          ? allRows.filter((r) => !r.active).length + reminderCounts.inactive
+          : undefined,
     }),
-    [allRows, reminderCounts],
+    [allRows, reminderCounts, automationCountsKnown, workflowCountsKnown],
   );
 
   const newAutomationAction = useAgentElement<HTMLButtonElement>({
