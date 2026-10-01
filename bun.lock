@@ -2068,7 +2068,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2082,7 +2082,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2097,7 +2097,7 @@
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2111,7 +2111,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2125,7 +2125,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
@@ -2140,7 +2140,7 @@
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "fast-check": "^4.10.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2156,7 +2156,7 @@
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "jsdom": "^30.1.1",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2182,7 +2182,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
@@ -2201,7 +2201,7 @@
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2216,7 +2216,7 @@
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2254,7 +2254,7 @@
         "@capacitor/core": "^8.3.1",
         "@capacitor/docgen": "^0.3.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "swiftlint": "^2.0.0",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
@@ -2303,7 +2303,7 @@
         "@capacitor/core": "^8.3.1",
         "@capacitor/docgen": "^0.3.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2331,7 +2331,7 @@
         "jsdom": "^30.1.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
@@ -2350,7 +2350,7 @@
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2364,7 +2364,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2396,7 +2396,7 @@
         "jsdom": "^30.1.1",
         "react": "19.2.7",
         "react-dom": "19.2.7",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
@@ -2423,7 +2423,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
@@ -2465,7 +2465,7 @@
         "@elizaos/native-plugin-shared-types": "workspace:*",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2484,7 +2484,7 @@
         "@capacitor/core": "^8.3.1",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2500,7 +2500,7 @@
         "@capacitor/docgen": "^0.3.0",
         "@elizaos/native-plugin-shared-types": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2514,7 +2514,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -2535,7 +2535,7 @@
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.63.4",
+        "rollup": "^4.63.5",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
@@ -11322,9 +11322,9 @@
 
     "@smthrs/tool-context/ai/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@5.0.47", "", { "dependencies": { "@ai-sdk/provider": "4.0.18", "@standard-schema/spec": "^1.1.0", "@workflow/serde": "4.1.0", "eventsource-parser": "^3.0.8", "undici": "^7.29.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-NZQ1hMxY6Hd4ZiinjpU5HUOsyCHiTFkHw7AiM1EVN+Cd3kNTi47flZWNvFwGqnBojntB1+2eBRTeHRuVLtPhEg=="],
 
-    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.11.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-l9Oo58x0HOP5znGzVhYW9U3e5wVuA4LAZU2AGezTmkhO1CgQRFDhDg4nneHsu/t3WniXg9QrG2nIXL/ZS8ln8Q=="],
+    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.11.3", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.3", "tslib": "^2.4.0" } }, "sha512-zLpS5asjEb7lq8jYLq37N6XKaE41DIexlY1rF/z4/tIl3wo13Sqm28fRyfIsKZD+NZ8mM5RoKkpW/rBcuoSZSg=="],
 
-    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.11.0", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-55coeOFKHv1ywEcUXJtWU5f+Jr/W5tZDvZig8DLKSwUN1JpROQ4rk/SNOQiFWmaR/VKF4zuFyW1B8JduOSv6Pg=="],
+    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
 
     "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@tybys/wasm-util": ["@tybys/wasm-util@0.10.4", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A=="],
 
@@ -12178,7 +12178,7 @@
 
     "@smthrs/tool-context/ai/@ai-sdk/provider-utils/undici": ["undici@7.29.1", "", {}, "sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q=="],
 
-    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
+    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-ELEBe8PsLvvJ6QMr0zLt8ffvOHW/dc1m3CEzNMg7aJUv3bMaoDtw2TXyDAwkYBuroxxuHEwhRTLJSe5sya547g=="],
 
     "@solana/spl-token-group/@solana/codecs/@solana/codecs-core/@solana/errors": ["@solana/errors@2.0.0-rc.1", "", { "dependencies": { "chalk": "^5.3.0", "commander": "^12.1.0" }, "peerDependencies": { "typescript": ">=5" }, "bin": { "errors": "bin/cli.mjs" } }, "sha512-ejNvQ2oJ7+bcFAYWj225lyRkHnixuAeb7RQCixm+5mH4n1IA4Qya/9Bmfy5RAAHQzxK43clu3kZmL5eF9VGtYQ=="],
 
