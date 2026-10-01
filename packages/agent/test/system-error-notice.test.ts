@@ -305,7 +305,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     const interruptedRecords = [
       {
         id: randomUUID() as UUID,
-        systemNotice: "runtime-error",
+        systemNotice: "runtime-error" as const,
         text: "Private fixture diagnostic detail",
       },
       {
