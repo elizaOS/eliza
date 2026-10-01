@@ -104,7 +104,11 @@ function warnAuthBridge(
 
 // ── State paths ───────────────────────────────────────────────────────────────
 
-function resolveBrandAwareNamespace(envNamespace: string | undefined): string {
+/** Active state namespace: `ELIZA_NAMESPACE`, with the compiled-in brand
+ * namespace winning over an unset or default `eliza` value. */
+export function resolveBrandAwareNamespace(
+	envNamespace: string | undefined,
+): string {
 	const brandNamespace = getBrandConfig().namespace || "eliza";
 	const trimmed = envNamespace?.trim();
 	if (!trimmed) return brandNamespace;

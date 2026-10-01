@@ -19,6 +19,10 @@ import {
   requiredLaneFailures,
   selectIosDevice,
 } from "./walkthrough-device-matrix.ts";
+import {
+  childExitCode,
+  parseArgs as parseWalkthroughArgs,
+} from "./walkthrough-e2e.ts";
 
 const devicectlPayload = (devices) => ({ result: { devices } });
 const iphone = ({
@@ -498,5 +502,40 @@ describe("iOS simulator lane (captureIos)", () => {
       "mobile-local-chat-smoke.ts",
     ]);
     assert.equal(computeExitCode({ "ios-simulator": result }, new Set()), 1);
+  });
+});
+
+describe("walkthrough exit-code honesty", () => {
+  it("rejects an unknown --platform instead of running an empty matrix", () => {
+    assert.throws(
+      () => parseArgs(["--platform", "iOS"], {}),
+      /--platform must be one of ios\|android\|device\|all/,
+    );
+    for (const platform of ["ios", "android", "device", "all"]) {
+      assert.equal(parseArgs(["--platform", platform], {}).platform, platform);
+    }
+  });
+
+  it("walkthrough-e2e rejects an unknown --platform instead of forwarding it", () => {
+    assert.throws(
+      () => parseWalkthroughArgs(["--platform", "andriod"]),
+      /--platform must be one of web\|ios\|android\|device\|all/,
+    );
+    assert.throws(
+      () => parseWalkthroughArgs(["--platform"]),
+      /--platform must be one of/,
+    );
+    assert.equal(
+      parseWalkthroughArgs(["--platform", "android"]).platform,
+      "android",
+    );
+    assert.equal(parseWalkthroughArgs([]).platform, "web");
+  });
+
+  it("a signal-killed child is a failure, not exit 0", () => {
+    assert.equal(childExitCode({ code: null, signal: "SIGKILL" }), 1);
+    assert.equal(childExitCode({ code: null, signal: null }), 1);
+    assert.equal(childExitCode({ code: 0, signal: null }), 0);
+    assert.equal(childExitCode({ code: 3, signal: null }), 3);
   });
 });

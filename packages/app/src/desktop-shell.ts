@@ -7,6 +7,7 @@
  * at `@elizaos/app` → `./browser.ts` for plugin hosts that need it.
  */
 
+export { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
   IOS_FULL_BUN_SMOKE_RESULT_KEY,
@@ -20,4 +21,3 @@ export {
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "./runtime/desktop";
-export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";

@@ -88,11 +88,11 @@
 //   adapter never called it anyway).
 //
 // Output (per ABI):
-//   packages/app/android/app/src/main/assets/agent/{abi}/libllama.so
-//   packages/app/android/app/src/main/assets/agent/{abi}/libggml.so
-//   packages/app/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
-//   packages/app/android/app/src/main/assets/agent/{abi}/libggml-base.so
-//   packages/app/android/app/src/main/assets/agent/{abi}/llama-server          (MTP spec-decode HTTP server)
+//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libllama.so
+//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libggml.so
+//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
+//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libggml-base.so
+//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/llama-server          (MTP spec-decode HTTP server)
 //   (with --target *-fused: libelizainference.so — the fused FFI lib)
 //
 // libllama.so has NEEDED entries on the entire libggml family (see
@@ -164,8 +164,9 @@
 // Repo-root resolution:
 //   The script defaults `--assets-dir` to the first app shell found under
 //   `<repoRoot>/packages/app`, `<repoRoot>/apps/app`, or
-//   `<repoRoot>/eliza/packages/app`, then appends
-//   `android/app/src/main/assets/agent`. `--cache-dir` defaults to
+//   `<repoRoot>/eliza/packages/app` that has an Android project (its own
+//   `android/`, else the canonical `platforms/android`), then appends
+//   `app/src/main/assets/agent`. `--cache-dir` defaults to
 //   `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
 //   `<repoRoot>` is derived from this script's location: walk up from
 //   `eliza/packages/app/scripts/aosp/` to the host repo root by
@@ -607,12 +608,31 @@ export function resolveAndroidVulkanCmakeFlags({
       );
     }
   }
+  return androidVulkanCmakeFlags({
+    includeDir: incRoot,
+    glslc,
+    libVulkan,
+    spirvHeadersDir: spirvConfigDir,
+  });
+}
+
+/**
+ * The GGML_VULKAN CMake flag list for resolved (or, in `--dry-run`, symbolic)
+ * NDK/Vulkan paths. Shared by the real build and the dry-run plan so both
+ * print the same flag set.
+ */
+export function androidVulkanCmakeFlags({
+  includeDir,
+  glslc,
+  libVulkan,
+  spirvHeadersDir,
+}) {
   return [
     "-DGGML_VULKAN=ON",
-    `-DVulkan_INCLUDE_DIR=${incRoot}`,
+    `-DVulkan_INCLUDE_DIR=${includeDir}`,
     `-DVulkan_GLSLC_EXECUTABLE=${glslc}`,
     `-DVulkan_LIBRARY=${libVulkan}`,
-    `-DSPIRV-Headers_DIR=${spirvConfigDir}`,
+    `-DSPIRV-Headers_DIR=${spirvHeadersDir}`,
     "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH",
   ];
 }
@@ -1483,6 +1503,111 @@ export function resetIncompatibleCmakeArchiverCache({
 }
 
 /**
+ * The `cmake -S … -B …` configure argv for one Android ABI. The single source
+ * of truth for both the real build ({@link buildLibllamaForAbi}) and the
+ * `--dry-run` plan ({@link describeAndroidTargetDryRun}), so the plan an
+ * operator reads is byte-for-byte the argv the build passes.
+ *
+ * `riscv64BuildFlags` comes from the caller because the real build and the
+ * dry-run resolve the riscv64 plan differently (the dry-run tolerates a
+ * missing zig). `extraCmakeFlags` carries the fused/Vulkan layers.
+ */
+export function libllamaCmakeConfigureArgs({
+  srcDir,
+  buildDir,
+  abi,
+  drivers,
+  riscv64BuildFlags = [],
+  extraCmakeFlags = [],
+}) {
+  const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
+  if (!target) {
+    throw new Error(`[compile-libllama] Unknown ABI: ${abi}`);
+  }
+  const { ccPath, cxxPath, arPath, ranlibPath } = drivers;
+  // x86_64: the mobile x86_64 ABI only ever runs on cuttlefish / the Android
+  // x86_64 emulator (both KVM-backed by an AVX2-class host, and our emulator
+  // recipe boots with `-cpu host`). GGML_NATIVE=OFF leaves the build at the
+  // baseline x86_64 ISA, which has two problems: (1) ggml's own AVX2 kernels
+  // stay off, and (2) — fatal — the vendored QJL kernels gate their AVX2
+  // implementations on `__AVX2__` while `qjl_dispatch.c` references
+  // `qjl_quantize_rows_avx2` (and the score/projection AVX2 entry points)
+  // unconditionally, so a baseline build links with an UNDEFINED symbol and
+  // `dlopen(libllama.so)` fails at runtime with
+  // `Error relocating libggml-cpu.so.0: qjl_quantize_rows_avx2: symbol not
+  // found`. Turning on the standard ggml AVX2/FMA/F16C/AVX feature flags
+  // defines `__AVX2__` for the ggml-cpu translation units (QJL included) so
+  // those entry points are actually compiled. Runtime CPU dispatch still picks
+  // scalar vs AVX2 per-call, but the symbols now exist.
+  const x86_64BuildFlags =
+    abi === "x86_64"
+      ? ["-DGGML_AVX=ON", "-DGGML_AVX2=ON", "-DGGML_FMA=ON", "-DGGML_F16C=ON"]
+      : [];
+
+  // arm64-v8a: GGML_NATIVE=OFF leaves the cross-build at the bare armv8-a
+  // baseline; see build-helpers/arm64-simd.ts for the SIMD floor rationale.
+  const arm64BuildFlags = androidArm64SimdCmakeFlags(abi);
+  return [
+    "-S",
+    srcDir,
+    "-B",
+    buildDir,
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=ON",
+    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    "-DLLAMA_BUILD_TESTS=OFF",
+    // llama-server is required for the AOSP MTP speculative-decode path
+    // (target + drafter share one process; the AOSP local-inference
+    // bootstrap spawns this binary and routes inference over the
+    // OpenAI-compatible HTTP API). The
+    // server target also pulls in the JSON/HTTP common-lib pieces, but adds
+    // ~1.5 MB stripped per ABI; small price relative to the spec-decode
+    // throughput win.
+    "-DLLAMA_BUILD_SERVER=ON",
+    "-DLLAMA_CURL=OFF",
+    // Cross-builds must not discover host OpenSSL or espeak-ng archives.
+    // Android uses localhost HTTP, and the app supplies IPA when Kokoro
+    // reports its built-in ASCII fallback.
+    "-DLLAMA_OPENSSL=OFF",
+    "-DKOKORO_ENABLE_ESPEAK=OFF",
+    `-DCMAKE_C_COMPILER=${ccPath}`,
+    `-DCMAKE_CXX_COMPILER=${cxxPath}`,
+    // Archive ELF objects with zig's llvm-ar/ranlib. The host default
+    // (/usr/bin/ar on macOS) silently writes empty archives for ELF input,
+    // dropping all of libllama.a/libggml*.a (see ensureZigDrivers).
+    `-DCMAKE_AR=${arPath}`,
+    `-DCMAKE_RANLIB=${ranlibPath}`,
+    // No launcher — the driver scripts do all the wrapping themselves.
+    "-DCMAKE_C_COMPILER_LAUNCHER=",
+    "-DCMAKE_CXX_COMPILER_LAUNCHER=",
+    "-DCMAKE_SYSTEM_NAME=Linux",
+    `-DCMAKE_SYSTEM_PROCESSOR=${target.cmakeProcessor}`,
+    // Disable host-arch-specific ISA so the resulting .so loads on any
+    // device of the target ABI. The default tunes for the build host's
+    // native cpu, which is wrong for a cross-build.
+    "-DGGML_NATIVE=OFF",
+    ...riscv64BuildFlags,
+    ...x86_64BuildFlags,
+    ...arm64BuildFlags,
+    // Don't bake in an absolute RUNPATH to the build tree. The default
+    // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
+    // path-leak in shipped APKs and adds dead lookup entries at runtime.
+    // Android's ElizaAgentService.java sets LD_LIBRARY_PATH to the
+    // per-ABI asset dir, so the dynamic linker resolves NEEDED siblings
+    // from there.
+    "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
+    "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
+    "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
+    "-DCMAKE_INSTALL_RPATH=",
+    // `extraCmakeFlags` carries the omnivoice fused-build flags
+    // (-DELIZA_FUSE_OMNIVOICE=ON, etc.) when the explicit-triple
+    // path asked for a fused build. Empty for the non-fused bulk
+    // --abi path.
+    ...extraCmakeFlags,
+  ];
+}
+
+/**
  * Configure + build libllama.so + libggml.so for one ABI. Produces:
  *   <srcDir>/build-<abi>/src/libllama.so
  *   <srcDir>/build-<abi>/ggml/src/libggml.so
@@ -1516,6 +1641,10 @@ export function buildLibllamaForAbi({
   extraCmakeFlags = [],
   extraBuildTargets = [],
   targetName = "",
+  // Fused targets must ship the product llama-server (`verifyFusedSymbols`
+  // rejects an install dir without it), so a server build failure is fatal
+  // there instead of a warning that only surfaces later as a verify failure.
+  llamaServerRequired = false,
 }) {
   const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
   if (!target) {
@@ -1561,25 +1690,6 @@ export function buildLibllamaForAbi({
     plan: riscv64Plan,
   });
 
-  // x86_64: the mobile x86_64 ABI only ever runs on cuttlefish / the Android
-  // x86_64 emulator (both KVM-backed by an AVX2-class host, and our emulator
-  // recipe boots with `-cpu host`). GGML_NATIVE=OFF leaves the build at the
-  // baseline x86_64 ISA, which has two problems: (1) ggml's own AVX2 kernels
-  // stay off, and (2) — fatal — the vendored QJL kernels gate their AVX2
-  // implementations on `__AVX2__` while `qjl_dispatch.c` references
-  // `qjl_quantize_rows_avx2` (and the score/projection AVX2 entry points)
-  // unconditionally, so a baseline build links with an UNDEFINED symbol and
-  // `dlopen(libllama.so)` fails at runtime with
-  // `Error relocating libggml-cpu.so.0: qjl_quantize_rows_avx2: symbol not
-  // found`. Turning on the standard ggml AVX2/FMA/F16C/AVX feature flags
-  // defines `__AVX2__` for the ggml-cpu translation units (QJL included) so
-  // those entry points are actually compiled. Runtime CPU dispatch still picks
-  // scalar vs AVX2 per-call, but the symbols now exist.
-  const x86_64BuildFlags =
-    abi === "x86_64"
-      ? ["-DGGML_AVX=ON", "-DGGML_AVX2=ON", "-DGGML_FMA=ON", "-DGGML_F16C=ON"]
-      : [];
-
   // arm64-v8a: GGML_NATIVE=OFF leaves the cross-build at the bare armv8-a
   // baseline, which keeps ggml's dotprod/i8mm/fp16 NEON kernels AND the eliza
   // QJL NEON-dotprod kernel dead. Pin the armv8.2-a+dotprod+fp16 floor (no i8mm — see arm64-simd.ts) and
@@ -1617,64 +1727,14 @@ export function buildLibllamaForAbi({
   );
   spawn(
     "cmake",
-    [
-      "-S",
+    libllamaCmakeConfigureArgs({
       srcDir,
-      "-B",
       buildDir,
-      "-DCMAKE_BUILD_TYPE=Release",
-      "-DBUILD_SHARED_LIBS=ON",
-      "-DLLAMA_BUILD_EXAMPLES=OFF",
-      "-DLLAMA_BUILD_TESTS=OFF",
-      // llama-server is required for the AOSP MTP speculative-decode path
-      // (target + drafter share one process; the AOSP local-inference
-      // bootstrap spawns this binary and routes inference over the
-      // OpenAI-compatible HTTP API). The
-      // server target also pulls in the JSON/HTTP common-lib pieces, but adds
-      // ~1.5 MB stripped per ABI; small price relative to the spec-decode
-      // throughput win.
-      "-DLLAMA_BUILD_SERVER=ON",
-      "-DLLAMA_CURL=OFF",
-      // Cross-builds must not discover host OpenSSL or espeak-ng archives.
-      // Android uses localhost HTTP, and the app supplies IPA when Kokoro
-      // reports its built-in ASCII fallback.
-      "-DLLAMA_OPENSSL=OFF",
-      "-DKOKORO_ENABLE_ESPEAK=OFF",
-      `-DCMAKE_C_COMPILER=${ccPath}`,
-      `-DCMAKE_CXX_COMPILER=${cxxPath}`,
-      // Archive ELF objects with zig's llvm-ar/ranlib. The host default
-      // (/usr/bin/ar on macOS) silently writes empty archives for ELF input,
-      // dropping all of libllama.a/libggml*.a (see ensureZigDrivers).
-      `-DCMAKE_AR=${arPath}`,
-      `-DCMAKE_RANLIB=${ranlibPath}`,
-      // No launcher — the driver scripts do all the wrapping themselves.
-      "-DCMAKE_C_COMPILER_LAUNCHER=",
-      "-DCMAKE_CXX_COMPILER_LAUNCHER=",
-      "-DCMAKE_SYSTEM_NAME=Linux",
-      `-DCMAKE_SYSTEM_PROCESSOR=${target.cmakeProcessor}`,
-      // Disable host-arch-specific ISA so the resulting .so loads on any
-      // device of the target ABI. The default tunes for the build host's
-      // native cpu, which is wrong for a cross-build.
-      "-DGGML_NATIVE=OFF",
-      ...riscv64BuildFlags,
-      ...x86_64BuildFlags,
-      ...arm64BuildFlags,
-      // Don't bake in an absolute RUNPATH to the build tree. The default
-      // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
-      // path-leak in shipped APKs and adds dead lookup entries at runtime.
-      // Android's ElizaAgentService.java sets LD_LIBRARY_PATH to the
-      // per-ABI asset dir, so the dynamic linker resolves NEEDED siblings
-      // from there.
-      "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
-      "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
-      "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
-      "-DCMAKE_INSTALL_RPATH=",
-      // `extraCmakeFlags` carries the omnivoice fused-build flags
-      // (-DELIZA_FUSE_OMNIVOICE=ON, etc.) when the explicit-triple
-      // path asked for a fused build. Empty for the non-fused bulk
-      // --abi path.
-      ...extraCmakeFlags,
-    ],
+      abi,
+      drivers: { ccPath, cxxPath, arPath, ranlibPath },
+      riscv64BuildFlags,
+      extraCmakeFlags,
+    }),
     {},
   );
 
@@ -1757,13 +1817,14 @@ export function buildLibllamaForAbi({
   // the upstream b8198 examples/server/CMakeLists.txt: `add_executable(
   // ${TARGET} server.cpp ...)` with `set(TARGET llama-server)`).
   //
-  // Non-fatal for the library build: llama-server is the optional AOSP
-  // MTP/spec-decode HTTP path, but the required in-process libs below
-  // (libllama.so/libggml*.so and, for fused targets, libelizainference.so) are
-  // verified separately. On the musl cross-link this target can fail to resolve
-  // its httplib/OpenSSL deps (undefined `httplib::*` / `SSLClient` symbols).
-  // In that case stage-android-agent warns about the missing server and runtime
-  // falls back to the non-MTP path instead of losing the whole native build.
+  // Non-fused builds: non-fatal. llama-server is the optional AOSP
+  // MTP/spec-decode HTTP path, and the required in-process libs below
+  // (libllama.so/libggml*.so) are verified separately. On the musl cross-link
+  // this target can fail to resolve its httplib/OpenSSL deps (undefined
+  // `httplib::*` / `SSLClient` symbols); stage-android-agent then warns about
+  // the missing server and runtime falls back to the non-MTP path.
+  // Fused builds (`llamaServerRequired`): fatal, because verifyFusedSymbols
+  // requires the product llama-server in the install dir.
   log(`[compile-libllama] Compiling llama-server for ${abi} with -j${jobs}`);
   try {
     spawn(
@@ -1772,9 +1833,16 @@ export function buildLibllamaForAbi({
       {},
     );
   } catch (err) {
+    if (llamaServerRequired) {
+      throw new Error(
+        `[compile-libllama] llama-server failed to build for ${targetName || abi}; ` +
+          `fused targets require it (verifyFusedSymbols checks the installed server).`,
+        { cause: err },
+      );
+    }
     log(
       `[compile-libllama] WARN: llama-server failed to build for ${abi}; ` +
-        `continuing — it bundles nothing into the APK and libllama.so/libelizainference.so are unaffected. ` +
+        `continuing without it — the runtime falls back to the non-MTP path; libllama.so is unaffected. ` +
         `Cause: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -1876,6 +1944,11 @@ export function buildLibllamaForAbi({
     fs.chmodSync(llamaServerOut, 0o755);
     log(
       `[compile-libllama] Copied llama-server for ${abi} (${(fs.statSync(llamaServerOut).size / (1024 * 1024)).toFixed(2)} MB).`,
+    );
+  } else if (llamaServerRequired) {
+    throw new Error(
+      `[compile-libllama] llama-server binary not found under ${buildDir}/bin/ or ${buildDir}/ ` +
+        `for ${targetName || abi}; fused targets require it (verifyFusedSymbols checks the installed server).`,
     );
   } else {
     log(
@@ -2487,36 +2560,12 @@ export function describeAndroidTargetDryRun({
   if (parsed.fused) {
     log(`  omnivoice: merged in-fork path (tools/omnivoice/)`);
   }
-  const cmakeFlags = [
-    "-S",
-    srcDir,
-    "-B",
-    buildDir,
-    "-DCMAKE_BUILD_TYPE=Release",
-    "-DBUILD_SHARED_LIBS=ON",
-    "-DLLAMA_BUILD_EXAMPLES=OFF",
-    "-DLLAMA_BUILD_TESTS=OFF",
-    "-DLLAMA_BUILD_SERVER=ON",
-    "-DLLAMA_CURL=OFF",
-    "-DLLAMA_OPENSSL=OFF",
-    "-DKOKORO_ENABLE_ESPEAK=OFF",
-    `-DCMAKE_C_COMPILER=${ccPath}`,
-    `-DCMAKE_CXX_COMPILER=${cxxPath}`,
-    `-DCMAKE_AR=${arPath}`,
-    `-DCMAKE_RANLIB=${ranlibPath}`,
-    "-DCMAKE_C_COMPILER_LAUNCHER=",
-    "-DCMAKE_CXX_COMPILER_LAUNCHER=",
-    "-DCMAKE_SYSTEM_NAME=Linux",
-    `-DCMAKE_SYSTEM_PROCESSOR=${abiTarget.cmakeProcessor}`,
-    "-DGGML_NATIVE=OFF",
-  ];
-  // riscv64 build flags must show up in dry-run output too — the real
-  // buildLibllamaForAbi() resolves these from the detected Zig version and
-  // operators reading the dry-run plan should see the byte-exact list that
-  // will be passed. resolveRiscv64BuildPlan() falls back to scalar when zig
-  // is not installed (dry-run is allowed on toolchain-less boxes), so the
-  // plan reported here mirrors what a build invocation would actually emit
-  // on the same host.
+  // riscv64 build flags must show up in dry-run output too. The real
+  // buildLibllamaForAbi() resolves these from the detected Zig version;
+  // resolveRiscv64BuildPlan() falls back to scalar when zig is not installed
+  // (dry-run is allowed on toolchain-less boxes), so the plan reported here
+  // mirrors what a build invocation would actually emit on the same host.
+  let riscv64BuildFlags = [];
   if (parsed.androidAbi === "riscv64") {
     const plan = resolveRiscv64BuildPlan({ env: process.env, isDryRun: true });
     log(
@@ -2525,22 +2574,36 @@ export function describeAndroidTargetDryRun({
         `all-variants=${plan.allVariants ? "ON" : "OFF"} ` +
         `reason=${plan.reason}`,
     );
-    cmakeFlags.push(
-      ...riscv64CmakeFlagsForPlan({ abi: parsed.androidAbi, plan }),
-    );
+    riscv64BuildFlags = riscv64CmakeFlagsForPlan({
+      abi: parsed.androidAbi,
+      plan,
+    });
   }
-  // arm64-v8a SIMD floor (dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch) — the
-  // real buildLibllamaForAbi() emits these too; surface them in the dry-run.
-  cmakeFlags.push(...androidArm64SimdCmakeFlags(parsed.androidAbi));
-  cmakeFlags.push(
-    "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
-    "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
-    "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
-    "-DCMAKE_INSTALL_RPATH=",
-  );
-  if (parsed.fused) {
-    cmakeFlags.push(...fusedExtraCmakeFlags());
-  }
+  // The Vulkan paths are resolved (and headers staged) only by a real build,
+  // so the dry-run shows the same flag set with symbolic path values.
+  const vulkanCmakeFlags =
+    parsed.backend === "vulkan"
+      ? androidVulkanCmakeFlags({
+          includeDir: path.join(cacheDir, "vulkan-headers"),
+          glslc: "<ndk>/shader-tools/<host>/glslc",
+          libVulkan:
+            "<ndk-sysroot>/usr/lib/aarch64-linux-android/<api>/libvulkan.so",
+          spirvHeadersDir: "<SPIRV-Headers cmake config dir>",
+        })
+      : [];
+  // Same builder as buildLibllamaForAbi(), with the same extra-flag layering
+  // mainTargets() passes (fused flags, then Vulkan flags).
+  const cmakeFlags = libllamaCmakeConfigureArgs({
+    srcDir,
+    buildDir,
+    abi: parsed.androidAbi,
+    drivers: { ccPath, cxxPath, arPath, ranlibPath },
+    riscv64BuildFlags,
+    extraCmakeFlags: [
+      ...(parsed.fused ? fusedExtraCmakeFlags() : []),
+      ...vulkanCmakeFlags,
+    ],
+  });
   log(`  cmake ${cmakeFlags.join(" ")}`);
   const buildTargets = [
     ...(parsed.fused ? fusedCmakeBuildTargets() : ["llama", "llama-server"]),
@@ -2897,6 +2960,7 @@ export async function mainTargets(args) {
         ...(parsed.backend === "vulkan" ? ["ggml-vulkan"] : []),
       ],
       targetName: parsed.target,
+      llamaServerRequired: parsed.fused,
     });
 
     // Post-build: for fused targets prove libelizainference.so exports both

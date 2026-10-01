@@ -181,7 +181,7 @@ export async function ensureAgentVoice(
 	if (content.agentVoiced === true) return content;
 	if (typeof runtime.useModel !== "function") return content;
 
-	const key = `${runtime.agentId} ${options.source} ${hashText(raw)}`;
+	const key = `${runtime.agentId}\u0000${options.source}\u0000${hashText(raw)}`;
 	const cached = cacheGet(key);
 	if (cached !== undefined) {
 		return { ...content, text: cached, agentVoiced: true };

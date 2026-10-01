@@ -128,14 +128,27 @@ const FUSED_LIB_NAME =
     : process.platform === "darwin"
       ? "libelizainference.dylib"
       : "libelizainference.so";
+// A fork commit we cannot read is fatal: a placeholder value would compare
+// equal to a stamp that recorded the same placeholder and report FRESH.
 function forkCommit() {
+  let commit = "";
   try {
-    return execFileSync("git", ["-C", forkSrc, "rev-parse", "HEAD"], {
+    commit = execFileSync("git", ["-C", forkSrc, "rev-parse", "HEAD"], {
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim();
-  } catch {
-    return "unknown";
+  } catch (error) {
+    const stderr = String(error?.stderr ?? "").trim();
+    die(
+      `cannot read the native fork commit at ${forkSrc} (git rev-parse HEAD failed${stderr ? `: ${stderr}` : ""}); refusing to judge build freshness without it`,
+    );
   }
+  if (!/^[0-9a-f]{40,64}$/.test(commit)) {
+    die(
+      `git rev-parse HEAD at ${forkSrc} returned ${JSON.stringify(commit)}, not a commit id; refusing to judge build freshness without it`,
+    );
+  }
+  return commit;
 }
 
 function sha256File(p) {

@@ -3099,6 +3099,10 @@ export {
 	type Tier0Span,
 } from "./security/pii-scrub-seam.js";
 export {
+	isProcessOnlyEnvKey,
+	PROCESS_ONLY_ENV_KEY_PREFIXES,
+} from "./security/process-env-policy.js";
+export {
 	isProcessingPolicyDenial,
 	PROCESSING_POLICY_DENIED,
 	type ProcessingActionEffect,

@@ -41,8 +41,8 @@ import {
   logger,
   type ProviderId,
   readJsonBody,
-  resolveServerOnlyPort,
 } from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
@@ -117,7 +117,7 @@ export interface RuntimeSwitchRouteContext {
   loopbackFetch?: typeof fetch;
 }
 function loopbackBase(): string {
-  return `http://127.0.0.1:${resolveServerOnlyPort(process.env)}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 interface LoopbackResult {
   ok: boolean;

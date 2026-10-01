@@ -116,6 +116,7 @@ export type OperationErrorCode =
   | "abandoned"
   | "no-strategy-for-tier"
   | "no-runtime"
+  | "execution-failed"
   | "strategy-failed"
   | "vault-resolve-failed"
   | "health-check-failed";

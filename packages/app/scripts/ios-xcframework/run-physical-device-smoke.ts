@@ -2023,7 +2023,9 @@ async function main() {
     }
     writeReport(args.report, report);
     process.stderr.write(`${report.error}\n`);
-    process.exit(err?.exitCode ?? EXIT.xcodebuildFailed);
+    // Set the exit code instead of exiting: an immediate exit would skip the
+    // `finally` below and leak the temp Xcode project and signal handlers.
+    process.exitCode = err?.exitCode ?? EXIT.xcodebuildFailed;
   } finally {
     process.off("SIGINT", signalHandler);
     process.off("SIGTERM", signalHandler);

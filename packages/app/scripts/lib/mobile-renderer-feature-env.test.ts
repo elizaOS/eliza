@@ -4,6 +4,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  isAndroidLp3ColorPolicyEnabled,
+  isAndroidLp3RemoteFallbackRequired,
+  isAndroidVpsSidecarBuild,
+} from "../mobile/android/cloud-policy.ts";
+import {
   mobileRendererRequiresFreshBuild,
   mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
@@ -103,6 +108,49 @@ describe("resolveMobileRendererFeatureEnv", () => {
       VITE_VOICE_REALTIME_SELF_HOSTED: "0",
       VITE_VOICE_REALTIME_FORCE: "0",
     });
+  });
+
+  describe("flag truthiness matches the native Android cloud policy", () => {
+    const values: Array<[string, string | undefined, boolean, boolean]> = [
+      // [label, value, LP3 flags truthy, VPS sidecar truthy]
+      ["1", "1", true, true],
+      ["true", "true", true, true],
+      ["TRUE", " TRUE ", true, true],
+      ["yes", "yes", true, true],
+      ["on", "on", false, true],
+      ["0", "0", false, false],
+      ["false", "false", false, false],
+      ["off", "off", false, false],
+      ["unset", undefined, false, false],
+    ];
+
+    for (const [label, value, lp3Truthy, vpsTruthy] of values) {
+      it(`agrees with cloud-policy for ${label}`, () => {
+        const lp3Env = {
+          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: value,
+          ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: value,
+        };
+        expect(isAndroidLp3ColorPolicyEnabled(lp3Env)).toBe(lp3Truthy);
+        expect(isAndroidLp3RemoteFallbackRequired(lp3Env)).toBe(lp3Truthy);
+        const lp3 = resolveMobileRendererFeatureEnv({
+          platform: "android-cloud-debug",
+          env: lp3Env,
+        });
+        expect(lp3.VITE_VOICE_REALTIME_SELF_HOSTED).toBe(lp3Truthy ? "1" : "0");
+        expect(lp3.VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE).toBe(
+          lp3Truthy ? "1" : undefined,
+        );
+
+        const vpsEnv = { ELIZA_ANDROID_VPS_SIDECAR: value };
+        expect(isAndroidVpsSidecarBuild(vpsEnv)).toBe(vpsTruthy);
+        for (const platform of ["android-cloud", "android-cloud-debug"]) {
+          expect(
+            resolveMobileRendererFeatureEnv({ platform, env: vpsEnv })
+              .VITE_VOICE_REALTIME_SELF_HOSTED,
+          ).toBe(vpsTruthy ? "1" : "0");
+        }
+      });
+    }
   });
 
   it("requires an explicit platform", () => {

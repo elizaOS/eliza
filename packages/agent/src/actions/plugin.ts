@@ -15,8 +15,8 @@ import {
   type IAgentRuntime,
   logger,
   requireRestartHandler,
-  resolveServerOnlyPort,
 } from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 import {
   isPluginManagerLike,
@@ -122,8 +122,7 @@ const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
 };
 
 function getApiBase(): string {
-  const port = resolveServerOnlyPort(process.env);
-  return `http://localhost:${port}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
