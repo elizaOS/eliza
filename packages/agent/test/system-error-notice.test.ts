@@ -114,7 +114,8 @@ it("keeps diagnostics while delivering and restoring safe system notices without
         );
       }
       await vi.waitFor(async () => {
-        if (!runtime) throw new Error("Runtime closed during capability notice");
+        if (!runtime)
+          throw new Error("Runtime closed during capability notice");
         const notice = await EscalationService.getActiveEscalation(runtime);
         expect(notice?.systemNotice).toBe("runtime-error");
       });
