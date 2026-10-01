@@ -174,6 +174,9 @@ export function formatNextEventContext(
   context: LifeOpsNextCalendarEventContext,
 ): string {
   if (!context.event) {
+    if (context.readScope?.exhaustive === false) {
+      return "No upcoming event was found in the checked calendar window. Its end is exclusive. This bounded search does not establish that the calendar is clear.";
+    }
     return "No upcoming event was found in the checked calendar window.";
   }
   let reference: { asOf: Date; timeZone: string } | undefined;
