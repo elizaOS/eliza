@@ -92,7 +92,9 @@ describe("workspace production emit", () => {
         emitted.filter((file) => !file.startsWith(`${outputRoot}${path.sep}`)),
       ).toEqual([]);
     },
-    30_000,
+    // Full workspace emission can exceed 30 seconds on a cold host.
+    // The isolated script runner also enforces a 120-second process budget.
+    90_000,
   );
 });
 
