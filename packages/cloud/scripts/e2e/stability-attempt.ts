@@ -6,15 +6,6 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import {
-  closeSync,
-  constants,
-  fchmodSync,
-  fstatSync,
-  ftruncateSync,
-  openSync,
-  writeFileSync,
-} from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -22,6 +13,10 @@ import path from "node:path";
 import { canonicalJsonString } from "@elizaos/core/canonical-json";
 import cloudStabilityScenario from "../../e2e/scenarios/cloud-stability-agent.scenario.ts";
 import { startCloudStack } from "../../e2e/src/fixtures/stack.ts";
+import {
+  runStabilityCleanup,
+  writeParentOwnedStabilityLog,
+} from "../../e2e/src/stability/attempt-cleanup.ts";
 import { canonicalCloudStabilitySha256 } from "../../e2e/src/stability/cloud-stability-runner.ts";
 import {
   linuxSandboxEnabled,
@@ -395,22 +390,7 @@ function persistScenarioLogs(): void {
     ["scenario.stdout.log", cliStdout],
     ["scenario.stderr.log", cliStderr],
   ] as const) {
-    const descriptor = openSync(
-      path.join(outputDir, name),
-      constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW,
-      0o600,
-    );
-    try {
-      const identity = fstatSync(descriptor);
-      if (!identity.isFile() || identity.uid !== process.getuid?.()) {
-        throw new Error("scenario log is not a parent-owned regular file");
-      }
-      fchmodSync(descriptor, 0o600);
-      ftruncateSync(descriptor, 0);
-      writeFileSync(descriptor, redact(content), "utf8");
-    } finally {
-      closeSync(descriptor);
-    }
+    writeParentOwnedStabilityLog(path.join(outputDir, name), redact(content));
   }
 }
 let cliCode: number | null = null;
@@ -423,18 +403,19 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   const handler = (): void => {
     if (handlingSignal) return;
     handlingSignal = true;
-    persistScenarioLogs();
     const reraise = (): void => {
       for (const [registeredSignal, registeredHandler] of signalHandlers) {
         process.removeListener(registeredSignal, registeredHandler);
       }
       process.kill(process.pid, signal);
     };
-    if (activeScenarioGroup === undefined) {
-      reraise();
-      return;
-    }
-    void terminateGroup(activeScenarioGroup).then(reraise, (error: unknown) => {
+    void runStabilityCleanup([
+      persistScenarioLogs,
+      () =>
+        activeScenarioGroup === undefined
+          ? undefined
+          : terminateGroup(activeScenarioGroup),
+    ]).then(reraise, (error: unknown) => {
       // error-policy:J1 Preserve interruption semantics while reporting failed owned-group teardown.
       process.stderr.write(
         `[cloud-stability] scenario interruption cleanup failed: ${String(error)}\n`,
@@ -445,6 +426,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   signalHandlers.set(signal, handler);
   process.once(signal, handler);
 }
+const executionFailures: unknown[] = [];
 try {
   const args = [
     "--conditions=eliza-source",
@@ -551,19 +533,32 @@ try {
   clearTimeout(timeout);
   if (escalation) clearTimeout(escalation);
   await terminateGroup(childProcessGroupId);
+} catch (error) {
+  // error-policy:J7 Preserve the execution failure while completing every owned cleanup.
+  executionFailures.push(error);
 } finally {
-  persistScenarioLogs();
-  for (const [signal, handler] of signalHandlers) {
-    process.removeListener(signal, handler);
-  }
-  if (sandboxEnvironmentPath) {
-    // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
-    await rm(sandboxEnvironmentPath, { force: true });
-  }
-  if (modelProxy) await modelProxy.stop();
-  await cloudApiProxy.stop();
-  await hetznerProxy.stop();
-  await stack.stop();
+  await runStabilityCleanup(
+    [
+      persistScenarioLogs,
+      () => {
+        for (const [signal, handler] of signalHandlers)
+          process.removeListener(signal, handler);
+      },
+      async () => {
+        if (sandboxEnvironmentPath) {
+          // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
+          await rm(sandboxEnvironmentPath, { force: true });
+        }
+      },
+      async () => {
+        if (modelProxy) await modelProxy.stop();
+      },
+      () => cloudApiProxy.stop(),
+      () => hetznerProxy.stop(),
+      () => stack.stop(),
+    ],
+    executionFailures,
+  );
 }
 
 const ambientServiceLogEvidence = [cliStdout, cliStderr].filter((value) =>
