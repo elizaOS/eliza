@@ -77,6 +77,7 @@ import {
   isBrowserWorkspaceEvmChainSupported,
   parseBrowserWorkspaceEvmChainId,
   resolveBrowserWorkspaceSignMessage,
+  resolveBrowserWorkspaceSolanaCluster,
 } from "./browser-workspace-wallet";
 import { LinuxChromiumBrowser } from "./LinuxChromiumBrowser";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
@@ -496,16 +497,6 @@ function resolveBrowserWorkspaceSelection(
   }
   const visibleTab = tabs.find((tab) => tab.visible);
   return visibleTab?.id ?? tabs[0]?.id ?? null;
-}
-function resolveSolanaCluster(
-  value: unknown,
-): "mainnet" | "devnet" | "testnet" | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.toLowerCase();
-  if (normalized.includes("devnet")) return "devnet";
-  if (normalized.includes("testnet")) return "testnet";
-  if (normalized.includes("mainnet")) return "mainnet";
-  return undefined;
 }
 function BrowserNavButton({
   agentId,
@@ -1656,16 +1647,21 @@ function BrowserWorkspaceForAuthority({
                 return;
               }
               const willBroadcast = req.method === "signAndSendTransaction";
+              // Fail closed on an unrecognized dApp network value before any
+              // signing: forwarding would omit `cluster`, which the wallet
+              // API reads as its mainnet default.
+              const clusterResolution = resolveBrowserWorkspaceSolanaCluster(
+                req.params,
+              );
+              if ("error" in clusterResolution) {
+                reply({ error: clusterResolution.error });
+                return;
+              }
+              const cluster = clusterResolution.cluster;
               const chain =
                 req.params && typeof req.params === "object"
                   ? (req.params as Record<string, unknown>).chain
                   : undefined;
-              const cluster =
-                resolveSolanaCluster(
-                  req.params && typeof req.params === "object"
-                    ? (req.params as Record<string, unknown>).cluster
-                    : undefined,
-                ) ?? resolveSolanaCluster(chain);
               const description =
                 req.params && typeof req.params === "object"
                   ? (req.params as Record<string, unknown>).description
