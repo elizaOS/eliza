@@ -3,7 +3,7 @@
  *
  * The server-side bridge between the unified notification rail and remote push
  * transports (APNs / FCM). It subscribes to the AgentEventService bus and, for
- * every `stream:"notification"` event, fans the notification out to all
+ * new `stream:"notification"` events, fans the notification out to all
  * registered device push tokens via the matching provider.
  *
  * DELIVERY POLICY (intentionally simple, documented):
@@ -19,10 +19,10 @@
  * With NO provider configured the service still starts (so the registry/routes
  * stay live) but logs once at debug and does nothing on each notification.
  *
- * VERIFIABILITY: subscription, no-op-when-unconfigured, token lookup, dispatch
- * routing (ios→apns, android→fcm), and dead-token removal are unit-tested with
- * an injected fake provider. Real network delivery is NOT tested — it needs
- * live APNs/FCM credentials and a physical device.
+ * VERIFIABILITY: real inbox/token persistence and event dispatch reach a
+ * loopback HTTP receiver through the production FCM serializer in the agent
+ * transport test. Google delivery and OS display still require credentials
+ * and physical acceptance.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -155,6 +155,9 @@ export class NotificationPushService extends Service {
   }
 
   private async onNotification(event: AgentEventPayload): Promise<void> {
+    // Read-state updates synchronize the inbox; they must not re-alert devices.
+    // Older producers without an event type retain their delivery behavior.
+    if (event.data?.type === "notification_update") return;
     const notification = event.data?.notification;
     if (!isAgentNotification(notification)) return;
 
@@ -224,6 +227,7 @@ function toPushMessage(notification: AgentNotification): PushMessage {
   return {
     title: notification.title,
     body: notification.body,
+    priority: notification.priority,
     data,
   };
 }

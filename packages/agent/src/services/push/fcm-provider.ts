@@ -153,8 +153,23 @@ export class FcmProvider implements PushProvider {
         token: string;
         notification: { title: string; body?: string };
         data?: Record<string, string>;
+        android?: { priority: "HIGH" | "NORMAL" };
       };
     } = { message: { token, notification } };
+    if (message.priority !== undefined) {
+      // FCM NORMAL may wait through Doze. Due reminders are time-sensitive
+      // even at the normal UI tier; an explicit low priority stays deferrable.
+      // Transport priority does not override notification channels or consent.
+      body.message.android = {
+        priority:
+          message.priority === "high" ||
+          message.priority === "urgent" ||
+          (message.priority === "normal" &&
+            message.data?.category === "reminder")
+            ? "HIGH"
+            : "NORMAL",
+      };
+    }
     if (message.data) {
       const data: Record<string, string> = {};
       for (const [key, value] of Object.entries(message.data)) {
