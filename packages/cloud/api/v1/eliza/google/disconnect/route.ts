@@ -25,9 +25,20 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    // #33073: an empty or absent body means "disconnect all on the side" (the
+    // documented default). A NON-empty body that is not valid JSON is a client
+    // error and must never fall back to those defaults — that turned a
+    // truncated request into a bulk owner-side disconnect.
+    const rawBody = await c.req.text();
+    let bodyValue: unknown = {};
+    if (rawBody.trim().length > 0) {
+      try {
+        bodyValue = JSON.parse(rawBody);
+      } catch {
+        return c.json({ error: "Invalid disconnect request: body is not valid JSON." }, 400);
+      }
+    }
+    const parsed = requestSchema.safeParse(bodyValue);
     if (!parsed.success) {
       return c.json(
         { error: "Invalid disconnect request.", details: parsed.error.issues },
