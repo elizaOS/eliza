@@ -137,3 +137,128 @@ it("hides another task and never resubmits a committed choice", () => {
     "Received by the service.",
   );
 });
+it("keeps disabling unavailable options by default", () => {
+  const view = render(
+    <TaskChoice
+      widget={widget()}
+      taskId="task-1"
+      pending
+      onChoose={async () => {}}
+    />,
+  );
+  const button = screen.getByRole("button") as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(button.getAttribute("aria-disabled")).toBeNull();
+  view.rerender(
+    <TaskChoice
+      widget={widget({ state: "committed" })}
+      taskId="task-1"
+      onChoose={async () => {}}
+    />,
+  );
+  expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("status").textContent).toBe(
+    "Your choice was received.",
+  );
+});
+it("explains an in-flight choice without dispatching it twice", async () => {
+  let resolve!: () => void;
+  const first = new Promise<void>((r) => {
+    resolve = r;
+  });
+  let calls = 0;
+  render(
+    <TaskChoice
+      explainUnavailable
+      widget={widget()}
+      taskId="task-1"
+      messages={{ checking: "Still checking your choice." }}
+      onChoose={() => {
+        calls++;
+        return first;
+      }}
+    />,
+  );
+  const button = screen.getByRole("button") as HTMLButtonElement;
+  fireEvent.click(button);
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(button.disabled).toBe(false);
+  expect(button.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(button);
+  expect(calls).toBe(1);
+  expect(screen.getByRole("status").textContent).toBe(
+    "Still checking your choice.",
+  );
+  await act(async () => {
+    resolve();
+    await first;
+  });
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(button.getAttribute("aria-disabled")).toBeNull();
+});
+it("explains a host-pending choice with the default text", () => {
+  let calls = 0;
+  render(
+    <TaskChoice
+      explainUnavailable
+      widget={widget()}
+      taskId="task-1"
+      pending
+      onChoose={async () => {
+        calls++;
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button"));
+  expect(calls).toBe(0);
+  expect(screen.getByRole("status").textContent).toBe(
+    "Your choice is being checked. Please wait for the result.",
+  );
+});
+it("announces expiry on activation before the expiry timer fires", () => {
+  vi.useFakeTimers();
+  const now = Date.now();
+  vi.setSystemTime(now);
+  let calls = 0;
+  render(
+    <TaskChoice
+      explainUnavailable
+      widget={widget({ expiresAt: new Date(now + 1000).toISOString() })}
+      taskId="task-1"
+      expiredMessage="This choice expired. Resume the task to review again."
+      onChoose={async () => {
+        calls++;
+      }}
+    />,
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+  vi.setSystemTime(now + 2000);
+  fireEvent.click(screen.getByRole("button"));
+  fireEvent.click(screen.getByRole("button"));
+  expect(calls).toBe(0);
+  const statuses = screen.getAllByRole("status");
+  expect(statuses).toHaveLength(1);
+  expect(statuses[0]?.textContent).toBe(
+    "This choice expired. Resume the task to review again.",
+  );
+  expect(
+    (screen.getByRole("button") as HTMLButtonElement).getAttribute(
+      "aria-disabled",
+    ),
+  ).toBe("true");
+});
+it("hides options of a received choice when explaining unavailability", () => {
+  render(
+    <TaskChoice
+      explainUnavailable
+      widget={widget({ state: "committed" })}
+      taskId="task-1"
+      messages={{ received: "Received by the service." }}
+      onChoose={async () => {}}
+    />,
+  );
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe(
+    "Received by the service.",
+  );
+});
