@@ -16,6 +16,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
   hasRoleAccess: mocks.hasOwnerAccess,
 }));
 
+import { PGlite } from "@electric-sql/pglite";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -39,6 +40,7 @@ import {
   setBriefComposers,
 } from "../src/actions/brief.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import type { RawSqlQuery } from "../src/lifeops/sql.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 function makeRuntime(
@@ -128,6 +130,106 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("compose_morning", () => {
+    it.each(["json", "narrative"])(
+      "preserves a real PGlite requested-source failure in %s output",
+      async (format) => {
+        const db = await PGlite.create();
+        const reportError = vi.fn();
+        const prompts: string[] = [];
+        const statements: string[] = [];
+        const runtime = Object.assign(
+          makeRuntime({
+            reportError,
+            useModel: async (_type, params) => {
+              prompts.push(params.prompt);
+              return "Life source unavailable.";
+            },
+          }),
+          {
+            character: { name: "Brief source fixture" },
+            getSetting: () => undefined,
+            getService: () => null,
+            getCache: async () => undefined,
+            setCache: async () => true,
+            adapter: {
+              db: {
+                execute: (query: RawSqlQuery) => {
+                  const statement = query.queryChunks
+                    .map((chunk) => chunk.value ?? "")
+                    .join("");
+                  statements.push(statement);
+                  return db.query(statement);
+                },
+              },
+            },
+          },
+        );
+        try {
+          const result = await callBrief(runtime, makeMessage(), {
+            action: "compose_morning",
+            format,
+            include: { calendar: false, inbox: false, commitments: false },
+          });
+          const briefing = result.data?.briefing as {
+            sections: { life: unknown[]; calendar?: unknown };
+            sourceErrors: { life: string };
+            narrative?: string;
+          };
+          expect(result.success).toBe(true);
+          expect(statements.length).toBeGreaterThan(0);
+          expect(briefing.sections.life).toEqual([]);
+          expect(briefing.sections.calendar).toBeUndefined();
+          expect(briefing.sourceErrors).toEqual({ life: "unavailable" });
+          expect(reportError).toHaveBeenCalledWith(
+            "Brief.loadLife",
+            expect.objectContaining({ code: "42P01" }),
+            { source: "life" },
+          );
+          if (format === "narrative") {
+            expect(prompts).toHaveLength(1);
+            expect(prompts[0]).toContain('"life": "unavailable"');
+            expect(prompts[0]).toContain("are unavailable, not empty");
+            expect(briefing.narrative).toBe("Life source unavailable.");
+          } else {
+            expect(prompts).toEqual([]);
+            expect(result.text).toContain("sources are unavailable");
+          }
+        } finally {
+          await db.close();
+        }
+      },
+    );
+
+    it("keeps healthy empty sources distinct from excluded sources", async () => {
+      const loadCalendar = vi.fn(async () => []);
+      const loadInbox = vi.fn(async () => []);
+      setBriefComposers({
+        loadCalendar,
+        loadInbox,
+        loadLife: async () => [],
+        loadCommitments: async () => [],
+      });
+      const result = await callBrief(makeRuntime(), makeMessage(), {
+        action: "compose_morning",
+        format: "json",
+        include: { inbox: false },
+      });
+      const briefing = result.data?.briefing as {
+        sections: {
+          calendar: unknown[];
+          inbox?: unknown;
+          commitments: unknown[];
+        };
+        sourceErrors?: unknown;
+      };
+      expect(briefing.sections.calendar).toEqual([]);
+      expect(briefing.sections.commitments).toEqual([]);
+      expect(briefing.sections.inbox).toBeUndefined();
+      expect(briefing.sourceErrors).toBeUndefined();
+      expect(loadCalendar).toHaveBeenCalledOnce();
+      expect(loadInbox).not.toHaveBeenCalled();
+    });
+
     it("uses persisted ignored-item history to demote that class in the next brief", async () => {
       const runtimeResult = await createLifeOpsTestRuntime();
       try {
@@ -543,14 +645,15 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       const data = result.data as {
         briefing: { sections: Record<string, unknown> };
       };
-      // The degrade omits the wins section entirely — a designed absence, not
-      // a fabricated empty win list rendered as a healthy day.
-      expect(data.briefing.sections).not.toHaveProperty("completedToday");
-      expect(reportError).toHaveBeenCalledTimes(1);
+      expect(data.briefing.sections.completedToday).toEqual([]);
+      expect(result.data?.briefing).toMatchObject({
+        sourceErrors: { life: "unavailable", completedToday: "unavailable" },
+      });
+      expect(reportError).toHaveBeenCalledTimes(2);
       expect(reportError).toHaveBeenCalledWith(
         "Brief.loadCompletedToday",
         expect.anything(),
-        { surface: "evening-brief-wins" },
+        { source: "completedToday" },
       );
     });
 

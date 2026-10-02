@@ -118,6 +118,10 @@ export interface LifeOpsBriefing {
   readonly period: LifeOpsBriefingPeriod;
   readonly generatedAt: string;
   readonly sections: LifeOpsBriefingSections;
+  /** Requested collectors that failed; empty sections without a marker are healthy. */
+  readonly sourceErrors?: Partial<
+    Record<keyof LifeOpsBriefingSections, "unavailable">
+  >;
   readonly editorial: LifeOpsBriefingEditorialContract;
   /** Free-form narrative composed by the LLM compose pass. */
   readonly narrative?: string;

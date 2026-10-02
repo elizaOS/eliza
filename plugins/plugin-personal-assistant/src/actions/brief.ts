@@ -238,26 +238,19 @@ async function loadCalendarFromLifeOps(args: {
   runtime: IAgentRuntime;
   period: LifeOpsBriefingPeriod;
 }): Promise<readonly LifeOpsBriefingCalendarItem[]> {
-  try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const { start, end } = periodWindow(args.period);
-    const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      timeMin: start.toISOString(),
-      timeMax: end.toISOString(),
-    });
-    const events = Array.isArray(feed.events) ? feed.events : [];
-    return events.map((event) =>
-      mapCalendarFeedEventToBriefingItem(event, {
-        startAt: start.toISOString(),
-        endAt: end.toISOString(),
-      }),
-    );
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] calendar load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
+  const service = await getBriefLifeOpsService(args.runtime);
+  const { start, end } = periodWindow(args.period);
+  const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
+  });
+  const events = Array.isArray(feed.events) ? feed.events : [];
+  return events.map((event) =>
+    mapCalendarFeedEventToBriefingItem(event, {
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+    }),
+  );
 }
 
 /** Preserve the calendar provider event id used by later mutation receipts. */
@@ -287,89 +280,60 @@ async function loadInboxFromTriage(args: {
   period: LifeOpsBriefingPeriod;
 }): Promise<readonly LifeOpsBriefingInboxItem[]> {
   if (typeof args.runtime.getService !== "function") return [];
-  try {
-    const { start } = periodWindow(args.period);
-    const refs = await getDefaultTriageService().triage(args.runtime, {
-      sinceMs: start.getTime(),
-    });
-    return refs.map(mapMessageRefToBriefingItem);
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] inbox load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
+  const { start } = periodWindow(args.period);
+  const refs = await getDefaultTriageService().triage(args.runtime, {
+    sinceMs: start.getTime(),
+  });
+  return refs.map(mapMessageRefToBriefingItem);
 }
 
 async function loadLifeFromOverview(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefingLifeItem[]> {
-  try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const overview = await service.getOverview();
-    const records = [
-      ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
-      ...(Array.isArray(overview.reminders) ? overview.reminders : []),
-      ...(Array.isArray(overview.goals) ? overview.goals : []),
-    ];
-    return records.map((item) => {
-      const record = asRecord(item);
-      const metadata = asRecord(record.metadata);
-      return {
-        id: readString(record, "id") ?? "life-item",
-        kind: normalizeLifeKind(
-          readString(record, "kind") ??
-            readString(record, "type") ??
-            readString(record, "subjectType") ??
-            metadata.kind,
-        ),
-        title: readString(record, "title") ?? "Untitled item",
-        dueAt:
-          readString(record, "dueAt") ??
-          readString(record, "scheduledFor") ??
-          null,
-      };
-    });
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] life load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
+  const service = await getBriefLifeOpsService(args.runtime);
+  const overview = await service.getOverview();
+  const records = [
+    ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
+    ...(Array.isArray(overview.reminders) ? overview.reminders : []),
+    ...(Array.isArray(overview.goals) ? overview.goals : []),
+  ];
+  return records.map((item) => {
+    const record = asRecord(item);
+    const metadata = asRecord(record.metadata);
+    return {
+      id: readString(record, "id") ?? "life-item",
+      kind: normalizeLifeKind(
+        readString(record, "kind") ??
+          readString(record, "type") ??
+          readString(record, "subjectType") ??
+          metadata.kind,
+      ),
+      title: readString(record, "title") ?? "Untitled item",
+      dueAt:
+        readString(record, "dueAt") ??
+        readString(record, "scheduledFor") ??
+        null,
+    };
+  });
 }
 
 /**
  * Owner items completed today, for the evening/recap narrative. Loaded from
  * the same service read the lifeops provider uses so the brief's "wins" and
- * the chat context can never disagree. A failed load degrades to an empty
- * list like the sibling loaders — the brief still composes — but the failure
- * is surfaced through `runtime.reportError` so the agent sees it in
- * RECENT_ERRORS instead of an evening brief that silently implies a win-less
- * day.
+ * the chat context can never disagree. A failed load reaches the composition
+ * boundary, which records its unavailable marker and reports the failure.
  */
 async function loadCompletedTodayFromService(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefingLifeItem[]> {
-  try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const completed = await service.listOwnerOccurrencesCompletedToday();
-    return completed.map((occurrence) => ({
-      id: occurrence.id,
-      kind: normalizeLifeKind(occurrence.definitionKind),
-      title: occurrence.title,
-      dueAt: occurrence.dueAt ?? null,
-    }));
-  } catch (error) {
-    // error-policy:J4 the brief composes from independent optional sources;
-    // one broken source must not kill the whole evening brief. The degrade is
-    // designed (section omitted, narrative simply cannot claim wins) and the
-    // failure stays observable: reportError feeds RECENT_ERRORS + owner
-    // escalation rather than a log-only warn masquerading as an empty day.
-    args.runtime.reportError("Brief.loadCompletedToday", error, {
-      surface: "evening-brief-wins",
-    });
-    return [];
-  }
+  const service = await getBriefLifeOpsService(args.runtime);
+  const completed = await service.listOwnerOccurrencesCompletedToday();
+  return completed.map((occurrence) => ({
+    id: occurrence.id,
+    kind: normalizeLifeKind(occurrence.definitionKind),
+    title: occurrence.title,
+    dueAt: occurrence.dueAt ?? null,
+  }));
 }
 
 /** Map one regret-audit item onto the briefing's commitment shape. */
@@ -399,25 +363,15 @@ async function loadCommitmentsFromLedger(args: {
 }): Promise<readonly LifeOpsBriefingCommitmentItem[]> {
   const adapter = (args.runtime as { adapter?: { db?: unknown } }).adapter;
   if (!adapter?.db) return [];
-  try {
-    const records = await new LifeOpsRepository(
-      args.runtime,
-    ).listCommitmentLedgerRecords(String(args.runtime.agentId), {
-      statuses: ["open", "tracked"],
-    });
-    const audit = buildCommitmentRegretAudit(records, {
-      nowIso: new Date().toISOString(),
-    });
-    return audit.items.map(mapRegretAuditItemToBriefingItem);
-  } catch (error) {
-    // error-policy:J4 the brief composes from independent optional sources;
-    // a broken ledger read must not kill the whole brief. The degrade is
-    // designed (section omitted) and stays observable through reportError.
-    args.runtime.reportError("Brief.loadCommitments", error, {
-      surface: "brief-commitment-regret-audit",
-    });
-    return [];
-  }
+  const records = await new LifeOpsRepository(
+    args.runtime,
+  ).listCommitmentLedgerRecords(String(args.runtime.agentId), {
+    statuses: ["open", "tracked"],
+  });
+  const audit = buildCommitmentRegretAudit(records, {
+    nowIso: new Date().toISOString(),
+  });
+  return audit.items.map(mapRegretAuditItemToBriefingItem);
 }
 
 async function loadEngagementSummariesFromLifeOps(args: {
@@ -521,7 +475,7 @@ async function recordRenderedImpressionsInLifeOps(args: {
 /**
  * Composer hooks — overridable for tests. Defaults compose from LifeOps'
  * structural services: calendar feed, MESSAGE triage, overview reminders, and
- * recurring payments. Unavailable sources degrade to empty arrays.
+ * recurring payments. The composition boundary records unavailable sources.
  */
 export interface BriefComposers {
   loadCalendar: (args: {
@@ -679,6 +633,7 @@ export function buildNarrativePrompt(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  sourceErrors?: LifeOpsBriefing["sourceErrors"];
   editorial?: LifeOpsBriefingEditorialContract;
   runtime?: IAgentRuntime;
   optimizationTask?: BriefOptimizationTask;
@@ -688,6 +643,7 @@ export function buildNarrativePrompt(args: {
       kind: args.kind,
       period: args.period,
       sections: args.sections,
+      sourceErrors: args.sourceErrors,
       editorial: args.editorial,
     },
     null,
@@ -712,7 +668,7 @@ export function buildNarrativePrompt(args: {
         : BRIEF_NARRATIVE_INSTRUCTIONS;
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
-${instructions}
+${instructions}${args.sourceErrors ? "\nRequested sources in sourceErrors are unavailable, not empty. Name each unavailable source in one compact clause; never claim it has no items or nothing due." : ""}
 
 Data:
 ${payload}`;
@@ -723,6 +679,7 @@ async function composeNarrative(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  sourceErrors?: LifeOpsBriefing["sourceErrors"];
   editorial: LifeOpsBriefingEditorialContract;
   optimizationTask: BriefOptimizationTask;
 }): Promise<
@@ -739,6 +696,7 @@ async function composeNarrative(args: {
     kind: args.kind,
     period: args.period,
     sections: args.sections,
+    sourceErrors: args.sourceErrors,
     editorial: args.editorial,
     runtime: args.runtime,
     optimizationTask: args.optimizationTask,
@@ -799,6 +757,25 @@ async function assembleBriefing(args: {
   optimizationTask: BriefOptimizationTask;
 }): Promise<LifeOpsBriefing> {
   const composers = activeComposers;
+  const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
+  const collectSource = async <T>(
+    source: keyof LifeOpsBriefingSections,
+    collect: () => Promise<readonly T[]>,
+  ): Promise<readonly T[]> => {
+    try {
+      return await collect();
+    } catch (error) {
+      // error-policy:J4 compose the remaining requested sources, while retaining
+      // an explicit unavailable marker and the diagnostic cause.
+      args.runtime.reportError(
+        `Brief.load${source.charAt(0).toUpperCase()}${source.slice(1)}`,
+        error,
+        { source },
+      );
+      sourceErrors[source] = "unavailable";
+      return [];
+    }
+  };
   const [
     calendarItems,
     inboxItems,
@@ -807,16 +784,27 @@ async function assembleBriefing(args: {
     engagementSummaries,
   ] = await Promise.all([
     args.include.calendar
-      ? composers.loadCalendar({ runtime: args.runtime, period: args.period })
+      ? collectSource("calendar", () =>
+          composers.loadCalendar({
+            runtime: args.runtime,
+            period: args.period,
+          }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingCalendarItem[]),
     args.include.inbox
-      ? composers.loadInbox({ runtime: args.runtime, period: args.period })
+      ? collectSource("inbox", () =>
+          composers.loadInbox({ runtime: args.runtime, period: args.period }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingInboxItem[]),
     args.include.life
-      ? composers.loadLife({ runtime: args.runtime, period: args.period })
+      ? collectSource("life", () =>
+          composers.loadLife({ runtime: args.runtime, period: args.period }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingLifeItem[]),
     args.include.commitments
-      ? composers.loadCommitments({ runtime: args.runtime })
+      ? collectSource("commitments", () =>
+          composers.loadCommitments({ runtime: args.runtime }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
     composers.loadEngagementSummaries({ runtime: args.runtime }),
   ]);
@@ -827,17 +815,17 @@ async function assembleBriefing(args: {
   // (#16935). Morning/weekly briefs keep their forward-looking shape.
   const completedToday =
     kind === "evening" && args.include.life
-      ? await composers.loadCompletedToday({ runtime: args.runtime })
+      ? await collectSource("completedToday", () =>
+          composers.loadCompletedToday({ runtime: args.runtime }),
+        )
       : [];
 
   const sections: LifeOpsBriefingSections = {
     ...(args.include.calendar ? { calendar: calendarItems } : {}),
     ...(args.include.inbox ? { inbox: inboxItems } : {}),
     ...(args.include.life ? { life: lifeItems } : {}),
-    ...(completedToday.length > 0 ? { completedToday } : {}),
-    ...(args.include.commitments && commitmentItems.length > 0
-      ? { commitments: commitmentItems }
-      : {}),
+    ...(kind === "evening" && args.include.life ? { completedToday } : {}),
+    ...(args.include.commitments ? { commitments: commitmentItems } : {}),
   };
 
   const editorial = buildBriefEditorialContract({
@@ -851,6 +839,7 @@ async function assembleBriefing(args: {
       kind,
       period: args.period,
       sections,
+      ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
       editorial,
       optimizationTask: args.optimizationTask,
     });
@@ -862,6 +851,7 @@ async function assembleBriefing(args: {
     period: args.period,
     generatedAt: new Date().toISOString(),
     sections,
+    ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
     editorial,
     ...(narrativeResult?.text ? { narrative: narrativeResult.text } : {}),
     ...(narrativeResult?.optimizationTrace
@@ -1155,7 +1145,7 @@ export const briefAction: Action & {
 
     const text =
       briefing.narrative ??
-      `Composed your ${briefing.kind} briefing for ${briefing.period}.`;
+      `Composed your ${briefing.kind} briefing for ${briefing.period}.${briefing.sourceErrors ? " Some requested sources are unavailable." : ""}`;
 
     logger.info(
       `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
