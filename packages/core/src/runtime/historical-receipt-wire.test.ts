@@ -58,6 +58,7 @@ function effects(index: number, actionName = true): ContextObjectPromptSegment {
 }
 function expand(segments: ContextObjectPromptSegment[]) {
 	const legends = new Map();
+	const receiptValues = new Map<string, unknown[]>();
 	return segments.flatMap((segment) => {
 		let body = JSON.parse(segment.content);
 		if (segment.label === "runtime:historical_receipt_encoding") {
@@ -69,8 +70,17 @@ function expand(segments: ContextObjectPromptSegment[]) {
 		if (!segment.label?.endsWith("_table") && !shared) return [body];
 		if (body.receiptShapes) {
 			const index = body.receiptColumns.indexOf("receipt");
+			const prior = shared ? (receiptValues.get(body.id) ?? []) : [];
+			if (shared) receiptValues.set(body.id, prior);
 			for (const [, receipts] of body.rows)
 				for (const receipt of receipts) {
+					if (receipt[index].length === 1) {
+						const reference = receipt[index][0];
+						expect(reference).toBeLessThan(prior.length);
+						receipt[index] = prior[reference];
+						prior.push(receipt[index]);
+						continue;
+					}
 					const [shape, values] = receipt[index];
 					const object = Object.fromEntries(
 						body.receiptShapes[shape].map((key: string, offset: number) => [
@@ -80,6 +90,7 @@ function expand(segments: ContextObjectPromptSegment[]) {
 					);
 					receipt[index] =
 						body.columns[1] === "navigation" ? JSON.stringify(object) : object;
+					prior.push(receipt[index]);
 				}
 		}
 		return body.rows.map((row: [string, unknown[][]]) => ({
@@ -113,6 +124,71 @@ it("round-trips ordered request bindings, multiple receipts, false/null/absent v
 	).toBeLessThan(
 		input.reduce((sum, segment) => sum + segment.content.length, 0),
 	);
+});
+
+it("references exact repeated receipts while preserving every occurrence and source across interleaved rows", () => {
+	const receipt = {
+		receiptId: "same-receipt",
+		operation: "notes.update",
+		resource: { kind: "note", id: "original-note" },
+		artifacts: [],
+		idempotency: { key: "same-request", replayed: false },
+		observedAt: "2026-10-02T19:57:37.983Z",
+		outcome: "failed",
+		failure: { code: "EXACT_FAILURE", detail: "Ω exact detail ".repeat(40) },
+	};
+	const second = { ...receipt, receiptId: "second-receipt" };
+	const distinct = { ...receipt, observedAt: "2026-10-02T19:57:38.983Z" };
+	const values = [
+		receipt,
+		second,
+		second,
+		receipt,
+		distinct,
+		receipt,
+		second,
+		second,
+	];
+	const originals = Array.from({ length: 8 }, (_, index) => ({
+		id: `effect:${index}`,
+		label: "runtime:historical_effects",
+		stable: false,
+		content: JSON.stringify({
+			requestSourceEventId: `history:${index}`,
+			scope: "Historical evidence only; no new authority.",
+			outcomes: [
+				{ actionName: "NOTES", success: false, receipt: values[index] },
+				{ actionName: "CALENDAR", success: index % 2 === 0, receipt: second },
+			],
+		}),
+	}));
+	for (const interleaved of [false, true]) {
+		const input = originals.flatMap((segment, index) =>
+			interleaved
+				? [
+						segment,
+						{ label: "user", stable: false, content: `"dialogue:${index}"` },
+					]
+				: [segment],
+		);
+		const before = structuredClone(input);
+		const packed = compactHistoricalReceiptSegments(input);
+		expect(
+			packed.some((segment) => segment.content.includes("one-item receipt")),
+		).toBe(true);
+		expect(packed.some((segment) => segment.content.includes("[1]"))).toBe(
+			true,
+		);
+		expect(expand(packed)).toEqual(
+			input.map((segment) => JSON.parse(segment.content)),
+		);
+		expect(input).toEqual(before);
+		expect(
+			packed.reduce((sum, segment) => sum + segment.content.length, 0),
+		).toBeLessThan(
+			input.reduce((sum, segment) => sum + segment.content.length, 0),
+		);
+	}
 });
 it("retains malformed, unknown, noncanonical, missing and nonuniform outer shapes verbatim", () => {
 	const base = navigation(1);

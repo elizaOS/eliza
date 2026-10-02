@@ -156,7 +156,7 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 	}
 	if (packable) {
 		let receiptOffset = 0;
-		const candidate = JSON.stringify({
+		const packed = {
 			...table,
 			receiptEncoding: navigation
 				? "receipt=[shapeIndex,values]; receiptShapes gives exact property order. Reconstruct the original receipt string with JSON.stringify(Object.fromEntries(columns paired with values)). Only canonical JSON strings are encoded; every value is exact."
@@ -170,8 +170,37 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 					),
 				),
 			]),
-		});
+		};
+		const candidate = JSON.stringify(packed);
 		if (candidate.length < content.length) content = candidate;
+		// Repeated receipt values keep independent request bindings and positions.
+		// References always point to the first complete earlier receipt, never to
+		// another reference. Compare the entire encoding including its instructions.
+		const firstReceipts = new Map<string, number>();
+		let position = 0;
+		const referenced = {
+			...packed,
+			receiptEncoding:
+				packed.receiptEncoding +
+				" A one-item receipt [n] repeats the complete receipt at zero-based receipt position n earlier in this table (including rows sharing its legend). Each occurrence retains its own source and position.",
+			rows: packed.rows.map(([source, receipts]) => [
+				source,
+				(receipts as unknown[][]).map((receipt) =>
+					receipt.map((value, column) => {
+						if (column !== receiptIndex) return value;
+						const key = JSON.stringify(value);
+						const first = firstReceipts.get(key);
+						const current = position++;
+						if (first !== undefined) return [first];
+						firstReceipts.set(key, current);
+						return value;
+					}),
+				),
+			]),
+		};
+		const referenceCandidate = JSON.stringify(referenced);
+		if (referenceCandidate.length < content.length)
+			content = referenceCandidate;
 	}
 	return JSON.parse(content) as {
 		encoding: string;
