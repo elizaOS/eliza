@@ -994,6 +994,26 @@ function buildBaseHints(): ConfigUiHints {
   for (const path of RETIRED_WEB_SEARCH_PATHS) {
     hints[path] = { ...hints[path], hidden: true };
   }
+  // These legacy settings have no runtime tool-policy implementation. Do not
+  // offer controls which promise restrictions that executable actions ignore.
+  for (const prefix of [
+    "tools",
+    "agents.list[].tools",
+    "agents.list.*.tools",
+  ]) {
+    for (const key of [
+      "profile",
+      "allow",
+      "alsoAllow",
+      "deny",
+      "byProvider",
+      "sandbox.tools",
+      "subagents.tools",
+    ]) {
+      const path = `${prefix}.${key}`;
+      hints[path] = { ...hints[path], hidden: true };
+    }
+  }
   return hints;
 }
 function applySensitiveHints(hints: ConfigUiHints): ConfigUiHints {
