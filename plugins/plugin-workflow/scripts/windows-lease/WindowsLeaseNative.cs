@@ -128,7 +128,8 @@ public static class WindowsLeaseNative {
         using(var stream=new System.IO.Pipes.NamedPipeClientStream(System.IO.Pipes.PipeDirection.InOut,true,true,pipe)) {
           string challenge=Guid.NewGuid().ToString("N");await Bound(Send(stream,capability+":"+challenge),stream,1000);
           string response=await Bound(Line(stream),stream,1000);
-          if(response!=generation+":"+challenge)throw new InvalidDataException("Worker challenge mismatch");return generation;
+          if(response!=generation+":"+challenge)throw new InvalidDataException("Worker challenge mismatch");
+          await Bound(Send(stream,"ack:"+challenge),stream,1000);return generation;
         }
       }
     }
@@ -151,6 +152,11 @@ public static class WindowsLeaseNative {
           if(fields.Length!=2||!Hex(fields[0],64)||!Hex(fields[1],32))throw new InvalidDataException("Challenge frame");
           int difference=0;for(int n=0;n<64;n++)difference|=fields[0][n]^capability[n];if(difference!=0)throw new InvalidDataException("Capability mismatch");
           await Bound(Send(stream,generation+":"+fields[1]),stream,1000);
+          // DisconnectNamedPipe discards unread bytes. Keep the response alive
+          // until the authenticated client acknowledges consumption, bounded
+          // like every other frame so a stalled client cannot hold the lease.
+          string acknowledgement=await Bound(Line(stream),stream,1000);
+          if(acknowledgement!="ack:"+fields[1])throw new InvalidDataException("Challenge acknowledgement");
         } catch(EndOfStreamException) { /* A probe can disconnect before sending; keep the original generation. */
         } catch(InvalidDataException) { /* Reject this bounded frame without retiring the lease. */
         } catch(TimeoutException) { /* CancelIoEx settled the pending I/O; retain the original pipe instance. */

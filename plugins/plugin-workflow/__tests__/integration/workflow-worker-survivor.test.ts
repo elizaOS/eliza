@@ -414,3 +414,92 @@ test('concurrent source publication preserves an existing importer inode and rej
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const termination of ['crash', 'timeout', 'abort'] as const) {
+  test(`live parent preserves unknown effects after worker ${termination}`, async () => {
+    const previousHome = process.env.HOME;
+    const home = fs.realpathSync(fs.mkdtempSync('/tmp/workflow-survivor-'));
+    fs.chmodSync(home, 0o700);
+    process.env.HOME = home;
+    fs.mkdirSync(path.join(home, '.eliza-worker-ipc'), { mode: 0o700 });
+    const tenantId = `survivor-${randomUUID()}`,
+      workflowId = 'owned-effect';
+    const root = resolveSmithersWorkflowDir(tenantId, workflowId);
+    fs.mkdirSync(root, { recursive: true });
+    const effect = path.join(root, 'effect-count'),
+      ready = path.join(root, 'effect-ready'),
+      release = path.join(root, 'effect-release');
+    const source = `/** @jsxImportSource smthrs */
+import {createSmithers} from 'smthrs/create';import {z} from 'zod';import * as fs from 'node:fs';
+const {Workflow,Task,smithers,outputs}=createSmithers({result:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+const agent={id:'owned-local-fixture',generate:async()=>{fs.appendFileSync(${JSON.stringify(effect)},'effect\\n');fs.writeFileSync(${JSON.stringify(ready)},'ready');const deadline=Date.now()+15000;while(!fs.existsSync(${JSON.stringify(release)})){if(Date.now()>deadline)throw Error('owned effect release deadline');await new Promise(r=>setTimeout(r,10));}fs.writeFileSync(${JSON.stringify(path.join(root, 'effect-finished'))},'finished');return {text:'{"value":1}'};}};
+export default smithers(()=><Workflow name="survivor"><Task id="effect" output={outputs.result} agent={agent}>Perform the owned local fixture.</Task></Workflow>);`;
+    const workflow = {
+      id: workflowId,
+      name: 'Survivor',
+      active: true,
+      language: 'tsx' as const,
+      steps: [],
+      widgets: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      versionId: 'v1',
+      source,
+    };
+    const request = {
+      tenantId,
+      workflow,
+      runId: randomUUID(),
+      mode: 'manual' as const,
+      input: {},
+      timeoutMs: 20000,
+    };
+    const lease = {
+      rootDir: fs.realpathSync(root),
+      socketRoot: fs.realpathSync(path.join(home, '.eliza-worker-ipc')),
+      runId: request.runId,
+      versionId: 'v1',
+      sourceSha256: createHash('sha256').update(source).digest('hex'),
+    };
+
+    const controller = new AbortController();
+    const pending = runSmithersWorkflow({
+      ...request,
+      timeoutMs: termination === 'timeout' ? 10000 : 20000,
+      signal: controller.signal,
+      generate: async () => {
+        throw Error('Unexpected model call');
+      },
+    });
+    // Observe rejection immediately while waiting for the real effect/owner.
+    const outcome = pending.then(
+      (value) => ({ value }),
+      (error) => ({ error })
+    );
+    try {
+      await until(() => fs.existsSync(ready));
+      const owner = await inspectWorkerLease(lease);
+      if (owner.state !== 'live') throw Error('Fixture worker not authenticated');
+      if (termination === 'crash') process.kill(owner.pid, 'SIGKILL');
+      if (termination === 'abort') controller.abort();
+      expect(await outcome).toMatchObject({ error: { code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN' } });
+      expect((await inspectWorkerLease(lease)).state).toBe('unknown');
+      await expect(
+        runSmithersWorkflow({
+          ...request,
+          generate: async () => {
+            throw Error('Duplicate model call');
+          },
+        })
+      ).rejects.toMatchObject({ code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN' });
+      expect(fs.readFileSync(effect, 'utf8')).toBe('effect\n');
+    } finally {
+      controller.abort();
+      await outcome;
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+    }
+  }, 25000);
+}
