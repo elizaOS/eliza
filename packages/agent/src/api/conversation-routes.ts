@@ -85,12 +85,14 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
+  DeviceActionError,
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
   parseReplyRecoveryHistorySelection,
   projectToolResultForModel,
   resolvePlannedReplyEgress,
   shouldSkipResponseMemoryPersistence,
+  withDeviceActionTurn,
 } from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
@@ -175,6 +177,7 @@ import {
   ELIZA_TRACE_ID_HEADER,
   resolveConversationTraceContext,
 } from "./conversation-trace.ts";
+import { deviceRequestCredential } from "./device-action-routes.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
@@ -3017,18 +3020,63 @@ export async function handleConversationRoutes(
     ({ method, path }) => method === ctx.method && path.test(ctx.pathname),
   );
   if (!endpoint) return false;
-  return endpoint.handle({
-    ...ctx,
-    requestStartedAt,
-    trustedApiPrincipal: resolveTrustedApiPrincipal(
+  const handle = () =>
+    endpoint.handle({
+      ...ctx,
+      requestStartedAt,
+      trustedApiPrincipal: resolveTrustedApiPrincipal(
+        ctx.req,
+        ctx.callerAuthorization,
+      ),
+      requestUrl: new URL(
+        ctx.req.url ?? "",
+        `http://${ctx.req.headers.host ?? "localhost"}`,
+      ),
+    });
+  if (
+    ctx.req.headers["x-eliza-device-id"] ||
+    ctx.req.headers["x-eliza-device-key"]
+  ) {
+    const credential = deviceRequestCredential(
       ctx.req,
       ctx.callerAuthorization,
-    ),
-    requestUrl: new URL(
-      ctx.req.url ?? "",
-      `http://${ctx.req.headers.host ?? "localhost"}`,
-    ),
-  });
+    );
+    if (!credential || !ctx.state.runtime) {
+      ctx.error(ctx.res, "Authenticated device session required", 401);
+      return true;
+    }
+    // The bound identity is never copied from message metadata or model parameters.
+    let authenticated = false;
+    try {
+      return await withDeviceActionTurn(
+        ctx.state.runtime,
+        credential,
+        async () => {
+          authenticated = true;
+          return handle();
+        },
+      );
+    } catch (error) {
+      if (authenticated) throw error;
+      if (!(error instanceof DeviceActionError)) {
+        ctx.state.runtime.reportError(
+          "DeviceActionService",
+          new Error("Device authentication store failed"),
+          { code: "DEVICE_STORE_FAILURE" },
+        );
+      }
+      ctx.error(
+        ctx.res,
+        "Device unavailable",
+        error instanceof DeviceActionError &&
+          error.code !== "DEVICE_STORE_UNAVAILABLE"
+          ? 403
+          : 503,
+      );
+      return true;
+    }
+  }
+  return handle();
 }
 async function listConversations(
   ctx: ConversationHandlerContext,

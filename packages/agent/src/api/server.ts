@@ -37,7 +37,6 @@ import {
   writeJsonError,
   writeJsonResponse,
 } from "@elizaos/core";
-
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import { WebSocket, WebSocketServer } from "ws";
@@ -157,6 +156,10 @@ import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
+import {
+  handleDeviceActionRoutes,
+  requiresDeviceIdentity,
+} from "./device-action-routes.ts";
 import {
   type captureEarlyLogs,
   flushEarlyLogs,
@@ -1538,7 +1541,7 @@ async function handleRequestForViewClient(
           state.runtime,
           {
             allowCookieAuth: allowHostCookieAuth,
-            allowTrustedLocalBypass: true,
+            allowTrustedLocalBypass: !requiresDeviceIdentity(req, pathname),
             allowBearerAuth: true,
           },
         );
@@ -1562,6 +1565,16 @@ async function handleRequestForViewClient(
     };
   const isHostSessionAuthorized = async (): Promise<boolean> =>
     (await resolveHostSessionAuthorization()).ok;
+  // A presented gateway proof is an exclusive authentication mode. A valid
+  // container bearer must never rescue an invalid/unsupported owner proof.
+  if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
+    const verified = await resolveHostSessionAuthorization();
+    if (!verified.ok || !verified.externalIdentity || !verified.identityId) {
+      json(res, { error: "Verified Cloud owner session required" }, 401);
+      return;
+    }
+  }
+
   const canonicalizeRestartReason = (reason: string): string => {
     if (
       reason === "primary-changed" ||
@@ -2782,6 +2795,22 @@ async function handleRequestForViewClient(
     return;
   }
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
+
+  if (pathname.startsWith("/api/client-devices")) {
+    await handleDeviceActionRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime ?? null,
+      authorization: await resolveHostSessionAuthorization(),
+      json,
+      error,
+      readJsonBody,
+    });
+    return;
+  }
+
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
   // Notifications: the unified notification center backed by the runtime
   // NotificationService (see api/notification-routes.ts). Inbox: a

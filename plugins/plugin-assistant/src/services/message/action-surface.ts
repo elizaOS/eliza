@@ -478,6 +478,29 @@ export function retrieveContextualPlannerActions(args: {
     // prefer matching operation names; unknown or compound wording retains
     // the existing discovery fallback. This only narrows automatic exposure.
     const resourceQuery = positiveIntentText(operationQuery);
+    // Umbrellas may express operations through aliases rather than their
+    // canonical name. Keep an explicitly requested resource + operation alias
+    // before generic *_CREATE siblings narrow the surface. A verb-only alias
+    // or an incidental description match must not admit an unrelated family.
+    if (resourceQuery) {
+      for (const action of owners) {
+        if (
+          (action.similes ?? []).some((alias) => {
+            const words = tokenizeActionSearchText(alias);
+            return (
+              preferredOperationNames(resourceQuery, [alias]).size > 0 &&
+              words.some(
+                (word) =>
+                  !GENERIC_OPERATION_WORDS.has(word) &&
+                  !OPERATION_CONNECTORS.has(word),
+              ) &&
+              words.every((word) => containsDomainPhrase(resourceQuery, word))
+            );
+          })
+        )
+          operationNames.add(action.name);
+      }
+    }
     if (
       operationNames.size > 0 &&
       resourceQuery &&

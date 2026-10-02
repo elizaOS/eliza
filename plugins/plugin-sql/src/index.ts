@@ -409,4 +409,5 @@ export { JournalStorage } from "./runtime-migrator/storage/journal-storage";
 export { MigrationTracker } from "./runtime-migrator/storage/migration-tracker";
 export { SnapshotStorage } from "./runtime-migrator/storage/snapshot-storage";
 export * from "./runtime-migrator/types";
+export { clientDeviceTable } from "./schema/clientDevices";
 export { computeIdentityPersonLinkRequestDigest } from "./services/sql-principal";

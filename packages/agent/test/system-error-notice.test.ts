@@ -293,12 +293,78 @@ it("keeps diagnostics while delivering and restoring safe system notices without
         "messages",
       );
     }
+    // Canonical system notices own their visible copy even on interrupted turns.
+    // Ordinary partial replies still round-trip exactly; history projection must
+    // retain typed failure/recovery metadata and never rewrite durable content.
+    const interruptedTerminalFailure = {
+      kind: "planner_exhaustion",
+      message: "The turn stopped after preparing an action for review.",
+      transient: false,
+      code: "PLANNER_INTERRUPTED_AFTER_ACTION",
+    };
+    const interruptedRecords = [
+      {
+        id: randomUUID() as UUID,
+        systemNotice: "runtime-error" as const,
+        text: "Private fixture diagnostic detail",
+      },
+      {
+        id: randomUUID() as UUID,
+        systemNotice: undefined,
+        text: "Keep two  spaces.\nPartial Ω🙂 reply.",
+      },
+      { id: randomUUID() as UUID, systemNotice: undefined, text: "" },
+    ];
+    for (const record of interruptedRecords) {
+      await runtime.createMemory(
+        createMessageMemory({
+          id: record.id,
+          entityId: agentId,
+          roomId: conversation.roomId,
+          content: {
+            text: record.text,
+            source: "client_chat",
+            ...(record.systemNotice
+              ? { systemNotice: record.systemNotice }
+              : {}),
+            interrupted: true,
+            failureKind: "planner_exhaustion",
+            terminalFailure: interruptedTerminalFailure,
+            replyRecoveryAvailable: true,
+          },
+        }),
+        "messages",
+      );
+    }
     const historyResponse = await fetch(
       `${base}/api/conversations/${conversation.id}/messages`,
       { headers },
     );
     expect(historyResponse.status).toBe(200);
     const history = await historyResponse.json();
+    for (const record of interruptedRecords) {
+      expect(
+        history.messages.find(
+          (message: { id: string }) => message.id === record.id,
+        ),
+      ).toMatchObject({
+        role: "assistant",
+        text: record.systemNotice
+          ? systemNoticeText("runtime-error")
+          : record.text,
+        interrupted: true,
+        failureKind: "planner_exhaustion",
+        terminalFailure: interruptedTerminalFailure,
+        replyRecoveryAvailable: true,
+      });
+      const stored = (
+        await runtime.getMemoriesByIds([record.id], "messages")
+      )[0];
+      expect(stored.content.text).toBe(record.text);
+      expect(stored.content.terminalFailure).toEqual(
+        interruptedTerminalFailure,
+      );
+    }
     expect(
       history.messages.find((m: { id: string }) => m.id === checkinId).text,
     ).toBe(systemNoticeText("runtime-error"));

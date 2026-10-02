@@ -49,6 +49,7 @@
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:device-actions": "node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts",
     "lint": "bunx @biomejs/biome check --write src",
     "lint:check": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",

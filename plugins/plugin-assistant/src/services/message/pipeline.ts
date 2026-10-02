@@ -76,6 +76,7 @@ import {
   runPlannerLoop,
 } from "../../runtime/planner-loop";
 import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
+import { getDeviceActionTurn } from "../device-actions/service.ts";
 import type { EvaluatorService } from "../evaluator";
 import {
   buildRuntimeActionLookup,
@@ -1304,6 +1305,20 @@ export async function runV5MessageRuntimeStage1(
         contextAliases: (context) =>
           args.runtime.contexts?.get(context)?.aliases,
       }).actions;
+    }
+    // Keep the actual enrolled-phone proposal tool visible even when Stage 1
+    // guessed a page family. The candidate collection already applied role,
+    // disclosure, connector and action-validation gates; do not bypass them.
+    if (
+      args.codingMode !== true &&
+      !deterministicPlanSelection &&
+      getDeviceActionTurn()?.runtime === args.runtime
+    ) {
+      const proposal = plannerCandidateActions.find(
+        (action) => action.name === "PROPOSE_DEVICE_ACTION",
+      );
+      if (proposal && !selectedActionFamilies.includes(proposal))
+        selectedActionFamilies.push(proposal);
     }
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain

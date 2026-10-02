@@ -2,6 +2,7 @@
 
 import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
@@ -76,6 +77,11 @@ async function harness() {
       execution jsonb NOT NULL,
       idempotency_key text,
       PRIMARY KEY (agent_id, id)
+    );
+    CREATE TABLE workflow.lifecycle_mutations (
+      agent_id text NOT NULL, workflow_id text NOT NULL, mutation_id text NOT NULL,
+      owner_id text NOT NULL, expected_version_id text NOT NULL, operation text NOT NULL,
+      receipt jsonb NOT NULL, PRIMARY KEY (agent_id, workflow_id, mutation_id)
     );
     CREATE TABLE workflow.embedded_tags (
       agent_id text NOT NULL,
@@ -166,6 +172,26 @@ describe('embedded native workflow lifecycle', () => {
       response: { code: WORKFLOW_JSON_UNBOUNDED },
     });
     expect(sourceReads).toBe(0);
+    let metadataReads = 0;
+    const unsafeMetadata = definition('Unsafe metadata');
+    Object.defineProperty(unsafeMetadata, 'metadata', {
+      enumerable: true,
+      get() {
+        metadataReads++;
+        return {};
+      },
+    });
+    await expect(service.createWorkflow(unsafeMetadata)).rejects.toMatchObject({
+      statusCode: 400,
+      response: { code: WORKFLOW_JSON_UNBOUNDED },
+    });
+    expect(metadataReads).toBe(0);
+    await expect(
+      service.createWorkflow({
+        ...definition('Invalid metadata'),
+        metadata: 'bad',
+      } as unknown as WorkflowDefinition)
+    ).rejects.toMatchObject({ statusCode: 400 });
 
     const oversized = definition('Oversized dependencies');
     const dependsOn: string[] = [];
@@ -252,8 +278,8 @@ describe('embedded native workflow lifecycle', () => {
     expect((await service.listWorkflows()).data).toHaveLength(0);
   });
 
-  test('creates, schedules, revises, restores, and deletes a Smithers workflow', async () => {
-    const { service, tasks } = await harness();
+  test('creates, schedules, revises, restores, and removes a Smithers workflow with retained receipts', async () => {
+    const { service, tasks, client } = await harness();
     const created = await service.createWorkflow({ ...definition('Original'), id: 'review' });
     expect((await service.listWorkflows()).data).toHaveLength(1);
     expect(tasks).toHaveLength(1);
@@ -278,10 +304,46 @@ describe('embedded native workflow lifecycle', () => {
       operation: 'restore',
     });
 
-    await service.deleteWorkflow('review');
-    expect((await service.listWorkflows()).data).toHaveLength(0);
+    await expect(service.deleteWorkflow('review')).rejects.toMatchObject({ statusCode: 409 });
+    expect(await service.getWorkflow('review')).toEqual(restored);
+    const mutationId = randomUUID();
+    const authorize = (workflow: WorkflowDefinitionResponse) => {
+      expect(workflow.id).toBe('review');
+    };
+    const receipt = await service.changeLifecycle(
+      'review',
+      mutationId,
+      restored.versionId,
+      'remove',
+      'fixture-owner',
+      authorize
+    );
+    expect(receipt.operation).toBe('remove');
+    expect((await service.listWorkflows()).data).toHaveLength(1);
+    expect((await service.getWorkflow('review')).active).toBe(false);
+    expect((await service.getWorkflow('review')).metadata?.elizaPhoneRemovedAt).toBeString();
     expect(tasks).toHaveLength(0);
     expect((await service.listWorkflowRevisions('review')).data[0].operation).toBe('delete');
+    expect(
+      await service.changeLifecycle(
+        'review',
+        mutationId,
+        restored.versionId,
+        'remove',
+        'fixture-owner',
+        authorize
+      )
+    ).toEqual(receipt);
+    await expect(service.deleteWorkflow('review')).rejects.toMatchObject({ statusCode: 409 });
+    expect(await service.lifecycleReceipt('review', mutationId, 'fixture-owner')).toEqual(receipt);
+    expect(
+      (
+        await client.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM workflow.lifecycle_mutations WHERE workflow_id=$1',
+          ['review']
+        )
+      ).rows[0]?.count
+    ).toBe(1);
   }, 15_000);
 
   test('preserves user-created triggers while synchronizing the owned cron schedule', async () => {
@@ -323,8 +385,21 @@ describe('embedded native workflow lifecycle', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.id).toBe(eventTaskId);
 
-    await service.deleteWorkflow(created.id);
+    await expect(service.deleteWorkflow(created.id)).rejects.toMatchObject({ statusCode: 409 });
+    expect(tasks).toHaveLength(1);
+    const current = await service.getWorkflow(created.id);
+    await service.changeLifecycle(
+      created.id,
+      randomUUID(),
+      current.versionId,
+      'remove',
+      'fixture-owner',
+      (workflow) => {
+        expect(workflow.id).toBe(created.id);
+      }
+    );
     expect(tasks).toHaveLength(0);
+    expect((await service.getWorkflow(created.id)).metadata?.elizaPhoneRemovedAt).toBeString();
   }, 15_000);
 
   test('resumes an unfinished persisted run with its exact workflow version', async () => {

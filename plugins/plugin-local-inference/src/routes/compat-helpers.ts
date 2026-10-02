@@ -1,3 +1,4 @@
+import { readRequestBodyBuffer } from "@elizaos/core";
 /**
  * Shared auth and I/O helpers for the local-inference compat HTTP routes.
  *
@@ -19,6 +20,11 @@ import { readAliasedEnv } from "@elizaos/core/utils/env";
 const MAX_BODY_BYTES = 1_048_576;
 
 export interface CompatRuntimeState {
+	/** In-process host auth resolver; never populated from request headers/body. */
+	authorizeRequest?: (
+		req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+		res: http.ServerResponse,
+	) => Promise<boolean>;
 	current: AgentRuntime | null;
 	pendingAgentName?: string | null;
 	pendingRestartReasons?: string[];
@@ -238,8 +244,9 @@ export function ensureCompatSensitiveRouteAuthorized(
 export async function ensureRouteAuthorized(
 	req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
 	res: http.ServerResponse,
-	_state: CompatRuntimeState,
+	state: CompatRuntimeState,
 ): Promise<boolean> {
+	if (state.authorizeRequest) return state.authorizeRequest(req, res);
 	return ensureCompatApiAuthorized(req, res);
 }
 
@@ -252,23 +259,23 @@ export async function readCompatJsonBody(
 		return preParsed as Record<string, unknown>;
 	}
 
-	const chunks: Buffer[] = [];
-	let totalBytes = 0;
+	let buffered: Buffer | null;
 	try {
-		for await (const chunk of req) {
-			const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-			totalBytes += buf.length;
-			if (totalBytes > MAX_BODY_BYTES) {
-				req.destroy();
-				sendJsonError(res, 413, "Request body too large");
-				return null;
-			}
-			chunks.push(buf);
-		}
-	} catch {
-		sendJsonError(res, 400, "Invalid request body");
+		buffered = await readRequestBodyBuffer(req, { maxBytes: MAX_BODY_BYTES });
+	} catch (error) {
+		const tooLarge =
+			typeof error === "object" &&
+			error !== null &&
+			"code" in error &&
+			error.code === "HTTP_REQUEST_BODY_TOO_LARGE";
+		sendJsonError(
+			res,
+			tooLarge ? 413 : 400,
+			tooLarge ? "Request body too large" : "Invalid request body",
+		);
 		return null;
 	}
+	const chunks = buffered && buffered.length ? [buffered] : [];
 
 	if (chunks.length === 0) return {};
 	try {

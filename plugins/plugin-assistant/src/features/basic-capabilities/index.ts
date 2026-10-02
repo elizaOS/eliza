@@ -1,3 +1,5 @@
+import { proposeDeviceAction } from "../../services/device-actions/action.ts";
+import { WorkflowDeviceBridgeService } from "../../services/device-actions/workflow-service.ts";
 /**
  * Basic Capabilities
  *
@@ -1307,6 +1309,7 @@ export const basicProviders = [
  * Basic actions - fundamental response actions
  */
 export const basicActions = [
+  proposeDeviceAction,
   choiceAction,
   generateMediaAction,
   readAttachmentAction,
@@ -1337,6 +1340,7 @@ export const basicEvaluators: RegisteredEvaluator[] = [linkExtractionEvaluator];
  * Basic services - essential infrastructure services
  */
 export const basicServices: ServiceClass[] = [
+  WorkflowDeviceBridgeService,
   TaskService,
   FileTrajectoryRetentionService,
   EmbeddingGenerationService,

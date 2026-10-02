@@ -704,6 +704,66 @@ export async function generateStage1Decision(
       }
     }
   };
+  // Invalid model-authored source parts must never become trusted quotes or
+  // dispatch field effects. One turn-wide repair uses the same visible context,
+  // tools, signal and source validator; a second invalid result still fails closed.
+  let sourceReplyRepairUsed = false;
+  const generateInterpretedStage1 = async (
+    params: typeof stage1ModelParams,
+  ) => {
+    const raw = await generateRecordedStage1(params);
+    try {
+      return interpretNativeReply(raw);
+    } catch (error) {
+      if (
+        !(error instanceof ElizaError) ||
+        error.code !== "STAGE1_INVALID_SOURCE_REPLY" ||
+        sourceReplyRepairUsed
+      )
+        throw error;
+      sourceReplyRepairUsed = true;
+      sourceReplyRendering = undefined;
+      params.signal.throwIfAborted();
+      const correction =
+        "Your previous response used an invalid source quote. No response fields or actions were accepted. Return a fresh HANDLE_RESPONSE decision. A source part must copy an entire supplied original exactly, including whitespace; omit source parts if quoting is unnecessary. Keep authored prose in text parts. Preserve the user's requested intent and required approval boundaries.";
+      const messages = [
+        ...params.messages,
+        { role: "user" as const, content: correction },
+      ];
+      const promptSegments = [
+        ...params.promptSegments,
+        { content: correction, stable: false },
+      ];
+      const hashes = computePrefixHashes(promptSegments);
+      const repairedCache = cacheProviderOptions({
+        prefixHash: stage1PrefixHash,
+        segmentHashes: hashes.map((entry) => entry.segmentHash),
+        promptSegments,
+        conversationId: stage1ConversationId,
+      });
+      const repaired = await generateRecordedStage1({
+        ...params,
+        messages,
+        promptSegments,
+        providerOptions: withModelInputBudgetProviderOptions(
+          {
+            ...params.providerOptions,
+            ...repairedCache,
+            eliza: {
+              ...(params.providerOptions.eliza as object),
+              ...(repairedCache.eliza as object),
+            },
+          },
+          buildModelInputBudget({
+            messages,
+            promptSegments,
+            tools: params.tools,
+          }),
+        ),
+      });
+      return interpretNativeReply(repaired);
+    }
+  };
   // Provider-shape retry: cloud reasoning models reached over
   // OpenAI-compatible providers can intermittently return either no
   // content at all or a required native tool call with no arguments. Both
@@ -724,8 +784,9 @@ export async function generateStage1Decision(
   }
   let rawMessageHandler: string | GenerateTextResult = args.codingMode
     ? directCodingResponseHandlerResult()
-    : await generateRecordedStage1(stage1ModelParams);
-  rawMessageHandler = interpretNativeReply(rawMessageHandler);
+    : await generateInterpretedStage1(stage1ModelParams);
+  if (args.codingMode)
+    rawMessageHandler = interpretNativeReply(rawMessageHandler);
   const contextReadEnabled = () =>
     messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
   if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
@@ -753,8 +814,7 @@ export async function generateStage1Decision(
       },
       `[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
     );
-    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
-    rawMessageHandler = interpretNativeReply(rawMessageHandler);
+    rawMessageHandler = await generateInterpretedStage1(stage1ModelParams);
     if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
       extractContextRead(rawMessageHandler, false);
     }
@@ -808,7 +868,7 @@ export async function generateStage1Decision(
         conversationId: stage1ConversationId,
       });
       stage1TurnSignal.throwIfAborted();
-      const repaired = await generateRecordedStage1({
+      const repaired = await generateInterpretedStage1({
         ...stage1ModelParams,
         messages: repairedInput.messages,
         promptSegments: repairedInput.promptSegments,
@@ -829,7 +889,7 @@ export async function generateStage1Decision(
         ),
       });
       if (extractMessageHandlerRawParsed(repaired)) {
-        rawMessageHandler = interpretNativeReply(repaired);
+        rawMessageHandler = repaired;
       }
     }
   }
@@ -1277,8 +1337,7 @@ export async function generateStage1Decision(
       "[message] Resolving context or routing before final response decision",
     );
     stage1TurnSignal.throwIfAborted();
-    rawMessageHandler = await generateRecordedStage1(stage1ModelParams);
-    rawMessageHandler = interpretNativeReply(rawMessageHandler);
+    rawMessageHandler = await generateInterpretedStage1(stage1ModelParams);
   }
   const messageHandlerEndedAt = Date.now();
   // Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call

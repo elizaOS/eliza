@@ -3354,6 +3354,13 @@
       "when": 1796083200126,
       "tag": "0508_app_notification_secret_envelope_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 479,
+      "version": "7",
+      "when": 1796083200127,
+      "tag": "0509_managed_gmail_operation_receipts",
+      "breakpoints": true
     }
   ]
 }

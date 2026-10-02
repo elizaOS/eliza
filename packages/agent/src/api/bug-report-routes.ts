@@ -330,15 +330,20 @@ async function submitToRemoteBugIntake(
       url?: string;
       accepted?: boolean;
     };
+    // Only an explicit confirmation counts: a missing or false flag leaves
+    // acceptance unknown, so reject instead of reporting fabricated success.
+    if (data.accepted !== true) {
+      throw new Error("Remote intake did not confirm acceptance");
+    }
     return {
-      accepted: data.accepted ?? true,
+      accepted: true,
       id: data.id,
       url: data.url,
       destination: "remote" as const,
     };
   }
 
-  return { accepted: true, destination: "remote" as const };
+  throw new Error("Unexpected response from remote intake");
 }
 
 export async function handleBugReportRoutes(

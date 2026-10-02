@@ -37,6 +37,13 @@ describe('native workflow routes', () => {
       platform: 'cloud',
       cloudHealth: 'healthy',
       engine: 'smthrs',
+      manualSubmissionProtocol: 1,
+      approvalReceiptProtocol: 1,
+      approvalPresentationProtocol: 1,
+      metadataMutationProtocol: 1,
+      lifecycleMutationProtocol: 1,
+      typedAuthoringProtocol: 1,
+      hostedDigestProtocol: 1,
     });
   });
 

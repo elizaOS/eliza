@@ -177,6 +177,13 @@ export {
 export * from "./runtime/sub-planner.ts";
 export * from "./runtime/trajectory-recorder";
 export * from "./services/approval/index.ts";
+export { DeviceActionError } from "./services/device-actions/contract.ts";
+export {
+  DeviceActionService,
+  type DeviceCredential,
+  deviceProposalDigest,
+  withDeviceActionTurn,
+} from "./services/device-actions/service.ts";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
 export { getEvaluatorProgressState } from "./services/evaluator-progress.ts";

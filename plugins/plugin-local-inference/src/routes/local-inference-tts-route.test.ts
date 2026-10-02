@@ -172,49 +172,76 @@ describe("local inference TTS route", () => {
 		});
 	});
 
-	it("status reports ready when a TEXT_TO_SPEECH handler is registered", async () => {
-		const getModel = vi.fn((type: string) =>
-			type === ModelType.TEXT_TO_SPEECH ? () => new Uint8Array() : undefined,
-		);
-		const state: CompatRuntimeState = {
-			current: { getModel } as unknown as CompatRuntimeState["current"],
-		};
-		const out = fakeRes();
+	it.each([
+		"eliza-local-inference",
+		"capacitor-llama",
+		"eliza-device-bridge",
+		"eliza-aosp-llama",
+	])(
+		"status reports ready for registered local TTS provider %s",
+		async (provider) => {
+			const getModelRegistrations = vi.fn(() => [
+				{ modelType: ModelType.TEXT_TO_SPEECH, provider },
+			]);
+			const state: CompatRuntimeState = {
+				current: {
+					getModelRegistrations,
+				} as unknown as CompatRuntimeState["current"],
+			};
+			const out = fakeRes();
 
-		const handled = await handleLocalInferenceTtsRoute(
-			fakeStatusReq(),
-			out.res,
-			state,
-		);
+			const handled = await handleLocalInferenceTtsRoute(
+				fakeStatusReq(),
+				out.res,
+				state,
+			);
 
-		expect(handled).toBe(true);
-		expect(out.status()).toBe(200);
-		expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
-			ready: true,
-			provider: "local-inference",
-		});
-	});
+			expect(handled).toBe(true);
+			expect(out.status()).toBe(200);
+			expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
+				ready: true,
+				provider: "local-inference",
+			});
+		},
+	);
 
-	it("status reports not-ready when no TEXT_TO_SPEECH handler exists", async () => {
-		const getModel = vi.fn(() => undefined);
-		const state: CompatRuntimeState = {
-			current: { getModel } as unknown as CompatRuntimeState["current"],
-		};
-		const out = fakeRes();
+	it.each([
+		{ registrations: [] },
+		{
+			registrations: [
+				{ modelType: ModelType.TEXT_TO_SPEECH, provider: "openai" },
+			],
+		},
+		{
+			registrations: [
+				{ modelType: ModelType.TEXT_LARGE, provider: "eliza-local-inference" },
+			],
+		},
+	])(
+		"status reports not-ready without a local TTS registration: %j",
+		async ({ registrations }) => {
+			const getModelRegistrations = vi.fn(() => registrations);
+			const state: CompatRuntimeState = {
+				current: {
+					getModelRegistrations,
+				} as unknown as CompatRuntimeState["current"],
+			};
+			const out = fakeRes();
 
-		const handled = await handleLocalInferenceTtsRoute(
-			fakeStatusReq(),
-			out.res,
-			state,
-		);
+			const handled = await handleLocalInferenceTtsRoute(
+				fakeStatusReq(),
+				out.res,
+				state,
+			);
 
-		expect(handled).toBe(true);
-		expect(out.status()).toBe(200);
-		expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
-			ready: false,
-			provider: null,
-		});
-	});
+			expect(handled).toBe(true);
+			expect(out.status()).toBe(200);
+			expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
+				ready: false,
+				provider: null,
+			});
+		},
+	);
 
 	it("status reports not-ready when the runtime is absent", async () => {
 		const state: CompatRuntimeState = { current: null };

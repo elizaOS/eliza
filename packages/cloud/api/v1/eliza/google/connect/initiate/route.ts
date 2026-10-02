@@ -29,6 +29,8 @@ const requestSchema = z.object({
         "google.gmail.triage",
         "google.gmail.send",
         "google.gmail.manage",
+        "google.gmail.drafts",
+        "google.gmail.mailbox",
       ]),
     )
     .optional(),

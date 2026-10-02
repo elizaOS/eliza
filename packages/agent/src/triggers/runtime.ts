@@ -426,7 +426,12 @@ async function dispatchWorkflow(
         eventKind: event.kind,
         eventPayload: event.payload ?? {},
       }
-    : {};
+    : typeof task.metadata?.hostedVersionId === "string"
+      ? {
+          scheduledAtMs: trigger.nextRunAtMs,
+          workflowVersionId: task.metadata.hostedVersionId,
+        }
+      : {};
   const result = await svc.execute(trigger.workflowId, payload, {
     idempotencyKey,
     ...(event?.triggerChainDepth !== undefined

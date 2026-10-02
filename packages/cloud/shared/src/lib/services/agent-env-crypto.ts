@@ -18,9 +18,9 @@
  *   plaintext rows keep working with no forced backfill. Legacy plaintext
  *   secrets are opportunistically re-encrypted the next time the row's env is
  *   written through the service.
- * - When `SECRETS_MASTER_KEY` is not configured, writes stay plaintext (exact
- *   legacy behavior) with a structured warning, so environments without the
- *   key (local dev, self-hosters) do not break. To activate, configure the
+ * - Without `SECRETS_MASTER_KEY`, only permissive local/dev writes retain
+ *   legacy plaintext with a warning. Deployed environments and managed Cloud
+ *   delegation secrets always fail closed. To activate, configure the
  *   SAME key on the cloud API Worker and the provisioning daemon — the same
  *   deployment requirement tenant-DB DSN encryption (`user-database.ts`)
  *   already imposes.
@@ -81,6 +81,7 @@ const NEVER_ENCRYPT_ENV_KEYS: ReadonlySet<string> = new Set(
 
 /** Whether a caller-supplied env key should be encrypted at rest. */
 export function isSensitiveAgentEnvKey(key: string): boolean {
+  if (key.toUpperCase() === "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET") return true;
   if (NEVER_ENCRYPT_ENV_KEYS.has(key.toUpperCase())) return false;
   return key.toUpperCase() === "ENCRYPTION_SALT" || SENSITIVE_ENV_KEY_PATTERN.test(key);
 }
@@ -92,8 +93,8 @@ export function isSensitiveAgentEnvKey(key: string): boolean {
  * ciphertext (e.g. a read-modify-write PATCH echoing stored values back) are
  * never double-encrypted.
  *
- * Fail-open ONLY for the key-not-configured case (legacy plaintext behavior,
- * loudly logged); any real encryption failure propagates so a secret is never
+ * Plaintext compatibility is limited to permissive local/dev configuration
+ * without a delegation secret; any real encryption failure propagates so a secret is never
  * silently persisted in plaintext when encryption was expected to work.
  */
 export async function encryptAgentEnvVarsForStorage(
@@ -109,12 +110,18 @@ export async function encryptAgentEnvVarsForStorage(
   );
   if (pending.length === 0) return { ...environmentVars };
 
-  // Same source FieldEncryptionService reads. Without a key, deployed
-  // environments fail closed; local/dev worlds keep compatibility plaintext and
-  // warn loudly.
+  // Match FieldEncryptionService's cloud-aware key source. Delegation secrets
+  // always require encryption, including otherwise permissive local/dev hosts.
   const env = getCloudAwareEnv();
   if (!env.SECRETS_MASTER_KEY) {
     const keys = pending.map(([key]) => key);
+    if (keys.some((key) => key.toUpperCase() === "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET")) {
+      throw new ElizaError("Managed Cloud delegation requires encrypted environment storage", {
+        code: "AGENT_ENV_ENCRYPTION_REQUIRED",
+        severity: "fatal",
+        context: { organizationId, keys },
+      });
+    }
     if (isFieldEncryptionRequired(env)) {
       throw new ElizaError(
         "SECRETS_MASTER_KEY is required to store agent environment secrets in this environment",
