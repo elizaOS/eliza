@@ -80,22 +80,49 @@ test("nullable schedule update crosses planner, wire JSON and admission without 
 		{ title: "Reviewed", recurrence: [] },
 		{ title: "Reviewed", recurrence: "invalid" },
 		{ title: null, recurrence: null },
+		{ title: "Reviewed", recurrence: null, fallback: null },
 	]) {
 		expect(validateToolArgs(action, { schedule }).valid).toBe(false);
 	}
-	// Strict native-tool wires encode an omitted optional argument as explicit
-	// null; `fallback` does not declare nullability, so its null is the absence
-	// encoding and resolves to the declared default instead of failing admission.
-	const wireNullOptional = validateToolArgs(action, {
-		schedule: { title: "Reviewed", recurrence: null, fallback: null },
+});
+
+test("transport omission does not weaken explicit-null admission for direct callers", () => {
+	const omitted = validateToolArgs(action, {
+		schedule: { title: "Reviewed", recurrence: null },
 	});
-	expect(wireNullOptional.valid).toBe(true);
-	expect(wireNullOptional.args).toEqual({
-		schedule: {
-			title: "Reviewed",
-			recurrence: null,
-			fallback: "default value",
-		},
+	expect(omitted.valid).toBe(true);
+	expect(omitted.args.schedule).toEqual({
+		title: "Reviewed",
+		recurrence: null,
+		fallback: "default value",
+	});
+	// Only provider restoration knows which nulls encode omitted wire keys.
+	// Canonical admission cannot silently convert an invalid explicit value
+	// into a default, including inside an otherwise valid nullable update.
+	for (const fallback of [null, false, 0, [], {}]) {
+		const rejected = validateToolArgs(action, {
+			schedule: { title: "Reviewed", recurrence: null, fallback },
+		});
+		expect(rejected.valid).toBe(false);
+		expect(
+			rejected.errors.some((error) => error.includes("schedule.fallback")),
+		).toBe(true);
+	}
+	const optionalAction: Action = {
+		...action,
+		parameters: [
+			{
+				name: "note",
+				description: "Optional text",
+				required: false,
+				schema: { type: "string" },
+			},
+		],
+	};
+	expect(validateToolArgs(optionalAction, {}).valid).toBe(true);
+	expect(validateToolArgs(optionalAction, { note: null }).valid).toBe(false);
+	expect(validateToolArgs(optionalAction, { note: "chosen" }).args).toEqual({
+		note: "chosen",
 	});
 });
 

@@ -188,22 +188,10 @@ function validateObject(
 				childPath,
 				errors,
 			);
-			if (errors.length > before) {
-				// Strict native-tool wires require every property, so the model
-				// encodes an omitted optional argument as explicit null (see the
-				// non-Cerebras strict-tool restore path in plugin-openai). A null
-				// that the declared schema rejects on an optional property means
-				// "absent", not a type failure; a schema that declares nullability
-				// validates null cleanly above and keeps it.
-				if (value[key] === null && !(schema.required ?? []).includes(key)) {
-					errors.length = before;
-				} else {
-					continue;
-				}
-			} else {
+			if (errors.length === before) {
 				output[key] = childValue;
-				continue;
 			}
+			continue;
 		}
 
 		if (
