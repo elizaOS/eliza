@@ -6,8 +6,13 @@
  * silently sign and (with broadcast=true) broadcast on mainnet. Missing or
  * blank clusters still default to mainnet; valid values pass through
  * case-insensitively; anything else is rejected before key use or network.
- * Exercises the real route handler; the web3 boundary is mocked and
- * broadcast stays false so no network is touched.
+ * This is the second layer: the shipped dApp path is the browser workspace
+ * bridge, which now rejects an unrecognized dApp network value before the
+ * request is ever sent (see BrowserWorkspaceView.solana-cluster.test.tsx).
+ * Invalid input — bad cluster or missing transactionBase64 — is a client
+ * error answered 400, never the 503 signer-unavailable status. Exercises
+ * the real route handler; the web3 boundary is mocked and broadcast stays
+ * false so no network is touched.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -124,12 +129,21 @@ describe("POST /api/wallet/browser-solana-transaction cluster validation", () =>
       { cluster: "mainnet" },
     ]) {
       const res = await postCluster(cluster);
-      expect(res.statusCode).not.toBe(200);
+      // Invalid input is a client error: the exact 400 contract matters
+      // because 503 would tell callers to retry an unusable payload.
+      expect(res.statusCode).toBe(400);
       const message =
         typeof res.body === "object" && res.body !== null && "error" in res.body
           ? String((res.body as { error: unknown }).error)
           : "";
       expect(message).toContain("Invalid Solana cluster");
     }
+  });
+
+  it("rejects a missing transaction payload as a client error", async () => {
+    const { ctx, res } = buildCtx({ broadcast: false });
+    await expect(handleWalletRoutes(ctx)).resolves.toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "transactionBase64 is required." });
   });
 });

@@ -722,10 +722,23 @@ async function signLocalBrowserSolanaMessage(
     signatureBase64: signature.toString("base64"),
   };
 }
+/**
+ * A browser-wallet HTTP request sent data that fails input validation
+ * (malformed cluster, missing transaction payload). The route translates
+ * this to a 400 response — a client error the caller must fix — while
+ * signer, key, and network failures keep the 503 signer-unavailable
+ * status so clients do not retry a payload that can never be valid.
+ */
+class BrowserWalletInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BrowserWalletInputError";
+  }
+}
 function normalizeBrowserSolanaCluster(value: unknown): BrowserSolanaCluster {
   if (value === undefined || value === null) return "mainnet";
   if (typeof value !== "string") {
-    throw new Error(
+    throw new BrowserWalletInputError(
       `Invalid Solana cluster ${JSON.stringify(String(value))}: expected "mainnet", "devnet", or "testnet".`,
     );
   }
@@ -738,7 +751,7 @@ function normalizeBrowserSolanaCluster(value: unknown): BrowserSolanaCluster {
   ) {
     return normalized;
   }
-  throw new Error(
+  throw new BrowserWalletInputError(
     `Invalid Solana cluster ${JSON.stringify(value)}: expected "mainnet", "devnet", or "testnet".`,
   );
 }
@@ -767,7 +780,7 @@ async function signLocalBrowserSolanaTransaction(
 }> {
   const transactionBase64 = normalizeBrowserString(body.transactionBase64);
   if (!transactionBase64) {
-    throw new Error("transactionBase64 is required.");
+    throw new BrowserWalletInputError("transactionBase64 is required.");
   }
   const broadcast = normalizeBrowserBoolean(body.broadcast, false);
   const cluster = normalizeBrowserSolanaCluster(body.cluster);
@@ -1387,6 +1400,12 @@ export async function handleWalletRoutes(
           await signLocalBrowserSolanaTransaction(body, deriveSolanaAddress),
         );
       } catch (err) {
+        // Invalid request input is a client error, not a signer outage:
+        // replying 503 would invite clients to retry an unusable payload.
+        if (err instanceof BrowserWalletInputError) {
+          error(res, err.message, 400);
+          return true;
+        }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
       return true;

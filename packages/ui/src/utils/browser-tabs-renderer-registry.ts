@@ -757,8 +757,18 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         normalizeSolanaCluster(chain) ||
         normalizeSolanaCluster(context && context.network) ||
         normalizeSolanaCluster(context && context.rpcEndpoint);
+      // An unrecognized cluster/network/rpcEndpoint is still network intent:
+      // forward the raw value so the host replies with an explicit error
+      // instead of dropping the field, which the wallet API reads as its
+      // mainnet default.
+      const rawCluster =
+        (context && typeof context.cluster === "string" && context.cluster.trim()) ||
+        (context && typeof context.network === "string" && context.network.trim()) ||
+        (context && typeof context.rpcEndpoint === "string" && context.rpcEndpoint.trim()) ||
+        null;
       const params = { transactionBase64: transactionBase64 };
       if (cluster) params.cluster = cluster;
+      else if (rawCluster) params.cluster = rawCluster;
       if (chain) params.chain = chain;
       if (context && typeof context.description === "string" && context.description.trim()) {
         params.description = context.description.trim();
