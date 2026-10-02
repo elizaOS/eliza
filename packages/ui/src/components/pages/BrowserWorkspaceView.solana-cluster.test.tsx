@@ -160,6 +160,7 @@ vi.mock("../../api", async (importOriginal) => {
 
 import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
+import { resolveBrowserWorkspaceSolanaCluster } from "./browser-workspace-wallet";
 
 const TX_BASE64 = Buffer.from("test-tx-bytes").toString("base64");
 
@@ -249,6 +250,30 @@ afterEach(() => {
 });
 
 describe("Browser workspace Solana dApp bridge cluster handling", () => {
+  it.each([
+    "not-mainnet",
+    "devnet-mainnet",
+    "https://api.mainnet-beta.solana.com.evil.invalid",
+  ])(
+    "rejects a misleading network label %s before consent",
+    async (cluster) => {
+      const tag = await renderWithDappTab();
+      await dispatchWalletRequest(
+        tag,
+        dappRequest({
+          requestId: 9,
+          method: "signAndSendTransaction",
+          params: { transactionBase64: TX_BASE64, cluster },
+        }),
+      );
+      expect(tag.executed.at(-1)).toContain("Unsupported Solana cluster");
+      expect(
+        screen.queryByText(/wants to send a Solana transaction/),
+      ).toBeNull();
+      expect(sendBrowserSolanaTransaction).not.toHaveBeenCalled();
+    },
+  );
+
   it("replies with an error for an unrecognized dApp cluster and never calls the wallet API", async () => {
     const tag = await renderWithDappTab();
     const callsBefore = tag.executed.length;
@@ -367,5 +392,19 @@ describe("Browser workspace Solana dApp bridge cluster handling", () => {
     >;
     expect(forwarded.transactionBase64).toBe(TX_BASE64);
     expect("cluster" in forwarded).toBe(false);
+  });
+});
+
+it.each([
+  ["solana:mainnet", "mainnet"],
+  ["solana:devnet", "devnet"],
+  ["solana:testnet", "testnet"],
+  ["mainnet-beta", "mainnet"],
+  ["https://api.mainnet-beta.solana.com", "mainnet"],
+  ["https://api.devnet.solana.com", "devnet"],
+  ["https://api.testnet.solana.com", "testnet"],
+])("keeps exact supported network aliases %s", (cluster, expected) => {
+  expect(resolveBrowserWorkspaceSolanaCluster({ cluster })).toEqual({
+    cluster: expected,
   });
 });

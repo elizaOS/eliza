@@ -739,56 +739,36 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
       return btoa(binary);
     };
-    const normalizeSolanaCluster = (value) => {
-      if (typeof value !== "string") return null;
-      const lower = value.toLowerCase();
-      if (lower.indexOf("devnet") >= 0) return "devnet";
-      if (lower.indexOf("testnet") >= 0) return "testnet";
-      if (lower.indexOf("mainnet") >= 0) return "mainnet";
-      return null;
-    };
+    // Preserve the first explicit network value; the host validates it before consent.
+    // Normalizing or falling through here could turn invalid intent into mainnet.
     const makeSolanaHostParams = (transactionBase64, context) => {
-      const chain =
-        context && typeof context.chain === "string" && context.chain.trim()
-          ? context.chain.trim()
-          : null;
-      const cluster =
-        normalizeSolanaCluster(context && context.cluster) ||
-        normalizeSolanaCluster(chain) ||
-        normalizeSolanaCluster(context && context.network) ||
-        normalizeSolanaCluster(context && context.rpcEndpoint);
-      // An unrecognized cluster/network/rpcEndpoint is still network intent:
-      // forward the raw value so the host replies with an explicit error
-      // instead of dropping the field, which the wallet API reads as its
-      // mainnet default.
-      const rawCluster =
-        (context && typeof context.cluster === "string" && context.cluster.trim()) ||
-        (context && typeof context.network === "string" && context.network.trim()) ||
-        (context && typeof context.rpcEndpoint === "string" && context.rpcEndpoint.trim()) ||
-        null;
       const params = { transactionBase64: transactionBase64 };
-      if (cluster) params.cluster = cluster;
-      else if (rawCluster) params.cluster = rawCluster;
-      if (chain) params.chain = chain;
-      if (context && typeof context.description === "string" && context.description.trim()) {
-        params.description = context.description.trim();
-      } else if (chain) {
-        params.description = "Solana transaction on " + chain;
-      } else if (cluster) {
-        params.description = "Solana transaction on " + cluster;
+      if (context) {
+        for (const key of ["cluster", "chain", "network", "rpcEndpoint"]) {
+          if (context[key] !== undefined && context[key] !== null) {
+            params.cluster = context[key];
+            break;
+          }
+        }
+        if (context.chain !== undefined && context.chain !== null) params.chain = context.chain;
+        if (typeof context.description === "string" && context.description.trim()) params.description = context.description.trim();
       }
       return params;
     };
     const getSolanaTransactionContext = (transaction, options) => {
       const context = {};
       const candidates = [options, transaction];
+      let networkSelected = false;
       for (const candidate of candidates) {
         if (!candidate || typeof candidate !== "object") continue;
-        if (typeof candidate.chain === "string") context.chain = candidate.chain;
-        if (typeof candidate.cluster === "string") context.cluster = candidate.cluster;
-        if (typeof candidate.network === "string") context.network = candidate.network;
-        if (typeof candidate.rpcEndpoint === "string") context.rpcEndpoint = candidate.rpcEndpoint;
-        if (typeof candidate.description === "string") context.description = candidate.description;
+        const keys = ["cluster", "chain", "network", "rpcEndpoint"];
+        if (!networkSelected && keys.some((key) => candidate[key] !== undefined && candidate[key] !== null)) {
+          for (const key of keys) {
+            if (candidate[key] !== undefined && candidate[key] !== null) context[key] = candidate[key];
+          }
+          networkSelected = true;
+        }
+        if (context.description === undefined && typeof candidate.description === "string") context.description = candidate.description;
       }
       return context;
     };
@@ -1006,7 +986,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
                 const result = await callHost("solana", "signTransaction", {
                   transactionBase64: bytesToBase64(entry.transaction),
                   ...(entry.chain ? { chain: entry.chain } : {}),
-                  ...(normalizeSolanaCluster(entry.chain) ? { cluster: normalizeSolanaCluster(entry.chain) } : {}),
+                  ...(entry.chain ? { cluster: entry.chain } : {}),
                   ...(entry.chain ? { description: "Wallet Standard transaction on " + entry.chain } : {}),
                 });
                 return { signedTransaction: base64ToBytes(result.signedTransactionBase64) };
@@ -1023,7 +1003,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
                 const result = await callHost("solana", "signAndSendTransaction", {
                   transactionBase64: bytesToBase64(entry.transaction),
                   ...(entry.chain ? { chain: entry.chain } : {}),
-                  ...(normalizeSolanaCluster(entry.chain) ? { cluster: normalizeSolanaCluster(entry.chain) } : {}),
+                  ...(entry.chain ? { cluster: entry.chain } : {}),
                   ...(entry.chain ? { description: "Wallet Standard transaction on " + entry.chain } : {}),
                 });
                 return { signature: base58Decode(result.signature) };

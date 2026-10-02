@@ -329,10 +329,26 @@ function matchBrowserWorkspaceSolanaCluster(
   value: unknown,
 ): BrowserWorkspaceSolanaCluster | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.toLowerCase();
-  if (normalized.includes("devnet")) return "devnet";
-  if (normalized.includes("testnet")) return "testnet";
-  if (normalized.includes("mainnet")) return "mainnet";
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^solana:/, "");
+  if (normalized === "mainnet" || normalized === "mainnet-beta")
+    return "mainnet";
+  if (normalized === "devnet" || normalized === "testnet") return normalized;
+  if (URL.canParse(value)) {
+    const endpoint = new URL(value);
+    if (
+      endpoint.protocol === "https:" &&
+      !endpoint.port &&
+      !endpoint.username &&
+      !endpoint.password
+    ) {
+      if (endpoint.hostname === "api.mainnet-beta.solana.com") return "mainnet";
+      if (endpoint.hostname === "api.devnet.solana.com") return "devnet";
+      if (endpoint.hostname === "api.testnet.solana.com") return "testnet";
+    }
+  }
   return undefined;
 }
 
