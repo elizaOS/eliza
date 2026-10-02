@@ -190,6 +190,14 @@ interface RecordArgTransform {
   path: string;
   entriesKey: string;
   valueMode: RecordArgValueMode;
+  /**
+   * Origin-optional property names at this path whose strict-wire
+   * all-properties-required form makes lenient providers answer null. A null
+   * for exactly these keys is the provider's spelling of "omitted" and is
+   * dropped before the original action schema is re-checked. Null for
+   * required-at-origin or nullable-at-origin keys is preserved.
+   */
+  omitNullProperties?: string[];
 }
 
 interface ResponseSchemaTransform {
@@ -1302,10 +1310,20 @@ function parseRecordArgPath(path: string): string[] {
 }
 
 function restoreStrictSafeRecordValue(value: unknown, transform: RecordArgTransform): unknown {
+  const omitNullProperties = transform.omitNullProperties;
   const record = asOptionalRecord(value);
   if (!record) return value;
   const entries = record[transform.entriesKey];
-  if (!Array.isArray(entries)) return value;
+  if (!Array.isArray(entries)) {
+    // A null-only transform (no record carrier at this node) still strips the
+    // provider's null-as-omitted spelling for origin-optional properties.
+    if (!omitNullProperties) return value;
+    const stripped: Record<string, unknown> = { ...record };
+    for (const key of omitNullProperties) {
+      if (stripped[key] === null) delete stripped[key];
+    }
+    return stripped;
+  }
 
   const restored: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(record)) {
@@ -1324,6 +1342,12 @@ function restoreStrictSafeRecordValue(value: unknown, transform: RecordArgTransf
       transform.valueMode === "json-string" && typeof rawValue === "string"
         ? parseJsonIfPossible(rawValue)
         : rawValue;
+  }
+
+  if (omitNullProperties) {
+    for (const key of omitNullProperties) {
+      if (restored[key] === null) delete restored[key];
+    }
   }
 
   return restored;
@@ -1551,6 +1575,29 @@ function additionalPropertiesHint(additionalProperties: unknown): string | null 
 
 const STRICT_SAFE_RECORD_ENTRIES_KEY = "__eliza_record_entries";
 
+/**
+ * True only when the schema explicitly admits JSON null (a "null" type, a type
+ * array containing "null", or an anyOf/oneOf branch that admits null). Anything
+ * unrecognized conservatively reports false, so an ambiguous property keeps a
+ * provider null and fails validation visibly instead of being silently dropped.
+ */
+function schemaAdmitsNull(schema: unknown): boolean {
+  const record = asOptionalRecord(schema);
+  if (!record) return false;
+  if (Array.isArray(record.type)) {
+    if (record.type.includes("null")) return true;
+  } else if (record.type === "null") {
+    return true;
+  }
+  for (const unionKey of ["anyOf", "oneOf"] as const) {
+    const branches = record[unionKey];
+    if (Array.isArray(branches) && branches.some((branch) => schemaAdmitsNull(branch))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
   if (!(STRICT_SAFE_RECORD_ENTRIES_KEY in properties)) {
     return STRICT_SAFE_RECORD_ENTRIES_KEY;
@@ -1697,6 +1744,27 @@ function sanitizeJsonSchema(
     // Retain the all-properties-required rule for other strict providers.
     if (!options.preserveOptional && !options.preserveStructure) {
       sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+      // The all-required wire makes lenient providers answer an
+      // origin-optional property with null. The wire schema is transport-only
+      // (the caller's original schema is re-checked after restore), so record
+      // exactly which nulls mean "omitted" and drop them during reverse
+      // mapping. Required-at-origin nulls survive and fail validation visibly;
+      // nullable-at-origin nulls are a real value and survive. Observed live:
+      // strict OpenAI-compatible endpoints return null for the sparse optional
+      // lifecycle arguments of multi-operation actions such as WORK_THREAD.
+      if (transforms) {
+        const omitNullProperties = propertyKeys.filter(
+          (key) => !existingRequired.includes(key) && !schemaAdmitsNull(properties[key])
+        );
+        if (omitNullProperties.length > 0) {
+          transforms.push({
+            path,
+            entriesKey: "",
+            valueMode: "schema",
+            omitNullProperties,
+          });
+        }
+      }
     }
   }
 
