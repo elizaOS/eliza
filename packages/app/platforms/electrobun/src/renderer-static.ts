@@ -183,7 +183,7 @@ export type RendererStaticAssetHeadersInput = {
 export function buildRendererStaticHtmlHeaders(): Record<string, string> {
 	return {
 		"Content-Type": "text/html; charset=utf-8",
-		"Cache-Control": "public, max-age=0, must-revalidate",
+		"Cache-Control": "no-store",
 	};
 }
 
