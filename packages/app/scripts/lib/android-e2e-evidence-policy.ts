@@ -259,7 +259,7 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                 result.status === "failed" &&
                 typeof result.error?.message === "string"
                   ? result.error.message.match(
-                      /(?:^|\n)(?:Error: )?ANDROID_PAIRING_ACCESSIBILITY:([123])(?:\n|$)/,
+                      /(?:^|\n)(?:Error: )?ANDROID_PAIRING_ACCESSIBILITY:([1234])(?:\n|$)/,
                     )
                   : undefined;
               boundary.event(

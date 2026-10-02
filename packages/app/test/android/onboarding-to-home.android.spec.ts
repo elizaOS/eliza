@@ -166,21 +166,40 @@ test.describe
         await expect(pairingHint).toBeInViewport();
         // Inspect Android's active accessibility window, not just DOM behind
         // a native modal. Native field placeholders are not accessibility text.
-        await expect(async () => {
-          let label: Awaited<ReturnType<typeof device.info>>;
+        try {
+          await expect(async () => {
+            let label: Awaited<ReturnType<typeof device.info>>;
+            try {
+              label = await device.info({ text: "Get a one-time code" });
+            } catch (cause) {
+              // Closed diagnostic categories keep native text and UI dumps private.
+              throw new Error("ANDROID_PAIRING_ACCESSIBILITY:1", { cause });
+            }
+            if (label.pkg !== APP_ID) {
+              throw new Error("ANDROID_PAIRING_ACCESSIBILITY:2");
+            }
+            if (!(label.bounds.width > 0)) {
+              throw new Error("ANDROID_PAIRING_ACCESSIBILITY:3");
+            }
+          }).toPass({ timeout: 15_000 });
+        } catch (cause) {
+          // Distinguish a native content-description label from missing native
+          // content without exporting the window hierarchy or accepting a pass.
+          let descriptionLabelPresent = false;
           try {
-            label = await device.info({ text: "Get a one-time code" });
-          } catch (cause) {
-            // Closed diagnostic categories keep native text and UI dumps private.
-            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:1", { cause });
+            const selector = { desc: "Get a one-time code", pkg: APP_ID };
+            await device.wait(selector, { timeout: 1_000 });
+            const label = await device.info(selector);
+            descriptionLabelPresent =
+              label.pkg === APP_ID && label.bounds.width > 0;
+          } catch {
+            // Diagnostic absence retains the original native assertion failure.
           }
-          if (label.pkg !== APP_ID) {
-            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:2");
+          if (descriptionLabelPresent) {
+            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:4", { cause });
           }
-          if (!(label.bounds.width > 0)) {
-            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:3");
-          }
-        }).toPass({ timeout: 15_000 });
+          throw cause;
+        }
 
         // OS deep links deliberately never carry bearer credentials. Complete
         // the production remote-device pairing flow against the real host,

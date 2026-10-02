@@ -728,6 +728,7 @@ describe("Android hosted probe diagnostics", () => {
       "Error: ANDROID_PAIRING_ACCESSIBILITY:1\nPRIVATE_CANARY",
       "Error: ANDROID_PAIRING_ACCESSIBILITY:2\nPRIVATE_CANARY",
       "Error: ANDROID_PAIRING_ACCESSIBILITY:3\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:4\nPRIVATE_CANARY",
       "Error: ANDROID_PAIRING_ACCESSIBILITY:99\nPRIVATE_CANARY",
     ];
     fs.writeFileSync(
@@ -764,7 +765,7 @@ describe("Android hosted probe diagnostics", () => {
           `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidWaitErrorKind=${kind}\n`,
       ),
       "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117\n",
-      ...[1, 2, 3].map(
+      ...[1, 2, 3, 4].map(
         (kind) =>
           `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidAccessibilityErrorKind=${kind}\n`,
       ),
