@@ -1,4 +1,4 @@
-// STAGED, NOT WINDOWS-EXECUTED. Security primitives, not yet the complete lease backend.
+// Native Windows lease security primitives; exercised by the Windows acceptance lane.
 using System;
 using System.IO;
 using System.ComponentModel;
@@ -61,17 +61,25 @@ public static class WindowsLeaseNative {
   public static void ProtectExistingDirectory(string directory) {
     using(LockDirectory(directory,false)) {
       var sa=new SA{length=Marshal.SizeOf(typeof(SA))};
-      using(var handle=CreateFile(directory,0x60080,3,ref sa,3,0x02000000|0x00200000,IntPtr.Zero)) {
+      using(var handle=CreateFile(directory,0xE0080,3,ref sa,3,0x02000000|0x00200000,IntPtr.Zero)) {
         if(handle.IsInvalid)throw Error("State ACL handle");
         IntPtr owner,group,dacl,sacl,old;uint error=GetSecurityInfo(handle.DangerousGetHandle(),1,5,out owner,out group,out dacl,out sacl,out old);
         if(error!=0)throw new Win32Exception((int)error);
         try {
           if(dacl==IntPtr.Zero)throw new InvalidOperationException("Null state DACL");
           uint length=GetSecurityDescriptorLength(old);if(length==0||length>65536)throw new InvalidOperationException("State ACL length");byte[] bytes=new byte[length];Marshal.Copy(old,bytes,0,bytes.Length);
-          var acl=new RawSecurityDescriptor(bytes,0);string sid=CurrentSid();if(acl.Owner==null||acl.Owner.Value!=sid)throw new InvalidOperationException("Wrong state SID");
+          var acl=new RawSecurityDescriptor(bytes,0);string sid=CurrentSid();
+          // Elevated Windows tokens can create Administrators-owned directories.
+          // That group is already trusted by the pre-existing DACL policy below.
+          // Only an enabled administrator may normalize that owner; foreign user
+          // owners remain refused. Validate the entire old DACL before mutation.
+          bool administratorOwner=acl.Owner!=null&&acl.Owner.Value=="S-1-5-32-544";
+          using(var identity=WindowsIdentity.GetCurrent()) {
+            if(acl.Owner==null||(acl.Owner.Value!=sid&&!(administratorOwner&&new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))))throw new InvalidOperationException("Wrong state SID");
+          }
           foreach(GenericAce entry in acl.DiscretionaryAcl){var rule=entry as CommonAce;if(rule==null||rule.IsCallback||(rule.SecurityIdentifier.Value!=sid&&rule.SecurityIdentifier.Value!="S-1-5-18"&&rule.SecurityIdentifier.Value!="S-1-5-32-544"))throw new InvalidOperationException("Untrusted existing state ACL");}
         } finally {LocalFree(old);}
-        IntPtr sd=Descriptor();try {if(!SetKernelObjectSecurity(handle.DangerousGetHandle(),4|0x80000000,sd))throw Error("Protect state DACL");}finally{LocalFree(sd);}
+        IntPtr sd=Descriptor();try {if(!SetKernelObjectSecurity(handle.DangerousGetHandle(),5|0x80000000,sd))throw Error("Protect state DACL");}finally{LocalFree(sd);}
         VerifyPrivateHandle(handle.DangerousGetHandle());
       }
     }
