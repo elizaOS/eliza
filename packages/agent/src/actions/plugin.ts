@@ -398,7 +398,7 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     data = parsed as PluginMutationResponse;
   } catch {
     // error-policy:J3 untrusted save-response parse — a 200 with a proxy
-    // HTML page, empty body, or truncated payload proves nothing was saved,
+    // HTML page, empty body, or truncated payload does not acknowledge a save,
     // so fail closed instead of reporting a successful save.
     logger.warn(
       `[plugin:configure] Save response was not JSON (${resp.status}).`,
@@ -409,7 +409,12 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     );
   }
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (
+    !resp.ok ||
+    (data.ok !== true && data.success !== true) ||
+    data.success === false ||
+    data.ok === false
+  ) {
     const errMsg =
       data.error || data.message || `Save failed (${resp.status}).`;
     logger.warn(`[plugin:configure] ${errMsg}`);

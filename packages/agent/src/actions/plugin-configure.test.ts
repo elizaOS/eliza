@@ -39,6 +39,18 @@ afterEach(() => {
 });
 
 describe("PLUGIN configure save acknowledgement", () => {
+  it.each([{}, { error: "Save was rejected" }, { ok: "true" }, { success: 1 }])(
+    "rejects an object without a boolean save acknowledgement: %j",
+    async (body) => {
+      const fetchMock = vi.fn(async () => jsonResponse(body));
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await runConfigure();
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "PLUGIN_CONFIGURE_FAILED" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("fails when a 200 save response is not JSON", async () => {
     const fetchMock = vi.fn(
       async () =>
