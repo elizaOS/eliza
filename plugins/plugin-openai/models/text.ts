@@ -186,19 +186,34 @@ interface NativeGenerateTextResult {
 type NativeTextModelResult = string & NativeGenerateTextResult;
 type RecordArgValueMode = "json-string" | "schema";
 
-interface RecordArgTransform {
-  path: string;
-  entriesKey: string;
-  valueMode: RecordArgValueMode;
-  /**
-   * Origin-optional property names at this path whose strict-wire
-   * all-properties-required form makes lenient providers answer null. A null
-   * for exactly these keys is the provider's spelling of "omitted" and is
-   * dropped before the original action schema is re-checked. Null for
-   * required-at-origin or nullable-at-origin keys is preserved.
-   */
-  omitNullProperties?: string[];
-}
+/**
+ * One strict-wire inversion recorded while normalizing a tool schema. Exactly
+ * one variant applies per node: an open-map record restore (`entriesKey`) or
+ * an omitted-optional null drop (`omittedKeys`). The union keeps the invalid
+ * "neither field" state unrepresentable, so restore can never silently no-op
+ * on a malformed transform.
+ */
+type RecordArgTransform =
+  | {
+      path: string;
+      entriesKey: string;
+      valueMode: RecordArgValueMode;
+      omittedKeys?: never;
+    }
+  | {
+      path: string;
+      /**
+       * Property keys that the strict wire forced the model to include even
+       * though the caller's original schema left them optional. Strict
+       * providers encode "omitted optional" as an explicit null at these keys,
+       * so restoration drops the null before runtime validation (the inverse
+       * of the forced-required wire encoding, mirroring the `entriesKey`
+       * record restore).
+       */
+      omittedKeys: string[];
+      entriesKey?: never;
+      valueMode?: never;
+    };
 
 interface ResponseSchemaTransform {
   restoreText(text: string): string;
@@ -1310,20 +1325,11 @@ function parseRecordArgPath(path: string): string[] {
 }
 
 function restoreStrictSafeRecordValue(value: unknown, transform: RecordArgTransform): unknown {
-  const omitNullProperties = transform.omitNullProperties;
+  if (!transform.entriesKey) return value;
   const record = asOptionalRecord(value);
   if (!record) return value;
   const entries = record[transform.entriesKey];
-  if (!Array.isArray(entries)) {
-    // A null-only transform (no record carrier at this node) still strips the
-    // provider's null-as-omitted spelling for origin-optional properties.
-    if (!omitNullProperties) return value;
-    const stripped: Record<string, unknown> = { ...record };
-    for (const key of omitNullProperties) {
-      if (stripped[key] === null) delete stripped[key];
-    }
-    return stripped;
-  }
+  if (!Array.isArray(entries)) return value;
 
   const restored: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(record)) {
@@ -1344,12 +1350,27 @@ function restoreStrictSafeRecordValue(value: unknown, transform: RecordArgTransf
         : rawValue;
   }
 
-  if (omitNullProperties) {
-    for (const key of omitNullProperties) {
-      if (restored[key] === null) delete restored[key];
+  return restored;
+}
+
+/**
+ * Drops explicit nulls at keys the strict wire forced the model to carry even
+ * though the original schema left them optional. Strict providers encode
+ * "omitted optional" as null there; runtime validation (which preserves
+ * declared nulls since #32991) must see the key as absent, exactly as it would
+ * have from a non-strict provider that omits the key.
+ */
+function restoreOmittedOptionalKeys(value: unknown, transform: RecordArgTransform): unknown {
+  const record = asOptionalRecord(value);
+  if (!record || !transform.omittedKeys || transform.omittedKeys.length === 0) {
+    return value;
+  }
+  const restored: Record<string, unknown> = { ...record };
+  for (const key of transform.omittedKeys) {
+    if (restored[key] === null) {
+      delete restored[key];
     }
   }
-
   return restored;
 }
 
@@ -1359,7 +1380,7 @@ function restoreRecordArgAtPath(
   transform: RecordArgTransform
 ): unknown {
   if (tokens.length === 0) {
-    return restoreStrictSafeRecordValue(value, transform);
+    return restoreOmittedOptionalKeys(restoreStrictSafeRecordValue(value, transform), transform);
   }
 
   const [token, ...rest] = tokens;
@@ -1573,30 +1594,30 @@ function additionalPropertiesHint(additionalProperties: unknown): string | null 
   return null;
 }
 
-const STRICT_SAFE_RECORD_ENTRIES_KEY = "__eliza_record_entries";
-
 /**
- * True only when the schema explicitly admits JSON null (a "null" type, a type
- * array containing "null", or an anyOf/oneOf branch that admits null). Anything
- * unrecognized conservatively reports false, so an ambiguous property keeps a
- * provider null and fails validation visibly instead of being silently dropped.
+ * Preserve explicitly declared nulls, including provider JSON-schema type
+ * arrays, before the caller's original schema validates restored arguments.
+ * The provider-only `nullable` flag does not declare JSON-schema nullability.
+ * Invalid required or declared-nullable values remain visible to validation.
  */
 function schemaAdmitsNull(schema: unknown): boolean {
-  const record = asOptionalRecord(schema);
-  if (!record) return false;
-  if (Array.isArray(record.type)) {
-    if (record.type.includes("null")) return true;
-  } else if (record.type === "null") {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return false;
+  }
+  const record = schema as Record<string, unknown>;
+  if (record.type === "null" || (Array.isArray(record.type) && record.type.includes("null"))) {
     return true;
   }
-  for (const unionKey of ["anyOf", "oneOf"] as const) {
-    const branches = record[unionKey];
+  for (const keyword of ["anyOf", "oneOf"] as const) {
+    const branches = record[keyword];
     if (Array.isArray(branches) && branches.some((branch) => schemaAdmitsNull(branch))) {
       return true;
     }
   }
   return false;
 }
+
+const STRICT_SAFE_RECORD_ENTRIES_KEY = "__eliza_record_entries";
 
 function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
   if (!(STRICT_SAFE_RECORD_ENTRIES_KEY in properties)) {
@@ -1743,28 +1764,22 @@ function sanitizeJsonSchema(
     // Requiring unused arguments invents values that fail runtime validation.
     // Retain the all-properties-required rule for other strict providers.
     if (!options.preserveOptional && !options.preserveStructure) {
-      sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
-      // The all-required wire makes lenient providers answer an
-      // origin-optional property with null. The wire schema is transport-only
-      // (the caller's original schema is re-checked after restore), so record
-      // exactly which nulls mean "omitted" and drop them during reverse
-      // mapping. Required-at-origin nulls survive and fail validation visibly;
-      // nullable-at-origin nulls are a real value and survive. Observed live:
-      // strict OpenAI-compatible endpoints return null for the sparse optional
-      // lifecycle arguments of multi-operation actions such as WORK_THREAD.
       if (transforms) {
-        const omitNullProperties = propertyKeys.filter(
+        // Forcing an optional property into wire `required` makes strict
+        // providers carry every key, and the model's only honest "no value"
+        // there is an explicit null. Record those keys so restoration drops
+        // the null artifact before runtime validation — #32991 made the
+        // validator preserve declared nulls instead of treating them as
+        // absent, so the artifact would otherwise reject the whole call.
+        // Keys whose schema already admits null keep their declared meaning.
+        const omittedKeys = propertyKeys.filter(
           (key) => !existingRequired.includes(key) && !schemaAdmitsNull(properties[key])
         );
-        if (omitNullProperties.length > 0) {
-          transforms.push({
-            path,
-            entriesKey: "",
-            valueMode: "schema",
-            omitNullProperties,
-          });
+        if (omittedKeys.length > 0) {
+          transforms.push({ path, omittedKeys });
         }
       }
+      sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
     }
   }
 
