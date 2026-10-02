@@ -265,12 +265,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           (rule) => rule.matches(text),
         );
         if (matchingRules.length === 0) return false;
-        // A plugin may reconcile an already-tool-bearing/non-simple plan only
-        // for the explicit fallback candidates it owns. All other plans keep
-        // their Stage-1 route, even when their text happens to match.
+        // Preserve an already-selected tool surface unless the plugin owns its
+        // fallback. A tool-required plan with no names is still unresolved;
+        // an eligible registered intent can seed it without removing other work.
         if (
-          messageHandler.plan.requiresTool === true ||
-          nonSimpleContexts.length > 0
+          messageHandler.plan.candidateActions?.length &&
+          (messageHandler.plan.requiresTool === true ||
+            nonSimpleContexts.length > 0)
         ) {
           return matchingRules.some(
             (rule) =>
