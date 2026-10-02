@@ -17,12 +17,9 @@ export function classifyWindowsLeaseHelperError(stderr: string): string {
     /Untrusted owner\/ACL|Unexpected ACL principal or rule|Current SID access absent/.test(stderr)
   )
     return 'WINDOWS_LEASE_PRIVATE_ACL';
-  if (
-    /Local drive path required|Canonical path required|Non-directory or reparse ancestor/.test(
-      stderr
-    )
-  )
-    return 'WINDOWS_LEASE_PATH';
+  if (stderr.includes('Local drive path required')) return 'WINDOWS_LEASE_PATH_KIND';
+  if (stderr.includes('Canonical path required')) return 'WINDOWS_LEASE_PATH_CANONICAL';
+  if (stderr.includes('Non-directory or reparse ancestor')) return 'WINDOWS_LEASE_PATH_REPARSE';
   if (/Pin directory ancestor|State ACL handle|Protect state DACL/.test(stderr))
     return 'WINDOWS_LEASE_DIRECTORY';
   if (/Helper source size|Helper source hash/.test(stderr)) return 'WINDOWS_LEASE_BOOTSTRAP';
@@ -31,7 +28,7 @@ export function classifyWindowsLeaseHelperError(stderr: string): string {
   return 'WINDOWS_LEASE_HELPER_FAILED';
 }
 
-function launch(request: unknown) {
+function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]: unknown }) {
   if (process.platform !== 'win32') throw Error('Windows backend on non-Windows host');
   const root = process.env.SystemRoot;
   if (!root || !win32.isAbsolute(root)) throw Error('Trusted Windows installation unavailable');
@@ -70,7 +67,9 @@ function launch(request: unknown) {
   const exited = new Promise<void>((resolve, reject) => {
     child.once('close', (code) => {
       const closed = Object.assign(
-        Error(`Windows lease helper closed (${classifyWindowsLeaseHelperError(diagnostic)})`),
+        Error(
+          `Windows lease ${request.op} helper closed (${classifyWindowsLeaseHelperError(diagnostic)})`
+        ),
         { code: classifyWindowsLeaseHelperError(diagnostic) }
       );
       diagnostic = '';

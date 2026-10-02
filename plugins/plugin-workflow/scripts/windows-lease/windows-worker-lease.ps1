@@ -53,7 +53,7 @@ try {
   $stop=[Threading.CancellationTokenSource]::new()
   $serving=[WindowsLeaseNative]::Serve($pipe,$capability,$generation,[uint32]$request.workerPid,[WindowsLeaseNative]::ProcessBirth([uint32]$request.workerPid),$stop.Token)
   try {
-    if($serving.IsCompleted){$serving.GetAwaiter().GetResult();throw 'Responder unavailable'}
+    if($serving.IsCompleted){[void]$serving.GetAwaiter().GetResult();throw 'Responder unavailable'}
     Emit @{ready=$true;generation=$generation}
     $lineTask=[Console]::In.ReadLineAsync()
     [void][Threading.Tasks.Task]::WhenAny($lineTask,$serving).GetAwaiter().GetResult()
@@ -63,10 +63,10 @@ try {
       $current=[Text.Encoding]::UTF8.GetString([WindowsLeaseNative]::ReadPrivateFile($reservation,16384))|ConvertFrom-Json
       if($current.generation -ne $generation){throw 'Reservation changed'}
       [WindowsLeaseNative]::PublishNoReplace($reservation,($reservation+'.settled-'+$generation))
-      $stop.Cancel();$serving.GetAwaiter().GetResult()
+      $stop.Cancel();[void]$serving.GetAwaiter().GetResult()
       Emit @{finished=$true}
     } elseif($command -ne 'abandon' -and $null -ne $command){throw 'Invalid completion command'}
-    if($command -ne 'finish'){$stop.Cancel();try{$serving.GetAwaiter().GetResult()}catch{}}
+    if($command -ne 'finish'){$stop.Cancel();try{[void]$serving.GetAwaiter().GetResult()}catch{}}
     # EOF/abandon/worker loss leaves the original reservation as durable unknown.
   } finally {$stop.Cancel();$stop.Dispose()}
 } finally {$rootPin.Dispose()}
