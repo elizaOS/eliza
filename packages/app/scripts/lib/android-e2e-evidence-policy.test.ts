@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   androidProjectionFailureCode,
+  androidVideoFailureMessage,
   createAndroidEvidenceBoundary,
   projectAndroidDeviceEvidenceBundle,
   reportAndroidPlaywrightResults,
@@ -43,6 +44,39 @@ function allPublicBytes(root) {
 }
 
 describe("Android evidence diagnostics boundary", () => {
+  test("encoder diagnostics export only closed failure classes", () => {
+    const secret = "PRIVATE_VIDEO_PATH_AND_DEVICE_CANARY";
+    for (const [result, code] of [
+      [
+        { error: { code: "ENOENT", message: secret } },
+        "PROJECTION_VIDEO_UNAVAILABLE",
+      ],
+      [{ signal: "SIGKILL", stderr: secret }, "PROJECTION_VIDEO_TERMINATED"],
+      [
+        { stderr: `moov atom not found ${secret}` },
+        "PROJECTION_VIDEO_INVALID_INPUT",
+      ],
+      [
+        { stderr: `Unknown encoder ${secret}` },
+        "PROJECTION_VIDEO_ENCODER_UNAVAILABLE",
+      ],
+      [
+        { stderr: `Cannot allocate memory ${secret}` },
+        "PROJECTION_VIDEO_RESOURCE_EXHAUSTED",
+      ],
+      [{ stderr: secret }, "PROJECTION_VIDEO_FAILED"],
+    ]) {
+      const message = androidVideoFailureMessage(result);
+      expect(message).not.toContain(secret);
+      expect(androidProjectionFailureCode(new Error(message))).toBe(code);
+      const output = [];
+      createAndroidEvidenceBoundary({
+        write: (chunk) => output.push(chunk),
+      }).event("evidence-projection", "failed", code);
+      expect(output.join("")).toContain(`code=${code}`);
+      expect(output.join("")).not.toContain(secret);
+    }
+  });
   test("helper callbacks never serialize adversarial device output", () => {
     const chunks = [];
     const serial = "PHYSICAL_SERIAL_CANARY-R58N9911";

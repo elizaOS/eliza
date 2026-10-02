@@ -65,6 +65,11 @@ const CODES = new Set([
   "PROJECTION_INVALID_REVISION",
   "PROJECTION_INVALID_BUILD_ID",
   "PROJECTION_VIDEO_FAILED",
+  "PROJECTION_VIDEO_UNAVAILABLE",
+  "PROJECTION_VIDEO_TERMINATED",
+  "PROJECTION_VIDEO_INVALID_INPUT",
+  "PROJECTION_VIDEO_ENCODER_UNAVAILABLE",
+  "PROJECTION_VIDEO_RESOURCE_EXHAUSTED",
   "PROJECTION_DESTINATION_EXISTS",
 ]);
 
@@ -318,6 +323,23 @@ export function androidProjectionFailureCode(error) {
       "PROJECTION_INVALID_BUILD_ID",
     ],
     ["Android evidence video redaction failed.", "PROJECTION_VIDEO_FAILED"],
+    [
+      "Android evidence video encoder unavailable.",
+      "PROJECTION_VIDEO_UNAVAILABLE",
+    ],
+    [
+      "Android evidence video encoder terminated.",
+      "PROJECTION_VIDEO_TERMINATED",
+    ],
+    ["Android evidence video input invalid.", "PROJECTION_VIDEO_INVALID_INPUT"],
+    [
+      "Android evidence video codec unavailable.",
+      "PROJECTION_VIDEO_ENCODER_UNAVAILABLE",
+    ],
+    [
+      "Android evidence video resources exhausted.",
+      "PROJECTION_VIDEO_RESOURCE_EXHAUSTED",
+    ],
     [
       "Android evidence output directory must not already exist.",
       "PROJECTION_DESTINATION_EXISTS",
@@ -823,12 +845,36 @@ function packagedFfmpeg() {
   }
 }
 
+/** Only closed classifications may cross the device-evidence boundary. */
+export function androidVideoFailureMessage(result) {
+  if (result.error?.code === "ENOENT" || result.error?.code === "EACCES")
+    return "Android evidence video encoder unavailable.";
+  if (result.signal) return "Android evidence video encoder terminated.";
+  const diagnostic = typeof result.stderr === "string" ? result.stderr : "";
+  if (
+    /Cannot allocate memory|Resource temporarily unavailable|pthread_create failed/i.test(
+      diagnostic,
+    )
+  )
+    return "Android evidence video resources exhausted.";
+  if (/Unknown encoder|Encoder .* not found/i.test(diagnostic))
+    return "Android evidence video codec unavailable.";
+  if (
+    /Invalid data found when processing input|moov atom not found/i.test(
+      diagnostic,
+    )
+  )
+    return "Android evidence video input invalid.";
+  return "Android evidence video redaction failed.";
+}
+
 function defaultRedactVideo(source, destination) {
   const candidates = [
     process.env.ELIZA_FFMPEG_BIN,
     packagedFfmpeg(),
     "ffmpeg",
   ].filter(Boolean);
+  let failure = "Android evidence video encoder unavailable.";
   for (const command of candidates) {
     const result = spawnSync(
       command,
@@ -853,7 +899,11 @@ function defaultRedactVideo(source, destination) {
         "+faststart",
         destination,
       ],
-      { stdio: "ignore" },
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024,
+      },
     );
     if (
       result.status === 0 &&
@@ -862,9 +912,16 @@ function defaultRedactVideo(source, destination) {
     ) {
       return;
     }
+    const classified = androidVideoFailureMessage(result);
+    // Preserve a real encoder failure when a later fallback is not installed.
+    if (
+      classified !== "Android evidence video encoder unavailable." ||
+      failure === "Android evidence video encoder unavailable."
+    )
+      failure = classified;
     fs.rmSync(destination, { force: true });
   }
-  throw new Error("Android evidence video redaction failed.");
+  throw new Error(failure);
 }
 
 /**
