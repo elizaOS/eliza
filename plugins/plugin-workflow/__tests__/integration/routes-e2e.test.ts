@@ -419,6 +419,37 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     ]);
   });
 
+  test.each([
+    '/api/workflow/hosted/sources/revoke',
+    '/api/workflow/hosted/loops',
+    '/api/workflow/hosted/results/ack',
+  ])('%s refuses a body over the dispatcher default before any service runs', async (path) => {
+    let serviceCalls = 0;
+    const record = () => {
+      serviceCalls++;
+      return Promise.resolve({});
+    };
+    const embedded = {
+      revokeDigestSource: record,
+      saveHostedDigest: record,
+      acknowledgeDigest: record,
+    };
+    const base = await startServer(makeRuntime({ embedded }));
+
+    // These routes keep the dispatcher's 1 MiB default, which is stricter
+    // than their handler limit (MAX_WORKFLOW_JSON_BYTES, 2 MB).
+    const status = await postJson(base, path, {
+      confirmed: true,
+      padding: 'x'.repeat(1_100_000),
+    }).then(
+      (res) => res.status,
+      () => 'connection closed'
+    );
+
+    expect(status === 'connection closed' || status >= 400).toBe(true);
+    expect(serviceCalls).toBe(0);
+  });
+
   test('paths outside the route table fall through the dispatcher to 404', async () => {
     const base = await startServer(makeRuntime());
 
