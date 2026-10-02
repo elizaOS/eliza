@@ -389,7 +389,25 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  let data: PluginMutationResponse;
+  try {
+    const parsed: unknown = await resp.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Save response was not a JSON object.");
+    }
+    data = parsed as PluginMutationResponse;
+  } catch {
+    // error-policy:J3 untrusted save-response parse — a 200 with a proxy
+    // HTML page, empty body, or truncated payload proves nothing was saved,
+    // so fail closed instead of reporting a successful save.
+    logger.warn(
+      `[plugin:configure] Save response was not JSON (${resp.status}).`,
+    );
+    return fail(
+      `Failed to save config for ${pluginId}: Save failed (${resp.status}).`,
+      "PLUGIN_CONFIGURE_FAILED",
+    );
+  }
 
   if (!resp.ok || data.success === false || data.ok === false) {
     const errMsg =
