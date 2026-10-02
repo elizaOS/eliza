@@ -50,6 +50,10 @@ describe("gateway replay", () => {
         benchmarkNamespace: "ordering-test",
         harnessTokens: { eliza: TOKEN },
       });
+      const manifest = JSON.parse(
+        await readFile(new URL("../package.json", import.meta.url), "utf8"),
+      );
+      const health = await (await fetch(gateway.healthUrl)).json();
       let delivered = false;
       const pendingResponse = request(gateway.baseUrl, {
         model: "claude-opus-4-8",
@@ -67,6 +71,9 @@ describe("gateway replay", () => {
       expect((await pendingResponse).status).toBe(200);
       await gateway.close();
       await journal.close();
+      expect(health.transport.sdk_version).toBe(
+        manifest.dependencies["@anthropic-ai/claude-agent-sdk"],
+      );
     } finally {
       releaseAudit();
       await rm(directory, { recursive: true, force: true });
