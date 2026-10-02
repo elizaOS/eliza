@@ -1324,6 +1324,31 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             result,
           },
         };
+        if (kind === "reminder_complete") {
+          for (const status of [
+            "permission-denied",
+            "scheduling-failed",
+            "cancelled",
+            "scheduled",
+            "posted",
+          ]) {
+            const invalid = await request(`/proposals/${item.id}/receipt`, {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, status },
+              },
+            });
+            expect(invalid.status).toBe(409);
+            const unchanged = (await request("/proposals")).body.proposals.find(
+              (p: any) => p.id === item.id,
+            );
+            expect(unchanged.state).toBe(claimed.body.proposal.state);
+            expect(unchanged.execution.providerReceipt).toEqual(
+              claimed.body.proposal.execution.providerReceipt,
+            );
+          }
+        }
         expect(
           (
             await request(`/proposals/${item.id}/receipt`, {
