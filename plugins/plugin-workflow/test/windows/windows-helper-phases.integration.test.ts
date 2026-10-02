@@ -36,6 +36,8 @@ const diagnosticPhases = [
   'hash-verified',
   'module-import-start',
   'module-imported',
+  'management-import-start',
+  'management-imported',
   'utility-resolve-start',
   'utility-resolved',
   'compile-start',

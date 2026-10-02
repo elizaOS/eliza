@@ -6,6 +6,8 @@ export function instrumentLeasePrelude(prelude: string, resource: string): strin
     'hash-verified',
     'module-import-start',
     'module-imported',
+    'management-import-start',
+    'management-imported',
     'utility-resolve-start',
     'utility-resolved',
     'compile-start',
@@ -29,6 +31,10 @@ export function instrumentLeasePrelude(prelude: string, resource: string): strin
     marker('module-import-start') +
     "\nImport-Module ($PSHOME+'\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop\n" +
     marker('module-imported') +
+    '\n' +
+    marker('management-import-start') +
+    "\nImport-Module ($PSHOME+'\\Modules\\Microsoft.PowerShell.Management\\Microsoft.PowerShell.Management.psd1') -ErrorAction Stop\n" +
+    marker('management-imported') +
     '\n' +
     marker('utility-resolve-start') +
     '\nGet-Command Add-Type -ErrorAction Stop | Out-Null\n' +
