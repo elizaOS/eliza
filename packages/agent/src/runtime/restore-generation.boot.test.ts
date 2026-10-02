@@ -433,6 +433,13 @@ it(
       }),
     ).toThrow();
     vi.stubEnv("PGLITE_DATA_DIR", "/not-restored");
+    // A truthy-but-unauthorized value must not fire the destructive-migration
+    // guard; boot reaches the real database conflict instead.
+    vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", "1");
+    await expect(startEliza(options)).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_BOOT_DATABASE_CONFLICT",
+    });
+    vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", undefined);
     await expect(startEliza(options)).rejects.toMatchObject({
       code: "AGENT_BACKUP_RESTORE_V3_BOOT_DATABASE_CONFLICT",
     });
@@ -442,6 +449,21 @@ it(
       code: "AGENT_BACKUP_RESTORE_V3_BOOT_IDENTITY_CONFLICT",
     });
     vi.stubEnv("SANDBOX_ROUTE_AGENT_ID", agentId);
+    // The restore authority guard rejects only the exact documented value.
+    vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", "1");
+    expect(() => authority.assertEnvironment()).not.toThrow();
+    vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", "yes");
+    expect(() => authority.assertEnvironment()).not.toThrow();
+    vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", "true");
+    let destructiveFailure: unknown;
+    try {
+      authority.assertEnvironment();
+    } catch (error) {
+      destructiveFailure = error;
+    }
+    expect(destructiveFailure).toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_BOOT_DESTRUCTIVE_MIGRATION_FORBIDDEN",
+    });
     vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", "true");
     await expect(startEliza(options)).rejects.toMatchObject({
       code: "AGENT_BACKUP_RESTORE_V3_BOOT_DESTRUCTIVE_MIGRATION_FORBIDDEN",

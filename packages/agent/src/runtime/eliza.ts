@@ -4098,8 +4098,9 @@ export async function startEliza(
     );
   }
   // Destructive schema changes require an explicit operator decision. The
-  // runtime and migration layer read the same captured policy through the
-  // compatibility environment adapter until their typed settings land.
+  // migration runners read the same exact-`true` contract (isExactTrueEnvFlag)
+  // from process.env until their typed settings land, so this warning never
+  // claims more than the capability can actually arm.
   if (bootContext.policy.allowDestructiveMigrations) {
     logger.warn("[eliza] Destructive database migrations are enabled");
   }

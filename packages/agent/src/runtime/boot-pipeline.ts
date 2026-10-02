@@ -5,6 +5,8 @@
  * reinterpret mutable `process.env` state.
  */
 
+import { isExactTrueEnvFlag } from "@elizaos/core";
+
 export const BOOT_PHASES = [
   "load-config",
   "resolve-settings",
@@ -107,8 +109,12 @@ export function captureAgentEnvironment(
 
 export function resolveBootPolicy(environment: AgentEnvironment): BootPolicy {
   return Object.freeze({
-    allowDestructiveMigrations: environment.isEnabled(
-      "ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS",
+    // Destructive-migration authorization uses the exact documented `true`
+    // value (isExactTrueEnvFlag), not the general boolean vocabulary: the
+    // restore guards and the boot warning must see the same operator
+    // decision as the migration runners that arm the capability.
+    allowDestructiveMigrations: isExactTrueEnvFlag(
+      environment.values["ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS"],
     ),
     apiExposePort: environment.isEnabled("ELIZA_API_EXPOSE_PORT"),
     blockDeferredPluginImports: environment.isEnabled(
