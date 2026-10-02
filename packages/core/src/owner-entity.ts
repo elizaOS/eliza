@@ -9,6 +9,7 @@
 import { ElizaError } from "./errors";
 import { deterministicOwnerEntityId, resolveCanonicalOwnerId } from "./roles";
 import type { IAgentRuntime } from "./types/runtime.js";
+import { validateUuid } from "./utils.ts";
 
 type WorldMetadataShape = {
 	ownership?: { ownerId?: string };
@@ -43,7 +44,15 @@ export async function resolveOwnerEntityId(
 			worldId = room.worldId;
 			const world = await runtime.getWorld(room.worldId);
 			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
-			if (metadata.ownership?.ownerId) return metadata.ownership.ownerId;
+			// Connector platform identifiers are not entity IDs. Legacy connector
+			// worlds sometimes persisted numeric provider IDs in ownership.ownerId;
+			// reject them here exactly as resolveCanonicalOwnerId does, so this
+			// resolver cannot fork the owner subject_id away from every other owner
+			// resolver (all of which validateUuid the same field). Skip an invalid
+			// world and keep scanning; an all-invalid result falls through to the
+			// deterministic fallback.
+			const candidateOwnerId = validateUuid(metadata.ownership?.ownerId);
+			if (candidateOwnerId) return candidateOwnerId;
 		}
 	} catch (cause) {
 		// error-policy:J2 an unreadable earlier world cannot establish owner precedence or absence.
