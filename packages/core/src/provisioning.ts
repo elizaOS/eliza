@@ -14,8 +14,8 @@ import type { Agent, Character } from "./types/agent.js";
 import type { IDatabaseAdapter } from "./types/database";
 import type { JsonValue, UUID } from "./types/primitives.js";
 import { ChannelType } from "./types/primitives.js";
-import { isExactTrueEnvFlag } from "./utils/env";
 import type { IAgentRuntime } from "./types/runtime";
+import { isExactTrueEnvFlag } from "./utils/env";
 
 const logger = createLogger({ namespace: "provisioning", level: "info" });
 

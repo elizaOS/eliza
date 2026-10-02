@@ -245,8 +245,8 @@ import type { Task, TaskWorker } from "./types/task.js";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
-import { getNumberEnv } from "./utils/environment";
 import { isExactTrueEnvFlag } from "./utils/env";
+import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
 
