@@ -10,7 +10,7 @@
  * broadcast stays false so no network is touched.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleWalletRoutes,
   type WalletRouteContext,
@@ -82,7 +82,11 @@ async function postCluster(
 }
 
 beforeEach(() => {
-  process.env.SOLANA_PRIVATE_KEY = SOLANA_KEY;
+  vi.stubEnv("SOLANA_PRIVATE_KEY", SOLANA_KEY);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("POST /api/wallet/browser-solana-transaction cluster validation", () => {
