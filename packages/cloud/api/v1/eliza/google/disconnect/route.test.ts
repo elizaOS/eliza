@@ -1,120 +1,120 @@
 /**
  * #33073: the Google disconnect route must not fold a malformed non-empty JSON
- * body into its "disconnect all on the side" defaults. A truncated body is a
- * client error (400) and must never reach the connector; an absent or empty
- * body keeps the documented bulk contract.
+ * body into its defaults. A truncated body is a client error (400) and must
+ * never reach the connector; an absent or empty body keeps the documented
+ * disconnect-on-side contract.
  *
- * Real Hono app + real zod schema + the route's exact patched body; auth and
- * the connector service are stubbed with call-ledger mocks, mirroring the
- * sibling route harnesses.
+ * Exercises the REAL route module (`./route`) with its auth and connector
+ * dependencies mocked via `mock.module`, mounted at the real path the way
+ * `agent-inference-markup-retired.test.ts` mounts sibling routes. The
+ * connector mock keeps a call ledger so assertions check both the response
+ * and whether the mutation ran.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
-import { z } from "zod";
 
-const disconnectManagedGoogleConnection = mock(async (_args: unknown) => ({
-  ok: true,
+const disconnectCalls: Array<{
+  organizationId: string;
+  userId: string;
+  side: "owner" | "agent";
+  connectionId: string | null;
+}> = [];
+
+mock.module("@/lib/api/cloud-worker-errors", () => ({
+  failureResponse: (_c: unknown, error: unknown) =>
+    new Response(JSON.stringify({ error: String(error) }), { status: 500 }),
 }));
 
-const requestSchema = z.object({
-  side: z.enum(["owner", "agent"]).optional(),
-  connectionId: z.string().uuid().nullable().optional(),
-});
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireUserOrApiKeyWithOrg: async () => ({
+    id: "user-1",
+    organization_id: "org-1",
+  }),
+}));
 
-/**
- * The route's patched body, verbatim: empty/whitespace body parses as {} (the
- * documented bulk contract); non-empty bodies must be valid JSON or the request
- * fails before the connector is called.
- */
-function buildApp() {
-  const app = new Hono();
-  app.post("/", async (c) => {
-    const rawBody = await c.req.text();
-    let bodyValue: unknown = {};
-    if (rawBody.trim().length > 0) {
-      try {
-        bodyValue = JSON.parse(rawBody);
-      } catch {
-        return c.json(
-          { error: "Invalid disconnect request: body is not valid JSON." },
-          400,
-        );
-      }
-    }
-    const parsed = requestSchema.safeParse(bodyValue);
-    if (!parsed.success) {
-      return c.json(
-        { error: "Invalid disconnect request.", details: parsed.error.issues },
-        400,
-      );
-    }
-    await disconnectManagedGoogleConnection({
-      side: parsed.data.side ?? "owner",
-      connectionId: parsed.data.connectionId ?? null,
-    });
-    return c.json({ ok: true });
-  });
-  return app;
+mock.module("@/lib/services/agent-google-connector", () => ({
+  AgentGoogleConnectorError: class AgentGoogleConnectorError extends Error {
+    status = 400;
+  },
+  disconnectManagedGoogleConnection: async (args: {
+    organizationId: string;
+    userId: string;
+    side: "owner" | "agent";
+    connectionId: string | null;
+  }) => {
+    disconnectCalls.push(args);
+    return { ok: true };
+  },
+}));
+
+const { default: disconnectRoute } = await import("./route");
+
+function mounted<E extends Parameters<typeof Hono>[0]>(
+  route: Hono<E>,
+  path: string,
+): Hono {
+  return new Hono<E>().route(path, route);
 }
 
-function post(app: ReturnType<typeof buildApp>, body: string) {
-  return app.request("http://localhost/api/v1/eliza/google/disconnect", {
+const app = mounted(disconnectRoute, "/api/v1/eliza/google/disconnect");
+
+function post(body: string) {
+  return app.request("/api/v1/eliza/google/disconnect", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body,
   });
 }
 
-describe("google disconnect body validation (#33073)", () => {
-  beforeEach(() => {
-    disconnectManagedGoogleConnection.mockReset();
-  });
+beforeEach(() => {
+  disconnectCalls.length = 0;
+});
 
+describe("google disconnect body validation (#33073)", () => {
   test("rejects a truncated non-empty body before any connector call", async () => {
-    const response = await post(buildApp(), "{");
+    const response = await post("{");
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error?: string };
     expect(body.error).toContain("not valid JSON");
-    expect(disconnectManagedGoogleConnection).not.toHaveBeenCalled();
+    expect(disconnectCalls).toHaveLength(0);
   });
 
-  test("keeps the empty-body bulk contract", async () => {
-    const response = await post(buildApp(), "");
+  test("keeps the empty-body disconnect-on-side contract", async () => {
+    const response = await post("");
     expect(response.status).toBe(200);
-    expect(disconnectManagedGoogleConnection).toHaveBeenCalledTimes(1);
-    expect(disconnectManagedGoogleConnection).toHaveBeenCalledWith({
+    expect(disconnectCalls).toHaveLength(1);
+    expect(disconnectCalls[0]).toEqual({
+      organizationId: "org-1",
+      userId: "user-1",
       side: "owner",
       connectionId: null,
     });
   });
 
-  test("keeps the whitespace-only bulk contract", async () => {
-    const response = await post(buildApp(), "   ");
+  test("keeps the whitespace-only body contract", async () => {
+    const response = await post("   ");
     expect(response.status).toBe(200);
-    expect(disconnectManagedGoogleConnection).toHaveBeenCalledTimes(1);
+    expect(disconnectCalls).toHaveLength(1);
   });
 
   test("forwards an explicit side without inventing a connection id", async () => {
-    const response = await post(buildApp(), JSON.stringify({ side: "agent" }));
+    const response = await post(JSON.stringify({ side: "agent" }));
     expect(response.status).toBe(200);
-    expect(disconnectManagedGoogleConnection).toHaveBeenCalledWith({
-      side: "agent",
-      connectionId: null,
-    });
+    expect(disconnectCalls).toHaveLength(1);
+    expect(disconnectCalls[0]?.side).toBe("agent");
+    expect(disconnectCalls[0]?.connectionId).toBeNull();
   });
 
   test("still rejects schema-invalid JSON with 400", async () => {
-    const response = await post(buildApp(), JSON.stringify({ side: "bogus" }));
+    const response = await post(JSON.stringify({ side: "bogus" }));
     expect(response.status).toBe(400);
-    expect(disconnectManagedGoogleConnection).not.toHaveBeenCalled();
+    expect(disconnectCalls).toHaveLength(0);
   });
 
-  test("accepts an explicit null connectionId as the documented bulk request", async () => {
-    const response = await post(
-      buildApp(),
-      JSON.stringify({ connectionId: null }),
-    );
+  test("accepts an explicit null connectionId as the documented side-wide request", async () => {
+    const response = await post(JSON.stringify({ connectionId: null }));
     expect(response.status).toBe(200);
-    expect(disconnectManagedGoogleConnection).toHaveBeenCalledTimes(1);
+    expect(disconnectCalls).toHaveLength(1);
+    expect(disconnectCalls[0]?.connectionId).toBeNull();
   });
 });
