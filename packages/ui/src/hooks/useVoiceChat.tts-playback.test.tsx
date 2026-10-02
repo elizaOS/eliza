@@ -41,6 +41,7 @@ import { toSpeakableText } from "../voice/voice-chat-playback";
 import { globalAudioCache } from "../voice/voice-chat-types";
 import type { VoicePlaybackEvidenceEvent } from "../voice/voice-playback-evidence";
 import { VoiceWorkbenchShell } from "../voice/voice-selftest/VoiceWorkbenchShell";
+import { serializeVoiceWorkbenchReport } from "../voice/voice-selftest/voice-workbench-artifact";
 import { runVoiceWorkbench } from "../voice/voice-selftest/voice-workbench-player";
 import {
   __resetDirectCloudTtsFallbackWarnings,
@@ -148,6 +149,7 @@ const speechSynthesisMock = {
 const fetchedUrls: string[] = [];
 const fetchedContexts: unknown[] = [];
 const decodedAudioInputs: Uint8Array[] = [];
+const objectUrlBlobs: Blob[] = [];
 
 function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
@@ -164,6 +166,7 @@ function installMocks() {
   fetchedUrls.length = 0;
   fetchedContexts.length = 0;
   decodedAudioInputs.length = 0;
+  objectUrlBlobs.length = 0;
   // The hook shares its context across mounts; reset this fake platform between cases.
   for (const source of createdSources) source.context.state = "running";
   createdSources.length = 0;
@@ -214,9 +217,23 @@ function installMocks() {
     configurable: true,
     value: FakeUtterance,
   });
-  // Object URLs are an external browser boundary. The runtime's implementation
-  // cannot consume the jsdom Blob used by the workbench report download.
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:playback-worklet");
+  if (typeof URL.createObjectURL !== "function") {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:playback-worklet"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  }
+  // Browser object URLs are a controlled boundary in this fake audio graph.
+  // jsdom/Node URL implementations need not accept each other's Blob wrappers.
+  vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+    if (!(blob instanceof Blob)) throw new Error("Expected a Blob object URL");
+    objectUrlBlobs.push(blob);
+    return "blob:playback-worklet";
+  });
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   window.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) =>
     window.setTimeout(() => cb(performance.now()), 16),
@@ -575,6 +592,12 @@ describe("useVoiceChat TTS playback across providers", () => {
         return;
       }
       expect(turn?.status).toBe("pass");
+      const artifact = objectUrlBlobs.findLast(
+        (blob) => blob.type === "application/json",
+      );
+      expect(await artifact?.text()).toBe(
+        serializeVoiceWorkbenchReport(report),
+      );
       expect(turn?.detail.textDelivery).toBe("streaming-queue");
       expect(turn?.detail.ttsSegments).toBe(2);
       const queued = turn?.playbackEvidence?.filter(
