@@ -4,6 +4,8 @@ export function instrumentLeasePrelude(prelude: string, resource: string): strin
     'bootstrap',
     'source-read',
     'hash-verified',
+    'utility-resolve-start',
+    'utility-resolved',
     'compile-start',
     'compiled',
     'request-read',
@@ -21,7 +23,14 @@ export function instrumentLeasePrelude(prelude: string, resource: string): strin
   // Evaluate only the isolated literal from this repository's trusted generated source.
   // Equality rejects drift or incorrectly escaped source before instrumenting it.
   if (Function(`return ${match[1]}`)() !== resource) throw Error('Committed helper bytes differ');
-  let observed = marker('compile-start') + '\n' + resource;
+  let observed =
+    marker('utility-resolve-start') +
+    '\nGet-Command Add-Type -ErrorAction Stop | Out-Null\n' +
+    marker('utility-resolved') +
+    '\n' +
+    marker('compile-start') +
+    '\n' +
+    resource;
   observed = replaceOnce(observed, "\n'@\n", "\n'@\n" + marker('compiled') + '\n');
   observed = replaceOnce(
     observed,

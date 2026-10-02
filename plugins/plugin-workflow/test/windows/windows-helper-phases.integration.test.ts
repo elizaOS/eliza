@@ -34,6 +34,8 @@ const diagnosticPhases = [
   'bootstrap',
   'source-read',
   'hash-verified',
+  'utility-resolve-start',
+  'utility-resolved',
   'compile-start',
   'compiled',
   'request-read',
@@ -41,11 +43,54 @@ const diagnosticPhases = [
   'ready',
 ];
 const topology = 'readline';
+const nativePlatformNames = [
+  'TEMP',
+  'TMP',
+  'windir',
+  'ComSpec',
+  'SystemDrive',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'ALLUSERSPROFILE',
+  'ProgramData',
+  'PSModulePath',
+  'PATHEXT',
+  'OS',
+  'PROCESSOR_ARCHITECTURE',
+  'PROCESSOR_ARCHITEW6432',
+  'PROCESSOR_IDENTIFIER',
+  'PROCESSOR_LEVEL',
+  'PROCESSOR_REVISION',
+  'NUMBER_OF_PROCESSORS',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'ProgramW6432',
+  'CommonProgramFiles',
+  'CommonProgramFiles(x86)',
+  'CommonProgramW6432',
+] as const;
+const nativePlatformEnvironment = Object.fromEntries(
+  nativePlatformNames.map((name) => [name, process.env[name]])
+);
+console.info(
+  JSON.stringify({
+    environmentPresence: Object.fromEntries(
+      [...nativePlatformNames, 'PATH', 'SystemRoot', 'TMPDIR'].map((name) => [
+        name,
+        typeof process.env[name] === 'string' && process.env[name]!.length > 0,
+      ])
+    ),
+  })
+);
 
 // Actual subprocess discrimination, not a mocked backend. The helper's production
 // 15-second startup deadline is unchanged. No workflow or external effect runs.
-for (const environment of ['inherited', 'restricted'] as const) {
+for (const environment of ['inherited', 'restricted', 'restricted-native-platform'] as const) {
   for (const helper of ['original', 'instrumented'] as const) {
+    if (environment === 'restricted-native-platform' && helper === 'original') continue;
     test(`Windows helper phases (${helper}): ${environment} environment, ${topology} stdin`, async () => {
       const root = realpathSync(mkdtempSync(join(tmpdir(), 'windows-helper-startup-')));
       const resultPath = join(root, 'result.json');
@@ -103,7 +148,11 @@ try {
         ELIZA_SMTHRS_PAYLOAD_PATH: payloadPath,
         MSGPACKR_NATIVE_ACCELERATION_DISABLED: 'true',
       };
-      const environmentAdditions = { inherited: process.env, restricted: {} };
+      const environmentAdditions = {
+        inherited: process.env,
+        restricted: {},
+        'restricted-native-platform': nativePlatformEnvironment,
+      };
       const child = spawn(command.executable, command.args, {
         cwd: command.cwd,
         env: { ...environmentAdditions[environment], ...restrictedEnvironment },
