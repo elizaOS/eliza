@@ -2,8 +2,6 @@
 # the full Windows/Smithers survivor acceptance in platform-smoke.yml.
 name: Windows helper startup probe
 on:
-  push:
-    branches: [codex/android-workflow-process-host]
   workflow_dispatch:
 permissions:
   contents: read
