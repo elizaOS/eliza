@@ -82,7 +82,7 @@ describe.each([false, true])(
         instruction: "Record only",
         __eliza_record_entries: [],
       };
-      if (cerebrasMode) expect(errorsFor([nativeCreate])).toEqual([]);
+      expect(errorsFor([nativeCreate])).toEqual([]);
       const restored = restoreRecordArgToolCalls(
         [
           {

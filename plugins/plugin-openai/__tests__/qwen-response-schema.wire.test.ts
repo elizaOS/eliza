@@ -563,6 +563,8 @@ describe("Qwen3.8 response-schema wire contract", () => {
         additionalProperties: false,
       };
       const original = structuredClone(parameters);
+      const optionalWire = (schema: object) =>
+        provider === "cerebras" ? schema : { anyOf: [schema, { type: "null" }] };
       await invoke({
         tools: [{ name: "MEMORY", description: "Manage memory", strict: true, parameters }],
       });
@@ -577,14 +579,19 @@ describe("Qwen3.8 response-schema wire contract", () => {
               required: provider === "cerebras" ? ["action"] : Object.keys(parameters.properties),
               properties: {
                 ...parameters.properties,
-                snapshot: {
+                text: optionalWire(parameters.properties.text),
+                snapshot: optionalWire({
                   type: "string",
                   description: expect.stringContaining("^[0-9a-f]{64}$"),
-                },
-                detail: {
+                }),
+                detail: optionalWire({
                   ...parameters.properties.detail,
+                  properties: {
+                    label: { type: "string" },
+                    optional: optionalWire({ type: "string" }),
+                  },
                   required: provider === "cerebras" ? ["label"] : ["label", "optional"],
-                },
+                }),
               },
             },
           }),

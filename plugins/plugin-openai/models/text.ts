@@ -1776,6 +1776,12 @@ function sanitizeJsonSchema(
           (key) => !existingRequired.includes(key) && !schemaAdmitsNull(properties[key])
         );
         if (omittedKeys.length > 0) {
+          // Every strict-wire required key must have a valid absence encoding.
+          // Keep the original property schema as a branch so the provider can
+          // produce null for omission without fabricating an invalid value.
+          for (const key of omittedKeys) {
+            properties[key] = { anyOf: [properties[key], { type: "null" }] };
+          }
           transforms.push({ path, omittedKeys });
         }
       }
