@@ -30,6 +30,9 @@ it("delivers source edits beneath hidden ancestors while ignoring generated desc
 					return events.some((event) => event.filePath === source);
 				},
 				{
+					// Leave the production 50ms debounce enough time to deliver
+					// between edits; polling edits at the same cadence can starve it.
+					interval: 100,
 					timeout: 3000,
 				},
 			)
