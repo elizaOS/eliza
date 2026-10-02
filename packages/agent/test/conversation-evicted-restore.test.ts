@@ -65,7 +65,7 @@ async function call(
   return { status, payload };
 }
 
-it("restores an evicted conversation so it stays readable and deletable", async () => {
+async function createFixture() {
   const agentId = "00000000-0000-0000-0000-0000000a0d18" as UUID;
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "evict-"));
   const cm = new PGliteClientManager({ dataDir });
@@ -116,6 +116,12 @@ it("restores an evicted conversation so it stays readable and deletable", async 
     broadcastWs: null,
     tradePermissionMode: "connectors-only",
   } as unknown as ConversationRouteState;
+  return { agentId, adapter, adminId, dataDir, runtime, state };
+}
+
+it("restores an evicted conversation so it stays readable and deletable", async () => {
+  const { agentId, adapter, adminId, dataDir, runtime, state } =
+    await createFixture();
   try {
     const created = await call(state, "POST", "/api/conversations", {
       title: "first chat",
@@ -172,6 +178,36 @@ it("restores an evicted conversation so it stays readable and deletable", async 
       }),
     ).toEqual([]);
     expect(await runtime.getRoom(first.roomId)).toBeNull();
+  } finally {
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
+it("does not restore a conversation from a room outside the web-chat world", async () => {
+  const { adapter, dataDir, runtime, state } = await createFixture();
+  try {
+    const convId = "not-a-web-chat";
+    await runtime.createRooms([
+      {
+        id: stringToUuid(`web-conv-${convId}`),
+        agentId: runtime.agentId,
+        name: "Other room",
+        source: "discord",
+        type: "GROUP",
+        channelId: `web-conv-${convId}`,
+        worldId: stringToUuid("some-other-world"),
+      } as never,
+    ]);
+
+    const messages = await call(
+      state,
+      "GET",
+      `/api/conversations/${convId}/messages`,
+    );
+
+    expect(messages.status).toBe(404);
+    expect(state.conversations.size).toBe(0);
   } finally {
     await adapter.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
