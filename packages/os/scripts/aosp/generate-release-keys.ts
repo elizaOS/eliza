@@ -20,6 +20,7 @@
 import { spawnSync } from "node:child_process";
 import crypto, { type KeyObject } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -157,18 +158,35 @@ function bigToBytes(value: bigint, length: number): Buffer {
   return Buffer.from(hex, "hex");
 }
 
+// Placeholder for the plaintext key argument. openssl cannot open /dev/stdin
+// when Node supplies a socket (Linux CI), and `req -key` has no stdin form, so
+// the key passes through a 0600 file in a fresh 0700 directory that is
+// overwritten and removed as soon as openssl exits.
+const KEY_INPUT = "<private-key-input>";
+
 function openssl(args: string[], input: string | Buffer): Buffer {
-  const result = spawnSync("openssl", args, {
-    input,
-    maxBuffer: 16 * 1024 ** 2,
-  });
-  if (result.error)
-    throw new Error(`openssl unavailable: ${result.error.message}`);
-  if (result.status !== 0)
-    throw new Error(
-      `openssl ${args[0]} failed: ${result.stderr.toString().trim()}`,
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-key-"));
+  fs.chmodSync(dir, 0o700);
+  const file = path.join(dir, "key.pem");
+  const bytes = Buffer.from(input);
+  try {
+    fs.writeFileSync(file, bytes, { mode: 0o600, flag: "wx" });
+    const result = spawnSync(
+      "openssl",
+      args.map((arg) => (arg === KEY_INPUT ? file : arg)),
+      { maxBuffer: 16 * 1024 ** 2 },
     );
-  return result.stdout;
+    if (result.error)
+      throw new Error(`openssl unavailable: ${result.error.message}`);
+    if (result.status !== 0)
+      throw new Error(
+        `openssl ${args[0]} failed: ${result.stderr.toString().trim()}`,
+      );
+    return result.stdout;
+  } finally {
+    if (fs.existsSync(file)) fs.writeFileSync(file, Buffer.alloc(bytes.length));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function enclosingGitWorkTree(target: string): string | null {
@@ -237,7 +255,7 @@ function encryptPkcs8(
       "pkcs8",
       "-topk8",
       "-in",
-      "/dev/stdin",
+      KEY_INPUT,
       "-outform",
       outform,
       "-v2",
@@ -315,7 +333,7 @@ export function generate(options: GenerateOptions) {
             "-x509",
             "-sha256",
             "-key",
-            "/dev/stdin",
+            KEY_INPUT,
             "-days",
             "10950",
             "-subj",
