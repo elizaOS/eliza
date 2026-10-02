@@ -897,6 +897,25 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   await observedLineProcessing;
   clearTimeout(timeoutTimer);
   request.signal?.removeEventListener('abort', abort);
+  // A lost worker/transport does not prove that an admitted effect failed or
+  // was cancelled. Preserve the durable reservation unless a canonical result
+  // arrived; the service projects these typed errors as unfinished state.
+  if (!result) {
+    const remainingLease = await inspectWorkerLease(workerLease);
+    if (remainingLease.state !== 'absent') {
+      throw new ElizaError(
+        remainingLease.state === 'live'
+          ? 'The original workflow worker is still running; preserve its execution.'
+          : 'Workflow worker outcome is unknown; preserve it and do not replay effects.',
+        {
+          code:
+            remainingLease.state === 'live'
+              ? 'WORKFLOW_WORKER_RUNNING'
+              : 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+        }
+      );
+    }
+  }
   if (lineProcessingFailed) throw lineProcessingError;
 
   if (outcome.processError) {
