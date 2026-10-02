@@ -247,4 +247,69 @@ describe("log-redaction shared references", () => {
 
 		expect(clone.items.at(-1)).toBe("[Shared]");
 	});
+
+	it("charges masked and dropped keys so a repeated wide object stays bounded", () => {
+		const credentials: Record<string, string> = {};
+		const hooks: Record<string, () => void> = {};
+		for (let index = 0; index < 100; index += 1) {
+			credentials[`apiKey${index}`] = "fixture-secret";
+			hooks[`hook${index}`] = () => {};
+		}
+		const functions = new Array(100).fill(() => {});
+
+		for (const shared of [credentials, hooks, functions]) {
+			const clone = redactLogValue(
+				new Array(20_000).fill(shared),
+				new WeakSet(),
+				0,
+			) as unknown[];
+			const rendered = clone.filter((entry) => entry !== "[Shared]");
+			// The first copy plus at most 10,000 units at 101 units per repeat.
+			expect(rendered.length).toBeLessThanOrEqual(1 + 100);
+			expect(clone.at(-1)).toBe("[Shared]");
+		}
+	});
+
+	it("charges a repeated error's stack so re-scanning stays bounded", () => {
+		const error = new Error("upstream failed");
+		error.stack = `Error: upstream failed\n${"    at frame\n".repeat(10_000)}`;
+		const clone = redactLogValue(
+			new Array(5000).fill(error),
+			new WeakSet(),
+			0,
+		) as unknown[];
+
+		const scanned = clone.filter((entry) => entry instanceof Error);
+		expect(scanned.length * error.stack.length).toBeLessThanOrEqual(
+			error.stack.length + 10_000 * 256,
+		);
+		expect(clone.at(-1)).toBe("[Shared]");
+	});
+
+	it("charges a long RegExp source even when it repeats outside a shared subtree", () => {
+		const pattern = new RegExp("a".repeat(10_000));
+		const clone = redactLogValue(
+			new Array(2000).fill(pattern),
+			new WeakSet(),
+			0,
+		) as unknown[];
+
+		const rendered = clone.filter((entry) => entry !== "[Shared]");
+		expect(rendered.length * 10_000).toBeLessThanOrEqual(10_000 + 10_000 * 256);
+		expect(clone.at(-1)).toBe("[Shared]");
+	});
+
+	it("renders a repeated record whole or not at all", () => {
+		const record = { a: 1, b: true, c: null, d: 4, e: 5, f: 6 };
+		const clone = redactLogValue(
+			new Array(3000).fill(record),
+			new WeakSet(),
+			0,
+		) as unknown[];
+
+		for (const entry of clone) {
+			if (entry !== "[Shared]") expect(entry).toEqual(record);
+		}
+		expect(clone.at(-1)).toBe("[Shared]");
+	});
 });

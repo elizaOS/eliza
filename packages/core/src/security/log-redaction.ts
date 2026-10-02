@@ -12,11 +12,14 @@ const MAX_REDACT_DEPTH = 8;
  * Bound on the extra work one walk spends re-cloning objects it already cloned
  * elsewhere. A shared (non-cyclic) reference renders in full wherever it
  * appears, but a densely shared graph (an HTTP client error's request, socket,
- * and agent) would otherwise expand once per path. Each repeated object, and
- * every value inside a repeated subtree, spends units; text spends one more
- * per SHARED_TEXT_UNIT characters because every credential pattern re-scans
- * it. Once spent, further repeats render as "[Shared]", so the total work
- * stays linear in the payload's distinct content.
+ * and agent) would otherwise expand once per path. A repeated object is
+ * admitted only when the budget covers one unit plus its width (own keys,
+ * elements, or entries), so it renders whole or becomes a single "[Shared]";
+ * every key, element, and entry visited inside a repeated subtree then spends
+ * a unit before any skip, and text (strings, an error's message and stack, a
+ * RegExp source) spends one more per SHARED_TEXT_UNIT characters because every
+ * credential pattern re-scans it. The total work therefore stays linear in
+ * the payload's distinct content.
  */
 const MAX_SHARED_WORK = 10_000;
 const SHARED_TEXT_UNIT = 256;
@@ -315,15 +318,29 @@ interface SharedReferenceBudget {
 }
 
 /**
- * Work units for re-scanning `text` against every credential pattern. Error
- * fields may hold non-strings; those cost one unit, never NaN, which would
- * turn the remaining budget into NaN and disable every later check.
+ * Extra work units for re-scanning `text` against every credential pattern,
+ * beyond the unit its slot already paid. Error fields may hold non-strings;
+ * those cost nothing extra, never NaN, which would turn the remaining budget
+ * into NaN and disable every later check.
  */
-function sharedTextCost(text: unknown): number {
-	return (
-		1 +
-		(typeof text === "string" ? Math.floor(text.length / SHARED_TEXT_UNIT) : 0)
-	);
+function sharedTextExtra(text: unknown): number {
+	return typeof text === "string"
+		? Math.floor(text.length / SHARED_TEXT_UNIT)
+		: 0;
+}
+
+/** Keys, elements, or entries a clone of `value` visits, read without walking it. */
+function shallowWidth(value: object): number {
+	if (Array.isArray(value)) return value.length;
+	if (value instanceof Map) return Reflect.get(Map.prototype, "size", value);
+	if (value instanceof Set) return Reflect.get(Set.prototype, "size", value);
+	// An error's clone also walks its cause.
+	return Object.keys(value).length + (value instanceof Error ? 1 : 0);
+}
+
+/** Spend one unit for a key, element, or entry visited inside a repeated subtree. */
+function spendRepeatedSlot(shared: SharedReferenceBudget): boolean {
+	return shared.repeatDepth === 0 || spendSharedWork(shared, 1);
 }
 
 function spendSharedWork(shared: SharedReferenceBudget, cost: number): boolean {
@@ -350,44 +367,44 @@ function redactWalkValue(
 	depth: number,
 	shared: SharedReferenceBudget,
 ): unknown {
+	// Primitives and functions cost nothing beyond the unit their slot paid.
 	if (typeof value === "string") {
-		if (
-			shared.repeatDepth > 0 &&
-			!spendSharedWork(shared, sharedTextCost(value))
-		) {
-			return SHARED_VALUE;
-		}
+		const extra = shared.repeatDepth > 0 ? sharedTextExtra(value) : 0;
+		if (extra > 0 && !spendSharedWork(shared, extra)) return SHARED_VALUE;
 		return redactSensitiveLogText(value);
 	}
 	// Functions are executable values even when they are passed directly or as
 	// trailing arguments. Never let a caller-owned function (and its toJSON)
 	// survive into a sink.
 	if (typeof value === "function") return null;
-	if (value === null || typeof value !== "object") {
-		if (shared.repeatDepth > 0 && !spendSharedWork(shared, 1)) {
-			return SHARED_VALUE;
-		}
-		return value;
-	}
+	if (value === null || typeof value !== "object") return value;
 	if (seen.has(value)) return CIRCULAR_VALUE;
 	if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
-	// Leaf built-ins have no children to re-walk, so repeating one costs
-	// nothing unless it sits inside a repeated subtree.
-	const leaf = redactLeafObject(value);
-	if (leaf !== undefined) {
-		if (
-			shared.repeatDepth > 0 &&
-			!spendSharedWork(shared, sharedTextCost(leaf))
-		) {
+	const repeated = shared.expanded.has(value);
+	shared.expanded.add(value);
+	if (isLeafObject(value)) {
+		// Leaf built-ins have no children; only a RegExp source is re-scanned,
+		// so a repeated Date or buffer stays free while a long pattern pays.
+		const extra =
+			(repeated || shared.repeatDepth > 0) && value instanceof RegExp
+				? sharedTextExtra(RegExp.prototype.toString.call(value))
+				: 0;
+		if (extra > 0 && !spendSharedWork(shared, extra)) return SHARED_VALUE;
+		return redactLeafObject(value);
+	}
+	if (repeated || shared.repeatDepth > 0) {
+		// Admit the whole clone or none of it, so a repeat never renders half a
+		// record. The per-slot charges below still bound a Proxy whose key list
+		// changes between reads.
+		const errorText =
+			value instanceof Error
+				? sharedTextExtra(value.message) + sharedTextExtra(value.stack)
+				: 0;
+		if (shared.remaining < 1 + shallowWidth(value) + errorText) {
 			return SHARED_VALUE;
 		}
-		return leaf;
+		shared.remaining -= 1 + errorText;
 	}
-	const repeated = shared.expanded.has(value);
-	if ((repeated || shared.repeatDepth > 0) && !spendSharedWork(shared, 1)) {
-		return SHARED_VALUE;
-	}
-	shared.expanded.add(value);
 	if (repeated) shared.repeatDepth += 1;
 	// Leave the ancestor path on every exit, including a throwing getter that
 	// unwinds to redactOwnPropertiesInto's per-key catch, so a sibling key that
@@ -401,8 +418,21 @@ function redactWalkValue(
 	}
 }
 
-/** Render a built-in that holds no walkable children, or return undefined for one that does. */
-function redactLeafObject(value: object): string | undefined {
+/** Built-ins that hold no walkable children and render in one marker or string. */
+function isLeafObject(value: object): boolean {
+	return (
+		ArrayBuffer.isView(value) ||
+		value instanceof ArrayBuffer ||
+		value instanceof Date ||
+		value instanceof RegExp ||
+		value instanceof WeakMap ||
+		value instanceof WeakSet ||
+		value instanceof Promise
+	);
+}
+
+/** Render a value for which isLeafObject holds. */
+function redactLeafObject(value: object): string {
 	// Binary payloads carry raw bytes that JSON serializes verbatim
 	// ({"type":"Buffer","data":[...]}); under a neutral key that silently leaks
 	// secret material into every sink, so mask with a size-only marker. Both
@@ -425,8 +455,7 @@ function redactLeafObject(value: object): string | undefined {
 	}
 	if (value instanceof WeakMap) return "[WeakMap]";
 	if (value instanceof WeakSet) return "[WeakSet]";
-	if (value instanceof Promise) return "[Promise]";
-	return undefined;
+	return "[Promise]";
 }
 
 function redactObjectValue(
@@ -436,22 +465,14 @@ function redactObjectValue(
 	shared: SharedReferenceBudget,
 ): unknown {
 	if (value instanceof Error) {
-		// A repeated error re-scans its message and stack, which can be long.
-		if (
-			shared.repeatDepth > 0 &&
-			!spendSharedWork(
-				shared,
-				sharedTextCost(value.message) + sharedTextCost(value.stack),
-			)
-		) {
-			return SHARED_VALUE;
-		}
 		const clone = new Error(redactSensitiveLogText(value.message));
 		clone.name = redactSensitiveLogText(value.name);
 		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
 		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
 		if (value.cause !== undefined) {
-			clone.cause = redactWalkValue(value.cause, seen, depth + 1, shared);
+			clone.cause = spendRepeatedSlot(shared)
+				? redactWalkValue(value.cause, seen, depth + 1, shared)
+				: SHARED_VALUE;
 		}
 		const target = clone as unknown as Record<string, unknown>;
 		redactOwnPropertiesInto(value, target, seen, depth + 1, shared);
@@ -462,7 +483,9 @@ function redactObjectValue(
 		// Avoid the caller's potentially overridden `map` and species constructor.
 		const result = new Array<unknown>(value.length);
 		for (let index = 0; index < value.length; index += 1) {
-			result[index] = redactWalkValue(value[index], seen, depth + 1, shared);
+			result[index] = spendRepeatedSlot(shared)
+				? redactWalkValue(value[index], seen, depth + 1, shared)
+				: SHARED_VALUE;
 		}
 		return result;
 	}
@@ -474,6 +497,10 @@ function redactObjectValue(
 		Map.prototype.forEach.call(
 			value,
 			(entryValue: unknown, entryKey: unknown) => {
+				if (!spendRepeatedSlot(shared)) {
+					entries.push(SHARED_VALUE);
+					return;
+				}
 				const safeKey = redactWalkValue(entryKey, seen, depth + 1, shared);
 				const safeValue =
 					typeof entryKey === "string" && isSensitiveLogKey(entryKey)
@@ -490,7 +517,11 @@ function redactObjectValue(
 	if (value instanceof Set) {
 		const values: unknown[] = [];
 		Set.prototype.forEach.call(value, (entryValue: unknown) => {
-			values.push(redactWalkValue(entryValue, seen, depth + 1, shared));
+			values.push(
+				spendRepeatedSlot(shared)
+					? redactWalkValue(entryValue, seen, depth + 1, shared)
+					: SHARED_VALUE,
+			);
 		});
 		const result = createRedactClone();
 		defineSafeProperty(result, "type", "Set");
@@ -535,6 +566,12 @@ function redactOwnPropertiesInto(
 	shared: SharedReferenceBudget,
 ): void {
 	for (const key of Object.keys(source)) {
+		// Charge before the credential and function skips: a repeated object of
+		// masked or dropped keys still costs one visit per key.
+		if (!spendRepeatedSlot(shared)) {
+			defineSafeProperty(target, key, SHARED_VALUE);
+			continue;
+		}
 		if (isSensitiveLogKey(key)) {
 			defineSafeProperty(target, key, REDACTED_VALUE);
 			continue;
