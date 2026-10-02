@@ -14,12 +14,22 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('eliza-lease-primitives-'+[Guid]::
 [void][IO.Directory]::CreateDirectory($root,$acl)
 $pipe = $null
 try {
+  # Current-SID ownership grants WRITE_DAC but not WRITE_OWNER. Do not request
+  # ownership replacement when only tightening this already-owned DACL.
+  $currentRoot=Join-Path $root 'current-owner-without-write-owner'
+  $currentAcl=[Security.AccessControl.DirectorySecurity]::new()
+  $currentAcl.SetOwner($sid);$currentAcl.SetAccessRuleProtection($true,$false)
+  $currentAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'Modify','None','None','Allow'))
+  [void][IO.Directory]::CreateDirectory($currentRoot,$currentAcl)
+  [WindowsLeaseNative]::ProtectExistingDirectory($currentRoot)
+  $currentPin=[WindowsLeaseNative]::LockPrivateDirectory($currentRoot);$currentPin.Dispose()
+  if([IO.Directory]::GetAccessControl($currentRoot).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value){throw 'Current state owner changed'}
   # A default elevated token can create a group-owned state root. Normalize
   # only this already-trusted owner, then require the ordinary private guard.
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
   try {
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    if($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Elevated Windows acceptance token required; owner normalization must not skip'}
       $adminAcl = [Security.AccessControl.DirectorySecurity]::new()
       $adminAcl.SetSecurityDescriptorSddlForm($acl.GetSecurityDescriptorSddlForm('All'))
       $adminAcl.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
@@ -38,7 +48,6 @@ try {
       if(-not $refused){throw 'Untrusted state DACL normalized'}
       if([IO.Directory]::GetAccessControl($untrustedRoot).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544'){throw 'Refused state owner was mutated'}
       Write-Output 'Elevated state owner normalization and untrusted ACL refusal passed'
-    }
   } finally {$identity.Dispose()}
   $name = 'eliza-workflow-'+[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')
   $pipe = [WindowsLeaseNative]::CreatePrivatePipe($name)

@@ -58,29 +58,45 @@ public static class WindowsLeaseNative {
     } catch {chain.Dispose();throw;}
   }
   [DllImport("advapi32.dll",SetLastError=true)] static extern bool SetKernelObjectSecurity(IntPtr handle,uint fields,IntPtr descriptor);
+  static bool ValidateStateOwnerAndAcl(IntPtr handle) {
+    IntPtr owner,group,dacl,sacl,old;uint error=GetSecurityInfo(handle,1,5,out owner,out group,out dacl,out sacl,out old);
+    if(error!=0)throw new Win32Exception((int)error);
+    try {
+      if(dacl==IntPtr.Zero)throw new InvalidOperationException("Null state DACL");
+      uint length=GetSecurityDescriptorLength(old);if(length==0||length>65536)throw new InvalidOperationException("State ACL length");byte[] bytes=new byte[length];Marshal.Copy(old,bytes,0,bytes.Length);
+      var acl=new RawSecurityDescriptor(bytes,0);string sid=CurrentSid();
+      bool administratorOwner=acl.Owner!=null&&acl.Owner.Value=="S-1-5-32-544";
+      using(var identity=WindowsIdentity.GetCurrent()) {
+        if(acl.Owner==null||(acl.Owner.Value!=sid&&!(administratorOwner&&new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))))throw new InvalidOperationException("Wrong state SID");
+      }
+      foreach(GenericAce entry in acl.DiscretionaryAcl){var rule=entry as CommonAce;if(rule==null||rule.IsCallback||(rule.SecurityIdentifier.Value!=sid&&rule.SecurityIdentifier.Value!="S-1-5-18"&&rule.SecurityIdentifier.Value!="S-1-5-32-544"))throw new InvalidOperationException("Untrusted existing state ACL");}
+      return administratorOwner;
+    } finally {LocalFree(old);}
+  }
+  static void ApplyPrivateState(IntPtr handle,bool normalizeOwner) {
+    IntPtr sd=Descriptor();try {if(!SetKernelObjectSecurity(handle,(normalizeOwner?5u:4u)|0x80000000u,sd))throw Error("Protect state DACL");}finally{LocalFree(sd);}
+    VerifyPrivateHandle(handle);
+  }
   public static void ProtectExistingDirectory(string directory) {
     using(LockDirectory(directory,false)) {
       var sa=new SA{length=Marshal.SizeOf(typeof(SA))};
-      using(var handle=CreateFile(directory,0xE0080,3,ref sa,3,0x02000000|0x00200000,IntPtr.Zero)) {
+      // Current-SID directories need their original READ_CONTROL/WRITE_DAC rights only.
+      using(var handle=CreateFile(directory,0x60080,3,ref sa,3,0x02000000|0x00200000,IntPtr.Zero)) {
         if(handle.IsInvalid)throw Error("State ACL handle");
-        IntPtr owner,group,dacl,sacl,old;uint error=GetSecurityInfo(handle.DangerousGetHandle(),1,5,out owner,out group,out dacl,out sacl,out old);
-        if(error!=0)throw new Win32Exception((int)error);
-        try {
-          if(dacl==IntPtr.Zero)throw new InvalidOperationException("Null state DACL");
-          uint length=GetSecurityDescriptorLength(old);if(length==0||length>65536)throw new InvalidOperationException("State ACL length");byte[] bytes=new byte[length];Marshal.Copy(old,bytes,0,bytes.Length);
-          var acl=new RawSecurityDescriptor(bytes,0);string sid=CurrentSid();
-          // Elevated Windows tokens can create Administrators-owned directories.
-          // That group is already trusted by the pre-existing DACL policy below.
-          // Only an enabled administrator may normalize that owner; foreign user
-          // owners remain refused. Validate the entire old DACL before mutation.
-          bool administratorOwner=acl.Owner!=null&&acl.Owner.Value=="S-1-5-32-544";
-          using(var identity=WindowsIdentity.GetCurrent()) {
-            if(acl.Owner==null||(acl.Owner.Value!=sid&&!(administratorOwner&&new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))))throw new InvalidOperationException("Wrong state SID");
-          }
-          foreach(GenericAce entry in acl.DiscretionaryAcl){var rule=entry as CommonAce;if(rule==null||rule.IsCallback||(rule.SecurityIdentifier.Value!=sid&&rule.SecurityIdentifier.Value!="S-1-5-18"&&rule.SecurityIdentifier.Value!="S-1-5-32-544"))throw new InvalidOperationException("Untrusted existing state ACL");}
-        } finally {LocalFree(old);}
-        IntPtr sd=Descriptor();try {if(!SetKernelObjectSecurity(handle.DangerousGetHandle(),5|0x80000000,sd))throw Error("Protect state DACL");}finally{LocalFree(sd);}
-        VerifyPrivateHandle(handle.DangerousGetHandle());
+        if(!ValidateStateOwnerAndAcl(handle.DangerousGetHandle())) {
+          ApplyPrivateState(handle.DangerousGetHandle(),false);
+          return;
+        }
+        // Only the validated enabled-administrator case requests WRITE_OWNER.
+        // Keep original handle and ancestor no-delete pins while opening the mutation handle.
+        FileInfo original;if(!GetFileInformationByHandle(handle,out original))throw Error("State directory identity");
+        using(var ownerHandle=CreateFile(directory,0xE0080,3,ref sa,3,0x02000000|0x00200000,IntPtr.Zero)) {
+          if(ownerHandle.IsInvalid)throw Error("State owner handle");
+          FileInfo current;if(!GetFileInformationByHandle(ownerHandle,out current))throw Error("State owner identity");
+          if(original.volume!=current.volume||original.indexHigh!=current.indexHigh||original.indexLow!=current.indexLow||(current.attributes&0x10)==0||(current.attributes&0x400)!=0)throw new InvalidOperationException("State directory changed");
+          if(!ValidateStateOwnerAndAcl(ownerHandle.DangerousGetHandle()))throw new InvalidOperationException("State owner changed");
+          ApplyPrivateState(ownerHandle.DangerousGetHandle(),true);
+        }
       }
     }
   }
