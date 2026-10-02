@@ -14,6 +14,7 @@ import { WorkflowService } from '../../src/services/workflow-service';
 
 const presentation = { operation: 'Compute', target: 'Synthetic result', account: 'Fixture owner' };
 const cases = [
+  { name: 'restricted reviewer', metadata: { alphaPhone: presentation }, supported: false },
   { name: 'legacy', metadata: { alphaPhone: presentation }, supported: true },
   {
     name: 'generic',
@@ -152,7 +153,7 @@ for (const scenario of cases)
         source: `/** @jsxImportSource smthrs */
 import {createSmithers} from 'smthrs/create';import {approvalDecisionSchema} from 'smthrs';import {z} from 'zod';
 const {Workflow,Sequence,Approval,Task,smithers,outputs}=createSmithers({decision:approvalDecisionSchema,output:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
-export default smithers(()=><Workflow name="approval-http"><Sequence><Approval id="review" mode="approve" output={outputs.decision} request={{title:'Calculate?',summary:'Produce synthetic arithmetic after review.',metadata:${JSON.stringify(scenario.metadata)}}}/><Task id="arithmetic" output={outputs.output}>{{value:56}}</Task></Sequence></Workflow>);`,
+export default smithers(()=><Workflow name="approval-http"><Sequence><Approval id="review"${scenario.name === 'restricted reviewer' ? ' allowedUsers={["reviewer"]}' : ''} mode="approve" output={outputs.decision} request={{title:'Calculate?',summary:'Produce synthetic arithmetic after review.',metadata:${JSON.stringify(scenario.metadata)}}}/><Task id="arithmetic" output={outputs.output}>{{value:56}}</Task></Sequence></Workflow>);`,
       };
       let authored = definition as any;
       if (scenario.name === 'generic') {
@@ -210,6 +211,8 @@ export default smithers(()=><Workflow name="approval-http"><Sequence><Approval i
         };
       expect((await call(decisionRoute, decision, 'other')).status).toBe(404);
       if (!scenario.supported) {
+        expect((await call(decisionRoute, { approved: true })).status).toBe(422);
+        expect((await call(route)).body.approvals[0].status).toBe('pending');
         expect((await call(decisionRoute, decision)).status).toBe(422);
         expect((await call(route)).body.approvals[0].status).toBe('pending');
         expect((await call(decisionRoute, { ...decision, approved: false })).status).toBe(202);
