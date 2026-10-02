@@ -312,6 +312,12 @@ function protectCloneCoercion(clone: object, text: string): void {
 /** Per-walk record of cloned objects and the remaining repeat-work budget. */
 interface SharedReferenceBudget {
 	expanded: WeakSet<object>;
+	/**
+	 * Repeated objects the budget already refused. The budget only shrinks, so
+	 * a refusal is final for the walk; remembering it keeps later copies from
+	 * re-measuring the object's keys, which is O(width) on V8 per copy.
+	 */
+	rejected: WeakSet<object>;
 	remaining: number;
 	/** Number of repeated objects on the current path; non-zero means every value costs work. */
 	repeatDepth: number;
@@ -356,6 +362,7 @@ export function redactLogValue(
 ): unknown {
 	return redactWalkValue(value, seen, depth, {
 		expanded: new WeakSet<object>(),
+		rejected: new WeakSet<object>(),
 		remaining: MAX_SHARED_WORK,
 		repeatDepth: 0,
 	});
@@ -393,6 +400,9 @@ function redactWalkValue(
 		return redactLeafObject(value);
 	}
 	if (repeated || shared.repeatDepth > 0) {
+		if (shared.rejected.has(value) || shared.remaining <= 0) {
+			return SHARED_VALUE;
+		}
 		// Admit the whole clone or none of it, so a repeat never renders half a
 		// record. The per-slot charges below still bound a Proxy whose key list
 		// changes between reads.
@@ -401,6 +411,7 @@ function redactWalkValue(
 				? sharedTextExtra(value.message) + sharedTextExtra(value.stack)
 				: 0;
 		if (shared.remaining < 1 + shallowWidth(value) + errorText) {
+			shared.rejected.add(value);
 			return SHARED_VALUE;
 		}
 		shared.remaining -= 1 + errorText;

@@ -312,4 +312,27 @@ describe("log-redaction shared references", () => {
 		}
 		expect(clone.at(-1)).toBe("[Shared]");
 	});
+
+	it("measures a refused repeat once instead of on every later copy", () => {
+		const target: Record<string, number> = {};
+		for (let index = 0; index < 1000; index += 1) target[`k${index}`] = index;
+		let enumerations = 0;
+		const counted = new Proxy(target, {
+			ownKeys(object) {
+				enumerations += 1;
+				return Reflect.ownKeys(object);
+			},
+		});
+
+		const clone = redactLogValue(
+			new Array(20_000).fill(counted),
+			new WeakSet(),
+			0,
+		) as unknown[];
+
+		// One walk of the first copy plus two per admitted repeat (measure and
+		// copy) and one refusal; never once per copy.
+		expect(enumerations).toBeLessThan(100);
+		expect(clone.at(-1)).toBe("[Shared]");
+	});
 });
