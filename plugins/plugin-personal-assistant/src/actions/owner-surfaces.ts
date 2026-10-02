@@ -257,7 +257,7 @@ function makeOwnerLifeAction(args: {
       const merged: ActionParameters =
         args.name === "OWNER_REMINDERS" && action === "cancel"
           ? {
-              action: "update",
+              action: "cancel",
               subaction: "update",
               kind: "definition",
               ownerSurface: args.name,

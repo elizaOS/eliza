@@ -4238,6 +4238,13 @@ async function runLifeOperationHandlerInner(
   const authoredText = extractPrimaryLifeInputText(messageText(message));
   const currentText = normalizeLifeInputText(authoredText);
   const details = params.details;
+  // The owner surface preserves this canonical selector while stripping edit
+  // fields. An ordinary update's details.status grants no archive authority.
+  const archiveOnlyReminder =
+    ownerSurfaceActionName === "OWNER_REMINDERS" &&
+    params.action === "cancel" &&
+    params.subaction === "update" &&
+    params.kind === "definition";
   const stateDeferredDraft = latestDeferredLifeDraft(state);
   const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
     runtime,
@@ -4272,18 +4279,19 @@ async function runLifeOperationHandlerInner(
   // plan kept the draft's slots and lost the after-dinner citations session).
   // The classifier abstaining never cancels an explicit yes, though — that
   // falls back to confirm instead of dropping consent.
-  const deferredDraftFollowupMode = deferredDraft
-    ? explicitCreateConfirmation &&
-      isBareLifeCreateConfirmationMessage(currentText)
-      ? "confirm"
-      : ((await extractDeferredLifeDraftFollowupWithLlm({
-          runtime,
-          message,
-          state,
-          currentText,
-          draft: deferredDraft,
-        })) ?? (explicitCreateConfirmation ? "confirm" : null))
-    : null;
+  const deferredDraftFollowupMode =
+    deferredDraft && !archiveOnlyReminder
+      ? explicitCreateConfirmation &&
+        isBareLifeCreateConfirmationMessage(currentText)
+        ? "confirm"
+        : ((await extractDeferredLifeDraftFollowupWithLlm({
+            runtime,
+            message,
+            state,
+            currentText,
+            draft: deferredDraft,
+          })) ?? (explicitCreateConfirmation ? "confirm" : null))
+      : null;
   const draftExpiryReason = deferredLifeDraftExpiryReason({
     draft: deferredDraft,
     turnsSinceDraft,
@@ -4346,7 +4354,9 @@ async function runLifeOperationHandlerInner(
       },
     };
   }
-  const explicitAction = normalizeExplicitLifeAction(params.action);
+  const explicitAction = archiveOnlyReminder
+    ? { operation: "update" as const, kind: "definition" as const }
+    : normalizeExplicitLifeAction(params.action);
   // Retraction of an un-previewed save: the crisp-ask fast path persists with
   // no draft to cancel, and the planner cannot be trusted to translate
   // "actually don't save that one" into action=delete — observed live
@@ -4354,7 +4364,11 @@ async function runLifeOperationHandlerInner(
   // it", and left the definition active. This runs before extraction so no
   // classifier verdict can strand the stale row; a same-message create
   // (retract + replace in one utterance) still runs after the deletion.
-  if (deferredDraft === null && isLifeSaveRetraction(messageText(message))) {
+  if (
+    !archiveOnlyReminder &&
+    deferredDraft === null &&
+    isLifeSaveRetraction(messageText(message))
+  ) {
     const recentSave = await readRecentLifeSaveCache(runtime, message);
     const retractionMessageId =
       message.id !== undefined && message.id !== null ? String(message.id) : "";
@@ -4500,9 +4514,11 @@ async function runLifeOperationHandlerInner(
   const forceGoalKind =
     looksLikeGoalTrackingFollowup(currentText) ||
     looksLikeGoalTrackingFollowup(intent);
-  const resolvedKind: LifeKind | undefined = forceGoalKind
-    ? "goal"
-    : (operationPlan.kind ?? explicitKind);
+  const resolvedKind: LifeKind | undefined = archiveOnlyReminder
+    ? "definition"
+    : forceGoalKind
+      ? "goal"
+      : (operationPlan.kind ?? explicitKind);
   const forceCreateExecution = shouldForceLifeCreateExecution({
     intent,
     missing: operationPlan.missing,
@@ -5813,6 +5829,20 @@ async function runLifeOperationHandlerInner(
                 : `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to update.",
         };
+      if (archiveOnlyReminder) {
+        const updated = await service.updateDefinition(target.definition.id, {
+          ownership,
+          status: "archived",
+        });
+        const text = `Cancelled "${updated.definition.title}".`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: toActionData(updated),
+        };
+      }
       if (
         requestedTime !== undefined &&
         requestedTimeZone === null &&

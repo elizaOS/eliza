@@ -84,7 +84,7 @@ it("maps structured cancellation to an archive-only update without carrying unre
   expect(runLifeOperationHandler).toHaveBeenCalledOnce();
   expect(runLifeOperationHandler.mock.calls[0]?.[3]).toMatchObject({
     parameters: {
-      action: "update",
+      action: "cancel",
       subaction: "update",
       kind: "definition",
       ownerSurface: "OWNER_REMINDERS",
