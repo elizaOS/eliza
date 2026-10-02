@@ -2,6 +2,7 @@
  * Steward Sidecar - first-launch wallet creation and verification.
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
@@ -134,9 +135,40 @@ function persistCredentials(
   dataDir: string,
 ): void {
   const credPath = path.join(dataDir, CREDENTIALS_FILE);
-  fs.writeFileSync(credPath, JSON.stringify(credentials, null, 2), {
-    mode: 0o600,
-  });
+  const temporary = path.join(dataDir, `.credentials-${randomUUID()}`);
+  // Never truncate the only copy of a registered tenant key. Publish a complete,
+  // flushed private replacement before the next remote setup operation starts.
+  try {
+    const descriptor = fs.openSync(temporary, "wx", 0o600);
+    try {
+      fs.writeFileSync(descriptor, JSON.stringify(credentials, null, 2));
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    fs.renameSync(temporary, credPath);
+    let directory: number | undefined;
+    try {
+      directory = fs.openSync(dataDir, "r");
+      fs.fsyncSync(directory);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Directory flush is unsupported on Windows and some filesystems; actual
+      // I/O errors still stop setup, leaving a complete recoverable checkpoint.
+      if (
+        process.platform !== "win32" &&
+        code !== "EINVAL" &&
+        code !== "ENOTSUP" &&
+        code !== "EOPNOTSUPP" &&
+        code !== "EISDIR"
+      )
+        throw error;
+    } finally {
+      if (directory !== undefined) fs.closeSync(directory);
+    }
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
 }
 
 async function requestAgentToken(
