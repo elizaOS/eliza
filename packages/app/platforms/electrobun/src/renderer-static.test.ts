@@ -22,7 +22,7 @@ describe("renderer static HTML response headers", () => {
 	it("serves HTML without a cross-origin read grant", () => {
 		const headers = buildRendererStaticHtmlHeaders();
 		expect(headers["Content-Type"]).toBe("text/html; charset=utf-8");
-		expect(headers["Cache-Control"]).toBe("public, max-age=0, must-revalidate");
+		expect(headers["Cache-Control"]).toBe("no-store");
 		expect(corsHeaderNames(headers)).toEqual([]);
 	});
 });
