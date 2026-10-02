@@ -16,6 +16,55 @@ import {
 const ENTRIES_KEY = "__eliza_record_entries";
 
 describe("native provider tool-call boundary", () => {
+  it("restores strict optional placeholders inside arrays without erasing meaningful nulls", () => {
+    const normalized = normalizeNativeToolsForCall([
+      {
+        name: "PATCH",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          required: ["rows"],
+          properties: {
+            rows: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["required"],
+                properties: {
+                  optional: { type: "string" },
+                  nullable: { anyOf: [{ type: "string" }, { type: "null" }] },
+                  required: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+    const input = {
+      rows: [
+        { optional: null, nullable: null, required: null },
+        { optional: "retained", nullable: "retained", required: "present" },
+      ],
+    };
+    const restored = restoreRecordArgToolCalls(
+      [{ toolCallId: "optional-1", toolName: "PATCH", input }],
+      normalized.recordArgTransformsByTool
+    );
+    expect(restored?.[0].arguments).toEqual({
+      rows: [
+        { nullable: null, required: null },
+        { optional: "retained", nullable: "retained", required: "present" },
+      ],
+    });
+    expect(input.rows[0]).toHaveProperty("optional", null);
+    const rows = propOf(schemaOf(normalized.tools, "PATCH"), "rows");
+    expect(propOf(rows.items as Record<string, unknown>, "optional")).toEqual({
+      anyOf: [{ type: "string" }, { type: "null" }],
+    });
+  });
+
   it.each([
     { calls: null },
     { calls: [null] },

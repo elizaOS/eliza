@@ -310,6 +310,8 @@ export const workThreadAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: "WORK_THREAD",
+  // Lifecycle operations must not invent unused IDs, source grants, or triggers.
+  toolSchemaStrict: false,
   similes: [
     "THREAD_CONTROL",
     "STEER_THREAD",
