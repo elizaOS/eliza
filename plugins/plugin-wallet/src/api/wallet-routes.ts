@@ -715,10 +715,24 @@ async function signLocalBrowserSolanaMessage(
   };
 }
 function normalizeBrowserSolanaCluster(value: unknown): BrowserSolanaCluster {
-  if (value === "devnet" || value === "testnet" || value === "mainnet") {
-    return value;
+  if (value === undefined || value === null) return "mainnet";
+  if (typeof value !== "string") {
+    throw new Error(
+      `Invalid Solana cluster ${JSON.stringify(String(value))}: expected "mainnet", "devnet", or "testnet".`,
+    );
   }
-  return "mainnet";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return "mainnet";
+  if (
+    normalized === "mainnet" ||
+    normalized === "devnet" ||
+    normalized === "testnet"
+  ) {
+    return normalized;
+  }
+  throw new Error(
+    `Invalid Solana cluster ${JSON.stringify(value)}: expected "mainnet", "devnet", or "testnet".`,
+  );
 }
 function browserSolanaClusterRpcUrl(cluster: BrowserSolanaCluster): string {
   switch (cluster) {
