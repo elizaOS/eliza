@@ -297,12 +297,17 @@ export function redactSensitiveLogText(text: string): string {
  * (e.g. React DevTools' patched console methods during startup logging).
  */
 function createRedactClone(): Record<string, unknown> {
-	const clone = {};
-	protectCloneCoercion(clone, "[object Object]");
-	return clone;
+	return {};
 }
 
-/** Keep source data named toString/valueOf without executing it during coercion. */
+/**
+ * Keep source data named toString/valueOf without executing it during
+ * coercion. Plain clones get this only when an own toString shadows the
+ * inherited method: Bun's console prints a non-enumerable Symbol.toPrimitive (own or
+ * inherited) on every object, so an unconditional hook adds a
+ * `[Symbol(Symbol.toPrimitive)]: [Function: value]` line to each logged
+ * object in the terminal.
+ */
 function protectCloneCoercion(clone: object, text: string): void {
 	Object.defineProperty(clone, Symbol.toPrimitive, {
 		value: (hint: string) => (hint === "number" ? Number.NaN : text),
@@ -544,6 +549,12 @@ function redactObjectValue(
 	// credentials stashed on config/response wrappers (axios-style).
 	const result = createRedactClone();
 	redactOwnPropertiesInto(value, result, seen, depth + 1, shared);
+	// Only a non-callable own toString breaks coercion: ToPrimitive falls back
+	// from valueOf to toString, and the inherited Object.prototype.toString
+	// still answers when valueOf alone is shadowed.
+	if (Object.hasOwn(result, "toString")) {
+		protectCloneCoercion(result, "[object Object]");
+	}
 	return result;
 }
 

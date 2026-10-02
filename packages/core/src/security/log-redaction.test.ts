@@ -49,6 +49,36 @@ describe("log-redaction clone coercion", () => {
 		expect(clone).toEqual({ phase: "restoring-session" });
 	});
 
+	it("adds no own symbol to clones without a shadowing key, so Bun's console prints none", () => {
+		const [plain, mapClone] = redactTrailingArgs([
+			{ owner: { id: "u1" }, items: [{ k: 1 }] },
+			new Map([["k", new Set(["v"])]]),
+		]) as [{ owner: object; items: object[] }, { entries: [string, object][] }];
+
+		for (const clone of [
+			plain,
+			plain.owner,
+			plain.items[0],
+			mapClone,
+			mapClone.entries[0][1],
+		]) {
+			expect(Object.getOwnPropertySymbols(clone)).toEqual([]);
+			expect(String(clone)).toBe("[object Object]");
+		}
+
+		const [valueOnly, shadowed] = redactTrailingArgs([
+			{ valueOf: "source data" },
+			{ toString: "source data" },
+		]);
+		expect(Object.getOwnPropertySymbols(valueOnly)).toEqual([]);
+		expect(String(valueOnly)).toBe("[object Object]");
+		expect(Number(valueOnly)).toBeNaN();
+		expect(Object.getOwnPropertySymbols(shadowed)).toEqual([
+			Symbol.toPrimitive,
+		]);
+		expect(String(shadowed)).toBe("[object Object]");
+	});
+
 	it("Map/Set clones survive String() coercion", () => {
 		expect(() =>
 			String(redactLogValue(new Map([["k", "v"]]), new WeakSet(), 0)),
