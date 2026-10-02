@@ -356,9 +356,15 @@ const childQuiescenceLedgerPath = path.join(
   outputDir,
   "child-quiescence-ledger.json",
 );
-// Keep this private ledger owned by the controller even if the sandbox exits
+// Keep these private ledgers owned by the controller even if the sandbox exits
 // abnormally before its ACL cleanup. The launcher grants the child write access
-// to existing evidence, and writeFile preserves the existing owner and mode.
+// to existing evidence, and in-place child writes preserve the existing owner
+// and mode. A ledger the child creates itself (or publishes by renaming a file
+// from its private tmpfs, which carries no default ACL) can end up owned by the
+// ephemeral sandbox UID and unreadable, which previously made the trajectory
+// artifact upload fail with EACCES and destroyed the failure evidence.
+await writeFile(childNetworkLedgerPath, "", { mode: 0o600, flag: "wx" });
+await writeFile(childRuntimeLedgerPath, "", { mode: 0o600, flag: "wx" });
 await writeFile(childQuiescenceLedgerPath, "", { mode: 0o600, flag: "wx" });
 const childProcessEnvironment = modelProxy
   ? liveModelScenarioChildEnvironment(
