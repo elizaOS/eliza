@@ -33,6 +33,7 @@ function assets() {
     "background.mjs": Buffer.from('import "./commands.mjs";\n'),
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
+    "manual-activity.mjs": Buffer.from("export const manualActivity = true;\n"),
     "native-connection.mjs": Buffer.from("export const recovery = true;\n"),
     "task-guidance.mjs": Buffer.from("export const admission = true;\n"),
     "page-guidance.mjs": Buffer.from("export const annotation = true;\n"),
@@ -101,6 +102,10 @@ test("pinned Chromium sources produce deterministic component and narrow native 
       `${prefix}api/messaging/android/native_message_android_port.cc`
     ],
     /GetVerifierSourceType\(\*extension\)[\s\S]*eliza_component::VerifyExtension\(\*extension\)/,
+  );
+  assert.match(
+    first.files[`${prefix}api/messaging/BUILD.gn`],
+    /if \(is_android\) \{\s*deps \+= \[[\s\S]*?"\/\/chrome\/browser\/resources:component_extension_resources"/,
   );
   assert.equal(
     first.files["extensions/common/extension_features.cc"],
@@ -347,12 +352,24 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     .split("</includes>")[0]
     .replace(/<if expr="is_chromeos">[\s\S]*?<\/if>/g, "");
   const count = [...includes.matchAll(/<include\s/g)].length;
-  const allocation = sources["tools/gritsettings/resource_ids.spec"].match(
+  const allocation = overlay.files[
+    "tools/gritsettings/resource_ids.spec"
+  ].match(
     /"chrome\/browser\/resources\/component_extension_resources.grd":\s*\{\s*"includes": \[(\d+)\],\s*"structures": \[(\d+)\]/,
   );
   assert.ok(allocation);
   assert.ok(count <= Number(allocation[2]) - Number(allocation[1]));
-  assert.equal(count, 20); // Includes both optional Hangouts entries, conservatively.
+  assert.equal(count, 21); // Includes both optional Hangouts entries, conservatively.
+  const structures = [
+    ...overlay.files[
+      "chrome/browser/resources/component_extension_resources.grd"
+    ].matchAll(/<structure\s/g),
+  ].length;
+  const nextBlock = overlay.files["tools/gritsettings/resource_ids.spec"].match(
+    /"chrome\/browser\/resources\/office_web_app\/resources.grd":\s*\{\s*"includes": \[(\d+)\]/,
+  );
+  assert.ok(nextBlock);
+  assert.ok(structures <= Number(nextBlock[1]) - Number(allocation[2]));
 });
 
 test("a different Android host must match the component assets and build certificate", async () => {
