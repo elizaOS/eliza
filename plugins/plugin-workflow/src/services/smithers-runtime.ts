@@ -83,6 +83,7 @@ import {
   defaultWorkflowBunExecutable,
   workflowDependencyPackage,
   workflowProcessCommand,
+  workflowRuntimeFileCommand,
 } from './workflow-process-host';
 
 type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
@@ -578,7 +579,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     });
   }
   validateSmithersSource(request.workflow.source);
-  const command = workflowProcessCommand('runtime', createSmithersWorkerScript());
+  const workerProgram = createSmithersWorkerScript();
+  let command = workflowProcessCommand('runtime', workerProgram);
   const rootDir = resolveSmithersWorkflowDir(request.tenantId, request.workflow.id);
   const sourceDigest = createHash('sha256').update(request.workflow.source).digest('hex');
   const sourcePath = join(
@@ -619,6 +621,17 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     linkWorkflowDependency(rootDir, 'zod'),
   ]);
   await publishWorkflowSource(sourcePath, request.workflow.source);
+  if (process.platform === 'win32') {
+    // The native helper makes this module larger than Windows' command-line limit.
+    // Publish immutable bytes beside the workflow's pinned dependency links; stdin
+    // remains exclusively available for the parent/worker response protocol.
+    const workerProgramPath = join(
+      rootDir,
+      `.worker-${createHash('sha256').update(workerProgram).digest('hex')}.mjs`
+    );
+    await publishWorkflowSource(workerProgramPath, workerProgram);
+    command = workflowRuntimeFileCommand(workerProgramPath);
+  }
   await writeFile(
     payloadPath,
     JSON.stringify({
