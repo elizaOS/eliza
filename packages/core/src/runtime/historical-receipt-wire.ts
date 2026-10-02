@@ -113,6 +113,8 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 					"outcome",
 					"reason",
 					"commit",
+					"failure",
+					"rollback",
 				],
 	);
 	let packable = true;

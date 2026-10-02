@@ -290,6 +290,67 @@ it("shares only complete top-level effect shapes, preserving absent versus null 
 	);
 });
 
+it("packs mixed applied, failed and rolled-back receipts without losing failure or compensation evidence", () => {
+	const input = Array.from({ length: 30 }, (_, id) => ({
+		label: "runtime:historical_effects",
+		stable: false,
+		content: JSON.stringify({
+			requestSourceEventId: `history:${id}`,
+			scope: "Past recorded outcomes only; not current authority.",
+			outcomes: [
+				{
+					actionName: "OWNER_REMINDERS_CREATE",
+					success: id % 3 === 0,
+					receipt: {
+						receiptId: `receipt:${id}`,
+						operation: "lifeops.definition.create",
+						resource: { kind: "lifeops.definition", id: `definition:${id}` },
+						artifacts: [],
+						idempotency: { key: `request:${id}`, replayed: false },
+						observedAt: "2026-10-02T04:37:43.507Z",
+						...(id % 3 === 0
+							? {
+									outcome: "applied",
+									commit: {
+										kind: "durable",
+										id: `commit:${id}`,
+										committedAt: "2026-10-02T04:37:43.507Z",
+									},
+								}
+							: id % 3 === 1
+								? {
+										outcome: "failed",
+										failure: {
+											code: "EXACT_PROVIDER_ERROR",
+											retryable: false,
+											acceptance: "unknown",
+										},
+									}
+								: {
+										outcome: "rolled_back",
+										rollback: {
+											receiptId: `compensation:${id}`,
+											revertedReceiptIds: [`prior:${id}`],
+											rolledBackAt: "2026-10-02T04:37:43.507Z",
+										},
+									}),
+					},
+				},
+			],
+		}),
+	}));
+	const before = structuredClone(input);
+	const packed = compactHistoricalReceiptSegments(input);
+	expect(JSON.parse(packed[0].content).receiptShapes).toHaveLength(3);
+	expect(expand(packed)).toEqual(
+		input.map((segment) => JSON.parse(segment.content)),
+	);
+	expect(input).toEqual(before);
+	expect(
+		packed.map((segment) => segment.content).join("\n").length,
+	).toBeLessThan(input.map((segment) => segment.content).join("\n").length);
+});
+
 it("shares legends across interleaved trusted receipt positions without changing dialogue, source identities or stable prefix", () => {
 	const prefix = { id: "system", content: "Trusted prefix", stable: true };
 	const input: ContextObjectPromptSegment[] = [prefix];
