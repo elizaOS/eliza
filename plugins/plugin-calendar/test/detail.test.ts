@@ -50,6 +50,7 @@ describe("parseCalendarJsonRecord", () => {
   it("extracts a JSON object from raw / fenced / think-wrapped output", () => {
     expect(parseCalendarJsonRecord('{"a":1}')).toEqual({ a: 1 });
     expect(parseCalendarJsonRecord('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(parseCalendarJsonRecord('```json5\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(parseCalendarJsonRecord('<think>reasoning</think>{"x":2}')).toEqual({
       x: 2,
     });

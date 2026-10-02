@@ -62,6 +62,25 @@ describe("scoreInboxMessages", () => {
     );
   });
 
+  it("parses scores from a ```json5 fenced response", async () => {
+    const reportError = vi.fn();
+    const runtime = {
+      useModel: vi.fn(
+        async () =>
+          '```json5\n{"scores":[{"score":80,"category":"important","flags":[]}]}\n```',
+      ),
+      reportError,
+    } as unknown as IAgentRuntime;
+
+    const [score] = await scoreInboxMessages(runtime, [message("one")], {
+      model: "test-model",
+      concurrency: 1,
+    });
+
+    expect(reportError).not.toHaveBeenCalled();
+    expect(score).toMatchObject({ score: 80, category: "important" });
+  });
+
   it("fails closed at the reachable scorer boundary on delimiter output amplification", async () => {
     const reportError = vi.fn();
     const flags = Array.from(

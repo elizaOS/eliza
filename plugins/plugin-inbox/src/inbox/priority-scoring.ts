@@ -177,8 +177,9 @@ function buildPrompt(
   return lines.join("\n");
 }
 
+// Longest label first, or a ```json5 fence leaves "5" at the start of the body.
 const STRUCTURED_CODE_FENCE_PATTERN =
-  /^\s*```(?:json|json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+  /^\s*```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
 function stripModelWrapper(raw: string): string {
   let candidate = raw.trim();

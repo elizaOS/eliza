@@ -8,7 +8,9 @@
 
 import JSON5 from "json5";
 
-const jsonBlockPattern = /```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
+// Longest label first: with `json|json5`, a ```json5 fence matches `json` and
+// leaves "5" at the start of the captured body.
+const jsonBlockPattern = /```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.
