@@ -189,6 +189,23 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     );
   });
 
+  it("revalidates detached liveness off the main thread on an ordinary start", () => {
+    const service = source("ElizaAgentService.java");
+    const requestStartBody = service.match(
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
+    )?.[1];
+    expect(requestStartBody).toBeDefined();
+    expect(requestStartBody).not.toContain("&& detachedAgentMode");
+    expect(requestStartBody).not.toContain("isLocalAgentSocketListening()");
+    expect(requestStartBody).toMatch(
+      /new Thread\([\s\S]*startAgentProcess\(!restartFirst\)/,
+    );
+    expect(service).toContain(
+      "if (allowAdoption && isLocalAgentSocketListening())",
+    );
+    expect(service).toContain("if (coldBootStampTrustworthy(");
+  });
+
   it("enters foreground without PendingIntent binder work on the main thread", () => {
     for (const name of [
       "ElizaAgentService.java",

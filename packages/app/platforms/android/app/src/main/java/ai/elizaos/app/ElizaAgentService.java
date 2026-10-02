@@ -1920,11 +1920,10 @@ public class ElizaAgentService extends Service {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
-            if (!restartFirst
-                    && detachedAgentMode
-                    && ("starting".equals(currentStatus) || "running".equals(currentStatus))) {
-                return;
-            }
+            // Detached mode/status describe the previous launch, not current liveness.
+            // A detached child can die after its launcher and startup probe exit.
+            // Recheck adoption/cold-boot ownership on the start worker below;
+            // never perform socket or process identity I/O on this main-thread path.
             if (startWorker != null && startWorker.isAlive()) {
                 return;
             }
