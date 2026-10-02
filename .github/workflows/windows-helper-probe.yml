@@ -1,17 +1,17 @@
-# This builtins-only diagnostic does not replace normal-hook installation or
-# the full Windows/Smithers survivor acceptance in platform-smoke.yml.
-name: Windows helper startup probe
+# Diagnostic only: skipped install hooks here cannot qualify normal installation.
+name: Windows survivor detachment probe
 on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: windows-helper-probe-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
-  startup:
+  parent-loss:
     runs-on: windows-2025
-    timeout-minutes: 12
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [attached, detached]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -21,6 +21,9 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.4.2"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
       - name: Verify exact source and runtime
         shell: powershell
         env:
@@ -28,8 +31,20 @@ jobs:
         run: |
           if ((git rev-parse HEAD) -ne $env:EXPECTED_SHA) { throw 'Source mismatch' }
           if ((bun --version) -ne '1.4.2') { throw 'Runtime mismatch' }
-      - name: Actual uninstrumented helper environment and stdin matrix
+      - name: Install diagnostic dependencies without hooks
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Link workspace packages
+        run: node packages/scripts/ensure-workspace-symlinks.ts
+      - name: Build core for diagnostic imports
+        run: bun run --cwd packages/core build
+      - name: Real Smithers parent-loss comparison
         shell: powershell
+        env:
+          ELIZA_SURVIVOR_SPAWN_PROBE_MODE: ${{ matrix.mode }}
         run: |
-          bun test plugins/plugin-workflow/test/windows/windows-helper-startup.integration.test.ts
-          if ($LASTEXITCODE -ne 0) { throw 'Windows helper startup probe failed' }
+          $env:ELIZA_LEASE_TEST_PRELOAD = $null
+          if ($env:ELIZA_SURVIVOR_SPAWN_PROBE_MODE -eq 'detached') {
+            $env:ELIZA_LEASE_TEST_PRELOAD = $env:GITHUB_WORKSPACE + '/plugins/plugin-workflow/test/windows/windows-detached-probe.preload.ts'
+          }
+          bun test plugins/plugin-workflow/test/windows/windows-smithers-survivor.integration.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Actual parent-loss diagnostic failed' }
