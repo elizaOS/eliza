@@ -588,6 +588,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     runId: request.runId,
     versionId: request.workflow.versionId,
     sourceSha256: sourceDigest,
+    sourcePath,
   };
   const existingWorker = await inspectWorkerLease(workerLease);
   if (existingWorker.state !== 'absent')

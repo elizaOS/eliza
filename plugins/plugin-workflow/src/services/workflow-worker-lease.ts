@@ -20,6 +20,7 @@ export interface WorkerLeaseInput {
   runId: string;
   versionId: string;
   sourceSha256: string;
+  sourcePath?: string;
 }
 export type WorkerLeaseState =
   | { state: 'absent' }
@@ -199,9 +200,56 @@ export async function inspectWorkerLease(input: WorkerLeaseInput): Promise<Worke
     };
   }
 }
+/** Native recovery only admits Linux journals with a complete immutable process snapshot. */
+function linuxWorkerIdentity() {
+  const proc = `/proc/${process.pid}`;
+  const stat = fs.readFileSync(`${proc}/stat`, 'utf8');
+  const end = stat.lastIndexOf(')');
+  const startTicks = stat
+    .slice(end + 2)
+    .trim()
+    .split(/\s+/)[19];
+  if (end < 0 || !startTicks || !/^\d+$/.test(startTicks))
+    throw Error('Invalid worker process start');
+  const executable = fs.realpathSync(`${proc}/exe`);
+  const handle = fs.openSync(`${proc}/exe`, 'r');
+  try {
+    const identity = fs.fstatSync(handle, { bigint: true });
+    if (!identity.isFile() || identity.size > 128n * 1024n * 1024n)
+      throw Error('Invalid worker executable');
+    const hash = createHash('sha256'),
+      buffer = Buffer.alloc(65536);
+    for (;;) {
+      const count = fs.readSync(handle, buffer, 0, buffer.length, null);
+      if (count === 0) break;
+      hash.update(buffer.subarray(0, count));
+    }
+    return {
+      pid: process.pid,
+      uid: process.getuid?.(),
+      startTicks,
+      executable,
+      device: String(identity.dev),
+      inode: String(identity.ino),
+      sha256: hash.digest('hex'),
+    };
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
 /** Worker calls before importing workflow source/effects. A crash leaves durable unknown state. */
 export async function acquireWorkerLease(input: WorkerLeaseInput) {
   if (process.platform === 'win32') return windowsWorkflowBackend.acquireWorkerLease(input);
+  const nativeIdentity =
+    process.platform === 'linux' && input.sourcePath ? linuxWorkerIdentity() : undefined;
+  const sourcePath = input.sourcePath ? fs.realpathSync(input.sourcePath) : undefined;
+  if (
+    sourcePath &&
+    createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex') !== input.sourceSha256
+  ) {
+    throw Error('Worker source identity mismatch');
+  }
   const active = root(input);
   try {
     fs.mkdirSync(active, { mode: 0o700 });
@@ -267,7 +315,8 @@ export async function acquireWorkerLease(input: WorkerLeaseInput) {
   fs.chmodSync(endpoint, 0o600);
   const endpointIdentity = fs.lstatSync(endpoint);
   const owner = {
-    schemaVersion: 1,
+    schemaVersion: nativeIdentity ? 2 : 1,
+    ...(nativeIdentity ? { nativeIdentity, sourcePath } : {}),
     generation,
     uid: process.getuid?.(),
     pid: process.pid,
