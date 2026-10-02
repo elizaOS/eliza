@@ -183,6 +183,28 @@ describe("ENTER_WORKTREE", () => {
     expect(result.text).toContain("Entered worktree");
   });
 
+  it("keeps files inside an auto-generated worktree within the sandbox roots", async () => {
+    const result = await enterWorktreeHandler(
+      env.runtime,
+      makeMessage(env.conversationId),
+      state,
+      { parameters: {} },
+    );
+
+    if (!result.success) throw new Error(result.text);
+    const worktreePath = (result.data as Record<string, unknown> | undefined)
+      ?.worktreePath as string | undefined;
+    if (!worktreePath) throw new Error("missing worktreePath");
+    env.cleanupDirs.push(worktreePath);
+
+    const validation = await env.sandbox.validatePath(
+      env.conversationId,
+      path.join(worktreePath, "a.txt"),
+    );
+
+    expect(validation.ok).toBe(true);
+  });
+
   it("routes git worktree add through the capability router when available", async () => {
     const calls: GitCommandRunParams[] = [];
     setCapabilityRouter(
