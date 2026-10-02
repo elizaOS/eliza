@@ -99,13 +99,22 @@ it("rejects nonallowlisted path before kernel dispatch", async () => {
   ).toBe("rejected");
   expect(observations.length).toBe(before);
 });
-it("preserves actual native auth rejection when configured bearer changes", async () => {
+it("rejects a stale bearer on a protected route after configured token rotation", async () => {
   const executor = await createAndroidAgentExecutor(fixture.runtime);
   vi.stubEnv("ELIZA_API_TOKEN", randomUUID());
   try {
     const result = await executor.execute({
-      action: "agent.status",
-      payload: {},
+      // Health is public in the full kernel; use an owner-protected route.
+      action: "agent.request",
+      payload: {
+        method: "POST",
+        path: "/api/conversations",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Denied stale owner",
+          includeGreeting: false,
+        }),
+      },
       executionId: "stale-owner",
     });
     expect(result.status).toBe("completed");
@@ -168,7 +177,8 @@ it("retains conversation identity through create and read on the real kernel", a
   expect(conversation.id).toEqual(expect.any(String));
   const room = await fixture.runtime.getRoom(conversation.roomId);
   expect(room).toBeDefined();
-  if (!room?.worldId) throw new Error("Created conversation has no owner world");
+  if (!room?.worldId)
+    throw new Error("Created conversation has no owner world");
   const world = await fixture.runtime.getWorld(room.worldId);
   expect(world?.metadata?.ownership).toMatchObject({ ownerId: owner });
   const read = await executor.execute({

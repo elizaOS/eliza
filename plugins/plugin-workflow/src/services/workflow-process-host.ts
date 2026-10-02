@@ -14,7 +14,18 @@ export interface WorkflowHostLauncher {
   /** Executable prefix files, e.g. the Bun ELF passed to a musl loader. No shell or flags. */
   prefixFiles: readonly WorkflowHostFile[];
 }
+export const WORKFLOW_BUN_FLAGS = [
+  'BUN_FEATURE_FLAG_DISABLE_IO_POOL',
+  'BUN_FEATURE_FLAG_FORCE_WAITER_THREAD',
+  'BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK',
+  'BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH',
+  'BUN_FEATURE_FLAG_DISABLE_ASYNC_TRANSPILER',
+] as const;
 export interface WorkflowProcessHost {
+  /** Durable workflow databases; independent of immutable installation resources. */
+  stateRoot?: string;
+  /** Trusted host-only Bun compatibility flags. No arbitrary child environment. */
+  bunFlags?: Readonly<Partial<Record<(typeof WORKFLOW_BUN_FLAGS)[number], boolean>>>;
   runtime: WorkflowHostLauncher;
   compiler: WorkflowHostLauncher;
   /** Already extracted, immutable dependency artifact, containing node_modules. */
@@ -73,11 +84,18 @@ export function configureWorkflowProcessHost(value: WorkflowProcessHost): void {
     throw new WorkflowProcessHostError('Invalid workflow compiler runtime');
   if (!Array.isArray(value.libraryDirectories) || value.libraryDirectories.length > 8)
     throw new WorkflowProcessHostError('Invalid workflow library paths');
+  const bunFlags = value.bunFlags ?? {};
+  for (const [name, enabled] of Object.entries(bunFlags)) {
+    if (!(WORKFLOW_BUN_FLAGS as readonly string[]).includes(name) || typeof enabled !== 'boolean')
+      throw new WorkflowProcessHostError('Invalid workflow Bun flag');
+  }
   const dependencyRoot = directory(value.dependencyRoot);
   directory(join(dependencyRoot, 'node_modules'));
   const compilerDependencyRoot = directory(value.compilerDependencyRoot ?? dependencyRoot);
   directory(join(compilerDependencyRoot, 'node_modules'));
   configured = Object.freeze({
+    stateRoot: value.stateRoot === undefined ? undefined : directory(value.stateRoot),
+    bunFlags: Object.freeze({ ...bunFlags }),
     runtime: launcher(value.runtime),
     compiler: launcher(value.compiler),
     dependencyRoot,
@@ -86,6 +104,9 @@ export function configureWorkflowProcessHost(value: WorkflowProcessHost): void {
     compilerRuntime: value.compilerRuntime,
     libraryDirectories: Object.freeze(value.libraryDirectories.map(directory)),
   });
+}
+export function workflowStateRoot(): string {
+  return configured?.stateRoot ?? join(process.cwd(), '.eliza', 'smthrs');
 }
 export function workflowDependencyRoot(): string {
   return configured?.dependencyRoot ?? defaultRoot;
@@ -122,6 +143,7 @@ export function workflowProcessCommand(
       directory(host.dependencyRoot);
       directory(host.compilerDependencyRoot ?? host.dependencyRoot);
       host.libraryDirectories.forEach(directory);
+      if (host.stateRoot) directory(host.stateRoot);
     }
   }
   const nodeCompiler =
@@ -143,8 +165,16 @@ export function workflowProcessCommand(
       : kind === 'runtime'
         ? defaultRoot
         : undefined,
-    env: configured?.libraryDirectories.length
-      ? { LD_LIBRARY_PATH: configured.libraryDirectories.join(':') }
-      : {},
+    env: {
+      ...(configured?.libraryDirectories.length
+        ? { LD_LIBRARY_PATH: configured.libraryDirectories.join(':') }
+        : {}),
+      ...Object.fromEntries(
+        Object.entries(configured?.bunFlags ?? {}).map(([name, enabled]) => [
+          name,
+          enabled ? '1' : '0',
+        ])
+      ),
+    },
   };
 }

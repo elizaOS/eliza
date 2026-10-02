@@ -218,6 +218,25 @@ export class EmbeddedWorkflowService extends Service {
   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
   override capabilityDescription = 'Native Smithers workflow persistence and execution on elizaOS.';
 
+  private readonly workerReconciliations = new Map<string, ReturnType<typeof setTimeout>>();
+  private reconciliationStopped = false;
+  private readonly resumeAdmissions = new Map<string, Promise<void>>();
+  private scheduleWorkerReconciliation(execution: WorkflowExecution): void {
+    if (this.reconciliationStopped || this.workerReconciliations.has(execution.id)) return;
+    const timer = setTimeout(() => {
+      this.workerReconciliations.delete(execution.id);
+      if (this.reconciliationStopped) return;
+      void this.resumeExecution(execution).catch((error) => {
+        logger.warn(
+          { src: 'plugin:workflow:embedded', runId: execution.id, error },
+          'Worker reconciliation unavailable; unfinished state preserved'
+        );
+      });
+    }, 1000);
+    timer.unref?.();
+    this.workerReconciliations.set(execution.id, timer);
+  }
+
   private readonly cancellationControls = new Map<string, Promise<void>>();
   private readonly scheduleLocks = new Map<string, Promise<void>>();
   private readonly listeners = new Map<string, Set<RunListener>>();
@@ -234,6 +253,11 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   override async stop(): Promise<void> {
+    this.reconciliationStopped = true;
+    for (const timer of this.workerReconciliations.values()) clearTimeout(timer);
+    this.workerReconciliations.clear();
+    for (const controller of this.controllers.values()) controller.abort();
+    await Promise.allSettled(this.resumeAdmissions.values());
     for (const controller of this.controllers.values()) controller.abort();
     await Promise.allSettled(this.running.values());
     this.controllers.clear();
@@ -325,22 +349,38 @@ export class EmbeddedWorkflowService extends Service {
     });
   }
 
-  private async resumeExecution(execution: WorkflowExecution): Promise<void> {
-    // A control request may have read its snapshot before a concurrent cancel.
-    execution = await this.getExecution(execution.id);
-    if (execution.finished || this.running.has(execution.id)) return;
-    if (execution.cancellationRequestedAt) {
-      await this.cancelExecution(execution.id);
-      return;
-    }
-    const workflow = await this.workflowVersionForExecution(execution);
-    const controller = new AbortController();
-    this.controllers.set(execution.id, controller);
-    const executionPromise = this.runInBackground(workflow, execution, controller).finally(() => {
-      this.controllers.delete(execution.id);
-      this.running.delete(execution.id);
-    });
-    this.running.set(execution.id, executionPromise);
+  private resumeExecution(execution: WorkflowExecution): Promise<void> {
+    const id = execution.id;
+    if (this.reconciliationStopped) return Promise.resolve();
+    const pending = this.resumeAdmissions.get(id);
+    if (pending) return pending;
+    // Reserve synchronously before any database read or worker publication.
+    const admission = Promise.resolve()
+      .then(async () => {
+        if (this.reconciliationStopped || this.running.has(id)) return;
+        execution = await this.getExecution(id);
+        if (this.reconciliationStopped || execution.finished || this.running.has(id)) return;
+        if (execution.cancellationRequestedAt) {
+          await this.cancelExecution(id);
+          return;
+        }
+        const workflow = await this.workflowVersionForExecution(execution);
+        if (this.reconciliationStopped || this.running.has(id)) return;
+        const controller = new AbortController();
+        this.controllers.set(id, controller);
+        const executionPromise = this.runInBackground(workflow, execution, controller).finally(
+          () => {
+            if (this.controllers.get(id) === controller) this.controllers.delete(id);
+            if (this.running.get(id) === executionPromise) this.running.delete(id);
+          }
+        );
+        this.running.set(id, executionPromise);
+      })
+      .finally(() => {
+        if (this.resumeAdmissions.get(id) === admission) this.resumeAdmissions.delete(id);
+      });
+    this.resumeAdmissions.set(id, admission);
+    return admission;
   }
 
   private async resumeInterruptedExecutions(): Promise<void> {
@@ -551,7 +591,7 @@ export class EmbeddedWorkflowService extends Service {
         id: row.id,
         versionId: row.versionId,
         name: row.name,
-        spec: validateDigestSpec(JSON.parse(String(row.workflow.metadata![HOSTED_SPEC]))),
+        spec: validateDigestSpec(JSON.parse(String(row.workflow.metadata?.[HOSTED_SPEC]))),
         active: row.active,
         removed: isWorkflowRemoved(row.workflow),
       }));
@@ -1739,6 +1779,8 @@ export class EmbeddedWorkflowService extends Service {
       const completed: WorkflowExecution = {
         ...running,
         status: result.status,
+        reconciliation: undefined,
+        error: undefined,
         finished: ['cancelled', 'continued', 'failed', 'finished'].includes(result.status),
         stoppedAt: ['cancelled', 'continued', 'failed', 'finished'].includes(result.status)
           ? nowIso()
@@ -1752,6 +1794,37 @@ export class EmbeddedWorkflowService extends Service {
       await this.saveExecution(completed);
       return completed;
     } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        [
+          'WORKFLOW_WORKER_RUNNING',
+          'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+          'WORKFLOW_WORKER_UNRESOLVED',
+        ].includes(String(error.code))
+      ) {
+        const message = error instanceof Error ? error.message : String(error);
+        const unresolved: WorkflowExecution = {
+          ...running,
+          finished: false,
+          stoppedAt: null,
+          reconciliation: {
+            state: error.code === 'WORKFLOW_WORKER_RUNNING' ? 'worker-running' : 'outcome-unknown',
+            message,
+          },
+          error: { message },
+        };
+        await this.saveExecution(unresolved);
+        if (unresolved.reconciliation?.state === 'worker-running') {
+          this.scheduleWorkerReconciliation(unresolved);
+        } else {
+          const pendingTimer = this.workerReconciliations.get(unresolved.id);
+          if (pendingTimer) clearTimeout(pendingTimer);
+          this.workerReconciliations.delete(unresolved.id);
+        }
+        return unresolved;
+      }
       // error-policy:J1 child-process failures become explicit failed run state.
       const failed: WorkflowExecution = {
         ...running,
@@ -1825,7 +1898,10 @@ export class EmbeddedWorkflowService extends Service {
         return {
           execution: cloneJson(row.execution),
           request: row.execution.cancellationRequestedAt
-            ? { requestedAt: row.execution.cancellationRequestedAt, replayed: true }
+            ? {
+                requestedAt: row.execution.cancellationRequestedAt,
+                replayed: true,
+              }
             : null,
         };
       const execution = {
