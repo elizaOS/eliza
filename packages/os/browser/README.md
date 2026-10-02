@@ -9,7 +9,10 @@ require `ELIZA_BROWSER_ANDROID_CERTIFICATE` containing the launcher's public sig
 certificate SHA-256. The Android host defaults to `ai.elizaos.app`; set
 `ELIZA_BROWSER_ANDROID_APPLICATION` to a different host application ID and pass
 the same `--application` to the component generator. Each host requires its own
-matching certificate-pinned component build. Linux uses
+matching certificate-pinned component build. Increment the extension version in
+`scripts/build.mjs` when shipping changed component resources; Chromium may retain
+the previous service worker across APK upgrades at the same extension version.
+Qualify upgrades with the existing browser profile, without clearing its data. Linux uses
 `ai.elizaos.browser`. Chromium must allow the extension to use that native host.
 
 Commands address explicit tab IDs. Snapshots return complete per-frame text and
