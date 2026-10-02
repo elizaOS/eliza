@@ -1595,21 +1595,19 @@ function additionalPropertiesHint(additionalProperties: unknown): string | null 
 }
 
 /**
- * True when the runtime validator (core `validateSchema`) admits an explicit
- * null at this schema node: a declared `type: "null"`, or an `anyOf`/`oneOf`
- * branch that itself admits null — exactly the null spellings #32991 preserves.
- * Core never reads the provider `nullable` flag, and a `type` array reaches
- * core's unsupported-type error, so nulls at those nodes are strict-wire
- * artifacts and must be stripped like plain optionals. When unsure the
- * predicate preserves: a wrongly preserved null fails validation visibly,
- * while a wrongly stripped one silently deletes a declared value.
+ * Preserve explicitly declared nulls, including provider JSON-schema type
+ * arrays, before the caller's original schema validates restored arguments.
+ * The provider-only `nullable` flag does not declare JSON-schema nullability.
+ * Invalid required or declared-nullable values remain visible to validation.
  */
 function schemaAdmitsNull(schema: unknown): boolean {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return false;
   }
   const record = schema as Record<string, unknown>;
-  if (record.type === "null") return true;
+  if (record.type === "null" || (Array.isArray(record.type) && record.type.includes("null"))) {
+    return true;
+  }
   for (const keyword of ["anyOf", "oneOf"] as const) {
     const branches = record[keyword];
     if (Array.isArray(branches) && branches.some((branch) => schemaAdmitsNull(branch))) {

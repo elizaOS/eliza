@@ -20,6 +20,9 @@ updates:
       dev-dependencies:
         dependency-type: "development"
     ignore:
+      # Smithers owns the Effect runtime (see #32967). Upgrade Effect with
+      # the Smithers dependency family, never as an independent update.
+      - dependency-name: "effect"
       # Bun types must match the repository's pinned runtime API baseline.
       - dependency-name: "@types/bun"
         versions: ["> 1.4.2"]
