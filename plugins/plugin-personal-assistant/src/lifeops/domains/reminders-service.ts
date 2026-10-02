@@ -290,6 +290,50 @@ const MAX_TRAVEL_HORIZON_MS = 30 * 24 * 60 * 60 * 1000;
 // (`agent_inferred` with a different note) on a coincidental home-zone match.
 const TZ_PROVISIONAL_TRAVEL_NOTE = "device-timezone divergence";
 
+// Semantic verdicts on owner replies, per reminder attempt and reply. The
+// reminder loop re-reviews a delivered attempt on every scheduler tick until
+// it settles (a saved one-shot plan stays in that state for its whole
+// visibility window), so without this each unrelated owner message was sent
+// to the model again every tick. Only model verdicts are kept: a missing
+// verdict (model error or no model) stays retryable.
+type ReminderReplyVerdict = Awaited<
+  ReturnType<typeof classifyReminderOwnerResponse>
+>;
+const MAX_REMINDER_REPLY_VERDICTS = 2000;
+const reminderReplyVerdicts = new WeakMap<
+  object,
+  Map<string, ReminderReplyVerdict>
+>();
+
+function reminderReplyVerdictCache(
+  owner: object,
+): Map<string, ReminderReplyVerdict> {
+  let cache = reminderReplyVerdicts.get(owner);
+  if (!cache) {
+    cache = new Map();
+    reminderReplyVerdicts.set(owner, cache);
+  }
+  return cache;
+}
+
+function rememberReminderReplyVerdict(
+  cache: Map<string, ReminderReplyVerdict>,
+  key: string,
+  verdict: ReminderReplyVerdict,
+): void {
+  if (
+    verdict.classifierSource !== "semantic" &&
+    verdict.classifierSource !== "semantic_abstain"
+  ) {
+    return;
+  }
+  cache.set(key, verdict);
+  if (cache.size > MAX_REMINDER_REPLY_VERDICTS) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+}
+
 type AdaptiveWindowProfile = Pick<
   ActivityProfile,
   | "typicalWakeHour"
@@ -1493,18 +1537,33 @@ export class RemindersDomain {
           },
           roomIds,
         });
-        const classification = await classifyReminderOwnerResponse({
-          text: response.text,
-          context: {
-            title,
-            attemptedAt,
-            respondedAt: response.createdAt,
-            channel: args.attempt.channel,
-            allowStandaloneResolution: responseClaim.allowStandaloneResolution,
-          },
-          semanticClassifier: (input) =>
-            this.classifyReminderOwnerResponseSemantically(input),
-        });
+        const verdicts = reminderReplyVerdictCache(this);
+        const verdictKey = JSON.stringify([
+          args.attempt.id,
+          response.createdAt,
+          response.roomId,
+          responseClaim.allowStandaloneResolution,
+          response.text,
+        ]);
+        const cachedVerdict = verdicts.get(verdictKey);
+        const classification =
+          cachedVerdict ??
+          (await classifyReminderOwnerResponse({
+            text: response.text,
+            context: {
+              title,
+              attemptedAt,
+              respondedAt: response.createdAt,
+              channel: args.attempt.channel,
+              allowStandaloneResolution:
+                responseClaim.allowStandaloneResolution,
+            },
+            semanticClassifier: (input) =>
+              this.classifyReminderOwnerResponseSemantically(input),
+          }));
+        if (!cachedVerdict) {
+          rememberReminderReplyVerdict(verdicts, verdictKey, classification);
+        }
         if (classification.decision === "explicit_resolution") {
           return {
             decision: "explicit_resolution",
