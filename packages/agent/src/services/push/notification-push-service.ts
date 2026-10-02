@@ -104,6 +104,7 @@ export class NotificationPushService extends Service {
 
   /** Subscribe to the notification rail (idempotent). */
   async attach(): Promise<void> {
+    if (this.unsubscribe) return;
     const anyConfigured =
       this.providers.ios.isConfigured() ||
       this.providers.android.isConfigured();
@@ -114,7 +115,13 @@ export class NotificationPushService extends Service {
       );
     }
 
-    const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
+    // getService starts registered services lazily and can return null while
+    // startup is pending. Registry readiness must not permanently miss the bus.
+    const bus =
+      this.runtime.getService(ServiceType.AGENT_EVENT) ??
+      (this.runtime.hasService(ServiceType.AGENT_EVENT)
+        ? await this.runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT)
+        : null);
     if (!isSubscribableBus(bus)) {
       // No event bus (headless/test boot without AgentEventService): nothing to
       // subscribe to. The registry + routes still function for diagnostics.

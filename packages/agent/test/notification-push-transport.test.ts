@@ -8,8 +8,10 @@ import {
   AgentEventService,
   AgentRuntime,
   defaultPriorityForCategory,
+  type IAgentRuntime,
   type NotificationInput,
   NotificationService,
+  type ServiceClass,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
@@ -17,11 +19,14 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { expect, it } from "vitest";
 import { ApnsProvider } from "../src/services/push/apns-provider.ts";
 import { FcmProvider } from "../src/services/push/fcm-provider.ts";
-import { NotificationPushService } from "../src/services/push/notification-push-service.ts";
+import {
+  NOTIFICATION_PUSH_SERVICE_TYPE,
+  NotificationPushService,
+} from "../src/services/push/notification-push-service.ts";
 import { PushTokenRegistry } from "../src/services/push/push-token-registry.ts";
 import type { PushMessage } from "../src/services/push/push-types.ts";
 
-it("carries persisted reminder urgency to Android HTTP bodies without elevating low or legacy traffic", async () => {
+it("boots push before its lazy event bus and carries persisted reminder urgency to Android HTTP", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "notification-push-transport-"),
   );
@@ -86,7 +91,6 @@ it("carries persisted reminder urgency to Android HTTP bodies without elevating 
     await runtime.initialize();
     await runtime.registerService(AgentEventService);
     await runtime.registerService(NotificationService);
-    await runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT);
     const notifier = (await runtime.getServiceLoadPromise(
       ServiceType.NOTIFICATION,
     )) as NotificationService;
@@ -102,11 +106,26 @@ it("carries persisted reminder urgency to Android HTTP bodies without elevating 
       },
     ]);
     const registryBefore = await runtime.getCache(`push-tokens:${agentId}`);
-    push = new NotificationPushService(runtime, {
-      registry,
-      providers: { android, ios: new ApnsProvider({}) },
-    });
-    await push.attach();
+    // Production registers the event bus lazily. Start push through the real
+    // runtime lifecycle before anything explicitly starts that dependency.
+    expect(runtime.hasService(ServiceType.AGENT_EVENT)).toBe(true);
+    expect(runtime.getServiceRegistrationStatus(ServiceType.AGENT_EVENT)).toBe(
+      "pending",
+    );
+    class LoopbackPushService extends NotificationPushService {
+      static override async start(rt: IAgentRuntime) {
+        const service = new LoopbackPushService(rt, {
+          registry,
+          providers: { android, ios: new ApnsProvider({}) },
+        });
+        await service.attach();
+        return service;
+      }
+    }
+    await runtime.registerService(LoopbackPushService as ServiceClass);
+    push = (await runtime.getServiceLoadPromise(
+      NOTIFICATION_PUSH_SERVICE_TYPE,
+    )) as NotificationPushService;
 
     const cases: Array<{
       input: NotificationInput;
@@ -188,6 +207,8 @@ it("carries persisted reminder urgency to Android HTTP bodies without elevating 
         input.priority ??
           defaultPriorityForCategory(input.category ?? "general"),
       );
+      // A readiness retry must not subscribe twice and duplicate later pushes.
+      if (index === 0) await push.attach();
     }
     const beforeReadUpdate = requests.length;
     expect(await notifier.markReadByGroupKey("independent:0")).toBe(1);
