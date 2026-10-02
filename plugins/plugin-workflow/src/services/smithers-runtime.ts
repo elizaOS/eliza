@@ -25,7 +25,7 @@ import type {
 } from '../types/index';
 import { ensureWorkflowDependencyLink } from './workflow-dependency-link';
 import { workflowStateRoot } from './workflow-process-host';
-import { inspectWorkerLease } from './workflow-worker-lease';
+import { inspectWorkerLease, resolveWorkerSocketRoot } from './workflow-worker-lease';
 import { workerLeasePrelude } from './workflow-worker-lease-prelude';
 
 /** Publish complete immutable source without truncating a concurrent importer. */
@@ -573,10 +573,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     rootDir,
     `${safePathPart(request.workflow.versionId)}.${sourceDigest}.${request.workflow.language === 'tsx' ? 'tsx' : 'ts'}`
   );
-  const socketRootPath = join(process.env.HOME ?? rootDir, '.eliza-worker-ipc');
-  await mkdir(socketRootPath, { recursive: true, mode: 0o700 });
-  const socketRoot = await realpath(socketRootPath);
   await mkdir(rootDir, { recursive: true });
+  const socketRoot = resolveWorkerSocketRoot(process.env.HOME ?? rootDir);
   const workerLease = {
     rootDir: await realpath(rootDir),
     socketRoot,
