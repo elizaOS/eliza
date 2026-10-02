@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/plugin-aeterna",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MEV-Protected Autonomous Execution & Intent Netting Layer for Eliza on Base Mainnet",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@netswap_protocol/agent-wallet": "^1.0.0",
+    "ethers": "^6.13.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "mev-protection",
+    "intent-routing",
+    "base",
+    "trading-agent"
+  ],
+  "author": "Aeterna Protocol",
+  "license": "MIT"
+}
