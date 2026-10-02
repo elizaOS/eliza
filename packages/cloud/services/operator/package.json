@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "@typescript-eslint/parser": "8.70.1",
+    "@typescript-eslint/parser": "8.71.0",
     "@types/bun": "1.4.2",
     "esbuild": "0.28.1",
     "ioredis-mock": "^8.13.1",
