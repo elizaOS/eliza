@@ -580,9 +580,16 @@ export async function composeOwnerFacingScheduledTaskText(
   );
 
   if (delegatesAssemblyTo === "lifeops:checkin:morning") {
+    const now = new Date(record.firedAtIso);
+    const facts = ownerFactsToView(
+      await resolveOwnerFactStore(runtime).read(),
+      now,
+    );
+    const { LifeOpsService } = await import("../service.js");
     const assembled = await assembleMorningBrief(runtime, {
-      timezone: resolveDefaultTimeZone(),
-      now: new Date(record.firedAtIso),
+      timezone: facts.timezone ?? resolveDefaultTimeZone(),
+      now,
+      sources: new LifeOpsService(runtime),
     });
     const summaryText = assembled.report.summaryText.trim();
     if (!summaryText)
