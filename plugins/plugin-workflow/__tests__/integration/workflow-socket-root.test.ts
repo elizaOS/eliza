@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { getBootConfig, setBootConfig } from '@elizaos/core/config/boot-config-store';
 import {
   acquireWorkerLease,
   inspectWorkerLease,
@@ -48,6 +49,28 @@ test('Android keeps a compact application-private socket root and rejects symlin
     fs.symlinkSync(home, path.join(poisoned, '.eliza-worker-ipc'));
     expect(() => resolveWorkerSocketRoot(poisoned, 'android')).toThrow('Untrusted worker lease');
   } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('brand-aliased Android platform never falls back outside the application home', () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'worker-aliased-home-')));
+  const nested = path.join(home, 'h'.repeat(100));
+  fs.mkdirSync(nested);
+  const boot = getBootConfig();
+  const priorPlatform = process.env.ELIZA_PLATFORM;
+  const priorAlias = process.env.WORKFLOW_TEST_PLATFORM;
+  try {
+    delete process.env.ELIZA_PLATFORM;
+    process.env.WORKFLOW_TEST_PLATFORM = 'android';
+    setBootConfig({ ...boot, envAliases: [['ELIZA_PLATFORM', 'WORKFLOW_TEST_PLATFORM']] });
+    expect(() => resolveWorkerSocketRoot(nested)).toThrow('Application-private');
+  } finally {
+    setBootConfig(boot);
+    if (priorPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+    else process.env.ELIZA_PLATFORM = priorPlatform;
+    if (priorAlias === undefined) delete process.env.WORKFLOW_TEST_PLATFORM;
+    else process.env.WORKFLOW_TEST_PLATFORM = priorAlias;
     fs.rmSync(home, { recursive: true, force: true });
   }
 });

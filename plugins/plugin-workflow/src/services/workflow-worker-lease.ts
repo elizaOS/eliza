@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import * as fs from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import * as path from 'node:path';
+import { resolveAliasedEnvValue } from '@elizaos/core/config/boot-config-store';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 
 function syncDirectory(value: string) {
@@ -42,7 +43,7 @@ const SOCKET_ROOT_BYTE_LIMIT = 100 - 1 - 20 - 5;
 /** Stable across parent restarts, private to this UID and canonical home. */
 export function resolveWorkerSocketRoot(
   home: string,
-  platform: NodeJS.Platform | 'android' = process.env.ELIZA_PLATFORM === 'android' ||
+  platform: NodeJS.Platform | 'android' = resolveAliasedEnvValue('ELIZA_PLATFORM') === 'android' ||
   process.env.ELIZA_MOBILE_PLATFORM === 'android'
     ? 'android'
     : process.platform
