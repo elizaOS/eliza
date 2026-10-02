@@ -58,15 +58,26 @@ export async function checkContainerHealth(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const response = await fetch(fullUrl, {
-    method: "GET",
-    signal: controller.signal,
-    headers: {
-      "User-Agent": "elizaOS-HealthMonitor/1.0",
-    },
-  });
-
-  clearTimeout(timeoutId);
+  let response: Response;
+  try {
+    response = await fetch(fullUrl, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "elizaOS-HealthMonitor/1.0",
+      },
+    });
+  } catch (error) {
+    return {
+      containerId: "",
+      healthy: false,
+      responseTime: Date.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+      checkedAt: new Date(),
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const responseTime = Date.now() - startTime;
   const healthy = response.ok; // 200-299 status codes
@@ -211,11 +222,20 @@ export async function monitorAllContainers(
         } as HealthCheckResult;
       }
 
-      const result = await checkContainerHealth(
+      const attempts = finalConfig.retryOnFailure ? Math.max(1, finalConfig.unhealthyThreshold) : 1;
+      let result = await checkContainerHealth(
         container.load_balancer_url,
         container.health_check_path || "/health",
         finalConfig.timeout,
       );
+      for (let attempt = 1; attempt < attempts && !result.healthy; attempt++) {
+        result = await checkContainerHealth(
+          container.load_balancer_url,
+          container.health_check_path || "/health",
+          finalConfig.timeout,
+        );
+      }
+      result.containerId = container.id;
 
       // Update database
       await updateContainerHealth(container.id, result);
