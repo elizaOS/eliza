@@ -21,7 +21,7 @@ test('actual worker survives parent death, concurrent admissions reject, termina
   await backend.publishWorkflowSource(join(root,'v1.ts'),source);await Promise.all(Array.from({length:8},()=>backend.publishWorkflowSource(join(root,'v1.ts'),source)));
   await expect(backend.publishWorkflowSource(join(root,'v1.ts'),'changed')).rejects.toThrow();
   writeFileSync(release,'release');await until(()=>existsSync(done));let state=await backend.inspectWorkerLease(identity);const deadline=Date.now()+30000;while(state.state!=='absent'){if(Date.now()>deadline)throw Error('Lease completion deadline');await Bun.sleep(50);state=await backend.inspectWorkerLease(identity);}
-  expect(readFileSync(effect,'utf8')).toBe('once\\n');
+  expect(readFileSync(effect,'utf8')).toBe('once\n');
  }finally{writeFileSync(release,'release');parent.kill();/* Retain root evidence if a child fails to settle; no broad process cleanup. */}
 },120000);
 test('abandoned worker remains unknown and cannot replay',async()=>{
