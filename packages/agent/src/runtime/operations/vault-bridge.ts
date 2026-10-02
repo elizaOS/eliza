@@ -14,7 +14,11 @@ import {
   VaultDecryptionError,
   writeSensitiveValueVerified,
 } from "@elizaos/auth/vault";
-import { ElizaError, FIRST_RUN_PROVIDER_CATALOG } from "@elizaos/core";
+import {
+  ElizaError,
+  FIRST_RUN_PROVIDER_CATALOG,
+  getFirstRunProviderSignalEnvKeys,
+} from "@elizaos/core";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {
@@ -324,7 +328,8 @@ export async function removeResetCredentialsFromVault(
     "ELIZAOS_CLOUD_API_KEY",
     "ELIZAOS_CLOUD_BASE_URL",
     "ELIZAOS_CLOUD_ENABLED",
-    "Z_AI_API_KEY",
+    vaultKeyForProviderApiKey("zai"),
+    ...getFirstRunProviderSignalEnvKeys("zai"),
   ]);
   for (const provider of FIRST_RUN_PROVIDER_CATALOG) {
     keys.add(vaultKeyForProviderApiKey(provider.id));

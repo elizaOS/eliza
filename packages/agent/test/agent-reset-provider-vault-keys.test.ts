@@ -92,6 +92,10 @@ it("removes stored provider API keys so boot cannot rehydrate them", async () =>
     "sk-ant-OLD-OWNER-PROFILE",
     { sensitive: true, caller: "test" },
   );
+  await vault.set("ZAI_API_KEY", "zai-old-owner", {
+    sensitive: true,
+    caller: "test",
+  });
   await setEntryMeta(vault, "ANTHROPIC_API_KEY", {
     profiles: [{ id: "default", label: "Default", createdAt: Date.now() }],
     activeProfile: "default",
@@ -116,6 +120,7 @@ it("removes stored provider API keys so boot cannot rehydrate them", async () =>
   expect(status).toBe(200);
   expect(await vault.has("providers.anthropic.api-key")).toBe(false);
   expect(await vault.has("ANTHROPIC_API_KEY")).toBe(false);
+  expect(await vault.has("ZAI_API_KEY")).toBe(false);
   const overlay: Record<string, string> = {};
   const hydration = await hydrateSelectedProviderCredentialFromVault({
     providerId: "anthropic",
