@@ -139,6 +139,8 @@ import {
 	shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 import {
+	buildRendererStaticAssetHeaders,
+	buildRendererStaticHtmlHeaders,
 	getRendererAssetContentType,
 	resolveRendererAsset,
 	resolveRendererAssetByteRange,
@@ -978,23 +980,17 @@ async function startRendererServer(): Promise<string> {
 				if (mimeExt === ".html" || filePath.endsWith("index.html")) {
 					const html = apiBaseOwner.injectIntoHtml(content.toString("utf8"));
 					return new Response(html, {
-						headers: {
-							"Content-Type": "text/html; charset=utf-8",
-							"Access-Control-Allow-Origin": "*",
-							"Cache-Control": "public, max-age=0, must-revalidate",
-						},
+						headers: buildRendererStaticHtmlHeaders(),
 					});
 				}
-				const headers: Record<string, string> = {
-					"Content-Type": getRendererAssetContentType(mimeExt),
-					"Access-Control-Allow-Origin": "*",
-					"Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
-					"Accept-Ranges": "bytes",
-					"Content-Length": String(content.byteLength),
-				};
-				if (isGzipped) {
-					headers["Content-Encoding"] = "gzip";
-				}
+				const headers: Record<string, string> = buildRendererStaticAssetHeaders(
+					{
+						contentType: getRendererAssetContentType(mimeExt),
+						cacheControl: resolveRendererCacheControl(pathname, mimeExt),
+						contentLength: content.byteLength,
+						...(isGzipped ? { contentEncoding: "gzip" } : {}),
+					},
+				);
 				const byteRange = isGzipped
 					? null
 					: resolveRendererAssetByteRange(
