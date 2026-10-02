@@ -405,7 +405,12 @@ export const blockAction: Action & {
       description:
         "Block duration minutes. Omit/null = indefinite until manual removal.",
       required: false,
-      schema: { type: "number" as const },
+      // Null is a real value here: both block handlers read it as an
+      // explicit "indefinite" (normalizeDurationMinutes), distinct from
+      // omitted, so the schema must admit it.
+      schema: {
+        anyOf: [{ type: "number" as const }, { type: "null" as const }],
+      },
     },
   ],
 
