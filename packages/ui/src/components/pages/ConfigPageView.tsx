@@ -10,7 +10,10 @@ import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
 } from "@elizaos/core/contracts/wallet";
-import type { WalletRpcSelections } from "@elizaos/core/contracts/wallet-types";
+import type {
+  WalletConfigUpdateRequest,
+  WalletRpcSelections,
+} from "@elizaos/core/contracts/wallet-types";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -102,6 +105,7 @@ export function ConfigPageView({
     walletConfig,
     walletApiKeySaving,
     handleWalletApiKeySave,
+    setActionNotice,
     handleInteractiveCloudLogin,
   } = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -111,6 +115,7 @@ export function ConfigPageView({
     walletConfig: s.walletConfig,
     walletApiKeySaving: s.walletApiKeySaving,
     handleWalletApiKeySave: s.handleWalletApiKeySave,
+    setActionNotice: s.setActionNotice,
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
   const manualRpcModeSelection = useRef(false);
@@ -187,21 +192,37 @@ export function ConfigPageView({
     [selectedBscRpc, selectedEvmRpc, selectedSolanaRpc],
   );
   const handleWalletSaveAll = useCallback(async () => {
-    const config = buildWalletRpcUpdateRequest({
-      walletConfig,
-      rpcFieldValues,
-      selectedProviders: {
-        evm: selectedEvmRpc,
-        bsc: selectedBscRpc,
-        solana: selectedSolanaRpc,
-      },
-    });
+    let config: WalletConfigUpdateRequest;
+    try {
+      config = buildWalletRpcUpdateRequest({
+        walletConfig,
+        rpcFieldValues,
+        selectedProviders: {
+          evm: selectedEvmRpc,
+          bsc: selectedBscRpc,
+          solana: selectedSolanaRpc,
+        },
+      });
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("configpageview.WalletConfigurationInvalid", {
+              defaultValue:
+                "Wallet configuration is invalid. Refresh it before saving.",
+            }),
+        "error",
+      );
+      return;
+    }
     const saved = await handleWalletApiKeySave(config);
     if (saved) {
       onWalletSaveSuccess?.();
     }
   }, [
     handleWalletApiKeySave,
+    setActionNotice,
+    t,
     onWalletSaveSuccess,
     rpcFieldValues,
     selectedBscRpc,
