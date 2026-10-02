@@ -115,6 +115,47 @@ const workflowRouteList: Route[] = [
     handler: workflowHandler,
   },
 
+  // Hosted digests. `/status` advertises `hostedDigestProtocol: 1`; these are
+  // the paths handleWorkflowRoutes serves under `/hosted/`. The dispatcher
+  // parses JSON bodies before the handler's own readBody caps run, so the
+  // tight per-route caps are restated here.
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/live-calendars',
+    rawPath: true,
+    maxBodyBytes: 2000,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/hosted/live-accounts',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/hosted/sources', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/sources',
+    rawPath: true,
+    maxBodyBytes: 20000,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/sources/revoke',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },
+  { type: 'GET', path: '/api/workflow/hosted/results', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/results/ack',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+
   // Status surface
   {
     type: 'GET',
