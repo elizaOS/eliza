@@ -59,7 +59,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@ai-sdk/anthropic": "^3.0.13",
-    "@ai-sdk/google": "^3.0.8",
+    "@ai-sdk/google": "^4.0.85",
     "@ai-sdk/openai": "^3.0.9",
     "@openrouter/ai-sdk-provider": "^2.0.0",
     "ai": "^6.0.30",
