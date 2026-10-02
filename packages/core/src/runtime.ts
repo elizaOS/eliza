@@ -2817,7 +2817,7 @@ export class AgentRuntime implements IAgentRuntime {
 									);
 								}
 							: options?.callback;
-					await settleActionHandler({
+					const settled = await settleActionHandler({
 						runtime: this,
 						action,
 						callback: protectedCallback,
@@ -2852,6 +2852,18 @@ export class AgentRuntime implements IAgentRuntime {
 							);
 						},
 					});
+					// A handler that RETURNS { success: false } must be reported as
+					// failed, not completed. settleActionHandler normalizes that
+					// result, but the mode loop previously discarded it, so only a
+					// thrown handler flipped `success`. Honor the explicit result —
+					// never fabricate success (AGENTS.md: "never fabricate success").
+					if (settled.success === false) {
+						success = false;
+						errorMsg =
+							settled.error instanceof Error
+								? settled.error.message
+								: (settled.error ?? settled.text ?? errorMsg);
+					}
 					if (action.disclosureGate?.require === "owner_exclusive") {
 						const disclosure = await revalidateOwnerExclusiveDisclosure(
 							this,
