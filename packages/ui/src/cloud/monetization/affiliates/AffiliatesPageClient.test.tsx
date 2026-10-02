@@ -5,6 +5,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -127,7 +128,9 @@ describe("AffiliatesPageClient copy links", () => {
       name: "Copy link (invite)",
     });
 
-    fireEvent.click(button);
+    await act(async () => {
+      fireEvent.click(button);
+    });
 
     await waitFor(() => {
       expect(copyMock).toHaveBeenCalledWith(
@@ -143,9 +146,12 @@ describe("AffiliatesPageClient copy links", () => {
 
   it("copies the affiliate URL and announces which link changed", async () => {
     renderPage();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Copy link (affiliate)" }),
-    );
+    const button = await screen.findByRole("button", {
+      name: "Copy link (affiliate)",
+    });
+    await act(async () => {
+      fireEvent.click(button);
+    });
 
     await waitFor(() => {
       expect(copyMock).toHaveBeenCalledWith(
@@ -163,9 +169,12 @@ describe("AffiliatesPageClient copy links", () => {
   it("keeps the copy control actionable and reports clipboard failure", async () => {
     copyMock.mockResolvedValueOnce(false);
     renderPage();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Copy link (invite)" }),
-    );
+    const button = await screen.findByRole("button", {
+      name: "Copy link (invite)",
+    });
+    await act(async () => {
+      fireEvent.click(button);
+    });
 
     await waitFor(() => {
       expect(toastMock.error).toHaveBeenCalledWith(

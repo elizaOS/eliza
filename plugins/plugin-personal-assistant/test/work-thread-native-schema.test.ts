@@ -64,23 +64,16 @@ describe.each([false, true])(
           validateToolArgs(workThreadAction, { operations: [operation] }).valid,
         ).toBe(true);
       }
-      // The provider wire preserves the existing dynamic-record carrier;
-      // non-Cerebras strict tools also represent omitted optionals as null.
+      // OpenAI retains the declared optional fields; Cerebras can enforce the
+      // schema strictly without requiring unrelated lifecycle arguments.
+      expect((tools.WORK_THREAD as { strict: boolean }).strict).toBe(
+        cerebrasMode,
+      );
       const nativeCreate = {
-        ...(cerebrasMode
-          ? {}
-          : {
-              workThreadId: null,
-              sourceWorkThreadIds: null,
-              summary: null,
-              reason: null,
-              sourceRef: null,
-              trigger: null,
-            }),
         type: "create",
         title: "QA picnic",
         instruction: "Record only",
-        __eliza_record_entries: [],
+        ...(cerebrasMode ? { __eliza_record_entries: [] } : {}),
       };
       expect(errorsFor([nativeCreate])).toEqual([]);
       const restored = restoreRecordArgToolCalls(

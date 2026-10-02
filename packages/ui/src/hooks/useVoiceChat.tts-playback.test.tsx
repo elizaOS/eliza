@@ -149,7 +149,6 @@ const speechSynthesisMock = {
 const fetchedUrls: string[] = [];
 const fetchedContexts: unknown[] = [];
 const decodedAudioInputs: Uint8Array[] = [];
-const objectUrlBlobs: Blob[] = [];
 
 function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
@@ -166,7 +165,6 @@ function installMocks() {
   fetchedUrls.length = 0;
   fetchedContexts.length = 0;
   decodedAudioInputs.length = 0;
-  objectUrlBlobs.length = 0;
   // The hook shares its context across mounts; reset this fake platform between cases.
   for (const source of createdSources) source.context.state = "running";
   createdSources.length = 0;
@@ -217,24 +215,19 @@ function installMocks() {
     configurable: true,
     value: FakeUtterance,
   });
-  if (typeof URL.createObjectURL !== "function") {
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:playback-worklet"),
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
-  }
-  // Browser object URLs are a controlled boundary in this fake audio graph.
-  // jsdom/Node URL implementations need not accept each other's Blob wrappers.
+  // Vitest's jsdom URL adapter reads private Blob internals. Keep report
+  // downloads real while pairing Node's Blob with its own object-URL store.
+  const { Blob: NativeBlob } = process.getBuiltinModule("buffer");
+  const { URL: NativeURL } = process.getBuiltinModule("url");
+  vi.stubGlobal("Blob", NativeBlob);
   vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
-    if (!(blob instanceof Blob)) throw new Error("Expected a Blob object URL");
-    objectUrlBlobs.push(blob);
-    return "blob:playback-worklet";
+    if (!(blob instanceof NativeBlob))
+      throw new TypeError("Expected a native Blob");
+    return NativeURL.createObjectURL(blob);
   });
-  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(
+    NativeURL.revokeObjectURL,
+  );
   window.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) =>
     window.setTimeout(() => cb(performance.now()), 16),
   ) as typeof window.requestAnimationFrame;
@@ -271,6 +264,7 @@ describe("useVoiceChat TTS playback across providers", () => {
     });
     setBootConfig(DEFAULT_BOOT_CONFIG);
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("joins full provider bytes and decoded channels to actual source retirement without exposing credentials or mutable playback memory", async () => {
@@ -592,11 +586,24 @@ describe("useVoiceChat TTS playback across providers", () => {
         return;
       }
       expect(turn?.status).toBe("pass");
-      const artifact = objectUrlBlobs.findLast(
-        (blob) => blob.type === "application/json",
+      const download = view.container.querySelector<HTMLAnchorElement>(
+        'a[download="voice-workbench-evidence.json"]',
       );
-      expect(await artifact?.text()).toBe(
-        serializeVoiceWorkbenchReport(report),
+      if (!download) throw new Error("Missing complete evidence download");
+      const artifact = process
+        .getBuiltinModule("buffer")
+        .resolveObjectURL(download.href);
+      if (!artifact)
+        throw new Error("Evidence object URL has no registered bytes");
+      const downloadedText = await artifact.text();
+      expect(downloadedText).toBe(serializeVoiceWorkbenchReport(report));
+      const downloaded = JSON.parse(downloadedText);
+      expect(downloaded.schema).toBe("eliza.voice-workbench.playback.v1");
+      expect(downloaded.report.turns[0].playbackEvidence).toContainEqual(
+        expect.objectContaining({
+          kind: "encoded",
+          bytes: expect.objectContaining({ data: "AQIDBA==", length: 4 }),
+        }),
       );
       expect(turn?.detail.textDelivery).toBe("streaming-queue");
       expect(turn?.detail.ttsSegments).toBe(2);
