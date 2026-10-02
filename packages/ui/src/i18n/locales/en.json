@@ -2634,6 +2634,7 @@
   "configpageview.SolanaDesc": "Solana mainnet",
   "configpageview.Testnet": "Testnet",
   "configpageview.TopUp": "Top up",
+  "configpageview.WalletConfigurationInvalid": "Wallet configuration is invalid. Refresh it before saving.",
   "configpageview.WalletNetwork": "Wallet Network",
   "configpageview.WalletNetworkDesc": "Mainnet for live funds, Testnet for practice",
   "configpageview.WalletProvidersAnd": "Wallet providers and secrets.",
