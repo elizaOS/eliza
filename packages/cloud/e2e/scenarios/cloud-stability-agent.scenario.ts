@@ -89,6 +89,7 @@ const syntheticRuntimePolicy = {
     "reminders_migration",
     "task",
     "trajectory_file_retention",
+    "workflow_device_bridge",
   ],
 } as const;
 
