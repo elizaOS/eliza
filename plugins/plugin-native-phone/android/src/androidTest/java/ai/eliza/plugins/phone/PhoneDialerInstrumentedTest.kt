@@ -67,11 +67,18 @@ class PhoneDialerInstrumentedTest {
             scenario.onActivity { intents = JSONArray(it.dialerIntents.toString()) }
             val deadline = SystemClock.elapsedRealtime() + 5000
             var observed = window()
-            while (observed.getString("package") != dialerPackage && SystemClock.elapsedRealtime() < deadline) {
+            fun showsCompleteNumber(state: JSONObject): Boolean {
+                val nodes = state.getJSONArray("nodes")
+                return state.getString("package") == dialerPackage && (0 until nodes.length()).any {
+                    nodes.getJSONObject(it).getString("text").replace(Regex("[^0-9+#*]"), "") == expected
+                }
+            }
+            // A dialer can keep emitting accessibility events after it is ready.
+            // Wait for the required rendered content instead of global UI silence.
+            while (!showsCompleteNumber(observed) && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(50); observed = window()
             }
             receipt("phone-native-dialer.json", JSONObject().put("expectedNumber", expected).put("dialerPackage", dialerPackage).put("reply", reply).put("intents", intents).put("window", observed))
-            InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5000)
             val screenshot = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
             val png = java.io.ByteArrayOutputStream()
             try { assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png)) } finally { screenshot.recycle() }
