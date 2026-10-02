@@ -76,8 +76,48 @@ final class WorkflowSurvivorInventory {
   check(owner.getInt("schemaVersion")==2,"incomplete native worker journal");JSONObject nativeIdentity=owner.getJSONObject("nativeIdentity");
   check(owner.getInt("uid")==observed.uid&&owner.getInt("pid")==observed.pid&&peerUid==observed.uid&&peerPid==observed.pid,"worker peer identity differs");
   check(nativeIdentity.getInt("pid")==observed.pid&&nativeIdentity.getInt("uid")==observed.uid&&nativeIdentity.getString("startTicks").equals(observed.start),"worker PID/start identity differs");
-  check(owner.getString("executable").equals(expectedBun)&&observed.executable.equals(expectedLoader)&&observed.sha256.equals(expectedLoaderHash),"worker deployment differs");
+  check(owner.getString("executable").equals(expectedLoader)&&observed.executable.equals(expectedLoader)&&observed.sha256.equals(expectedLoaderHash),"worker deployment differs");
   check(nativeIdentity.getString("executable").equals(observed.executable)&&nativeIdentity.getString("device").equals(observed.device)&&nativeIdentity.getString("inode").equals(observed.inode)&&nativeIdentity.getString("sha256").equals(observed.sha256),"worker executable identity differs");
+ }
+ // The Android wrapper execs musl; process.execPath identifies musl, not its mapped Bun image.
+ // Bind the packaged Bun independently using kernel maps plus the immutable packaged file.
+ static String verifyMappedBunText(String maps,String bun,long device,long inode)throws Exception {
+  check(maps.length()<=4*1024*1024&&maps.endsWith("\n"),"incomplete or oversized worker maps");
+  StringBuilder matched=new StringBuilder();boolean executable=false;int lines=0;
+  for(String line:maps.split("\n")) {
+   check(++lines<=32768&&line.length()<=8192,"worker maps exceeds bound");
+   String[] fields=line.trim().split("\\s+",6);
+   check(fields.length>=5&&fields[0].matches("[a-fA-F0-9]+-[a-fA-F0-9]+")&&fields[1].matches("[r-][w-][x-][ps]")&&fields[2].matches("[a-fA-F0-9]+")&&fields[3].matches("[a-fA-F0-9]+:[a-fA-F0-9]+")&&fields[4].matches("[0-9]+"),"malformed worker maps");
+   if(fields.length!=6)continue;
+   String mappedPath=fields[5];
+   if(mappedPath.equals(bun+" (deleted)"))throw refused("mapped Bun was deleted");
+   if(!mappedPath.equals(bun))continue;
+   String[] dev=fields[3].split(":");long major=Long.parseLong(dev[0],16),minor=Long.parseLong(dev[1],16);
+   check(major<=0xffffffffL&&minor<=0xffffffffL,"invalid mapped Bun device");
+   long mappedDevice=((major&0xfffL)<<8)|(minor&0xffL)|((major&~0xfffL)<<32)|((minor&~0xffL)<<12);
+   check(mappedDevice==device&&Long.parseLong(fields[4])==inode,"mapped Bun file identity differs");
+   String[] addresses=fields[0].split("-");check(Long.compareUnsigned(Long.parseUnsignedLong(addresses[0],16),Long.parseUnsignedLong(addresses[1],16))<0,"invalid mapped Bun address range");
+   if(fields[1].charAt(2)=='x'){check(fields[1].charAt(1)!='w',"writable executable Bun mapping");executable=true;}
+   matched.append(line).append('\n');
+  }
+  check(executable,"packaged Bun executable mapping absent");return matched.toString();
+ }
+ private static String mappedBunIdentity(int pid,String bun,long deadline)throws Exception {
+  File file=new File(bun);check(file.getCanonicalPath().equals(bun),"mapped Bun path alias");
+  java.io.FileDescriptor descriptor=Os.open(bun,OsConstants.O_RDONLY|OsConstants.O_CLOEXEC|OsConstants.O_NOFOLLOW,0);
+  try(FileInputStream in=new FileInputStream(descriptor)) {
+   StructStat first=Os.fstat(descriptor);check(OsConstants.S_ISREG(first.st_mode)&&(first.st_mode&0022)==0&&first.st_size>0&&first.st_size<=128L*1024*1024,"untrusted packaged Bun file");
+   MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];long size=0;int n;
+   while((n=in.read(buffer))!=-1){check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");size+=n;check(size<=128L*1024*1024,"packaged Bun exceeds bound");digest.update(buffer,0,n);}
+   StringBuilder sha=new StringBuilder();for(byte value:digest.digest())sha.append(String.format(Locale.ROOT,"%02x",value&255));
+   ByteArrayOutputStream maps=new ByteArrayOutputStream();try(InputStream proc=new FileInputStream("/proc/"+pid+"/maps")){
+    while((n=proc.read(buffer))!=-1){check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");check(n<=4*1024*1024-maps.size(),"worker maps exceeds bound");maps.write(buffer,0,n);}
+   }
+   String selected=verifyMappedBunText(maps.toString(StandardCharsets.UTF_8.name()),bun,first.st_dev,first.st_ino);
+   StructStat last=Os.fstat(descriptor),current=Os.lstat(bun);
+   check(first.st_dev==last.st_dev&&first.st_ino==last.st_ino&&first.st_size==last.st_size&&first.st_mtime==last.st_mtime&&first.st_ctime==last.st_ctime&&first.st_dev==current.st_dev&&first.st_ino==current.st_ino&&first.st_size==current.st_size&&first.st_mtime==current.st_mtime&&first.st_ctime==current.st_ctime&&size==first.st_size,"packaged Bun changed during observation");
+   return bun+":"+first.st_dev+":"+first.st_ino+":"+first.st_size+":"+sha+"\n"+selected;
+  }
  }
  static void verify(File journal,JSONObject owner,Identity observed,File home,String bun,String loader,String loaderHash,long deadline)throws Exception {
   StructStat first=owned(journal,OsConstants.S_IFREG,0600);check(first.st_size<=16384,"worker journal too large");String journalHash=hash(journal,deadline);check(owner.toString().equals(new JSONObject(new String(bounded(journal,16384),StandardCharsets.UTF_8)).toString()),"worker journal changed before challenge");String generation=owner.getString("generation"),capability=owner.getString("capability"),run=owner.getString("runId"),version=owner.getString("versionId"),sourceHash=owner.getString("sourceSha256");check(generation.matches("[a-f0-9-]{36}")&&capability.matches("[a-f0-9]{64}")&&sourceHash.matches("[a-f0-9]{64}"),"invalid worker generation");check(journal.getParentFile().getName().equals(hashText(run)),"worker run scope differs");
@@ -85,6 +125,7 @@ final class WorkflowSurvivorInventory {
   check(source.getParentFile().equals(workflow)&&source.getName().matches(java.util.regex.Pattern.quote(safeVersion+"."+sourceHash)+"\\.tsx?"),"worker source scope differs");StructStat sourceStat=owned(source,OsConstants.S_IFREG,0600);check(hash(source,deadline).equals(sourceHash),"worker source hash differs");
   File endpoint=new File(owner.getString("endpoint"));File socketRoot=endpoint.getParentFile();check(socketRoot.equals(new File(home,".eliza-worker-ipc"))||socketRoot.equals(new File(home,".ew")),"worker endpoint escaped application");owned(socketRoot,OsConstants.S_IFDIR,0700);check(endpoint.getName().matches("[a-f0-9]{20}\\.sock")&&endpoint.getPath().getBytes(StandardCharsets.UTF_8).length<=100,"invalid worker endpoint");StructStat endpointStat=owned(endpoint,OsConstants.S_IFSOCK,0600);
   verifyBinding(owner,observed,observed.uid,observed.pid,bun,loader,loaderHash);
+  String bunIdentity=mappedBunIdentity(observed.pid,bun,deadline);
   String challenge=UUID.randomUUID().toString();check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");
   try(LocalSocket socket=new LocalSocket()){
    // An absolute watchdog covers connect, writes and slow byte-by-byte replies.
@@ -94,7 +135,7 @@ final class WorkflowSurvivorInventory {
    while((b=socket.getInputStream().read())!=-1){check(response.size()<4096,"worker response exceeds bound");if(b=='\n')break;response.write(b);}check(b=='\n',"worker lease did not reply");JSONObject reply=new JSONObject(response.toString(StandardCharsets.UTF_8.name()));check(challenge.equals(reply.getString("challenge"))&&generation.equals(reply.getString("generation")),"worker lease challenge differs");check(!expired.get(),"worker lease deadline");
    } finally {watchdog.interrupt();}
   }
-  check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");StructStat last=owned(journal,OsConstants.S_IFREG,0600),nowSource=owned(source,OsConstants.S_IFREG,0600),nowEndpoint=owned(endpoint,OsConstants.S_IFSOCK,0600);check(first.st_dev==last.st_dev&&first.st_ino==last.st_ino&&journalHash.equals(hash(journal,deadline)),"worker journal changed");check(sourceStat.st_dev==nowSource.st_dev&&sourceStat.st_ino==nowSource.st_ino&&sourceHash.equals(hash(source,deadline)),"worker source changed");check(endpointStat.st_dev==nowEndpoint.st_dev&&endpointStat.st_ino==nowEndpoint.st_ino,"worker endpoint changed");check(observed.key().equals(processIdentity(observed.pid,deadline).key()),"worker process changed after challenge");
+  check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");StructStat last=owned(journal,OsConstants.S_IFREG,0600),nowSource=owned(source,OsConstants.S_IFREG,0600),nowEndpoint=owned(endpoint,OsConstants.S_IFSOCK,0600);check(first.st_dev==last.st_dev&&first.st_ino==last.st_ino&&journalHash.equals(hash(journal,deadline)),"worker journal changed");check(sourceStat.st_dev==nowSource.st_dev&&sourceStat.st_ino==nowSource.st_ino&&sourceHash.equals(hash(source,deadline)),"worker source changed");check(endpointStat.st_dev==nowEndpoint.st_dev&&endpointStat.st_ino==nowEndpoint.st_ino,"worker endpoint changed");check(bunIdentity.equals(mappedBunIdentity(observed.pid,bun,deadline)),"mapped Bun changed after challenge");check(observed.key().equals(processIdentity(observed.pid,deadline).key()),"worker process changed after challenge");
  }
  static void verifyInventory(Map<Integer,Identity> before,Map<Integer,Identity> after,Set<Integer> verified,int self)throws Exception {
   check(before.containsKey(self)&&before.keySet().equals(after.keySet()),"same-UID process inventory changed");
