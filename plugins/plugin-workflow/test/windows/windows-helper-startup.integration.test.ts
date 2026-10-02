@@ -10,6 +10,35 @@ import { windowsWorkflowBackend } from '../../src/services/workflow-worker-lease
 
 if (process.platform !== 'win32') throw Error('Real Windows host required');
 
+const tempEnvironment = { TEMP: process.env.TEMP, TMP: process.env.TMP };
+const osEnvironment = {
+  windir: process.env.windir,
+  ComSpec: process.env.ComSpec,
+  SystemDrive: process.env.SystemDrive,
+};
+const profileEnvironment = {
+  USERPROFILE: process.env.USERPROFILE,
+  APPDATA: process.env.APPDATA,
+  LOCALAPPDATA: process.env.LOCALAPPDATA,
+  HOMEDRIVE: process.env.HOMEDRIVE,
+  HOMEPATH: process.env.HOMEPATH,
+  ALLUSERSPROFILE: process.env.ALLUSERSPROFILE,
+  ProgramData: process.env.ProgramData,
+  PSModulePath: process.env.PSModulePath,
+};
+const nativeEnvironment = { ...tempEnvironment, ...osEnvironment, ...profileEnvironment };
+// Only this fixed allowlist's presence is observable; never enumerate the host environment.
+console.info(
+  JSON.stringify({
+    nativeEnvironmentPresence: Object.fromEntries(
+      Object.entries(nativeEnvironment).map(([name, value]) => [
+        name,
+        typeof value === 'string' && value.length > 0,
+      ])
+    ),
+  })
+);
+
 // Actual subprocess discrimination, not a mocked backend. The helper's production
 // 15-second startup deadline is unchanged. No workflow or external effect runs.
 for (const environment of [
@@ -18,6 +47,7 @@ for (const environment of [
   'restricted-temp',
   'restricted-os',
   'restricted-profile',
+  'restricted-native',
 ] as const) {
   for (const topology of ['ignored', 'readline'] as const) {
     test(`bundled Windows helper: ${environment} environment, ${topology} stdin`, async () => {
@@ -78,22 +108,10 @@ try {
       const environmentAdditions = {
         inherited: process.env,
         restricted: {},
-        'restricted-temp': { TEMP: process.env.TEMP, TMP: process.env.TMP },
-        'restricted-os': {
-          windir: process.env.windir,
-          ComSpec: process.env.ComSpec,
-          SystemDrive: process.env.SystemDrive,
-        },
-        'restricted-profile': {
-          USERPROFILE: process.env.USERPROFILE,
-          APPDATA: process.env.APPDATA,
-          LOCALAPPDATA: process.env.LOCALAPPDATA,
-          HOMEDRIVE: process.env.HOMEDRIVE,
-          HOMEPATH: process.env.HOMEPATH,
-          ALLUSERSPROFILE: process.env.ALLUSERSPROFILE,
-          ProgramData: process.env.ProgramData,
-          PSModulePath: process.env.PSModulePath,
-        },
+        'restricted-temp': tempEnvironment,
+        'restricted-os': osEnvironment,
+        'restricted-profile': profileEnvironment,
+        'restricted-native': nativeEnvironment,
       };
       const child = spawn(command.executable, command.args, {
         cwd: command.cwd,
