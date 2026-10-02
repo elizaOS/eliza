@@ -17,8 +17,9 @@ import {
 import { SubscriptionStatus } from "./SubscriptionStatus";
 
 vi.mock("../../state", () => ({
-  useAppSelector: (select: (state: { t: (key: string) => string }) => unknown) =>
-    select({ t: (key: string) => key }),
+  useAppSelector: (
+    select: (state: { t: (key: string) => string }) => unknown,
+  ) => select({ t: (key: string) => key }),
 }));
 vi.mock("../../utils", () => ({
   preOpenWindow: () => ({ close: () => undefined }),
@@ -69,12 +70,16 @@ describe("SubscriptionStatus Anthropic OAuth", () => {
         screen.getByText("settings.subscription.loginWithAnthropic"),
       );
     });
-    expect(screen.queryByPlaceholderText(PASTE_CODE_PLACEHOLDER)).not.toBeNull();
+    expect(
+      screen.queryByPlaceholderText(PASTE_CODE_PLACEHOLDER),
+    ).not.toBeNull();
 
     first.unmount();
     render(<SubscriptionStatus {...props} />);
 
-    expect(screen.queryByPlaceholderText(PASTE_CODE_PLACEHOLDER)).not.toBeNull();
+    expect(
+      screen.queryByPlaceholderText(PASTE_CODE_PLACEHOLDER),
+    ).not.toBeNull();
     expect(new URL(window.location.href).searchParams.get("setup")).toBe(
       "oauth",
     );
