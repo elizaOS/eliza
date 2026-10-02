@@ -66,7 +66,10 @@ import {
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
-import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
+import {
+  orderHistoryFirst,
+  referenceRepeatedHistory,
+} from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
   cacheProviderOptions,
@@ -1109,6 +1112,10 @@ function renderEvaluatorModelInput(params: {
   const deferred = projectDeferredProviders(background.context);
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
+  );
+  renderedContext.promptSegments = orderHistoryFirst(
+    deferred.context,
+    renderedContext.promptSegments,
   );
   renderedContext.promptSegments = referenceRepeatedHistory(
     params.trajectory.modelBaseContext ?? params.context,

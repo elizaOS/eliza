@@ -129,6 +129,7 @@ import {
 } from "../prompts/planner.ts";
 import {
   labelHistorySources,
+  orderHistoryFirst,
   referenceRepeatedHistory,
 } from "../services/message/history-wire.ts";
 import {
@@ -3166,6 +3167,12 @@ function renderPlannerModelInput(params: {
       ? projectDeferredProviders(diagnosticProjection.context)
       : { context: diagnosticProjection.context, available: [] };
   const renderedContext = renderContextObject(deferred.context);
+  if (!params.codingMode) {
+    renderedContext.promptSegments = orderHistoryFirst(
+      deferred.context,
+      renderedContext.promptSegments,
+    );
+  }
   // Domain planning can review originals for the whole pending turn without changing
   // the reply handler or mutating the complete restorable context.
   const actionSources =
