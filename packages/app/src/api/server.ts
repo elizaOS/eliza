@@ -39,6 +39,7 @@ import {
   loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
+  removeResetCredentialsFromVault,
   resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
@@ -67,6 +68,7 @@ import {
 
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
+import { sharedVault } from "../services/vault-mirror";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import {
   getProvidedApiToken,
@@ -864,6 +866,7 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         }
         saveElizaConfig(config);
         clearCloudSecrets();
+        await removeResetCredentialsFromVault(sharedVault());
         await deleteWalletSecretsFromOsStore();
         logger.info(
           "[eliza][reset] POST /api/agent/reset: eliza.json saved; renderer should restart API process if embedded/third-party dev",
