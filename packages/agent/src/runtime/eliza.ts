@@ -97,6 +97,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
+import { assertNoRetiredToolRestrictions } from "../config/retired-tool-policy.ts";
 import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
 import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
@@ -3851,6 +3852,8 @@ export async function startEliza(
 ): Promise<AgentRuntime | undefined> {
   const restoredGeneration = opts?.restoredGeneration;
   opts?.abortSignal?.throwIfAborted();
+  if (opts?.configOverride)
+    assertNoRetiredToolRestrictions(opts.configOverride);
   if (restoredGeneration !== undefined) {
     const { isAgentBackupRestoreV3RuntimeGeneration } = await import(
       "../services/agent-backup-restore-v3-runtime-generation"
