@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import * as fs from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import * as path from 'node:path';
+import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 
 function syncDirectory(value: string) {
   const fd = fs.openSync(value, 'r');
@@ -126,6 +127,7 @@ function readOwner(active: string) {
 }
 /** An authenticated lease proves this generation responds; never infer death from timeout/PID/name. */
 export async function inspectWorkerLease(input: WorkerLeaseInput): Promise<WorkerLeaseState> {
+  if (process.platform === 'win32') return windowsWorkflowBackend.inspectWorkerLease(input);
   const active = root(input);
   if (!fs.existsSync(active)) return { state: 'absent' };
   try {
@@ -198,6 +200,7 @@ export async function inspectWorkerLease(input: WorkerLeaseInput): Promise<Worke
 }
 /** Worker calls before importing workflow source/effects. A crash leaves durable unknown state. */
 export async function acquireWorkerLease(input: WorkerLeaseInput) {
+  if (process.platform === 'win32') return windowsWorkflowBackend.acquireWorkerLease(input);
   const active = root(input);
   try {
     fs.mkdirSync(active, { mode: 0o700 });

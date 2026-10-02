@@ -1,3 +1,4 @@
+import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 /**
  * Executes persisted Smithers workflow modules in an isolated Bun child process
  * and streams native Smithers progress events back to the owning elizaOS
@@ -30,6 +31,8 @@ import { workerLeasePrelude } from './workflow-worker-lease-prelude';
 
 /** Publish complete immutable source without truncating a concurrent importer. */
 export async function publishWorkflowSource(sourcePath: string, source: string): Promise<void> {
+  if (process.platform === 'win32')
+    return windowsWorkflowBackend.publishWorkflowSource(sourcePath, source);
   const temporary = `${sourcePath}.${randomUUID()}.pending`;
   const handle = await open(temporary, 'wx', 0o600);
   try {
@@ -574,7 +577,11 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     `${safePathPart(request.workflow.versionId)}.${sourceDigest}.${request.workflow.language === 'tsx' ? 'tsx' : 'ts'}`
   );
   await mkdir(rootDir, { recursive: true });
-  const socketRoot = resolveWorkerSocketRoot(process.env.HOME ?? rootDir);
+  // Windows uses a protected named pipe; its native backend verifies rootDir SID/DACL.
+  const socketRoot =
+    process.platform === 'win32'
+      ? await realpath(rootDir)
+      : resolveWorkerSocketRoot(process.env.HOME ?? rootDir);
   const workerLease = {
     rootDir: await realpath(rootDir),
     socketRoot,
