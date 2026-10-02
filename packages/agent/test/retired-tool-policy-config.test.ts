@@ -135,3 +135,72 @@ it("refuses an explicit runtime override before starting the agent", async () =>
     }),
   ).rejects.toMatchObject({ code: "CONFIG_TOOL_POLICY_UNSUPPORTED" });
 });
+
+it.each([{ toolProfile: "minimal" }, { tools: { deny: ["terminal"] } }])(
+  "refuses retired character settings on actual disk load: %j",
+  (settings) => {
+    const file = configFile();
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ agents: { list: [{ id: "review", settings }] } }),
+    );
+    expect(() => loadElizaConfig()).toThrow("not enforced");
+  },
+);
+
+it("refuses retired character settings before building the runtime character", async () => {
+  const { buildCharacterFromConfig } = await import(
+    "../src/runtime/build-character-config.ts"
+  );
+  expect(() =>
+    buildCharacterFromConfig({
+      agents: {
+        list: [{ id: "review", settings: { tools: { deny: ["terminal"] } } }],
+      },
+    }),
+  ).toThrow("not enforced");
+});
+
+it("refuses an injected retired policy without changing the configured character", async () => {
+  const { applySandboxCharacterFromEnv } = await import(
+    "../src/runtime/sandbox-character.ts"
+  );
+  const config = { agents: { list: [{ id: "original", name: "Original" }] } };
+  const before = structuredClone(config);
+  expect(() =>
+    applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "Override",
+        settings: { toolProfile: "minimal" },
+      }),
+    }),
+  ).toThrow("not enforced");
+  expect(config).toEqual(before);
+});
+
+it("keeps unrestricted character settings and unrelated plugin settings", async () => {
+  const { buildCharacterFromConfig } = await import(
+    "../src/runtime/build-character-config.ts"
+  );
+  const settings = {
+    toolProfile: "full",
+    tools: { deny: [], allow: [] },
+    CUSTOM_PLUGIN_SETTING: "enabled",
+  };
+  const character = buildCharacterFromConfig({
+    agents: { list: [{ id: "review", settings }] },
+  });
+  expect(character.settings).toMatchObject(settings);
+});
+
+it("refuses retired character settings on save without changing previous bytes", () => {
+  const file = configFile();
+  const previous = '{"agents":{"list":[{"id":"review"}]}}';
+  fs.writeFileSync(file, previous);
+  expect(() =>
+    saveElizaConfig({
+      agents: { list: [{ id: "review", settings: { toolProfile: "coding" } }] },
+    }),
+  ).toThrow("not enforced");
+  expect(fs.readFileSync(file, "utf8")).toBe(previous);
+});

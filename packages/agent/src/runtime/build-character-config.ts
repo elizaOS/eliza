@@ -20,6 +20,7 @@ import {
 } from "@elizaos/core";
 
 import type { ElizaConfig } from "../config/config.ts";
+import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
@@ -38,6 +39,7 @@ import { projectConnectorSettings } from "./project-connector-settings.ts";
 /** @internal Exported for testing. */
 export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const agentEntry = config.agents?.list?.[0];
+  assertNoRetiredCharacterToolRestrictions(agentEntry?.settings);
   const uiConfig = (config.ui ?? {}) as {
     assistant?: { name?: string };
     avatarIndex?: number;

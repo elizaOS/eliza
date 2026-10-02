@@ -97,7 +97,10 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
-import { assertNoRetiredToolRestrictions } from "../config/retired-tool-policy.ts";
+import {
+  assertNoRetiredCharacterToolRestrictions,
+  assertNoRetiredToolRestrictions,
+} from "../config/retired-tool-policy.ts";
 import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
 import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
@@ -4283,6 +4286,7 @@ export async function startEliza(
   const character = restoredGeneration
     ? restoredGeneration.character()
     : buildCharacterFromConfig(config);
+  assertNoRetiredCharacterToolRestrictions(character.settings);
   // Pin the runtime agent id to the platform character_id so the gateways can
   // resolve `agent:<id>:server` and address `/agents/<id>/message` against
   // this container. Without this the runtime would derive an id from the
