@@ -42,7 +42,7 @@
     "file-type": "^22.0.1",
     "hono": "4.13.8",
     "jose": "^6.0.0",
-    "music-metadata": "^11.15.0",
+    "music-metadata": "^11.16.1",
     "nanoid": "^6.0.0",
     "stripe": "^22.0.0",
     "telegraf": "^4.16.3",

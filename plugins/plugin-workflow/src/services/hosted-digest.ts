@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { computeNextCronRunAtMs } from '@elizaos/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { hostedResults, hostedSources } from '../db/schema';
 import {
@@ -218,7 +218,7 @@ export function digestDeliveryProjection(result: Record<string, unknown>) {
   };
 }
 export async function writeDigestResult(
-  db: DbAccess,
+  db: Pick<NodePgDatabase, 'transaction'>,
   agentId: string,
   workflow: WorkflowDefinitionResponse,
   execution: WorkflowExecution
@@ -244,14 +244,22 @@ export async function writeDigestResult(
     output: execution.output ?? null,
     error: execution.error?.message ?? null,
   };
-  await db
-    .insert(hostedResults)
-    .values({
-      agentId,
-      ownerId,
-      runId: execution.id,
-      workflowId: workflow.id,
-      result: digestDeliveryProjection(result),
-    })
-    .onConflictDoNothing();
+  // Sequence allocation must follow commit order within each delivery stream.
+  // Otherwise a later transaction can be acknowledged before an earlier row
+  // becomes visible, permanently hiding that row behind the client's cursor.
+  // A nested transaction keeps this lock until the outer execution commit.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(
+      ${JSON.stringify(['workflow.hosted-results', agentId, ownerId])}, 0))`);
+    await tx
+      .insert(hostedResults)
+      .values({
+        agentId,
+        ownerId,
+        runId: execution.id,
+        workflowId: workflow.id,
+        result: digestDeliveryProjection(result),
+      })
+      .onConflictDoNothing();
+  });
 }

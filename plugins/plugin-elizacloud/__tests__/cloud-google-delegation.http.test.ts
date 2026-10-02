@@ -25,6 +25,7 @@ test("reviewed delegation survives database restart, rejects owner/replay/rotati
     exchanges = 0,
     reads = 0,
     revokeFails = true,
+    exchangeFails = false,
     wrongSubject = false;
   let providerOverride:
     | { path: "list" | "detail" | "calendars" | "events"; value: unknown }
@@ -54,6 +55,7 @@ test("reviewed delegation survives database restart, rejects owner/replay/rotati
         if (path.endsWith("/token")) {
           exchanges++;
           expect(body.redirectUri).toBe("https://phone.invalid/delegation");
+          if (exchangeFails) return send(503, { error: "fixture exchange unavailable" });
           return send(200, {
             success: true,
             data: {
@@ -369,6 +371,19 @@ test("reviewed delegation survives database restart, rejects owner/replay/rotati
     const cancelState = new URL(cancelStart.authUrl).searchParams.get("state");
     await engine.cancel(owner, { state: cancelState, confirmed: true });
     expect(await engine.status(owner, { state: cancelState })).toEqual({ status: "failed" });
+    const unavailableStart = await engine.begin(owner, { confirmed: true, kinds: ["calendar"] });
+    const unavailableState = new URL(unavailableStart.authUrl).searchParams.get("state");
+    exchangeFails = true;
+    await expect(
+      engine.complete(owner, { state: unavailableState, code: "unavailable-code" })
+    ).rejects.toThrow();
+    expect(await engine.status(owner, { state: unavailableState })).toEqual({ status: "failed" });
+    const exchangesAfterFailure = exchanges;
+    await expect(
+      engine.complete(owner, { state: unavailableState, code: "unavailable-code" })
+    ).rejects.toThrow();
+    expect(exchanges).toBe(exchangesAfterFailure);
+    exchangeFails = false;
     now += 7 * 86400000 + 1;
     await expect(
       engine.read(owner.ownerId, { ...selection, ...nextAccount }, now)

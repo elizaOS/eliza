@@ -269,7 +269,7 @@ describe("Alpha attestation appraisal", () => {
       verifierConfigPath: config,
     };
     const attestationKey = generateKeyPairSync("ec", {
-      namedCurve: "prime256v1",
+      namedCurve: "P-256",
     }).privateKey;
     const requestEvidence = async (nonce: string) => {
       const { dstackOperatorReportData } = await import(
@@ -277,15 +277,22 @@ describe("Alpha attestation appraisal", () => {
       );
       const reportData = dstackOperatorReportData(nonce);
       await writeFile(reportFile, JSON.stringify(verifierReport(reportData)));
-      const rawReportData = Buffer.from(reportData.padEnd(128, "0"), "hex");
+      const paddedReportData = Buffer.from(reportData.padEnd(128, "0"), "hex");
       const quote = buildTdxQuote({
-        reportData: rawReportData,
+        reportData: paddedReportData,
         attestationKey,
       });
       const attestation = packMsgpack({
         version: 1,
         platform: { kind: "tdx", data: { quote, event_log: [] } },
-        stack: { kind: "dstack", data: { report_data: rawReportData } },
+        stack: {
+          kind: "dstack",
+          data: {
+            report_data: paddedReportData,
+            runtime_events: [],
+            config: "{}",
+          },
+        },
       }).toString("hex");
       return { nonce, reportData, attestation };
     };
@@ -332,13 +339,16 @@ describe("Alpha attestation appraisal", () => {
       approvedRoutes: ["https://api.cerebras.ai/v1"],
     });
 
-    // The pinned verifier's success cannot replace valid raw guest evidence.
+    // A positive verifier report cannot admit malformed raw evidence.
     await expect(
       verifyAlphaAttestation(inputs, async (nonce) => ({
         ...(await requestEvidence(nonce)),
         attestation: "abcd",
       })),
-    ).rejects.toMatchObject({ code: "TEE_DSTACK_EVIDENCE_REJECTED" });
+    ).rejects.toMatchObject({
+      code: "TEE_DSTACK_EVIDENCE_REJECTED",
+      cause: { message: "Attestation is not a MessagePack V1 map" },
+    });
 
     // A different (e.g. rolled-back or tampered) compose is rejected.
     expected = { ...expected, composeHash: "f".repeat(64) };

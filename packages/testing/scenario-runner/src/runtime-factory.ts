@@ -396,7 +396,7 @@ function runtimeServiceSnapshot(
   };
 }
 
-function writeSyntheticRuntimeEvidence(
+export function writeSyntheticRuntimeEvidence(
   evidencePath: string,
   events: readonly SyntheticRuntimeEvent[],
   runtime: AgentRuntime,
@@ -417,6 +417,15 @@ function writeSyntheticRuntimeEvidence(
     throw new Error("synthetic runtime evidence exceeded 1 MiB");
   }
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true, mode: 0o700 });
+  // The launcher pre-creates the evidence file so the artifact uploader can
+  // read it even after an abnormal sandbox exit. Writing that existing inode
+  // in place preserves its controller ownership; renaming a private tmp file
+  // over it would replace the inode with one the ephemeral sandbox UID owns
+  // (mode 0600, no default ACL), leaving the evidence unreadable after a kill.
+  if (fs.existsSync(evidencePath)) {
+    fs.writeFileSync(evidencePath, payload, { encoding: "utf8" });
+    return;
+  }
   const temporaryPath = `${evidencePath}.${process.pid}.tmp`;
   fs.writeFileSync(temporaryPath, payload, { encoding: "utf8", mode: 0o600 });
   fs.renameSync(temporaryPath, evidencePath);

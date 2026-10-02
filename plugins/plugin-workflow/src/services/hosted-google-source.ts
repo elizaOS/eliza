@@ -330,20 +330,25 @@ export async function readHostedGoogleSource(
   if (options.signal?.aborted) unavailable();
   const rows = Array.isArray(result) ? result : result.events;
   if (!Array.isArray(rows) || rows.length > selected.maxItems) unavailable();
+  const projectText = (value: unknown, max: number) => {
+    if (typeof value === 'string' && value.length > max)
+      throw new WorkflowApiError('Selected Google input exceeds the reviewed field limit', 422);
+    return typeof value === 'string' ? value : '';
+  };
   const items = rows.map((row) =>
     selected.kind === 'email'
       ? {
-          id: text(row.id, 256),
-          subject: text('subject' in row ? row.subject : '', 256),
-          snippet: text('snippet' in row ? row.snippet : '', 512),
-          receivedAt: text('receivedAt' in row ? row.receivedAt : '', 64),
+          id: projectText(row.id, 256),
+          subject: projectText('subject' in row ? row.subject : '', 256),
+          snippet: projectText('snippet' in row ? row.snippet : '', 512),
+          receivedAt: projectText('receivedAt' in row ? row.receivedAt : '', 64),
         }
       : {
-          id: text(row.id, 256),
-          title: text('title' in row ? row.title : '', 256),
-          start: text('start' in row ? row.start : '', 64),
-          end: text('end' in row ? row.end : '', 64),
-          status: text('status' in row ? row.status : '', 32),
+          id: projectText(row.id, 256),
+          title: projectText('title' in row ? row.title : '', 256),
+          start: projectText('start' in row ? row.start : '', 64),
+          end: projectText('end' in row ? row.end : '', 64),
+          status: projectText('status' in row ? row.status : '', 32),
         }
   );
   const observedAt = new Date(Date.now()).toISOString();
@@ -362,15 +367,11 @@ export async function readHostedGoogleSource(
       rows.length >= selected.maxItems || (!Array.isArray(result) && !!result.nextPageToken),
     items,
   };
-  let encoded = JSON.stringify(projection);
-  // Leave space for the outer source envelope and its JSON escaping inside the
-  // existing 16k typed Read contract. Disclose dropped rows, never truncate JSON.
-  while (encoded.length > 6000 || Buffer.byteLength(encoded, 'utf8') > 12000) {
-    if (!items.length) unavailable();
-    items.pop();
-    projection.possiblyTruncated = true;
-    encoded = JSON.stringify(projection);
-  }
+  const encoded = JSON.stringify(projection);
+  // The selected input is model context: never drop rows or shorten fields to
+  // fit the typed Read envelope. Fail explicitly so the owner can revise scope.
+  if (encoded.length > 6000 || Buffer.byteLength(encoded, 'utf8') > 12000)
+    throw new WorkflowApiError('Selected Google input exceeds the reviewed transfer limit', 422);
   return { observedAt, text: encoded };
 }
 

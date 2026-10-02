@@ -240,6 +240,8 @@ export function validateReminderResult(
       throw Error("Reminder read changed");
     result.fields = reminderFields(v.fields);
   }
+  if (op.type === "reminder_complete" && v.status !== "completed")
+    throw Error("Reminder was not completed");
   if (op.type === "reminder_cancel" && v.status !== "cancelled")
     throw Error("Reminder was not cancelled");
   if (

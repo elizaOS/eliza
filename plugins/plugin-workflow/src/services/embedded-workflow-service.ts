@@ -2034,8 +2034,15 @@ export class EmbeddedWorkflowService extends Service {
     options: { note?: string; decidedBy?: string; decision?: unknown } = {}
   ): Promise<WorkflowExecution> {
     const execution = await this.getExecution(runId);
-    if (execution.finished)
-      throw new WorkflowApiError('Workflow execution is already terminal', 409);
+    if (execution.finished || execution.cancellationRequestedAt)
+      throw new WorkflowApiError('Workflow execution cannot accept decisions', 409);
+    if (approved) {
+      const receipt = (await readApprovalReceipts(this.tenantId, execution)).find(
+        (item) => item.nodeId === nodeId && item.iteration === iteration
+      );
+      if (!receipt?.supported)
+        throw new WorkflowApiError('Approval requires unsupported review fields', 422);
+    }
     const pending = (execution.approvals ?? []).find(
       (approval) => approval.nodeId === nodeId && approval.iteration === iteration
     );

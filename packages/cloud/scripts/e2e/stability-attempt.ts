@@ -13,6 +13,10 @@ import path from "node:path";
 import { canonicalJsonString } from "@elizaos/core/canonical-json";
 import cloudStabilityScenario from "../../e2e/scenarios/cloud-stability-agent.scenario.ts";
 import { startCloudStack } from "../../e2e/src/fixtures/stack.ts";
+import {
+  runStabilityCleanup,
+  writeParentOwnedStabilityLog,
+} from "../../e2e/src/stability/attempt-cleanup.ts";
 import { canonicalCloudStabilitySha256 } from "../../e2e/src/stability/cloud-stability-runner.ts";
 import {
   linuxSandboxEnabled,
@@ -352,9 +356,15 @@ const childQuiescenceLedgerPath = path.join(
   outputDir,
   "child-quiescence-ledger.json",
 );
-// Keep this private ledger owned by the controller even if the sandbox exits
+// Keep these private ledgers owned by the controller even if the sandbox exits
 // abnormally before its ACL cleanup. The launcher grants the child write access
-// to existing evidence, and writeFile preserves the existing owner and mode.
+// to existing evidence, and in-place child writes preserve the existing owner
+// and mode. A ledger the child creates itself (or publishes by renaming a file
+// from its private tmpfs, which carries no default ACL) can end up owned by the
+// ephemeral sandbox UID and unreadable, which previously made the trajectory
+// artifact upload fail with EACCES and destroyed the failure evidence.
+await writeFile(childNetworkLedgerPath, "", { mode: 0o600, flag: "wx" });
+await writeFile(childRuntimeLedgerPath, "", { mode: 0o600, flag: "wx" });
 await writeFile(childQuiescenceLedgerPath, "", { mode: 0o600, flag: "wx" });
 const childProcessEnvironment = modelProxy
   ? liveModelScenarioChildEnvironment(
@@ -365,6 +375,30 @@ const childProcessEnvironment = modelProxy
   : process.env;
 let cliStdout = "";
 let cliStderr = "";
+const explicitSecrets = [
+  realModelCredential,
+  meterAttestationKey,
+  process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
+].filter(
+  (value): value is string => typeof value === "string" && value.length > 0,
+);
+const redact = (value: string): string =>
+  explicitSecrets
+    .reduce((result, secret) => result.split(secret).join("[REDACTED]"), value)
+    .replace(
+      /(?:\/Users\/[^/\s]+)?\/Library\/Messages\/chat\.db/gu,
+      "[REDACTED_HOST_MESSAGES_DB]",
+    )
+    .replace(/\bROWID\s+\d+/gu, "ROWID [REDACTED]");
+function persistScenarioLogs(): void {
+  // Parent-owned redacted evidence must survive interruption and stack teardown.
+  for (const [name, content] of [
+    ["scenario.stdout.log", cliStdout],
+    ["scenario.stderr.log", cliStderr],
+  ] as const) {
+    writeParentOwnedStabilityLog(path.join(outputDir, name), redact(content));
+  }
+}
 let cliCode: number | null = null;
 let cliClosedAt = 0;
 let sandboxEnvironmentPath: string | undefined;
@@ -381,11 +415,13 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
       }
       process.kill(process.pid, signal);
     };
-    if (activeScenarioGroup === undefined) {
-      reraise();
-      return;
-    }
-    void terminateGroup(activeScenarioGroup).then(reraise, (error: unknown) => {
+    void runStabilityCleanup([
+      persistScenarioLogs,
+      () =>
+        activeScenarioGroup === undefined
+          ? undefined
+          : terminateGroup(activeScenarioGroup),
+    ]).then(reraise, (error: unknown) => {
       // error-policy:J1 Preserve interruption semantics while reporting failed owned-group teardown.
       process.stderr.write(
         `[cloud-stability] scenario interruption cleanup failed: ${String(error)}\n`,
@@ -396,6 +432,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   signalHandlers.set(signal, handler);
   process.once(signal, handler);
 }
+const executionFailures: unknown[] = [];
 try {
   const args = [
     "--conditions=eliza-source",
@@ -502,50 +539,42 @@ try {
   clearTimeout(timeout);
   if (escalation) clearTimeout(escalation);
   await terminateGroup(childProcessGroupId);
+} catch (error) {
+  // error-policy:J7 Preserve the execution failure while completing every owned cleanup.
+  executionFailures.push(error);
 } finally {
-  for (const [signal, handler] of signalHandlers) {
-    process.removeListener(signal, handler);
-  }
-  if (sandboxEnvironmentPath) {
-    // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
-    await rm(sandboxEnvironmentPath, { force: true });
-  }
-  if (modelProxy) await modelProxy.stop();
-  await cloudApiProxy.stop();
-  await hetznerProxy.stop();
-  await stack.stop();
+  await runStabilityCleanup(
+    [
+      persistScenarioLogs,
+      () => {
+        for (const [signal, handler] of signalHandlers)
+          process.removeListener(signal, handler);
+      },
+      async () => {
+        if (sandboxEnvironmentPath) {
+          // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
+          await rm(sandboxEnvironmentPath, { force: true });
+        }
+      },
+      async () => {
+        if (modelProxy) await modelProxy.stop();
+      },
+      () => cloudApiProxy.stop(),
+      () => hetznerProxy.stop(),
+      () => stack.stop(),
+    ],
+    executionFailures,
+  );
 }
 
-const explicitSecrets = [
-  realModelCredential,
-  meterAttestationKey,
-  process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
-].filter(
-  (value): value is string => typeof value === "string" && value.length > 0,
-);
 const ambientServiceLogEvidence = [cliStdout, cliStderr].filter((value) =>
   /(?:Initializing iMessage plugin|chat\.db opened|Library\/Messages\/chat\.db|\bROWID\s+\d+)/u.test(
     value,
   ),
 ).length;
-const redact = (value: string): string =>
-  explicitSecrets
-    .reduce((result, secret) => result.split(secret).join("[REDACTED]"), value)
-    .replace(
-      /(?:\/Users\/[^/\s]+)?\/Library\/Messages\/chat\.db/gu,
-      "[REDACTED_HOST_MESSAGES_DB]",
-    )
-    .replace(/\bROWID\s+\d+/gu, "ROWID [REDACTED]");
 cliStdout = redact(cliStdout);
 cliStderr = redact(cliStderr);
-await writeFile(path.join(outputDir, "scenario.stdout.log"), cliStdout, {
-  encoding: "utf8",
-  mode: 0o600,
-});
-await writeFile(path.join(outputDir, "scenario.stderr.log"), cliStderr, {
-  encoding: "utf8",
-  mode: 0o600,
-});
+persistScenarioLogs();
 const scenarioReport = JSON.parse(
   await readFile(scenarioReportPath, "utf8"),
 ) as {

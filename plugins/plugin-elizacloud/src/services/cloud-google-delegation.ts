@@ -221,11 +221,12 @@ export class CloudGoogleDelegation {
 			await this.store.set(NS, this.key(state), { ...e, consumed: true });
 			return e;
 		});
-		const response = await this.client.exchange(code, this.config.redirectUri);
-		if (!response) throw new CloudDelegationError();
-		const token = response.data.token;
+		let token: string | undefined;
 		let ref: string | undefined;
 		try {
+			const response = await this.client.exchange(code, this.config.redirectUri);
+			if (!response) throw new CloudDelegationError();
+			token = response.data.token;
 			const data = response.data,
 				expiry = Date.parse(data.expiresAt);
 			if (
@@ -285,9 +286,10 @@ export class CloudGoogleDelegation {
 			}
 			// A failed binding never becomes usable. Best-effort remote compensation;
 			// Cloud's credential still has its seven-day expiry if transport is lost.
-			try {
-				await this.client.revoke(token);
-			} catch {}
+			if (typeof token === "string" && token.length)
+				try {
+					await this.client.revoke(token);
+				} catch {}
 			if (ref)
 				try {
 					await this.vault.remove(ref);
