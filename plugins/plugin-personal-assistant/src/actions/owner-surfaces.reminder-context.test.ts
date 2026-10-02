@@ -1,6 +1,13 @@
 /** Verifies that owner reminder creation fails closed before durable mutation. */
 
-import { promoteSubactionsToActions, validateToolArgs } from "@elizaos/core";
+import {
+  executePlannedToolCall,
+  type Memory,
+  promoteSubactionsToActions,
+  type UUID,
+  validateToolArgs,
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 
 const runLifeOperationHandler = vi.hoisted(() =>
@@ -42,6 +49,67 @@ vi.mock("./screen-time.js", () => ({
 
 const { ownerRemindersAction } = await import("./owner-surfaces.js");
 
+it.each(["omitted", "legacy", "null"] as const)(
+  "uses the actual executor argument boundary for %s creation plans",
+  async (variant) => {
+    const create = promoteSubactionsToActions(ownerRemindersAction).find(
+      ({ name }) => name === "OWNER_REMINDERS_CREATE",
+    );
+    if (!create) throw Error("Missing registered create child");
+    const runtime = createMockRuntime({ actions: [create] });
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: crypto.randomUUID() as UUID,
+      content: {
+        text: "Remind me in two minutes to check the bag, in-app only.",
+        source: "test",
+      },
+    } as Memory;
+    const plan = {
+      mode: "create",
+      requestKind: "reminder",
+      title: "Check the bag",
+      cadenceKind: "once",
+      dueInMinutes: 2,
+      multiStep: false,
+      ...(variant === "null" ? { nativeProjection: null } : {}),
+    };
+    runLifeOperationHandler.mockClear();
+    // Exercise admission without inventing a successful write/receipt.
+    if (variant !== "legacy")
+      runLifeOperationHandler.mockResolvedValueOnce({
+        success: false,
+        text: "Specify the reminder destination.",
+      });
+    const result = await executePlannedToolCall(
+      runtime,
+      { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+      {
+        name: create.name,
+        params: variant === "omitted" ? {} : { createPlan: plan },
+      },
+      { actions: [create] },
+    );
+    if (variant === "legacy") {
+      expect(result.success).toBe(false);
+      expect(result.data?.parameterErrors).toEqual(expect.any(Array));
+      expect(runLifeOperationHandler).not.toHaveBeenCalled();
+    } else {
+      expect(result.text, JSON.stringify(result)).toBe(
+        "Specify the reminder destination.",
+      );
+      expect(result.data?.parameterErrors).toBeUndefined();
+      expect(runLifeOperationHandler).toHaveBeenCalledOnce();
+      const parameters = runLifeOperationHandler.mock.calls[0]?.[3].parameters;
+      if (variant === "null")
+        expect(parameters?.createPlan?.nativeProjection).toBeNull();
+      else expect(parameters?.createPlan).toBeUndefined();
+    }
+  },
+);
+
 it("exposes the complete plan only on definition creation and validates native fields", () => {
   const promoted = promoteSubactionsToActions(ownerRemindersAction);
   const create = promoted.find(
@@ -60,6 +128,7 @@ it("exposes the complete plan only on definition creation and validates native f
   const createPlan = {
     mode: "create",
     multiStep: false,
+    nativeProjection: null,
     title: "Call Mom",
     requestKind: "reminder",
     cadenceKind: "once",
@@ -67,6 +136,22 @@ it("exposes the complete plan only on definition creation and validates native f
     timeOfDay: "12:00",
   };
   expect(validateToolArgs(create, { createPlan }).valid).toBe(true);
+  expect(
+    validateToolArgs(create, {
+      createPlan: { ...createPlan, nativeProjection: "in_app_only" },
+    }).valid,
+  ).toBe(true);
+  expect(
+    validateToolArgs(create, {
+      createPlan: { ...createPlan, nativeProjection: "apple_reminders" },
+    }).valid,
+  ).toBe(true);
+  expect(
+    validateToolArgs(create, {
+      createPlan: { ...createPlan, nativeProjection: undefined },
+    }).valid,
+  ).toBe(false);
+
   expect(
     validateToolArgs(create, {
       createPlan: { ...createPlan, timeOfDay: "29:99" },

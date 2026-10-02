@@ -9,69 +9,98 @@ import {
 // The native planner and fallback extractor share the same semantic plan.
 // Omitted tool fields normalize to the extractor's unknown (null) values.
 // Keep this on definition CREATE only: reads/deletes/goals do not consume it.
-const schema = {
-  type: "object" as const,
-  additionalProperties: false,
-  required: ["mode", "multiStep", "requestKind"],
-  properties: {
-    mode: { type: "string" as const, enum: ["create", "respond"] },
-    response: { type: "string" as const, minLength: 1 },
-    requestKind: {
-      type: "string" as const,
-      enum: ["alarm", "reminder", "unspecified"],
-    },
-    nativeProjection: {
-      type: "string" as const,
-      enum: ["in_app_only", "apple_reminders"],
-    },
-    title: { type: "string" as const, minLength: 1 },
-    description: { type: "string" as const, minLength: 1 },
-    cadenceKind: {
-      type: "string" as const,
-      enum: [
-        "unscheduled",
-        "once",
-        "daily",
-        "weekly",
-        "times_per_day",
-        "count_per_day",
-        "interval",
-      ],
-    },
-    windows: {
-      type: "array" as const,
-      items: { type: "string" as const, minLength: 1 },
-    },
-    weekdays: {
-      type: "array" as const,
-      items: { type: "integer" as const, minimum: 0, maximum: 6 },
-    },
-    timeOfDay: {
-      type: "string" as const,
-      pattern: "^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$",
-    },
-    timeZone: { type: "string" as const, minLength: 1 },
-    everyMinutes: { type: "number" as const, minimum: 1 },
-    timesPerDay: { type: "integer" as const, minimum: 1 },
-    quotaTargetCount: { type: "number" as const, minimum: 1 },
-    quotaUnit: { type: "string" as const, minLength: 1 },
-    perOccurrenceWork: { type: "string" as const, minLength: 1 },
-    checkInRequested: { type: "boolean" as const },
-    checkInWindows: {
-      type: "array" as const,
-      items: { type: "string" as const, minLength: 1 },
-    },
-    priority: { type: "integer" as const, minimum: 1, maximum: 5 },
-    durationMinutes: { type: "number" as const, minimum: 1 },
-    dueDate: {
-      type: "string" as const,
-      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-    },
-    dueInDays: { type: "integer" as const, minimum: 0 },
-    dueWeekday: { type: "integer" as const, minimum: 0, maximum: 6 },
-    dueInMinutes: { type: "number" as const, minimum: 1 },
-    multiStep: { type: "boolean" as const },
+const properties = {
+  mode: { type: "string" as const, enum: ["create", "respond"] },
+  response: { type: "string" as const, minLength: 1 },
+  requestKind: {
+    type: "string" as const,
+    enum: ["alarm", "reminder", "unspecified"],
   },
+  nativeProjection: {
+    anyOf: [
+      { type: "string" as const, enum: ["in_app_only", "apple_reminders"] },
+      { type: "null" as const },
+    ],
+  },
+  title: { type: "string" as const, minLength: 1 },
+  description: { type: "string" as const, minLength: 1 },
+  cadenceKind: {
+    type: "string" as const,
+    enum: [
+      "unscheduled",
+      "once",
+      "daily",
+      "weekly",
+      "times_per_day",
+      "count_per_day",
+      "interval",
+    ],
+  },
+  windows: {
+    type: "array" as const,
+    items: { type: "string" as const, minLength: 1 },
+  },
+  weekdays: {
+    type: "array" as const,
+    items: { type: "integer" as const, minimum: 0, maximum: 6 },
+  },
+  timeOfDay: {
+    type: "string" as const,
+    pattern: "^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$",
+  },
+  timeZone: { type: "string" as const, minLength: 1 },
+  everyMinutes: { type: "number" as const, minimum: 1 },
+  timesPerDay: { type: "integer" as const, minimum: 1 },
+  quotaTargetCount: { type: "number" as const, minimum: 1 },
+  quotaUnit: { type: "string" as const, minLength: 1 },
+  perOccurrenceWork: { type: "string" as const, minLength: 1 },
+  checkInRequested: { type: "boolean" as const },
+  checkInWindows: {
+    type: "array" as const,
+    items: { type: "string" as const, minLength: 1 },
+  },
+  priority: { type: "integer" as const, minimum: 1, maximum: 5 },
+  durationMinutes: { type: "number" as const, minimum: 1 },
+  dueDate: {
+    type: "string" as const,
+    pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+  },
+  dueInDays: { type: "integer" as const, minimum: 0 },
+  dueWeekday: { type: "integer" as const, minimum: 0, maximum: 6 },
+  dueInMinutes: { type: "number" as const, minimum: 1 },
+  multiStep: { type: "boolean" as const },
+} satisfies Record<string, ActionParameterSchema>;
+
+// Strict providers require every object branch to declare its complete closed
+// property set. Reuse definitions while discriminating each mode's minimum.
+const schema = {
+  anyOf: [
+    {
+      type: "object" as const,
+      additionalProperties: false,
+      required: [
+        "mode",
+        "multiStep",
+        "requestKind",
+        "title",
+        "cadenceKind",
+        "nativeProjection",
+      ],
+      properties: {
+        ...properties,
+        mode: { type: "string" as const, enum: ["create"] },
+      },
+    },
+    {
+      type: "object" as const,
+      additionalProperties: false,
+      required: ["mode", "multiStep", "requestKind", "response"],
+      properties: {
+        ...properties,
+        mode: { type: "string" as const, enum: ["respond"] },
+      },
+    },
+  ],
 } satisfies ActionParameterSchema;
 
 export const TASK_CREATE_PLAN_PARAMETER: ActionParameter = {
@@ -80,7 +109,7 @@ export const TASK_CREATE_PLAN_PARAMETER: ActionParameter = {
   subactions: ["create"],
   description: [
     "For a definition create, supply the complete semantic plan here using the current owner request and relevant conversation already in context. This avoids a second interpretation call. Use intent for the owner's full request; do not duplicate this plan in title/details. Omit createPlan if the necessary context is unavailable. This plan never grants permission to save or confirm a pending draft; the handler applies owner consent and draft rules.",
-    "Always include mode, multiStep and requestKind. Use requestKind=unspecified only when neither alarm nor reminder is explicit. Omit other unknown/inapplicable fields; do not send null. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
+    "Always include mode, multiStep and requestKind. For mode=create include title and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null only for an unknown destination. Omit other unknown/inapplicable fields; do not send null for other fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
     taskCreatePlanGuidance(true),
   ].join("\n"),
   schema,
@@ -103,6 +132,15 @@ export function parseNativeTaskCreatePlan(
   const plan = buildTaskCreatePlan(validated as Record<string, unknown>);
   if (!plan || (plan.mode === "create" && (!plan.title || !plan.cadenceKind)))
     return null;
+  // An omitted destination cannot certify a complete native timed reminder:
+  // existing extraction must recover the owner's destination before defaults.
+  if (
+    plan.mode === "create" &&
+    plan.cadenceKind === "once" &&
+    (plan.requestKind === "alarm" || plan.requestKind === "reminder") &&
+    plan.nativeProjection === null
+  )
+    return null;
   // Do not silently discard an explicit invalid timezone/date before applying
   // the owner's fallback zone or resolving relative dates.
   const raw = validated as Record<string, unknown>;
@@ -119,7 +157,12 @@ export function parseNativeTaskCreatePlan(
   ].filter((field) => field !== null);
   if (
     dateFields.length > 1 ||
-    (plan.cadenceKind !== "once" && dateFields.length > 0)
+    (plan.cadenceKind !== "once" && dateFields.length > 0) ||
+    (plan.mode === "create" &&
+      plan.cadenceKind === "once" &&
+      dateFields.length === 0 &&
+      !plan.timeOfDay &&
+      !plan.windows?.length)
   )
     return null;
   return plan;

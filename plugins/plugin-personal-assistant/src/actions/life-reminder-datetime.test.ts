@@ -2739,6 +2739,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         timeOfDay: "12:00",
       },
       writes: 0,
+      nativeExtractions: 1,
     },
     {
       name: "alarm classification",
@@ -2750,6 +2751,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         timeOfDay: "07:00",
       },
       writes: 1,
+      nativeExtractions: 1,
     },
     {
       name: "multi-step confirmation",
@@ -2761,6 +2763,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         multiStep: true,
       },
       writes: 0,
+      nativeExtractions: 1,
     },
     {
       name: "flexible quota and check-ins",
@@ -2787,12 +2790,14 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         timeOfDay: "12:00",
       },
       writes: 0,
+      nativeExtractions: 1,
     },
     {
       name: "clockless once asks when",
       text: "Remind me to call Mom.",
       plan: { requestKind: "reminder", cadenceKind: "once" },
       writes: 0,
+      nativeExtractions: 1,
     },
     {
       name: "explicit undated todo",
@@ -2809,12 +2814,13 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     },
   ])(
     "preserves extraction semantics: $name",
-    async ({ text, plan, surface, writes }) => {
+    async ({ text, plan, surface, writes, nativeExtractions }) => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-09-11T18:00:00.000Z"));
       try {
         const completePlan = {
           requestKind: "unspecified",
+          nativeProjection: null,
           mode: "create",
           multiStep: false,
           title: "Call Mom",
@@ -2854,7 +2860,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         const extracted = await run(false);
         const native = await run(true);
         expect(extracted.extractionPrompts).toHaveLength(1);
-        expect(native.extractionPrompts).toHaveLength(0);
+        expect(native.extractionPrompts).toHaveLength(nativeExtractions ?? 0);
         expect(native.saved).toHaveLength(writes);
         expect(native.saved).toEqual(extracted.saved);
         expect(native.result.success).toEqual(extracted.result.success);
@@ -2874,6 +2880,15 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
   );
 
   it.each([
+    // Exact Fern wire: schema previously accepted this, then normal extraction
+    // recovered the title and two-minute schedule from the original request.
+    { mode: "create", requestKind: "reminder", multiStep: false },
+    {
+      mode: "create",
+      multiStep: false,
+      title: "Call Mom",
+      cadenceKind: "once",
+    },
     { mode: "create", title: "Call Mom", cadenceKind: "once", dueInDays: 1 },
     {
       mode: "create",
@@ -2935,6 +2950,264 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     },
   );
 
+  it("recovers the actual Fern partial native plan from the original two-minute request", async () => {
+    const extractionPrompts: string[] = [];
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        extractionPrompts.push(prompt);
+        return taskPlanJson({
+          mode: "create",
+          requestKind: "reminder",
+          title: "Check the final preview fern",
+          cadenceKind: "once",
+          dueInMinutes: 2,
+          multiStep: false,
+          nativeProjection: "in_app_only",
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "Remind me in two minutes to check the final preview fern, once, in-app only.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          createPlan: {
+            mode: "create",
+            requestKind: "reminder",
+            multiStep: false,
+          },
+        },
+      } as HandlerOptions,
+    );
+    expect(extractionPrompts).toHaveLength(1);
+    expect(extractionPrompts[0]).toContain("Remind me in two minutes");
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    expect(serviceState.createCalls[0]).toMatchObject({
+      title: "Check the final preview fern",
+      cadence: { kind: "once" },
+    });
+  });
+
+  it.each([
+    {
+      name: "Travel complete plan",
+      input: {
+        mode: "create",
+        requestKind: "reminder",
+        nativeProjection: "in_app_only",
+        title: "Check travel pouch",
+        cadenceKind: "once",
+        dueInMinutes: 2,
+        multiStep: false,
+      },
+      extractionCalls: 0,
+    },
+    {
+      name: "Grocery omitted destination",
+      input: {
+        mode: "create",
+        requestKind: "reminder",
+        title: "Check the grocery bag",
+        cadenceKind: "once",
+        dueInMinutes: 2,
+        multiStep: false,
+      },
+      extractionCalls: 1,
+    },
+    {
+      name: "Pine clockless plan",
+      input: {
+        mode: "create",
+        requestKind: "reminder",
+        title: "Check the native plan pine",
+        cadenceKind: "once",
+        multiStep: false,
+      },
+      extractionCalls: 1,
+    },
+  ])(
+    "preserves saved native/fallback handling: $name",
+    async ({ input, extractionCalls }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-01T18:00:00.000Z"));
+      try {
+        const text = `Remind me in two minutes to ${input.title}, once, in-app only.`;
+        const prompts: string[] = [];
+        const runtime = makeRuntime((prompt) => {
+          if (prompt.includes("create_definition request")) {
+            prompts.push(prompt);
+            return taskPlanJson({
+              ...input,
+              dueInMinutes: 2,
+              nativeProjection: "in_app_only",
+            });
+          }
+          return "";
+        });
+        const result = await runLifeOperationHandler(
+          runtime,
+          makeMessage(text),
+          undefined,
+          {
+            parameters: { action: "create_reminder", createPlan: input },
+          } as HandlerOptions,
+        );
+        expect(prompts).toHaveLength(extractionCalls);
+        expect(result.success).toBe(true);
+        expect(serviceState.createCalls).toHaveLength(1);
+        expect(serviceState.createCalls[0]).toMatchObject({
+          title: input.title,
+          cadence: { kind: "once", dueAt: "2026-10-01T18:02:00.000Z" },
+          metadata: { nativeProjection: "in_app_only" },
+        });
+        expect(
+          (serviceState.createCalls[0].metadata as Record<string, unknown>)
+            .nativeAppleReminder,
+        ).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([
+    {
+      name: "saved888 omission recovers explicit in-app only",
+      destination: undefined,
+      extractedDestination: "in_app_only",
+      text: "Remind me in two minutes to check native projection, once, in-app only.",
+      extractionCalls: 1,
+      inApp: true,
+      preview: false,
+    },
+    {
+      name: "known in-app native plan needs no extraction",
+      destination: "in_app_only",
+      extractedDestination: undefined,
+      text: "Remind me in two minutes to check native projection, once, in-app only.",
+      extractionCalls: 0,
+      inApp: true,
+      preview: false,
+    },
+    {
+      name: "explicit null unknown preserves extraction default",
+      destination: null,
+      extractedDestination: undefined,
+      text: "Remind me in two minutes to check native projection, once.",
+      extractionCalls: 1,
+      inApp: false,
+      preview: false,
+    },
+    {
+      name: "unstated destination preserves extraction default",
+      destination: undefined,
+      extractedDestination: undefined,
+      text: "Remind me in two minutes to check native projection, once.",
+      extractionCalls: 1,
+      inApp: false,
+      preview: false,
+    },
+    {
+      name: "known Apple destination preserves native metadata",
+      destination: "apple_reminders",
+      extractedDestination: undefined,
+      text: "Remind me in two minutes to check native projection in Apple Reminders.",
+      extractionCalls: 0,
+      inApp: false,
+      preview: false,
+    },
+    {
+      name: "known in-app plan never grants preview consent",
+      destination: "in_app_only",
+      extractedDestination: undefined,
+      text: "Preview an in-app reminder in two minutes to check native projection. Do not save it.",
+      extractionCalls: 0,
+      inApp: true,
+      preview: true,
+    },
+  ])(
+    "preserves destination and consent: $name",
+    async ({
+      destination,
+      extractedDestination,
+      text,
+      extractionCalls,
+      inApp,
+      preview,
+    }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-01T18:00:00.000Z"));
+      try {
+        const originalPlan = {
+          mode: "create",
+          requestKind: "reminder",
+          title: "Check native projection",
+          cadenceKind: "once",
+          dueInMinutes: 2,
+          multiStep: false,
+          ...(destination !== undefined
+            ? { nativeProjection: destination }
+            : {}),
+        };
+        const extractionPrompts: string[] = [];
+        const runtime = makeRuntime((prompt) => {
+          if (prompt.includes("create_definition request")) {
+            extractionPrompts.push(prompt);
+            return taskPlanJson({
+              ...originalPlan,
+              ...(extractedDestination
+                ? { nativeProjection: extractedDestination }
+                : {}),
+            });
+          }
+          return "";
+        });
+        const result = await runLifeOperationHandler(
+          runtime,
+          makeMessage(text),
+          undefined,
+          {
+            parameters: { action: "create_reminder", createPlan: originalPlan },
+          } as HandlerOptions,
+        );
+        expect(extractionPrompts).toHaveLength(extractionCalls);
+        if (extractionCalls) expect(extractionPrompts[0]).toContain(text);
+        expect(serviceState.createCalls).toHaveLength(preview ? 0 : 1);
+        const saved = preview
+          ? (
+              result.data?.lifeDraft as
+                | { request?: Record<string, unknown> }
+                | undefined
+            )?.request
+          : serviceState.createCalls[0];
+        expect(saved).toMatchObject({
+          title: "Check native projection",
+          cadence: { kind: "once", dueAt: "2026-10-01T18:02:00.000Z" },
+        });
+        const metadata = saved?.metadata as Record<string, unknown>;
+        if (inApp) {
+          expect(metadata.nativeProjection).toBe("in_app_only");
+          expect(metadata.nativeAppleReminder).toBeUndefined();
+        } else {
+          expect(metadata.nativeAppleReminder).toMatchObject({
+            provider: "apple_reminders",
+            kind: "reminder",
+          });
+          expect(metadata.nativeProjection).toBe(destination ?? undefined);
+        }
+        if (preview) expect(result.data?.requiresConfirmation).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("uses the ordinary planner's complete create plan without a second extraction", async () => {
     const runtime = makeRuntime((prompt) => {
       if (prompt.includes("create_definition request")) {
@@ -2945,7 +3218,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     const result = await runLifeOperationHandler(
       runtime,
       makeMessage(
-        "Remind me to call Mom on September 26, 2026 at noon in New York.",
+        "Remind me to call Mom on September 26, 2026 at noon in New York, in-app only.",
       ),
       undefined,
       {
@@ -2953,6 +3226,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
           action: "create_reminder",
           createPlan: {
             mode: "create",
+            nativeProjection: "in_app_only",
             multiStep: false,
             requestKind: "reminder",
             title: "Call Mom",

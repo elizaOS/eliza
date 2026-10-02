@@ -227,7 +227,7 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     `- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise ${unknownRequestKind}`,
     "- title: short name for the task (2-5 words)",
     "- description: brief description if the user provided context",
-    "- nativeProjection: in_app_only when the owner explicitly requests in-app-only delivery or no native app; apple_reminders when explicitly requesting Apple Reminders. Otherwise omit it. This is destination intent, not a permission grant. Do not infer it from quoted reminder content.",
+    `- nativeProjection: in_app_only when the owner explicitly requests in-app-only delivery or no native app; apple_reminders when explicitly requesting Apple Reminders. Otherwise ${nativeTool ? "use null for mode=create; omission is allowed only for mode=respond" : "omit it"}. This is destination intent, not a permission grant. Do not infer it from quoted reminder content.`,
     '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
     UNDATED_TODO_EXTRACTION_GUIDANCE,
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
