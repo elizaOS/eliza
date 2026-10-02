@@ -12,7 +12,13 @@ if (process.platform !== 'win32') throw Error('Real Windows host required');
 
 // Actual subprocess discrimination, not a mocked backend. The helper's production
 // 15-second startup deadline is unchanged. No workflow or external effect runs.
-for (const environment of ['inherited', 'restricted', 'restricted-temp'] as const) {
+for (const environment of [
+  'inherited',
+  'restricted',
+  'restricted-temp',
+  'restricted-os',
+  'restricted-profile',
+] as const) {
   for (const topology of ['ignored', 'readline'] as const) {
     test(`bundled Windows helper: ${environment} environment, ${topology} stdin`, async () => {
       const root = realpathSync(mkdtempSync(join(tmpdir(), 'windows-helper-startup-')));
@@ -69,14 +75,29 @@ try {
         ELIZA_SMTHRS_PAYLOAD_PATH: payloadPath,
         MSGPACKR_NATIVE_ACCELERATION_DISABLED: 'true',
       };
+      const environmentAdditions = {
+        inherited: process.env,
+        restricted: {},
+        'restricted-temp': { TEMP: process.env.TEMP, TMP: process.env.TMP },
+        'restricted-os': {
+          windir: process.env.windir,
+          ComSpec: process.env.ComSpec,
+          SystemDrive: process.env.SystemDrive,
+        },
+        'restricted-profile': {
+          USERPROFILE: process.env.USERPROFILE,
+          APPDATA: process.env.APPDATA,
+          LOCALAPPDATA: process.env.LOCALAPPDATA,
+          HOMEDRIVE: process.env.HOMEDRIVE,
+          HOMEPATH: process.env.HOMEPATH,
+          ALLUSERSPROFILE: process.env.ALLUSERSPROFILE,
+          ProgramData: process.env.ProgramData,
+          PSModulePath: process.env.PSModulePath,
+        },
+      };
       const child = spawn(command.executable, command.args, {
         cwd: command.cwd,
-        env:
-          environment === 'inherited'
-            ? { ...process.env, ...restrictedEnvironment }
-            : environment === 'restricted-temp'
-              ? { ...restrictedEnvironment, TEMP: process.env.TEMP, TMP: process.env.TMP }
-              : restrictedEnvironment,
+        env: { ...environmentAdditions[environment], ...restrictedEnvironment },
         stdio: [topology === 'ignored' ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
       // Drain without exposing private native diagnostics. Results use only fixed codes.
