@@ -454,23 +454,14 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
     expect(googleReads).toBe(setupReads + 3);
     expect(modelCalls).toBe(2);
     longField = true;
-    const fieldProjection = await readHostedGoogleSource(state!.runtime, 'fixture-owner', {
-      ...source.live,
-      maxItems: 25,
-    });
-    const fieldReport = JSON.parse(fieldProjection.text);
-    expect(fieldReport.items).toHaveLength(1);
-    expect(fieldReport.items[0].snippet).toBe('N'.repeat(512));
-    expect(fieldReport.possiblyTruncated).toBe(true);
+    await expect(
+      readHostedGoogleSource(state!.runtime, 'fixture-owner', { ...source.live, maxItems: 25 })
+    ).rejects.toMatchObject({ statusCode: 422 });
     longField = false;
     large = true;
-    const projection = await readHostedGoogleSource(state!.runtime, 'fixture-owner', {
-      ...source.live,
-      maxItems: 25,
-    });
-    expect(projection.text.length).toBeLessThanOrEqual(6000);
-    expect(JSON.parse(projection.text).possiblyTruncated).toBe(true);
-    expect(JSON.parse(projection.text).items.length).toBeLessThan(12);
+    await expect(
+      readHostedGoogleSource(state!.runtime, 'fixture-owner', { ...source.live, maxItems: 25 })
+    ).rejects.toMatchObject({ statusCode: 422 });
     large = false;
     const before = googleReads;
     await expect(
