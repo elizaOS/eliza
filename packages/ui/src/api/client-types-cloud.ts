@@ -760,10 +760,10 @@ export interface RegistrationResult {
 }
 export interface RegistryConfig {
   configured: boolean;
-  chainId: number;
+  chainId: number | null;
   registryAddress: string | null;
   collectionAddress: string | null;
-  explorerUrl: string;
+  explorerUrl: string | null;
 }
 export interface WhitelistStatus {
   eligible: boolean;

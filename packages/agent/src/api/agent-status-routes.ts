@@ -390,12 +390,15 @@ export async function handleAgentStatusRoutes(
 
   if (method === "GET" && pathname === "/api/registry/config") {
     const registryConfig = state.config.registry;
-    let chainId = 1;
+    let chainId: number | null = null;
     if (registryService) {
       try {
         chainId = await registryService.getChainId();
       } catch {
-        // Keep default if chain RPC is unavailable.
+        // Chain RPC unavailable: leave chainId explicitly unavailable.
+        // error-policy:J3 untrusted-input sanitizing - RPC failure yields
+        // an explicit unavailable result, never a fabricated default.
+        chainId = null;
       }
     }
 
@@ -412,7 +415,8 @@ export async function handleAgentStatusRoutes(
       chainId,
       registryAddress: registryConfig?.registryAddress ?? null,
       collectionAddress: registryConfig?.collectionAddress ?? null,
-      explorerUrl: explorerByChainId[chainId] ?? "",
+      explorerUrl:
+        chainId !== null ? (explorerByChainId[chainId] ?? null) : null,
     });
     return true;
   }
