@@ -156,7 +156,10 @@ function persistCredentials(
       // Directory flush is unsupported on Windows and some filesystems; actual
       // I/O errors still stop setup, leaving a complete recoverable checkpoint.
       if (
-        process.platform !== "win32" &&
+        !(
+          process.platform === "win32" &&
+          (code === "EPERM" || code === "EACCES")
+        ) &&
         code !== "EINVAL" &&
         code !== "ENOTSUP" &&
         code !== "EOPNOTSUPP" &&

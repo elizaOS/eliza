@@ -8,7 +8,12 @@ import { ensureWalletSetup } from "./wallet-setup";
 
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-  return { ...actual, writeFileSync: vi.fn(actual.writeFileSync) };
+  return {
+    ...actual,
+    openSync: vi.fn(actual.openSync),
+    writeFileSync: vi.fn(actual.writeFileSync),
+    fsyncSync: vi.fn(actual.fsyncSync),
+  };
 });
 
 const API_BASE = "http://127.0.0.1:3200";
@@ -319,6 +324,64 @@ describe("steward wallet first-launch setup", () => {
       ensureWalletSetup(checkpoint, API_BASE, undefined, dataDir, updateStatus),
     ).rejects.toThrow("synthetic disk-full failure");
     expect(fs.readFileSync(target, "utf8")).toBe(original);
+    expect(fs.readdirSync(dataDir)).toEqual([CREDENTIALS_FILE]);
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a real directory-flush failure on Windows without losing the checkpoint", async () => {
+    const checkpoint = {
+      tenantId: "eliza-local",
+      tenantApiKey: "synthetic-tenant-key",
+      agentId: "synthetic-agent",
+      walletAddress: "0xsynthetic-wallet",
+    };
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    // Supply a valid descriptor even on hosts that cannot open directories;
+    // this regression injects the flush error independently of host support.
+    vi.mocked(fs.openSync)
+      .mockImplementationOnce(realFs.openSync)
+      .mockImplementationOnce(() =>
+        realFs.openSync(path.join(dataDir, CREDENTIALS_FILE), "r"),
+      );
+    vi.mocked(fs.fsyncSync)
+      .mockImplementationOnce(realFs.fsyncSync)
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error("synthetic directory I/O failure"), {
+          code: "EIO",
+        });
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(200, {
+          ok: true,
+          data: { token: "synthetic-agent-token" },
+        }),
+      ),
+    );
+    const updateStatus = vi.fn();
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    if (!platform) throw new Error("process.platform descriptor is missing");
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      await expect(
+        ensureWalletSetup(
+          checkpoint,
+          API_BASE,
+          undefined,
+          dataDir,
+          updateStatus,
+        ),
+      ).rejects.toThrow("synthetic directory I/O failure");
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+    expect(
+      JSON.parse(fs.readFileSync(path.join(dataDir, CREDENTIALS_FILE), "utf8")),
+    ).toEqual({
+      ...checkpoint,
+      agentToken: "synthetic-agent-token",
+    });
     expect(fs.readdirSync(dataDir)).toEqual([CREDENTIALS_FILE]);
     expect(updateStatus).not.toHaveBeenCalled();
   });
