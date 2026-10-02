@@ -12,8 +12,12 @@ function PrivateDirectory([string]$path) {
 }
 function Emit($value){[Console]::WriteLine(($value|ConvertTo-Json -Compress -Depth 8));[Console]::Out.Flush()}
 if($request.op -eq 'publish'){
-  PrivateDirectory ([IO.Path]::GetDirectoryName($request.path))
-  [WindowsLeaseNative]::PublishImmutableSource($request.path,[Convert]::FromBase64String($request.source))
+  # Match the worker-root normalization below: Windows TEMP may use an 8.3 alias.
+  # Reject relative/device/UNC inputs before expanding the native full path.
+  if($request.path -notmatch '^[A-Za-z]:[\\/]'){throw 'Local drive path required'}
+  $target=[IO.Path]::GetFullPath($request.path)
+  PrivateDirectory ([IO.Path]::GetDirectoryName($target))
+  [WindowsLeaseNative]::PublishImmutableSource($target,[Convert]::FromBase64String($request.source))
   Emit @{ok=$true};exit
 }
 $identity=$request.identity
