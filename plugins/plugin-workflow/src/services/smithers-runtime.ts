@@ -632,6 +632,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR,
       NODE_ENV: process.env.NODE_ENV,
+      // The Windows lease helper resolves the OS PowerShell binary from this host-only path.
+      ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {}),
       ELIZA_SMTHRS_DB_PATH: join(rootDir, 'runs.sqlite'),
       ELIZA_SMTHRS_PAYLOAD_PATH: payloadPath,
       MSGPACKR_NATIVE_ACCELERATION_DISABLED: 'true',
