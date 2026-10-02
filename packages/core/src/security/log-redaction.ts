@@ -9,13 +9,17 @@ export const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]";
 /** Bound on recursion so a pathological payload cannot hang the process. */
 const MAX_REDACT_DEPTH = 8;
 /**
- * Bound on re-expanding objects the same walk already cloned elsewhere. A
- * shared (non-cyclic) reference renders in full wherever it appears, but a
- * densely shared graph (an HTTP client error's request, socket, and agent)
- * would otherwise expand once per path; past this many repeats the walk marks
- * the reference instead, so the work stays linear in the distinct objects.
+ * Bound on the extra work one walk spends re-cloning objects it already cloned
+ * elsewhere. A shared (non-cyclic) reference renders in full wherever it
+ * appears, but a densely shared graph (an HTTP client error's request, socket,
+ * and agent) would otherwise expand once per path. Each repeated object, and
+ * every value inside a repeated subtree, spends units; text spends one more
+ * per SHARED_TEXT_UNIT characters because every credential pattern re-scans
+ * it. Once spent, further repeats render as "[Shared]", so the total work
+ * stays linear in the payload's distinct content.
  */
-const MAX_SHARED_REEXPANSIONS = 1000;
+const MAX_SHARED_WORK = 10_000;
+const SHARED_TEXT_UNIT = 256;
 const CIRCULAR_VALUE = "[Circular]";
 const SHARED_VALUE = "[Shared]";
 
@@ -302,39 +306,89 @@ function protectCloneCoercion(clone: object, text: string): void {
 	});
 }
 
-/** Objects one walk has already cloned, and how many more repeat visits it may expand. */
-export interface SharedReferenceBudget {
+/** Per-walk record of cloned objects and the remaining repeat-work budget. */
+interface SharedReferenceBudget {
 	expanded: WeakSet<object>;
 	remaining: number;
+	/** Number of repeated objects on the current path; non-zero means every value costs work. */
+	repeatDepth: number;
 }
 
-function createSharedReferenceBudget(): SharedReferenceBudget {
-	return {
-		expanded: new WeakSet<object>(),
-		remaining: MAX_SHARED_REEXPANSIONS,
-	};
+/**
+ * Work units for re-scanning `text` against every credential pattern. Error
+ * fields may hold non-strings; those cost one unit, never NaN, which would
+ * turn the remaining budget into NaN and disable every later check.
+ */
+function sharedTextCost(text: unknown): number {
+	return (
+		1 +
+		(typeof text === "string" ? Math.floor(text.length / SHARED_TEXT_UNIT) : 0)
+	);
+}
+
+function spendSharedWork(shared: SharedReferenceBudget, cost: number): boolean {
+	if (shared.remaining < cost) return false;
+	shared.remaining -= cost;
+	return true;
 }
 
 export function redactLogValue(
 	value: unknown,
 	seen: WeakSet<object>,
 	depth: number,
-	shared: SharedReferenceBudget = createSharedReferenceBudget(),
 ): unknown {
-	if (typeof value === "string") return redactSensitiveLogText(value);
+	return redactWalkValue(value, seen, depth, {
+		expanded: new WeakSet<object>(),
+		remaining: MAX_SHARED_WORK,
+		repeatDepth: 0,
+	});
+}
+
+function redactWalkValue(
+	value: unknown,
+	seen: WeakSet<object>,
+	depth: number,
+	shared: SharedReferenceBudget,
+): unknown {
+	if (typeof value === "string") {
+		if (
+			shared.repeatDepth > 0 &&
+			!spendSharedWork(shared, sharedTextCost(value))
+		) {
+			return SHARED_VALUE;
+		}
+		return redactSensitiveLogText(value);
+	}
 	// Functions are executable values even when they are passed directly or as
 	// trailing arguments. Never let a caller-owned function (and its toJSON)
 	// survive into a sink.
 	if (typeof value === "function") return null;
-	if (value === null || typeof value !== "object") return value;
+	if (value === null || typeof value !== "object") {
+		if (shared.repeatDepth > 0 && !spendSharedWork(shared, 1)) {
+			return SHARED_VALUE;
+		}
+		return value;
+	}
 	if (seen.has(value)) return CIRCULAR_VALUE;
 	if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
-	if (shared.expanded.has(value)) {
-		if (shared.remaining <= 0) return SHARED_VALUE;
-		shared.remaining -= 1;
-	} else {
-		shared.expanded.add(value);
+	// Leaf built-ins have no children to re-walk, so repeating one costs
+	// nothing unless it sits inside a repeated subtree.
+	const leaf = redactLeafObject(value);
+	if (leaf !== undefined) {
+		if (
+			shared.repeatDepth > 0 &&
+			!spendSharedWork(shared, sharedTextCost(leaf))
+		) {
+			return SHARED_VALUE;
+		}
+		return leaf;
 	}
+	const repeated = shared.expanded.has(value);
+	if ((repeated || shared.repeatDepth > 0) && !spendSharedWork(shared, 1)) {
+		return SHARED_VALUE;
+	}
+	shared.expanded.add(value);
+	if (repeated) shared.repeatDepth += 1;
 	// Leave the ancestor path on every exit, including a throwing getter that
 	// unwinds to redactOwnPropertiesInto's per-key catch, so a sibling key that
 	// holds the same object is not misreported as a cycle.
@@ -343,37 +397,12 @@ export function redactLogValue(
 		return redactObjectValue(value, seen, depth, shared);
 	} finally {
 		seen.delete(value);
+		if (repeated) shared.repeatDepth -= 1;
 	}
 }
 
-function redactObjectValue(
-	value: object,
-	seen: WeakSet<object>,
-	depth: number,
-	shared: SharedReferenceBudget,
-): unknown {
-	if (value instanceof Error) {
-		const clone = new Error(redactSensitiveLogText(value.message));
-		clone.name = redactSensitiveLogText(value.name);
-		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
-		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
-		if (value.cause !== undefined) {
-			clone.cause = redactLogValue(value.cause, seen, depth + 1, shared);
-		}
-		const target = clone as unknown as Record<string, unknown>;
-		redactOwnPropertiesInto(value, target, seen, depth + 1, shared);
-		return clone;
-	}
-
-	if (Array.isArray(value)) {
-		// Avoid the caller's potentially overridden `map` and species constructor.
-		const result = new Array<unknown>(value.length);
-		for (let index = 0; index < value.length; index += 1) {
-			result[index] = redactLogValue(value[index], seen, depth + 1, shared);
-		}
-		return result;
-	}
-
+/** Render a built-in that holds no walkable children, or return undefined for one that does. */
+function redactLeafObject(value: object): string | undefined {
 	// Binary payloads carry raw bytes that JSON serializes verbatim
 	// ({"type":"Buffer","data":[...]}); under a neutral key that silently leaks
 	// secret material into every sink, so mask with a size-only marker. Both
@@ -383,8 +412,7 @@ function redactObjectValue(
 	}
 
 	// Built-ins must also be detached from the caller. JSON.stringify invokes a
-	// caller-owned Date/toJSON before its replacer, and pretty sinks may inspect
-	// Map/Set contents directly.
+	// caller-owned Date/toJSON before its replacer.
 	if (value instanceof Date) {
 		try {
 			return Date.prototype.toISOString.call(value);
@@ -395,16 +423,62 @@ function redactObjectValue(
 	if (value instanceof RegExp) {
 		return `[RegExp ${redactSensitiveLogText(RegExp.prototype.toString.call(value))}]`;
 	}
+	if (value instanceof WeakMap) return "[WeakMap]";
+	if (value instanceof WeakSet) return "[WeakSet]";
+	if (value instanceof Promise) return "[Promise]";
+	return undefined;
+}
+
+function redactObjectValue(
+	value: object,
+	seen: WeakSet<object>,
+	depth: number,
+	shared: SharedReferenceBudget,
+): unknown {
+	if (value instanceof Error) {
+		// A repeated error re-scans its message and stack, which can be long.
+		if (
+			shared.repeatDepth > 0 &&
+			!spendSharedWork(
+				shared,
+				sharedTextCost(value.message) + sharedTextCost(value.stack),
+			)
+		) {
+			return SHARED_VALUE;
+		}
+		const clone = new Error(redactSensitiveLogText(value.message));
+		clone.name = redactSensitiveLogText(value.name);
+		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
+		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
+		if (value.cause !== undefined) {
+			clone.cause = redactWalkValue(value.cause, seen, depth + 1, shared);
+		}
+		const target = clone as unknown as Record<string, unknown>;
+		redactOwnPropertiesInto(value, target, seen, depth + 1, shared);
+		return clone;
+	}
+
+	if (Array.isArray(value)) {
+		// Avoid the caller's potentially overridden `map` and species constructor.
+		const result = new Array<unknown>(value.length);
+		for (let index = 0; index < value.length; index += 1) {
+			result[index] = redactWalkValue(value[index], seen, depth + 1, shared);
+		}
+		return result;
+	}
+
+	// Pretty sinks may inspect Map/Set contents directly, so both are detached
+	// from the caller like every other clone.
 	if (value instanceof Map) {
 		const entries: unknown[] = [];
 		Map.prototype.forEach.call(
 			value,
 			(entryValue: unknown, entryKey: unknown) => {
-				const safeKey = redactLogValue(entryKey, seen, depth + 1, shared);
+				const safeKey = redactWalkValue(entryKey, seen, depth + 1, shared);
 				const safeValue =
 					typeof entryKey === "string" && isSensitiveLogKey(entryKey)
 						? REDACTED_VALUE
-						: redactLogValue(entryValue, seen, depth + 1, shared);
+						: redactWalkValue(entryValue, seen, depth + 1, shared);
 				entries.push([safeKey, safeValue]);
 			},
 		);
@@ -416,17 +490,13 @@ function redactObjectValue(
 	if (value instanceof Set) {
 		const values: unknown[] = [];
 		Set.prototype.forEach.call(value, (entryValue: unknown) => {
-			values.push(redactLogValue(entryValue, seen, depth + 1, shared));
+			values.push(redactWalkValue(entryValue, seen, depth + 1, shared));
 		});
 		const result = createRedactClone();
 		defineSafeProperty(result, "type", "Set");
 		defineSafeProperty(result, "values", values);
 		return result;
 	}
-	if (value instanceof WeakMap) return "[WeakMap]";
-	if (value instanceof WeakSet) return "[WeakSet]";
-	if (value instanceof Promise) return "[Promise]";
-
 	// Class instances are cloned into plain objects: JSON serialization only
 	// ever emits own enumerable properties anyway, and walking them here masks
 	// credentials stashed on config/response wrappers (axios-style).
@@ -479,7 +549,7 @@ function redactOwnPropertiesInto(
 			defineSafeProperty(
 				target,
 				key,
-				redactLogValue(entry, seen, depth, shared),
+				redactWalkValue(entry, seen, depth, shared),
 			);
 		} catch {
 			// error-policy:J7 logging must never break the runtime; a throwing

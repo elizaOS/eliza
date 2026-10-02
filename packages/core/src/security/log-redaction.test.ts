@@ -197,8 +197,54 @@ describe("log-redaction shared references", () => {
 		};
 		count(clone);
 
-		expect(clonedObjects).toBeLessThanOrEqual(5 + 1000);
+		expect(clonedObjects).toBeLessThanOrEqual(5 + 10_000);
 		expect(markers.length).toBeGreaterThan(0);
 		expect(new Set(markers)).toEqual(new Set(["[Shared]"]));
+	});
+
+	it("charges repeated text by length so re-scanning stays bounded", () => {
+		const transcript = { text: "x".repeat(100_000) };
+		const clone = redactLogValue(
+			new Array(5000).fill(transcript),
+			new WeakSet(),
+			0,
+		) as unknown[];
+
+		const scanned = clone.filter(
+			(entry) =>
+				typeof entry === "object" &&
+				entry !== null &&
+				(entry as { text: string }).text.length === 100_000,
+		);
+		// One first pass plus at most 10,000 units of 256 characters re-scanned.
+		expect(scanned.length * 100_000).toBeLessThanOrEqual(
+			100_000 + 10_000 * 256,
+		);
+		expect(scanned.length).toBeGreaterThan(1);
+		expect(clone.at(-1)).toBe("[Shared]");
+	});
+
+	it("does not spend the budget on repeated leaf built-ins", () => {
+		const startedAt = new Date("2026-10-02T00:00:00.000Z");
+		const clone = redactLogValue(
+			new Array(20_000).fill(startedAt),
+			new WeakSet(),
+			0,
+		) as unknown[];
+
+		expect(new Set(clone)).toEqual(new Set(["2026-10-02T00:00:00.000Z"]));
+	});
+
+	it("keeps the budget finite when a repeated error has a non-string stack", () => {
+		const error = new Error("bad stack");
+		Object.defineProperty(error, "stack", { value: 42 });
+		const item = { k: 1 };
+		const clone = redactLogValue(
+			{ first: error, second: error, items: new Array(20_000).fill(item) },
+			new WeakSet(),
+			0,
+		) as { items: unknown[] };
+
+		expect(clone.items.at(-1)).toBe("[Shared]");
 	});
 });
