@@ -8,6 +8,16 @@ const REDACTED_VALUE = "[REDACTED]";
 export const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]";
 /** Bound on recursion so a pathological payload cannot hang the process. */
 const MAX_REDACT_DEPTH = 8;
+/**
+ * Bound on re-expanding objects the same walk already cloned elsewhere. A
+ * shared (non-cyclic) reference renders in full wherever it appears, but a
+ * densely shared graph (an HTTP client error's request, socket, and agent)
+ * would otherwise expand once per path; past this many repeats the walk marks
+ * the reference instead, so the work stays linear in the distinct objects.
+ */
+const MAX_SHARED_REEXPANSIONS = 1000;
+const CIRCULAR_VALUE = "[Circular]";
+const SHARED_VALUE = "[Shared]";
 
 /**
  * Separator-free substrings that mark an object key as holding a credential.
@@ -260,8 +270,10 @@ export function redactSensitiveLogText(text: string): string {
  * serializer hooks (toJSON/valueOf/toString), and a copied hook re-runs when a
  * sink JSON-stringifies the clone, able to reconstitute the very secrets the
  * walk just masked — JSON.stringify drops function props anyway, so omission
- * matches serialization semantics. Cycles and over-depth payloads collapse
- * to a marker instead of recursing forever. Buffer/TypedArray/DataView/
+ * matches serialization semantics. `seen` holds only the current ancestor
+ * path, so a true cycle collapses to "[Circular]" while an object referenced
+ * from two places is cloned at both; over-depth payloads and shared objects
+ * beyond the re-expansion budget collapse to a marker instead. Buffer/TypedArray/DataView/
  * ArrayBuffer values collapse to a size-only marker — JSON would otherwise
  * serialize the raw bytes verbatim
  * (`{"type":"Buffer","data":[...]}`) under an innocent-looking key. Error
@@ -290,10 +302,24 @@ function protectCloneCoercion(clone: object, text: string): void {
 	});
 }
 
+/** Objects one walk has already cloned, and how many more repeat visits it may expand. */
+export interface SharedReferenceBudget {
+	expanded: WeakSet<object>;
+	remaining: number;
+}
+
+function createSharedReferenceBudget(): SharedReferenceBudget {
+	return {
+		expanded: new WeakSet<object>(),
+		remaining: MAX_SHARED_REEXPANSIONS,
+	};
+}
+
 export function redactLogValue(
 	value: unknown,
 	seen: WeakSet<object>,
 	depth: number,
+	shared: SharedReferenceBudget = createSharedReferenceBudget(),
 ): unknown {
 	if (typeof value === "string") return redactSensitiveLogText(value);
 	// Functions are executable values even when they are passed directly or as
@@ -301,20 +327,41 @@ export function redactLogValue(
 	// survive into a sink.
 	if (typeof value === "function") return null;
 	if (value === null || typeof value !== "object") return value;
-	if (seen.has(value)) return "[Circular]";
+	if (seen.has(value)) return CIRCULAR_VALUE;
 	if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
+	if (shared.expanded.has(value)) {
+		if (shared.remaining <= 0) return SHARED_VALUE;
+		shared.remaining -= 1;
+	} else {
+		shared.expanded.add(value);
+	}
+	// Leave the ancestor path on every exit, including a throwing getter that
+	// unwinds to redactOwnPropertiesInto's per-key catch, so a sibling key that
+	// holds the same object is not misreported as a cycle.
 	seen.add(value);
+	try {
+		return redactObjectValue(value, seen, depth, shared);
+	} finally {
+		seen.delete(value);
+	}
+}
 
+function redactObjectValue(
+	value: object,
+	seen: WeakSet<object>,
+	depth: number,
+	shared: SharedReferenceBudget,
+): unknown {
 	if (value instanceof Error) {
 		const clone = new Error(redactSensitiveLogText(value.message));
 		clone.name = redactSensitiveLogText(value.name);
 		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
 		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
 		if (value.cause !== undefined) {
-			clone.cause = redactLogValue(value.cause, seen, depth + 1);
+			clone.cause = redactLogValue(value.cause, seen, depth + 1, shared);
 		}
 		const target = clone as unknown as Record<string, unknown>;
-		redactOwnPropertiesInto(value, target, seen, depth + 1);
+		redactOwnPropertiesInto(value, target, seen, depth + 1, shared);
 		return clone;
 	}
 
@@ -322,7 +369,7 @@ export function redactLogValue(
 		// Avoid the caller's potentially overridden `map` and species constructor.
 		const result = new Array<unknown>(value.length);
 		for (let index = 0; index < value.length; index += 1) {
-			result[index] = redactLogValue(value[index], seen, depth + 1);
+			result[index] = redactLogValue(value[index], seen, depth + 1, shared);
 		}
 		return result;
 	}
@@ -353,11 +400,11 @@ export function redactLogValue(
 		Map.prototype.forEach.call(
 			value,
 			(entryValue: unknown, entryKey: unknown) => {
-				const safeKey = redactLogValue(entryKey, seen, depth + 1);
+				const safeKey = redactLogValue(entryKey, seen, depth + 1, shared);
 				const safeValue =
 					typeof entryKey === "string" && isSensitiveLogKey(entryKey)
 						? REDACTED_VALUE
-						: redactLogValue(entryValue, seen, depth + 1);
+						: redactLogValue(entryValue, seen, depth + 1, shared);
 				entries.push([safeKey, safeValue]);
 			},
 		);
@@ -369,7 +416,7 @@ export function redactLogValue(
 	if (value instanceof Set) {
 		const values: unknown[] = [];
 		Set.prototype.forEach.call(value, (entryValue: unknown) => {
-			values.push(redactLogValue(entryValue, seen, depth + 1));
+			values.push(redactLogValue(entryValue, seen, depth + 1, shared));
 		});
 		const result = createRedactClone();
 		defineSafeProperty(result, "type", "Set");
@@ -384,7 +431,7 @@ export function redactLogValue(
 	// ever emits own enumerable properties anyway, and walking them here masks
 	// credentials stashed on config/response wrappers (axios-style).
 	const result = createRedactClone();
-	redactOwnPropertiesInto(value, result, seen, depth + 1);
+	redactOwnPropertiesInto(value, result, seen, depth + 1, shared);
 	return result;
 }
 
@@ -415,6 +462,7 @@ function redactOwnPropertiesInto(
 	target: Record<string, unknown>,
 	seen: WeakSet<object>,
 	depth: number,
+	shared: SharedReferenceBudget,
 ): void {
 	for (const key of Object.keys(source)) {
 		if (isSensitiveLogKey(key)) {
@@ -428,7 +476,11 @@ function redactOwnPropertiesInto(
 			// can reconstitute the very secrets the walk just masked. JSON.stringify
 			// omits function props anyway, so the clone drops them outright.
 			if (typeof entry === "function") continue;
-			defineSafeProperty(target, key, redactLogValue(entry, seen, depth));
+			defineSafeProperty(
+				target,
+				key,
+				redactLogValue(entry, seen, depth, shared),
+			);
 		} catch {
 			// error-policy:J7 logging must never break the runtime; a throwing
 			// getter fails closed on this one key, never emits the raw value.

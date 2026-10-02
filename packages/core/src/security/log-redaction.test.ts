@@ -91,3 +91,114 @@ describe("log-redaction clone coercion", () => {
 		]);
 	});
 });
+
+describe("log-redaction shared references", () => {
+	it("clones an object referenced from two keys at both", () => {
+		const owner = { id: "u1", apiKey: "fixture-secret" };
+		const clone = redactLogValue(
+			{ requester: owner, assignee: owner },
+			new WeakSet(),
+			0,
+		);
+
+		expect(clone).toEqual({
+			requester: { id: "u1", apiKey: "[REDACTED]" },
+			assignee: { id: "u1", apiKey: "[REDACTED]" },
+		});
+	});
+
+	it("keeps every repeated array element and error in trailing args", () => {
+		const tag = { k: "v" };
+		const error = new Error("db down");
+		const [array, payload] = redactTrailingArgs([
+			[tag, tag, tag],
+			{ error, lastError: error },
+		]) as [unknown[], Record<string, Error>];
+
+		expect(array).toEqual([{ k: "v" }, { k: "v" }, { k: "v" }]);
+		expect(payload.error).toBeInstanceOf(Error);
+		expect(payload.lastError).toBeInstanceOf(Error);
+		expect(payload.lastError.message).toBe("db down");
+	});
+
+	it("still collapses self, mutual, array, and Map cycles", () => {
+		const self: Record<string, unknown> = { id: "self" };
+		self.self = self;
+		const left: Record<string, unknown> = { id: "left" };
+		const right: Record<string, unknown> = { id: "right", left };
+		left.right = right;
+		const list: unknown[] = ["head"];
+		list.push(list);
+		const map = new Map<string, unknown>();
+		map.set("map", map);
+
+		const [selfClone, leftClone, listClone, mapClone] = redactTrailingArgs([
+			self,
+			left,
+			list,
+			map,
+		]);
+
+		expect(selfClone).toEqual({ id: "self", self: "[Circular]" });
+		expect(leftClone).toEqual({
+			id: "left",
+			right: { id: "right", left: "[Circular]" },
+		});
+		expect(listClone).toEqual(["head", "[Circular]"]);
+		expect(mapClone).toEqual({
+			type: "Map",
+			entries: [["map", "[Circular]"]],
+		});
+	});
+
+	it("leaves the ancestor path when a nested walk throws", () => {
+		const unlistable = new Proxy(
+			{},
+			{
+				ownKeys() {
+					throw new Error("lazy payload");
+				},
+			},
+		);
+		const holder = { inner: unlistable };
+
+		const clone = redactLogValue(
+			{ first: holder, second: holder },
+			new WeakSet(),
+			0,
+		);
+
+		expect(clone).toEqual({
+			first: { inner: REDACTION_FAILED_VALUE },
+			second: { inner: REDACTION_FAILED_VALUE },
+		});
+	});
+
+	it("marks repeats past the budget so a densely shared graph stays linear", () => {
+		// Five levels with ten keys each pointing at the next level: 10^4 paths
+		// to the leaf through five distinct objects.
+		let level: Record<string, unknown> = { leaf: true };
+		for (let index = 0; index < 4; index += 1) {
+			const next: Record<string, unknown> = {};
+			for (let key = 0; key < 10; key += 1) next[`k${key}`] = level;
+			level = next;
+		}
+
+		const clone = redactLogValue(level, new WeakSet(), 0);
+		const markers: unknown[] = [];
+		let clonedObjects = 0;
+		const count = (value: unknown): void => {
+			if (value && typeof value === "object") {
+				clonedObjects += 1;
+				for (const entry of Object.values(value)) count(entry);
+			} else if (typeof value === "string") {
+				markers.push(value);
+			}
+		};
+		count(clone);
+
+		expect(clonedObjects).toBeLessThanOrEqual(5 + 1000);
+		expect(markers.length).toBeGreaterThan(0);
+		expect(new Set(markers)).toEqual(new Set(["[Shared]"]));
+	});
+});
