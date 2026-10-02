@@ -11,24 +11,36 @@ import { isRendererServerRequestHostAllowed } from "./renderer-api-proxy";
 
 describe("renderer server request Host gate", () => {
 	it("admits the authorities the desktop webview actually sends", () => {
-		expect(isRendererServerRequestHostAllowed("127.0.0.1:5174")).toBe(true);
-		expect(isRendererServerRequestHostAllowed("localhost:5174")).toBe(true);
-		expect(isRendererServerRequestHostAllowed("LOCALHOST:5175")).toBe(true);
-		expect(isRendererServerRequestHostAllowed("[::1]:5174")).toBe(true);
+		expect(isRendererServerRequestHostAllowed("127.0.0.1:5174", 5174)).toBe(
+			true,
+		);
+		expect(isRendererServerRequestHostAllowed("localhost:5174", 5174)).toBe(
+			true,
+		);
+		expect(isRendererServerRequestHostAllowed("LOCALHOST:5175", 5175)).toBe(
+			true,
+		);
+		expect(isRendererServerRequestHostAllowed("[::1]:5174", 5174)).toBe(false);
 	});
 
-	it("admits a request without a Host header", () => {
-		// HTTP/1.0 clients name no authority at all; the agent API's own
-		// loopback-trust treats an absent Host the same way, so the renderer
-		// gate must not introduce a stricter rule that breaks such clients.
-		expect(isRendererServerRequestHostAllowed(null)).toBe(true);
-		expect(isRendererServerRequestHostAllowed(undefined)).toBe(true);
-		expect(isRendererServerRequestHostAllowed("")).toBe(true);
+	it("rejects missing authorities and the wrong listener port", () => {
+		expect(isRendererServerRequestHostAllowed(null, 5174)).toBe(false);
+		expect(isRendererServerRequestHostAllowed(undefined, 5174)).toBe(false);
+		expect(isRendererServerRequestHostAllowed("", 5174)).toBe(false);
+		expect(isRendererServerRequestHostAllowed("localhost:5175", 5174)).toBe(
+			false,
+		);
+		expect(isRendererServerRequestHostAllowed("127.0.0.1:5175", 5174)).toBe(
+			false,
+		);
 	});
 
 	it("rejects the rebinding authority from the reported attack", () => {
 		expect(
-			isRendererServerRequestHostAllowed("7f000001.c0a8010a.rbndr.us:5174"),
+			isRendererServerRequestHostAllowed(
+				"7f000001.c0a8010a.rbndr.us:5174",
+				5174,
+			),
 		).toBe(false);
 	});
 
@@ -36,18 +48,20 @@ describe("renderer server request Host gate", () => {
 		// Public subdomains of 127.0.0.1.nip.io resolve to loopback while the
 		// browser keeps the attacker's name in Host; a startsWith check would
 		// admit them.
-		expect(isRendererServerRequestHostAllowed("127.0.0.1.nip.io:5174")).toBe(
-			false,
-		);
-		expect(isRendererServerRequestHostAllowed("sub.localhost:5174")).toBe(
+		expect(
+			isRendererServerRequestHostAllowed("127.0.0.1.nip.io:5174", 5174),
+		).toBe(false);
+		expect(isRendererServerRequestHostAllowed("sub.localhost:5174", 5174)).toBe(
 			false,
 		);
 	});
 
 	it("rejects non-loopback request authorities", () => {
-		expect(isRendererServerRequestHostAllowed("192.168.1.10:5174")).toBe(false);
-		expect(isRendererServerRequestHostAllowed("evil.example.com:5174")).toBe(
+		expect(isRendererServerRequestHostAllowed("192.168.1.10:5174", 5174)).toBe(
 			false,
 		);
+		expect(
+			isRendererServerRequestHostAllowed("evil.example.com:5174", 5174),
+		).toBe(false);
 	});
 });

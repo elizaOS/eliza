@@ -1,6 +1,4 @@
 /** Implements Electrobun desktop renderer api proxy ts behavior for app shell integration. */
-import { isLoopbackBindHost } from "@elizaos/core/runtime-env";
-
 export function isRendererApiProxyPath(pathname: string): boolean {
 	return (
 		pathname.startsWith("/api/") ||
@@ -117,21 +115,11 @@ export function createRendererApiProxyRequestInit(
 	return init;
 }
 
-/**
- * DNS-rebinding gate for the renderer server (static shell and `/api` proxy
- * alike). The listener binds loopback, but a rebinding page resolves an
- * attacker domain to 127.0.0.1 and reaches it same-origin: the browser sends
- * the attacker's domain in `Host`, this server strips `Host` while proxying
- * (hop-by-hop), and the downstream agent API can only classify the forwarded
- * request by its own loopback view — so the original authority must be judged
- * here, where it is still visible. Only loopback authorities may be served;
- * an absent Host (HTTP/1.0) names no rebinding authority, mirroring the agent
- * API's own loopback-trust Host handling in
- * `packages/core/src/security/loopback-trust.ts`.
- */
+/** Match only the IPv4 renderer listener's loopback aliases and actual port. */
 export function isRendererServerRequestHostAllowed(
 	host: string | null | undefined,
+	port: number,
 ): boolean {
-	if (!host) return true;
-	return isLoopbackBindHost(host);
+	const authority = host?.toLowerCase();
+	return authority === `127.0.0.1:${port}` || authority === `localhost:${port}`;
 }
