@@ -8,9 +8,20 @@ export interface TaskChoiceMessages {
   choose: string;
   failed: string;
   received: string;
+  /** Shown with `explainUnavailable` when a choice is tapped while one is in flight. */
+  checking: string;
 }
 
-/** Neutral choice controls; the host owns transport, result presentation and style. */
+/**
+ * Neutral choice controls; the host owns transport, result presentation and style.
+ *
+ * By default unavailable options render as disabled buttons. With
+ * `explainUnavailable`, options stay focusable and activatable (marked
+ * `aria-disabled`) and activating one announces why it cannot be used, while
+ * the same guards still prevent any duplicate or late `onChoose` dispatch.
+ * Options of a widget that is no longer pending are hidden in that mode; the
+ * received status remains.
+ */
 export function TaskChoice({
   widget,
   taskId,
@@ -18,6 +29,7 @@ export function TaskChoice({
   onChoose,
   expiredMessage = "This choice has expired.",
   messages,
+  explainUnavailable = false,
 }: {
   widget: TaskChoiceWidget;
   taskId: string;
@@ -25,6 +37,7 @@ export function TaskChoice({
   onChoose: (value: string) => Promise<void>;
   expiredMessage?: string;
   messages?: Partial<TaskChoiceMessages>;
+  explainUnavailable?: boolean;
 }) {
   validateTaskChoiceWidget(widget);
   const [busy, setBusy] = useState(false),
@@ -32,6 +45,7 @@ export function TaskChoice({
       Date.now() >= Date.parse(widget.expiresAt),
     );
   const [failed, setFailed] = useState(false);
+  const [checkingNotice, setCheckingNotice] = useState(false);
   const locked = useRef(false),
     generation = useRef(0),
     active = useRef(widget.callbackData);
@@ -39,6 +53,7 @@ export function TaskChoice({
     locked.current = false;
     active.current = widget.callbackData;
     setFailed(false);
+    setCheckingNotice(false);
     setBusy(false);
     const duration = Date.parse(widget.expiresAt) - Date.now();
     setExpired(duration <= 0);
@@ -51,18 +66,28 @@ export function TaskChoice({
       clearTimeout(timer);
     };
   }, [widget.callbackData, widget.expiresAt]);
+  useEffect(() => {
+    if (!pending && !busy) setCheckingNotice(false);
+  }, [pending, busy]);
   async function choose(value: string) {
+    const pastDeadline = expired || Date.now() >= Date.parse(widget.expiresAt);
     if (
       locked.current ||
       pending ||
-      expired ||
-      Date.now() >= Date.parse(widget.expiresAt) ||
+      pastDeadline ||
       widget.state !== "pending" ||
       taskId !== widget.taskId
-    )
+    ) {
+      if (explainUnavailable) {
+        // Surface the existing expired status even if the timer has not fired.
+        if (pastDeadline) setExpired(true);
+        else if (widget.state === "pending") setCheckingNotice(true);
+      }
       return;
+    }
     locked.current = true;
     setFailed(false);
+    setCheckingNotice(false);
     setBusy(true);
     const ticket = generation.current;
     try {
@@ -80,6 +105,8 @@ export function TaskChoice({
     }
   }
   if (taskId !== widget.taskId) return null;
+  const unavailable = pending || busy || expired || widget.state !== "pending";
+  const showOptions = !explainUnavailable || widget.state === "pending";
   return (
     <fieldset aria-busy={pending || busy}>
       <legend>
@@ -90,17 +117,25 @@ export function TaskChoice({
           {messages?.failed ?? "The choice could not be sent. Try again."}
         </p>
       )}
-      {widget.block.options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          disabled={pending || busy || expired || widget.state !== "pending"}
-          onClick={() => void choose(option.value)}
-        >
-          {option.label}
-          {option.description && <span>{option.description}</span>}
-        </button>
-      ))}
+      {showOptions &&
+        widget.block.options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            disabled={!explainUnavailable && unavailable}
+            aria-disabled={explainUnavailable && unavailable ? true : undefined}
+            onClick={() => void choose(option.value)}
+          >
+            {option.label}
+            {option.description && <span>{option.description}</span>}
+          </button>
+        ))}
+      {checkingNotice && !expired && widget.state === "pending" && (
+        <p role="status">
+          {messages?.checking ??
+            "Your choice is being checked. Please wait for the result."}
+        </p>
+      )}
       {expired && widget.state === "pending" && (
         <p role="status">{expiredMessage}</p>
       )}
