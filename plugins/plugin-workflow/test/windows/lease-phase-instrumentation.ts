@@ -4,6 +4,8 @@ export function instrumentLeasePrelude(prelude: string, resource: string): strin
     'bootstrap',
     'source-read',
     'hash-verified',
+    'module-import-start',
+    'module-imported',
     'utility-resolve-start',
     'utility-resolved',
     'compile-start',
@@ -24,6 +26,10 @@ export function instrumentLeasePrelude(prelude: string, resource: string): strin
   // Equality rejects drift or incorrectly escaped source before instrumenting it.
   if (Function(`return ${match[1]}`)() !== resource) throw Error('Committed helper bytes differ');
   let observed =
+    marker('module-import-start') +
+    "\nImport-Module ($PSHOME+'\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop\n" +
+    marker('module-imported') +
+    '\n' +
     marker('utility-resolve-start') +
     '\nGet-Command Add-Type -ErrorAction Stop | Out-Null\n' +
     marker('utility-resolved') +

@@ -34,6 +34,8 @@ const diagnosticPhases = [
   'bootstrap',
   'source-read',
   'hash-verified',
+  'module-import-start',
+  'module-imported',
   'utility-resolve-start',
   'utility-resolved',
   'compile-start',
