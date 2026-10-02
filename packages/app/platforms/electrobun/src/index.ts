@@ -135,6 +135,7 @@ import { resumeDesktopRemoteTarget } from "./remote-target-rpc";
 import {
 	createRendererApiProxyRequestInit,
 	isRendererApiProxyPath,
+	isRendererServerRequestHostAllowed,
 	resolveRendererProxyIdleTimeoutSeconds,
 	shouldProxyToApiBase,
 } from "./renderer-api-proxy";
@@ -933,6 +934,18 @@ async function startRendererServer(): Promise<string> {
 		// API server's long request budget, capped to Bun.serve's accepted range.
 		idleTimeout: rendererProxyIdleTimeoutSeconds,
 		async fetch(req) {
+			// DNS-rebinding gate: a rebound page reaches this loopback listener
+			// same-origin with the attacker's domain in Host. Reject it before
+			// any static or proxied byte leaves this server (elizaOS/eliza#33036).
+			if (!isRendererServerRequestHostAllowed(req.headers.get("host"))) {
+				return new Response(
+					JSON.stringify({ error: "Untrusted renderer request host" }),
+					{
+						status: 403,
+						headers: { "Content-Type": "application/json" },
+					},
+				);
+			}
 			const url = new URL(req.url);
 			const pathname = url.pathname;
 			// Proxy /api/*, /ws, /music-player to the agent port. Mirrors the Vite
