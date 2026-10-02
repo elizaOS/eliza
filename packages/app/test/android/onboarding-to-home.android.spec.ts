@@ -155,6 +155,15 @@ test.describe
         ]);
 
         await confirmation;
+        // Auth-status hydration selects the pairing form asynchronously. Its
+        // autofocus can scroll the instructions off screen behind the keyboard.
+        const pairingInput = page.getByPlaceholder("Enter pairing code");
+        await expect(pairingInput).toBeVisible({ timeout: 60_000 });
+        const pairingHint = page.getByText("Get a one-time code", {
+          exact: true,
+        });
+        await pairingHint.scrollIntoViewIfNeeded();
+        await expect(pairingHint).toBeInViewport();
         // Inspect Android's active accessibility window, not just DOM behind
         // a native modal. Native field placeholders are not accessibility text.
         await expect(async () => {
@@ -177,8 +186,6 @@ test.describe
         // the production remote-device pairing flow against the real host,
         // obtaining the short-lived code through its loopback-only operator
         // endpoint and entering it through the rendered device UI.
-        const pairingInput = page.getByPlaceholder("Enter pairing code");
-        await expect(pairingInput).toBeVisible({ timeout: 60_000 });
         await testInfo.attach("connection state before pairing", {
           body: JSON.stringify(
             await page.evaluate(() => {
