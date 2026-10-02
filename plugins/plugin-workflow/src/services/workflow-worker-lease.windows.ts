@@ -23,6 +23,7 @@ export function classifyWindowsLeaseHelperError(stderr: string): string {
   if (/Pin directory ancestor|State ACL handle|Protect state DACL/.test(stderr))
     return 'WINDOWS_LEASE_DIRECTORY';
   if (/Helper source size|Helper source hash/.test(stderr)) return 'WINDOWS_LEASE_BOOTSTRAP';
+  if (stderr.includes('Source identity mismatch')) return 'WINDOWS_LEASE_SOURCE_MISMATCH';
   if (stderr.includes('CREATE_NEW private file')) return 'WINDOWS_LEASE_RESERVATION';
   if (/Worker identity|Process identity|Process times/.test(stderr)) return 'WINDOWS_LEASE_WORKER';
   return 'WINDOWS_LEASE_HELPER_FAILED';
@@ -40,6 +41,7 @@ export function windowsLeaseInspectionFailureReason(error: unknown): string {
     'WINDOWS_LEASE_PATH_REPARSE',
     'WINDOWS_LEASE_DIRECTORY',
     'WINDOWS_LEASE_BOOTSTRAP',
+    'WINDOWS_LEASE_SOURCE_MISMATCH',
     'WINDOWS_LEASE_RESERVATION',
     'WINDOWS_LEASE_WORKER',
     'WINDOWS_LEASE_HELPER_FAILED',
@@ -59,6 +61,15 @@ export function windowsLeaseInspectionFailureReason(error: unknown): string {
     // Even prototype/has/get traps must remain a fixed, non-sensitive result.
   }
   return `Windows worker helper unavailable (${code})`;
+}
+
+export class WindowsLeaseHelperError extends Error {
+  readonly code: string;
+  constructor(op: 'publish' | 'inspect' | 'acquire', diagnostic: string) {
+    const code = classifyWindowsLeaseHelperError(diagnostic);
+    super(`Windows lease ${op} helper closed (${code})`);
+    this.code = code;
+  }
 }
 
 function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]: unknown }) {
@@ -105,12 +116,7 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
   });
   const exited = new Promise<void>((resolve, reject) => {
     child.once('close', (code) => {
-      const closed = Object.assign(
-        Error(
-          `Windows lease ${request.op} helper closed (${classifyWindowsLeaseHelperError(diagnostic)})`
-        ),
-        { code: classifyWindowsLeaseHelperError(diagnostic) }
-      );
+      const closed = new WindowsLeaseHelperError(request.op, diagnostic);
       diagnostic = '';
       if (code === 0) resolve();
       else reject(failure ?? closed);
