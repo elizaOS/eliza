@@ -23,3 +23,84 @@ test('Windows helper diagnostics expose only closed failure codes', () => {
     expect(code).not.toContain(privateText);
   }
 });
+
+// Exact error codes may cross the platform boundary; raw stderr and paths must not.
+test('lease inspection preserves fixed native cause while refusing arbitrary error payloads', async () => {
+  const { windowsLeaseInspectionFailureReason } = await import(
+    '../../src/services/workflow-worker-lease.windows'
+  );
+  const canary = 'private-path-capability-canary';
+  expect(
+    windowsLeaseInspectionFailureReason(
+      Object.assign(new Error(canary), {
+        code: 'WINDOWS_LEASE_PATH_CANONICAL',
+      })
+    )
+  ).toBe('Windows worker helper unavailable (WINDOWS_LEASE_PATH_CANONICAL)');
+  for (const error of [
+    new Error(canary),
+    Object.assign(new Error(canary), { code: canary }),
+    { code: 'WINDOWS_LEASE_PATH_KIND', message: canary },
+    canary,
+    null,
+  ]) {
+    expect(windowsLeaseInspectionFailureReason(error)).toBe(
+      'Windows worker helper unavailable (WINDOWS_LEASE_HELPER_FAILED)'
+    );
+  }
+});
+
+test('owned helper lifecycle classifications survive without exposing transport data', async () => {
+  const { windowsLeaseInspectionFailureReason } = await import(
+    '../../src/services/workflow-worker-lease.windows'
+  );
+  for (const code of [
+    'WINDOWS_LEASE_STARTUP_DEADLINE',
+    'WINDOWS_LEASE_OUTPUT_LIMIT',
+    'WINDOWS_LEASE_INVALID_RESPONSE',
+    'WINDOWS_LEASE_TRANSPORT',
+  ]) {
+    expect(
+      windowsLeaseInspectionFailureReason(
+        Object.assign(new Error('private transport path'), { code })
+      )
+    ).toBe(`Windows worker helper unavailable (${code})`);
+  }
+});
+
+test('inspection snapshots changing getters and contains hostile object traps', async () => {
+  const { windowsLeaseInspectionFailureReason } = await import(
+    '../../src/services/workflow-worker-lease.windows'
+  );
+  const canary = 'private-path-token-canary';
+  let reads = 0;
+  const changing = Object.defineProperty(new Error(canary), 'code', {
+    get() {
+      return ++reads <= 2 ? 'WINDOWS_LEASE_TRANSPORT' : canary;
+    },
+  });
+  expect(windowsLeaseInspectionFailureReason(changing)).toBe(
+    'Windows worker helper unavailable (WINDOWS_LEASE_TRANSPORT)'
+  );
+  expect(reads).toBe(1);
+  const throwing = Object.defineProperty(new Error(canary), 'code', {
+    get() {
+      throw new Error(canary);
+    },
+  });
+  const hasTrap = new Proxy(new Error(canary), {
+    has() {
+      throw new Error(canary);
+    },
+  });
+  const prototypeTrap = new Proxy(new Error(canary), {
+    getPrototypeOf() {
+      throw new Error(canary);
+    },
+  });
+  for (const hostile of [throwing, hasTrap, prototypeTrap]) {
+    expect(windowsLeaseInspectionFailureReason(hostile)).toBe(
+      'Windows worker helper unavailable (WINDOWS_LEASE_HELPER_FAILED)'
+    );
+  }
+});

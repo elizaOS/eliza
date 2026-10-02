@@ -28,6 +28,39 @@ export function classifyWindowsLeaseHelperError(stderr: string): string {
   return 'WINDOWS_LEASE_HELPER_FAILED';
 }
 
+/** Preserve only our closed classification; never propagate OS messages or request paths. */
+export function windowsLeaseInspectionFailureReason(error: unknown): string {
+  const allowed = new Set([
+    'WINDOWS_LEASE_COMPILE',
+    'WINDOWS_LEASE_STATE_OWNER',
+    'WINDOWS_LEASE_STATE_ACL',
+    'WINDOWS_LEASE_PRIVATE_ACL',
+    'WINDOWS_LEASE_PATH_KIND',
+    'WINDOWS_LEASE_PATH_CANONICAL',
+    'WINDOWS_LEASE_PATH_REPARSE',
+    'WINDOWS_LEASE_DIRECTORY',
+    'WINDOWS_LEASE_BOOTSTRAP',
+    'WINDOWS_LEASE_RESERVATION',
+    'WINDOWS_LEASE_WORKER',
+    'WINDOWS_LEASE_HELPER_FAILED',
+    'WINDOWS_LEASE_STARTUP_DEADLINE',
+    'WINDOWS_LEASE_OUTPUT_LIMIT',
+    'WINDOWS_LEASE_INVALID_RESPONSE',
+    'WINDOWS_LEASE_TRANSPORT',
+  ]);
+  let code = 'WINDOWS_LEASE_HELPER_FAILED';
+  try {
+    // Unknown throws may carry proxies or getters; observe the code exactly once.
+    if (error instanceof Error && 'code' in error) {
+      const observed = error.code;
+      if (typeof observed === 'string' && allowed.has(observed)) code = observed;
+    }
+  } catch {
+    // Even prototype/has/get traps must remain a fixed, non-sensitive result.
+  }
+  return `Windows worker helper unavailable (${code})`;
+}
+
 function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]: unknown }) {
   if (process.platform !== 'win32') throw Error('Windows backend on non-Windows host');
   const root = process.env.SystemRoot;
@@ -53,11 +86,17 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
   }> = [];
   const queued: Record<string, unknown>[] = [];
   const fail = (e: Error) => {
-    failure = e;
-    for (const w of waiting.splice(0)) w.reject(e);
+    failure ??= e;
+    for (const w of waiting.splice(0)) w.reject(failure);
   };
-  child.on('error', fail);
-  child.stdin.on('error', fail);
+  const transportFailure = () =>
+    fail(
+      Object.assign(new Error('Windows helper transport failed'), {
+        code: 'WINDOWS_LEASE_TRANSPORT',
+      })
+    );
+  child.on('error', transportFailure);
+  child.stdin.on('error', transportFailure);
   let diagnostic = '';
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => {
@@ -74,7 +113,7 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
       );
       diagnostic = '';
       if (code === 0) resolve();
-      else reject(closed);
+      else reject(failure ?? closed);
       fail(closed);
     });
   });
@@ -83,7 +122,7 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
   child.stdout.on('data', (chunk: string) => {
     buffer += chunk;
     if (Buffer.byteLength(buffer) > 16384) {
-      fail(Error('Helper output limit'));
+      fail(Object.assign(Error('Helper output limit'), { code: 'WINDOWS_LEASE_OUTPUT_LIMIT' }));
       child.kill();
       return;
     }
@@ -97,7 +136,11 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
         if (w) w.resolve(row);
         else queued.push(row);
       } catch {
-        fail(Error('Invalid helper response'));
+        fail(
+          Object.assign(Error('Invalid helper response'), {
+            code: 'WINDOWS_LEASE_INVALID_RESPONSE',
+          })
+        );
         child.kill();
       }
     }
@@ -110,7 +153,11 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
     if (queued.length) return queued.shift()!;
     return await new Promise<Record<string, unknown>>((resolve, reject) => {
       const timer = setTimeout(() => {
-        fail(Error('Helper startup deadline'));
+        fail(
+          Object.assign(Error('Helper startup deadline'), {
+            code: 'WINDOWS_LEASE_STARTUP_DEADLINE',
+          })
+        );
         child.kill();
       }, 15000);
       waiting.push({
@@ -163,8 +210,8 @@ export const windowsWorkflowBackend: WorkflowPlatformBackend = {
       if (r.state === 'live' && typeof r.generation === 'string' && typeof r.pid === 'number')
         return { state: 'live', generation: r.generation, pid: r.pid };
       return { state: 'unknown', reason: 'Windows worker reservation unresolved' };
-    } catch {
-      return { state: 'unknown', reason: 'Windows worker helper unavailable' };
+    } catch (error) {
+      return { state: 'unknown', reason: windowsLeaseInspectionFailureReason(error) };
     } finally {
       await h.finish().catch(() => {});
     }
