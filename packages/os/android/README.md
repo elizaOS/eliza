@@ -90,6 +90,28 @@ output. Launcher builds derive `ELIZA_CHROMIUM_CERT_SHA256` from the selected pi
 and reject a conflicting override. Bitwarden's upstream source/signature contract
 is unchanged. Development unpacked-extension proofs do not qualify release builds.
 
+## Builder hosts, release keys and device qualification
+
+- [`builder/`](builder/README.md): dry-run-first GCE and bare-metal builder and
+  Cuttlefish host provisioning, plus `sync-aosp.sh` for mirrors and snapshots of
+  a profile in `aosp.lock.json`.
+- [`signing/`](signing/README.md): offline key ceremony for the AOSP image keys
+  and the Ed25519 release keys, and the signing-environment decryptor.
+- Read-only device qualification against a requirements file. The shipped
+  [`device-requirements/treble-gsi.json`](device-requirements/treble-gsi.json)
+  checks Treble/GSI readiness; products pass their own thresholds:
+
+  ```bash
+  node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
+    [--requirements product.json] [--fastboot]
+  ```
+
+  adb mode runs a fixed, tested allowlist of read-only commands; fastboot mode
+  runs only `getvar`. Records go to `test-results/os-device-qualification/` and
+  label emulator captures `emulator-observation`. A pass is an observation, not
+  a GSI boot. It complements, and never replaces, the `hardware-targets.json`
+  admission gate (`installerEligible`, `blockedReasons`) for supported targets.
+
 ## White-label builds
 
 Keep private branding outside the repository and point `ELIZA_WHITELABEL_DIR`
