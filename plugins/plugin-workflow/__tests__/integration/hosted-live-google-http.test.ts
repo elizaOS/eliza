@@ -32,7 +32,8 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
   let googleReads = 0,
     revoked = false,
     revokeDuringRead = false,
-    large = false;
+    large = false,
+    longField = false;
   const account = {
     id: 'fixture-google',
     provider: 'google',
@@ -159,7 +160,11 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
             res.end(
               JSON.stringify({
                 id: url.pathname.split('/').at(-1),
-                snippet: large ? 'N'.repeat(512) : 'Synthetic inbox fixture',
+                snippet: longField
+                  ? 'N'.repeat(513)
+                  : large
+                    ? 'N'.repeat(512)
+                    : 'Synthetic inbox fixture',
                 internalDate: String(Date.now()),
                 payload: {
                   headers: [{ name: 'Subject', value: large ? 'S'.repeat(256) : 'Synthetic mail' }],
@@ -448,6 +453,16 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
     expect(expired.output).toMatchObject({ status: 'unavailable' });
     expect(googleReads).toBe(setupReads + 3);
     expect(modelCalls).toBe(2);
+    longField = true;
+    const fieldProjection = await readHostedGoogleSource(state!.runtime, 'fixture-owner', {
+      ...source.live,
+      maxItems: 25,
+    });
+    const fieldReport = JSON.parse(fieldProjection.text);
+    expect(fieldReport.items).toHaveLength(1);
+    expect(fieldReport.items[0].snippet).toBe('N'.repeat(512));
+    expect(fieldReport.possiblyTruncated).toBe(true);
+    longField = false;
     large = true;
     const projection = await readHostedGoogleSource(state!.runtime, 'fixture-owner', {
       ...source.live,

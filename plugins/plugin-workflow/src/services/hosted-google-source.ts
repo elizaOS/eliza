@@ -330,20 +330,25 @@ export async function readHostedGoogleSource(
   if (options.signal?.aborted) unavailable();
   const rows = Array.isArray(result) ? result : result.events;
   if (!Array.isArray(rows) || rows.length > selected.maxItems) unavailable();
+  let fieldTruncated = false;
+  const projectText = (value: unknown, max: number) => {
+    if (typeof value === 'string' && value.length > max) fieldTruncated = true;
+    return text(value, max);
+  };
   const items = rows.map((row) =>
     selected.kind === 'email'
       ? {
-          id: text(row.id, 256),
-          subject: text('subject' in row ? row.subject : '', 256),
-          snippet: text('snippet' in row ? row.snippet : '', 512),
-          receivedAt: text('receivedAt' in row ? row.receivedAt : '', 64),
+          id: projectText(row.id, 256),
+          subject: projectText('subject' in row ? row.subject : '', 256),
+          snippet: projectText('snippet' in row ? row.snippet : '', 512),
+          receivedAt: projectText('receivedAt' in row ? row.receivedAt : '', 64),
         }
       : {
-          id: text(row.id, 256),
-          title: text('title' in row ? row.title : '', 256),
-          start: text('start' in row ? row.start : '', 64),
-          end: text('end' in row ? row.end : '', 64),
-          status: text('status' in row ? row.status : '', 32),
+          id: projectText(row.id, 256),
+          title: projectText('title' in row ? row.title : '', 256),
+          start: projectText('start' in row ? row.start : '', 64),
+          end: projectText('end' in row ? row.end : '', 64),
+          status: projectText('status' in row ? row.status : '', 32),
         }
   );
   const observedAt = new Date(Date.now()).toISOString();
@@ -359,7 +364,9 @@ export async function readHostedGoogleSource(
         ? 'inbox metadata and snippets only; no message bodies'
         : 'selected calendar events only',
     possiblyTruncated:
-      rows.length >= selected.maxItems || (!Array.isArray(result) && !!result.nextPageToken),
+      fieldTruncated ||
+      rows.length >= selected.maxItems ||
+      (!Array.isArray(result) && !!result.nextPageToken),
     items,
   };
   let encoded = JSON.stringify(projection);
