@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
-import { classifyWindowsLeaseHelperError } from '../../src/services/workflow-worker-lease.windows';
+import {
+  classifyWindowsLeaseHelperError,
+  WindowsLeaseHelperError,
+} from '../../src/services/workflow-worker-lease.windows';
 
 test('Windows helper diagnostics expose only closed failure codes', () => {
   const privateText = 'private-path-and-capability-canary';
@@ -13,6 +16,7 @@ test('Windows helper diagnostics expose only closed failure codes', () => {
     ['Non-directory or reparse ancestor', 'WINDOWS_LEASE_PATH_REPARSE'],
     ['Pin directory ancestor', 'WINDOWS_LEASE_DIRECTORY'],
     ['Helper source hash', 'WINDOWS_LEASE_BOOTSTRAP'],
+    ['Source identity mismatch', 'WINDOWS_LEASE_SOURCE_MISMATCH'],
     ['CREATE_NEW private file', 'WINDOWS_LEASE_RESERVATION'],
     ['Process identity', 'WINDOWS_LEASE_WORKER'],
     [privateText, 'WINDOWS_LEASE_HELPER_FAILED'],
@@ -22,4 +26,15 @@ test('Windows helper diagnostics expose only closed failure codes', () => {
     expect(code).toBe(expected);
     expect(code).not.toContain(privateText);
   }
+});
+
+test('native helper errors retain fixed codes without retaining private diagnostics', () => {
+  const error = new WindowsLeaseHelperError(
+    'inspect',
+    'private-canary\nUntrusted existing state ACL'
+  );
+  expect(error.code).toBe('WINDOWS_LEASE_STATE_ACL');
+  expect(error.message).toBe('Windows lease inspect helper closed (WINDOWS_LEASE_STATE_ACL)');
+  expect(JSON.stringify(error)).not.toContain('private-canary');
+  expect(error.stack).not.toContain('private-canary');
 });

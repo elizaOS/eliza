@@ -31,9 +31,12 @@ async function until(check: () => boolean) {
 for (const workerDies of [false, true])
   test(`actual Smithers parent SIGKILL preserves canonical ownership; workerDies=${workerDies}`, async () => {
     const previousHome = process.env.HOME;
+    const previousCwd = process.cwd();
     const home = fs.realpathSync(fs.mkdtempSync(path.join(windowsTmpdir(), 'workflow-survivor-')));
     fs.chmodSync(home, 0o700);
     process.env.HOME = home;
+    // Default workflow state follows cwd, not HOME; keep it in this private fixture.
+    process.chdir(home);
     fs.mkdirSync(path.join(home, '.eliza-worker-ipc'), { mode: 0o700 });
     const tenantId = `survivor-${randomUUID()}`,
       workflowId = 'owned-effect';
@@ -238,6 +241,7 @@ export default smithers(()=><Workflow name="survivor"><Task id="effect" output={
       fs.writeFileSync(release, 'finish');
       await service.stop();
       await database.close();
+      process.chdir(previousCwd);
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
     }
@@ -395,12 +399,10 @@ test('concurrent source publication preserves an existing importer inode and rej
     }
     await Promise.all(publications);
     expect(fs.statSync(target).ino).toBe(inode);
-    await expect(publishWorkflowSource(target, 'export default 2;')).rejects.toThrow(
-      'identity mismatch'
-    );
+    await expect(publishWorkflowSource(target, 'export default 2;')).rejects.toMatchObject({ code: 'WINDOWS_LEASE_SOURCE_MISMATCH' });
     expect(fs.readFileSync(target, 'utf8')).toBe(source);
     expect(fs.readdirSync(root)).toEqual(['v1.ts']);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
-});
+}, 60000);

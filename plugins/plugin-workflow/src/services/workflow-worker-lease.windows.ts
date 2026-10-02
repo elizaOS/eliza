@@ -23,9 +23,19 @@ export function classifyWindowsLeaseHelperError(stderr: string): string {
   if (/Pin directory ancestor|State ACL handle|Protect state DACL/.test(stderr))
     return 'WINDOWS_LEASE_DIRECTORY';
   if (/Helper source size|Helper source hash/.test(stderr)) return 'WINDOWS_LEASE_BOOTSTRAP';
+  if (stderr.includes('Source identity mismatch')) return 'WINDOWS_LEASE_SOURCE_MISMATCH';
   if (stderr.includes('CREATE_NEW private file')) return 'WINDOWS_LEASE_RESERVATION';
   if (/Worker identity|Process identity|Process times/.test(stderr)) return 'WINDOWS_LEASE_WORKER';
   return 'WINDOWS_LEASE_HELPER_FAILED';
+}
+
+export class WindowsLeaseHelperError extends Error {
+  readonly code: string;
+  constructor(op: 'publish' | 'inspect' | 'acquire', diagnostic: string) {
+    const code = classifyWindowsLeaseHelperError(diagnostic);
+    super(`Windows lease ${op} helper closed (${code})`);
+    this.code = code;
+  }
 }
 
 function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]: unknown }) {
@@ -66,12 +76,7 @@ function launch(request: { op: 'publish' | 'inspect' | 'acquire'; [key: string]:
   });
   const exited = new Promise<void>((resolve, reject) => {
     child.once('close', (code) => {
-      const closed = Object.assign(
-        Error(
-          `Windows lease ${request.op} helper closed (${classifyWindowsLeaseHelperError(diagnostic)})`
-        ),
-        { code: classifyWindowsLeaseHelperError(diagnostic) }
-      );
+      const closed = new WindowsLeaseHelperError(request.op, diagnostic);
       diagnostic = '';
       if (code === 0) resolve();
       else reject(closed);
@@ -163,8 +168,14 @@ export const windowsWorkflowBackend: WorkflowPlatformBackend = {
       if (r.state === 'live' && typeof r.generation === 'string' && typeof r.pid === 'number')
         return { state: 'live', generation: r.generation, pid: r.pid };
       return { state: 'unknown', reason: 'Windows worker reservation unresolved' };
-    } catch {
-      return { state: 'unknown', reason: 'Windows worker helper unavailable' };
+    } catch (error) {
+      return {
+        state: 'unknown',
+        reason:
+          error instanceof WindowsLeaseHelperError
+            ? `Windows worker helper unavailable (${error.code})`
+            : 'Windows worker helper unavailable',
+      };
     } finally {
       await h.finish().catch(() => {});
     }
