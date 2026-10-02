@@ -2,6 +2,10 @@ import {
   type CalendarOperation,
   validateCalendarOperation,
 } from "./calendar-contract.ts";
+import {
+  type ClockOperation,
+  validateClockOperation,
+} from "./clock-contract.ts";
 import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
 import {
   type NotesOperation,
@@ -45,6 +49,7 @@ export const DEVICE_VIEWS = [
   "workflows",
 ] as const;
 export type DeviceOperation =
+  | ClockOperation
   | MapsOperation
   | ReminderOperation
   | NotesOperation
@@ -94,6 +99,12 @@ export function exactKeys(
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   switch (p.type) {
+    case "clock_handoff":
+      try {
+        return validateClockOperation(p);
+      } catch {
+        throw new DeviceActionError("Invalid Clock operation");
+      }
     case "maps_read_selected":
       try {
         return validateMapsOperation(p);

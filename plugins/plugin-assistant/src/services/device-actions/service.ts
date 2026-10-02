@@ -18,6 +18,12 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
+  assertClockObservation,
+  CLOCK_CAPABILITY,
+  isClockOperation,
+  validateClockResult,
+} from "./clock-contract.ts";
+import {
   DeviceActionError,
   type DeviceActionPayload,
   exactKeys,
@@ -163,6 +169,7 @@ export class DeviceActionService {
           "calendar.local-event.v1",
           "notes.local-record.v1",
           REMINDER_CAPABILITY,
+          CLOCK_CAPABILITY,
           MAPS_CAPABILITY,
         ],
       };
@@ -240,6 +247,11 @@ export class DeviceActionService {
     observation?: unknown,
   ): Promise<ApprovalEnqueueResult> {
     const validated = validateDeviceOperation(operation);
+    if (
+      isClockOperation(validated) &&
+      !c.capabilities?.includes(CLOCK_CAPABILITY)
+    )
+      throw new DeviceActionError("Clock capability unavailable");
     if (isMapsOperation(validated)) {
       if (!c.capabilities?.includes(MAPS_CAPABILITY))
         throw new DeviceActionError("Maps capability unavailable");
@@ -261,6 +273,7 @@ export class DeviceActionService {
       throw new DeviceActionError("Calendar capability unavailable");
     if (
       ![
+        "clock_handoff",
         "create_note",
         "maps_read_selected",
         "notes_read_selected",
@@ -295,6 +308,22 @@ export class DeviceActionService {
         idempotencyKey,
         c.subjectUserId,
       );
+      if (isClockOperation(validated)) {
+        const receipt = existing?.execution?.providerReceipt;
+        const historical =
+          existing?.state === "done" &&
+          stableStringify(existing.payload) === stableStringify(payload) &&
+          receipt?.outcome === "applied";
+        try {
+          if (historical)
+            validateClockResult(validated, receipt.result, "applied");
+          else assertClockObservation(validated, observation);
+        } catch {
+          throw new DeviceActionError(
+            "Clock observation unavailable or changed",
+          );
+        }
+      }
       if (isMapsOperation(validated)) {
         const receipt = existing?.execution?.providerReceipt;
         const historical =
@@ -536,6 +565,11 @@ export class DeviceActionService {
     if (!request) throw new DeviceActionError("Proposal unavailable");
     const payload = validateDevicePayload(request.payload);
     if (
+      isClockOperation(payload.operation) &&
+      !c.capabilities?.includes(CLOCK_CAPABILITY)
+    )
+      throw new DeviceActionError("Clock capability unavailable");
+    if (
       isMapsOperation(payload.operation) &&
       !c.capabilities?.includes(MAPS_CAPABILITY)
     )
@@ -658,6 +692,11 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isClockOperation(payload.operation) &&
+        !c.capabilities?.includes(CLOCK_CAPABILITY)
+      )
+        throw new DeviceActionError("Clock capability unavailable");
+      if (
         isMapsOperation(payload.operation) &&
         !c.capabilities?.includes(MAPS_CAPABILITY)
       )
@@ -675,7 +714,24 @@ export class DeviceActionService {
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range";
-      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
+      if (isClockOperation(payload.operation)) {
+        try {
+          if (receipt.outcome !== "unknown" || value.result !== undefined)
+            receipt = {
+              ...receipt,
+              result: validateClockResult(
+                payload.operation,
+                value.result,
+                receipt.outcome,
+              ),
+            };
+        } catch {
+          throw new DeviceActionError("Invalid Clock receipt");
+        }
+      } else if (
+        isMapsOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
         try {
           receipt = {
             ...receipt,
@@ -786,6 +842,11 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isClockOperation(payload.operation) &&
+        !c.capabilities?.includes(CLOCK_CAPABILITY)
+      )
+        throw new DeviceActionError("Clock capability unavailable");
+      if (
         isMapsOperation(payload.operation) &&
         !c.capabilities?.includes(MAPS_CAPABILITY)
       )
@@ -800,7 +861,24 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
-      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
+      if (isClockOperation(payload.operation)) {
+        try {
+          if (receipt.outcome !== "unknown" || value.result !== undefined)
+            receipt = {
+              ...receipt,
+              result: validateClockResult(
+                payload.operation,
+                value.result,
+                receipt.outcome,
+              ),
+            };
+        } catch {
+          throw new DeviceActionError("Invalid Clock receipt");
+        }
+      } else if (
+        isMapsOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
         try {
           receipt = {
             ...receipt,
