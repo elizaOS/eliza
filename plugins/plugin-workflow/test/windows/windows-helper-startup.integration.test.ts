@@ -12,7 +12,7 @@ if (process.platform !== 'win32') throw Error('Real Windows host required');
 
 // Actual subprocess discrimination, not a mocked backend. The helper's production
 // 15-second startup deadline is unchanged. No workflow or external effect runs.
-for (const environment of ['inherited', 'restricted'] as const) {
+for (const environment of ['inherited', 'restricted', 'restricted-temp'] as const) {
   for (const topology of ['ignored', 'readline'] as const) {
     test(`bundled Windows helper: ${environment} environment, ${topology} stdin`, async () => {
       const root = realpathSync(mkdtempSync(join(tmpdir(), 'windows-helper-startup-')));
@@ -72,9 +72,11 @@ try {
       const child = spawn(command.executable, command.args, {
         cwd: command.cwd,
         env:
-          environment === 'restricted'
-            ? restrictedEnvironment
-            : { ...process.env, ...restrictedEnvironment },
+          environment === 'inherited'
+            ? { ...process.env, ...restrictedEnvironment }
+            : environment === 'restricted-temp'
+              ? { ...restrictedEnvironment, TEMP: process.env.TEMP, TMP: process.env.TMP }
+              : restrictedEnvironment,
         stdio: [topology === 'ignored' ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
       // Drain without exposing private native diagnostics. Results use only fixed codes.
