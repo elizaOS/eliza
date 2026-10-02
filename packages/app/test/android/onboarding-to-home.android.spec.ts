@@ -100,13 +100,9 @@ test.describe
                     expect(dialog.message()).toContain(
                       new URL(HOST_AGENT_BASE).host,
                     );
-                    // Handle the WebView dialog through its owning CDP session.
-                    // Waiting for a native OK button first can leave the dialog
-                    // unresolved when no Android AlertDialog is exposed.
-                    await dialog.accept();
-                    // Capacitor's WebChromeClient may retain its native modal
-                    // after CDP resolves the JavaScript confirmation. Close only
-                    // the app's positive dialog button when Android exposes it.
+                    // Resolve the app-owned native confirmation when exposed.
+                    // Accepting through CDP first can resume the page while the
+                    // WebChromeClient's AlertDialog still covers the WebView.
                     const nativeConfirm = {
                       pkg: APP_ID,
                       res: "android:id/button1",
@@ -114,7 +110,7 @@ test.describe
                     };
                     let nativeConfirmVisible = false;
                     try {
-                      await device.wait(nativeConfirm, { timeout: 1_000 });
+                      await device.wait(nativeConfirm, { timeout: 15_000 });
                       nativeConfirmVisible = true;
                     } catch (error) {
                       // The Android driver serializes selector absence as a
@@ -133,6 +129,9 @@ test.describe
                     }
                     if (nativeConfirmVisible) {
                       await device.tap(nativeConfirm, { timeout: 5_000 });
+                    } else {
+                      // Some WebView implementations expose only the CDP dialog.
+                      await dialog.accept();
                     }
                     resolve();
                   } catch (error) {
