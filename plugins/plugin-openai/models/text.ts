@@ -186,11 +186,13 @@ interface NativeGenerateTextResult {
 type NativeTextModelResult = string & NativeGenerateTextResult;
 type RecordArgValueMode = "json-string" | "schema";
 
-interface RecordArgTransform {
+interface RecordEntriesTransform {
   path: string;
   entriesKey: string;
   valueMode: RecordArgValueMode;
 }
+
+type RecordArgTransform = RecordEntriesTransform | { path: string; omitNullKeys: string[] };
 
 interface ResponseSchemaTransform {
   restoreText(text: string): string;
@@ -1304,6 +1306,13 @@ function parseRecordArgPath(path: string): string[] {
 function restoreStrictSafeRecordValue(value: unknown, transform: RecordArgTransform): unknown {
   const record = asOptionalRecord(value);
   if (!record) return value;
+  if ("omitNullKeys" in transform) {
+    return Object.fromEntries(
+      Object.entries(record).filter(
+        ([key, nested]) => nested !== null || !transform.omitNullKeys.includes(key)
+      )
+    );
+  }
   const entries = record[transform.entriesKey];
   if (!Array.isArray(entries)) return value;
 
@@ -1682,8 +1691,9 @@ function sanitizeJsonSchema(
     typeof sanitized.properties === "object" &&
     !Array.isArray(sanitized.properties)
   ) {
+    const declaredProperties = sanitized.properties as Record<string, unknown>;
     const properties: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(sanitized.properties as Record<string, unknown>)) {
+    for (const [key, value] of Object.entries(declaredProperties)) {
       properties[key] = sanitizeJsonSchema(value, false, `${path}.${key}`, transforms, options);
     }
     sanitized.properties = properties;
@@ -1692,6 +1702,23 @@ function sanitizeJsonSchema(
     const existingRequired = Array.isArray(sanitized.required)
       ? sanitized.required.filter((key): key is string => typeof key === "string")
       : [];
+    // Strict providers require every property. Represent omitted non-nullable
+    // optionals with null on the wire and restore omission before application
+    // validation. Explicitly nullable values retain their original meaning.
+    if (transforms && !options.preserveOptional && !options.preserveStructure) {
+      const omitNullKeys: string[] = [];
+      for (const [key, original] of Object.entries(declaredProperties)) {
+        const property = asOptionalRecord(original);
+        if (!property || existingRequired.includes(key) || property.nullable === true) continue;
+        const types = Array.isArray(property.type) ? property.type : [property.type];
+        if (!types.length || types.some((type) => typeof type !== "string" || type === "null")) {
+          continue;
+        }
+        properties[key] = { anyOf: [properties[key], { type: "null" }] };
+        omitNullKeys.push(key);
+      }
+      if (omitNullKeys.length) transforms.push({ path, omitNullKeys });
+    }
     // Cerebras supports optional fields in strict tools as well as responses.
     // Requiring unused arguments invents values that fail runtime validation.
     // Retain the all-properties-required rule for other strict providers.
